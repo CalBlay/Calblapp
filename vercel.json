@@ -9,10 +9,6 @@
     {
       "path": "/api/sync/ada-to-firestore?mode=cron",
       "schedule": "15 3 * * *"
-    },
-    {
-      "path": "/api/messaging/projects/missed-activity?mode=cron",
-      "schedule": "*/15 * * * *"
     }
   ]
 }
