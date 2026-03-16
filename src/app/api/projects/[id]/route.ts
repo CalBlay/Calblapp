@@ -23,6 +23,13 @@ type SessionUser = {
   department?: string | null
 }
 
+const normalizeComparableText = (value?: string | null) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+
 const clean = (value: FormDataEntryValue | null) => String(value || '').trim()
 const normLower = (value?: string) =>
   (value || '')
@@ -50,6 +57,17 @@ async function requireAdmin() {
   }
 
   return { user }
+}
+
+async function deleteDocsInChunks(
+  refs: Array<FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>>
+) {
+  const chunkSize = 400
+  for (let index = 0; index < refs.length; index += chunkSize) {
+    const batch = db.batch()
+    refs.slice(index, index + chunkSize).forEach((ref) => batch.delete(ref))
+    await batch.commit()
+  }
 }
 
 async function uploadDocument(file: File, projectId: string) {
@@ -420,6 +438,102 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   }
 }
 
+export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAdmin()
+  if ('error' in auth) return auth.error
+
+  try {
+    const { id } = await params
+    const docRef = db.collection('projects').doc(id)
+    const snap = await docRef.get()
+    if (!snap.exists) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+
+    const data = snap.data() as Record<string, unknown>
+    const userRole = normalizeComparableText(auth.user.role)
+    const userName = normalizeComparableText(auth.user.name)
+    const createdById = String(data.createdById || '').trim()
+    const sponsor = normalizeComparableText(String(data.sponsor || ''))
+    const canDelete =
+      userRole === 'admin' ||
+      (auth.user.id && auth.user.id === createdById) ||
+      (userName && sponsor && userName === sponsor)
+
+    if (!canDelete) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const bucket = storageAdmin.bucket()
+    const channelsSnap = await db
+      .collection('channels')
+      .where('source', '==', 'projects')
+      .where('projectId', '==', id)
+      .get()
+    const channelIds = channelsSnap.docs.map((doc) => doc.id)
+
+    const channelMembersRefs = channelIds.length
+      ? (
+          await Promise.all(
+            channelIds.map((channelId) =>
+              db.collection('channelMembers').where('channelId', '==', channelId).get()
+            )
+          )
+        ).flatMap((snap) => snap.docs.map((doc) => doc.ref))
+      : []
+
+    const messageDocs = channelIds.length
+      ? (
+          await Promise.all(
+            channelIds.map((channelId) =>
+              db.collection('messages').where('channelId', '==', channelId).get()
+            )
+          )
+        ).flatMap((snap) => snap.docs)
+      : []
+    const messageRefs = messageDocs.map((doc) => doc.ref)
+
+    const messageReadRefs = messageDocs.flatMap((doc) => {
+      const messageId = doc.id
+      return channelMembersRefs.map((memberRef) => {
+        const memberId = memberRef.id
+        const userId = memberId.split('_').slice(1).join('_')
+        return db.collection('messageReads').doc(`${messageId}_${userId}`)
+      })
+    })
+
+    const userNotificationsRefs = (
+      await Promise.all(
+        (
+          await db.collection('users').get()
+        ).docs.map((userDoc) =>
+          userDoc.ref.collection('notifications').where('projectId', '==', id).get()
+        )
+      )
+    ).flatMap((snap) => snap.docs.map((doc) => doc.ref))
+
+    await deleteDocsInChunks([
+      ...messageReadRefs,
+      ...messageRefs,
+      ...channelMembersRefs,
+      ...channelsSnap.docs.map((doc) => doc.ref),
+      ...userNotificationsRefs,
+      docRef,
+    ])
+
+    try {
+      await bucket.deleteFiles({ prefix: `projects/${id}/` })
+    } catch {
+      // ignore storage cleanup errors
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal error'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
@@ -572,6 +686,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     })
     const previousLaunchExpired = hasLaunchWindowExpired(String(currentData.launchDate || ''))
     const nextLaunchExpired = hasLaunchWindowExpired(String(payload.launchDate ?? currentData.launchDate ?? ''))
+    const previousWasDraft = String(currentData.status || '').trim() === 'draft'
+    const nextIsDraft = String(payload.status ?? currentData.status ?? '').trim() === 'draft'
 
     await db.collection('projects').doc(id).set(payload, { merge: true })
 
@@ -582,9 +698,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           ? addedRooms
           : []
 
+    const ownerUserForNotification =
+      ownerUser || (!nextIsDraft && owner ? await userResolver.findByName(owner) : null)
     const hasOwnerChanged =
-      Boolean(ownerUser?.id) &&
-      (ownerUser.id !== previousOwnerUserId || owner !== previousOwner)
+      !nextIsDraft &&
+      Boolean(ownerUserForNotification?.id) &&
+      (previousWasDraft || ownerUserForNotification!.id !== previousOwnerUserId || owner !== previousOwner)
     const currentBlocksById = new Map(
       currentBlocks.map((block) => [String(block.id || ''), block] as const).filter(([id]) => Boolean(id))
     )
@@ -600,7 +719,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const blockOwner = String(block.owner || '').trim()
         const deadline = String(block.deadline || '').trim()
         const previousBlock = currentBlocksById.get(blockId)
-        const previousOwnerName = String(previousBlock?.owner || '').trim()
+        const previousOwnerName = previousWasDraft ? '' : String(previousBlock?.owner || '').trim()
 
         if (!blockId || !blockOwner || blockOwner === previousOwnerName) return null
 
@@ -637,7 +756,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           const taskOwner = String(task?.owner || '').trim()
           const deadline = String(task?.deadline || '').trim()
           const previousTask = previousTasksById.get(taskId)
-          const previousOwnerName = String(previousTask?.owner || '').trim()
+          const previousOwnerName = previousWasDraft ? '' : String(previousTask?.owner || '').trim()
 
           if (!taskId || !taskOwner || taskOwner === previousOwnerName) return null
 
@@ -689,7 +808,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         ...(hasOwnerChanged
           ? [
               notifyProjectOwner({
-                userId: ownerUser!.id,
+                userId: ownerUserForNotification!.id,
                 projectId: id,
                 projectName,
                 baseUrl,

@@ -2,20 +2,24 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
-import { CalendarDays, CheckCircle2, FolderKanban, Search, UserRound } from 'lucide-react'
+import { CalendarDays, CheckCircle2, FolderKanban, Search, Trash2, UserRound } from 'lucide-react'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import FloatingAddButton from '@/components/ui/floating-add-button'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RoleGuard } from '@/lib/withRoleGuard'
-import { formatProjectDate, phaseLabel } from './components/project-shared'
+import { formatProjectDate, phaseLabel, statusLabel } from './components/project-shared'
+import { normalizeRole } from '@/lib/roles'
 
 type ProjectListItem = {
   id: string
   name?: string
+  sponsor?: string
   owner?: string
+  createdById?: string
   phase?: string
   status?: string
   createdAt?: string | number
@@ -42,11 +46,13 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export default function ProjectsPage() {
   const router = useRouter()
+  const { data: session } = useSession()
   const [projects, setProjects] = useState<ProjectListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [dateFilter, setDateFilter] = useState<SmartFiltersChange>({})
+  const [deletingProjectId, setDeletingProjectId] = useState('')
   const { data: notificationsData, mutate: mutateNotifications } = useSWR(
     '/api/notifications?mode=list',
     fetcher
@@ -83,6 +89,9 @@ export default function ProjectsPage() {
       cancelled = true
     }
   }, [])
+  const sessionUserId = String(session?.user?.id || '').trim()
+  const sessionUserName = String(session?.user?.name || '').trim()
+  const sessionRole = normalizeRole(String(session?.user?.role || '').trim())
   const normalizeText = (value: string) =>
     String(value || '')
       .normalize('NFD')
@@ -221,11 +230,39 @@ export default function ProjectsPage() {
       'Projecte'
     return { primary: projectName, secondary: '', prefix: 'Projecte' }
   }
+  const canDeleteProject = (project: ProjectListItem) =>
+    sessionRole === 'admin' ||
+    (sessionUserId && sessionUserId === String(project.createdById || '').trim()) ||
+    (normalizeText(sessionUserName) &&
+      normalizeText(sessionUserName) === normalizeText(String(project.sponsor || '')))
+
+  const handleDeleteProject = async (project: ProjectListItem) => {
+    const confirmed = window.confirm(
+      `Vols eliminar el projecte "${project.name || 'Projecte'}"? S'eliminara tot el relacionat.`
+    )
+    if (!confirmed) return
+
+    try {
+      setDeletingProjectId(project.id)
+      const res = await fetch(`/api/projects/${project.id}`, { method: 'DELETE' })
+      const payload = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        throw new Error(payload.error || 'No s ha pogut eliminar el projecte')
+      }
+
+      router.refresh()
+      window.location.reload()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error eliminant el projecte')
+    } finally {
+      setDeletingProjectId('')
+    }
+  }
 
   return (
-    <RoleGuard allowedRoles={['admin']}>
+    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'usuari', 'comercial']}>
       <div className="flex w-full max-w-none flex-col gap-6 p-4">
-        <ModuleHeader title="Projects" subtitle="Projectes corporatius" />
+        <ModuleHeader title="Projectes" subtitle="Projectes corporatius" />
 
         <section className="rounded-[28px] border border-violet-200 bg-gradient-to-r from-violet-50 via-white to-fuchsia-50 p-6 shadow-sm">
           <div className="space-y-3">
@@ -234,7 +271,7 @@ export default function ProjectsPage() {
               Coordinacio de nous projectes
             </div>
             <div>
-              <h1 className="text-2xl font-semibold text-slate-900">Projects</h1>
+              <h1 className="text-2xl font-semibold text-slate-900">Projectes</h1>
               <p className="max-w-2xl text-sm text-slate-600">
                 Hub de governanca per definir, activar i coordinar projectes corporatius.
               </p>
@@ -252,7 +289,7 @@ export default function ProjectsPage() {
           <section className="rounded-[14px] border border-violet-200/80 bg-white px-2.5 py-2 shadow-sm">
             <div className="mb-1.5 flex items-center gap-2">
               <div className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 ring-1 ring-violet-200">
-                Avisos de Projects
+                Avisos de projectes
               </div>
               <div className="text-xs text-slate-500">
                 {projectNotifications.length} recents
@@ -312,7 +349,7 @@ export default function ProjectsPage() {
                 <Input
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Buscar projecte..."
+                  placeholder="Cerca un projecte..."
                   className="h-10 rounded-xl border border-gray-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-violet-400"
                 />
               </div>
@@ -340,13 +377,16 @@ export default function ProjectsPage() {
             ) : (
               <div className="space-y-3">
                 {filteredProjects.map((project) => (
-                  <Link
+                  <div
                     key={project.id}
-                    href={`/menu/projects/${project.id}`}
-                    className="block rounded-[24px] bg-slate-50/70 px-5 py-4 transition hover:bg-violet-50/40"
+                    className="rounded-[24px] bg-slate-50/70 px-5 py-4 transition hover:bg-violet-50/40"
                   >
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                      <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/menu/projects/${project.id}`)}
+                        className="min-w-0 flex-1 cursor-pointer space-y-2 text-left"
+                      >
                         <div className="text-base font-semibold text-slate-900">
                           {project.name || 'Projecte sense nom'}
                         </div>
@@ -377,13 +417,35 @@ export default function ProjectsPage() {
                             {project.blocks?.length || 0} blocs
                           </span>
                         </div>
-                      </div>
+                      </button>
 
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700">
-                        {phaseLabel(project.phase)}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            project.status === 'draft'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-white text-slate-700'
+                          }`}
+                        >
+                          {project.status === 'draft' ? statusLabel(project.status) : phaseLabel(project.phase)}
+                        </span>
+                        {canDeleteProject(project) ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            title="Eliminar projecte"
+                            aria-label={`Eliminar projecte ${project.name || 'Projecte'}`}
+                            className="h-9 w-9 rounded-full border-red-200 bg-white text-red-600 hover:bg-red-50 hover:text-red-700"
+                            disabled={deletingProjectId === project.id}
+                            onClick={() => void handleDeleteProject(project)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
             )}

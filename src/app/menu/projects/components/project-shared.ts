@@ -21,24 +21,24 @@ export const PROJECT_DEPARTMENTS = [
 ] as const
 
 export const PROJECT_PHASE_OPTIONS = [
-  { value: 'initial', label: 'Inicial' },
-  { value: 'definition', label: 'Definicio' },
-  { value: 'kickoff', label: 'Kickoff' },
-  { value: 'planning', label: 'Planificacio' },
-  { value: 'execution', label: 'Execucio' },
+  { value: 'initial', label: 'Esborrany' },
+  { value: 'definition', label: 'Creat' },
+  { value: 'kickoff', label: "Reunió d'arrencada" },
+  { value: 'planning', label: 'Planificació' },
+  { value: 'execution', label: 'Execució' },
   { value: 'control', label: 'Control' },
-  { value: 'evaluation', label: 'Avaluacio' },
+  { value: 'evaluation', label: 'Avaluació' },
   { value: 'closed', label: 'Tancat' },
 ] as const
 
 export const PROJECT_STATUS_OPTIONS = [
   { value: 'draft', label: 'Esborrany' },
-  { value: 'definition', label: 'En definicio' },
-  { value: 'kickoff', label: 'Kickoff' },
-  { value: 'planning', label: 'En planificacio' },
-  { value: 'execution', label: 'En execucio' },
+  { value: 'definition', label: 'Creat' },
+  { value: 'kickoff', label: "Reunió d'arrencada" },
+  { value: 'planning', label: 'En planificació' },
+  { value: 'execution', label: 'En execució' },
   { value: 'control', label: 'En control' },
-  { value: 'evaluation', label: 'En avaluacio' },
+  { value: 'evaluation', label: 'En avaluació' },
   { value: 'closed', label: 'Tancat' },
 ] as const
 
@@ -61,7 +61,7 @@ export const TASK_PRIORITY_OPTIONS = [
   { value: 'low', label: 'Baixa' },
   { value: 'normal', label: 'Normal' },
   { value: 'high', label: 'Alta' },
-  { value: 'critical', label: 'Critica' },
+  { value: 'critical', label: 'Crítica' },
 ] as const
 
 export type ProjectTask = {
@@ -133,7 +133,7 @@ export type ProjectRoom = {
 
 export const PROJECT_DOCUMENT_CATEGORIES = [
   { value: 'initial', label: 'Document inicial' },
-  { value: 'kickoff', label: 'Kickoff' },
+  { value: 'kickoff', label: "Reunió d'arrencada" },
   { value: 'general', label: 'Projecte general' },
   { value: 'block', label: 'Blocs' },
   { value: 'other', label: 'Altres' },
@@ -231,37 +231,18 @@ export const deriveBlockStatus = (
 export const deriveProjectPhase = (project: Pick<ProjectData, 'kickoff' | 'blocks' | 'launchDate'>) => {
   const blocks = Array.isArray(project.blocks) ? project.blocks : []
   const allTasks = blocks.flatMap((block) => block.tasks || [])
-  const normalizedBlocks = blocks.map((block) => ({
-    ...block,
-    status: deriveBlockStatus(block),
-  }))
-  const launchDateRaw = String(project.launchDate || '').trim()
-  const launchDate = launchDateRaw
-    ? new Date(launchDateRaw.length === 10 ? `${launchDateRaw}T00:00:00` : launchDateRaw)
-    : null
-  const launchPlus24h =
-    launchDate && !Number.isNaN(launchDate.getTime())
-      ? launchDate.getTime() + 24 * 60 * 60 * 1000
-      : null
-  const hasKickoffSignal = Boolean(
-    project.kickoff?.status ||
-      project.kickoff?.date ||
-      project.kickoff?.startTime ||
-      (project.kickoff?.attendees || []).length
+  const hasKickoffLaunched = Boolean(
+    String(project.kickoff?.status || '').trim() ||
+      String(project.kickoff?.graphWebLink || '').trim()
   )
-  const hasBlocks = normalizedBlocks.length > 0
+  const hasBlocks = blocks.length > 0
   const hasTasks = allTasks.length > 0
-  const allBlocksDone = hasBlocks && normalizedBlocks.every((block) => block.status === 'done')
-  const allTasksDone = hasTasks && allTasks.every((task) => task.status === 'done')
-  const hasExecutionSignal =
-    normalizedBlocks.some((block) => ['in_progress', 'blocked', 'done'].includes(block.status)) ||
-    allTasks.some((task) => ['in_progress', 'blocked', 'done'].includes(task.status))
+  const hasAssignedTasks = allTasks.some((task) => String(task.owner || '').trim())
+  const hasAssignedBlocks = blocks.some((block) => String(block.owner || '').trim())
 
-  if (launchPlus24h && Date.now() >= launchPlus24h) return 'closed'
-  if ((hasBlocks || hasTasks) && allBlocksDone && (!hasTasks || allTasksDone)) return 'closed'
-  if (hasExecutionSignal) return 'execution'
+  if (hasAssignedTasks || hasAssignedBlocks) return 'execution'
   if (hasBlocks || hasTasks) return 'planning'
-  if (hasKickoffSignal) return 'kickoff'
+  if (hasKickoffLaunched) return 'kickoff'
   return 'definition'
 }
 

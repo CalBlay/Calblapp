@@ -38,7 +38,6 @@ export default function ProjectDetailPage() {
   const [error, setError] = useState('')
   const requestedTab = searchParams.get('tab')
   const initialTab: WorkspaceTab =
-    requestedTab === 'kickoff' ||
     requestedTab === 'blocks' ||
     requestedTab === 'tasks' ||
     requestedTab === 'documents' ||
@@ -230,7 +229,7 @@ export default function ProjectDetailPage() {
     <RoleGuard allowedRoles={['admin']}>
       <div className="flex w-full max-w-none flex-col gap-6 p-4">
         <ModuleHeader
-          title="Projects"
+          title="Projectes"
           subtitle={project?.name || 'Projecte'}
           mainHref="/menu/projects"
         />

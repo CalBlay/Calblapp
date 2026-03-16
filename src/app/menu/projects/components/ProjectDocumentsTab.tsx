@@ -168,17 +168,17 @@ export default function ProjectDocumentsTab({
 
     return [
       `Projecte: ${project.name || 'Sense nom'}`,
-      `Data kickoff: ${
+      `Data de la reunió d'arrencada: ${
         project.kickoff?.date ? project.kickoff.date.split('-').reverse().join('/') : 'Sense data'
       }`,
-      `Hora kickoff: ${project.kickoff?.startTime || 'Sense hora'}`,
+      `Hora de la reunió d'arrencada: ${project.kickoff?.startTime || 'Sense hora'}`,
       `Hora final acta: ${formatTime(project.kickoff?.minutesClosedAt) || 'Sense hora final'}`,
       `Acta redactada per: ${project.kickoff?.minutesAuthor || 'Sense usuari'}`,
-      `Ultima actualitzacio: ${formatDateTime(project.kickoff?.minutesUpdatedAt) || 'Sense registre'}`,
+      `Última actualització: ${formatDateTime(project.kickoff?.minutesUpdatedAt) || 'Sense registre'}`,
       `Assistents: ${presentAttendees.length > 0 ? presentAttendees.join('; ') : 'Sense assistents'}`,
       `Absents: ${absentAttendees.length > 0 ? absentAttendees.join('; ') : 'Cap'}`,
       '',
-      'ACTA KICKOFF',
+      "ACTA DE LA REUNIÓ D'ARRENCADA",
       '',
       minutes,
     ].join('\n')
@@ -214,8 +214,8 @@ export default function ProjectDocumentsTab({
     return {
       id: 'kickoff-minutes',
       category: 'kickoff',
-      label: 'Acta kickoff',
-      name: 'Acta kickoff.txt',
+      label: "Acta de la reunió d'arrencada",
+      name: "Acta-reunio-arrencada.txt",
       url: kickoffMinutesUrl,
     }
   }, [kickoffMinutesUrl, project.kickoff?.minutes])
@@ -369,7 +369,7 @@ export default function ProjectDocumentsTab({
             type="button"
             onClick={onSave}
             disabled={!pendingDocumentFile || savingOverview}
-            className="h-11 min-w-[220px] bg-blue-600 text-white hover:bg-blue-700"
+            className="h-11 min-w-[220px] bg-violet-600 text-white hover:bg-violet-700 disabled:bg-violet-300"
           >
             <Save className="mr-2 h-4 w-4" />
             Adjuntar arxiu

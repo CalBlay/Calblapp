@@ -100,7 +100,7 @@ type Props = {
   onAddKickoffAttendee: (userId: string) => void
   onRemoveKickoffAttendee: (key: string) => void
   kickoffAttendeeOptions: ResponsibleOption[]
-  departmentResponsibleOptions: (department?: string) => ResponsibleOption[]
+  departmentResponsibleOptions: (department?: string | string[]) => ResponsibleOption[]
   maxDeadline?: string
   canViewKickoffSection?: boolean
   canCreateBlocks?: boolean
@@ -180,6 +180,8 @@ export default function ProjectBlocksTab({
   const [kickoffAttendeeDraft, setKickoffAttendeeDraft] = useState('none')
   const [showKickoffAttendees, setShowKickoffAttendees] = useState(false)
   const [showDepartmentPickerByBlock, setShowDepartmentPickerByBlock] = useState<Record<string, boolean>>({})
+  const [showBlockDraftDepartmentPicker, setShowBlockDraftDepartmentPicker] = useState(false)
+  const [showTasksByBlock, setShowTasksByBlock] = useState<Record<string, boolean>>({})
   const [viewingBlockId, setViewingBlockId] = useState<string | null>(null)
 
   const getDeadlineHint = (value?: string) => {
@@ -205,28 +207,32 @@ export default function ProjectBlocksTab({
     return [...projectDepartments, ...otherDepartments]
   }
 
+  const orderedBlockDraftDepartments = [
+    ...availableDepartments.filter((department) => project.departments.includes(department)),
+    ...availableDepartments.filter((department) => !project.departments.includes(department)),
+  ]
+
   return (
     <div className="grid gap-6 2xl:grid-cols-[1.15fr_0.85fr]">
       <section className="rounded-[24px] bg-white/75 p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className={projectSectionTitleClass}>Blocs</h2>
-            <p className={projectSectionSubtitleClass}>Fronts de treball del projecte.</p>
+            <p className={projectSectionSubtitleClass}>Àmbits de treball del projecte.</p>
           </div>
           <div className="flex items-center gap-2">
             <Button
               type="button"
-              variant="outline"
               onClick={onSave}
               disabled={savingBlocks || !dirtyBlocks || !project.blocks.some((block) => canEditBlock(block))}
-              className={`border-violet-200 ${
+              className={`bg-violet-600 text-white hover:bg-violet-700 ${
                 dirtyBlocks && project.blocks.some((block) => canEditBlock(block))
-                  ? 'text-violet-700 hover:bg-violet-50'
-                  : 'cursor-not-allowed text-slate-400 hover:bg-transparent'
+                  ? ''
+                  : 'cursor-not-allowed bg-violet-300 hover:bg-violet-300'
               }`}
             >
               <Save className="mr-2 h-4 w-4" />
-              Guardar
+              Guardar canvis
             </Button>
             {showBlockComposer && canCreateBlocks ? (
               <Button
@@ -243,103 +249,171 @@ export default function ProjectBlocksTab({
         </div>
 
         {showBlockComposer && canCreateBlocks ? (
-          <div className="mt-4 grid gap-4 pt-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_180px_minmax(0,1fr)_220px_180px_auto]">
-            <div className="space-y-2">
-              <Label>Nom del bloc</Label>
-              <Input
-                value={blockDraft.name}
-                onChange={(event) =>
-                  onSetBlockDraft((current) => ({ ...current, name: event.target.value }))
-                }
-                placeholder="Ex: Pla d obra"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Data final</Label>
-              <Input
-                type="date"
-                value={blockDraft.deadline}
-                max={maxDeadline || undefined}
-                onChange={(event) =>
-                  onSetBlockDraft((current) => ({ ...current, deadline: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Descripcio breu</Label>
-              <Input
-                value={blockDraft.summary}
-                onChange={(event) =>
-                  onSetBlockDraft((current) => ({ ...current, summary: event.target.value }))
-                }
-                placeholder="Descripcio breu"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Departament</Label>
-              <Select
-                value={blockDraft.department || undefined}
-                onValueChange={(value) =>
-                  onSetBlockDraft((current) => ({ ...current, department: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona departament" />
-                </SelectTrigger>
-                <SelectContent>
-                  {project.departments.map((department) => (
-                    <SelectItem key={department} value={department}>
-                      {department}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Responsable</Label>
-              <Select
-                value={blockDraft.owner || undefined}
-                onValueChange={(value) =>
-                  onSetBlockDraft((current) => ({ ...current, owner: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona responsable" />
-                </SelectTrigger>
-                <SelectContent>
-                  {departmentResponsibleOptions(blockDraft.department).map((option) => (
-                    <SelectItem key={`${option.id}-${option.name}`} value={option.name}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2 xl:col-span-2">
-              <Label>Depen de</Label>
-              <Select
-                value={blockDraft.dependsOn}
-                onValueChange={(value) =>
-                  onSetBlockDraft((current) => ({ ...current, dependsOn: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Cap</SelectItem>
-                  {project.blocks.map((block) => (
-                    <SelectItem key={block.id} value={block.id}>
-                      {block.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button type="button" onClick={onCreateBlock}>
-                Afegir
-              </Button>
+          <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50/60 p-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.9fr)]">
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_180px]">
+                  <div className="space-y-2">
+                    <Label>Nom del bloc</Label>
+                    <Input
+                      value={blockDraft.name}
+                      onChange={(event) =>
+                        onSetBlockDraft((current) => ({ ...current, name: event.target.value }))
+                      }
+                      placeholder="Ex: Pla d'obra"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data final</Label>
+                    <Input
+                      type="date"
+                      value={blockDraft.deadline}
+                      max={maxDeadline || undefined}
+                      onChange={(event) =>
+                        onSetBlockDraft((current) => ({ ...current, deadline: event.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Descripció breu</Label>
+                  <Input
+                    value={blockDraft.summary}
+                    onChange={(event) =>
+                      onSetBlockDraft((current) => ({ ...current, summary: event.target.value }))
+                    }
+                    placeholder="Resum curt del bloc"
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                  <div className="space-y-2">
+                    <Label>Responsable</Label>
+                    <Select
+                      value={blockDraft.owner || 'none'}
+                      onValueChange={(value) =>
+                        onSetBlockDraft((current) => ({ ...current, owner: value === 'none' ? '' : value }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona responsable" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sense responsable</SelectItem>
+                        {departmentResponsibleOptions(blockDraft.departments).map((option) => (
+                          <SelectItem key={`${option.id}-${option.name}`} value={option.name}>
+                            {option.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center justify-end">
+                    <Button type="button" onClick={onCreateBlock} className="bg-violet-600 text-white hover:bg-violet-700">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Afegir bloc
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-[20px] border border-slate-200 bg-white/90 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Departaments</div>
+                    <div className="text-xs text-slate-500">
+                      Primer es mostren els departaments del projecte, però en pots afegir d'altres.
+                    </div>
+                  </div>
+                  <Popover open={showBlockDraftDepartmentPicker} onOpenChange={setShowBlockDraftDepartmentPicker}>
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="outline" className="border-violet-200 text-violet-700 hover:bg-violet-50">
+                        <Plus className="mr-2 h-4 w-4" />
+                        Afegir
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-[300px] p-2">
+                      <div className="max-h-72 overflow-y-auto">
+                        {orderedBlockDraftDepartments.map((department) => {
+                          const selected = blockDraft.departments.includes(department)
+                          return (
+                            <button
+                              key={`draft-department-${department}`}
+                              type="button"
+                              onClick={() =>
+                                onSetBlockDraft((current) => {
+                                  const departments = current.departments.includes(department)
+                                    ? current.departments.filter((item) => item !== department)
+                                    : [...current.departments, department]
+                                  return {
+                                    ...current,
+                                    department: departments[0] || '',
+                                    departments,
+                                    owner:
+                                      current.owner &&
+                                      !departmentResponsibleOptions(departments).some((option) => option.name === current.owner)
+                                        ? ''
+                                        : current.owner,
+                                  }
+                                })
+                              }
+                              className={`mb-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition ${
+                                selected
+                                  ? `${colorByDepartment(department)} ring-1 ring-current/10`
+                                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              <span>{department}</span>
+                              {project.departments.includes(department) ? (
+                                <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-violet-600">
+                                  Projecte
+                                </span>
+                              ) : null}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="min-h-[108px] rounded-2xl bg-slate-50/80 p-3">
+                  {blockDraft.departments.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {blockDraft.departments.map((department) => (
+                        <button
+                          key={`selected-draft-${department}`}
+                          type="button"
+                          onClick={() =>
+                            onSetBlockDraft((current) => {
+                              const departments = current.departments.filter((item) => item !== department)
+                              return {
+                                ...current,
+                                department: departments[0] || '',
+                                departments,
+                                owner:
+                                  current.owner &&
+                                  !departmentResponsibleOptions(departments).some((option) => option.name === current.owner)
+                                    ? ''
+                                    : current.owner,
+                              }
+                            })
+                          }
+                          className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm ${colorByDepartment(department)}`}
+                        >
+                          {department}
+                          <span className="text-slate-500">×</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex h-full min-h-[84px] items-center rounded-2xl border border-dashed border-slate-300 px-4 text-sm text-slate-500">
+                      Encara no has seleccionat cap departament.
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         ) : null}
@@ -376,6 +450,7 @@ export default function ProjectBlocksTab({
               const canAccessCurrentBlockRoom = canAccessBlockRoom(block)
               const isViewingReadonly = viewingBlockId === block.id && !canEditCurrentBlock
               const isExpanded = editingBlockId === block.id || isViewingReadonly
+              const tasksExpanded = showTasksByBlock[block.id] ?? true
               const blockRoomId =
                 project.rooms.find((room) => room.kind === 'block' && room.blockId === block.id)?.id ||
                 `room-block-${block.id}`
@@ -384,7 +459,7 @@ export default function ProjectBlocksTab({
               <div
                 key={block.id}
                 onClick={() => {
-                  if (!canAccessCurrentBlockRoom) return
+                  if (!canAccessCurrentBlockRoom || isExpanded) return
                   router.push(blockRoomHref)
                 }}
                 className={`relative space-y-4 rounded-[24px] border p-5 shadow-sm transition ${
@@ -392,7 +467,7 @@ export default function ProjectBlocksTab({
                     ? 'border-violet-200 bg-violet-50/70 ring-1 ring-violet-200'
                     : 'border-slate-200 bg-slate-50/75'
                 } ${
-                  canAccessCurrentBlockRoom ? 'cursor-pointer hover:border-violet-300 hover:shadow-md' : ''
+                  canAccessCurrentBlockRoom && !isExpanded ? 'cursor-pointer hover:border-violet-300 hover:shadow-md' : ''
                 }`}
               >
                 <span
@@ -421,34 +496,33 @@ export default function ProjectBlocksTab({
                         {block.summary}
                       </div>
                     ) : null}
-                    <div className={`mt-3 flex flex-wrap items-center gap-2 ${projectCardMetaClass}`}>
-                      {getBlockDepartments(block).length > 0 ? (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {getBlockDepartments(block).map((department) => (
+                    <div className={`mt-3 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start ${projectCardMetaClass}`}>
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        {getBlockDepartments(block).length > 0 ? (
+                          getBlockDepartments(block).map((department) => (
                             <span
                               key={`${block.id}-summary-${department}`}
                               className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${colorByDepartment(department)}`}
                             >
                               {department}
                             </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span>Sense departament</span>
-                      )}
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${deadlineTone(block.deadline)}`}>
-                        {getDeadlineHint(block.deadline)}
-                      </span>
-                      <span className="text-xs font-medium text-slate-500">Tasques:</span>
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
-                        {block.tasks.filter((task) => task.status === 'pending').length} pendents
-                      </span>
-                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-                        {block.tasks.filter((task) => task.status === 'in_progress').length} en curs
-                      </span>
-                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                        {block.tasks.filter((task) => task.status === 'done').length} fetes
-                      </span>
+                          ))
+                        ) : (
+                          <span>Sense departament</span>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-l border-slate-200/70 pl-4 text-right">
+                        <span className="text-xs font-medium text-slate-500">Tasques</span>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+                          {block.tasks.filter((task) => task.status === 'pending').length} pendents
+                        </span>
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                          {block.tasks.filter((task) => task.status === 'in_progress').length} en curs
+                        </span>
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                          {block.tasks.filter((task) => task.status === 'done').length} fetes
+                        </span>
+                      </div>
                     </div>
                     {block.dependsOn ? (
                       <div className="mt-2">
@@ -677,9 +751,41 @@ export default function ProjectBlocksTab({
                         </div>
                       </div>
 
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <Label>Tasques</Label>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 text-left"
+                          onClick={() =>
+                            setShowTasksByBlock((current) => ({
+                              ...current,
+                              [block.id]: !(current[block.id] ?? true),
+                            }))
+                          }
+                        >
+                          <Label className="cursor-pointer">Tasques</Label>
+                          <ChevronDown
+                            className={`h-4 w-4 text-slate-500 transition-transform ${
+                              tasksExpanded ? 'rotate-0' : '-rotate-90'
+                            }`}
+                          />
+                        </button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-full border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 hover:text-violet-800"
+                            onClick={() => {
+                              setShowTasksByBlock((current) => ({
+                                ...current,
+                                [block.id]: true,
+                              }))
+                              onOpenQuickTaskComposer(block.id)
+                            }}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
                           {quickTaskBlockId === block.id ? (
                             <Button
                               type="button"
@@ -690,37 +796,29 @@ export default function ProjectBlocksTab({
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 rounded-full"
-                              onClick={() => onOpenQuickTaskComposer(block.id)}
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          )}
+                          ) : null}
                         </div>
+                      </div>
 
-                        {block.tasks.length === 0 ? (
-                          <div className={`rounded-2xl bg-white/80 px-4 py-4 ${projectEmptyStateClass}`}>
-                            Encara no hi ha tasques en aquest bloc.
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            {block.tasks.map((task) => (
-                              <div
-                                key={task.id}
-                                className="rounded-2xl bg-white px-4 py-3"
-                              >
-                                <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_160px_150px_minmax(0,1fr)]">
+                        {tasksExpanded ? (
+                          <>
+                            {block.tasks.length === 0 ? null : (
+                              <div className="space-y-2">
+                                {block.tasks.map((task) => (
+                                  <div
+                                    key={task.id}
+                                    className="rounded-2xl bg-white px-4 py-3"
+                                  >
+                                <div className="grid gap-3 lg:grid-cols-[20ch_170px_170px_150px_130px_auto]">
                                   <div className="min-w-0">
                                     <Input
                                       value={task.title}
                                       onChange={(event) =>
-                                        onSetTaskField(block.id, task.id, 'title', event.target.value)
+                                        onSetTaskField(block.id, task.id, 'title', event.target.value.slice(0, 20))
                                       }
+                                      placeholder="Nom de la tasca"
+                                      maxLength={20}
+                                      className="h-10 w-[20ch]"
                                     />
                                   </div>
                                   <Select
@@ -746,6 +844,29 @@ export default function ProjectBlocksTab({
                                       ))}
                                     </SelectContent>
                                   </Select>
+                                  <Select
+                                    value={task.owner || 'none'}
+                                    onValueChange={(value) =>
+                                      onSetTaskField(
+                                        block.id,
+                                        task.id,
+                                        'owner',
+                                        value === 'none' ? '' : value
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Responsable" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="none">Sense responsable</SelectItem>
+                                      {departmentResponsibleOptions(task.department || getBlockDepartments(block)).map((option) => (
+                                        <SelectItem key={`${task.id}-owner-${option.id}-${option.name}`} value={option.name}>
+                                          {option.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
                                   <Input
                                     type="date"
                                     value={task.deadline}
@@ -754,14 +875,14 @@ export default function ProjectBlocksTab({
                                       onSetTaskField(block.id, task.id, 'deadline', event.target.value)
                                     }
                                   />
-                                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px_auto] lg:grid-cols-[minmax(0,1fr)_110px_auto]">
+                                  <div className="grid gap-3 sm:grid-cols-[110px_auto] lg:grid-cols-[110px_auto]">
                                     <Select
                                       value={task.priority || 'normal'}
                                       onValueChange={(value) =>
                                         onSetTaskField(block.id, task.id, 'priority', value)
                                       }
                                     >
-                                      <SelectTrigger>
+                                      <SelectTrigger className="rounded-full border-violet-200 bg-violet-50 px-3 font-medium text-violet-700 hover:bg-violet-100">
                                         <SelectValue placeholder="Nivell" />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -772,9 +893,6 @@ export default function ProjectBlocksTab({
                                         ))}
                                       </SelectContent>
                                     </Select>
-                                    <div className="flex h-10 items-center rounded-md border border-input bg-slate-50 px-3 text-sm text-slate-600">
-                                      {TASK_STATUS_OPTIONS.find((option) => option.value === task.status)?.label || 'Pendent'}
-                                    </div>
                                     <Button
                                       type="button"
                                       variant="ghost"
@@ -786,26 +904,40 @@ export default function ProjectBlocksTab({
                                     </Button>
                                   </div>
                                 </div>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
+                            )}
+
+                            {quickTaskBlockId === block.id ? (
+                              <ProjectTaskQuickComposer
+                                compact
+                                blockName={block.name || 'Bloc'}
+                                description={taskDraft.description}
+                                department={taskDraft.department}
+                                owner={taskDraft.owner}
+                                deadline={taskDraft.deadline}
+                                priority={taskDraft.priority || 'normal'}
+                                departments={getBlockDepartments(block)}
+                                responsibleOptions={departmentResponsibleOptions(getBlockDepartments(block)).map((option) => ({
+                                  id: option.id,
+                                  name: option.name,
+                                }))}
+                                maxDeadline={getPreLaunchDeadline(block.deadline) || maxDeadline || undefined}
+                                onDescriptionChange={(value) => onSetTaskDraftField('description', value)}
+                                onDepartmentChange={(value) => onSetTaskDraftField('department', value)}
+                                onOwnerChange={(value) => onSetTaskDraftField('owner', value)}
+                                onDeadlineChange={(value) => onSetTaskDraftField('deadline', value)}
+                                onPriorityChange={(value) => onSetTaskDraftField('priority', value)}
+                                onSubmit={() => onAddTaskToBlock(block.id)}
+                              />
+                            ) : null}
+                          </>
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-3 text-sm text-slate-500">
+                            Tasques recollides.
                           </div>
                         )}
-
-                        {quickTaskBlockId === block.id ? (
-                          <ProjectTaskQuickComposer
-                            description={taskDraft.description}
-                            department={taskDraft.department}
-                            deadline={taskDraft.deadline}
-                            priority={taskDraft.priority || 'normal'}
-                            departments={getBlockDepartments(block)}
-                            maxDeadline={getPreLaunchDeadline(block.deadline) || maxDeadline || undefined}
-                            onDescriptionChange={(value) => onSetTaskDraftField('description', value)}
-                            onDepartmentChange={(value) => onSetTaskDraftField('department', value)}
-                            onDeadlineChange={(value) => onSetTaskDraftField('deadline', value)}
-                            onPriorityChange={(value) => onSetTaskDraftField('priority', value)}
-                            onSubmit={() => onAddTaskToBlock(block.id)}
-                          />
-                        ) : null}
                       </div>
                     </div>
 
@@ -885,7 +1017,7 @@ export default function ProjectBlocksTab({
       {canViewKickoffSection ? (
       <section className="space-y-4 rounded-[24px] bg-slate-50/80 p-5">
         <div>
-          <h2 className={projectSectionTitleClass}>Acta kickoff</h2>
+          <h2 className={projectSectionTitleClass}>Acta de la reunió d'arrencada</h2>
           <p className={projectSectionSubtitleClass}>
             Decisions, acords i punts clau treballats durant la reunió.
           </p>
@@ -900,9 +1032,10 @@ export default function ProjectBlocksTab({
               aria-label="Reobrir acta"
               onClick={onReopenKickoffMinutes}
               disabled={savingBlocks}
-              className="rounded-full bg-amber-500 text-white shadow hover:bg-amber-600"
+              className="bg-amber-500 text-white shadow hover:bg-amber-600"
             >
-              <RotateCcw className="h-4 w-4" />
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Reobrir acta
             </Button>
           ) : (
             <Button
@@ -912,9 +1045,10 @@ export default function ProjectBlocksTab({
               aria-label="Finalitzar acta"
               onClick={onFinalizeKickoffMinutes}
               disabled={savingBlocks}
-              className="rounded-full bg-blue-600 text-white shadow hover:bg-blue-700"
+              className="bg-violet-600 text-white shadow hover:bg-violet-700"
             >
-              <Save className="h-4 w-4" />
+              <Save className="mr-2 h-4 w-4" />
+              Guardar acta
             </Button>
           )}
         </div>
@@ -924,7 +1058,7 @@ export default function ProjectBlocksTab({
           onChange={(event) => onKickoffMinutesChange(event.target.value)}
           disabled={project.kickoff.minutesStatus === 'closed'}
           className="min-h-[360px] bg-white"
-          placeholder="Acta de la reunió de kickoff"
+          placeholder="Acta de la reunió d'arrencada"
         />
 
         <div className="space-y-3 rounded-[22px] bg-white/90 p-4">
@@ -1032,4 +1166,3 @@ export default function ProjectBlocksTab({
     </div>
   )
 }
-

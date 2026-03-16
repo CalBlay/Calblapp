@@ -41,10 +41,6 @@ const tabLoadingFallback = () => (
   </div>
 )
 
-const ProjectKickoffTab = dynamic(() => import('./ProjectKickoffTab'), {
-  loading: tabLoadingFallback,
-})
-
 const ProjectBlocksTab = dynamic(() => import('./ProjectBlocksTab'), {
   loading: tabLoadingFallback,
 })
@@ -91,16 +87,17 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
   const [quickTaskBlockId, setQuickTaskBlockId] = useState<string | null>(null)
   const [dirtyOverviewState, setDirtyOverviewState] = useState(false)
   const [dirtyBlocksState, setDirtyBlocksState] = useState(false)
+  const [deletingProject, setDeletingProject] = useState(false)
   const isProjectOwner =
     (sessionUserId && sessionUserId === String(project.ownerUserId || '').trim()) ||
     (sessionUserName && sessionUserName === String(project.owner || '').trim())
   const isProjectSponsor =
     (sessionUserId && sessionUserId === String(project.createdById || '').trim()) ||
     (sessionUserName && sessionUserName === String(project.sponsor || '').trim())
+  const canDeleteProject = sessionRole === 'admin' || isProjectSponsor
   const hasFullProjectVisibility =
     sessionRole === 'admin' || sessionRole === 'direccio' || isProjectSponsor || isProjectOwner
   const canViewOverview = sessionRole === 'admin' || isProjectSponsor || isProjectOwner
-  const canViewKickoff = sessionRole === 'admin' || isProjectSponsor || isProjectOwner
   const canCreateOrRemoveBlocks = sessionRole === 'admin' || isProjectOwner
 
   useEffect(() => {
@@ -117,15 +114,10 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
       return
     }
 
-    if (activeTab === 'kickoff' && !canViewKickoff) {
-      setActiveTab(canViewOverview ? 'overview' : 'blocks')
-      return
-    }
-
     if (activeTab === 'rooms') {
       setActiveTab('blocks')
     }
-  }, [activeTab, canViewKickoff, canViewOverview, sessionStatus])
+  }, [activeTab, canViewOverview, sessionStatus])
 
   useEffect(() => {
     let cancelled = false
@@ -231,10 +223,9 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
             .filter((tabId) => {
               if (tabId === 'rooms') return false
               if (tabId === 'overview') return canViewOverview
-              if (tabId === 'kickoff') return canViewKickoff
               return true
             }),
-    [canViewKickoff, canViewOverview, sessionStatus]
+    [canViewOverview, sessionStatus]
   )
   const visibleProjectForBlocks = useMemo<ProjectData>(() => {
     if (hasFullProjectVisibility) return project
@@ -328,6 +319,7 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
     addManualKickoffEmail,
     kickoffReady,
     sendKickoff,
+    reopenKickoff,
     finalizeKickoffMinutes,
     reopenKickoffMinutes,
   } = useProjectKickoffActions({
@@ -492,11 +484,11 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
       }
 
       const nextPhase = deriveProjectPhase(nextProject)
-      if (nextProject.phase !== nextPhase || nextProject.status) {
+      if (nextProject.phase !== nextPhase || (nextProject.status && nextProject.status !== 'draft')) {
         nextProject = {
           ...nextProject,
           phase: nextPhase,
-          status: '',
+          status: nextProject.status === 'draft' ? 'draft' : '',
         }
       }
 
@@ -532,12 +524,14 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
           : nextProject
       await syncRoomsWithOps(finalProject)
       setDirtyOverviewState(false)
+      return true
     } catch (err: unknown) {
       toast({
         title: 'Error guardant el projecte',
         description: err instanceof Error ? err.message : 'Error inesperat',
         variant: 'destructive',
       })
+      return false
     } finally {
       setSavingOverview(false)
     }
@@ -565,12 +559,14 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
       })
       await syncRoomsWithOps(nextProject)
       setDirtyBlocksState(false)
+      return true
     } catch (err: unknown) {
       toast({
         title: 'Error guardant els blocs',
         description: err instanceof Error ? err.message : 'Error inesperat',
         variant: 'destructive',
       })
+      return false
     } finally {
       setSavingBlocks(false)
     }
@@ -578,7 +574,7 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
 
   const saveDocuments = async () => {
     const hasFile = Boolean(pendingDocumentFile)
-    if (!hasFile) return
+    if (!hasFile) return true
 
     try {
       setSavingOverview(true)
@@ -597,12 +593,14 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
 
       setPendingDocumentFile(null)
       setDocumentDraft({ category: 'general', label: '' })
+      return true
     } catch (err: unknown) {
       toast({
         title: 'Error guardant el document',
         description: err instanceof Error ? err.message : 'Error inesperat',
         variant: 'destructive',
       })
+      return false
     } finally {
       setSavingOverview(false)
     }
@@ -739,20 +737,71 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
 
   const shouldWarnBeforeLeavingTab = (tab: WorkspaceTab) => {
     if (tab === 'overview') return dirtyOverview
-    if (tab === 'kickoff') return dirtyBlocks
     if (tab === 'blocks') return dirtyBlocks || hasPendingBlockDraft
     if (tab === 'tasks') return dirtyBlocks || hasPendingTaskDraft
     if (tab === 'documents') return hasPendingDocumentDraft
     return false
   }
 
-  const handleTabChange = (nextTab: WorkspaceTab) => {
+  const handleTabChange = async (nextTab: WorkspaceTab) => {
     if (nextTab === activeTab) return
-    if (shouldWarnBeforeLeavingTab(activeTab)) {
-      const confirmed = window.confirm('Tens canvis pendents de guardar. Vols tancar igualment?')
-      if (!confirmed) return
+    if (!shouldWarnBeforeLeavingTab(activeTab)) {
+      setActiveTab(nextTab)
+      return
     }
-    setActiveTab(nextTab)
+
+    const confirmed = window.confirm('Tens canvis pendents. Vols guardar abans de sortir?')
+    if (!confirmed) return
+
+    let saved = true
+
+    if (activeTab === 'overview') {
+      saved = await saveOverview()
+    } else if (activeTab === 'blocks') {
+      if (hasPendingBlockDraft) {
+        createBlock()
+      }
+      if (hasPendingTaskDraft && quickTaskBlockId) {
+        addTaskToBlock(quickTaskBlockId)
+      }
+      saved = await saveBlocks()
+    } else if (activeTab === 'tasks') {
+      if (hasPendingTaskDraft && taskDraft.blockId && taskDraft.blockId !== 'none') {
+        addTaskToBlock(taskDraft.blockId)
+      }
+      saved = await saveBlocks()
+    } else if (activeTab === 'documents') {
+      saved = await saveDocuments()
+    }
+
+    if (saved) {
+      setActiveTab(nextTab)
+    }
+  }
+
+  const handleDeleteProject = async () => {
+    const confirmed = window.confirm('Vols eliminar aquest projecte? Aquesta accio no es pot desfer.')
+    if (!confirmed) return
+
+    try {
+      setDeletingProject(true)
+      const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' })
+      const payload = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        throw new Error(payload.error || 'No s ha pogut eliminar el projecte')
+      }
+
+      toast({ title: 'Projecte eliminat' })
+      window.location.href = '/menu/projects'
+    } catch (err: unknown) {
+      toast({
+        title: 'Error eliminant el projecte',
+        description: err instanceof Error ? err.message : 'Error inesperat',
+        variant: 'destructive',
+      })
+    } finally {
+      setDeletingProject(false)
+    }
   }
 
   return (
@@ -762,6 +811,9 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
         activeTab={activeTab}
         visibleTabs={visibleTabs}
         onTabChange={handleTabChange}
+        canDelete={canDeleteProject}
+        deleting={deletingProject}
+        onDelete={handleDeleteProject}
       />
 
       <section className="rounded-[28px] border border-violet-200 bg-white shadow-sm">
@@ -797,12 +849,6 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
               onRemoveDepartmentFromBlock={removeDepartmentFromBlock}
               onRemoveBlock={removeBlock}
               onRemoveDocument={removeDocument}
-            />
-          ) : null}
-
-          {activeTab === 'kickoff' && canViewKickoff ? (
-            <ProjectKickoffTab
-              project={project}
               manualKickoffEmail={manualKickoffEmail}
               kickoffReady={kickoffReady}
               sendingKickoff={sendingKickoff}
@@ -810,6 +856,7 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
               onManualKickoffEmailChange={setManualKickoffEmail}
               onAddManualKickoffEmail={addManualKickoffEmail}
               onSendKickoff={sendKickoff}
+              onReopenKickoff={reopenKickoff}
               onRemoveKickoffAttendee={removeKickoffAttendee}
             />
           ) : null}
@@ -886,7 +933,7 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
               kickoffAttendeeOptions={kickoffAttendeeOptions}
               departmentResponsibleOptions={departmentResponsibleOptions}
               maxDeadline={maxDeadline}
-              canViewKickoffSection={canViewKickoff}
+              canViewKickoffSection
               canCreateBlocks={canCreateOrRemoveBlocks}
               canEditBlock={canEditSpecificBlock}
               canAccessBlockRoom={canAccessSpecificBlockRoom}

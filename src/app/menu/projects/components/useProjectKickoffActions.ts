@@ -4,6 +4,23 @@ import { useCallback, useMemo, type Dispatch, type SetStateAction } from 'react'
 import { toast } from '@/components/ui/use-toast'
 import { deriveProjectPhase, type ProjectData } from './project-shared'
 
+async function readKickoffResponse(res: Response) {
+  const contentType = res.headers.get('content-type') || ''
+
+  if (contentType.includes('application/json')) {
+    return (await res.json().catch(() => null)) as {
+      error?: string
+      kickoff?: ProjectData['kickoff']
+      warning?: string
+    } | null
+  }
+
+  const text = await res.text().catch(() => '')
+  return {
+    error: text.trim() || `HTTP ${res.status}`,
+  }
+}
+
 type Params = {
   projectId: string
   project: ProjectData
@@ -129,17 +146,14 @@ export function useProjectKickoffActions({
           startTime: project.kickoff.startTime,
           durationMinutes: project.kickoff.durationMinutes,
           notes: project.kickoff.notes,
+          excludedKeys: project.kickoff.excludedKeys,
           attendees: project.kickoff.attendees,
         }),
       })
 
-      const payload = (await res.json().catch(() => ({}))) as {
-        error?: string
-        kickoff?: ProjectData['kickoff']
-        warning?: string
-      }
+      const payload = await readKickoffResponse(res)
       if (!res.ok || !payload.kickoff) {
-        throw new Error(payload.error || 'No s ha pogut crear la convocatoria')
+        throw new Error(payload?.error || `No s'ha pogut crear la convocatòria (${res.status})`)
       }
 
       setProject((current) => ({
@@ -159,20 +173,58 @@ export function useProjectKickoffActions({
       }))
 
       toast({
-        title: payload.warning ? 'Convocatoria creada amb avis' : 'Convocatoria enviada',
+        title: payload.warning ? 'Convocatòria creada amb avis' : 'Convocatòria enviada',
         description: payload.warning || undefined,
         variant: payload.warning ? 'destructive' : 'default',
       })
     } catch (err: unknown) {
       toast({
-        title: 'Error enviant la convocatoria',
+        title: 'Error enviant la convocatòria',
         description: err instanceof Error ? err.message : 'Error inesperat',
         variant: 'destructive',
       })
     } finally {
       setSendingKickoff(false)
     }
-  }, [project.kickoff.attendees, project.kickoff.date, project.kickoff.durationMinutes, project.kickoff.notes, project.kickoff.startTime, projectId, setProject, setSendingKickoff])
+  }, [project.kickoff.attendees, project.kickoff.date, project.kickoff.durationMinutes, project.kickoff.excludedKeys, project.kickoff.notes, project.kickoff.startTime, projectId, setProject, setSendingKickoff])
+
+  const reopenKickoff = useCallback(async () => {
+    try {
+      setSavingBlocks(true)
+      const nextProject = ensureProjectRooms({
+        ...project,
+        phase: deriveProjectPhase({
+          ...project,
+          kickoff: {
+            ...project.kickoff,
+            status: '',
+            graphWebLink: '',
+            emailNotificationStatus: undefined,
+            emailNotificationError: '',
+          },
+        }),
+        kickoff: {
+          ...project.kickoff,
+          status: '',
+          graphWebLink: '',
+          emailNotificationStatus: undefined,
+          emailNotificationError: '',
+        },
+      })
+      setProject(nextProject)
+      await saveProject('Convocatoria reoberta', nextProject, {
+        sections: ['kickoff'],
+      })
+    } catch (err: unknown) {
+      toast({
+        title: 'Error reobrint la convocatòria',
+        description: err instanceof Error ? err.message : 'Error inesperat',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingBlocks(false)
+    }
+  }, [ensureProjectRooms, project, saveProject, setProject, setSavingBlocks])
 
   const finalizeKickoffMinutes = useCallback(async () => {
     try {
@@ -239,6 +291,7 @@ export function useProjectKickoffActions({
     addManualKickoffEmail,
     kickoffReady,
     sendKickoff,
+    reopenKickoff,
     finalizeKickoffMinutes,
     reopenKickoffMinutes,
   }

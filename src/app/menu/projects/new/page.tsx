@@ -8,7 +8,7 @@ export default function ProjectCreatePage() {
   return (
     <RoleGuard allowedRoles={['admin']}>
       <div className="flex w-full max-w-none flex-col gap-6 p-4">
-        <ModuleHeader title="Projects" subtitle="Nou projecte" mainHref="/menu/projects" />
+        <ModuleHeader title="Projectes" subtitle="Nou projecte" mainHref="/menu/projects" />
         <ProjectEditor />
       </div>
     </RoleGuard>

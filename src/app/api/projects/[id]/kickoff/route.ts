@@ -64,6 +64,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       startTime?: string
       durationMinutes?: number
       notes?: string
+      excludedKeys?: string[]
       attendees?: KickoffAttendeeInput[]
     }
 
@@ -80,6 +81,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         email: String(item?.email || '').trim().toLowerCase(),
       }))
       .filter((item) => item.email.includes('@'))
+    const excludedKeys = Array.isArray(body.excludedKeys)
+      ? body.excludedKeys.map((item) => String(item || '').trim()).filter(Boolean)
+      : Array.isArray(currentKickoff.excludedKeys)
+        ? currentKickoff.excludedKeys.map((item) => String(item || '').trim()).filter(Boolean)
+        : []
 
     if (!date || !startTime || !durationMinutes) {
       return NextResponse.json({ error: 'Falten data, hora o duracio del kickoff' }, { status: 400 })
@@ -95,6 +101,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const project = projectSnap.data() as Record<string, unknown>
+    const currentKickoff =
+      project.kickoff && typeof project.kickoff === 'object'
+        ? (project.kickoff as Record<string, unknown>)
+        : {}
     const organizerSnap = await db.collection('users').doc(auth.user.id).get()
     const organizerData = organizerSnap.exists ? (organizerSnap.data() as Record<string, unknown>) : {}
     const organizerEmail = String(organizerData.email || auth.user.email || '').trim()
@@ -146,6 +156,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       startTime,
       durationMinutes,
       notes,
+      minutes: String(currentKickoff.minutes || ''),
+      minutesStatus:
+        currentKickoff.minutesStatus === 'closed' ? 'closed' : 'open',
+      minutesAuthor: String(currentKickoff.minutesAuthor || ''),
+      minutesClosedAt: String(currentKickoff.minutesClosedAt || ''),
+      minutesUpdatedAt: String(currentKickoff.minutesUpdatedAt || ''),
+      excludedKeys,
       attendees,
       organizerEmail,
       invitedAt: Date.now(),

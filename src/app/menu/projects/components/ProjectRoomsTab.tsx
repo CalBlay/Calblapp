@@ -63,7 +63,7 @@ export default function ProjectRoomsTab({
               type="button"
               onClick={onCreateRoom}
               disabled={saving || !roomDraft.name.trim()}
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="bg-violet-600 text-white hover:bg-violet-700 disabled:bg-violet-300"
             >
               <Save className="mr-2 h-4 w-4" />
               Guardar sala
