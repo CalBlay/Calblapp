@@ -760,7 +760,9 @@ export default function ProjectEditor() {
               onRemoveDocument={() => undefined}
               showSaveButton={false}
               showBaseSection={false}
+              showKickoffSection={false}
               showDocumentSection={false}
+              showBlocksHeader={false}
             />
           </div>
         </section>

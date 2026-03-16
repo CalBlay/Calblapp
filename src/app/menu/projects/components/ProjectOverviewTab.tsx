@@ -46,6 +46,12 @@ type Props = {
   onSendKickoff: () => void
   onReopenKickoff?: () => void
   onRemoveKickoffAttendee: (key: string) => void
+  showSaveButton?: boolean
+  showBaseSection?: boolean
+  showKickoffSection?: boolean
+  showDocumentSection?: boolean
+  showBlocksSection?: boolean
+  showBlocksHeader?: boolean
 }
 
 export default function ProjectOverviewTab({
@@ -77,206 +83,224 @@ export default function ProjectOverviewTab({
   onSendKickoff,
   onReopenKickoff,
   onRemoveKickoffAttendee,
+  showSaveButton = true,
+  showBaseSection = true,
+  showKickoffSection = true,
+  showDocumentSection = true,
+  showBlocksSection = true,
+  showBlocksHeader = true,
 }: Props) {
   const fileInputId = 'project-overview-initial-document'
   const initialDocuments = (project.documents || []).filter((item) => item && item.category === 'initial')
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 xl:grid-cols-2">
-        <section className="overflow-hidden rounded-[28px] border border-violet-200 bg-white shadow-sm">
-          <div className="border-b border-violet-200 bg-gradient-to-r from-violet-50 via-white to-violet-50 px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div>
-                <h2 className="text-2xl font-semibold text-slate-900">1. Introducció de dades</h2>
-                <p className="text-sm text-slate-500">Dades inicials del projecte abans de la reunió d'arrencada.</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-5 p-6">
-            <section className="space-y-5 rounded-[24px] border border-violet-200 bg-violet-50/40 p-5">
-            <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr_1fr]">
-              <div className="space-y-2">
-                <Label>Nom del projecte</Label>
-                <Input
-                  value={project.name}
-                  onChange={(event) =>
-                    onProjectChange((current) => ({ ...current, name: event.target.value }))
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Responsable impulsor</Label>
-                <Input value={project.sponsor} readOnly />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Responsable del projecte</Label>
-                <select
-                  value={project.owner || ''}
-                  onChange={(event) =>
-                    onProjectChange((current) => ({ ...current, owner: event.target.value }))
-                  }
-                  className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400"
-                >
-                  <option value="">Selecciona responsable</option>
-                  {ownerOptions.map((option) => (
-                    <option key={`${option.id}-${option.name}`} value={option.name}>
-                      {option.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Data inici prevista</Label>
-                <Input
-                  type="date"
-                  value={project.startDate}
-                  onChange={(event) =>
-                    onProjectChange((current) => ({ ...current, startDate: event.target.value }))
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Data objectiu d'arrencada</Label>
-                <Input
-                  type="date"
-                  value={project.launchDate}
-                  onChange={(event) =>
-                    onProjectChange((current) => ({ ...current, launchDate: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Definició del projecte</Label>
-              <Textarea
-                value={project.context}
-                onChange={(event) =>
-                  onProjectChange((current) => ({ ...current, context: event.target.value }))
-                }
-                className="min-h-[140px]"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Objectius estratègics</Label>
-              <Textarea
-                value={project.strategy}
-                onChange={(event) =>
-                  onProjectChange((current) => ({ ...current, strategy: event.target.value }))
-                }
-                className="min-h-[120px]"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-3">
-              <label
-                htmlFor={fileInputId}
-                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-violet-100 text-violet-700 transition hover:bg-violet-200"
-                title={pendingFile ? `Document seleccionat: ${pendingFile.name}` : 'Adjuntar document'}
-              >
-                <Paperclip className="h-4 w-4" />
-              </label>
-              <Input
-                id={fileInputId}
-                type="file"
-                className="hidden"
-                onChange={(event) => onPendingFileChange(event.target.files?.[0] || null)}
-              />
-              <Button
-                type="button"
-                onClick={onSave}
-                disabled={savingOverview || !dirtyOverview}
-                className="bg-violet-600 hover:bg-violet-700"
-              >
-                <Save className="mr-2 h-4 w-4" />
-                {project.status === 'draft' ? 'Crear projecte' : 'Guardar canvis'}
-              </Button>
-            </div>
-
-            {pendingFile || initialDocuments.length > 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3">
-                <div className="mb-2 text-sm font-medium text-slate-700">Documents adjunts</div>
-                <div className="space-y-2">
-                  {pendingFile ? (
-                    <div className="flex items-center justify-between gap-3 rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-800">
-                      <span className="truncate">{pendingFile.name}</span>
-                      <span className="shrink-0 text-xs font-medium">Pendent de guardar</span>
-                    </div>
-                  ) : null}
-                  {initialDocuments.map((document) => (
-                    <div
-                      key={document?.id || document?.url || document?.name}
-                      className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700"
-                    >
-                      <Link
-                        href={document?.url || '#'}
-                        target="_blank"
-                        className="min-w-0 truncate hover:text-violet-700"
-                      >
-                        {document?.name || 'Document del projecte'}
-                      </Link>
-                      {document?.id ? (
-                        <button
-                          type="button"
-                          onClick={() => onRemoveDocument(document.id!)}
-                          className="shrink-0 text-red-500 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      ) : null}
-                    </div>
-                  ))}
+      {showBaseSection || showKickoffSection ? (
+        <div className="grid gap-6 xl:grid-cols-2">
+          {showBaseSection ? (
+            <section className="overflow-hidden rounded-[28px] border border-violet-200 bg-white shadow-sm">
+              <div className="border-b border-violet-200 bg-gradient-to-r from-violet-50 via-white to-violet-50 px-6 py-5">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <h2 className="text-2xl font-semibold text-slate-900">1. Introducció de dades</h2>
+                    <p className="text-sm text-slate-500">Dades inicials del projecte abans de la reunió d'arrencada.</p>
+                  </div>
                 </div>
               </div>
-            ) : null}
+
+              <div className="space-y-5 p-6">
+                <section className="space-y-5 rounded-[24px] border border-violet-200 bg-violet-50/40 p-5">
+                  <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr_1fr]">
+                    <div className="space-y-2">
+                      <Label>Nom del projecte</Label>
+                      <Input
+                        value={project.name}
+                        onChange={(event) =>
+                          onProjectChange((current) => ({ ...current, name: event.target.value }))
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Responsable impulsor</Label>
+                      <Input value={project.sponsor} readOnly />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Responsable del projecte</Label>
+                      <select
+                        value={project.owner || ''}
+                        onChange={(event) =>
+                          onProjectChange((current) => ({ ...current, owner: event.target.value }))
+                        }
+                        className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400"
+                      >
+                        <option value="">Selecciona responsable</option>
+                        {ownerOptions.map((option) => (
+                          <option key={`${option.id}-${option.name}`} value={option.name}>
+                            {option.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Data inici prevista</Label>
+                      <Input
+                        type="date"
+                        value={project.startDate}
+                        onChange={(event) =>
+                          onProjectChange((current) => ({ ...current, startDate: event.target.value }))
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Data objectiu d'arrencada</Label>
+                      <Input
+                        type="date"
+                        value={project.launchDate}
+                        onChange={(event) =>
+                          onProjectChange((current) => ({ ...current, launchDate: event.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Definició del projecte</Label>
+                    <Textarea
+                      value={project.context}
+                      onChange={(event) =>
+                        onProjectChange((current) => ({ ...current, context: event.target.value }))
+                      }
+                      className="min-h-[140px]"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Objectius estratègics</Label>
+                    <Textarea
+                      value={project.strategy}
+                      onChange={(event) =>
+                        onProjectChange((current) => ({ ...current, strategy: event.target.value }))
+                      }
+                      className="min-h-[120px]"
+                    />
+                  </div>
+
+                  {showSaveButton ? (
+                    <div className="flex items-center justify-end gap-3">
+                      <label
+                        htmlFor={fileInputId}
+                        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-violet-100 text-violet-700 transition hover:bg-violet-200"
+                        title={pendingFile ? `Document seleccionat: ${pendingFile.name}` : 'Adjuntar document'}
+                      >
+                        <Paperclip className="h-4 w-4" />
+                      </label>
+                      <Input
+                        id={fileInputId}
+                        type="file"
+                        className="hidden"
+                        onChange={(event) => onPendingFileChange(event.target.files?.[0] || null)}
+                      />
+                      <Button
+                        type="button"
+                        onClick={onSave}
+                        disabled={savingOverview || !dirtyOverview}
+                        className="bg-violet-600 hover:bg-violet-700"
+                      >
+                        <Save className="mr-2 h-4 w-4" />
+                        {project.status === 'draft' ? 'Crear projecte' : 'Guardar canvis'}
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  {showDocumentSection && (pendingFile || initialDocuments.length > 0) ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3">
+                      <div className="mb-2 text-sm font-medium text-slate-700">Documents adjunts</div>
+                      <div className="space-y-2">
+                        {pendingFile ? (
+                          <div className="flex items-center justify-between gap-3 rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-800">
+                            <span className="truncate">{pendingFile.name}</span>
+                            <span className="shrink-0 text-xs font-medium">Pendent de guardar</span>
+                          </div>
+                        ) : null}
+                        {initialDocuments.map((document) => (
+                          <div
+                            key={document?.id || document?.url || document?.name}
+                            className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                          >
+                            <Link
+                              href={document?.url || '#'}
+                              target="_blank"
+                              className="min-w-0 truncate hover:text-violet-700"
+                            >
+                              {document?.name || 'Document del projecte'}
+                            </Link>
+                            {document?.id ? (
+                              <button
+                                type="button"
+                                onClick={() => onRemoveDocument(document.id!)}
+                                className="shrink-0 text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
+              </div>
             </section>
-          </div>
-        </section>
+          ) : null}
 
+          {showKickoffSection ? (
+            <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-6 py-5">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <h2 className="text-2xl font-semibold text-slate-900">2. Reunió d'arrencada</h2>
+                    <p className="text-sm text-slate-500">Preparació de la reunió d'arrencada des de la creació del projecte.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <ProjectKickoffTab
+                  project={project}
+                  manualKickoffEmail={manualKickoffEmail}
+                  kickoffReady={kickoffReady}
+                  sendingKickoff={sendingKickoff}
+                  onKickoffFieldChange={onKickoffFieldChange}
+                  onManualKickoffEmailChange={onManualKickoffEmailChange}
+                  onAddManualKickoffEmail={onAddManualKickoffEmail}
+                  onSendKickoff={onSendKickoff}
+                  onReopenKickoff={onReopenKickoff}
+                  onRemoveKickoffAttendee={onRemoveKickoffAttendee}
+                />
+              </div>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+
+      {showBlocksSection ? (
         <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div>
-                <h2 className="text-2xl font-semibold text-slate-900">2. Reunió d'arrencada</h2>
-                <p className="text-sm text-slate-500">Preparació de la reunió d'arrencada des de la creació del projecte.</p>
+          {showBlocksHeader ? (
+            <div className="border-b border-slate-200 bg-gradient-to-r from-amber-50 via-white to-orange-50 px-6 py-5">
+              <div className="flex items-center gap-3">
+                <div>
+                  <h2 className="text-2xl font-semibold text-slate-900">3. Creació de blocs</h2>
+                  <p className="text-sm text-slate-500">Departaments implicats i estructura inicial del projecte.</p>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="p-6">
-            <ProjectKickoffTab
-              project={project}
-              manualKickoffEmail={manualKickoffEmail}
-              kickoffReady={kickoffReady}
-              sendingKickoff={sendingKickoff}
-              onKickoffFieldChange={onKickoffFieldChange}
-              onManualKickoffEmailChange={onManualKickoffEmailChange}
-              onAddManualKickoffEmail={onAddManualKickoffEmail}
-              onSendKickoff={onSendKickoff}
-              onReopenKickoff={onReopenKickoff}
-              onRemoveKickoffAttendee={onRemoveKickoffAttendee}
-            />
-          </div>
-        </section>
-
-        <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm xl:col-span-2">
-          <div className="border-b border-slate-200 bg-gradient-to-r from-amber-50 via-white to-orange-50 px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div>
-                <h2 className="text-2xl font-semibold text-slate-900">3. Creació de blocs</h2>
-                <p className="text-sm text-slate-500">Departaments implicats i estructura inicial del projecte.</p>
-              </div>
-            </div>
-          </div>
+          ) : null}
 
           <div className="grid gap-5 p-6 xl:grid-cols-[0.72fr_1.28fr]">
             <section className="space-y-4 rounded-[20px] border border-slate-200 bg-white/80 p-4">
@@ -397,7 +421,7 @@ export default function ProjectOverviewTab({
                             </span>
                           ))}
                           <div className="rounded-full border border-dashed border-slate-300 px-3 py-1.5 text-xs text-slate-400">
-                            Arrossega aqui departaments
+                            Arrossega aquí departaments
                           </div>
                         </div>
                       </div>
@@ -408,7 +432,7 @@ export default function ProjectOverviewTab({
             </section>
           </div>
         </section>
-      </div>
+      ) : null}
     </div>
   )
 }
