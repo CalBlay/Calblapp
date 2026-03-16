@@ -313,13 +313,12 @@ export default function ProjectTasksTab({
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className={projectSectionTitleClass}>Tasques</h2>
-            <p className={projectSectionSubtitleClass}>Canvas operatiu del projecte per estat.</p>
+            <p className={projectSectionSubtitleClass}>Vista operativa de les tasques per estat.</p>
           </div>
           <div className="flex items-center gap-2">
             <FilterButton onClick={openFiltersPanel} />
             <Button
               type="button"
-              variant="outline"
               onClick={() => {
                 if (hasPendingTaskDraft && taskDraft.blockId && taskDraft.blockId !== 'none') {
                   onAddTaskToBlock(taskDraft.blockId)
@@ -327,16 +326,16 @@ export default function ProjectTasksTab({
                 onSave()
               }}
               disabled={savingBlocks || !canSaveTasks || !dirtyTasks}
-              className={`border-violet-200 ${
+              className={`bg-violet-600 text-white hover:bg-violet-700 ${
                 savingBlocks
-                  ? 'cursor-wait text-violet-400'
+                  ? 'cursor-wait bg-violet-400 hover:bg-violet-400'
                   : canSaveTasks && dirtyTasks
-                    ? 'text-violet-700 hover:bg-violet-50'
-                    : 'cursor-not-allowed text-slate-400 hover:bg-transparent'
+                    ? ''
+                    : 'cursor-not-allowed bg-violet-300 hover:bg-violet-300'
               }`}
             >
               <Save className="mr-2 h-4 w-4" />
-              Guardar
+              Guardar canvis
             </Button>
           </div>
         </div>

@@ -39,6 +39,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
 
   // Traducció Ã¢â‚¬Å“mòdul Ã¢â€ â€™ nom visibleÃ¢â‚¬Â
   const moduleLabels: Record<string, string> = {
+    projects: 'Projectes',
     spaces: 'Espais',
     torns: 'Torns',
     quadrants: 'Quadrants',

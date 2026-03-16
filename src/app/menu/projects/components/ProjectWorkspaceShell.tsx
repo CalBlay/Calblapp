@@ -1,6 +1,8 @@
 'use client'
 
+import { Trash2 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
 import { formatProjectDate, phaseLabel, type ProjectData } from './project-shared'
 import { type WorkspaceTab, workspaceTabs } from './project-workspace-helpers'
 
@@ -9,6 +11,9 @@ type Props = {
   activeTab: WorkspaceTab
   visibleTabs?: WorkspaceTab[]
   onTabChange: (tab: WorkspaceTab) => void
+  canDelete?: boolean
+  deleting?: boolean
+  onDelete?: () => void
 }
 
 export default function ProjectWorkspaceShell({
@@ -16,6 +21,9 @@ export default function ProjectWorkspaceShell({
   activeTab,
   visibleTabs,
   onTabChange,
+  canDelete = false,
+  deleting = false,
+  onDelete,
 }: Props) {
   const launchDateRaw = String(project.launchDate || '').trim()
   const launchDate = launchDateRaw
@@ -48,6 +56,18 @@ export default function ProjectWorkspaceShell({
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-sm">
+            {canDelete ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onDelete}
+                disabled={deleting}
+                className="border-red-200 bg-white/80 text-red-600 hover:bg-red-50 hover:text-red-700"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {deleting ? 'Eliminant...' : 'Eliminar projecte'}
+              </Button>
+            ) : null}
             <span className="rounded-full bg-white/80 px-3 py-1.5 font-medium text-slate-700">
               Arrencada: {formatProjectDate(project.launchDate)}
             </span>

@@ -173,7 +173,7 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
       {
         id: 'milestone-created',
         kind: 'milestone',
-        title: 'Creacio del projecte',
+        title: 'Creació del projecte',
         subtitle: project.name || 'Projecte',
         status: 'done',
         start: projectCreatedAt,
@@ -196,8 +196,8 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
         ? {
             id: 'milestone-kickoff',
             kind: 'milestone',
-            title: 'Kickoff',
-            subtitle: 'Convocatoria de llancament',
+            title: "Reunió d'arrencada",
+            subtitle: "Convocatòria de llançament",
             status: project.kickoff.status || 'in_progress',
             start: kickoffDate,
             end: kickoffDate,

@@ -144,7 +144,7 @@ export function useProjectBlocksTasksActions({
     const title = String(draft.title || '').trim()
     const description = String(draft.description || '').trim()
     if (!title && !description) return
-    const taskTitle = title || description.split(/\s+/).filter(Boolean).slice(0, 3).join(' ')
+    const taskTitle = (title || description).slice(0, 20).trim()
     const block = project.blocks.find((item) => item.id === blockId)
     const maxTaskDeadline = block?.deadline || project.launchDate
     const blockDepartments =

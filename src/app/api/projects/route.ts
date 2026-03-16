@@ -18,6 +18,14 @@ type SessionUser = {
 
 const clean = (value: FormDataEntryValue | null) => String(value || '').trim()
 const todayKey = () => new Date().toISOString().slice(0, 10)
+const parseJsonField = <T,>(value: FormDataEntryValue | null, fallback: T): T => {
+  if (value === null) return fallback
+  try {
+    return JSON.parse(String(value)) as T
+  } catch {
+    return fallback
+  }
+}
 const normLower = (value?: string) =>
   (value || '')
     .normalize('NFD')
@@ -183,6 +191,11 @@ export async function POST(req: Request) {
         : null
     const owner = clean(form.get('owner'))
     const ownerUser = await findUserByName(owner)
+    const departments = parseJsonField<string[]>(form.get('departments'), [])
+    const blocks = parseJsonField<Record<string, unknown>[]>(form.get('blocks'), [])
+    const rooms = parseJsonField<Record<string, unknown>[]>(form.get('rooms'), [])
+    const kickoff = parseJsonField<Record<string, unknown> | null>(form.get('kickoff'), null)
+    const documents = parseJsonField<Record<string, unknown>[]>(form.get('documents'), [])
 
     const payload = {
       name: clean(form.get('name')),
@@ -197,12 +210,12 @@ export async function POST(req: Request) {
       budget: clean(form.get('budget')),
       status: '',
       phase: clean(form.get('phase')) || 'definition',
-      departments: [],
-      blocks: [],
-      rooms: [],
-      kickoff: null,
+      departments,
+      blocks,
+      rooms,
+      kickoff,
       document,
-      documents: document ? [document] : [],
+      documents: document ? [...documents, document] : documents,
       createdAt: now,
       updatedAt: now,
       createdById: auth.user.id,
@@ -213,13 +226,13 @@ export async function POST(req: Request) {
 
     payload.phase = deriveProjectPhase({
       launchDate: payload.launchDate,
-      kickoff: payload.kickoff,
-      blocks: payload.blocks,
+      kickoff: payload.kickoff as Parameters<typeof deriveProjectPhase>[0]['kickoff'],
+      blocks: payload.blocks as Parameters<typeof deriveProjectPhase>[0]['blocks'],
     })
 
     await docRef.set(payload)
 
-    if (ownerUser?.id) {
+    if (ownerUser?.id && payload.status !== 'draft') {
       await notifyProjectOwner({
         userId: ownerUser.id,
         projectId: docRef.id,
@@ -228,7 +241,7 @@ export async function POST(req: Request) {
       })
     }
 
-    return NextResponse.json({ id: docRef.id }, { status: 201 })
+    return NextResponse.json({ id: docRef.id, document }, { status: 201 })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })
