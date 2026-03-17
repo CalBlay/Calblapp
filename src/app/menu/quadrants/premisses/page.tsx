@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { ArrowLeft, Plus, Save, Trash2, UserPlus } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronUp, Plus, Save, Trash2, UserPlus } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { normalizeRole } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
@@ -40,6 +40,7 @@ type FincaOption = {
 }
 
 const DEPARTMENTS = ['serveis', 'logistica', 'cuina'] as const
+const ALLOWED_DEPARTMENTS = new Set<string>(DEPARTMENTS)
 
 const norm = (s?: string | null) =>
   String(s ?? '')
@@ -125,7 +126,8 @@ export default function QuadrantPremisesPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
   const role = normalizeRole(String((session?.user as any)?.role || ''))
-  const sessionDept = norm(String((session?.user as any)?.department || 'serveis'))
+  const rawSessionDept = norm(String((session?.user as any)?.department || ''))
+  const sessionDept = ALLOWED_DEPARTMENTS.has(rawSessionDept) ? rawSessionDept : 'serveis'
   const canSelectDepartment = role === 'admin' || role === 'direccio'
   const lastSavedSnapshotRef = useRef('')
   const hydratingDepartmentRef = useRef(false)
@@ -136,6 +138,8 @@ export default function QuadrantPremisesPage() {
   const [people, setPeople] = useState<PersonnelOption[]>([])
   const [finques, setFinques] = useState<FincaOption[]>([])
   const [driverCrews, setDriverCrews] = useState<EditableDriverCrew[]>([])
+  const [expandedDriverCrews, setExpandedDriverCrews] = useState<Record<string, boolean>>({})
+  const [expandedConditions, setExpandedConditions] = useState<Record<string, boolean>>({})
   const [defaultCharacteristicsText, setDefaultCharacteristicsText] = useState(
     'Treballador, Responsable, Conductor'
   )
@@ -147,17 +151,15 @@ export default function QuadrantPremisesPage() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
-    if (!canSelectDepartment && sessionDept) {
+    if (sessionDept && ALLOWED_DEPARTMENTS.has(sessionDept)) {
       setDepartment(sessionDept)
       return
     }
-    if (canSelectDepartment) {
-      setDepartment((prev) => prev || 'serveis')
-    }
+    setDepartment((prev) => prev || 'serveis')
   }, [status, canSelectDepartment, sessionDept])
 
   useEffect(() => {
-    if (status !== 'authenticated' || !department) return
+    if (status !== 'authenticated' || !department || !ALLOWED_DEPARTMENTS.has(department)) return
 
     let cancelled = false
 
@@ -206,7 +208,7 @@ export default function QuadrantPremisesPage() {
   }, [status, department, people])
 
   useEffect(() => {
-    if (status !== 'authenticated' || !department) return
+    if (status !== 'authenticated' || !department || !ALLOWED_DEPARTMENTS.has(department)) return
 
     let cancelled = false
 
@@ -244,7 +246,8 @@ export default function QuadrantPremisesPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          console.error(err)
+          setPeople([])
+          setDriverCrews([])
         }
       }
     }
@@ -282,11 +285,6 @@ export default function QuadrantPremisesPage() {
       cancelled = true
     }
   }, [status])
-
-  const warningText = useMemo(() => {
-    if (!meta?.warnings?.length) return null
-    return meta.warnings.join(', ')
-  }, [meta])
 
   const currentSnapshot = useMemo(
     () =>
@@ -334,10 +332,23 @@ export default function QuadrantPremisesPage() {
         responsible: '',
       },
     ])
+    setExpandedConditions((prev) => ({ ...prev, [id]: false }))
   }
 
   const removeCondition = (id: string) => {
     setConditions((prev) => prev.filter((condition) => condition.id !== id))
+    setExpandedConditions((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+  }
+
+  const toggleCondition = (id: string) => {
+    setExpandedConditions((prev) => ({
+      ...prev,
+      [id]: !(prev[id] ?? false),
+    }))
   }
 
   const addLocationToCondition = (conditionId: string) => {
@@ -379,18 +390,32 @@ export default function QuadrantPremisesPage() {
   }
 
   const addDriverCrew = () => {
+    const id = `driver-crew-${Date.now()}`
     setDriverCrews((prev) => [
       ...prev,
       {
-        id: `driver-crew-${Date.now()}`,
+        id,
         driverId: '',
         companionIds: [],
       },
     ])
+    setExpandedDriverCrews((prev) => ({ ...prev, [id]: false }))
   }
 
   const removeDriverCrew = (id: string) => {
     setDriverCrews((prev) => prev.filter((crew) => crew.id !== id))
+    setExpandedDriverCrews((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+  }
+
+  const toggleDriverCrew = (id: string) => {
+    setExpandedDriverCrews((prev) => ({
+      ...prev,
+      [id]: !(prev[id] ?? false),
+    }))
   }
 
   const addCompanionToCrew = (crewId: string) => {
@@ -544,7 +569,7 @@ export default function QuadrantPremisesPage() {
   }
 
   return (
-    <main className="space-y-5 px-4 pb-10">
+    <main className="min-h-screen space-y-5 bg-slate-50 px-4 pb-10">
       <ModuleHeader
         icon={<Save className="h-6 w-6 text-indigo-600" />}
         title="Quadrants"
@@ -580,84 +605,45 @@ export default function QuadrantPremisesPage() {
         </section>
       ) : null}
 
-      <section className="sticky top-3 z-20 rounded-2xl bg-white/95 px-4 py-3 shadow-lg shadow-slate-200/60 ring-1 ring-slate-200 backdrop-blur">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-slate-600">
-            {dirty ? 'Tens canvis pendents de guardar.' : 'No hi ha canvis pendents.'}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" className="md:hidden" onClick={handleLeave}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Torna
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || !dirty}
-              className="min-w-[160px] bg-violet-600 hover:bg-violet-700"
-            >
-              <Save className="mr-2 h-4 w-4" />
-              {saving ? 'Desant...' : 'Guardar canvis'}
-            </Button>
-          </div>
-        </div>
-      </section>
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-5 py-6 sm:px-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
+                Premisses de {prettyDepartment(department)}
+              </h2>
+            </div>
 
-      <section className="overflow-hidden rounded-[28px] bg-white shadow-[0_18px_50px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70">
-        <div className="bg-gradient-to-r from-slate-50 via-white to-indigo-50/70 px-5 py-5 sm:px-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Configuracio
-                </p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
-                  Premisses de {prettyDepartment(department)}
-                </h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Edicio directa de les regles que fa servir l&apos;autogeneracio.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                <div className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
-                  Origen:{' '}
-                  <span className="font-medium text-slate-900">
-                    {meta?.source === 'firestore' ? 'Firestore' : 'Fallback JSON'}
-                  </span>
+            {canSelectDepartment ? (
+              <div className="w-full max-w-sm">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                  <Label htmlFor="premises-department" className="text-sm text-slate-600">
+                    Departament
+                  </Label>
+                  <select
+                    id="premises-department"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm sm:max-w-[220px]"
+                    disabled={loading}
+                    value={department}
+                    onChange={(event) => {
+                      void handleDepartmentChange(event.target.value)
+                    }}
+                  >
+                    {DEPARTMENTS.map((item) => (
+                      <option key={item} value={item}>
+                        {prettyDepartment(item)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                {warningText ? (
-                  <div className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-700 ring-1 ring-amber-200/60">
-                    Avisos: {warningText}
-                  </div>
-                ) : null}
               </div>
-            </div>
-
-            <div className="w-full max-w-xs space-y-2">
-              <Label htmlFor="premises-department">Departament</Label>
-              <select
-                id="premises-department"
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm"
-                disabled={!canSelectDepartment || loading}
-                value={department}
-                onChange={(event) => {
-                  void handleDepartmentChange(event.target.value)
-                }}
-              >
-                {DEPARTMENTS.map((item) => (
-                  <option key={item} value={item}>
-                    {prettyDepartment(item)}
-                  </option>
-                ))}
-              </select>
-            </div>
+            ) : null}
           </div>
         </div>
 
         <div className="px-5 py-6 sm:px-6">
           <div className="grid gap-8 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)]">
-            <section className="space-y-5">
+            <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="space-y-1">
                 <h3 className="text-lg font-semibold text-slate-900">Regles generals</h3>
                 <p className="text-sm text-slate-600">
@@ -668,7 +654,7 @@ export default function QuadrantPremisesPage() {
               {loading ? (
                 <div className="py-6 text-sm text-slate-500">Carregant premisses...</div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="rest-hours">Hores minimes de descans</Label>
@@ -718,8 +704,8 @@ export default function QuadrantPremisesPage() {
                     />
                   </div>
 
-                  <div className="space-y-3 border-t border-slate-100 pt-4">
-                    <label className="flex items-start gap-3 rounded-2xl bg-slate-50/80 px-4 py-3 text-sm text-slate-700">
+                  <div className="grid gap-3 border-t border-slate-200 pt-4 lg:grid-cols-2">
+                    <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                       <input
                         type="checkbox"
                         className="mt-1"
@@ -731,7 +717,7 @@ export default function QuadrantPremisesPage() {
                           }))
                         }
                       />
-                      <span>
+                      <span className="min-w-0">
                         <span className="block font-medium text-slate-900">
                           Permetre multiples serveis el mateix dia
                         </span>
@@ -741,7 +727,7 @@ export default function QuadrantPremisesPage() {
                       </span>
                     </label>
 
-                    <label className="flex items-start gap-3 rounded-2xl bg-slate-50/80 px-4 py-3 text-sm text-slate-700">
+                    <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                       <input
                         type="checkbox"
                         className="mt-1"
@@ -753,7 +739,7 @@ export default function QuadrantPremisesPage() {
                           }))
                         }
                       />
-                      <span>
+                      <span className="min-w-0">
                         <span className="block font-medium text-slate-900">
                           Responsable obligatori
                         </span>
@@ -767,8 +753,8 @@ export default function QuadrantPremisesPage() {
               )}
             </section>
 
-            <section className="space-y-5 border-t border-slate-100 pt-6 xl:border-l xl:border-t-0 xl:pl-8 xl:pt-0">
-              <div className="space-y-5">
+            <section className="space-y-6 border-t border-slate-200 pt-6 xl:border-l xl:border-t-0 xl:pl-8 xl:pt-0">
+              <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1">
                     <h3 className="text-lg font-semibold text-slate-900">
@@ -783,7 +769,7 @@ export default function QuadrantPremisesPage() {
                     variant="outline"
                     onClick={addDriverCrew}
                     disabled={loading || drivers.length === 0}
-                    className="rounded-xl"
+                    className="rounded-full"
                   >
                     <UserPlus className="mr-2 h-4 w-4" />
                     Afegir equip
@@ -801,123 +787,140 @@ export default function QuadrantPremisesPage() {
                     Encara no hi ha equips de conductors definits.
                   </div>
                 ) : (
-                  <div className="space-y-0">
+                  <div className="space-y-3">
                     {driverCrews.map((crew, index) => {
                       const availableCompanions = people.filter(
                         (person) => person.id !== crew.driverId
                       )
+                      const driverName = peopleById[crew.driverId]?.name || 'Equip sense conductor'
+                      const isExpanded = expandedDriverCrews[crew.id] ?? false
                       return (
                         <div
                           key={crew.id}
-                          className={`py-5 ${
-                            index > 0 ? 'border-t border-slate-100' : ''
-                          }`}
+                          className="rounded-2xl border border-slate-200 bg-slate-50"
                         >
-                          <div className="mb-3 flex items-center justify-between gap-3">
-                            <div className="text-sm font-medium text-slate-800">
-                              Equip conductor {index + 1}
-                            </div>
+                          <div className="flex items-center gap-3 px-4 py-3">
+                            <button
+                              type="button"
+                              onClick={() => toggleDriverCrew(crew.id)}
+                              className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500">
+                                  Equip conductor {index + 1}
+                                </div>
+                                <div className="truncate text-sm font-semibold text-slate-900">
+                                  {driverName}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-slate-500">
+                                <span>{crew.companionIds.length} acompanyants</span>
+                                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                              </div>
+                            </button>
                             <button
                               type="button"
                               onClick={() => removeDriverCrew(crew.id)}
                               className="inline-flex items-center gap-2 text-sm font-medium text-rose-600 transition hover:text-rose-700"
                             >
                               <Trash2 className="h-4 w-4" />
-                              Eliminar
+                              <span className="hidden sm:inline">Eliminar</span>
                             </button>
                           </div>
 
-                          <div className="grid gap-4">
-                            <div className="space-y-2">
-                              <Label>Conductor</Label>
-                              <select
-                                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/40 px-3 text-sm shadow-sm"
-                                value={crew.driverId}
-                                onChange={(event) =>
-                                  updateDriverCrew(crew.id, {
-                                    driverId: event.target.value,
-                                    companionIds: crew.companionIds.filter(
-                                      (id) => id !== event.target.value
-                                    ),
-                                  })
-                                }
-                              >
-                                <option value="">Selecciona conductor</option>
-                                {drivers.map((driver) => (
-                                  <option key={driver.id} value={driver.id}>
-                                    {driver.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <Label>Acompanyants</Label>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  className="h-auto px-0 text-indigo-600 hover:text-indigo-700"
-                                  onClick={() => addCompanionToCrew(crew.id)}
-                                  disabled={
-                                    availableCompanions.filter(
-                                      (person) => !crew.companionIds.includes(person.id)
-                                    ).length === 0
+                          {isExpanded ? (
+                            <div className="grid gap-5 border-t border-slate-200 px-4 py-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                              <div className="space-y-2">
+                                <Label>Conductor</Label>
+                                <select
+                                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm"
+                                  value={crew.driverId}
+                                  onChange={(event) =>
+                                    updateDriverCrew(crew.id, {
+                                      driverId: event.target.value,
+                                      companionIds: crew.companionIds.filter(
+                                        (id) => id !== event.target.value
+                                      ),
+                                    })
                                   }
                                 >
-                                  <Plus className="mr-2 h-4 w-4" />
-                                  Afegir acompanyant
-                                </Button>
+                                  <option value="">Selecciona conductor</option>
+                                  {drivers.map((driver) => (
+                                    <option key={driver.id} value={driver.id}>
+                                      {driver.name}
+                                    </option>
+                                  ))}
+                                </select>
                               </div>
 
-                              {crew.companionIds.length === 0 ? (
-                                <div className="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                                  Encara no hi ha acompanyants en aquest equip.
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <Label>Acompanyants</Label>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="h-auto rounded-full px-0 text-slate-700 hover:text-slate-900"
+                                    onClick={() => addCompanionToCrew(crew.id)}
+                                    disabled={
+                                      availableCompanions.filter(
+                                        (person) => !crew.companionIds.includes(person.id)
+                                      ).length === 0
+                                    }
+                                  >
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Afegir acompanyant
+                                  </Button>
                                 </div>
-                              ) : (
-                                <div className="space-y-3">
-                                  {crew.companionIds.map((companionId, companionIndex) => (
-                                    <div
-                                      key={`${crew.id}-${companionIndex}`}
-                                      className="flex items-center gap-3"
-                                    >
-                                      <select
-                                        className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50/40 px-3 text-sm shadow-sm"
-                                        value={companionId}
-                                        onChange={(event) =>
-                                          updateCompanion(
-                                            crew.id,
-                                            companionIndex,
-                                            event.target.value
-                                          )
-                                        }
+
+                                {crew.companionIds.length === 0 ? (
+                                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                                    Encara no hi ha acompanyants en aquest equip.
+                                  </div>
+                                ) : (
+                                  <div className="space-y-3">
+                                    {crew.companionIds.map((companionId, companionIndex) => (
+                                      <div
+                                        key={`${crew.id}-${companionIndex}`}
+                                        className="flex items-center gap-3"
                                       >
-                                        <option value="">Selecciona acompanyant</option>
-                                        {availableCompanions
-                                          .filter(
-                                            (person) =>
-                                              person.id === companionId ||
-                                              !crew.companionIds.includes(person.id)
-                                          )
-                                          .map((person) => (
-                                            <option key={person.id} value={person.id}>
-                                              {person.name}
-                                            </option>
-                                          ))}
-                                      </select>
-                                      <button
-                                        type="button"
-                                        onClick={() => removeCompanion(crew.id, companionIndex)}
-                                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                                        <select
+                                          className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm"
+                                          value={companionId}
+                                          onChange={(event) =>
+                                            updateCompanion(
+                                              crew.id,
+                                              companionIndex,
+                                              event.target.value
+                                            )
+                                          }
+                                        >
+                                          <option value="">Selecciona acompanyant</option>
+                                          {availableCompanions
+                                            .filter(
+                                              (person) =>
+                                                person.id === companionId ||
+                                                !crew.companionIds.includes(person.id)
+                                            )
+                                            .map((person) => (
+                                              <option key={person.id} value={person.id}>
+                                                {person.name}
+                                              </option>
+                                            ))}
+                                        </select>
+                                        <button
+                                          type="button"
+                                          onClick={() => removeCompanion(crew.id, companionIndex)}
+                                          className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
+                          ) : null}
                         </div>
                       )
                     })}
@@ -925,142 +928,173 @@ export default function QuadrantPremisesPage() {
                 )}
               </div>
 
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    Condicions per ubicacio
-                  </h3>
-                  <p className="text-sm text-slate-600">
-                    Prioritats de responsable segons finca o variant de nom.
-                  </p>
+              <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      Condicions per ubicacio
+                    </h3>
+                    <p className="text-sm text-slate-600">
+                      Prioritats de responsable segons finca o variant de nom.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addCondition}
+                    disabled={loading}
+                    className="rounded-full"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Afegir
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={addCondition}
-                  disabled={loading}
-                  className="rounded-xl"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Afegir
-                </Button>
-              </div>
 
-              {loading ? (
-                <div className="py-6 text-sm text-slate-500">Carregant condicions...</div>
-              ) : conditions.length === 0 ? (
-                <div className="rounded-2xl bg-slate-50 px-4 py-8 text-sm text-slate-500">
-                  Aquest departament encara no te condicions desades.
-                </div>
-              ) : (
-                <div className="space-y-0">
-                  {conditions.map((condition, index) => (
-                    <div
-                      key={condition.id}
-                      className={`py-5 ${
-                        index > 0 ? 'border-t border-slate-100' : ''
-                      }`}
-                    >
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <div className="text-sm font-medium text-slate-800">
-                          Condicio {index + 1}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeCondition(condition.id)}
-                          className="inline-flex items-center gap-2 text-sm font-medium text-rose-600 transition hover:text-rose-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Eliminar
-                        </button>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
-                            <div className="space-y-2">
-                              <Label>Ubicacions</Label>
-                          <div className="space-y-3">
-                            {condition.locations.length === 0 ? (
-                              <div className="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                                Encara no hi ha cap ubicacio afegida.
-                              </div>
-                            ) : (
-                              condition.locations.map((location, locationIndex) => (
-                                <div
-                                  key={`${condition.id}-${locationIndex}`}
-                                  className="flex items-center gap-3"
-                                >
-                                  <select
-                                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50/40 px-3 text-sm shadow-sm"
-                                    value={location}
-                                    onChange={(event) =>
-                                      updateConditionLocation(
-                                        condition.id,
-                                        locationIndex,
-                                        event.target.value
-                                      )
-                                    }
-                                  >
-                                    <option value="">Selecciona finca</option>
-                                    {finques
-                                      .filter(
-                                        (finca) =>
-                                          finca.name === location ||
-                                          !condition.locations.includes(finca.name)
-                                      )
-                                      .map((finca) => (
-                                        <option key={finca.id} value={finca.name}>
-                                          {finca.name}
-                                        </option>
-                                      ))}
-                                  </select>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      removeConditionLocation(condition.id, locationIndex)
-                                    }
-                                    className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
+                {loading ? (
+                  <div className="py-6 text-sm text-slate-500">Carregant condicions...</div>
+                ) : conditions.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
+                    Aquest departament encara no te condicions desades.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {conditions.map((condition, index) => (
+                      (() => {
+                        const isExpanded = expandedConditions[condition.id] ?? false
+                        const summaryLocations =
+                          condition.locations.length > 0
+                            ? condition.locations.join(', ')
+                            : 'Sense ubicacions'
+                        return (
+                          <div
+                            key={condition.id}
+                            className="rounded-2xl border border-slate-200 bg-slate-50"
+                          >
+                            <div className="flex items-center gap-3 px-4 py-3">
+                              <button
+                                type="button"
+                                onClick={() => toggleCondition(condition.id)}
+                                className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                              >
+                                <div className="min-w-0">
+                                  <div className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500">
+                                    Condicio {index + 1}
+                                  </div>
+                                  <div className="truncate text-sm font-semibold text-slate-900">
+                                    {condition.responsible || 'Sense responsable prioritari'}
+                                  </div>
+                                  <div className="truncate text-xs text-slate-500">
+                                    {summaryLocations}
+                                  </div>
                                 </div>
-                              ))
-                            )}
+                                <div className="flex items-center gap-3 text-xs text-slate-500">
+                                  <span>{condition.locations.length} ubicacions</span>
+                                  {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                </div>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeCondition(condition.id)}
+                                className="inline-flex items-center gap-2 text-sm font-medium text-rose-600 transition hover:text-rose-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                <span className="hidden sm:inline">Eliminar</span>
+                              </button>
+                            </div>
 
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="h-auto px-0 text-indigo-600 hover:text-indigo-700"
-                              onClick={() => addLocationToCondition(condition.id)}
-                              disabled={
-                                finques.filter(
-                                  (finca) => !condition.locations.includes(finca.name)
-                                ).length === 0
-                              }
-                            >
-                              <Plus className="mr-2 h-4 w-4" />
-                              Afegir ubicacio
-                            </Button>
+                            {isExpanded ? (
+                              <div className="grid gap-5 border-t border-slate-200 px-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <Label>Ubicacions</Label>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      className="h-auto rounded-full px-0 text-slate-700 hover:text-slate-900"
+                                      onClick={() => addLocationToCondition(condition.id)}
+                                      disabled={
+                                        finques.filter(
+                                          (finca) => !condition.locations.includes(finca.name)
+                                        ).length === 0
+                                      }
+                                    >
+                                      <Plus className="mr-2 h-4 w-4" />
+                                      Afegir ubicacio
+                                    </Button>
+                                  </div>
+
+                                  {condition.locations.length === 0 ? (
+                                    <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                                      Encara no hi ha cap ubicacio afegida.
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      {condition.locations.map((location, locationIndex) => (
+                                        <div
+                                          key={`${condition.id}-${locationIndex}`}
+                                          className="flex items-center gap-3"
+                                        >
+                                          <select
+                                            className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm"
+                                            value={location}
+                                            onChange={(event) =>
+                                              updateConditionLocation(
+                                                condition.id,
+                                                locationIndex,
+                                                event.target.value
+                                              )
+                                            }
+                                          >
+                                            <option value="">Selecciona finca</option>
+                                            {finques
+                                              .filter(
+                                                (finca) =>
+                                                  finca.name === location ||
+                                                  !condition.locations.includes(finca.name)
+                                              )
+                                              .map((finca) => (
+                                                <option key={finca.id} value={finca.name}>
+                                                  {finca.name}
+                                                </option>
+                                              ))}
+                                          </select>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeConditionLocation(condition.id, locationIndex)
+                                            }
+                                            className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="space-y-2">
+                                  <Label>Responsable prioritari</Label>
+                                  <Input
+                                    className="border-slate-200 bg-white"
+                                    value={condition.responsible}
+                                    onChange={(event) =>
+                                      updateCondition(condition.id, {
+                                        responsible: event.target.value,
+                                      })
+                                    }
+                                    placeholder="Nom del responsable"
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Responsable prioritari</Label>
-                          <Input
-                            className="border-slate-200 bg-slate-50/40"
-                            value={condition.responsible}
-                            onChange={(event) =>
-                              updateCondition(condition.id, {
-                                responsible: event.target.value,
-                              })
-                            }
-                            placeholder="Nom del responsable"
-                          />
-                        </div>
-                      </div>
-                    </div>
+                        )
+                      })()
                   ))}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </section>
           </div>
         </div>
