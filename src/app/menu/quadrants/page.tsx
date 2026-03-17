@@ -2,6 +2,7 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react'
+import Link from 'next/link'
 import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
 import { useSession } from 'next-auth/react'
 import * as XLSX from 'xlsx'
@@ -351,7 +352,17 @@ export default function QuadrantsPage() {
         icon={<CalendarDays className="w-7 h-7 text-indigo-600" />}
         title="Quadrants"
         subtitle="Gestió setmanal per departament"
-        actions={<ExportMenu items={exportItems} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <Link
+              href="/menu/quadrants/premisses"
+              className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Premisses
+            </Link>
+            <ExportMenu items={exportItems} />
+          </div>
+        }
       />
       <FiltersBar
         id="filters-bar"

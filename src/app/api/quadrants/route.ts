@@ -244,6 +244,7 @@ export async function POST(req: NextRequest) {
       if (Array.isArray(bodyForSave.groups)) {
         if (deptNorm === 'serveis') {
           toSave.groups = bodyForSave.groups.map((g: any) => ({
+            id: g.id || null,
             serviceDate: g.serviceDate || null,
             dateLabel: g.dateLabel || null,
             meetingPoint: g.meetingPoint || '',
@@ -503,6 +504,7 @@ export async function POST(req: NextRequest) {
             ? g.responsibleId || body.manualResponsibleId
             : null
         phaseRequests.push({
+          groupId: g.id || null,
           label,
           phaseType: norm(label),
           date: serviceDate,
@@ -557,7 +559,10 @@ export async function POST(req: NextRequest) {
       await applyStageData(toSave)
       const phaseKey = norm(phase.label || phase.phaseType || 'fase')
       const phaseDate = String(phase.date || body.startDate)
-      const docId = `${body.eventId}__${phaseKey}__${phaseDate}`
+      const groupKey = String(phase.groupId || phase.groupsOverride?.[0]?.id || 'group')
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, '')
+      const docId = `${body.eventId}__${phaseKey}__${phaseDate}__${groupKey || 'group'}`
       await db.collection(collectionName).doc(docId).set(toSave, { merge: true })
     }
 

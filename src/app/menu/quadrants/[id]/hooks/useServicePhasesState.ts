@@ -47,6 +47,7 @@ export type UseServicePhasesStateResult = {
     manualResponsibleId: string | null,
     manualResponsibleName?: string | null
   ) => Array<{
+    id: string
     serviceDate: string
     dateLabel: string | null
     meetingPoint: string
@@ -216,6 +217,7 @@ export function useServicePhasesState({
       selectedServiceGroups.map((group) => {
         const isEventPhase = group.phaseKey === 'event'
         return {
+          id: group.id,
           serviceDate: group.serviceDate,
           dateLabel: group.dateLabel || null,
           meetingPoint: group.meetingPoint,

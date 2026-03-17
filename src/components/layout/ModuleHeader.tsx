@@ -59,6 +59,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     reserves: 'Reserves',
     operativa: 'Operativa',
     drafts: 'Esborranys',
+    premisses: 'Premisses',
     info: 'Informació',
     assigned: 'Assignats',
     bbdd: 'BBDD plats',
