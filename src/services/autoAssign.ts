@@ -1,6 +1,9 @@
 ﻿// file: src/services/autoAssign.ts
-import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { loadPremises, type DriverCrewPremise } from './premises'
+import {
+  loadDepartmentPersonnel,
+  loadPremises,
+  type DriverCrewPremise,
+} from './premises'
 import { buildLedger } from './workloadLedger'
 import { isEligibleByName } from './eligibility'
 import { calculatePersonalNeeded } from '@/utils/calculatePersonalNeeded'
@@ -170,7 +173,9 @@ export async function autoAssign(payload: {
   })
 
   // 1) Premisses
-  const { premises, warnings } = (await loadPremises(dept)) as {
+  const departmentPeople = await loadDepartmentPersonnel(dept)
+
+  const { premises, warnings } = (await loadPremises(dept, departmentPeople)) as {
     premises: PremisesConfig
     warnings?: string[]
   }
@@ -194,10 +199,14 @@ export async function autoAssign(payload: {
 
 
   // 4) Personal del departament
-  const ps = await db.collection('personnel').get()
-  const all: Personnel[] = ps.docs
-    .map(dref => ({ id: dref.id, ...(dref.data() as Record<string, unknown>) }))
-    .filter(p => norm((p as Personnel).department) === dept) as Personnel[]
+  const all: Personnel[] = departmentPeople.map((person) => ({
+    id: person.id,
+    name: person.name,
+    role: person.role,
+    department: person.department,
+    isDriver: person.isDriver,
+    available: person.available,
+  })) as Personnel[]
 
   const isDeptHead = (p: Personnel) => {
     const r = normRole(p.role)

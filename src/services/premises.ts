@@ -58,14 +58,21 @@ const RESPONSIBLE_ROLE_KEYS = new Set(['responsable', 'cap departament', 'capdep
 
 const normRole = (s?: string | null) => norm(s)
 
-async function hydrateConditionResponsibles(
-  department: string,
-  conditions: PremiseCondition[]
-): Promise<PremiseCondition[]> {
-  if (!conditions.length) return conditions
+export type DepartmentPersonnelRef = {
+  id: string
+  name: string
+  department: string
+  role: string
+  isDriver?: boolean
+  available?: boolean
+}
 
+export async function loadDepartmentPersonnel(
+  department: string
+): Promise<DepartmentPersonnelRef[]> {
+  const dept = norm(department)
   const snap = await db.collection('personnel').get()
-  const people = snap.docs
+  return snap.docs
     .map((doc) => {
       const data = doc.data() as any
       return {
@@ -73,21 +80,33 @@ async function hydrateConditionResponsibles(
         name: String(data?.name || '').trim(),
         department: norm(data?.department || ''),
         role: normRole(data?.role || ''),
+        isDriver: Boolean(data?.isDriver),
+        available: data?.available !== false,
       }
     })
-    .filter((person) => person.department === norm(department) && person.name)
+    .filter((person) => person.department === dept && person.name)
+}
+
+async function hydrateConditionResponsibles(
+  department: string,
+  conditions: PremiseCondition[],
+  people?: DepartmentPersonnelRef[]
+): Promise<PremiseCondition[]> {
+  if (!conditions.length) return conditions
+
+  const resolvedPeople = people || (await loadDepartmentPersonnel(department))
 
   const resolveByName = (rawName?: string) => {
     const target = norm(rawName || '')
     if (!target) return null
 
-    const exact = people.filter((person) => norm(person.name) === target)
+    const exact = resolvedPeople.filter((person) => norm(person.name) === target)
     if (exact.length === 1) return exact[0]
 
-    const startsWith = people.filter((person) => norm(person.name).startsWith(target))
+    const startsWith = resolvedPeople.filter((person) => norm(person.name).startsWith(target))
     if (startsWith.length === 1) return startsWith[0]
 
-    const contains = people.filter((person) => norm(person.name).includes(target))
+    const contains = resolvedPeople.filter((person) => norm(person.name).includes(target))
     if (contains.length === 1) return contains[0]
 
     const preferred = [...exact, ...startsWith, ...contains].filter(
@@ -247,7 +266,8 @@ async function loadPremisesFromJson(
 }
 
 export async function getStoredPremises(
-  department: string
+  department: string,
+  people?: DepartmentPersonnelRef[]
 ): Promise<Premises | null> {
   const dept = norm(department)
   if (!dept) return null
@@ -258,7 +278,11 @@ export async function getStoredPremises(
   const normalized = normalizePremises(dept, snap.data() as PremisesDoc)
   return {
     ...normalized,
-    conditions: await hydrateConditionResponsibles(dept, normalized.conditions || []),
+    conditions: await hydrateConditionResponsibles(
+      dept,
+      normalized.conditions || [],
+      people
+    ),
   }
 }
 
@@ -286,13 +310,14 @@ export async function savePremises(
 }
 
 export async function loadPremises(
-  department: string
+  department: string,
+  people?: DepartmentPersonnelRef[]
 ): Promise<{ premises: Premises; warnings: string[] }> {
   const dept = norm(department)
   const warnings: string[] = []
 
   try {
-    const stored = await getStoredPremises(dept)
+    const stored = await getStoredPremises(dept, people)
     if (stored) return { premises: stored, warnings }
   } catch {
     warnings.push('premises_store_unavailable')
