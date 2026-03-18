@@ -200,10 +200,11 @@ export function useServicePhasesState({
   )
 
   const serviceTotals = useMemo(() => {
+    const activeEventGroups = activeServiceGroups.filter((group) => group.phaseKey === 'event')
     return {
       workers: activeServiceGroups.reduce((sum, group) => sum + group.workers, 0),
       drivers: activeServiceGroups.filter((group) => group.needsDriver).length,
-      responsables: activeServiceGroups.length,
+      responsables: activeEventGroups.length > 0 ? 1 : 0,
     }
   }, [activeServiceGroups])
 
@@ -213,9 +214,12 @@ export function useServicePhasesState({
   }, [activeServiceGroups, servicePhaseGroups])
 
   const buildServiceGroupsPayload = useCallback(
-    (manualResponsibleId: string | null, manualResponsibleName?: string | null) =>
-      selectedServiceGroups.map((group) => {
+    (manualResponsibleId: string | null, manualResponsibleName?: string | null) => {
+      let responsibleAssigned = false
+      return selectedServiceGroups.map((group) => {
         const isEventPhase = group.phaseKey === 'event'
+        const wantsResponsible = isEventPhase && !responsibleAssigned
+        if (wantsResponsible) responsibleAssigned = true
         return {
           id: group.id,
           serviceDate: group.serviceDate,
@@ -227,11 +231,12 @@ export function useServicePhasesState({
           drivers: group.needsDriver ? 1 : 0,
           needsDriver: group.needsDriver,
           driverId: group.driverId || null,
-          responsibleId: isEventPhase ? manualResponsibleId : null,
-          responsibleName: isEventPhase ? manualResponsibleName || null : null,
-          wantsResponsible: isEventPhase,
+          responsibleId: wantsResponsible ? manualResponsibleId : null,
+          responsibleName: wantsResponsible ? manualResponsibleName || null : null,
+          wantsResponsible,
         }
-      }),
+      })
+    },
     [selectedServiceGroups]
   )
 

@@ -36,6 +36,7 @@ type AvailableData = {
 type RowEditorProps = {
   row: Row
   available: AvailableData
+  isServeisDept?: boolean
   onPatch: (patch: Partial<Row>) => void
   onClose: () => void
   onRevert?: () => void
@@ -113,16 +114,19 @@ function EditorHeader({
 function EditorFields({
   row,
   available,
+  isServeisDept = false,
   onPatch,
   isLocked,
 }: {
   row: Row
   available: AvailableData
+  isServeisDept?: boolean
   onPatch: (patch: Partial<Row>) => void
   isLocked: boolean
 }) {
   const normalize = (value?: string) =>
     (value || '').toString().trim().toLowerCase()
+  const isServiceCompanion = isServeisDept && row.role === 'treballador'
 
   const mergeUniquePeople = (...groups: Array<AvailablePerson[] | undefined>) => {
     const map = new Map<string, AvailablePerson>()
@@ -297,8 +301,8 @@ function EditorFields({
         </div>
       </div>
 
-      {/* Vehicle (nomes conductors) */}
-      {row.role === 'conductor' && (
+      {/* Vehicle (nomes conductors fora de serveis) */}
+      {row.role === 'conductor' && !isServeisDept && (
         <div className="mt-3 flex flex-col gap-3 md:grid md:grid-cols-2">
           <div>
             <label className="text-xs font-medium">Tipus de vehicle</label>
@@ -378,7 +382,7 @@ function EditorFields({
             value={row.startTime}
             onChange={(e) => onPatch({ startTime: e.target.value })}
             className="w-full text-sm"
-            disabled={isLocked}
+            disabled={isLocked || isServiceCompanion}
           />
         </div>
         <div>
@@ -408,7 +412,7 @@ function EditorFields({
             value={row.arrivalTime || ''}
             onChange={(e) => onPatch({ arrivalTime: e.target.value })}
             className="w-full text-sm"
-            disabled={isLocked}
+            disabled={isLocked || isServiceCompanion}
           />
         </div>
       </div>
@@ -420,7 +424,7 @@ function EditorFields({
    Component principal
 ------------------------------ */
 export default function RowEditor(props: RowEditorProps) {
-  const { row, available, onPatch, onClose, onRevert, isLocked } = props
+  const { row, available, isServeisDept = false, onPatch, onClose, onRevert, isLocked } = props
   const isDesktop = useIsDesktop()
 
   const content = (
@@ -435,6 +439,7 @@ export default function RowEditor(props: RowEditorProps) {
       <EditorFields
         row={row}
         available={available}
+        isServeisDept={isServeisDept}
         onPatch={onPatch}
         isLocked={isLocked}
       />

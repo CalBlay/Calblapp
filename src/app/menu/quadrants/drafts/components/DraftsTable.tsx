@@ -77,9 +77,17 @@ export default function DraftsTable({
     ).toLowerCase()
 
   const defaultMeetingPoint = draft.meetingPoint || ''
-  const cuinaGroups = Array.isArray(draft.groups) ? draft.groups : []
-  const hasCuinaGroups = cuinaGroups.length > 0
+  const structuredGroups = useMemo(
+    () =>
+      (Array.isArray(draft.groups) ? draft.groups : []).map((group, idx) => ({
+        ...group,
+        id: group.id || `group-${idx + 1}`,
+      })),
+    [draft.groups]
+  )
   const isServeisDept = department === 'serveis'
+  const [groupDefs, setGroupDefs] = useState(structuredGroups)
+  const hasStructuredGroups = groupDefs.length > 0
 
   const resolveNameById = (id: string) => {
     if (!id) return ''
@@ -92,7 +100,7 @@ export default function DraftsTable({
   }
   const norm = (value?: string) => (value || '').toLowerCase().trim()
 
-  const buildCuinaRows = (): Row[] => {
+  const buildGroupedRows = (): Row[] => {
     const rows: Row[] = []
     const driversPool = [...(draft.conductors || [])]
     const driverNameSet = new Set(
@@ -117,8 +125,8 @@ export default function DraftsTable({
     const usedNames = new Set<string>()
       
 
-    cuinaGroups.forEach((group, idx) => {
-      const groupId = `group-${idx + 1}`
+    groupDefs.forEach((group, idx) => {
+      const groupId = group.id || `group-${idx + 1}`
       const groupDate = (group as any).serviceDate || draft.startDate
       const groupStartTime = group.startTime || draft.startTime || ''
       const groupEndTime = group.endTime || draft.endTime || ''
@@ -139,18 +147,21 @@ export default function DraftsTable({
 
       const hasResponsible = Boolean(respName || respId)
       const respRowIndex = hasResponsible ? rows.length : -1
+      const mainDriverRow =
+        isServeisDept && driversPool.length > 0 ? driversPool[0] : null
       if (hasResponsible) {
         rows.push({
           id: respId || '',
           name: respName || '',
           role: 'responsable',
+          isDriver: false,
           groupId,
           startDate: groupDate,
-          startTime: groupStartTime,
+          startTime: mainDriverRow?.startTime || groupStartTime,
           endDate: draft.endDate || groupDate,
-          endTime: groupEndTime,
+          endTime: mainDriverRow?.endTime || groupEndTime,
           meetingPoint: groupMeetingPoint,
-          arrivalTime: groupArrivalTime,
+          arrivalTime: mainDriverRow?.arrivalTime || groupArrivalTime,
           plate: '',
           vehicleType: '',
         })
@@ -175,20 +186,30 @@ export default function DraftsTable({
           }
           if (!driverName) driverName = 'Extra'
           assignedDrivers.push({ name: driverName })
-          rows.push({
-            id: (group as any).driverId || '',
-            name: driverName,
-            role: 'conductor',
-            groupId,
-            startDate: groupDate,
-            startTime: groupStartTime,
-            endDate: draft.endDate || groupDate,
-            endTime: groupEndTime,
-            meetingPoint: groupMeetingPoint,
-            arrivalTime: groupArrivalTime,
-            plate: '',
-            vehicleType: '',
-          })
+          const samePersonAsResponsible =
+            hasResponsible && driverName && respName && norm(driverName) === norm(respName)
+          if (samePersonAsResponsible && respRowIndex >= 0) {
+            rows[respRowIndex] = {
+              ...rows[respRowIndex],
+              isDriver: true,
+            }
+          }
+          if (!samePersonAsResponsible) {
+            rows.push({
+              id: (group as any).driverId || '',
+              name: driverName,
+              role: 'conductor',
+              groupId,
+              startDate: next?.startDate || groupDate,
+              startTime: next?.startTime || groupStartTime,
+              endDate: next?.endDate || draft.endDate || groupDate,
+              endTime: next?.endTime || groupEndTime,
+              meetingPoint: next?.meetingPoint || groupMeetingPoint,
+              arrivalTime: next?.arrivalTime || groupArrivalTime,
+              plate: '',
+              vehicleType: '',
+            })
+          }
         }
       } else {
         for (let i = 0; i < driversNeeded; i += 1) {
@@ -240,12 +261,12 @@ export default function DraftsTable({
               name: wName,
               role: 'treballador',
               groupId,
-              startDate: groupDate,
-              startTime: groupStartTime,
-              endDate: draft.endDate || groupDate,
-              endTime: groupEndTime,
-              meetingPoint: groupMeetingPoint,
-              arrivalTime: groupArrivalTime,
+              startDate: worker?.startDate || groupDate,
+              startTime: worker?.startTime || groupStartTime,
+              endDate: worker?.endDate || draft.endDate || groupDate,
+              endTime: worker?.endTime || groupEndTime,
+              meetingPoint: worker?.meetingPoint || groupMeetingPoint,
+              arrivalTime: worker?.arrivalTime || groupArrivalTime,
               plate: '',
               vehicleType: '',
             })
@@ -337,8 +358,8 @@ export default function DraftsTable({
   }
 
   // --- ConstrucciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ inicial de files a partir del draft (incloent brigades)
-  const initialRows: Row[] = hasCuinaGroups
-    ? buildCuinaRows()
+  const initialRows: Row[] = hasStructuredGroups
+    ? buildGroupedRows()
     : [
     ...(draft.responsableName
       ? [
@@ -406,9 +427,15 @@ endTime:   b.endTime   || draft.endTime,
 
   const [rows, setRows] = useState<Row[]>(initialRows)
   const [editIdx, setEditIdx] = useState<number | null>(null)
-  const initialRef = useRef(JSON.stringify(initialRows))
-  const dirty = JSON.stringify(rows) !== initialRef.current
+  const initialRef = useRef(JSON.stringify({ rows: initialRows, groups: structuredGroups }))
+  const dirty = JSON.stringify({ rows, groups: groupDefs }) !== initialRef.current
   const [expandedMerged, setExpandedMerged] = useState<Set<string>>(new Set())
+
+  React.useEffect(() => {
+    setGroupDefs(structuredGroups)
+    setRows(initialRows)
+    initialRef.current = JSON.stringify({ rows: initialRows, groups: structuredGroups })
+  }, [structuredGroups, draft.id])
 
   // --- Estat de confirmaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³
   const [confirmed, setConfirmed] = useState<boolean>(
@@ -515,6 +542,7 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
         department: draft.department,
         eventId: draft.id,
         rows: cleaned,
+        groups: groupDefs,
       }),
     })
 
@@ -526,7 +554,7 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
     alert('Quadrant desat correctament')
 
     // 3) Marquem estat com a no-dirty
-    initialRef.current = JSON.stringify(cleaned)
+    initialRef.current = JSON.stringify({ rows: cleaned, groups: groupDefs })
 
     // 4) Notifiquem perquÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¨ la pantalla es refresqui
     window.dispatchEvent(new Event('quadrant:updated'))
@@ -607,10 +635,61 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
 
   const startEdit = (i: number) => setEditIdx(i)
   const endEdit = () => setEditIdx(null)
-  const patchRow = (patch: Partial<Row>) =>
+  const patchRow = (patch: Partial<Row>) => {
+    if (editIdx === null) return
+    const currentRow = rows[editIdx]
+    if (!currentRow) return
+
+    const nextRow = { ...currentRow, ...patch } as Row
+
     setRows((rs) =>
-      rs.map((r, idx) => (idx === editIdx ? { ...r, ...patch } as Row : r))
+      rs.map((row, idx) => {
+        if (idx === editIdx) return nextRow
+
+        const sameGroup =
+          isServeisDept &&
+          currentRow.groupId &&
+          row.groupId === currentRow.groupId
+
+        const conductorEdited =
+          currentRow.role === 'conductor' ||
+          (currentRow.role === 'responsable' && currentRow.isDriver)
+
+        const isCompanion =
+          row.role === 'treballador' ||
+          (row.role === 'responsable' && !row.isDriver)
+
+        if (sameGroup && conductorEdited && isCompanion) {
+          return {
+            ...row,
+            startDate: nextRow.startDate,
+            startTime: nextRow.startTime,
+            arrivalTime: nextRow.arrivalTime,
+            meetingPoint: nextRow.meetingPoint,
+          }
+        }
+
+        return row
+      })
     )
+
+    if (isServeisDept && currentRow.groupId) {
+      const relevantGroupPatch: Record<string, unknown> = {}
+      if (patch.startDate !== undefined) relevantGroupPatch.serviceDate = patch.startDate
+      if (patch.startTime !== undefined) relevantGroupPatch.startTime = patch.startTime
+      if (patch.endTime !== undefined) relevantGroupPatch.endTime = patch.endTime
+      if (patch.arrivalTime !== undefined) relevantGroupPatch.arrivalTime = patch.arrivalTime
+      if (patch.meetingPoint !== undefined) relevantGroupPatch.meetingPoint = patch.meetingPoint
+
+      if (Object.keys(relevantGroupPatch).length > 0) {
+        setGroupDefs((prev) =>
+          prev.map((group) =>
+            group.id === currentRow.groupId ? { ...group, ...relevantGroupPatch } : group
+          )
+        )
+      }
+    }
+  }
 
   const revertRow = () => {
     if (editIdx === null) return
@@ -635,7 +714,7 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
     await handleSaveAll(next)
   }
 
-  const showCuinaGroups = hasCuinaGroups
+  const showStructuredGroups = hasStructuredGroups
 
   const toggleMerged = (key: string) =>
     setExpandedMerged((prev) => {
@@ -719,7 +798,7 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
 
     return (
       <div
-        className="border-b border-slate-200 px-2 py-3 hover:bg-slate-50 grid gap-2 grid-cols-1 sm:grid-cols-[32px_1fr_5.5rem_5.5rem_minmax(10rem,1fr)_minmax(10rem,1fr)_3.5rem] items-center"
+        className="border-b border-slate-200 px-2 py-3 hover:bg-slate-50 grid gap-2 grid-cols-1 sm:grid-cols-[40px_minmax(11rem,1fr)_5rem_4.5rem_4.5rem_4.5rem_minmax(8rem,0.9fr)_4.5rem_3.5rem] items-center"
       >
         <div className="hidden sm:flex items-center justify-center gap-1">
           {roles.map((role) => (
@@ -734,6 +813,12 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
         </div>
         <div className="hidden sm:block w-[5.5rem] tabular-nums text-[14px] text-slate-700">
           {primary.startTime ? primary.startTime.substring(0, 5) : '--:--'}
+        </div>
+        <div className="hidden sm:block w-[5.5rem] tabular-nums text-[14px] text-slate-700">
+          {primary.endTime ? primary.endTime.substring(0, 5) : '--:--'}
+        </div>
+        <div className="hidden sm:block w-[5.5rem] tabular-nums text-[14px] text-slate-700">
+          {primary.arrivalTime ? primary.arrivalTime.substring(0, 5) : '--:--'}
         </div>
         <div className="hidden sm:block truncate text-[14px] text-slate-700">
           {primary.meetingPoint || <span className="text-gray-400">-</span>}
@@ -784,6 +869,10 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
               {primary.startDate ? primary.startDate.split('-').slice(1).reverse().join('/') : '--/--'}
               {' - '}
               {primary.startTime ? primary.startTime.substring(0, 5) : '--:--'}
+              {' - '}
+              {primary.endTime ? primary.endTime.substring(0, 5) : '--:--'}
+              {' - '}
+              {primary.arrivalTime ? primary.arrivalTime.substring(0, 5) : '--:--'}
             </div>
           </div>
           <button
@@ -847,8 +936,8 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
     />
   )
 
-  const defaultGroup = hasCuinaGroups ? cuinaGroups[0] : undefined
-  const defaultGroupId = hasCuinaGroups ? 'group-1' : undefined
+  const defaultGroup = hasStructuredGroups ? groupDefs[0] : undefined
+  const defaultGroupId = hasStructuredGroups ? groupDefs[0]?.id : undefined
   const defaultGroupStartTime = defaultGroup?.startTime || draft.startTime
   const defaultGroupEndTime = defaultGroup?.endTime || draft.endTime
   const defaultGroupArrivalTime = defaultGroup?.arrivalTime || draft.arrivalTime
@@ -858,8 +947,8 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
   const hasInlineEditor = Boolean(currentEditingRow && editIdx !== null)
 
   const addRowToGroup = (role: Role, groupId?: string) => {
-    const group = hasCuinaGroups
-      ? cuinaGroups[Number(groupId?.replace('group-', '')) - 1] || defaultGroup
+    const group = hasStructuredGroups
+      ? groupDefs.find((item) => item.id === groupId) || defaultGroup
       : undefined
     const groupStart = group?.startTime || defaultGroupStartTime || ''
     const groupEnd = group?.endTime || defaultGroupEndTime || ''
@@ -867,7 +956,7 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
     const groupMeeting = group?.meetingPoint || defaultGroupMeetingPoint
 
     if (role === 'brigada') {
-      if (hasCuinaGroups) {
+      if (hasStructuredGroups) {
         const ettIdx = rows.findIndex(
           (r) => r.role === 'brigada' && !r.groupId && norm(r.name || '') === 'ett'
         )
@@ -954,26 +1043,83 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
     ])
   }
 
+  const addGroup = () => {
+    const source = groupDefs[groupDefs.length - 1] || defaultGroup
+    const nextId = `group-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+    setGroupDefs((prev) => [
+      ...prev,
+      {
+        id: nextId,
+        serviceDate: source?.serviceDate || draft.startDate,
+        dateLabel: source?.dateLabel || null,
+        meetingPoint: source?.meetingPoint || defaultMeetingPoint,
+        startTime: source?.startTime || draft.startTime,
+        endTime: source?.endTime || draft.endTime,
+        arrivalTime: source?.arrivalTime || draft.arrivalTime || null,
+        workers: 0,
+        drivers: 0,
+        needsDriver: false,
+        driverId: null,
+        driverName: null,
+        responsibleId: null,
+        responsibleName: null,
+      },
+    ])
+  }
+
+  const removeGroup = (groupId: string) => {
+    setGroupDefs((prev) => prev.filter((group) => group.id !== groupId))
+    setRows((prev) => prev.filter((row) => row.groupId !== groupId))
+    setEditIdx((current) => {
+      if (current === null) return null
+      const currentRow = rows[current]
+      if (!currentRow || currentRow.groupId !== groupId) return current
+      return null
+    })
+  }
+
   return (
   <div
     className={`w-full rounded-xl border border-slate-200 bg-white/95 ${
       hasInlineEditor ? '' : 'lg:max-w-[64%] lg:mx-auto'
     }`}
   >
+    <div className="flex items-center justify-end border-b border-slate-200 bg-slate-50/80 px-3 py-3 sm:px-4">
+      <DraftActions
+        confirmed={confirmed}
+        confirming={confirming}
+        dirty={dirty}
+        onConfirm={handleConfirm}
+        onUnconfirm={handleUnconfirm}
+        onSave={() => handleSaveAll()}
+        onDelete={handleDeleteQuadrant}
+      />
+    </div>
+
     {/* Vista escriptori/tablet */}
     <div className="hidden sm:block">
       <div className={`flex gap-3 ${hasInlineEditor ? 'lg:items-start' : ''}`}>
         <div className={`${hasInlineEditor ? 'lg:w-[64%]' : 'w-full'} min-w-0 overflow-x-auto`}>
       {/* Files */}
       <div className="flex flex-col divide-y">
-        {showCuinaGroups
+        {showStructuredGroups
           ? (
               <>
-                {cuinaGroups.map((group, gidx) => {
-                  const groupId = `group-${gidx + 1}`
-              const isLastGroup = gidx === cuinaGroups.length - 1
+                {groupDefs.map((group, gidx) => {
+                  const groupId = group.id || `group-${gidx + 1}`
               return (
                 <React.Fragment key={groupId}>
+                  <div className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-50 border-b flex items-center justify-between gap-2">
+                    <span>Grup {gidx + 1}</span>
+                    {!isLocked && groupDefs.length > 1 && (
+                      <button
+                        onClick={() => removeGroup(groupId)}
+                        className="text-[11px] font-medium text-rose-600 hover:text-rose-700"
+                      >
+                        Eliminar grup
+                      </button>
+                    )}
+                  </div>
                   {renderDisplayItems(buildDisplayItems(groupId))}
                   {!isLocked && (
                     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3 bg-slate-50 border-b">
@@ -1005,22 +1151,21 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
                           + ETT
                         </button>
                       </div>
-                      {isLastGroup && (
-                        <DraftActions
-                          confirmed={confirmed}
-                          confirming={confirming}
-                          dirty={dirty}
-                          onConfirm={handleConfirm}
-                          onUnconfirm={handleUnconfirm}
-                          onSave={() => handleSaveAll()}
-                          onDelete={handleDeleteQuadrant}
-                        />
-                      )}
                     </div>
                   )}
                 </React.Fragment>
               )
             })}
+                {!isLocked && isServeisDept && (
+                  <div className="flex justify-start px-3 py-3 bg-slate-50 border-b">
+                    <button
+                      onClick={addGroup}
+                      className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 border border-slate-200 hover:bg-slate-100"
+                    >
+                      + Grup
+                    </button>
+                  </div>
+                )}
                 {renderDisplayItems(buildDisplayItems())}
               </>
             )
@@ -1034,6 +1179,7 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
               <RowEditor
                 row={currentEditingRow}
                 available={availableForEditor}
+                isServeisDept={isServeisDept}
                 onPatch={patchRow}
                 onClose={endEdit}
                 onRevert={revertRow}
@@ -1049,6 +1195,7 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
           <RowEditor
             row={currentEditingRow}
             available={availableForEditor}
+            isServeisDept={isServeisDept}
             onPatch={patchRow}
             onClose={endEdit}
             onRevert={revertRow}
@@ -1060,23 +1207,23 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
 
     {/* Vista mobil */}
     <div className="block sm:hidden divide-y">
-      {showCuinaGroups
+      {showStructuredGroups
         ? (
             <>
-              {cuinaGroups.map((group, gidx) => {
-                const groupId = `group-${gidx + 1}`
-                const groupStart = group.startTime || draft.startTime || '-'
-                const groupArrival = group.arrivalTime || draft.arrivalTime || '-'
-                const groupEnd = group.endTime || draft.endTime || '-'
-                const groupMeeting = group.meetingPoint || draft.meetingPoint || '-'
+              {groupDefs.map((group, gidx) => {
+                const groupId = group.id || `group-${gidx + 1}`
             return (
               <div key={groupId} className="divide-y">
-                <div className="px-3 py-2 text-xs text-slate-600 bg-slate-50">
+                <div className="px-3 py-2 text-xs text-slate-600 bg-slate-50 flex items-center justify-between gap-2">
                   <div className="font-semibold text-slate-700">Grup {gidx + 1}</div>
-                  <div>Meeting point: {groupMeeting}</div>
-                  <div>Hora inici: {groupStart}</div>
-                  <div>Hora arribada: {groupArrival}</div>
-                  <div>Hora fi: {groupEnd}</div>
+                  {!isLocked && groupDefs.length > 1 && (
+                    <button
+                      onClick={() => removeGroup(groupId)}
+                      className="text-[11px] font-medium text-rose-600 hover:text-rose-700"
+                    >
+                      Eliminar
+                    </button>
+                  )}
                 </div>                {renderDisplayItemsMobile(buildDisplayItems(groupId))}
                 {!isLocked && (
                   <div className="flex flex-wrap gap-2 px-3 py-3 bg-slate-50">
@@ -1111,6 +1258,16 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
               </div>
             )
           })}
+              {!isLocked && isServeisDept && (
+                <div className="px-3 py-3 bg-slate-50 border-b">
+                  <button
+                    onClick={addGroup}
+                    className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 border border-slate-200 hover:bg-slate-100"
+                  >
+                    + Grup
+                  </button>
+                </div>
+              )}
               {renderDisplayItemsMobile(buildDisplayItems())}
             </>
           )
@@ -1147,7 +1304,7 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
           ))}
     </div>
 
-    {!showCuinaGroups && (
+    {!showStructuredGroups && (
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3 bg-gray-50 border-t">
         <div className="flex flex-wrap gap-2">
           <button
@@ -1177,15 +1334,6 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
             + ETT
           </button>
         </div>
-        <DraftActions
-          confirmed={confirmed}
-          confirming={confirming}
-          dirty={dirty}
-          onConfirm={handleConfirm}
-          onUnconfirm={handleUnconfirm}
-          onSave={() => handleSaveAll()}
-          onDelete={handleDeleteQuadrant}
-        />
       </div>
     )}
 
@@ -1194,6 +1342,7 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
         <RowEditor
           row={currentEditingRow}
           available={availableForEditor}
+          isServeisDept={isServeisDept}
           onPatch={patchRow}
           onClose={endEdit}
           onRevert={revertRow}

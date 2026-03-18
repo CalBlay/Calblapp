@@ -15,6 +15,7 @@ const normLower = (s?: string) =>
   unaccent((s || '').toString().trim()).toLowerCase()
 
 const isTreballador = (role?: string) => normLower(role) === 'treballador'
+const isCapDepartament = (role?: string) => normalizeRole(role) === 'cap'
 const requiresCorporateEmail = (role?: string) =>
   ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
 
@@ -132,9 +133,10 @@ export async function POST(req: Request) {
       opsChannelsConfigurable: Array.isArray(opsChannelsConfigurable)
         ? opsChannelsConfigurable.map(String).filter(Boolean)
         : [],
-      available: isTreballador(role) ? (available ?? true) : undefined,
-      isDriver: isTreballador(role) ? (isDriver ?? false) : undefined,
-      workerRank: isTreballador(role) ? (workerRank || 'equip') : undefined,
+      available: isTreballador(role) || isCapDepartament(role) ? (available ?? true) : undefined,
+      isDriver: isTreballador(role) || isCapDepartament(role) ? (isDriver ?? false) : undefined,
+      workerRank:
+        isTreballador(role) || isCapDepartament(role) ? (workerRank || 'equip') : undefined,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
@@ -157,20 +159,21 @@ export async function POST(req: Request) {
       userId = ref.id
     }
 
-    // 🔹 Si és treballador → sincronitza col·lecció `personnel`
-    if (isTreballador(role)) {
+    // 🔹 Si és treballador o cap de departament → sincronitza `personnel`
+    if (isTreballador(role) || isCapDepartament(role)) {
       const personRef = db.collection('personnel').doc(userId)
       const snap = await personRef.get()
+      const isCap = isCapDepartament(role)
 
       const person = {
         id: userId,
         name: userPayload.name,
         department: userPayload.department,
         departmentLower: userPayload.departmentLower,
-        role: 'treballador',
+        role: isCap ? 'responsable' : 'treballador',
         available: userPayload.available ?? true,
         isDriver: userPayload.isDriver ?? false,
-        workerRank: userPayload.workerRank || 'equip',
+        workerRank: isCap ? 'responsable' : userPayload.workerRank || 'equip',
         email: userPayload.email,
         phone: userPayload.phone,
         createdAt: snap.exists ? (snap.data() as any).createdAt ?? Date.now() : Date.now(),

@@ -44,6 +44,155 @@ const cleanText = (value?: unknown) => {
 const getEventKey = (item: any) =>
   String(item?.id || item?.eventId || item?.eventCode || item?.code || '').trim()
 
+const normalizeNameKey = (value?: unknown) =>
+  (value || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+
+const timeToMinutes = (value?: string | null) => {
+  if (!value) return null
+  const [hours, minutes] = String(value).split(':').map(Number)
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null
+  return hours * 60 + minutes
+}
+
+const pickEdgeTime = (
+  values: Array<string | undefined | null>,
+  mode: 'min' | 'max'
+) => {
+  let best: { text: string; value: number } | null = null
+  values.forEach((candidate) => {
+    const minutes = timeToMinutes(candidate)
+    if (minutes === null || !candidate) return
+    if (!best) {
+      best = { text: candidate, value: minutes }
+      return
+    }
+    if (mode === 'min' ? minutes < best.value : minutes > best.value) {
+      best = { text: candidate, value: minutes }
+    }
+  })
+  return best?.text
+}
+
+const mergePeople = (groups: any[][]) => {
+  const merged: any[] = []
+  const seen = new Set<string>()
+  groups.flat().forEach((person) => {
+    if (!person?.name) return
+    const key = `${normalizeNameKey(person.name)}__${normalizeNameKey(person.meetingPoint)}`
+    if (seen.has(key)) return
+    seen.add(key)
+    merged.push(person)
+  })
+  return merged
+}
+
+const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
+  const grouped = new Map<string, UnifiedEvent[]>()
+
+  items.forEach((item) => {
+    const isServiceDraft =
+      item.draft &&
+      normalizeNameKey((item.draft as any)?.department || item.department) === 'serveis' &&
+      normalizeNameKey(item.phaseKey || item.phaseType || item.phaseLabel || 'event') === 'event'
+
+    if (!isServiceDraft) {
+      grouped.set(`single:${item.id}`, [item])
+      return
+    }
+
+    const key = `service:${String(item.eventId || item.code || item.id)}`
+    const list = grouped.get(key) || []
+    list.push(item)
+    grouped.set(key, list)
+  })
+
+  return Array.from(grouped.values()).map((entries) => {
+    if (entries.length === 1) return entries[0]
+
+    const base = entries[0]
+    const drafts = entries.map((entry) => entry.draft).filter(Boolean)
+    const mergedStatus: QuadrantStatus =
+      entries.every((entry) => entry.quadrantStatus === 'confirmed')
+        ? 'confirmed'
+        : entries.some((entry) => entry.quadrantStatus === 'draft')
+        ? 'draft'
+        : entries.some((entry) => entry.quadrantStatus === 'confirmed')
+        ? 'draft'
+        : 'pending'
+    const mergedGroups = drafts.flatMap((draft: any) => {
+      const groups = Array.isArray(draft?.groups) ? draft.groups : []
+      if (groups.length > 0) {
+        return groups.map((group: any) => ({
+          ...group,
+          driverName:
+            group?.driverName ||
+            (Array.isArray(draft?.conductors) ? draft.conductors[0]?.name : null) ||
+            null,
+          responsibleId: group?.responsibleId || draft?.responsableId || null,
+          responsibleName:
+            group?.responsibleName || draft?.responsableName || null,
+        }))
+      }
+
+      return [
+        {
+          id: draft?.id || null,
+          serviceDate: draft?.startDate || null,
+          meetingPoint: draft?.meetingPoint || '',
+          startTime: draft?.startTime || '',
+          endTime: draft?.endTime || '',
+          workers: Number(draft?.totalWorkers || 0),
+          drivers: Number(draft?.numDrivers || 0),
+          needsDriver: Number(draft?.numDrivers || 0) > 0,
+          driverId: draft?.conductors?.[0]?.id || null,
+          driverName: draft?.conductors?.[0]?.name || null,
+          responsibleId: draft?.responsableId || null,
+          responsibleName: draft?.responsableName || null,
+        },
+      ]
+    })
+    const startTime = pickEdgeTime(entries.map((entry) => entry.displayStartTime || entry.startTime), 'min')
+    const endTime = pickEdgeTime(entries.map((entry) => entry.displayEndTime || entry.endTime), 'max')
+    const mergedDraft = {
+      ...base.draft,
+      id: String(base.eventId || base.id || ''),
+      startTime: startTime || base.draft?.startTime || '',
+      endTime: endTime || base.draft?.endTime || '',
+      conductors: mergePeople(drafts.map((draft: any) => (Array.isArray(draft?.conductors) ? draft.conductors : []))),
+      treballadors: mergePeople(drafts.map((draft: any) => (Array.isArray(draft?.treballadors) ? draft.treballadors : []))),
+      brigades: drafts.flatMap((draft: any) => (Array.isArray(draft?.brigades) ? draft.brigades : [])),
+      groups: mergedGroups,
+      totalWorkers: drafts.reduce((sum: number, draft: any) => sum + Number(draft?.totalWorkers || 0), 0),
+      numDrivers: drafts.reduce((sum: number, draft: any) => sum + Number(draft?.numDrivers || 0), 0),
+      responsableId:
+        drafts.find((draft: any) => String(draft?.responsableId || '').trim())?.responsableId ||
+        base.draft?.responsableId ||
+        '',
+      responsableName:
+        drafts.find((draft: any) => String(draft?.responsableName || '').trim())?.responsableName ||
+        base.draft?.responsableName ||
+        '',
+    }
+
+    return {
+      ...base,
+      id: String(base.eventId || base.id || ''),
+      draft: mergedDraft,
+      quadrantStatus: mergedStatus,
+      workersSummary: buildWorkersSummary(mergedDraft),
+      displayStartTime: startTime || base.displayStartTime,
+      displayEndTime: endTime || base.displayEndTime,
+      horariLabel: `${startTime || '--:--'} - ${endTime || '--:--'}`,
+    }
+  })
+}
+
 const buildWorkersSummary = (q: any) => {
   const normalizeName = (value?: unknown) =>
     (value || '').toString().trim().toLowerCase()
@@ -247,7 +396,7 @@ export function useQuadrantsPageData({
       })
     })
 
-    return out
+    return mergeServiceEntries(out)
   }, [events, quadrants])
 
   const phasesByEventId = useMemo(() => {

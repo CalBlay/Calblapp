@@ -254,7 +254,18 @@ export async function POST(req: NextRequest) {
             drivers: Number(g.drivers || 0),
             needsDriver: !!g.needsDriver,
             driverId: g.driverId || null,
-            driverName: g.driverName || null,
+            driverName:
+              g.driverName ||
+              assignmentForSave.drivers?.find((driver, idx) =>
+                idx < Math.max(1, Number(g.drivers || 0))
+              )?.name ||
+              null,
+            responsibleId: g.responsibleId || bodyForSave.manualResponsibleId || null,
+            responsibleName:
+              g.responsibleName ||
+              bodyForSave.manualResponsibleName ||
+              assignmentForSave.responsible?.name ||
+              null,
           }))
         } else {
           const normalizePerson = (value?: string | null) =>
@@ -515,6 +526,7 @@ export async function POST(req: NextRequest) {
           numDrivers: Number(g.drivers || 0),
           wantsResp,
           responsableId,
+          manualDriverId: g.driverId || null,
           meetingPoint: g.meetingPoint || body.meetingPoint || '',
           groupsOverride: [g],
         })
@@ -535,6 +547,7 @@ export async function POST(req: NextRequest) {
         totalWorkers: Number(phase.totalWorkers || 0),
         numDrivers: Number(phase.numDrivers || 0),
         manualResponsibleId: phase.wantsResp ? phase.responsableId || null : null,
+        manualDriverId: phase.manualDriverId || null,
         skipResponsible: phase.wantsResp === false,
         vehicles: Array.isArray(phase.vehicles) ? phase.vehicles : [],
         groups: phase.groupsOverride || body.groups,

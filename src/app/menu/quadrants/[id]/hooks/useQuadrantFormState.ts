@@ -348,6 +348,41 @@ export function useQuadrantFormState({
   }, [phaseForms])
 
   useEffect(() => {
+    if (!modalOpen) return
+
+    setStartDate(extractDate(event.start))
+    setEndDate(extractDate(event.start))
+    setStartTime(event.startTime || '')
+    setEndTime(event.endTime || '')
+    setArrivalTime(event.arrivalTime || '')
+    setLocation(event.location || event.eventLocation || '')
+    setMeetingPoint(event.meetingPoint || '')
+    setManualResp('')
+    setTotalWorkers(event.totalWorkers?.toString() || '')
+    setNumDrivers(event.numDrivers?.toString() || '')
+    setEttOpen(false)
+    setEttData({
+      serviceDate: extractDate(event.start),
+      meetingPoint: event.location || event.eventLocation || '',
+      startTime: event.startTime || '',
+      endTime: event.endTime || '',
+      workers: '',
+    })
+  }, [
+    modalOpen,
+    event.id,
+    event.start,
+    event.startTime,
+    event.endTime,
+    event.arrivalTime,
+    event.location,
+    event.eventLocation,
+    event.meetingPoint,
+    event.totalWorkers,
+    event.numDrivers,
+  ])
+
+  useEffect(() => {
     setNumDrivers(syncNumDrivers.toString())
   }, [syncNumDrivers])
 

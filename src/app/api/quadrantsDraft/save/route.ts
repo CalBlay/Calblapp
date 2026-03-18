@@ -48,6 +48,7 @@ interface RowInput {
   role: Role
   id: string
   name: string
+  isDriver?: boolean
   groupId?: string
   meetingPoint?: string
   startDate?: string
@@ -58,6 +59,23 @@ interface RowInput {
   plate?: string
   arrivalTime?: string
   workers?: number // només per brigades
+}
+
+interface GroupInput {
+  id?: string | null
+  serviceDate?: string | null
+  dateLabel?: string | null
+  meetingPoint?: string
+  startTime?: string
+  arrivalTime?: string | null
+  endTime?: string
+  workers?: number
+  drivers?: number
+  needsDriver?: boolean
+  driverId?: string | null
+  driverName?: string | null
+  responsibleId?: string | null
+  responsibleName?: string | null
 }
 
 type Line = {
@@ -127,10 +145,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { department, eventId, rows } = (await req.json()) as {
+    const { department, eventId, rows, groups } = (await req.json()) as {
       department: string
       eventId: string
       rows: RowInput[]
+      groups?: GroupInput[]
     }
 
     if (!department || !eventId || !Array.isArray(rows)) {
@@ -143,6 +162,7 @@ export async function POST(req: NextRequest) {
     const coll = await resolveDeptCollection(department)
     const ref = db.collection(coll).doc(eventId)
     const isCuina = norm(department) === 'cuina'
+    const isServeis = norm(department) === 'serveis'
 
     // 🧩 Separa per rols
     const responsables = rows.filter((r) => r.role === 'responsable')
@@ -191,6 +211,148 @@ export async function POST(req: NextRequest) {
     const updateData: Record<string, unknown> = {
       ...dataBase,
       createdAt,
+    }
+
+    if (isServeis && Array.isArray(groups) && groups.length > 0 && rows.some((r) => r.groupId)) {
+      const eventDocsSnap = await db.collection(coll).where('eventId', '==', eventId).get()
+      const existingDocs = eventDocsSnap.docs
+      const baseDoc = existingDocs[0]?.data() || existing || {}
+      const existingByGroup = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
+
+      existingDocs.forEach((doc) => {
+        const data = doc.data() as any
+        const groupId =
+          data?.groups?.[0]?.id ||
+          doc.id.split('__').pop() ||
+          ''
+        if (groupId) existingByGroup.set(String(groupId), doc)
+      })
+
+      const groupedRows = new Map<string, RowInput[]>()
+      rows.forEach((row) => {
+        if (!row.groupId) return
+        const list = groupedRows.get(row.groupId) || []
+        list.push(row)
+        groupedRows.set(row.groupId, list)
+      })
+
+      const sanitizeGroupId = (value?: string | null) =>
+        String(value || 'group')
+          .trim()
+          .replace(/[^a-zA-Z0-9_-]/g, '') || 'group'
+
+      const batch = db.batch()
+      const keptDocIds = new Set<string>()
+
+      groups.forEach((group, index) => {
+        const groupId = String(group.id || `group-${index + 1}`)
+        const groupRows = groupedRows.get(groupId) || []
+        const byRole = (role: Role) => groupRows.filter((row) => row.role === role)
+        const responsables = byRole('responsable')
+        const conductorsRows = byRole('conductor')
+        const treballadorsRows = byRole('treballador')
+        const brigadesRows = byRole('brigada')
+        const mainResponsable = responsables[0] ?? null
+        const responsibleActsAsDriver = !!mainResponsable?.isDriver
+        const conductorsForSave = [
+          ...(responsibleActsAsDriver && mainResponsable ? [mainResponsable] : []),
+          ...conductorsRows,
+        ]
+
+        const names = new Set<string>()
+        ;[...responsables, ...conductorsForSave, ...treballadorsRows].forEach((row) => {
+          if (!row.name || row.name === 'Extra') return
+          names.add(row.name.toLowerCase().trim())
+        })
+
+        const extraCount =
+          treballadorsRows.filter((row) => row.name === 'Extra').length +
+          brigadesRows.reduce((sum, row) => sum + Number(row.workers || 0), 0)
+
+        const baseGroupDoc = existingByGroup.get(groupId)
+        const previous = (baseGroupDoc?.data() as any) || baseDoc
+        const timingAnchor =
+          conductorsForSave[0] ||
+          mainResponsable ||
+          groupRows[0] ||
+          null
+        const groupDate = group.serviceDate || groupRows[0]?.startDate || previous?.startDate || ''
+        const startTime =
+          timingAnchor?.startTime || group.startTime || groupRows[0]?.startTime || previous?.startTime || ''
+        const endTime =
+          timingAnchor?.endTime || group.endTime || groupRows[0]?.endTime || previous?.endTime || ''
+        const arrivalTime =
+          timingAnchor?.arrivalTime ?? group.arrivalTime ?? groupRows[0]?.arrivalTime ?? previous?.arrivalTime ?? null
+        const meetingPoint =
+          timingAnchor?.meetingPoint || group.meetingPoint || groupRows[0]?.meetingPoint || previous?.meetingPoint || ''
+        const totalWorkers = names.size + extraCount
+        const numDrivers = conductorsForSave.length
+        const docId =
+          baseGroupDoc?.id ||
+          `${eventId}__event__${groupDate || previous?.startDate || 'nodate'}__${sanitizeGroupId(groupId)}`
+
+        keptDocIds.add(docId)
+
+        batch.set(
+          db.collection(coll).doc(docId),
+          {
+            ...previous,
+            department: norm(department),
+            eventId,
+            startDate: groupDate || previous?.startDate || '',
+            endDate: groupDate || previous?.endDate || '',
+            startTime,
+            endTime,
+            arrivalTime,
+            meetingPoint,
+            responsables: responsables.map(toLine),
+            conductors: conductorsForSave.map(toLine),
+            treballadors: treballadorsRows.map(toLine),
+            brigades: brigadesRows.map(toBrigadeLine),
+            numDrivers,
+            totalWorkers,
+            responsable: mainResponsable ? toLine(mainResponsable) : null,
+            responsableId: mainResponsable?.id || '',
+            responsableName: mainResponsable?.name || '',
+            status: 'draft',
+            updatedAt: new Date(),
+            groups: [
+              {
+                ...group,
+                id: groupId,
+                serviceDate: groupDate || null,
+                meetingPoint,
+                startTime,
+                endTime,
+                arrivalTime,
+                workers: totalWorkers,
+                drivers: numDrivers,
+                needsDriver: numDrivers > 0,
+                driverId:
+                  (responsibleActsAsDriver ? mainResponsable?.id : conductorsRows[0]?.id) ||
+                  group.driverId ||
+                  null,
+                driverName:
+                  (responsibleActsAsDriver ? mainResponsable?.name : conductorsForSave[0]?.name) ||
+                  group.driverName ||
+                  null,
+                responsibleId: mainResponsable?.id || null,
+                responsibleName: mainResponsable?.name || null,
+              },
+            ],
+            createdAt:
+              previous?.createdAt?.toDate?.() ? previous.createdAt.toDate() : previous?.createdAt || createdAt,
+          },
+          { merge: true }
+        )
+      })
+
+      existingDocs.forEach((doc) => {
+        if (!keptDocIds.has(doc.id)) batch.delete(doc.ref)
+      })
+
+      await batch.commit()
+      return NextResponse.json({ ok: true })
     }
 
     if (isCuina && Array.isArray(existing?.groups) && rows.some((r) => r.groupId)) {

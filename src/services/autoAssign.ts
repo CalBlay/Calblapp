@@ -41,6 +41,7 @@ interface VehicleRequest {
 
 interface PremiseCondition {
   locations: string[]
+  responsibleId?: string
   responsible: string
 }
 
@@ -79,6 +80,22 @@ const norm = (s?: string | null) => unaccent((s || '').toLowerCase().trim())
 const normRole = (s?: string | null) => {
   const raw = norm(s)
   return raw === 'soldat' ? 'equip' : raw
+}
+
+const findBestNameMatch = (pool: Personnel[], rawName?: string | null) => {
+  const target = norm(rawName)
+  if (!target) return null
+
+  const exact = pool.find((person) => norm(person.name) === target)
+  if (exact) return exact
+
+  const startsWith = pool.filter((person) => norm(person.name).startsWith(target))
+  if (startsWith.length === 1) return startsWith[0]
+
+  const contains = pool.filter((person) => norm(person.name).includes(target))
+  if (contains.length === 1) return contains[0]
+
+  return null
 }
 
 /**
@@ -120,6 +137,7 @@ export async function autoAssign(payload: {
   totalWorkers: number
   numDrivers: number
   manualResponsibleId?: string | null
+  manualDriverId?: string | null
   skipResponsible?: boolean
   vehicles?: VehicleRequest[]
 }) {
@@ -130,6 +148,7 @@ export async function autoAssign(payload: {
     endDate, endTime = '00:00',
     totalWorkers, numDrivers,
     manualResponsibleId,
+    manualDriverId,
     skipResponsible = false,
     vehicles = []
   } = payload
@@ -199,14 +218,26 @@ export async function autoAssign(payload: {
     if (manualResponsibleId) {
       chosenResp = all.find(p => p.id === manualResponsibleId) || null
     }
-    if (!chosenResp && premises.conditions?.length && location) {
+    const locationCandidates = [location, meetingPoint]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+
+    if (!chosenResp && premises.conditions?.length && locationCandidates.length > 0) {
       const hit = premises.conditions.find((c: PremiseCondition) =>
-        c.locations.some((loc: string) => norm(location).includes(norm(loc)))
+        c.locations.some((loc: string) => {
+          const normalizedLoc = norm(loc)
+          return locationCandidates.some((candidate) =>
+            norm(candidate).includes(normalizedLoc)
+          )
+        })
       )
       if (hit) {
         locationResponsibleMatched = true
         locationResponsibleName = hit.responsible
-        const candidate = all.find(p => norm(p.name) === norm(hit.responsible))
+        const candidate =
+          (hit.responsibleId
+            ? all.find((person) => person.id === hit.responsibleId) || null
+            : null) || findBestNameMatch(all, hit.responsible)
         if (candidate) {
           const elig = getEligibility(candidate.name, startISO, endISO, baseCtx)
           if (!elig.eligible) {
@@ -347,7 +378,93 @@ export async function autoAssign(payload: {
       return false
     }) || null
 
-  if (dept === 'serveis' && Number(numDrivers || 0) > 0 && Array.isArray(premises.driverCrews)) {
+  const appendCrewCompanions = (crew?: DriverCrewPremise | null) => {
+    if (!crew) return
+    crew.companions.forEach((companion, index) => {
+      const person = findPersonnelByCrewRef(companion)
+      if (!person) {
+        violations.push('driver_companion_missing')
+        notes.push(
+          `L'acompanyant ${index + 1} de l'equip habitual del conductor no existeix al departament.`
+        )
+        return
+      }
+
+      const personNorm = norm(person.name)
+      if (reservedNames.has(personNorm)) return
+
+      const elig = getEligibility(person.name, startISO, endISO, baseCtx)
+      if (!elig.eligible) {
+        violations.push('driver_companion_conflict')
+        notes.push(
+          `L'acompanyant ${person.name} de l'equip habitual del conductor no esta disponible.`
+        )
+        return
+      }
+
+      preferredStaff.push({ name: person.name, meetingPoint })
+      reservedNames.add(personNorm)
+    })
+  }
+
+  if (manualDriverId) {
+    const manualDriver = all.find((person) => person.id === manualDriverId) || null
+    if (!manualDriver || !manualDriver.isDriver) {
+      violations.push('manual_driver_missing')
+      notes.push("El conductor seleccionat manualment no existeix o no te perfil de conductor.")
+    } else {
+      const driverEligibility = getEligibility(manualDriver.name, startISO, endISO, baseCtx)
+      if (!driverEligibility.eligible) {
+        violations.push('manual_driver_conflict')
+        notes.push(
+          `El conductor seleccionat manualment (${manualDriver.name}) te conflicte de disponibilitat.`
+        )
+      }
+      preferredDrivers.push({
+        name: manualDriver.name,
+        meetingPoint,
+        plate: '',
+        vehicleType: '',
+      })
+      reservedNames.add(norm(manualDriver.name))
+    }
+  }
+
+  if (
+    !manualDriverId &&
+    preferredDrivers.length === 0 &&
+    chosenResp?.isDriver &&
+    Number(numDrivers || 0) > 0
+  ) {
+    preferredDrivers.push({
+      name: chosenResp.name,
+      meetingPoint,
+      plate: '',
+      vehicleType: '',
+    })
+    reservedNames.add(norm(chosenResp.name))
+
+    const respCrew =
+      dept === 'serveis' && Array.isArray(premises.driverCrews)
+        ? premises.driverCrews.find((crew) => {
+            const candidate = findPersonnelByCrewRef({
+              id: crew.driverId,
+              name: crew.driverName,
+            })
+            return !!candidate && norm(candidate.name) === norm(chosenResp.name)
+          })
+        : null
+
+    appendCrewCompanions(respCrew)
+  }
+
+  if (
+    !manualDriverId &&
+    preferredDrivers.length === 0 &&
+    dept === 'serveis' &&
+    Number(numDrivers || 0) > 0 &&
+    Array.isArray(premises.driverCrews)
+  ) {
     const preferredCrew = premises.driverCrews.find((crew) => {
       const candidate = findPersonnelByCrewRef({
         id: crew.driverId,
@@ -374,31 +491,7 @@ export async function autoAssign(payload: {
         reservedNames.add(norm(preferredDriver.name))
       }
 
-      preferredCrew.companions.forEach((companion, index) => {
-        const person = findPersonnelByCrewRef(companion)
-        if (!person) {
-          violations.push('driver_companion_missing')
-          notes.push(
-            `L'acompanyant ${index + 1} de l'equip habitual del conductor no existeix al departament.`
-          )
-          return
-        }
-
-        const personNorm = norm(person.name)
-        if (reservedNames.has(personNorm)) return
-
-        const elig = getEligibility(person.name, startISO, endISO, baseCtx)
-        if (!elig.eligible) {
-          violations.push('driver_companion_conflict')
-          notes.push(
-            `L'acompanyant ${person.name} de l'equip habitual del conductor no esta disponible.`
-          )
-          return
-        }
-
-        preferredStaff.push({ name: person.name, meetingPoint })
-        reservedNames.add(personNorm)
-      })
+      appendCrewCompanions(preferredCrew)
     } else if (premises.driverCrews.length > 0) {
       violations.push('driver_crew_conflict')
       notes.push(
@@ -452,9 +545,11 @@ export async function autoAssign(payload: {
   const finalNeededWorkers = Math.max(neededWorkers, missingToReachTotal)
 
   // 6.3) Selecció de treballadors
-  const staff: Array<{ name: string; meetingPoint: string }> = [...preferredStaff]
-  const taken = new Set<string>(reservedNames)
+  const selectedPreferredStaff = preferredStaff.slice(0, finalNeededWorkers)
+  const staff: Array<{ name: string; meetingPoint: string }> = [...selectedPreferredStaff]
+  const taken = new Set<string>(exclude)
   driversForCalc.forEach((d) => taken.add(norm(d.name)))
+  selectedPreferredStaff.forEach((member) => taken.add(norm(member.name)))
 
   for (const cand of staffPool) {
     if (staff.length >= finalNeededWorkers) break

@@ -1,11 +1,9 @@
-// File: src/app/api/quadrantsDraft/delete/route.ts
 import { NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
 
-// Normalitza noms de departament
 const norm = (v?: string) =>
   (v || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
 
@@ -25,32 +23,57 @@ export async function POST(req: Request) {
     const { department, eventId, phaseKey } = await req.json()
 
     if (!department || !eventId) {
-      return NextResponse.json({ ok: false, error: 'Missing department or eventId' }, { status: 400 })
+      return NextResponse.json(
+        { ok: false, error: 'Missing department or eventId' },
+        { status: 400 }
+      )
     }
 
-    const collName = canonicalCollectionFor(department)
-    const ref = db.collection(collName).doc(String(eventId))
+    const collection = db.collection(canonicalCollectionFor(department))
+    const directRef = collection.doc(String(eventId))
+    const directSnap = await directRef.get()
 
-    const snap = await ref.get()
-    if (!snap.exists) {
-      // Idempotent → si no existeix, no passa res
-      return NextResponse.json({ ok: true, alreadyDeleted: true })
+    if (directSnap.exists) {
+      if (phaseKey) {
+        const data = directSnap.data() as any
+        const phases = Array.isArray(data?.logisticaPhases) ? data.logisticaPhases : []
+        const target = String(phaseKey).toLowerCase().trim()
+        const next = phases.filter((phase: any) => {
+          const key = (phase?.key || phase?.label || '').toString().toLowerCase().trim()
+          return key !== target
+        })
+        await directRef.set({ logisticaPhases: next }, { merge: true })
+        return NextResponse.json({ ok: true, phaseDeleted: true, deletedCount: 1 })
+      }
+
+      await directRef.delete()
+      return NextResponse.json({ ok: true, deletedCount: 1 })
     }
 
-    if (phaseKey) {
-      const data = snap.data() as any
-      const phases = Array.isArray(data?.logisticaPhases) ? data.logisticaPhases : []
-      const target = String(phaseKey).toLowerCase().trim()
-      const next = phases.filter((p: any) => {
-        const key = (p?.key || p?.label || '').toString().toLowerCase().trim()
-        return key !== target
-      })
-      await ref.set({ logisticaPhases: next }, { merge: true })
-      return NextResponse.json({ ok: true, phaseDeleted: true })
+    const byEvent = await collection.where('eventId', '==', String(eventId)).get()
+    if (byEvent.empty) {
+      return NextResponse.json({ ok: true, alreadyDeleted: true, deletedCount: 0 })
     }
 
-    await ref.delete()
-    return NextResponse.json({ ok: true })
+    const targetPhase = String(phaseKey || '').toLowerCase().trim()
+    const docsToDelete = byEvent.docs.filter((doc) => {
+      if (!targetPhase) return true
+      const data = doc.data() as any
+      const keys = [data?.phaseKey, data?.phaseType, data?.phaseLabel]
+        .map((value) => String(value || '').toLowerCase().trim())
+        .filter(Boolean)
+      return keys.includes(targetPhase)
+    })
+
+    if (docsToDelete.length === 0) {
+      return NextResponse.json({ ok: true, alreadyDeleted: true, deletedCount: 0 })
+    }
+
+    const batch = db.batch()
+    docsToDelete.forEach((doc) => batch.delete(doc.ref))
+    await batch.commit()
+
+    return NextResponse.json({ ok: true, deletedCount: docsToDelete.length })
   } catch (e) {
     console.error('[quadrantsDraft/delete] error:', e)
     return NextResponse.json({ ok: false, error: 'Internal error' }, { status: 500 })

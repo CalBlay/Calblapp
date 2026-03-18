@@ -92,15 +92,41 @@ export async function POST(req: NextRequest) {
     }
 
     const coll = await resolveDeptCollection(department)
-    await db.collection(coll).doc(eventId).set(
-      {
-        status: 'draft',
-        confirmedAt: null,
-        confirmedBy: null,
-        updatedAt: new Date(),
-      },
-      { merge: true }
-    )
+    const collection = db.collection(coll)
+    const directRef = collection.doc(eventId)
+    const directSnap = await directRef.get()
+    const byEvent = await collection.where('eventId', '==', eventId).get()
+
+    const refs = new Map<string, FirebaseFirestore.DocumentReference>()
+    if (directSnap.exists) refs.set(directRef.id, directRef)
+    byEvent.docs.forEach((doc) => refs.set(doc.id, doc.ref))
+
+    if (refs.size === 0) {
+      await directRef.set(
+        {
+          status: 'draft',
+          confirmedAt: null,
+          confirmedBy: null,
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      )
+    } else {
+      const batch = db.batch()
+      refs.forEach((ref) => {
+        batch.set(
+          ref,
+          {
+            status: 'draft',
+            confirmedAt: null,
+            confirmedBy: null,
+            updatedAt: new Date(),
+          },
+          { merge: true }
+        )
+      })
+      await batch.commit()
+    }
 
     return NextResponse.json({ ok: true })
   } catch (e) {

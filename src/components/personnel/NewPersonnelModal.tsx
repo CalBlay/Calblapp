@@ -13,6 +13,18 @@ import { Label } from '@/components/ui/label'
 import { useCreatePersonnel, NewPerson } from '@/hooks/useCreatePersonnel'
 import { checkNameExists, generateSuggestions } from '@/lib/validateName'
 
+type LinkableUser = {
+  id: string
+  name: string
+  role: string
+  department: string
+  email: string
+  phone: string
+  available: boolean
+  isDriver: boolean
+  workerRank: string
+}
+
 // Opcions de rol permeses
 const ROLE_OPTIONS = [
   { value: 'equip', label: 'Equip' },
@@ -23,6 +35,13 @@ const ROLE_OPTIONS = [
 function normalizeRoleLocal(r?: string) {
   const v = (r || '').toLowerCase()
   return v === 'responsable' ? 'responsable' : 'equip'
+}
+
+function mapUserRoleToPersonnelRole(role?: string) {
+  const value = (role || '').toLowerCase().trim()
+  return value === 'cap departament' || value === 'cap' || value === 'responsable'
+    ? 'responsable'
+    : 'equip'
 }
 
 // Slug senzill
@@ -98,6 +117,9 @@ export default function NewPersonnelModal({
   const [nameError, setNameError] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [availabilityError, setAvailabilityError] = useState<string | null>(null)
+  const [linkableUsers, setLinkableUsers] = useState<LinkableUser[]>([])
+  const [selectedUserId, setSelectedUserId] = useState('')
+  const [loadingUsers, setLoadingUsers] = useState(false)
 
   // Reinici al obrir modal
   useEffect(() => {
@@ -120,7 +142,38 @@ export default function NewPersonnelModal({
       setNameError(false)
       setSuggestions([])
       setAvailabilityError(null)
+      setSelectedUserId('')
     }
+  }, [isOpen, defaultDepartment])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const controller = new AbortController()
+
+    const loadUsers = async () => {
+      try {
+        setLoadingUsers(true)
+        const params = new URLSearchParams()
+        if (defaultDepartment) params.set('department', defaultDepartment)
+        const res = await fetch(`/api/personnel/linkable-users?${params.toString()}`, {
+          signal: controller.signal,
+          cache: 'no-store',
+        })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json?.error || 'No s’han pogut carregar els usuaris')
+        setLinkableUsers(Array.isArray(json?.data) ? json.data : [])
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return
+        console.error('Error carregant usuaris vinculables', err)
+        setLinkableUsers([])
+      } finally {
+        setLoadingUsers(false)
+      }
+    }
+
+    loadUsers()
+    return () => controller.abort()
   }, [isOpen, defaultDepartment])
 
   // Actualitza ID automàticament
@@ -153,6 +206,43 @@ export default function NewPersonnelModal({
       setAvailabilityError(null)
     }
     setForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  const handleSelectExistingUser = async (userId: string) => {
+    setSelectedUserId(userId)
+
+    if (!userId) {
+      setAutoId(true)
+      setForm((prev) => ({ ...prev, id: generateIdFromName(prev.name) }))
+      setNameError(false)
+      setSuggestions([])
+      return
+    }
+
+    const selectedUser = linkableUsers.find((user) => user.id === userId)
+    if (!selectedUser) return
+
+    setAutoId(false)
+    setForm((prev) => ({
+      ...prev,
+      id: selectedUser.id,
+      name: selectedUser.name || '',
+      role: mapUserRoleToPersonnelRole(selectedUser.role),
+      department: selectedUser.department || defaultDepartment,
+      driver: {
+        isDriver: selectedUser.isDriver,
+        camioGran: false,
+        camioPetit: false,
+      },
+      available: selectedUser.available ?? true,
+      unavailableFrom: '',
+      unavailableUntil: '',
+      unavailableIndefinite: false,
+      email: selectedUser.email || '',
+      phone: selectedUser.phone || '',
+      maxHoursWeek: prev.maxHoursWeek ?? 40,
+    }))
+    await validateName(selectedUser.name || '')
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -215,6 +305,30 @@ export default function NewPersonnelModal({
 
         <form onSubmit={handleSubmit} className="space-y-4">
 
+          <div>
+            <Label htmlFor="existing-user">Usuari existent</Label>
+            <select
+              id="existing-user"
+              value={selectedUserId}
+              onChange={(e) => {
+                void handleSelectExistingUser(e.target.value)
+              }}
+              className="border rounded px-2 py-1 w-full"
+            >
+              <option value="">Crear fitxa nova</option>
+              {linkableUsers.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name} · {user.department || defaultDepartment || 'Sense departament'}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              {loadingUsers
+                ? 'Carregant usuaris disponibles...'
+                : 'Si selecciones un usuari existent, la fitxa de personal es crearà amb el mateix ID.'}
+            </p>
+          </div>
+
           {/* NOM */}
           <div>
             <Label htmlFor="name">Nom complet</Label>
@@ -227,6 +341,7 @@ export default function NewPersonnelModal({
                 await validateName(v)
               }}
               required
+              disabled={Boolean(selectedUserId)}
               className={nameError ? 'border-red-500' : ''}
             />
 
@@ -266,7 +381,11 @@ export default function NewPersonnelModal({
               </Button>
             </div>
             <Input id="id" value={form.id} disabled className="bg-gray-100" />
-            <p className="text-xs text-gray-500">L’ID també s’utilitzarà per crear l’usuari.</p>
+            <p className="text-xs text-gray-500">
+              {selectedUserId
+                ? 'Aquest ID coincideix amb el de l’usuari existent.'
+                : 'L’ID també s’utilitzarà per crear l’usuari.'}
+            </p>
           </div>
 
           {/* ROL */}

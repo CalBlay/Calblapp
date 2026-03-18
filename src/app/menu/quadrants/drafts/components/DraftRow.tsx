@@ -50,6 +50,15 @@ export default function DraftRow({
 }) {
   const formatDate = (d: string) => (d ? d.split('-').slice(1).reverse().join('/') : '--/--')
   const formatTime = (t?: string) => (t ? t.substring(0, 5) : '--:--')
+  const leadingIcon =
+    row.role === 'responsable' && row.isDriver ? (
+      <div className="flex items-center gap-1">
+        {roleIcon.responsable}
+        {roleIcon.conductor}
+      </div>
+    ) : (
+      roleIcon[row.role]
+    )
 
   return (
     <div
@@ -57,7 +66,7 @@ export default function DraftRow({
       border-b border-slate-200 bg-white px-3 py-2.5 hover:bg-slate-50
       grid gap-2
       grid-cols-1
-      sm:grid-cols-[32px_1fr_5.5rem_5.5rem_minmax(10rem,1fr)_minmax(10rem,1fr)_3.5rem]
+      sm:grid-cols-[40px_minmax(11rem,1fr)_5rem_4.5rem_4.5rem_4.5rem_minmax(8rem,0.9fr)_4.5rem_3.5rem]
       items-center
     "
       style={
@@ -71,12 +80,12 @@ export default function DraftRow({
     >
       {/* MOBILE LAYOUT */}
       <div className="flex items-start gap-2 sm:hidden">
-        <div>{roleIcon[row.role]}</div>
+        <div>{leadingIcon}</div>
         <div className="flex-1">
           <div className="font-medium text-slate-800">{row.name}</div>
 
           <div className="text-[11px] text-slate-600 mt-0.5">
-            {formatDate(row.startDate)} - {formatTime(row.startTime)}
+            {formatDate(row.startDate)} - {formatTime(row.startTime)} - {formatTime(row.endTime)} - {formatTime(row.arrivalTime)}
           </div>
 
           {row.meetingPoint && <div className="text-[11px] text-slate-600 truncate">Punt: {row.meetingPoint}</div>}
@@ -95,7 +104,7 @@ export default function DraftRow({
       </div>
 
       {/* DESKTOP LAYOUT */}
-      <div className="hidden sm:flex items-center justify-center">{roleIcon[row.role]}</div>
+      <div className="hidden sm:flex items-center justify-center">{leadingIcon}</div>
 
       <div className="hidden sm:block truncate text-[14px] font-medium text-slate-800">
         {row.role === 'brigada' ? (
@@ -110,6 +119,10 @@ export default function DraftRow({
       <div className="hidden sm:block w-[5.5rem] tabular-nums text-[14px] text-slate-700">{formatDate(row.startDate)}</div>
 
       <div className="hidden sm:block w-[5.5rem] tabular-nums text-[14px] text-slate-700">{formatTime(row.startTime)}</div>
+
+      <div className="hidden sm:block w-[5.5rem] tabular-nums text-[14px] text-slate-700">{formatTime(row.endTime)}</div>
+
+      <div className="hidden sm:block w-[5.5rem] tabular-nums text-[14px] text-slate-700">{formatTime(row.arrivalTime)}</div>
 
       <div className="hidden sm:block truncate text-[14px] text-slate-700">
         {row.meetingPoint || <span className="text-gray-400">-</span>}

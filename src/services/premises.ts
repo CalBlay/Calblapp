@@ -3,6 +3,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 export type PremiseCondition = {
   id: string
   locations: string[]
+  responsibleId?: string
   responsible: string
 }
 
@@ -53,6 +54,63 @@ const norm = (s?: string | null) =>
     .toLowerCase()
     .trim()
 
+const RESPONSIBLE_ROLE_KEYS = new Set(['responsable', 'cap departament', 'capdepartament', 'supervisor'])
+
+const normRole = (s?: string | null) => norm(s)
+
+async function hydrateConditionResponsibles(
+  department: string,
+  conditions: PremiseCondition[]
+): Promise<PremiseCondition[]> {
+  if (!conditions.length) return conditions
+
+  const snap = await db.collection('personnel').get()
+  const people = snap.docs
+    .map((doc) => {
+      const data = doc.data() as any
+      return {
+        id: doc.id,
+        name: String(data?.name || '').trim(),
+        department: norm(data?.department || ''),
+        role: normRole(data?.role || ''),
+      }
+    })
+    .filter((person) => person.department === norm(department) && person.name)
+
+  const resolveByName = (rawName?: string) => {
+    const target = norm(rawName || '')
+    if (!target) return null
+
+    const exact = people.filter((person) => norm(person.name) === target)
+    if (exact.length === 1) return exact[0]
+
+    const startsWith = people.filter((person) => norm(person.name).startsWith(target))
+    if (startsWith.length === 1) return startsWith[0]
+
+    const contains = people.filter((person) => norm(person.name).includes(target))
+    if (contains.length === 1) return contains[0]
+
+    const preferred = [...exact, ...startsWith, ...contains].filter(
+      (person, index, arr) => arr.findIndex((item) => item.id === person.id) === index
+    )
+    const responsibleOnly = preferred.filter((person) => RESPONSIBLE_ROLE_KEYS.has(person.role))
+    if (responsibleOnly.length === 1) return responsibleOnly[0]
+
+    return null
+  }
+
+  return conditions.map((condition) => {
+    if (condition.responsibleId) return condition
+    const matched = resolveByName(condition.responsible)
+    if (!matched) return condition
+    return {
+      ...condition,
+      responsibleId: matched.id,
+      responsible: matched.name,
+    }
+  })
+}
+
 const makeConditionId = (input: {
   locations?: unknown
   responsible?: unknown
@@ -76,6 +134,7 @@ export function normalizePremises(
     conditions?: Array<{
       id?: string
       locations?: unknown
+      responsibleId?: unknown
       responsible?: unknown
       worker?: unknown
     }>
@@ -101,7 +160,8 @@ export function normalizePremises(
           const responsible = String(
             condition?.responsible || condition?.worker || ''
           ).trim()
-          if (!locations.length && !responsible) return null
+          const responsibleId = String(condition?.responsibleId || '').trim()
+          if (!locations.length && !responsible && !responsibleId) return null
           return {
             id: String(condition?.id || makeConditionId({
               locations,
@@ -109,6 +169,7 @@ export function normalizePremises(
               index,
             })),
             locations,
+            responsibleId,
             responsible,
           }
         })
@@ -194,7 +255,11 @@ export async function getStoredPremises(
   const snap = await db.collection(COLLECTION).doc(dept).get()
   if (!snap.exists) return null
 
-  return normalizePremises(dept, snap.data() as PremisesDoc)
+  const normalized = normalizePremises(dept, snap.data() as PremisesDoc)
+  return {
+    ...normalized,
+    conditions: await hydrateConditionResponsibles(dept, normalized.conditions || []),
+  }
 }
 
 export async function savePremises(

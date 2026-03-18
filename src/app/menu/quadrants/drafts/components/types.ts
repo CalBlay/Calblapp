@@ -6,6 +6,7 @@ export type Row = {
   role: Role
   id: string
   name: string
+  isDriver?: boolean
   groupId?: string
   startDate: string
   startTime: string
@@ -32,12 +33,18 @@ export type DraftInput = {
   arrivalTime?: string
   meetingPoint?: string
   groups?: Array<{
+    id?: string | null
+    serviceDate?: string | null
+    dateLabel?: string | null
     meetingPoint?: string
     startTime?: string
     arrivalTime?: string | null
     endTime?: string
     workers?: number
     drivers?: number
+    needsDriver?: boolean
+    driverId?: string | null
+    driverName?: string | null
     responsibleId?: string | null
     responsibleName?: string | null
   }>

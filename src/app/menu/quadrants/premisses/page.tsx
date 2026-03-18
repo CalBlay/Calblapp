@@ -19,6 +19,7 @@ type MetaState = {
 type EditableCondition = {
   id: string
   locations: string[]
+  responsibleId: string
   responsible: string
 }
 
@@ -75,6 +76,7 @@ const buildSnapshot = ({
     conditions: conditions.map((condition) => ({
       id: condition.id,
       locations: condition.locations,
+      responsibleId: condition.responsibleId,
       responsible: condition.responsible,
     })),
     driverCrews: driverCrews.map((crew) => ({
@@ -98,6 +100,7 @@ const toEditableConditions = (premises: Premises): EditableCondition[] =>
   (premises.conditions || []).map((condition) => ({
     id: condition.id,
     locations: condition.locations,
+    responsibleId: condition.responsibleId || '',
     responsible: condition.responsible,
   }))
 
@@ -224,6 +227,21 @@ export default function QuadrantPremisesPage() {
 
         const nextPeople = Array.isArray(json?.people) ? (json.people as PersonnelOption[]) : []
         setPeople(nextPeople)
+        setConditions((prev) =>
+          prev.map((condition) => {
+            if (condition.responsibleId) return condition
+            const matched = nextPeople.find(
+              (person) => norm(person.name) === norm(condition.responsible)
+            )
+            return matched
+              ? {
+                  ...condition,
+                  responsibleId: matched.id,
+                  responsible: matched.name,
+                }
+              : condition
+          })
+        )
         const nextDriverCrews = driverCrews.length > 0
           ? driverCrews.map((crew) => ({
               ...crew,
@@ -329,6 +347,7 @@ export default function QuadrantPremisesPage() {
       {
         id,
         locations: [],
+        responsibleId: '',
         responsible: '',
       },
     ])
@@ -478,11 +497,14 @@ export default function QuadrantPremisesPage() {
             locations: condition.locations
               .map((item) => item.trim())
               .filter(Boolean),
+            responsibleId: condition.responsibleId.trim(),
             responsible: condition.responsible.trim(),
           }))
           .filter(
             (condition) =>
-              condition.locations.length > 0 || Boolean(condition.responsible)
+              condition.locations.length > 0 ||
+              Boolean(condition.responsible) ||
+              Boolean(condition.responsibleId)
           ),
         driverCrews: driverCrews
           .map((crew): DriverCrewPremise | null => {
@@ -1075,16 +1097,25 @@ export default function QuadrantPremisesPage() {
 
                                 <div className="space-y-2">
                                   <Label>Responsable prioritari</Label>
-                                  <Input
-                                    className="border-slate-200 bg-white"
-                                    value={condition.responsible}
-                                    onChange={(event) =>
+                                  <select
+                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm"
+                                    value={condition.responsibleId}
+                                    onChange={(event) => {
+                                      const selectedId = event.target.value
+                                      const person = peopleById[selectedId]
                                       updateCondition(condition.id, {
-                                        responsible: event.target.value,
+                                        responsibleId: selectedId,
+                                        responsible: person?.name || '',
                                       })
-                                    }
-                                    placeholder="Nom del responsable"
-                                  />
+                                    }}
+                                  >
+                                    <option value="">Selecciona responsable</option>
+                                    {people.map((person) => (
+                                      <option key={person.id} value={person.id}>
+                                        {person.name}
+                                      </option>
+                                    ))}
+                                  </select>
                                 </div>
                               </div>
                             ) : null}

@@ -204,12 +204,21 @@ export async function POST(req: NextRequest) {
 
     const dept = norm(deptRaw)
     const colName = `quadrants${capitalize(dept)}`
-    const ref = db.collection(colName).doc(String(eventId))
+    const collection = db.collection(colName)
+    const directRef = collection.doc(String(eventId))
+    const directSnap = await directRef.get()
+    const byEvent = await collection.where('eventId', '==', String(eventId)).get()
 
-    // 1) Llegir estat actual
-    const snap = await ref.get()
-    const prev = snap.exists ? (snap.data() as QuadrantDoc) : null
-    const already = prev?.status === 'confirmed'
+    const targetDocs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot>()
+    if (directSnap.exists) targetDocs.set(directSnap.id, directSnap)
+    byEvent.docs.forEach((doc) => targetDocs.set(doc.id, doc))
+
+    const prevDocs = Array.from(targetDocs.values())
+    const prev = prevDocs[0]?.exists ? (prevDocs[0].data() as QuadrantDoc) : null
+    const already = prevDocs.length > 0 && prevDocs.every((doc) => {
+      const data = doc.data() as QuadrantDoc | undefined
+      return data?.status === 'confirmed'
+    })
 
     // 2) Confirmar
     const now = new Date()
@@ -224,7 +233,15 @@ export async function POST(req: NextRequest) {
     if (body.service !== undefined && body.service !== '') {
       updatePayload.service = body.service
     }
-    await ref.set(updatePayload, { merge: true })
+    if (targetDocs.size === 0) {
+      await directRef.set(updatePayload, { merge: true })
+    } else {
+      const batch = db.batch()
+      targetDocs.forEach((doc) => {
+        batch.set(doc.ref, updatePayload, { merge: true })
+      })
+      await batch.commit()
+    }
 
     // Distància: sempre intentem recalcular amb l'adreça actual
     const evSnap = await db.collection('stage_verd').doc(String(eventId)).get()
@@ -232,7 +249,15 @@ export async function POST(req: NextRequest) {
     const destination = ev?.Ubicacio || ev?.location || ev?.address || ''
     const km = await calcDistanceKm(destination)
     if (km) {
-      await ref.set({ distanceKm: km, distanceCalcAt: new Date() }, { merge: true })
+      if (targetDocs.size === 0) {
+        await directRef.set({ distanceKm: km, distanceCalcAt: new Date() }, { merge: true })
+      } else {
+        const batch = db.batch()
+        targetDocs.forEach((doc) => {
+          batch.set(doc.ref, { distanceKm: km, distanceCalcAt: new Date() }, { merge: true })
+        })
+        await batch.commit()
+      }
     }
 
     try {
@@ -242,8 +267,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 3) Avisos intel·ligents
-    const prevSnap = await ref.get()
-    const doc = (prevSnap.data() as QuadrantDoc) || {}
+    const currentDocsSnap =
+      targetDocs.size === 0
+        ? [await directRef.get()]
+        : await Promise.all(Array.from(targetDocs.values()).map((doc) => doc.ref.get()))
+    const currentDocs = currentDocsSnap.filter((doc) => doc.exists)
 
     const extract = (q?: QuadrantDoc) => {
       if (!q) return []
@@ -277,8 +305,8 @@ export async function POST(req: NextRequest) {
       return arr
     }
 
-    const oldUsers = extract(snap.exists ? (prev as QuadrantDoc) : undefined)
-    const newUsers = extract(doc)
+    const oldUsers = prevDocs.flatMap((doc) => extract(doc.exists ? (doc.data() as QuadrantDoc) : undefined))
+    const newUsers = currentDocs.flatMap((doc) => extract(doc.exists ? (doc.data() as QuadrantDoc) : undefined))
     const isFirstConfirm = !prev?.status || prev?.status !== 'confirmed'
     let changed = newUsers
     if (!isFirstConfirm) {
@@ -304,7 +332,8 @@ export async function POST(req: NextRequest) {
       ev?.Nom ||
       ev?.name ||
       'Nou esdeveniment'
-    const when = doc.startDate ? ` ${doc.startDate}` : ''
+    const mainDoc = (currentDocs[0]?.data() as QuadrantDoc | undefined) || {}
+    const when = mainDoc.startDate ? ` ${mainDoc.startDate}` : ''
 
     if (isFirstConfirm) {
       const uids = await resolveUids(newUsers)
@@ -313,7 +342,7 @@ export async function POST(req: NextRequest) {
         title: 'Tens un nou torn assignat',
         body: `${eventName}${when}`,
         eventId: String(eventId),
-        eventDate: doc.startDate || undefined,
+        eventDate: mainDoc.startDate || undefined,
       })
       await sendPushToUids({
         baseUrl: req.nextUrl.origin,
@@ -329,7 +358,7 @@ export async function POST(req: NextRequest) {
         title: 'Tens canvis al teu torn',
         body: `${eventName}${when}`,
         eventId: String(eventId),
-        eventDate: doc.startDate || undefined,
+        eventDate: mainDoc.startDate || undefined,
       })
       await sendPushToUids({
         baseUrl: req.nextUrl.origin,
