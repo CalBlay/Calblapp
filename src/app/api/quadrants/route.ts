@@ -123,6 +123,31 @@ interface QuadrantSave {
   phaseDate?: string | null
 }
 
+const normalizePersonKey = (value?: string | null) =>
+  (value || '').toString().trim().toLowerCase()
+
+const uniquePersonnelLines = <T extends { name?: string | null; meetingPoint?: string | null }>(
+  items: T[],
+  fallbackMeetingPoint: string
+) => {
+  const seen = new Set<string>()
+  const unique: Array<{ name: string; meetingPoint: string }> = []
+
+  items.forEach((item) => {
+    const name = String(item?.name || '').trim()
+    if (!name || name === 'Extra') return
+    const key = normalizePersonKey(name)
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    unique.push({
+      name,
+      meetingPoint: item?.meetingPoint || fallbackMeetingPoint || '',
+    })
+  })
+
+  return unique
+}
+
 /* ================= Handler ================= */
 export async function POST(req: NextRequest) {
   try {
@@ -231,6 +256,19 @@ export async function POST(req: NextRequest) {
         attentionNotes: metaForSave.notes || [],
         updatedAt: new Date().toISOString(),
         timetables: normalizedTimetables,
+      }
+
+      if (deptNorm === 'logistica') {
+        const allWorkers = uniquePersonnelLines(
+          [
+            ...(assignmentForSave.responsible ? [assignmentForSave.responsible] : []),
+            ...(assignmentForSave.drivers || []),
+            ...staffClean,
+          ],
+          bodyForSave.meetingPoint || ''
+        )
+        toSave.treballadors = allWorkers
+        toSave.totalWorkers = allWorkers.length + extraCount
       }
 
       if (!toSave.responsableName && bodyForSave.manualResponsibleName) {

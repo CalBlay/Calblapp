@@ -86,6 +86,7 @@ export default function DraftsTable({
     [draft.groups]
   )
   const isServeisDept = department === 'serveis'
+  const isLogisticaDept = department === 'logistica'
   const [groupDefs, setGroupDefs] = useState(structuredGroups)
   const hasStructuredGroups = groupDefs.length > 0
 
@@ -357,8 +358,34 @@ export default function DraftsTable({
     return rows
   }
 
+  const ensureLogisticaWorkerCoverage = (inputRows: Row[]) => {
+    if (!isLogisticaDept || hasStructuredGroups) return inputRows
+
+    const workerKeys = new Set(
+      inputRows
+        .filter((row) => row.role === 'treballador' && norm(row.name) !== 'extra')
+        .map((row) => row.id || norm(row.name))
+        .filter(Boolean)
+    )
+
+    const syntheticWorkers = inputRows
+      .filter((row) => row.role === 'responsable' || row.role === 'conductor')
+      .filter((row) => {
+        const key = row.id || norm(row.name)
+        return Boolean(key) && !workerKeys.has(key)
+      })
+      .map((row) => ({
+        ...row,
+        role: 'treballador' as Role,
+        plate: '',
+        vehicleType: '',
+      }))
+
+    return [...inputRows, ...syntheticWorkers]
+  }
+
   // --- ConstrucciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³ inicial de files a partir del draft (incloent brigades)
-  const initialRows: Row[] = hasStructuredGroups
+  const initialRowsBase: Row[] = hasStructuredGroups
     ? buildGroupedRows()
     : [
     ...(draft.responsableName
@@ -424,6 +451,7 @@ endTime:   b.endTime   || draft.endTime,
       vehicleType: '',
     })),
   ]
+  const initialRows: Row[] = ensureLogisticaWorkerCoverage(initialRowsBase)
 
   const [rows, setRows] = useState<Row[]>(initialRows)
   const [editIdx, setEditIdx] = useState<number | null>(null)

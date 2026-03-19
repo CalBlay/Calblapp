@@ -23,6 +23,7 @@ type ProjectListItem = {
   phase?: string
   status?: string
   createdAt?: string | number
+  startDate?: string
   launchDate?: string
   departments?: string[]
   blocks?: Array<{ id?: string }>
@@ -131,6 +132,7 @@ export default function ProjectsPage() {
       .filter(Boolean)
 
     return projects.filter((project) => {
+      const startDate = String(project.startDate || '').trim()
       const launchDate = String(project.launchDate || '').trim()
 
       const haystack = normalizeText(
@@ -138,6 +140,7 @@ export default function ProjectsPage() {
           project.name,
           project.owner,
           ...(project.departments || []),
+          formatProjectDate(startDate),
           formatProjectDate(launchDate),
         ]
           .filter(Boolean)
@@ -149,8 +152,16 @@ export default function ProjectsPage() {
       const matchesMonth =
         !dateFilter.start ||
         !dateFilter.end ||
-        !launchDate ||
-        (launchDate >= dateFilter.start && launchDate <= dateFilter.end)
+        (() => {
+          const rangeStart = startDate || launchDate
+          const rangeEnd = launchDate || startDate
+
+          if (!rangeStart && !rangeEnd) return true
+          if (!rangeStart) return rangeEnd >= dateFilter.start && rangeEnd <= dateFilter.end
+          if (!rangeEnd) return rangeStart >= dateFilter.start && rangeStart <= dateFilter.end
+
+          return rangeStart <= dateFilter.end && rangeEnd >= dateFilter.start
+        })()
 
       return matchesQuery && matchesMonth
     })

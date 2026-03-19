@@ -61,6 +61,27 @@ interface RowInput {
   workers?: number // només per brigades
 }
 
+const normalizePersonKey = (value?: string | null) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+
+const uniquePeople = (rows: RowInput[]) => {
+  const seen = new Set<string>()
+  const unique: RowInput[] = []
+
+  rows.forEach((row) => {
+    const name = String(row?.name || '').trim()
+    if (!name || name === 'Extra') return
+    const key = normalizePersonKey(row.id || name)
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    unique.push(row)
+  })
+
+  return unique
+}
+
 interface GroupInput {
   id?: string | null
   serviceDate?: string | null
@@ -163,12 +184,19 @@ export async function POST(req: NextRequest) {
     const ref = db.collection(coll).doc(eventId)
     const isCuina = norm(department) === 'cuina'
     const isServeis = norm(department) === 'serveis'
+    const isLogistica = norm(department) === 'logistica'
 
     // 🧩 Separa per rols
     const responsables = rows.filter((r) => r.role === 'responsable')
     const conductors = rows.filter((r) => r.role === 'conductor')
     const treballadors = rows.filter((r) => r.role === 'treballador')
     const brigades = rows.filter((r) => r.role === 'brigada')
+    const totalExtraWorkers =
+      treballadors.filter((r) => r.name === 'Extra').length +
+      brigades.reduce((sum, row) => sum + Number(row.workers || 0), 0)
+    const normalizedTreballadors = isLogistica
+      ? uniquePeople([...responsables, ...conductors, ...treballadors])
+      : treballadors
 
     // 🔹 Responsable principal (per compatibilitat antiga)
     const mainResponsable = responsables[0] ?? null
@@ -182,11 +210,11 @@ export async function POST(req: NextRequest) {
 
       // ⭐ Resta de rols
       conductors: conductors.map(toLine),
-      treballadors: treballadors.map(toLine),
+      treballadors: normalizedTreballadors.map(toLine),
       brigades: brigades.map(toBrigadeLine),
 
       numDrivers: conductors.length,
-      totalWorkers: treballadors.length,
+      totalWorkers: normalizedTreballadors.length + totalExtraWorkers,
 
       // 🔙 Camps antics de compatibilitat (els segueix llegint quadrants/get)
       responsable: mainResponsable ? toLine(mainResponsable) : null,
