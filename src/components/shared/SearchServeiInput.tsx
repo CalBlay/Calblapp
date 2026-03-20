@@ -21,11 +21,13 @@ export default function SearchServeiInput({ value, onChange }: Props) {
   const [query, setQuery] = useState(value || '')
   const [results, setResults] = useState<Servei[]>([])
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
   const inputRef = useRef<HTMLInputElement>(null)
 
   // 🔁 sincronitza amb el valor del pare
   useEffect(() => setQuery(value || ''), [value])
+  useEffect(() => setMounted(true), [])
 
   // 🔍 cerca reactiva amb debounce
   useEffect(() => {
@@ -78,7 +80,7 @@ export default function SearchServeiInput({ value, onChange }: Props) {
       />
 
      {/* 📋 Desplegable amb animació */}
-{inputRef.current && results.length > 0 &&
+{mounted && inputRef.current && results.length > 0 &&
   createPortal(
     <AnimatePresence>
       {open && (
@@ -115,7 +117,7 @@ export default function SearchServeiInput({ value, onChange }: Props) {
         </motion.div>
       )}
     </AnimatePresence>,
-    inputRef.current?.closest('[data-radix-dialog-content]') ?? document.body
+    document.body
   )}
 
     </div>

@@ -3,6 +3,7 @@ export const PROJECT_DEPARTMENTS = [
   'Compres',
   'Comptabilitat',
   'Administracio',
+  'Direccio',
   'Restauracio',
   'Marqueting',
   'Manteniment',

@@ -10,6 +10,7 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import FloatingAddButton from '@/components/ui/floating-add-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { formatProjectDate, phaseLabel, statusLabel } from './components/project-shared'
 import { normalizeRole } from '@/lib/roles'
@@ -44,6 +45,20 @@ type ProjectNotification = {
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
+const ALL_DEPARTMENTS_VALUE = '__all_departments__'
+const normalizeText = (value: string) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+
+const formatDepartmentLabel = (value: string) =>
+  value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(' ')
 
 export default function ProjectsPage() {
   const router = useRouter()
@@ -53,6 +68,7 @@ export default function ProjectsPage() {
   const [error, setError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [dateFilter, setDateFilter] = useState<SmartFiltersChange>({})
+  const [departmentFilter, setDepartmentFilter] = useState(ALL_DEPARTMENTS_VALUE)
   const [deletingProjectId, setDeletingProjectId] = useState('')
   const { data: notificationsData, mutate: mutateNotifications } = useSWR(
     '/api/notifications?mode=list',
@@ -93,12 +109,35 @@ export default function ProjectsPage() {
   const sessionUserId = String(session?.user?.id || '').trim()
   const sessionUserName = String(session?.user?.name || '').trim()
   const sessionRole = normalizeRole(String(session?.user?.role || '').trim())
-  const normalizeText = (value: string) =>
-    String(value || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .trim()
+  const sessionDepartment = normalizeText(String(session?.user?.department || '').trim())
+
+  const departmentOptions = useMemo(() => {
+    const uniqueDepartments = new Map<string, string>()
+
+    projects.forEach((project) => {
+      ;(project.departments || []).forEach((department) => {
+        const normalizedDepartment = normalizeText(department)
+        if (!normalizedDepartment || uniqueDepartments.has(normalizedDepartment)) return
+        uniqueDepartments.set(normalizedDepartment, String(department || '').trim())
+      })
+    })
+
+    return Array.from(uniqueDepartments.entries())
+      .map(([value, original]) => ({
+        value,
+        label: formatDepartmentLabel(original || value),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ca'))
+  }, [projects])
+
+  useEffect(() => {
+    if (!sessionDepartment) return
+    if (!departmentOptions.some((option) => option.value === sessionDepartment)) return
+
+    setDepartmentFilter((currentValue) =>
+      currentValue === ALL_DEPARTMENTS_VALUE ? sessionDepartment : currentValue
+    )
+  }, [departmentOptions, sessionDepartment])
 
   const projectDurationDays = (createdAt?: string | number, launchDate?: string) => {
     const createdValue =
@@ -134,6 +173,7 @@ export default function ProjectsPage() {
     return projects.filter((project) => {
       const startDate = String(project.startDate || '').trim()
       const launchDate = String(project.launchDate || '').trim()
+      const projectDepartments = (project.departments || []).map((department) => normalizeText(department))
 
       const haystack = normalizeText(
         [
@@ -162,10 +202,13 @@ export default function ProjectsPage() {
 
           return rangeStart <= dateFilter.end && rangeEnd >= dateFilter.start
         })()
+      const matchesDepartment =
+        departmentFilter === ALL_DEPARTMENTS_VALUE ||
+        projectDepartments.some((department) => department === departmentFilter)
 
-      return matchesQuery && matchesMonth
+      return matchesQuery && matchesMonth && matchesDepartment
     })
-  }, [projects, searchQuery, dateFilter.start, dateFilter.end])
+  }, [projects, searchQuery, dateFilter.start, dateFilter.end, departmentFilter])
   const projectNotifications = useMemo(
     () =>
       (Array.isArray(notificationsData?.notifications) ? notificationsData.notifications : []).filter(
@@ -354,7 +397,7 @@ export default function ProjectsPage() {
 
         {!loading && !error ? (
           <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-5 grid grid-cols-1 gap-2 md:grid-cols-[minmax(320px,520px)_auto]">
+            <div className="mb-5 grid grid-cols-1 gap-2 md:grid-cols-[minmax(260px,1fr)_220px_auto]">
               <div className="relative w-full">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                 <Input
@@ -363,6 +406,22 @@ export default function ProjectsPage() {
                   placeholder="Cerca un projecte..."
                   className="h-10 rounded-xl border border-gray-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-violet-400"
                 />
+              </div>
+
+              <div className="flex items-center">
+                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                  <SelectTrigger className="h-10 rounded-xl border border-gray-300 bg-white text-sm text-slate-900">
+                    <SelectValue placeholder="Tots els departaments" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_DEPARTMENTS_VALUE}>Tots els departaments</SelectItem>
+                    {departmentOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="flex items-center justify-start md:justify-end">

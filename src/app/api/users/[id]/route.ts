@@ -16,8 +16,8 @@ const normLower = (s?: string) =>
   unaccent((s || '').toString().trim()).toLowerCase()
 
 const isTreballador = (role?: string) => normLower(role) === 'treballador'
-const requiresCorporateEmail = (role?: string) =>
-  ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
+const requiresCorporateEmail = (role?: string, isAdmin?: boolean) =>
+  Boolean(isAdmin) || ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
 
 // ──────────────────────────────────────────────────────────────
 // Tipus
@@ -26,6 +26,7 @@ interface UserUpdate {
   name?: string
   nameFold?: string
   role?: string
+  isAdmin?: boolean
   department?: string
   departmentLower?: string
   opsEventsConfigurable?: boolean
@@ -77,6 +78,10 @@ export async function PUT(
     const currentSnap = await db.collection('users').doc(id).get()
     const currentData = currentSnap.data() || {}
     const nextRole = typeof data.role === 'string' ? data.role : currentData.role
+    const nextIsAdmin =
+      typeof data.isAdmin === 'boolean'
+        ? data.isAdmin
+        : Boolean((currentData as { isAdmin?: boolean }).isAdmin || normalizeRole(String(nextRole || '')) === 'admin')
     const nextEmail =
       typeof data.email === 'string'
         ? data.email.trim()
@@ -84,7 +89,7 @@ export async function PUT(
         ? currentData.email.trim()
         : ''
 
-    if (requiresCorporateEmail(nextRole) && !nextEmail) {
+    if (requiresCorporateEmail(nextRole, nextIsAdmin) && !nextEmail) {
       return NextResponse.json(
         { error: 'Email corporatiu obligatori per admin, direccio i caps de departament' },
         { status: 400 }
@@ -94,6 +99,7 @@ export async function PUT(
     // 🔹 Construir objecte base d'actualització
     const rawUpdate: UserUpdate = {
       ...data,
+      isAdmin: nextIsAdmin,
       userId: undefined, // no permetre canviar
       updatedAt: Date.now(),
     }

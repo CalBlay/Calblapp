@@ -52,7 +52,9 @@ export default function SpaceGrid({ data, totals = [], baseDate }: SpaceGridProp
       a.style.left = '-9999px'
       document.body.appendChild(a)
       a.click()
-      document.body.removeChild(a)
+      if (document.body.contains(a)) {
+        document.body.removeChild(a)
+      }
     }
   }
 

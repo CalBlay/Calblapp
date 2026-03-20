@@ -5,6 +5,7 @@ import React, { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   AlertTriangle,
+  ArrowLeft,
   Eye,
   Users,
   FileText,
@@ -491,29 +492,52 @@ const recursos = useMemo(
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <DialogTitle className="text-base font-semibold tracking-tight truncate">
-                  {event.summary}
+                  {pendingDocsOpen ? 'Documents' : event.summary}
                 </DialogTitle>
                 <DialogDescription className="text-sm text-muted-foreground mt-1">
-                  Data: {dateStr}
+                  {pendingDocsOpen ? 'Consulta de documents de l esdeveniment' : `Data: ${dateStr}`}
                 </DialogDescription>
               </div>
 
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={onClose}
-                aria-label="Tancar"
-                className="rounded-full"
-              >
-                <X className="h-5 w-5" />
-              </Button>
+              <div className="flex items-center gap-2">
+                {pendingDocsOpen ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setPendingDocsOpen(false)}
+                    aria-label="Tornar"
+                    className="rounded-full"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={onClose}
+                  aria-label="Tancar"
+                  className="rounded-full"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
           </div>
 
           {/* Body */}
           <div className="px-5 pb-5 max-h-[72vh] overflow-auto">
-            {operativa.length > 0 && (
+            {pendingDocsOpen ? (
+              <EventDocumentsSheet
+                eventId={String(event.id)}
+                eventCode={event.eventCode || event.code || null}
+                open
+                embedded
+                onOpenChange={() => setPendingDocsOpen(false)}
+              />
+            ) : null}
+            {!pendingDocsOpen && operativa.length > 0 && (
               <>
                 <SectionTitle>Operativa</SectionTitle>
                 <div className="space-y-2">
@@ -532,22 +556,26 @@ const recursos = useMemo(
               </>
             )}
 
-            <SectionTitle>Recursos</SectionTitle>
-            <div className="space-y-2">
-              {recursos.map((a: any) => (
-                <ActionRow
-                  key={a.key}
-                  icon={a.icon}
-                  label={a.label}
-                  badge={a.badge}
-                  tone={a.tone}
-                  onClick={a.onClick}
-                  disabled={suppressMenuInteraction}
-                />
-              ))}
-            </div>
+            {!pendingDocsOpen && (
+              <>
+                <SectionTitle>Recursos</SectionTitle>
+                <div className="space-y-2">
+                  {recursos.map((a: any) => (
+                    <ActionRow
+                      key={a.key}
+                      icon={a.icon}
+                      label={a.label}
+                      badge={a.badge}
+                      tone={a.tone}
+                      onClick={a.onClick}
+                      disabled={suppressMenuInteraction}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
 
-            {economic.length > 0 && (
+            {!pendingDocsOpen && economic.length > 0 && (
               <>
                 <SectionTitle>Econòmic</SectionTitle>
                 <div className="space-y-2">
@@ -601,15 +629,6 @@ const recursos = useMemo(
           </div>
         </DialogContent>
       </Dialog>
-      {pendingDocsOpen && (
-  <EventDocumentsSheet
-    eventId={String(event.id)}
-    eventCode={event.eventCode || event.code || null}
-    open
-    onOpenChange={() => setPendingDocsOpen(false)}
-  />
-)}
-
       <EventKitchenDocumentsModal
         eventId={String(event.id)}
         eventCode={event.eventCode || event.code || null}

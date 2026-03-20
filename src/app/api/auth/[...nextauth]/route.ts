@@ -18,6 +18,7 @@ interface FirestoreUser {
   name?: string
   password?: string
   role?: string
+  isAdmin?: boolean
   department?: string
 }
 
@@ -25,6 +26,7 @@ interface FirestoreUser {
 declare module 'next-auth/jwt' {
   interface JWT {
     role?: string
+    isAdmin?: boolean
     department?: string
     deptLower?: string
   }
@@ -36,6 +38,7 @@ declare module 'next-auth' {
     user?: {
       id: string
       role?: string
+      isAdmin?: boolean
       department?: string
       deptLower?: string
     } & User
@@ -112,12 +115,14 @@ export const authOptions = {
               }
 
               const roleNorm = normalizeRole(data.role)
+              const isAdmin = Boolean(data.isAdmin || roleNorm === 'admin')
               const department = (data.department || '').toString().trim()
 
               return {
                 id: data.userId || doc.id,
                 name: data.name || '',
-                role: roleNorm,
+                role: isAdmin ? 'admin' : roleNorm,
+                isAdmin,
                 department,
                 deptLower: normLower(department),
               }
@@ -141,17 +146,20 @@ export const authOptions = {
         const u = user as User & {
           id: string
           role?: string
+          isAdmin?: boolean
           department?: string
         }
 
         token.sub = u.id
-        token.role = normalizeRole(u.role)
+        token.isAdmin = Boolean(u.isAdmin || normalizeRole(u.role) === 'admin')
+        token.role = token.isAdmin ? 'admin' : normalizeRole(u.role)
         token.department = u.department || ''
         token.deptLower = normLower(token.department)
       }
 
+      token.isAdmin = Boolean(token.isAdmin || normalizeRole(String(token.role || '')) === 'admin')
       if (token.role) {
-        token.role = normalizeRole(String(token.role))
+        token.role = token.isAdmin ? 'admin' : normalizeRole(String(token.role))
       }
       if (!token.deptLower && token.department) {
         token.deptLower = normLower(token.department)
@@ -167,6 +175,7 @@ export const authOptions = {
           ...session.user,
           id: token.sub as string,
           role: token.role,
+          isAdmin: token.isAdmin,
           department: token.department,
           deptLower: token.deptLower,
         },

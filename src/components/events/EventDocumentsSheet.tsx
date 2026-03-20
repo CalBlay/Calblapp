@@ -45,7 +45,11 @@ function Portal({ children }: { children: React.ReactNode }) {
     if (!el) return
     document.body.appendChild(el)
     setMounted(true)
-    return () => document.body.removeChild(el)
+    return () => {
+      if (document.body.contains(el)) {
+        document.body.removeChild(el)
+      }
+    }
   }, [el])
 
   if (!mounted || !el) return null
@@ -59,16 +63,40 @@ const safeUrl = (url?: string | null) => {
   return u
 }
 
+const displayTitle = (doc: EventDoc) =>
+  String(doc.title || doc.name || doc.fileName || doc.label || doc.id || 'Document').trim()
+
+const kindLabel = (doc: EventDoc) => {
+  const explicitKind = String(doc.kind || doc.category || '').trim()
+  if (explicitKind) return explicitKind
+  switch (doc.icon) {
+    case 'pdf':
+      return 'PDF'
+    case 'sheet':
+      return 'Full'
+    case 'slide':
+      return 'Presentacio'
+    case 'img':
+      return 'Imatge'
+    case 'doc':
+      return 'Document'
+    default:
+      return 'Arxiu'
+  }
+}
+
 export default function EventDocumentsSheet({
   eventId,
   eventCode,
   open,
   onOpenChange,
+  embedded = false,
 }: {
   eventId: string
   eventCode?: string | null
   open: boolean
   onOpenChange: (v: boolean) => void
+  embedded?: boolean
 }) {
   const { docs, loading, error } = useEventDocuments(
     eventId,
@@ -119,6 +147,43 @@ export default function EventDocumentsSheet({
   const linkRel = linkTarget === '_blank' ? 'noopener noreferrer' : undefined
 
   if (!open) return null
+
+  const content = (
+    <div className="relative w-full h-full">
+      <div className="absolute inset-0 flex items-center justify-center px-4 py-6">
+        <div
+          className="relative z-20 w-full max-w-[480px] max-h-[90vh] overflow-hidden bg-white rounded-[32px] shadow-2xl flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ModalContent
+            docs={docs}
+            loading={loading}
+            error={error}
+            onOpenChange={onOpenChange}
+            linkTarget={linkTarget}
+            linkRel={linkRel}
+          />
+        </div>
+      </div>
+    </div>
+  )
+
+  if (embedded) {
+    return (
+      <div className="relative w-full">
+        <div className="mx-auto w-full max-w-[560px] rounded-[24px] border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <ModalContent
+            docs={docs}
+            loading={loading}
+            error={error}
+            onOpenChange={onOpenChange}
+            linkTarget={linkTarget}
+            linkRel={linkRel}
+          />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <Portal>

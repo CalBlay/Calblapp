@@ -20,6 +20,7 @@ export interface User {
   personId?: string
   name?: string
   role?: string
+  isAdmin?: boolean
   department?: string
   available?: boolean
   driver?: { isDriver?: boolean }
@@ -36,6 +37,7 @@ export interface NewUserPayload {
   name: string
   password: string
   role: string
+  isAdmin?: boolean
   department: string
   opsChannelsConfigurable?: string[]
   opsEventsConfigurable?: boolean
@@ -75,6 +77,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const [name, setName] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [role, setRole] = React.useState<string>('Treballador')
+  const [isAdmin, setIsAdmin] = React.useState(false)
   const [department, setDepartment] = React.useState<string>('Total')
   const [phone, setPhone] = React.useState('')
   const [email, setEmail] = React.useState('')
@@ -101,7 +104,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const isWorker =
     role?.toLowerCase().trim() === 'treballador' ||
     role?.toLowerCase().trim() === 'cap departament'
-  const requiresCorporateEmail = ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
+  const requiresCorporateEmail = isAdmin || ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
 
   React.useEffect(() => {
     let active = true
@@ -116,6 +119,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         if (!active) return
         setName(data.name ?? '')
         setRole(data.role ?? 'Treballador')
+        setIsAdmin(Boolean(data.isAdmin || normalizeRole(data.role) === 'admin'))
         setDepartment(data.department ?? data.departmentLower ?? 'Total')
         setPhone(data.phone ?? '')
         setEmail(data.email ?? '')
@@ -141,6 +145,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
 
     setName(user.name ?? '')
     setRole(user.role ?? 'Treballador')
+    setIsAdmin(Boolean(user.isAdmin || normalizeRole(user.role) === 'admin'))
     setDepartment(user.department ?? 'Total')
     setPhone(user.phone ?? '')
     setEmail(user.email ?? '')
@@ -187,6 +192,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         ...user,
         name,
         role,
+        isAdmin,
         department,
         phone,
         email,
@@ -206,6 +212,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       name,
       password,
       role,
+      isAdmin,
       department,
       phone,
       email,
@@ -267,6 +274,16 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border p-3">
+              <div>
+                <Label className="text-sm">Admin</Label>
+                <div className="text-xs text-gray-500">
+                  Dona permisos maxim a tots els moduls per sobre del nivell.
+                </div>
+              </div>
+              <Switch checked={isAdmin} onCheckedChange={setIsAdmin} />
             </div>
 
             <div>

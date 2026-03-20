@@ -223,12 +223,6 @@ export const deriveKickoffAttendees = (
     )
   }
 
-  usersCatalog
-    .filter((item) => item.role === 'direccio' && item.email)
-    .forEach((user) => {
-      addAutoAttendee(`user:${user.id}`, user.id, user.name, user.email, 'Direccio')
-    })
-
   project.departments.forEach((department) => {
     usersCatalog
       .filter(

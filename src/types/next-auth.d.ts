@@ -12,6 +12,7 @@ declare module "next-auth" {
       email?: string
 
       role?: string
+      isAdmin?: boolean
       department?: string
       deptLower?: string
     } & DefaultSession["user"]
@@ -23,6 +24,7 @@ declare module "next-auth/jwt" {
   interface JWT extends DefaultJWT {
     accessToken?: string
     role?: string
+    isAdmin?: boolean
     department?: string
     deptLower?: string
   }

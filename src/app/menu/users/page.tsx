@@ -22,6 +22,7 @@ export interface AppUser {
   personId?: string
   name: string
   role: string
+  isAdmin?: boolean
   department: string
   phone?: string
   email?: string
@@ -170,6 +171,7 @@ function UsersPage() {
                         personId: req.personId || req.id,
                         name: req.name,
                         role: req.role,
+                        isAdmin: Boolean(req.isAdmin),
                         department: req.department,
                         phone: req.phone,
                         email: req.email,
@@ -204,6 +206,7 @@ function UsersPage() {
       id: undefined,
       name: '',
       role: 'Treballador',
+      isAdmin: false,
       department: 'Total',
       phone: '',
       available: true,
@@ -234,6 +237,7 @@ function UsersPage() {
             personId: modalUser.personId,
             name: modalUser.name,
             role: modalUser.role,
+            isAdmin: modalUser.isAdmin ?? false,
             department: modalUser.department,
             phone: modalUser.phone ?? '',
             email: modalUser.email ?? '',

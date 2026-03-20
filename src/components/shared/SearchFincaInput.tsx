@@ -27,6 +27,7 @@ export default function SearchFincaInput({ value = '', onChange }: Props) {
   const [query, setQuery] = useState(value)
   const [results, setResults] = useState<Finca[]>([])
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
   const inputRef = useRef<HTMLInputElement>(null)
   const selectingRef = useRef(false)
@@ -37,6 +38,7 @@ export default function SearchFincaInput({ value = '', onChange }: Props) {
       setQuery(value)
     }
   }, [value])
+  useEffect(() => setMounted(true), [])
 
   // 🔍 Cerca amb debounce
   useEffect(() => {
@@ -97,7 +99,7 @@ export default function SearchFincaInput({ value = '', onChange }: Props) {
       />
 
       {/* Desplegable amb resultats */}
-      {inputRef.current && results.length > 0 &&
+      {mounted && inputRef.current && results.length > 0 &&
         createPortal(
           <AnimatePresence>
             {open && (
@@ -142,7 +144,7 @@ export default function SearchFincaInput({ value = '', onChange }: Props) {
               </motion.div>
             )}
           </AnimatePresence>,
-          inputRef.current?.closest('[data-radix-dialog-content]') ?? document.body
+          document.body
         )}
     </div>
   )

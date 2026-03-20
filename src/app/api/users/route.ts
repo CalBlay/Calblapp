@@ -16,8 +16,8 @@ const normLower = (s?: string) =>
 
 const isTreballador = (role?: string) => normLower(role) === 'treballador'
 const isCapDepartament = (role?: string) => normalizeRole(role) === 'cap'
-const requiresCorporateEmail = (role?: string) =>
-  ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
+const requiresCorporateEmail = (role?: string, isAdmin?: boolean) =>
+  Boolean(isAdmin) || ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
 
 // ──────────────────────────────────────────────────────────────
 // Tipus
@@ -27,6 +27,7 @@ interface UserPayload {
   nameFold: string
   password: string
   role: string
+  isAdmin?: boolean
   department: string
   departmentLower: string
   email: string | null
@@ -81,6 +82,7 @@ export async function POST(req: Request) {
       name?: string
       password?: string
       role?: string
+      isAdmin?: boolean
       department?: string
       email?: string
       phone?: string
@@ -98,6 +100,7 @@ export async function POST(req: Request) {
       name = '',
       password = '',
       role = '',
+      isAdmin = false,
       department = '',
       email = '',
       phone = '',
@@ -110,7 +113,7 @@ export async function POST(req: Request) {
       workerRank,
     } = body
 
-    if (requiresCorporateEmail(role) && !email.trim()) {
+    if (requiresCorporateEmail(role, isAdmin) && !email.trim()) {
       return NextResponse.json(
         { error: 'Email corporatiu obligatori per admin, direccio i caps de departament' },
         { status: 400 }
@@ -123,6 +126,7 @@ export async function POST(req: Request) {
       nameFold: normLower(name),
       password: password.toString(),
       role: role.trim(),
+      isAdmin: Boolean(isAdmin || normalizeRole(role) === 'admin'),
       department: department.trim(),
       departmentLower: normLower(department),
       email: email.trim() || null,
