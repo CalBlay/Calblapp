@@ -30,13 +30,35 @@ function toISOFromDM(dm: string, year: number) {
   return `${year}-${mm}-${dd}`
 }
 
+function buildDefaultRange() {
+  const now = new Date()
+  const day = now.getDay()
+  const diffToMonday = (day + 6) % 7
+  const monday = new Date(now)
+  monday.setDate(now.getDate() - diffToMonday)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+
+  return {
+    start: monday.toISOString().slice(0, 10),
+    end: sunday.toISOString().slice(0, 10),
+  }
+}
+
+function parseRoleForFilters(role: string): 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador' {
+  if (role === 'admin') return 'Admin'
+  if (role === 'direccio') return 'Direcció'
+  if (role === 'cap') return 'Cap Departament'
+  return 'Treballador'
+}
+
 export default function LogisticsPage() {
   const { data: session } = useSession()
   const role = (session?.user?.role || '').toLowerCase()
   const isWorker = role === 'treballador'
   const isManager = role === 'cap' || role === 'admin' || role === 'direccio'
 
-  const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null)
+  const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(() => buildDefaultRange())
   const { events, refresh, loading } = useLogisticsData(dateRange)
   const [updating, setUpdating] = useState(false)
   const [edited, setEdited] = useState<EditedMap>({})
@@ -73,42 +95,60 @@ export default function LogisticsPage() {
   }
 
   const handleConfirm = async () => {
+    const ids = Object.keys(edited)
+    if (!ids.length) return
+
     setUpdating(true)
 
-    const ids = Object.keys(edited)
-    const errors: string[] = []
+    try {
+      const updates: Array<{ id: string; PreparacioData?: string; PreparacioHora?: string }> = []
 
-    for (const id of ids) {
-      const original = rows.find((r) => r.id === id)
-      const payload: { id: string; PreparacioData?: string; PreparacioHora?: string } = { id }
+      for (const id of ids) {
+        const original = rows.find((r) => r.id === id)
+        const payload: { id: string; PreparacioData?: string; PreparacioHora?: string } = { id }
 
-      if (edited[id]?.PreparacioData) {
-        const year = original ? new Date(original.DataInici).getFullYear() : new Date().getFullYear()
-        payload.PreparacioData = toISOFromDM(edited[id].PreparacioData!, year)
+        if (edited[id]?.PreparacioData) {
+          const year = original ? new Date(original.DataInici).getFullYear() : new Date().getFullYear()
+          const isoDate = toISOFromDM(edited[id].PreparacioData!, year)
+          if (!isoDate) {
+            alert(`La data de preparació de l'esdeveniment ${original?.NomEvent || id} no és vàlida.`)
+            setUpdating(false)
+            return
+          }
+          payload.PreparacioData = isoDate
+        }
+
+        if (edited[id]?.PreparacioHora) {
+          payload.PreparacioHora = edited[id].PreparacioHora!
+        }
+
+        if (payload.PreparacioData || payload.PreparacioHora) {
+          updates.push(payload)
+        }
       }
-      if (edited[id]?.PreparacioHora) {
-        payload.PreparacioHora = edited[id].PreparacioHora!
+
+      if (!updates.length) {
+        setUpdating(false)
+        return
       }
 
       const res = await fetch('/api/logistics/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ updates }),
       })
 
       if (!res.ok) {
-        errors.push(id)
+        throw new Error(await res.text())
       }
-    }
 
-    await refresh()
-
-    setEdited({})
-    setUpdating(false)
-
-    if (errors.length) {
-      console.error('Errors guardant preparacions per IDs:', errors)
-      alert("Algunes files no s'han pogut guardar. Revisa la consola.")
+      await refresh()
+      setEdited({})
+    } catch (err) {
+      console.error('Error guardant preparacions:', err)
+      alert('No s\'han pogut guardar les preparacions. Revisa les dades i torna-ho a provar.')
+    } finally {
+      setUpdating(false)
     }
   }
 
@@ -234,6 +274,7 @@ export default function LogisticsPage() {
           onRefresh={handleRefresh}
           onConfirm={handleConfirm}
           updating={updating}
+          filterRole={parseRoleForFilters(role)}
         />
       </RoleGuard>
     </section>

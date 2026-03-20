@@ -7,7 +7,6 @@ import { format, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
 import { RefreshCcw, CalendarClock } from 'lucide-react'
 import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilters'
-import { Button } from '@/components/ui/button'
 
 export type EditedMap = Record<string, { PreparacioData?: string; PreparacioHora?: string }>
 
@@ -22,6 +21,7 @@ interface LogisticsGridProps {
   onRefresh: () => void
   onConfirm: () => void
   updating: boolean
+  filterRole: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
 }
 
 function fmtDM(dateIsoOrEmpty: string) {
@@ -42,6 +42,7 @@ export default function LogisticsGrid({
   onRefresh,
   onConfirm,
   updating,
+  filterRole,
 }: LogisticsGridProps) {
 
   return (
@@ -56,9 +57,14 @@ export default function LogisticsGrid({
       <div className="border-b bg-gray-50 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <SmartFilters
+            role={filterRole}
             showStatus={false}
             modeDefault="week"
             onChange={onFilterChange}
+            showDepartment={false}
+            showWorker={false}
+            showLocation={false}
+            showAdvanced={false}
           />
         </div>
       </div>
