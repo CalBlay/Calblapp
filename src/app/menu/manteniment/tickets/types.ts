@@ -1,4 +1,4 @@
-export type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'resolut' | 'validat'
+export type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
 export type TicketPriority = 'urgent' | 'alta' | 'normal' | 'baixa'
 export type TicketType = 'maquinaria' | 'deco'
 

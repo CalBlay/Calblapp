@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
 import { AlertTriangle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
@@ -28,6 +28,10 @@ type TicketCard = {
   title: string
   priority: 'urgent' | 'alta' | 'normal' | 'baixa'
   minutes: number
+  status?: string
+  createdAt?: string | number | null
+  ageDays: number
+  ageBucket: 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus'
   location?: string
   machine?: string
 }
@@ -54,6 +58,12 @@ const GRID_GAP = 1
 const HEADER_HEIGHT = 32
 const TIME_COL_WIDTH = 80
 const DAY_COUNT = 6
+const AUTO_PLAN_DAY_COUNT = 5
+const AUTO_PLAN_DEFAULT_MINUTES = 60
+const AUTO_PLAN_START_MINUTES = 9 * 60
+const AUTO_PLAN_END_MINUTES = 17 * 60
+const AUTO_PLAN_SLOT_STEP = 30
+const AUTO_PLAN_MAX_UNASSIGNED = 2
 
 const WORKER_BADGE_CLASSES = [
   'bg-blue-100 text-blue-800',
@@ -166,7 +176,62 @@ const calculateNextDue = (lastDone: Date, periodicity?: Template['periodicity'])
   return next
 }
 
+const PRIORITY_WEIGHT: Record<'urgent' | 'alta' | 'normal' | 'baixa', number> = {
+  urgent: 0,
+  alta: 1,
+  normal: 2,
+  baixa: 3,
+}
+
+const getAgeDays = (value?: string | number | null) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.floor((Date.now() - value) / 86400000))
+  }
+  if (typeof value === 'string') {
+    const parsed = new Date(value).getTime()
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.floor((Date.now() - parsed) / 86400000))
+    }
+  }
+  return 0
+}
+
+const getAgeBucket = (ageDays: number): TicketCard['ageBucket'] => {
+  if (ageDays <= 0) return 'today'
+  if (ageDays <= 2) return 'days_1_2'
+  if (ageDays <= 7) return 'days_3_7'
+  return 'days_8_plus'
+}
+
+const getAgeLabel = (ageDays: number) => {
+  if (ageDays <= 0) return 'Avui'
+  if (ageDays === 1) return '1 dia'
+  return `${ageDays} dies`
+}
+
+const getAgeBadgeClass = (ageBucket: TicketCard['ageBucket']) => {
+  if (ageBucket === 'days_8_plus') return 'bg-red-100 text-red-800'
+  if (ageBucket === 'days_3_7') return 'bg-amber-100 text-amber-800'
+  if (ageBucket === 'days_1_2') return 'bg-sky-100 text-sky-800'
+  return 'bg-emerald-100 text-emerald-800'
+}
+
+const formatTicketCreatedAt = (value?: string | number | null) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return format(new Date(value), 'dd/MM')
+  }
+  if (typeof value === 'string') {
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) {
+      return format(parsed, 'dd/MM')
+    }
+  }
+  return ''
+}
+
 export default function PreventiusPlanificadorPage() {
+  const isLoadingWeekRef = useRef(false)
+  const pendingReloadRef = useRef(false)
   const [filters, setFiltersState] = useState<FiltersState>(() => {
     const base = startOfWeek(new Date(), { weekStartsOn: 1 })
     const end = endOfWeek(base, { weekStartsOn: 1 })
@@ -178,6 +243,9 @@ export default function PreventiusPlanificadorPage() {
   })
   const [tab, setTab] = useState<'preventius' | 'tickets'>('preventius')
   const [preventiusFilter, setPreventiusFilter] = useState<'all' | 'due' | 'overdue'>('all')
+  const [ticketsAgeFilter, setTicketsAgeFilter] = useState<
+    'all' | 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus'
+  >('all')
   const [templates, setTemplates] = useState<Template[]>([])
   const [realTickets, setRealTickets] = useState<TicketCard[]>([])
   const [machines, setMachines] = useState<Array<{ code: string; name: string; label: string }>>([])
@@ -246,10 +314,21 @@ export default function PreventiusPlanificadorPage() {
     return dueTemplates.filter((t) => t.dueState === preventiusFilter)
   }, [dueTemplates, preventiusFilter])
 
+  const filteredRealTickets = useMemo(() => {
+    const base = [...realTickets].sort((a, b) => {
+      const priorityDiff = PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority]
+      if (priorityDiff !== 0) return priorityDiff
+      if (b.ageDays !== a.ageDays) return b.ageDays - a.ageDays
+      return a.code.localeCompare(b.code)
+    })
+    if (ticketsAgeFilter === 'all') return base
+    return base.filter((ticket) => ticket.ageBucket === ticketsAgeFilter)
+  }, [realTickets, ticketsAgeFilter])
+
   const visibleItems = useMemo(() => {
     if (tab === 'preventius') return filteredDueTemplates
-    return realTickets
-  }, [tab, filteredDueTemplates, realTickets])
+    return filteredRealTickets
+  }, [tab, filteredDueTemplates, filteredRealTickets])
 
   const timeSlots = useMemo(() => {
     const slots: string[] = []
@@ -272,17 +351,22 @@ export default function PreventiusPlanificadorPage() {
         const json = await res.json()
         const list = Array.isArray(json?.tickets) ? json.tickets : []
         const mapped = list
-          .filter((t: any) => !['resolut', 'validat'].includes(String(t.status || '')))
+          .filter((t: any) => !['fet', 'no_fet', 'resolut', 'validat'].includes(String(t.status || '')))
           .map((t: any) => {
             const code = t.ticketCode || t.incidentNumber || 'TIC'
             const title = t.description || t.machine || t.location || ''
             const minutes = Number(t.estimatedMinutes || 60)
+            const ageDays = getAgeDays(t.createdAt)
             return {
               id: String(t.id || code),
               code,
               title,
               priority: (t.priority || 'normal') as TicketCard['priority'],
               minutes,
+              status: String(t.status || ''),
+              createdAt: t.createdAt || null,
+              ageDays,
+              ageBucket: getAgeBucket(ageDays),
               location: t.location || '',
               machine: t.machine || '',
             }
@@ -360,7 +444,130 @@ export default function PreventiusPlanificadorPage() {
     loadUsers()
   }, [])
 
+  const minutesFromTime = (time: string) => {
+    const [hh, mm] = time.split(':').map(Number)
+    return hh * 60 + mm
+  }
+
+  const timeFromMinutes = (total: number) => {
+    const hh = Math.floor(total / 60)
+    const mm = total % 60
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+  }
+
+  const rangesOverlap = (startA: number, endA: number, startB: number, endB: number) =>
+    startA < endB && endA > startB
+
+  const resolveTemplateWorkerNames = (template: Template) => {
+    const primary = (template.primaryOperator || '').trim()
+    if (primary) return [primary]
+    const backup = (template.backupOperator || '').trim()
+    if (backup) return [backup]
+    return []
+  }
+
+  const getAutoPlanStartDayIndex = (dueDate: string) => {
+    const date = parseStoredDate(dueDate)
+    if (!date) return 0
+    const index = Math.round((date.getTime() - weekStart.getTime()) / 86400000)
+    return Math.max(0, Math.min(AUTO_PLAN_DAY_COUNT - 1, index))
+  }
+
+  const hasWorkerConflict = (
+    items: ScheduledItem[],
+    dayIndex: number,
+    startMin: number,
+    endMin: number,
+    workers: string[]
+  ) => {
+    if (workers.length === 0) return false
+    const wanted = new Set(workers.map(normalizeName))
+    return items.some((item) => {
+      if (item.dayIndex !== dayIndex) return false
+      if (!rangesOverlap(startMin, endMin, minutesFromTime(item.start), minutesFromTime(item.end))) {
+        return false
+      }
+      return item.workers.some((worker) => wanted.has(normalizeName(worker)))
+    })
+  }
+
+  const countUnassignedPreventius = (
+    items: ScheduledItem[],
+    dayIndex: number,
+    startMin: number,
+    endMin: number
+  ) =>
+    items.filter((item) => {
+      if (item.kind !== 'preventiu') return false
+      if (item.dayIndex !== dayIndex) return false
+      if (item.workers.length > 0) return false
+      return rangesOverlap(startMin, endMin, minutesFromTime(item.start), minutesFromTime(item.end))
+    }).length
+
+  const findAvailablePreventiuSlot = (
+    items: ScheduledItem[],
+    options: {
+      minutes: number
+      workers: string[]
+      firstDayIndex: number
+      ignoreId?: string
+    }
+  ) => {
+    const { minutes, workers, firstDayIndex, ignoreId } = options
+    const comparableItems = ignoreId ? items.filter((item) => item.id !== ignoreId) : items
+
+    for (let dayIndex = firstDayIndex; dayIndex < AUTO_PLAN_DAY_COUNT; dayIndex += 1) {
+      for (
+        let startMin = AUTO_PLAN_START_MINUTES;
+        startMin + minutes <= AUTO_PLAN_END_MINUTES;
+        startMin += AUTO_PLAN_SLOT_STEP
+      ) {
+        const endMin = startMin + minutes
+        if (workers.length > 0) {
+          if (hasWorkerConflict(comparableItems, dayIndex, startMin, endMin, workers)) continue
+          return {
+            dayIndex,
+            start: timeFromMinutes(startMin),
+            end: timeFromMinutes(endMin),
+            workers,
+            minutes,
+          }
+        }
+
+        const overlappingWithoutWorker = countUnassignedPreventius(
+          comparableItems,
+          dayIndex,
+          startMin,
+          endMin
+        )
+        if (overlappingWithoutWorker >= AUTO_PLAN_MAX_UNASSIGNED) continue
+        return {
+          dayIndex,
+          start: timeFromMinutes(startMin),
+          end: timeFromMinutes(endMin),
+          workers: [] as string[],
+          minutes,
+        }
+      }
+    }
+
+    return null
+  }
+
+  const findAutoPlanSlot = (items: ScheduledItem[], template: DueTemplate) =>
+    findAvailablePreventiuSlot(items, {
+      minutes: AUTO_PLAN_DEFAULT_MINUTES,
+      workers: resolveTemplateWorkerNames(template),
+      firstDayIndex: getAutoPlanStartDayIndex(template.dueDate),
+    })
+
   const loadWeekSchedule = async () => {
+    if (isLoadingWeekRef.current) {
+      pendingReloadRef.current = true
+      return
+    }
+    isLoadingWeekRef.current = true
+    pendingReloadRef.current = false
     const startStr = format(weekStart, 'yyyy-MM-dd')
     const endStr = format(addDays(weekStart, DAY_COUNT - 1), 'yyyy-MM-dd')
     try {
@@ -402,6 +609,109 @@ export default function PreventiusPlanificadorPage() {
         })
         .filter(Boolean) as ScheduledItem[]
 
+      const workingPreventius = [...plannedMapped]
+      const templateMap = new Map(templates.map((template) => [template.id, template]))
+      const alreadyPlannedTemplateIds = new Set(
+        workingPreventius.map((item) => String(item.templateId || '')).filter(Boolean)
+      )
+
+      for (let index = 0; index < workingPreventius.length; index += 1) {
+        const item = workingPreventius[index]
+        if (!item.templateId || item.workers.length > 0) continue
+        const template = templateMap.get(String(item.templateId))
+        if (!template) continue
+        const desiredWorkers = resolveTemplateWorkerNames(template)
+        if (desiredWorkers.length === 0) continue
+
+        const preferredSlot = findAvailablePreventiuSlot(workingPreventius, {
+          minutes: item.minutes,
+          workers: desiredWorkers,
+          firstDayIndex: item.dayIndex,
+          ignoreId: item.id,
+        })
+        if (!preferredSlot) continue
+
+        const dateStr = format(addDays(weekStart, preferredSlot.dayIndex), 'yyyy-MM-dd')
+        const workerIds = resolveWorkerIds(desiredWorkers)
+        const nextItem: ScheduledItem = {
+          ...item,
+          dayIndex: preferredSlot.dayIndex,
+          start: preferredSlot.start,
+          end: preferredSlot.end,
+          workers: desiredWorkers,
+          workersCount: desiredWorkers.length || 1,
+        }
+
+        try {
+          const res = await fetch(`/api/maintenance/preventius/planned/${item.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              date: dateStr,
+              startTime: preferredSlot.start,
+              endTime: preferredSlot.end,
+              workerNames: desiredWorkers,
+              workerIds,
+            }),
+          })
+          if (!res.ok) continue
+          workingPreventius[index] = nextItem
+        } catch {
+          continue
+        }
+      }
+
+      for (const template of dueTemplates) {
+        if (alreadyPlannedTemplateIds.has(template.id)) continue
+
+        const slot = findAutoPlanSlot(workingPreventius, template)
+        if (!slot) continue
+
+        const dateStr = format(addDays(weekStart, slot.dayIndex), 'yyyy-MM-dd')
+        const workerNames = slot.workers
+        const workerIds = resolveWorkerIds(workerNames)
+        const payload = {
+          templateId: template.id,
+          title: template.name,
+          date: dateStr,
+          startTime: slot.start,
+          endTime: slot.end,
+          priority: 'normal' as const,
+          location: template.location || '',
+          workerNames,
+          workerIds,
+        }
+
+        try {
+          const res = await fetch('/api/maintenance/preventius/planned', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+          if (!res.ok) continue
+          const json = await res.json().catch(() => null)
+          const newId = json?.id ? String(json.id) : `auto-${template.id}-${dateStr}-${slot.start}`
+          workingPreventius.push({
+            id: newId,
+            kind: 'preventiu',
+            title: template.name,
+            workers: workerNames,
+            workersCount: workerNames.length || 1,
+            dayIndex: slot.dayIndex,
+            start: slot.start,
+            end: slot.end,
+            minutes: slot.minutes,
+            priority: 'normal',
+            location: template.location || '',
+            templateId: template.id,
+            ticketId: null,
+          })
+          alreadyPlannedTemplateIds.add(template.id)
+        } catch {
+          continue
+        }
+      }
+
       const ticketsJson = ticketsRes.ok ? await ticketsRes.json() : { tickets: [] }
       const ticketList = Array.isArray(ticketsJson?.tickets) ? ticketsJson.tickets : []
       const ticketsMapped: ScheduledItem[] = ticketList
@@ -437,9 +747,15 @@ export default function PreventiusPlanificadorPage() {
         })
         .filter(Boolean) as ScheduledItem[]
 
-      setScheduledItems([...plannedMapped, ...ticketsMapped])
+      setScheduledItems([...workingPreventius, ...ticketsMapped])
     } catch {
       setScheduledItems([])
+    } finally {
+      isLoadingWeekRef.current = false
+      if (pendingReloadRef.current) {
+        pendingReloadRef.current = false
+        loadWeekSchedule()
+      }
     }
   }
 
@@ -448,23 +764,12 @@ export default function PreventiusPlanificadorPage() {
     const onFocus = () => loadWeekSchedule()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [weekStart])
+  }, [weekStart, dueTemplates])
 
   const getRowIndex = (time: string) => {
     const [hh, mm] = time.split(':').map(Number)
     const minutesFromStart = (hh - 8) * 60 + mm
     return Math.max(0, Math.floor(minutesFromStart / 30))
-  }
-
-  const minutesFromTime = (time: string) => {
-    const [hh, mm] = time.split(':').map(Number)
-    return hh * 60 + mm
-  }
-
-  const timeFromMinutes = (total: number) => {
-    const hh = Math.floor(total / 60)
-    const mm = total % 60
-    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
   }
 
   const getWorkerConflicts = (
@@ -680,12 +985,275 @@ export default function PreventiusPlanificadorPage() {
       })
   }
 
+  const defaultDayIndex = useMemo(() => {
+    const today = new Date()
+    const todayStr = format(today, 'yyyy-MM-dd')
+    const index = days.findIndex((day) => format(day, 'yyyy-MM-dd') === todayStr)
+    return index >= 0 ? index : 0
+  }, [days])
+
+  const openPendingItem = (
+    item:
+      | {
+          kind: 'preventiu'
+          id: string
+          title: string
+          minutes: number
+          location?: string
+          priority?: 'urgent' | 'alta' | 'normal' | 'baixa'
+        }
+      | {
+          kind: 'ticket'
+          id: string
+          title: string
+          minutes: number
+          priority?: 'urgent' | 'alta' | 'normal' | 'baixa'
+          location?: string
+          machine?: string
+        }
+  ) => {
+    openModal({
+      kind: item.kind,
+      templateId: item.kind === 'preventiu' ? item.id : null,
+      ticketId: item.kind === 'ticket' ? item.id : null,
+      title: item.title,
+      dayIndex: defaultDayIndex,
+      start: '08:00',
+      duration: item.minutes,
+      end: timeFromMinutes(minutesFromTime('08:00') + item.minutes),
+      workersCount: 1,
+      workers: [],
+      priority: item.priority || 'normal',
+      location: item.location || '',
+      machine: item.kind === 'ticket' ? item.machine || '' : '',
+    })
+  }
+
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
       <div className="w-full max-w-none mx-auto p-4 space-y-4">
-        <ModuleHeader subtitle="Planificacio setmanal (dl–dv)" />
+        <ModuleHeader
+          title="Manteniment"
+          subtitle="Planificador"
+          mainHref="/menu/manteniment"
+        />
 
         <FiltersBar filters={filters} setFilters={setFilters} />
+
+        <div className="space-y-4 lg:hidden">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs text-gray-500">DL–DS · Jornada base 08:00–17:00</div>
+            <div className="text-xs text-gray-500">Setmana: {weekLabel}</div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setTab('preventius')}
+              className={[
+                'min-h-[44px] rounded-full px-4 text-sm font-semibold border',
+                tab === 'preventius'
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white text-gray-700 border-gray-200',
+              ].join(' ')}
+            >
+              Preventius
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('tickets')}
+              className={[
+                'min-h-[44px] rounded-full px-4 text-sm font-semibold border',
+                tab === 'tickets'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-200',
+              ].join(' ')}
+            >
+              Tickets
+            </button>
+          </div>
+
+          <div className="rounded-2xl border bg-white p-4">
+            <div className="text-sm font-semibold text-gray-900">
+              {tab === 'preventius' ? 'Pendents per planificar' : 'Tickets pendents'}
+            </div>
+            <div className="mt-3 space-y-3">
+              {tab === 'preventius' &&
+                (visibleItems as DueTemplate[]).map((t) => {
+                  const alreadyPlanned = scheduledItems.some(
+                    (i) => i.kind === 'preventiu' && i.templateId === t.id
+                  )
+                  return (
+                    <div
+                      key={t.id}
+                      className={`rounded-2xl border px-4 py-3 ${
+                        alreadyPlanned ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <div className="text-sm font-semibold text-gray-900">{t.name}</div>
+                      {t.location && <div className="mt-1 text-sm text-gray-500">{t.location}</div>}
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            t.dueState === 'overdue'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          {t.dueState === 'overdue' ? 'Atencio' : 'Aquesta setmana'}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={alreadyPlanned}
+                          onClick={() =>
+                            openPendingItem({
+                              kind: 'preventiu',
+                              id: t.id,
+                              title: t.name,
+                              minutes: 60,
+                              location: t.location || '',
+                              priority: t.dueState === 'overdue' ? 'alta' : 'normal',
+                            })
+                          }
+                          className="min-h-[44px] rounded-full border px-4 text-sm font-medium disabled:cursor-not-allowed"
+                        >
+                          {alreadyPlanned ? 'Ja planificat' : 'Planificar'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+
+              {tab === 'tickets' &&
+                (visibleItems as TicketCard[]).map((t) => {
+                  const alreadyPlanned = scheduledItems.some(
+                    (i) => i.kind === 'ticket' && (i.ticketId || i.id) === t.id
+                  )
+                  return (
+                    <div
+                      key={t.id}
+                      className={`rounded-2xl border px-4 py-3 ${
+                        alreadyPlanned ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <div className="text-sm font-semibold text-gray-900">
+                        {t.code} · {t.title}
+                      </div>
+                      {(t.location || t.createdAt) && (
+                        <div className="mt-1 text-sm text-gray-500">
+                          {t.location ? `Ubicacio: ${t.location}` : ''}
+                          {t.location && t.createdAt ? ' · ' : ''}
+                          {t.createdAt ? `Creat: ${formatTicketCreatedAt(t.createdAt)}` : ''}
+                        </div>
+                      )}
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap gap-2">
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getAgeBadgeClass(t.ageBucket)}`}>
+                            {getAgeLabel(t.ageDays)}
+                          </span>
+                          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                            {t.priority}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={alreadyPlanned}
+                          onClick={() =>
+                            openPendingItem({
+                              kind: 'ticket',
+                              id: t.id,
+                              title: `${t.code} - ${t.title}`.trim(),
+                              minutes: t.minutes,
+                              priority: t.priority,
+                              location: t.location || '',
+                              machine: t.machine || '',
+                            })
+                          }
+                          className="min-h-[44px] rounded-full border px-4 text-sm font-medium disabled:cursor-not-allowed"
+                        >
+                          {alreadyPlanned ? 'Ja planificat' : 'Planificar'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {days.map((day, dayIndex) => {
+              const dayItems = scheduledItems
+                .filter((item) => item.dayIndex === dayIndex)
+                .sort((a, b) => minutesFromTime(a.start) - minutesFromTime(b.start))
+              return (
+                <div key={format(day, 'yyyy-MM-dd')} className="rounded-2xl border bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900">{format(day, 'EEEE dd/MM')}</div>
+                      <div className="text-xs text-gray-500">{dayItems.length} tasques</div>
+                    </div>
+                    {tab === 'preventius' && (
+                      <button
+                        type="button"
+                        onClick={() => handleCreateEmpty(dayIndex, '08:00')}
+                        className="min-h-[44px] rounded-full border px-4 text-sm font-medium"
+                      >
+                        Nova tasca
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {dayItems.length === 0 && (
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-gray-500">
+                        No hi ha cap tasca planificada.
+                      </div>
+                    )}
+                    {dayItems.map((item) => {
+                      const priority: NonNullable<ScheduledItem['priority']> = item.priority || 'normal'
+                      const tone = getPriorityTone(item.kind, priority)
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleEdit(item)}
+                          className={`w-full rounded-2xl border px-4 py-3 text-left ${tone.card}`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-gray-900">{item.title}</div>
+                              <div className="mt-1 text-sm text-gray-600">
+                                {item.start} - {item.end}
+                                {item.location ? ` · ${item.location}` : ''}
+                              </div>
+                            </div>
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${tone.pill}`}>
+                              {PRIORITY_LABEL[priority]}
+                            </span>
+                          </div>
+                          {item.workers.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {item.workers.map((worker) => (
+                                <span
+                                  key={`${item.id}-${worker}`}
+                                  className={[
+                                    'inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold',
+                                    getWorkerBadgeClass(worker),
+                                  ].join(' ')}
+                                >
+                                  {worker}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
 
         <div className="hidden lg:block space-y-3">
           <div className="flex items-center justify-between gap-3">
@@ -755,6 +1323,70 @@ export default function PreventiusPlanificadorPage() {
                   ].join(' ')}
                 >
                   Atencio
+                </button>
+              </>
+            )}
+            {tab === 'tickets' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setTicketsAgeFilter('all')}
+                  className={[
+                    'rounded-full px-3 py-2 text-xs font-semibold border',
+                    ticketsAgeFilter === 'all'
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white text-gray-700 border-gray-200',
+                  ].join(' ')}
+                >
+                  Tots
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTicketsAgeFilter('today')}
+                  className={[
+                    'rounded-full px-3 py-2 text-xs font-semibold border',
+                    ticketsAgeFilter === 'today'
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                      : 'bg-white text-gray-700 border-gray-200',
+                  ].join(' ')}
+                >
+                  Avui
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTicketsAgeFilter('days_1_2')}
+                  className={[
+                    'rounded-full px-3 py-2 text-xs font-semibold border',
+                    ticketsAgeFilter === 'days_1_2'
+                      ? 'bg-sky-100 text-sky-800 border-sky-200'
+                      : 'bg-white text-gray-700 border-gray-200',
+                  ].join(' ')}
+                >
+                  1-2 dies
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTicketsAgeFilter('days_3_7')}
+                  className={[
+                    'rounded-full px-3 py-2 text-xs font-semibold border',
+                    ticketsAgeFilter === 'days_3_7'
+                      ? 'bg-amber-100 text-amber-800 border-amber-200'
+                      : 'bg-white text-gray-700 border-gray-200',
+                  ].join(' ')}
+                >
+                  3-7 dies
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTicketsAgeFilter('days_8_plus')}
+                  className={[
+                    'rounded-full px-3 py-2 text-xs font-semibold border',
+                    ticketsAgeFilter === 'days_8_plus'
+                      ? 'bg-red-100 text-red-800 border-red-200'
+                      : 'bg-white text-gray-700 border-gray-200',
+                  ].join(' ')}
+                >
+                  +7 dies
                 </button>
               </>
             )}
@@ -914,8 +1546,20 @@ export default function PreventiusPlanificadorPage() {
                         <div className="font-semibold text-gray-900 leading-snug">
                           {t.code} · {t.title}
                         </div>
-                        <div className="mt-1 flex items-center justify-between text-[10px] text-gray-600">
+                        {(t.location || t.createdAt) && (
+                          <div className="mt-1 text-[10px] text-gray-600 leading-snug">
+                            {t.location ? `Ubicacio: ${t.location}` : ''}
+                            {t.location && t.createdAt ? ' · ' : ''}
+                            {t.createdAt ? `Creat: ${formatTicketCreatedAt(t.createdAt)}` : ''}
+                          </div>
+                        )}
+                        <div className="mt-1 flex items-center justify-between gap-1 text-[10px] text-gray-600">
                           <span>{t.minutes} min</span>
+                          <span className={`rounded-full px-2 py-0.5 ${getAgeBadgeClass(t.ageBucket)}`}>
+                            {getAgeLabel(t.ageDays)}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-end text-[10px] text-gray-600">
                           <span className="rounded-full bg-gray-100 px-2 py-0.5">{t.priority}</span>
                         </div>
                       </div>
@@ -1097,26 +1741,56 @@ export default function PreventiusPlanificadorPage() {
         </div>
 
         {isModalOpen && draft && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-            <div className="w-full max-w-2xl rounded-2xl bg-white p-4 shadow-lg">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-gray-900">
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:p-4">
+            <div className="w-full max-w-3xl rounded-t-3xl bg-white shadow-2xl md:rounded-3xl">
+              <div className="sticky top-0 rounded-t-3xl border-b border-slate-100 bg-white px-5 pb-4 pt-3 md:px-6">
+                <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-slate-200 md:hidden" />
+                <div className="flex items-center justify-between">
+                  <div className="text-base font-semibold text-gray-900">
                   {draft.title ? draft.title : draft.id ? 'Editar' : 'Nova tasca'}
+                  </div>
+                  <button
+                    type="button"
+                    className="min-h-[44px] rounded-full border border-slate-200 px-4 text-sm text-gray-500"
+                    onClick={() => setIsModalOpen(false)}
+                  >
+                    Tancar
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className="text-sm text-gray-500"
-                  onClick={() => setIsModalOpen(false)}
-                >
-                  Tancar
-                </button>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div className="max-h-[75vh] overflow-y-auto px-5 py-5 md:px-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-gray-600">Dia</span>
+                  <select
+                    className="h-12 rounded-2xl border px-4 text-base"
+                    value={draft.dayIndex}
+                    onChange={(e) =>
+                      setDraft((d) =>
+                        d
+                          ? {
+                              ...d,
+                              dayIndex: Math.max(
+                                0,
+                                Math.min(DAY_COUNT - 1, Number(e.target.value) || 0)
+                              ),
+                            }
+                          : d
+                      )
+                    }
+                  >
+                    {days.map((day, index) => (
+                      <option key={format(day, 'yyyy-MM-dd')} value={index}>
+                        {format(day, 'EEEE dd/MM')}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Tipus</span>
                   <select
-                    className="h-10 rounded-xl border px-3"
+                    className="h-12 rounded-2xl border px-4 text-base"
                     value={draft.kind}
                     onChange={(e) =>
                       setDraft((d) => (d ? { ...d, kind: e.target.value as any } : d))
@@ -1130,7 +1804,7 @@ export default function PreventiusPlanificadorPage() {
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Titol</span>
                   <input
-                    className="h-10 rounded-xl border px-3"
+                    className="h-12 rounded-2xl border px-4 text-base"
                     value={draft.title}
                     onChange={(e) => setDraft((d) => (d ? { ...d, title: e.target.value } : d))}
                     placeholder="Nom del preventiu o ticket"
@@ -1140,7 +1814,7 @@ export default function PreventiusPlanificadorPage() {
                   <span className="text-xs text-gray-600">Hora inici</span>
                   <input
                     type="time"
-                    className="h-10 rounded-xl border px-3"
+                    className="h-12 rounded-2xl border px-4 text-base"
                     value={draft.start}
                     onChange={(e) => {
                       const start = e.target.value
@@ -1153,7 +1827,7 @@ export default function PreventiusPlanificadorPage() {
                   <span className="text-xs text-gray-600">Durada (min)</span>
                   <input
                     type="number"
-                    className="h-10 rounded-xl border px-3"
+                    className="h-12 rounded-2xl border px-4 text-base"
                     value={draft.duration}
                     onChange={(e) => {
                       const duration = Math.max(15, Number(e.target.value) || 0)
@@ -1166,7 +1840,7 @@ export default function PreventiusPlanificadorPage() {
                   <span className="text-xs text-gray-600">Hora fi</span>
                   <input
                     type="time"
-                    className="h-10 rounded-xl border px-3"
+                    className="h-12 rounded-2xl border px-4 text-base"
                     value={draft.end}
                     onChange={(e) => {
                       const end = e.target.value
@@ -1181,7 +1855,7 @@ export default function PreventiusPlanificadorPage() {
                   <span className="text-xs text-gray-600">Nº treballadors</span>
                   <input
                     type="number"
-                    className="h-10 rounded-xl border px-3"
+                    className="h-12 rounded-2xl border px-4 text-base"
                     value={draft.workersCount}
                     onChange={(e) =>
                       setDraft((d) =>
@@ -1192,11 +1866,11 @@ export default function PreventiusPlanificadorPage() {
                 </label>
                 <label className="flex flex-col gap-1 md:col-span-2">
                   <span className="text-xs text-gray-600">Assignar treballadors</span>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-3">
                     {availableWorkers(draft.dayIndex, draft.start, draft.end, draft.id).map((op) => {
                       const checked = draft.workers.includes(op.name)
                       return (
-                        <label key={op.id} className="flex items-center gap-2 text-xs">
+                        <label key={op.id} className="flex min-h-[44px] items-center gap-3 rounded-full border px-4 py-2 text-sm">
                           <input
                             type="checkbox"
                             checked={checked}
@@ -1219,7 +1893,7 @@ export default function PreventiusPlanificadorPage() {
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Urgencia</span>
                   <select
-                    className="h-10 rounded-xl border px-3"
+                    className="h-12 rounded-2xl border px-4 text-base"
                     value={draft.priority}
                     onChange={(e) =>
                       setDraft((d) => (d ? { ...d, priority: e.target.value as any } : d))
@@ -1234,7 +1908,7 @@ export default function PreventiusPlanificadorPage() {
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Ubicacio</span>
                   <input
-                    className="h-10 rounded-xl border px-3"
+                    className="h-12 rounded-2xl border px-4 text-base"
                     value={draft.location}
                     onChange={(e) => setDraft((d) => (d ? { ...d, location: e.target.value } : d))}
                     placeholder="Sala / zona"
@@ -1244,7 +1918,7 @@ export default function PreventiusPlanificadorPage() {
                   <label className="flex flex-col gap-1 md:col-span-2">
                     <span className="text-xs text-gray-600">Maquinaria</span>
                     <select
-                      className="h-10 rounded-xl border px-3"
+                      className="h-12 rounded-2xl border px-4 text-base"
                       value={draft.machine}
                       onChange={(e) =>
                         setDraft((d) => (d ? { ...d, machine: e.target.value } : d))
@@ -1260,10 +1934,11 @@ export default function PreventiusPlanificadorPage() {
                   </label>
                 )}
               </div>
+              </div>
 
               {getWorkerConflicts(draft.dayIndex, draft.start, draft.end, draft.workers, draft.id)
                 .length > 0 && (
-                <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <div className="mx-5 mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800 md:mx-6">
                   Atencio: aquests operaris ja tenen una tasca en aquesta franja:{' '}
                   {getWorkerConflicts(
                     draft.dayIndex,
@@ -1275,13 +1950,13 @@ export default function PreventiusPlanificadorPage() {
                 </div>
               )}
 
-              <div className="mt-4 flex items-center justify-between">
+              <div className="sticky bottom-0 mt-4 flex items-center justify-between rounded-b-3xl border-t border-slate-100 bg-white px-5 py-4 md:px-6">
                 {draft.id ? (
                   <button
                     type="button"
                     title="Eliminar"
                     aria-label="Eliminar"
-                    className="rounded-full border border-red-300 p-2 text-red-600 hover:bg-red-50"
+                    className="rounded-full border border-red-300 p-3 text-red-600 hover:bg-red-50"
                     onClick={async () => {
                       if (!draft?.id) return
                       if (draft.kind === 'preventiu') {
@@ -1324,14 +1999,14 @@ export default function PreventiusPlanificadorPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="rounded-full border px-4 py-2 text-xs text-gray-600"
+                    className="min-h-[48px] rounded-full border px-5 text-sm text-gray-600"
                     onClick={() => setIsModalOpen(false)}
                   >
                     Cancel·lar
                   </button>
                   <button
                     type="button"
-                    className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white"
+                    className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white"
                     onClick={async () => {
                       if (!draft.start || !draft.end) return
                       if (draft.kind === 'ticket') {

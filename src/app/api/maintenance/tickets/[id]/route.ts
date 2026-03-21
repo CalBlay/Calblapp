@@ -20,7 +20,7 @@ type SessionUser = {
 }
 
 type UpdatePayload = {
-  status?: 'nou' | 'assignat' | 'en_curs' | 'espera' | 'resolut' | 'validat'
+  status?: 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
   assignedToIds?: string[]
   assignedToNames?: string[]
   needsVehicle?: boolean
@@ -51,9 +51,62 @@ const normalizeStatus = (value?: string) => {
   if (v === 'assignat') return 'assignat'
   if (v === 'en_curs' || v === 'en curs') return 'en_curs'
   if (v === 'espera') return 'espera'
-  if (v === 'resolut') return 'resolut'
-  if (v === 'validat') return 'validat'
+  if (v === 'fet') return 'fet'
+  if (v === 'no_fet' || v === 'no fet') return 'no_fet'
+  if (v === 'resolut' || v === 'validat') return 'validat'
   return 'nou'
+}
+
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const user = session.user as SessionUser
+  const role = normalizeRole(user.role || '')
+  const dept = (user.department || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+  if (role !== 'admin' && role !== 'direccio' && role !== 'cap' && role !== 'treballador') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { id } = await ctx.params
+
+  try {
+    const ref = db.collection('maintenanceTickets').doc(id)
+    const snap = await ref.get()
+    if (!snap.exists) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+
+    const data = snap.data() as any
+    if (role === 'treballador') {
+      const assignedIds: string[] = Array.isArray(data.assignedToIds) ? data.assignedToIds : []
+      if (!assignedIds.includes(user.id)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+    }
+
+    if (role === 'cap' && dept !== 'manteniment' && dept !== 'decoracio' && dept !== 'decoracions' && dept !== 'decoracion') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    return NextResponse.json({
+      ticket: {
+        id: snap.id,
+        ...data,
+        status: normalizeStatus(data.status),
+      },
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal error'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -154,8 +207,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       const currentStatus = normalizeStatus(current.status)
       const allowed: Record<string, string[]> = {
         assignat: ['en_curs', 'espera'],
-        en_curs: ['espera', 'resolut'],
-        espera: ['en_curs'],
+        en_curs: ['espera', 'fet', 'no_fet'],
+        espera: ['en_curs', 'fet', 'no_fet'],
       }
       const nextAllowed = allowed[currentStatus] || []
       if (!nextAllowed.includes(nextStatus)) {

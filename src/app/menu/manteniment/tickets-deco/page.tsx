@@ -19,7 +19,9 @@ const STATUS_LABELS: Record<TicketStatus, string> = {
   assignat: 'Assignat',
   en_curs: 'En curs',
   espera: 'Espera',
-  resolut: 'Resolut',
+  fet: 'Fet',
+  no_fet: 'No fet',
+  resolut: 'Validat',
   validat: 'Validat',
 }
 
@@ -40,7 +42,9 @@ const statusBadgeClasses: Record<TicketStatus, string> = {
   assignat: 'bg-blue-100 text-blue-800',
   en_curs: 'bg-amber-100 text-amber-800',
   espera: 'bg-slate-100 text-slate-700',
-  resolut: 'bg-green-100 text-green-800',
+  fet: 'bg-green-100 text-green-800',
+  no_fet: 'bg-rose-100 text-rose-700',
+  resolut: 'bg-purple-100 text-purple-800',
   validat: 'bg-purple-100 text-purple-800',
 }
 
@@ -196,7 +200,8 @@ export default function MaintenanceTicketsDecoPage() {
             { value: 'assignat', label: STATUS_LABELS.assignat },
             { value: 'en_curs', label: STATUS_LABELS.en_curs },
             { value: 'espera', label: STATUS_LABELS.espera },
-            { value: 'resolut', label: STATUS_LABELS.resolut },
+            { value: 'fet', label: STATUS_LABELS.fet },
+            { value: 'no_fet', label: STATUS_LABELS.no_fet },
             { value: 'validat', label: STATUS_LABELS.validat },
           ]}
           priorityLabel="Importància"

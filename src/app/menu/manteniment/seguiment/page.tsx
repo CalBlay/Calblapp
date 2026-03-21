@@ -1,573 +1,508 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
-import { format, parseISO } from 'date-fns'
-import { useSession } from 'next-auth/react'
+import { useEffect, useMemo, useState } from 'react'
+import { addWeeks, endOfWeek, format, startOfWeek, subWeeks } from 'date-fns'
+import { ca } from 'date-fns/locale'
+import { Filter, History, Wrench } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
-import { normalizeRole } from '@/lib/roles'
-import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
-import FilterButton from '@/components/ui/filter-button'
-import { useFilters } from '@/context/FiltersContext'
-import {
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-} from '@/components/ui/select'
+import type { Ticket, TicketStatus } from '@/app/menu/manteniment/tickets/types'
 
-type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'resolut' | 'validat'
-type TicketPriority = 'urgent' | 'alta' | 'normal' | 'baixa'
+type Scope = 'active' | 'closed'
+type DateMode = 'all' | 'planned' | 'created' | 'updated' | 'completed'
 
-type Ticket = {
-  id: string
-  ticketCode?: string | null
-  incidentNumber?: string | null
-  location: string
-  machine: string
-  description: string
-  priority: TicketPriority
-  status: TicketStatus
-  createdAt: number | string
-  plannedStart?: number | string | null
-  createdByName?: string
-  assignedToIds?: string[]
-  assignedToNames?: string[]
-  statusHistory?: Array<{
-    status: TicketStatus
-    at?: number | string | null
-    byName?: string | null
-  }>
-}
-
-type PlannedItem = {
-  id: string
-  kind: 'preventiu' | 'ticket'
-  title: string
-  date?: string
-  start?: string
-  end?: string
-  location?: string
-  worker?: string
-  templateId?: string
-}
-
-type CompletedRecord = {
-  id: string
-  plannedId?: string | null
-  templateId?: string | null
-  title: string
-  worker?: string | null
-  status?: string
-  completedAt: string
-  checklist?: Record<string, boolean>
-}
+const ACTIVE_STATUSES: TicketStatus[] = ['nou', 'assignat', 'en_curs', 'espera', 'fet', 'no_fet']
+const CLOSED_STATUSES: TicketStatus[] = ['validat', 'resolut']
 
 const STATUS_LABELS: Record<TicketStatus, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
   en_curs: 'En curs',
-  espera: 'Espera',
-  resolut: 'Resolut',
+  espera: 'En espera',
+  fet: 'Fet',
+  no_fet: 'No fet',
+  resolut: 'Validat',
   validat: 'Validat',
 }
 
-const PRIORITY_LABELS: Record<TicketPriority, string> = {
-  urgent: 'Urgent',
-  alta: 'Alta',
-  normal: 'Normal',
-  baixa: 'Baixa',
+const DATE_MODE_LABELS: Record<DateMode, string> = {
+  all: 'Sense filtre de data',
+  planned: 'Data planificada',
+  created: 'Data creacio',
+  updated: 'Ultim canvi',
+  completed: 'Data tancament',
 }
 
-const formatMachine = (value?: string) => {
-  if (!value) return ''
-  const parts = value.split('·').map((p) => p.trim()).filter(Boolean)
-  if (parts.length > 1) return parts.slice(1).join(' · ').trim()
-  return value.replace(/^([A-Z]{1,3}\d{3,}|Z\d{6,})\s*[-–]\s*/i, '').trim()
+const STATUS_BADGES: Record<TicketStatus, string> = {
+  nou: 'bg-emerald-100 text-emerald-800',
+  assignat: 'bg-sky-100 text-sky-800',
+  en_curs: 'bg-amber-100 text-amber-800',
+  espera: 'bg-slate-100 text-slate-700',
+  fet: 'bg-green-100 text-green-800',
+  no_fet: 'bg-rose-100 text-rose-700',
+  resolut: 'bg-violet-100 text-violet-800',
+  validat: 'bg-violet-100 text-violet-800',
 }
 
-const getTicketDate = (ticket: Ticket) => {
-  const base = ticket.plannedStart || ticket.createdAt
-  if (!base) return null
-  const date = typeof base === 'string' ? new Date(base) : new Date(Number(base))
-  if (Number.isNaN(date.getTime())) return null
-  return date
+const PRIORITY_BADGES: Record<string, string> = {
+  urgent: 'bg-red-100 text-red-700',
+  alta: 'bg-orange-100 text-orange-700',
+  normal: 'bg-slate-100 text-slate-700',
+  baixa: 'bg-blue-100 text-blue-700',
 }
 
-const getChecklistProgress = (checklist?: Record<string, boolean>) => {
-  const values = checklist ? Object.values(checklist) : []
-  if (values.length === 0) return 0
-  const done = values.filter(Boolean).length
-  return Math.round((done / values.length) * 100)
+const parseDate = (value?: number | string | null) => {
+  if (!value && value !== 0) return null
+  const date = typeof value === 'number' ? new Date(value) : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
-export default function MaintenanceTrackingPage() {
-  const { data: session } = useSession()
-  const role = normalizeRole((session?.user as any)?.role || '')
-  const dept = ((session?.user as any)?.department || '').toString().toLowerCase()
+const formatDateTime = (value?: number | string | null) => {
+  const date = parseDate(value)
+  return date ? format(date, 'dd/MM/yyyy HH:mm') : '-'
+}
 
-  const canView =
-    role === 'admin' ||
-    role === 'direccio' ||
-    role === 'cap' ||
-    role === 'comercial' ||
-    (role === 'treballador' && dept === 'produccio')
+const formatDateOnly = (value?: number | string | null) => {
+  const date = parseDate(value)
+  return date ? format(date, 'dd/MM/yyyy') : '-'
+}
 
-  const [statusFilter, setStatusFilter] = useState<'__all__' | TicketStatus>(
-    '__all__'
-  )
-  const [dateRange, setDateRange] = useState<{ start?: string; end?: string }>({})
+const getLatestHistoryItem = (ticket: Ticket) =>
+  [...(ticket.statusHistory || [])].sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]
 
+const getCompletedHistoryItem = (ticket: Ticket) =>
+  [...(ticket.statusHistory || [])]
+    .filter((item) => item.status === 'validat' || item.status === 'resolut')
+    .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]
+
+const getTicketDate = (ticket: Ticket, mode: DateMode) => {
+  if (mode === 'all') return parseDate(ticket.plannedStart || ticket.createdAt)
+  if (mode === 'planned') return parseDate(ticket.plannedStart)
+  if (mode === 'created') return parseDate(ticket.createdAt)
+  if (mode === 'updated') return parseDate(getLatestHistoryItem(ticket)?.at || ticket.assignedAt || ticket.createdAt)
+  return parseDate(getCompletedHistoryItem(ticket)?.at)
+}
+
+const getSearchBlob = (ticket: Ticket) =>
+  [
+    ticket.ticketCode,
+    ticket.incidentNumber,
+    ticket.description,
+    ticket.machine,
+    ticket.location,
+    ...(ticket.assignedToNames || []),
+  ]
+    .join(' ')
+    .toLowerCase()
+
+export default function MaintenanceSeguimentPage() {
   const [tickets, setTickets] = useState<Ticket[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [cursorDate, setCursorDate] = useState(() => new Date())
+  const [scope, setScope] = useState<Scope>('active')
+  const [dateMode, setDateMode] = useState<DateMode>('all')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [workerFilter, setWorkerFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [historyTicket, setHistoryTicket] = useState<Ticket | null>(null)
-  const [users, setUsers] = useState<Array<{ id: string; name?: string; department?: string }>>([])
-  const [typeFilter, setTypeFilter] = useState<'__all__' | 'ticket' | 'preventiu'>('__all__')
-  const [workerFilter, setWorkerFilter] = useState('__all__')
-  const [plannedItems, setPlannedItems] = useState<PlannedItem[]>([])
-  const [completed, setCompleted] = useState<CompletedRecord[]>([])
-
-  const fetchTickets = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const params = new URLSearchParams()
-      if (statusFilter && statusFilter !== '__all__') {
-        params.set('status', statusFilter)
-      }
-      params.set('ticketType', 'maquinaria')
-      const res = await fetch(`/api/maintenance/tickets?${params.toString()}`, {
-        cache: 'no-store',
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      const list = Array.isArray(json?.tickets) ? json.tickets : []
-      setTickets(list)
-    } catch {
-      setTickets([])
-      setError('No s’han pogut carregar els tickets.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const [showFilters, setShowFilters] = useState(false)
 
   useEffect(() => {
-    if (!canView) return
-    fetchTickets()
-  }, [statusFilter, canView])
+    let cancelled = false
 
-  useEffect(() => {
-    if (!canView) return
-    const loadUsers = async () => {
-      try {
-        const res = await fetch('/api/users', { cache: 'no-store' })
-        if (!res.ok) return
-        const json = await res.json()
-        setUsers(Array.isArray(json) ? json : [])
-      } catch {
-        setUsers([])
-      }
-    }
-    loadUsers()
-  }, [canView])
-
-  useEffect(() => {
-    if (!canView) return
-    const loadPlanned = async () => {
-      try {
-        const params = new URLSearchParams()
-        if (dateRange.start) params.set('start', dateRange.start)
-        if (dateRange.end) params.set('end', dateRange.end)
-        const qs = params.toString()
-        const res = await fetch(
-          `/api/maintenance/preventius/planned${qs ? `?${qs}` : ''}`,
-          { cache: 'no-store' }
-        )
-        if (!res.ok) {
-          setPlannedItems([])
-          return
-        }
-        const json = await res.json()
-        const list = Array.isArray(json?.items) ? json.items : []
-        const mapped = list
-          .map((item: any) => {
-            if (!item?.id || !item?.title) return null
-            return {
-              id: String(item.id),
-              kind: 'preventiu',
-              title: String(item.title || ''),
-              date: String(item.date || ''),
-              start: String(item.startTime || ''),
-              end: String(item.endTime || ''),
-              location: String(item.location || ''),
-              worker: Array.isArray(item.workerNames) ? item.workerNames.join(', ') : '',
-              templateId: item.templateId || undefined,
-            } as PlannedItem
-          })
-          .filter(Boolean)
-        setPlannedItems(mapped as PlannedItem[])
-      } catch {
-        setPlannedItems([])
-      }
-    }
-    loadPlanned()
-  }, [canView, dateRange.start, dateRange.end])
-
-  useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch('/api/maintenance/preventius/completed', { cache: 'no-store' })
-        if (!res.ok) {
-          setCompleted([])
-          return
-        }
+        setLoading(true)
+        setError('')
+        const res = await fetch('/api/maintenance/tickets?ticketType=maquinaria&limit=200', {
+          cache: 'no-store',
+        })
+        if (!res.ok) throw new Error('No s han pogut carregar els tickets')
         const json = await res.json()
-        const list = Array.isArray(json?.records) ? json.records : []
-        setCompleted(list)
-      } catch {
-        setCompleted([])
+        if (!cancelled) setTickets(Array.isArray(json?.tickets) ? json.tickets : [])
+      } catch (err) {
+        if (!cancelled) {
+          setTickets([])
+          setError(err instanceof Error ? err.message : 'Error carregant seguiment')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
-    load()
-    const onFocus = () => load()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
+
+    void load()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const filteredTickets = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    const userById = new Map(users.map((u) => [String(u.id), u]))
-    const list = tickets.filter((ticket) => {
-      if (workerFilter !== '__all__') {
-        const ids = Array.isArray(ticket.assignedToIds) ? ticket.assignedToIds : []
-        if (!ids.map(String).includes(workerFilter)) return false
-      }
-
-      if (typeFilter === 'preventiu') return false
-
-      if (!query) return true
-      const code = (ticket.ticketCode || ticket.incidentNumber || '').toLowerCase()
-      const machine = (ticket.machine || '').toLowerCase()
-      return code.includes(query) || machine.includes(query)
-    })
-
-    const start = dateRange.start ? parseISO(dateRange.start) : null
-    const end = dateRange.end ? parseISO(dateRange.end) : null
-    const ranged = list.filter((t) => {
-      if (!start && !end) return true
-      const date = getTicketDate(t)
-      if (!date) return false
-      if (start && date < start) return false
-      if (end && date > new Date(end.getTime() + 24 * 60 * 60 * 1000)) return false
-      return true
-    })
-
-    ranged.sort((a, b) => {
-      const order: Record<TicketStatus, number> = {
-        validat: 0,
-        resolut: 1,
-        en_curs: 2,
-        espera: 3,
-        assignat: 4,
-        nou: 5,
-      }
-      const aOrder = order[a.status] ?? 99
-      const bOrder = order[b.status] ?? 99
-      if (aOrder !== bOrder) return aOrder - bOrder
-      const da = getTicketDate(a)?.getTime() ?? 0
-      const db = getTicketDate(b)?.getTime() ?? 0
-      return db - da
-    })
-
-    return ranged
-  }, [tickets, search, workerFilter, users, dateRange, typeFilter])
-
-  const preventiusRows = useMemo(() => {
-    const byPlanned = new Map<string, CompletedRecord>()
-    const byTemplate = new Map<string, CompletedRecord>()
-    completed.forEach((c) => {
-      if (c.plannedId) {
-        const prev = byPlanned.get(c.plannedId)
-        if (!prev || c.completedAt > prev.completedAt) byPlanned.set(c.plannedId, c)
-      }
-      if (c.templateId) {
-        const prev = byTemplate.get(c.templateId)
-        if (!prev || c.completedAt > prev.completedAt) byTemplate.set(c.templateId, c)
-      }
-    })
-
-    const query = search.trim().toLowerCase()
-    if (typeFilter === 'ticket') return []
-    const list = plannedItems
-      .filter((item) => item.kind === 'preventiu')
-      .filter((item) => {
-        if (!query) return true
-        return item.title.toLowerCase().includes(query)
-      })
-      .filter((item) => {
-        if (!dateRange.start && !dateRange.end) return true
-        if (!item.date) return false
-        const date = parseISO(item.date)
-        const start = dateRange.start ? parseISO(dateRange.start) : null
-        const end = dateRange.end ? parseISO(dateRange.end) : null
-        if (start && date < start) return false
-        if (end && date > new Date(end.getTime() + 24 * 60 * 60 * 1000)) return false
-        return true
-      })
-      .map((item) => {
-        const last =
-          byPlanned.get(item.id) ||
-          (item.templateId ? byTemplate.get(item.templateId) : null) ||
-          null
-        const progress = getChecklistProgress(last?.checklist)
-        return {
-          ...item,
-          progress,
-          completedAt: last?.completedAt || null,
-          checklist: last?.checklist || null,
-          record: last,
-          status: last?.status || 'pendent',
-        }
-      })
-    return list
-  }, [plannedItems, completed, search, dateRange, typeFilter])
+  const weekStart = useMemo(() => startOfWeek(cursorDate, { weekStartsOn: 1 }), [cursorDate])
+  const weekEnd = useMemo(() => endOfWeek(cursorDate, { weekStartsOn: 1 }), [cursorDate])
 
   const workerOptions = useMemo(() => {
-    const userById = new Map(users.map((u) => [String(u.id), u]))
-    const set = new Map<string, string>()
-    tickets.forEach((t) => {
-      const ids = Array.isArray(t.assignedToIds) ? t.assignedToIds : []
-      ids.forEach((id) => {
-        const u = userById.get(String(id))
-        if (!u) return
-        set.set(String(id), String(u.name || u.id))
+    const values = new Set<string>()
+    tickets.forEach((ticket) => {
+      ;(ticket.assignedToNames || []).forEach((name) => {
+        const clean = String(name || '').trim()
+        if (clean) values.add(clean)
       })
     })
-    return Array.from(set.entries()).map(([id, name]) => ({ id, name }))
-  }, [users, tickets])
+    return Array.from(values).sort((a, b) => a.localeCompare(b, 'ca'))
+  }, [tickets])
 
-  const { setContent, setOpen } = useFilters()
+  useEffect(() => {
+    if (scope === 'closed' && dateMode === 'planned') setDateMode('completed')
+    if (scope === 'active' && dateMode === 'completed') setDateMode('planned')
+  }, [dateMode, scope])
 
-  const openFiltersPanel = () => {
-    setContent(
-      <div className="p-4 space-y-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Tipus</label>
-          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as any)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Tots" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Tots</SelectItem>
-              <SelectItem value="ticket">Tickets</SelectItem>
-              <SelectItem value="preventiu">Preventius</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+  const filteredTickets = useMemo(() => {
+    const allowedStatuses = scope === 'active' ? ACTIVE_STATUSES : CLOSED_STATUSES
+    const startMs = weekStart.getTime()
+    const endMs = weekEnd.getTime()
+    const needle = search.trim().toLowerCase()
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Treballador</label>
-          <Select value={workerFilter} onValueChange={(v) => setWorkerFilter(v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Tots" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Tots</SelectItem>
-              {workerOptions.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+    return tickets
+      .filter((ticket) => allowedStatuses.includes(ticket.status))
+      .filter((ticket) => (statusFilter === 'all' ? true : ticket.status === statusFilter))
+      .filter((ticket) => {
+        if (workerFilter === 'all') return true
+        return (ticket.assignedToNames || []).includes(workerFilter)
+      })
+      .filter((ticket) => (needle ? getSearchBlob(ticket).includes(needle) : true))
+      .filter((ticket) => {
+        if (dateMode === 'all') return true
+        const date = getTicketDate(ticket, dateMode)
+        if (!date) return false
+        const ms = date.getTime()
+        return ms >= startMs && ms <= endMs
+      })
+      .sort((a, b) => {
+        const aDate = getTicketDate(a, dateMode)?.getTime() || 0
+        const bDate = getTicketDate(b, dateMode)?.getTime() || 0
+        return bDate - aDate
+      })
+  }, [dateMode, scope, search, statusFilter, tickets, weekEnd, weekStart, workerFilter])
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Estat</label>
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Tots" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Tots</SelectItem>
-              <SelectItem value="validat">Validat</SelectItem>
-              <SelectItem value="resolut">Resolut</SelectItem>
-              <SelectItem value="en_curs">En curs</SelectItem>
-              <SelectItem value="espera">Espera</SelectItem>
-              <SelectItem value="assignat">Assignat</SelectItem>
-              <SelectItem value="nou">Nou</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-    )
-    setOpen(true)
-  }
-
-  const handleFilterChange = (f: SmartFiltersChange) => {
-    setDateRange({ start: f.start, end: f.end })
-  }
+  const counts = useMemo(
+    () => ({
+      active: tickets.filter((ticket) => ACTIVE_STATUSES.includes(ticket.status)).length,
+      closed: tickets.filter((ticket) => CLOSED_STATUSES.includes(ticket.status)).length,
+    }),
+    [tickets]
+  )
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'comercial', 'treballador']}>
-      <main className="w-full">
-        <ModuleHeader subtitle="Seguiment de tickets" />
+    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+      <div className="space-y-5 px-4 pb-8">
+        <ModuleHeader title="Manteniment" subtitle="Seguiment" mainHref="/menu/manteniment" />
 
-        <div className="mx-auto w-full max-w-none px-3 py-3">
-          <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm flex items-center gap-3 flex-nowrap">
-            <SmartFilters
-              role="Direcció"
-              onChange={handleFilterChange}
-              showDepartment={false}
-              showWorker={false}
-              showLocation={false}
-              showStatus={false}
-              showImportance={false}
-              showAdvanced={false}
-              compact
-            />
-            <div className="flex-1 min-w-[8px]" />
-            <FilterButton onClick={openFiltersPanel} />
-          </div>
-          <div className="mt-3">
-            <input
-              type="text"
-              placeholder="Cerca per codi o maquinària..."
-              className="h-8 w-full max-w-sm rounded-full border px-4 text-sm"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="mx-auto w-full max-w-none px-3 py-4">
-          {loading && (
-            <p className="text-center text-gray-500 py-10">Carregant...</p>
-          )}
-
-          {error && <p className="text-center text-red-600 py-10">{error}</p>}
-
-          {!loading && !error && filteredTickets.length === 0 && (
-            <p className="text-center text-gray-400 py-10">
-              No hi ha tickets.
-            </p>
-          )}
-
-          {!loading && !error && (filteredTickets.length > 0 || preventiusRows.length > 0) && (
-            <div className="overflow-x-auto rounded-xl border bg-white shadow-sm">
-              <table className="w-full text-sm">
-                <thead className="bg-indigo-100 text-indigo-900 font-semibold">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Tipus</th>
-                    <th className="px-3 py-2 text-left">Codi / Plantilla</th>
-                    <th className="px-3 py-2 text-left">Equip</th>
-                    <th className="px-3 py-2 text-left">Màquina</th>
-                    <th className="px-3 py-2 text-left">Estat / %</th>
-                    <th className="px-3 py-2 text-left">Històric</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTickets.map((ticket) => {
-                    const names = Array.isArray(ticket.assignedToNames)
-                      ? ticket.assignedToNames
-                      : []
-                    const teamLabel = names.length > 0 ? names.join(', ') : '-'
-                    const machineLabel = formatMachine(ticket.machine)
-                    return (
-                      <tr key={ticket.id} className="border-t">
-                        <td className="px-3 py-2">Ticket</td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {ticket.incidentNumber || ticket.ticketCode || 'TIC'}
-                        </td>
-                        <td className="px-3 py-2">{teamLabel}</td>
-                        <td className="px-3 py-2 font-semibold">{machineLabel}</td>
-                        <td className="px-3 py-2">
-                          {STATUS_LABELS[ticket.status]}
-                        </td>
-                        <td className="px-3 py-2">
-                          <button
-                            type="button"
-                            onClick={() => setHistoryTicket(ticket)}
-                            className="text-xs text-indigo-700 underline"
-                          >
-                            Històric
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                  {preventiusRows.map((item) => (
-                    <tr key={`preventiu_${item.id}`} className="border-t">
-                      <td className="px-3 py-2">Preventiu</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{item.title}</td>
-                      <td className="px-3 py-2">{item.worker || '-'}</td>
-                      <td className="px-3 py-2 font-semibold">{item.location || '-'}</td>
-                      <td className="px-3 py-2">
-                        {item.status ? `${item.status} · ${item.progress}%` : `${item.progress}%`}
-                      </td>
-                      <td className="px-3 py-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const url = item.record?.id
-                              ? `/menu/manteniment/preventius/completat/${item.record.id}`
-                              : `/menu/manteniment/preventius/fulls/${item.id}`
-                            const win = window.open(url, '_blank', 'noopener')
-                            if (win) win.opener = null
-                          }}
-                          className="text-xs text-indigo-700 underline"
-                        >
-                          Checklist
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <section className="rounded-3xl border border-emerald-100 bg-emerald-50/50 p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+              <Wrench className="h-4 w-4 text-emerald-700" />
+              Seguiment operatiu
             </div>
-          )}
-        </div>
-      </main>
-
-      {historyTicket && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold text-gray-800">
-                Històric · {historyTicket.ticketCode || historyTicket.incidentNumber}
-              </div>
-              <button
-                type="button"
-                className="text-gray-500 hover:text-gray-700"
-                onClick={() => setHistoryTicket(null)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="mt-3 space-y-2 text-xs text-gray-600">
-              {(historyTicket.statusHistory || []).map((item, idx) => {
-                const when = item.at
-                  ? format(new Date(item.at as any), 'dd/MM/yyyy HH:mm')
-                  : ''
-                return (
-                  <div key={idx} className="flex justify-between gap-3">
-                    <span>{STATUS_LABELS[item.status]}</span>
-                    <span className="text-gray-400">{when}</span>
-                    <span>{item.byName || ''}</span>
-                  </div>
-                )
-              })}
-              {(!historyTicket.statusHistory || historyTicket.statusHistory.length === 0) && (
-                <div className="text-gray-400">Sense historial.</div>
+            <div className="text-xs text-emerald-800/80">
+              {dateMode === 'all' ? (
+                <span>
+                  Vista global sense setmana ni data.
+                </span>
+              ) : (
+                <span>
+                  La setmana filtra per <span className="font-semibold">{DATE_MODE_LABELS[dateMode]}</span>
+                </span>
               )}
             </div>
           </div>
-        </div>
-      )}
+          <div className="mt-1 text-xs text-emerald-800/80">
+            Actius = nous, assignats, en curs, en espera, fets i no fets. Tancats = validats.
+          </div>
+        </section>
 
+        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <button
+                type="button"
+                className="min-h-[44px] rounded-xl border border-slate-200 px-3 text-slate-600 hover:bg-slate-50"
+                onClick={() => setCursorDate((prev) => subWeeks(prev, 1))}
+              >
+                {'<'}
+              </button>
+              <span>
+                {format(weekStart, 'd MMM', { locale: ca })} - {format(weekEnd, 'd MMM', { locale: ca })}
+              </span>
+              <button
+                type="button"
+                className="min-h-[44px] rounded-xl border border-slate-200 px-3 text-slate-600 hover:bg-slate-50"
+                onClick={() => setCursorDate((prev) => addWeeks(prev, 1))}
+              >
+                {'>'}
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setScope('active')}
+                className={`min-h-[44px] rounded-full px-4 font-medium ${
+                  scope === 'active' ? 'bg-slate-900 text-white' : 'border border-slate-200 text-slate-600'
+                }`}
+              >
+                Actius {counts.active > 0 ? `(${counts.active})` : ''}
+              </button>
+              <button
+                type="button"
+                onClick={() => setScope('closed')}
+                className={`min-h-[44px] rounded-full px-4 font-medium ${
+                  scope === 'closed' ? 'bg-slate-900 text-white' : 'border border-slate-200 text-slate-600'
+                }`}
+              >
+                Tancats {counts.closed > 0 ? `(${counts.closed})` : ''}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="min-h-[44px] rounded-full border border-slate-200 px-4 font-medium text-slate-600 md:hidden"
+              >
+                Filtres
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2 md:hidden">
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+              {DATE_MODE_LABELS[dateMode]}
+            </span>
+            {statusFilter !== 'all' ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                {STATUS_LABELS[statusFilter as TicketStatus]}
+              </span>
+            ) : null}
+            {workerFilter !== 'all' ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                {workerFilter}
+              </span>
+            ) : null}
+          </div>
+
+          <div className={`mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5 ${showFilters ? 'grid' : 'hidden md:grid'}`}>
+            <label className="space-y-1 text-xs text-slate-600">
+              <span className="font-medium">Filtrar per data</span>
+              <select
+                value={dateMode}
+                onChange={(e) => setDateMode(e.target.value as DateMode)}
+                className="min-h-[48px] w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-900"
+              >
+                <option value="all">Sense filtre de data</option>
+                <option value="planned">Data planificada</option>
+                <option value="created">Data creacio</option>
+                <option value="updated">Ultim canvi</option>
+                <option value="completed">Data tancament</option>
+              </select>
+            </label>
+
+            <label className="space-y-1 text-xs text-slate-600">
+              <span className="font-medium">Estat</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="min-h-[48px] w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-900"
+              >
+                <option value="all">Tots</option>
+                {(scope === 'active' ? ACTIVE_STATUSES : CLOSED_STATUSES).map((status) => (
+                  <option key={status} value={status}>
+                    {STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-1 text-xs text-slate-600">
+              <span className="font-medium">Operari</span>
+              <select
+                value={workerFilter}
+                onChange={(e) => setWorkerFilter(e.target.value)}
+                className="min-h-[48px] w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-900"
+              >
+                <option value="all">Tots</option>
+                {workerOptions.map((worker) => (
+                  <option key={worker} value={worker}>
+                    {worker}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-1 text-xs text-slate-600 xl:col-span-2">
+              <span className="font-medium">Cerca</span>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Codi, maquina, ubicacio o descripcio..."
+                className="min-h-[48px] w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-900 placeholder:text-slate-400"
+              />
+            </label>
+          </div>
+        </div>
+
+        <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-900">Tickets</div>
+              <div className="text-xs text-slate-500">
+                {dateMode === 'all'
+                  ? `${filteredTickets.length} resultats sense filtre temporal`
+                  : `${filteredTickets.length} resultats per ${DATE_MODE_LABELS[dateMode].toLowerCase()}`}
+              </div>
+            </div>
+            {dateMode === 'all' ? (
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <Filter className="h-4 w-4" />
+                Tots els tickets
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <Filter className="h-4 w-4" />
+                Setmana {format(weekStart, "'W'II", { locale: ca })}
+              </div>
+            )}
+          </div>
+
+          {loading ? <div className="px-4 py-6 text-sm text-slate-500">Carregant tickets...</div> : null}
+          {error ? <div className="px-4 py-6 text-sm text-red-600">{error}</div> : null}
+          {!loading && !error && filteredTickets.length === 0 ? (
+            <div className="px-4 py-8 text-sm text-slate-500">
+              {dateMode === 'all'
+                ? 'No hi ha tickets amb aquests filtres.'
+                : 'No hi ha tickets en aquest rang amb aquest criteri de data.'}
+            </div>
+          ) : null}
+
+          {!loading && !error ? (
+            <div className="divide-y divide-slate-100">
+              {filteredTickets.map((ticket) => {
+                const latest = getLatestHistoryItem(ticket)
+                const completed = getCompletedHistoryItem(ticket)
+                const effectiveDate = getTicketDate(ticket, dateMode)
+                const code = ticket.ticketCode || ticket.incidentNumber || ticket.id
+                return (
+                  <article key={ticket.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(0,2fr),minmax(0,1fr)]">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-base font-semibold text-slate-900">{code}</span>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_BADGES[ticket.status]}`}
+                        >
+                          {STATUS_LABELS[ticket.status]}
+                        </span>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            PRIORITY_BADGES[ticket.priority || 'normal'] || PRIORITY_BADGES.normal
+                          }`}
+                        >
+                          {ticket.priority || 'normal'}
+                        </span>
+                      </div>
+                      <div className="text-base text-slate-900">
+                        {ticket.description || ticket.machine || ticket.location || '-'}
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-500">
+                        <span>Ubicacio: {ticket.location || '-'}</span>
+                        <span>Maquina: {ticket.machine || '-'}</span>
+                        <span>Equip: {(ticket.assignedToNames || []).join(', ') || '-'}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                      <div>
+                        <span className="font-medium text-slate-800">Visible per:</span> {DATE_MODE_LABELS[dateMode]}
+                      </div>
+                      <div>{formatDateTime(effectiveDate?.getTime())}</div>
+                      <div>Creat: {formatDateTime(ticket.createdAt)}</div>
+                      <div>Planificat: {formatDateTime(ticket.plannedStart)}</div>
+                      <div>
+                        Ultim canvi: {latest ? `${STATUS_LABELS[latest.status]} - ${formatDateTime(latest.at)}` : '-'}
+                      </div>
+                      <div>
+                        Tancament:{' '}
+                        {completed ? `${STATUS_LABELS[completed.status]} - ${formatDateTime(completed.at)}` : '-'}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setHistoryTicket(ticket)}
+                        className="mt-2 inline-flex min-h-[44px] items-center gap-2 rounded-full border border-sky-200 px-4 text-sm font-medium text-sky-700"
+                      >
+                        <History className="h-3.5 w-3.5" />
+                        Veure historic
+                      </button>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          ) : null}
+        </section>
+
+        {historyTicket ? (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 px-4 md:items-center">
+            <div className="w-full max-w-xl rounded-t-3xl bg-white p-5 shadow-2xl md:rounded-3xl">
+              <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-slate-200 md:hidden" />
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">
+                    Historic - {historyTicket.ticketCode || historyTicket.incidentNumber || historyTicket.id}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Creat {formatDateOnly(historyTicket.createdAt)} - {historyTicket.location || 'Sense ubicacio'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setHistoryTicket(null)}
+                  className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  aria-label="Tancar historic"
+                >
+                  <span className="text-sm font-semibold">x</span>
+                </button>
+              </div>
+              <div className="space-y-2">
+                {(historyTicket.statusHistory || [])
+                  .slice()
+                  .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))
+                  .map((item, index) => (
+                    <div
+                      key={`${item.status}-${item.at}-${index}`}
+                      className="rounded-2xl border border-slate-100 px-3 py-2 text-sm"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_BADGES[item.status]}`}
+                        >
+                          {STATUS_LABELS[item.status]}
+                        </span>
+                        <span className="text-xs text-slate-500">{formatDateTime(item.at)}</span>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-600">
+                        {item.byName || '-'}
+                        {item.startTime || item.endTime
+                          ? ` - ${item.startTime || '--:--'}-${item.endTime || '--:--'}`
+                          : ''}
+                      </div>
+                      {item.note ? <div className="mt-1 text-xs text-slate-500">{item.note}</div> : null}
+                    </div>
+                  ))}
+                {(!historyTicket.statusHistory || historyTicket.statusHistory.length === 0) ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-4 text-sm text-slate-500">
+                    Aquest ticket encara no te historic de canvis.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </RoleGuard>
   )
 }

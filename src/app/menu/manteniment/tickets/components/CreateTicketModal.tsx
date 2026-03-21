@@ -64,56 +64,64 @@ export default function CreateTicketModal({
   imagePreview,
 }: Props) {
   const isDeco = createTicketType === 'deco'
-  const machineLabel = isDeco ? 'Material' : 'Maquinària'
-  const machinePlaceholder = isDeco ? 'Cerca material...' : 'Cerca maquinària...'
+  const machinePlaceholder = isDeco ? 'Cerca material...' : 'Cerca maquinaria...'
+
   return (
     <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:p-4"
       onClick={() => {
         setShowLocationList(false)
         setShowMachineList(false)
       }}
     >
       <div
-        className="bg-white rounded-2xl w-full max-w-lg p-4 space-y-4"
+        className="w-full max-w-2xl rounded-t-3xl bg-white shadow-2xl md:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="text-lg font-semibold">Nou ticket</h2>
-            <div className="flex flex-wrap gap-2">
-              {(['urgent', 'alta', 'normal', 'baixa'] as TicketPriority[]).map((key) => (
-                <button
-                  key={key}
-                  onClick={() => setCreatePriority(key)}
-                  className={`px-3 py-1 rounded-full text-xs border font-semibold ${
-                    createPriority === key
-                      ? 'bg-emerald-600 text-white border-emerald-600'
-                      : 'bg-gray-100 text-gray-800 border-gray-200'
-                  }`}
-                >
-                  {priorityLabels[key]}
-                </button>
-              ))}
+        <div className="sticky top-0 rounded-t-3xl border-b border-slate-100 bg-white px-5 pb-4 pt-3 md:px-6">
+          <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-slate-200 md:hidden" />
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 space-y-3">
+              <h2 className="text-xl font-semibold text-slate-900">Nou ticket</h2>
+              <div className="flex flex-wrap gap-2">
+                {(['urgent', 'alta', 'normal', 'baixa'] as TicketPriority[]).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setCreatePriority(key)}
+                    className={`min-h-[44px] rounded-full border px-4 text-sm font-semibold ${
+                      createPriority === key
+                        ? 'border-emerald-600 bg-emerald-600 text-white'
+                        : 'border-gray-200 bg-gray-100 text-gray-800'
+                    }`}
+                  >
+                    {priorityLabels[key]}
+                  </button>
+                ))}
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-slate-200 text-lg text-gray-500"
+            >
+              ×
+            </button>
           </div>
-          <button onClick={onClose} className="text-gray-500">
-            ✕
-          </button>
         </div>
 
-        <div className="space-y-3">
+        <div className="max-h-[75vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
           {showTicketTypeSelector && (
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-wrap gap-2">
               {(['maquinaria', 'deco'] as TicketType[]).map((key) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => setCreateTicketType(key)}
-                  className={`px-3 py-1 rounded-full text-xs border font-semibold ${
+                  className={`min-h-[44px] rounded-full border px-4 text-sm font-semibold ${
                     createTicketType === key
-                      ? 'bg-emerald-600 text-white border-emerald-600'
-                      : 'bg-gray-100 text-gray-800 border-gray-200'
+                      ? 'border-emerald-600 bg-emerald-600 text-white'
+                      : 'border-gray-200 bg-gray-100 text-gray-800'
                   }`}
                 >
                   {ticketTypeLabels[key]}
@@ -121,11 +129,12 @@ export default function CreateTicketModal({
               ))}
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="relative">
               <input
-                className="w-full border rounded-xl px-3 py-2 text-[13px] pr-8"
-                placeholder="Cerca ubicació..."
+                className="h-12 w-full rounded-2xl border px-4 pr-10 text-base"
+                placeholder="Cerca ubicacio..."
                 value={locationQuery}
                 onFocus={() => setShowLocationList(true)}
                 onChange={(e) => {
@@ -142,18 +151,16 @@ export default function CreateTicketModal({
                     setCreateLocation('')
                     setShowLocationList(false)
                   }}
-                  className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 text-sm"
+                  className="absolute right-3 top-3 text-base text-gray-400 hover:text-gray-600"
                   aria-label="Esborrar"
                 >
-                  ✕
+                  ×
                 </button>
               )}
               {showLocationList && (
-                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-xl border bg-white shadow">
+                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-2xl border bg-white shadow">
                   {locations
-                    .filter((loc) =>
-                      loc.toLowerCase().includes(locationQuery.toLowerCase())
-                    )
+                    .filter((loc) => loc.toLowerCase().includes(locationQuery.toLowerCase()))
                     .map((loc) => (
                       <button
                         key={loc}
@@ -163,15 +170,14 @@ export default function CreateTicketModal({
                           setLocationQuery(loc)
                           setShowLocationList(false)
                         }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                        className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
                       >
                         {loc}
                       </button>
                     ))}
-                  {locations.filter((loc) =>
-                    loc.toLowerCase().includes(locationQuery.toLowerCase())
-                  ).length === 0 && (
-                    <div className="px-3 py-2 text-sm text-gray-500">Sense resultats</div>
+                  {locations.filter((loc) => loc.toLowerCase().includes(locationQuery.toLowerCase()))
+                    .length === 0 && (
+                    <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>
                   )}
                 </div>
               )}
@@ -179,7 +185,7 @@ export default function CreateTicketModal({
 
             <div className="relative">
               <input
-                className="w-full border rounded-xl px-3 py-2 text-[13px] pr-8"
+                className="h-12 w-full rounded-2xl border px-4 pr-10 text-base"
                 placeholder={machinePlaceholder}
                 value={machineQuery}
                 onFocus={() => setShowMachineList(true)}
@@ -197,14 +203,14 @@ export default function CreateTicketModal({
                     setCreateMachine('')
                     setShowMachineList(false)
                   }}
-                  className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 text-sm"
+                  className="absolute right-3 top-3 text-base text-gray-400 hover:text-gray-600"
                   aria-label="Esborrar"
                 >
-                  ✕
+                  ×
                 </button>
               )}
               {showMachineList && (
-                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-xl border bg-white shadow">
+                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-2xl border bg-white shadow">
                   {machines
                     .filter((m) => m.label.toLowerCase().includes(machineQuery.toLowerCase()))
                     .map((m) => (
@@ -216,37 +222,35 @@ export default function CreateTicketModal({
                           setMachineQuery(m.label)
                           setShowMachineList(false)
                         }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                        className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
                       >
                         {m.label}
                       </button>
                     ))}
-                  {machines.filter((m) =>
-                    m.label.toLowerCase().includes(machineQuery.toLowerCase())
-                  ).length === 0 && (
-                    <div className="px-3 py-2 text-sm text-gray-500">Sense resultats</div>
+                  {machines.filter((m) => m.label.toLowerCase().includes(machineQuery.toLowerCase()))
+                    .length === 0 && (
+                    <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>
                   )}
                 </div>
               )}
               {machines.length === 0 && !isDeco && (
-                <div className="text-xs text-amber-600 mt-1">
-                  No s’ha pogut carregar la maquinària.</div>
+                <div className="mt-1 text-xs text-amber-600">No s'ha pogut carregar la maquinaria.</div>
               )}
             </div>
           </div>
 
           <textarea
-            className="w-full border rounded-xl px-3 py-2 text-sm min-h-[96px]"
-            placeholder="Què s’ha d’arreglar?"
+            className="min-h-[140px] w-full rounded-2xl border px-4 py-3 text-base"
+            placeholder="Que s'ha d'arreglar?"
             value={createDescription}
             onChange={(e) => setCreateDescription(e.target.value)}
           />
 
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500">Adjuntar</label>
-              <label className="px-3 py-1 rounded-full border text-xs cursor-pointer">
-                📎 Fitxer
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-gray-500">Adjuntar</label>
+              <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
+                Fitxer
                 <input
                   type="file"
                   accept="image/*"
@@ -254,8 +258,8 @@ export default function CreateTicketModal({
                   onChange={(e) => onImageChange(e.target.files?.[0] || null)}
                 />
               </label>
-              <label className="px-3 py-1 rounded-full border text-xs cursor-pointer">
-                📷 Foto
+              <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
+                Foto
                 <input
                   type="file"
                   accept="image/*"
@@ -264,33 +268,37 @@ export default function CreateTicketModal({
                   onChange={(e) => onImageChange(e.target.files?.[0] || null)}
                 />
               </label>
-              {imageError && <span className="text-xs text-red-600">{imageError}</span>}
+              {imageError && <span className="text-sm text-red-600">{imageError}</span>}
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={onClose} className="px-4 py-2 rounded-full border text-sm">
-                Cancel·la
-              </button>
-              <button
-                onClick={onCreate}
-                disabled={createBusy}
-                className="px-4 py-2 rounded-full bg-emerald-600 text-white text-sm"
-              >
-                {createBusy ? 'Desant…' : 'Crear'}
-              </button>
-            </div>
-          </div>
 
-          {imagePreview && (
-            <img
-              src={imagePreview}
-              alt="Previsualització"
-              className="w-full max-h-48 object-cover rounded-xl"
-            />
-          )}
+            {imagePreview && (
+              <img
+                src={imagePreview}
+                alt="Previsualitzacio"
+                className="max-h-56 w-full rounded-2xl object-cover"
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 flex flex-col gap-3 rounded-b-3xl border-t border-slate-100 bg-white px-5 py-4 sm:flex-row sm:justify-end md:px-6">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[48px] rounded-full border px-5 text-sm font-medium"
+          >
+            Cancel·lar
+          </button>
+          <button
+            type="button"
+            onClick={onCreate}
+            disabled={createBusy}
+            className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white"
+          >
+            {createBusy ? 'Desant...' : 'Crear ticket'}
+          </button>
         </div>
       </div>
     </div>
   )
 }
-
-

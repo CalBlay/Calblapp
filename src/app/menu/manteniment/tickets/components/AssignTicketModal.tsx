@@ -80,176 +80,188 @@ export default function AssignTicketModal({
   onClose,
 }: Props) {
   const isDeco = ticket.ticketType === 'deco'
-  const machineLabel = isDeco ? 'Material' : 'Maquinària'
-  const machinePlaceholder = isDeco ? 'Selecciona material' : 'Selecciona maquinària'
+  const machineLabel = isDeco ? 'Material' : 'Maquinaria'
+  const machinePlaceholder = isDeco ? 'Selecciona material' : 'Selecciona maquinaria'
   const eventTitleShort = (ticket.sourceEventTitle || '')
     .split('/')
     .map((chunk) => chunk.trim())
     .filter(Boolean)[0]
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl w-full max-w-xl p-4 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-gray-900">{ticket.machine}</div>
-            <div className="text-xs text-gray-500">
-              {ticket.ticketCode || ticket.incidentNumber || 'TIC'} · {ticket.location}
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:p-4">
+      <div className="w-full max-w-3xl rounded-t-3xl bg-white shadow-2xl md:rounded-3xl">
+        <div className="sticky top-0 rounded-t-3xl border-b border-slate-100 bg-white px-5 pb-4 pt-3 md:px-6">
+          <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-slate-200 md:hidden" />
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-lg font-semibold text-gray-900">{ticket.machine}</div>
+              <div className="mt-1 text-sm text-gray-500">
+                {ticket.ticketCode || ticket.incidentNumber || 'TIC'} · {ticket.location}
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() =>
-                onAssign(ticket, ticket.assignedToIds || [], ticket.assignedToNames || [])
-              }
-              disabled={assignBusy}
-              className="px-3 py-1 rounded-full bg-emerald-600 text-white text-[11px]"
-            >
-              {assignBusy ? 'Assignant…' : 'Assignar'}
-            </button>
-            <button onClick={onClose} className="text-gray-500">
-              ✕
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onAssign(ticket, ticket.assignedToIds || [], ticket.assignedToNames || [])}
+                disabled={assignBusy}
+                className="min-h-[44px] rounded-full bg-emerald-600 px-5 text-sm font-semibold text-white"
+              >
+                {assignBusy ? 'Assignant...' : 'Assignar'}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-slate-200 text-lg text-gray-500"
+              >
+                ×
+              </button>
+            </div>
           </div>
         </div>
 
-        {(ticket.source === 'whatsblapp' || ticket.source === 'incidencia') &&
-          ticket.status === 'nou' && (
-          <div className="border rounded-xl p-3 space-y-3">
-            <div className="text-xs font-semibold text-gray-600">Revisió del ticket</div>
-            {(ticket.sourceEventTitle || ticket.sourceEventCode || ticket.sourceEventDate) && (
-              <div className="rounded-lg bg-slate-50 border px-3 py-2 text-xs text-slate-600">
-                <div className="font-semibold text-slate-700">
-                  {eventTitleShort || ticket.sourceEventTitle || 'Esdeveniment'}
+        <div className="max-h-[75vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
+          {(ticket.source === 'whatsblapp' || ticket.source === 'incidencia') &&
+            ticket.status === 'nou' && (
+              <div className="space-y-4 rounded-2xl border p-4">
+                <div className="text-sm font-semibold text-gray-700">Revisio del ticket</div>
+                {(ticket.sourceEventTitle || ticket.sourceEventCode || ticket.sourceEventDate) && (
+                  <div className="rounded-2xl border bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    <div className="font-semibold text-slate-700">
+                      {eventTitleShort || ticket.sourceEventTitle || 'Esdeveniment'}
+                    </div>
+                    <div>
+                      {(ticket.sourceEventCode || '').trim()}
+                      {ticket.sourceEventCode && ticket.sourceEventDate ? ' · ' : ''}
+                      {(ticket.sourceEventDate || '').trim()}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label className="text-sm text-gray-700">
+                    Ubicacio
+                    <select
+                      className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
+                      value={detailsLocation}
+                      onChange={(e) => setDetailsLocation(e.target.value)}
+                    >
+                      <option value="">Selecciona ubicacio</option>
+                      {locations.map((loc) => (
+                        <option key={loc} value={loc}>
+                          {loc}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="text-sm text-gray-700">
+                    {machineLabel}
+                    <select
+                      className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
+                      value={detailsMachine}
+                      onChange={(e) => setDetailsMachine(e.target.value)}
+                    >
+                      <option value="">{machinePlaceholder}</option>
+                      {machines.map((m) => (
+                        <option key={`${m.code}-${m.name}`} value={m.label}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
-                <div>
-                  {(ticket.sourceEventCode || '').trim()}
-                  {(ticket.sourceEventCode && ticket.sourceEventDate) ? ' · ' : ''}
-                  {(ticket.sourceEventDate || '').trim()}
+
+                <label className="block text-sm text-gray-700">
+                  Observacions
+                  <textarea
+                    className="mt-2 min-h-[120px] w-full rounded-2xl border bg-gray-50 px-4 py-3 text-base"
+                    value={detailsDescription}
+                    onChange={(e) => setDetailsDescription(e.target.value)}
+                  />
+                </label>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-gray-500">Importancia</span>
+                  {(['urgent', 'alta', 'normal', 'baixa'] as TicketPriority[]).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setDetailsPriority(key)}
+                      className={`min-h-[44px] rounded-full border px-4 text-sm font-semibold ${
+                        detailsPriority === key
+                          ? 'border-emerald-600 bg-emerald-600 text-white'
+                          : 'border-gray-200 bg-gray-100 text-gray-800'
+                      }`}
+                    >
+                      {key === 'urgent'
+                        ? 'Urgent'
+                        : key === 'alta'
+                          ? 'Alta'
+                          : key === 'normal'
+                            ? 'Normal'
+                            : 'Baixa'}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={onUpdateDetails}
+                    className="min-h-[44px] rounded-full border px-4 text-sm font-medium"
+                  >
+                    Guardar dades
+                  </button>
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-1 gap-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className="flex flex-col">
-                  <span className="text-[11px] text-gray-500 mb-1">Ubicació</span>
-                  <select
-                    className="border rounded-lg px-3 py-1 text-xs h-9 bg-gray-50"
-                    value={detailsLocation}
-                    onChange={(e) => setDetailsLocation(e.target.value)}
-                  >
-                    <option value="">Selecciona ubicació</option>
-                    {locations.map((loc) => (
-                      <option key={loc} value={loc}>
-                        {loc}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[11px] text-gray-500 mb-1">{machineLabel}</span>
-                  <select
-                    className="border rounded-lg px-3 py-1 text-xs h-9 bg-gray-50"
-                    value={detailsMachine}
-                    onChange={(e) => setDetailsMachine(e.target.value)}
-                  >
-                    <option value="">{machinePlaceholder}</option>
-                    {machines.map((m) => (
-                      <option key={`${m.code}-${m.name}`} value={m.label}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[11px] text-gray-500 mb-1">Observacions</span>
-                <textarea
-                  className="border rounded-lg px-3 py-2 text-xs min-h-[70px] bg-gray-50"
-                  value={detailsDescription}
-                  onChange={(e) => setDetailsDescription(e.target.value)}
-                />
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] text-gray-500">Importància</span>
-                {(['urgent', 'alta', 'normal', 'baixa'] as TicketPriority[]).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setDetailsPriority(key)}
-                    className={`px-3 py-1 rounded-full text-xs border font-semibold ${
-                      detailsPriority === key
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-gray-100 text-gray-800 border-gray-200'
-                    }`}
-                  >
-                    {key === 'urgent'
-                      ? 'Urgent'
-                      : key === 'alta'
-                      ? 'Alta'
-                      : key === 'normal'
-                      ? 'Normal'
-                      : 'Baixa'}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={onUpdateDetails}
-                  className="ml-auto px-3 py-1 rounded-full border text-xs"
-                >
-                  Guardar dades
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
-        <div className="border rounded-xl p-3 space-y-2">
-          <div className="grid grid-cols-1 gap-2">
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              <div className="flex flex-col">
-                <span className="text-[11px] text-gray-500 mb-1">Data</span>
+          <div className="space-y-4 rounded-2xl border p-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+              <label className="text-sm text-gray-700">
+                Data
                 <input
                   type="date"
-                  className="border rounded-lg px-3 py-1 text-xs h-9 bg-gray-50"
+                  className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                   value={assignDate}
                   onChange={(e) => setAssignDate(e.target.value)}
                 />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[11px] text-gray-500 mb-1">Hora</span>
+              </label>
+
+              <label className="text-sm text-gray-700">
+                Hora
                 <input
                   type="time"
-                  className="border rounded-lg px-3 py-1 text-xs h-9 bg-gray-50"
+                  className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                   value={assignStartTime}
                   onChange={(e) => setAssignStartTime(e.target.value)}
                 />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[11px] text-gray-500 mb-1">Hores estimades</span>
+              </label>
+
+              <label className="text-sm text-gray-700">
+                Hores estimades
                 <input
                   type="time"
                   step={60}
-                  className="border rounded-lg px-3 py-1 text-xs h-9 bg-gray-50"
+                  className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                   value={assignDuration}
                   onChange={(e) => setAssignDuration(e.target.value)}
                 />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[11px] text-gray-500 mb-1">Treballadors</span>
+              </label>
+
+              <label className="text-sm text-gray-700">
+                Treballadors
                 <input
                   type="number"
                   min={1}
                   max={10}
-                  className="border rounded-lg px-2 py-1 text-xs h-9 bg-gray-50"
+                  className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                   value={workerCount}
                   onChange={(e) => setWorkerCount(Number(e.target.value || 1))}
                 />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[11px] text-gray-500 mb-1">Furgoneta</span>
+              </label>
+
+              <label className="text-sm text-gray-700">
+                Furgoneta
                 <select
-                  className="border rounded-lg px-2 py-1 text-xs h-9 bg-gray-50"
+                  className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                   value={ticket.vehiclePlate || ''}
                   onChange={(e) => onAssignVehicle(ticket, !!e.target.value, e.target.value || null)}
                 >
@@ -260,23 +272,25 @@ export default function AssignTicketModal({
                     </option>
                   ))}
                 </select>
-              </div>
+              </label>
             </div>
-            <div className="flex items-center gap-3 text-xs text-gray-500">
-              {availabilityLoading && <span>Comprovant disponibilitat…</span>}
+
+            <div className="flex items-center gap-3 text-sm text-gray-500">
+              {availabilityLoading && <span>Comprovant disponibilitat...</span>}
               {!availabilityLoading && assignDate && assignStartTime && (
-                <span className="text-[11px] text-emerald-700">Només disponibles</span>
+                <span className="font-medium text-emerald-700">Nomes disponibles</span>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
+
+            <div className="flex flex-wrap gap-3">
               {maintenanceUsers.map((u) => {
                 const checked = ticket.assignedToIds?.includes(u.id)
                 const isAvailable = availableIds.length === 0 || availableIds.includes(u.id)
                 return (
                   <label
                     key={u.id}
-                    className={`flex items-center gap-2 border rounded-full px-3 py-1 text-xs ${
-                      checked ? 'bg-emerald-100 border-emerald-200' : 'bg-white'
+                    className={`flex min-h-[44px] items-center gap-3 rounded-full border px-4 py-2 text-sm ${
+                      checked ? 'border-emerald-200 bg-emerald-100' : 'bg-white'
                     } ${!isAvailable ? 'opacity-40' : ''}`}
                   >
                     <input
@@ -311,36 +325,47 @@ export default function AssignTicketModal({
                 )
               })}
             </div>
-          </div>
 
-          {ticket.assignedAt && (
-            <div className="text-xs text-gray-500">
-              Assignat: {formatDateTime(ticket.assignedAt)} · {ticket.assignedByName || ''}
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={() => setShowHistory((prev) => !prev)}
-          className="text-xs text-gray-600 underline text-left"
-        >
-          Històric
-        </button>
-        {showHistory && (
-          <div className="border rounded-xl p-3 space-y-1">
-            {(ticket.statusHistory || []).map((item, index) => (
-              <div key={index} className="text-xs text-gray-500">
-                {statusLabels[item.status]} · {formatDateTime(item.at)} · {item.byName || ''}
+            {ticket.assignedAt && (
+              <div className="text-sm text-gray-500">
+                Assignat: {formatDateTime(ticket.assignedAt)} · {ticket.assignedByName || ''}
               </div>
-            ))}
-            {(!ticket.statusHistory || ticket.statusHistory.length === 0) && (
-              <div className="text-xs text-gray-400">Sense historial.</div>
             )}
           </div>
-        )}
+
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setShowHistory((prev) => !prev)}
+              className="text-sm font-medium text-gray-600 underline"
+            >
+              Historic
+            </button>
+            {showHistory && (
+              <div className="space-y-2 rounded-2xl border p-4">
+                {(ticket.statusHistory || []).map((item, index) => (
+                  <div key={index} className="text-sm text-gray-500">
+                    {statusLabels[item.status]} · {formatDateTime(item.at)} · {item.byName || ''}
+                  </div>
+                ))}
+                {(!ticket.statusHistory || ticket.statusHistory.length === 0) && (
+                  <div className="text-sm text-gray-400">Sense historial.</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 flex justify-end rounded-b-3xl border-t border-slate-100 bg-white px-5 py-4 md:px-6">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[48px] rounded-full border px-5 text-sm font-medium"
+          >
+            Tancar
+          </button>
+        </div>
       </div>
     </div>
   )
 }
-
-

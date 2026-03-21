@@ -49,8 +49,9 @@ const normalizeStatus = (value?: string) => {
   if (v === 'assignat') return 'assignat'
   if (v === 'en_curs' || v === 'en curs') return 'en_curs'
   if (v === 'espera') return 'espera'
-  if (v === 'resolut') return 'resolut'
-  if (v === 'validat') return 'validat'
+  if (v === 'fet') return 'fet'
+  if (v === 'no_fet' || v === 'no fet') return 'no_fet'
+  if (v === 'resolut' || v === 'validat') return 'validat'
   return 'nou'
 }
 
@@ -64,6 +65,16 @@ async function generateTicketCode(): Promise<string> {
     return updated
   })
   return `TIC${String(next).padStart(6, '0')}`
+}
+
+function getTicketTimelineMs(ticket: any): number | null {
+  const base = ticket?.plannedStart ?? ticket?.assignedAt ?? ticket?.createdAt ?? null
+  if (typeof base === 'number' && Number.isFinite(base)) return base
+  if (typeof base === 'string') {
+    const parsed = new Date(base).getTime()
+    return Number.isNaN(parsed) ? null : parsed
+  }
+  return null
 }
 
 export async function GET(req: Request) {
@@ -102,7 +113,10 @@ export async function GET(req: Request) {
     if (status && status !== 'all') ref = ref.where('status', '==', status)
     if (priority && priority !== 'all') ref = ref.where('priority', '==', priority)
     if (location) ref = ref.where('location', '==', location)
-    if (ticketType && ticketType !== 'all') ref = ref.where('ticketType', '==', ticketType)
+    const shouldQueryDecoOnly = ticketType === 'deco'
+    if (shouldQueryDecoOnly) {
+      ref = ref.where('ticketType', '==', 'deco')
+    }
 
     if (role === 'treballador' && dept === 'manteniment' && user.id) {
       ref = ref.where('assignedToIds', 'array-contains', user.id)
@@ -153,14 +167,19 @@ export async function GET(req: Request) {
         return ticketCode === code || incident === code
       })
     }
+    if (ticketType === 'maquinaria') {
+      tickets = tickets.filter((t: any) => String(t.ticketType || 'maquinaria').toLowerCase() !== 'deco')
+    } else if (ticketType && ticketType !== 'all' && ticketType !== 'deco') {
+      tickets = tickets.filter((t: any) => String(t.ticketType || '').toLowerCase() === ticketType)
+    }
     if (start || end) {
       const startMs = start ? new Date(`${start}T00:00:00.000Z`).getTime() : null
       const endMs = end ? new Date(`${end}T23:59:59.999Z`).getTime() : null
       tickets = tickets.filter((t: any) => {
-        const plannedStart = typeof t.plannedStart === 'number' ? t.plannedStart : null
-        if (plannedStart === null) return false
-        if (startMs !== null && plannedStart < startMs) return false
-        if (endMs !== null && plannedStart > endMs) return false
+        const timelineMs = getTicketTimelineMs(t)
+        if (timelineMs === null) return false
+        if (startMs !== null && timelineMs < startMs) return false
+        if (endMs !== null && timelineMs > endMs) return false
         return true
       })
     }

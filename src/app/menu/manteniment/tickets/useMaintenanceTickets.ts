@@ -131,6 +131,8 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
       if (locationFilter && locationFilter !== '__all__') {
         params.set('location', locationFilter)
       }
+      if (filters.start) params.set('start', filters.start)
+      if (filters.end) params.set('end', filters.end)
       if (cursorCreatedAt && cursorCreatedAt > 0) {
         params.set('cursorCreatedAt', String(cursorCreatedAt))
       }
@@ -203,7 +205,7 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
 
   useEffect(() => {
     fetchTickets()
-  }, [statusFilter, priorityFilter, locationFilter, ticketTypeFilter])
+  }, [statusFilter, priorityFilter, locationFilter, ticketTypeFilter, filters.start, filters.end])
 
   useEffect(() => {
     fetchLocations()

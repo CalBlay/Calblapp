@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
 
 export default function PlantillaNewPage() {
+  const [operators, setOperators] = useState<string[]>([])
   const [name, setName] = useState('')
   const [periodicity, setPeriodicity] = useState('monthly')
   const [lastDone, setLastDone] = useState('')
@@ -12,6 +13,33 @@ export default function PlantillaNewPage() {
   const [primaryOperator, setPrimaryOperator] = useState('')
   const [backupOperator, setBackupOperator] = useState('')
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const loadOperators = async () => {
+      try {
+        const res = await fetch('/api/personnel?department=manteniment', { cache: 'no-store' })
+        if (!res.ok) {
+          setOperators([])
+          return
+        }
+        const json = await res.json()
+        const list = Array.isArray(json?.data) ? json.data : []
+        const names = list
+          .map((item: any) => String(item?.name || '').trim())
+          .filter(Boolean)
+          .sort((a: string, b: string) => a.localeCompare(b))
+        setOperators(Array.from(new Set(names)))
+      } catch {
+        setOperators([])
+      }
+    }
+    loadOperators()
+  }, [])
+
+  const backupOptions = useMemo(
+    () => operators.filter((operator) => operator !== primaryOperator),
+    [operators, primaryOperator]
+  )
 
   const create = async () => {
     if (!name.trim()) {
@@ -101,19 +129,37 @@ export default function PlantillaNewPage() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-gray-600">Operari assignat</span>
-              <input
+              <select
                 className="h-10 rounded-xl border px-3"
                 value={primaryOperator}
-                onChange={(e) => setPrimaryOperator(e.target.value)}
-              />
+                onChange={(e) => {
+                  const next = e.target.value
+                  setPrimaryOperator(next)
+                  if (backupOperator === next) setBackupOperator('')
+                }}
+              >
+                <option value="">Sense assignar</option>
+                {operators.map((operator) => (
+                  <option key={operator} value={operator}>
+                    {operator}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-gray-600">Segon operari</span>
-              <input
+              <select
                 className="h-10 rounded-xl border px-3"
                 value={backupOperator}
                 onChange={(e) => setBackupOperator(e.target.value)}
-              />
+              >
+                <option value="">Sense assignar</option>
+                {backupOptions.map((operator) => (
+                  <option key={operator} value={operator}>
+                    {operator}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
 

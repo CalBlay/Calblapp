@@ -32,7 +32,7 @@ import {
 } from '@/hooks/useAdminNotifications'
 import { useMessagingUnreadCount } from '@/hooks/useMessagingUnread'
 import { useMaintenanceNewCount } from '@/hooks/useMaintenanceNewCount'
-import { useMaintenanceAssignedCount } from '@/hooks/useMaintenanceAssignedCount'
+import { useMaintenanceNotificationCount } from '@/hooks/useMaintenanceNotificationCount'
 import { normalizeRole } from '@/lib/roles'
 
 /* ─────────────────────────────────────────────
@@ -246,10 +246,8 @@ function MenuContent({ user }: { user: SessionUser }) {
   const { count: userRequestResultsCount } = useUserRequestResultCount()
   const { count: tornCount } = useTornNotificationCount()
   const { count: messagingCount } = useMessagingUnreadCount()
-  const { count: maintenanceNewCount } = useMaintenanceNewCount()
-  const { count: maintenanceNewCountMach } = useMaintenanceNewCount({ ticketType: 'maquinaria' })
+  const { count: maintenanceNotificationCount } = useMaintenanceNotificationCount()
   const { count: maintenanceNewCountDeco } = useMaintenanceNewCount({ ticketType: 'deco' })
-  const { count: maintenanceAssignedCount } = useMaintenanceAssignedCount()
   const normDept = (raw?: string) =>
     (raw || '')
       .toString()
@@ -259,18 +257,10 @@ function MenuContent({ user }: { user: SessionUser }) {
       .trim()
   const role = normalizeRole(user.role || '')
   const dept = normDept(user.department)
-  const isMaintenanceWorker = role === 'treballador' && dept === 'manteniment'
-  const isMaintenanceCap = role === 'cap' && dept === 'manteniment'
   const isDecorationsCap = role === 'cap' && (dept === 'decoracio' || dept === 'decoracions')
   const isAdminOrDir = role === 'admin' || role === 'direccio'
 
-  const maintenanceBadge = isMaintenanceWorker
-    ? maintenanceAssignedCount
-    : isMaintenanceCap
-    ? maintenanceNewCountMach
-    : isAdminOrDir
-    ? maintenanceNewCountMach
-    : maintenanceNewCount
+  const maintenanceBadge = maintenanceNotificationCount
 
   const decoBadge = isDecorationsCap
     ? maintenanceNewCountDeco

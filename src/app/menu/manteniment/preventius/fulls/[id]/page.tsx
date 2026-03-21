@@ -4,8 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { addDays, addMonths } from 'date-fns'
 import { useParams, useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
+import { useSession } from 'next-auth/react'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import ExportMenu from '@/components/export/ExportMenu'
+import { normalizeRole } from '@/lib/roles'
 
 type TemplateSection = { location: string; items: { label: string }[] }
 type Template = {
@@ -42,6 +44,7 @@ type CompletedRecord = {
 }
 
 export default function PreventiusFullsFitxaPage() {
+  const { data: session } = useSession()
   const params = useParams()
   const plannedId = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string)
   const searchParams = useSearchParams()
@@ -56,17 +59,28 @@ export default function PreventiusFullsFitxaPage() {
   const [lastRecord, setLastRecord] = useState<CompletedRecord | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [activeRecordId, setActiveRecordId] = useState<string | null>(recordId)
+  const role = normalizeRole((session?.user as any)?.role || '')
+  const department = ((session?.user as any)?.department || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+  const canValidate = role === 'admin' || role === 'direccio' || (role === 'cap' && department === 'manteniment')
 
   const applyRecordToDraft = (record: any) => {
     if (!record) return
-    setLastRecord(record)
+    const rawStatus = String(record.status || 'assignat')
+    const normalizedStatus =
+      rawStatus === 'resolut' ? 'validat' : rawStatus === 'pendent' ? 'assignat' : rawStatus
+    setLastRecord({ ...record, status: normalizedStatus })
     if (record.checklist) setChecklistState(record.checklist)
     setDraft({
       id: String(record.plannedId || plannedId),
       title: String(record.title || 'Preventiu'),
       startTime: String(record.startTime || ''),
       endTime: String(record.endTime || ''),
-      status: String(record.status || 'pendent'),
+      status: normalizedStatus,
       notes: String(record.notes || ''),
       templateId: record.templateId || null,
       worker: String(record.worker || ''),
@@ -166,7 +180,7 @@ export default function PreventiusFullsFitxaPage() {
           title: String(item.title || ''),
           startTime: String(item.startTime || ''),
           endTime: String(item.endTime || ''),
-          status: 'pendent',
+          status: workerNames.length ? 'assignat' : 'nou',
           notes: '',
           templateId: item.templateId || null,
           worker: workerNames.length ? workerNames.join(', ') : '',
@@ -249,8 +263,8 @@ export default function PreventiusFullsFitxaPage() {
 
   const saveCompletion = async () => {
     if (!draft) return
-    if (lastRecord?.status === 'resolut') {
-      alert('Aquest preventiu ja esta resolt i no es pot editar.')
+    if (lastRecord?.status === 'validat') {
+      alert('Aquest preventiu ja esta validat i no es pot editar.')
       return
     }
     setSaveStatus('saving')
@@ -438,7 +452,7 @@ export default function PreventiusFullsFitxaPage() {
                     type="time"
                     className="h-10 rounded-xl border px-3"
                     value={draft.startTime}
-                    disabled={lastRecord?.status === 'resolut'}
+                    disabled={lastRecord?.status === 'validat'}
                     onChange={(e) => setDraft((d) => (d ? { ...d, startTime: e.target.value } : d))}
                   />
                 </label>
@@ -448,7 +462,7 @@ export default function PreventiusFullsFitxaPage() {
                     type="time"
                     className="h-10 rounded-xl border px-3"
                     value={draft.endTime}
-                    disabled={lastRecord?.status === 'resolut'}
+                    disabled={lastRecord?.status === 'validat'}
                     onChange={(e) => setDraft((d) => (d ? { ...d, endTime: e.target.value } : d))}
                   />
                 </label>
@@ -457,7 +471,7 @@ export default function PreventiusFullsFitxaPage() {
                   <textarea
                     className="min-h-[120px] rounded-xl border px-3 py-2 text-sm"
                     value={draft.notes}
-                    disabled={lastRecord?.status === 'resolut'}
+                    disabled={lastRecord?.status === 'validat'}
                     onChange={(e) => setDraft((d) => (d ? { ...d, notes: e.target.value } : d))}
                   />
                 </label>
@@ -466,14 +480,16 @@ export default function PreventiusFullsFitxaPage() {
                   <select
                     className="h-10 rounded-xl border px-3"
                     value={draft.status}
-                    disabled={lastRecord?.status === 'resolut'}
+                    disabled={lastRecord?.status === 'validat'}
                     onChange={(e) => setDraft((d) => (d ? { ...d, status: e.target.value } : d))}
                   >
-                    <option value="pendent">Pendent</option>
+                    <option value="nou">Nou</option>
+                    <option value="assignat">Assignat</option>
                     <option value="en_curs">En curs</option>
+                    <option value="espera">Espera</option>
                     <option value="fet">Fet</option>
                     <option value="no_fet">No fet</option>
-                    <option value="resolut">Resolut</option>
+                    {canValidate ? <option value="validat">Validat</option> : null}
                   </select>
                 </label>
 
@@ -556,7 +572,7 @@ export default function PreventiusFullsFitxaPage() {
                                   <input
                                     type="checkbox"
                                     checked={!!checklistState[entryKey]}
-                                    disabled={lastRecord?.status === 'resolut'}
+                                    disabled={lastRecord?.status === 'validat'}
                                     onChange={() =>
                                       setChecklistState((prev) => ({
                                         ...prev,

@@ -4,12 +4,13 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import * as XLSX from 'xlsx'
 import { useSession } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import ExportMenu from '@/components/export/ExportMenu'
 import { normalizeRole } from '@/lib/roles'
-type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'resolut' | 'validat'
+type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
 
 type Ticket = {
   id: string
@@ -28,12 +29,22 @@ const STATUS_LABELS: Record<TicketStatus, string> = {
   assignat: 'Assignat',
   en_curs: 'En curs',
   espera: 'Espera',
-  resolut: 'Resolut',
+  fet: 'Fet',
+  no_fet: 'No fet',
+  resolut: 'Validat',
   validat: 'Validat',
+}
+
+const getStatusLabel = (status?: string | null, fallback = 'pendent') => {
+  const key = String(status || fallback).trim().toLowerCase()
+  if (key in STATUS_LABELS) return STATUS_LABELS[key as TicketStatus]
+  if (key === 'pendent') return 'Pendent'
+  return key || fallback
 }
 
 export default function PreventiusFullsPage() {
   const { data: session } = useSession()
+  const searchParams = useSearchParams()
   const role = normalizeRole((session?.user as any)?.role || '')
   const canFilterByWorker = role === 'admin' || role === 'direccio' || role === 'cap'
   const [filters, setFiltersState] = useState<{ start: string; end: string; mode: 'day' }>(() => {
@@ -63,7 +74,7 @@ export default function PreventiusFullsPage() {
       kind: 'ticket'
       title: string
       code?: string
-      status?: 'nou' | 'assignat' | 'en_curs' | 'espera' | 'resolut' | 'validat'
+      status?: 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
       ticketType?: 'maquinaria' | 'deco'
       date: string
       startTime: string
@@ -80,6 +91,19 @@ export default function PreventiusFullsPage() {
     endTime: string
     note: string
   }>({ startTime: '', endTime: '', note: '' })
+  const queryTicketId = (searchParams?.get('ticketId') || '').trim()
+  const queryStart = (searchParams?.get('start') || '').trim()
+  const queryEnd = (searchParams?.get('end') || '').trim()
+
+  useEffect(() => {
+    if (!queryStart && !queryEnd) return
+    setFiltersState((prev) => {
+      const nextStart = queryStart || prev.start
+      const nextEnd = queryEnd || prev.end
+      if (prev.start === nextStart && prev.end === nextEnd) return prev
+      return { ...prev, start: nextStart, end: nextEnd }
+    })
+  }, [queryEnd, queryStart])
 
   const loadPlannedItems = async (start: string, end: string) => {
     try {
@@ -170,6 +194,15 @@ export default function PreventiusFullsPage() {
     return () => window.removeEventListener('focus', onFocus)
   }, [filters.start, filters.end])
 
+  useEffect(() => {
+    if (!queryTicketId) return
+    if (selectedTicket?.id === queryTicketId) return
+    const existing = ticketItems.find((item) => item.id === queryTicketId)
+    if (existing) {
+      openTicket(existing.id, existing.code, existing.ticketType)
+    }
+  }, [queryTicketId, selectedTicket?.id, ticketItems])
+
   const handleDateChange = (f: SmartFiltersChange) => {
     if (!f.start) return
     const value = format(new Date(f.start), 'yyyy-MM-dd')
@@ -225,11 +258,11 @@ export default function PreventiusFullsPage() {
     assignat: 'bg-blue-100 text-blue-800',
     en_curs: 'bg-amber-100 text-amber-800',
     espera: 'bg-slate-100 text-slate-700',
-    resolut: 'bg-green-100 text-green-800',
+    fet: 'bg-green-100 text-green-800',
+    no_fet: 'bg-rose-100 text-rose-700',
+    resolut: 'bg-purple-100 text-purple-800',
     validat: 'bg-purple-100 text-purple-800',
     pendent: 'bg-slate-100 text-slate-700',
-    fet: 'bg-green-100 text-green-800',
-    no_fet: 'bg-red-100 text-red-700',
   }
 
   const exportBase = `manteniment-fulls-${filters.start || 'start'}-${filters.end || 'end'}`
@@ -255,7 +288,7 @@ export default function PreventiusFullsPage() {
             HoraFi: item.endTime || '',
             Ubicacio: item.location || '',
             Operari: item.worker || '',
-            Estat: status,
+            Estat: getStatusLabel(status, isTicket ? 'assignat' : 'pendent'),
             Progres: progress,
           }
         })
@@ -395,8 +428,9 @@ export default function PreventiusFullsPage() {
 
   const allowedNext = (status: TicketStatus) => {
     if (status === 'assignat') return ['en_curs', 'espera'] as TicketStatus[]
-    if (status === 'en_curs') return ['espera', 'resolut'] as TicketStatus[]
-    if (status === 'espera') return ['en_curs'] as TicketStatus[]
+    if (status === 'en_curs') return role === 'treballador' ? (['espera', 'fet', 'no_fet'] as TicketStatus[]) : (['espera', 'fet', 'no_fet', 'validat'] as TicketStatus[])
+    if (status === 'espera') return role === 'treballador' ? (['en_curs', 'fet', 'no_fet'] as TicketStatus[]) : (['en_curs', 'fet', 'no_fet', 'validat'] as TicketStatus[])
+    if (status === 'fet' || status === 'no_fet') return role === 'treballador' ? ([] as TicketStatus[]) : (['validat'] as TicketStatus[])
     return [] as TicketStatus[]
   }
 
@@ -433,7 +467,12 @@ export default function PreventiusFullsPage() {
             #manteniment-fulls-print-root { position: absolute; left: 0; top: 0; width: 100%; }
           }
         `}</style>
-        <ModuleHeader actions={<ExportMenu items={exportItems} />} />
+        <ModuleHeader
+          title="Manteniment"
+          subtitle="Jornada"
+          mainHref="/menu/manteniment"
+          actions={<ExportMenu items={exportItems} />}
+        />
 
         <SmartFilters
           modeDefault="day"
@@ -476,49 +515,54 @@ export default function PreventiusFullsPage() {
                 </div>
                 <div className="divide-y">
                   {items.map((item) => (
-                    <div key={item.id} className="px-4 py-3 flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold text-gray-900">
+                    <div
+                      key={item.id}
+                      className="flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-base font-semibold text-gray-900">
                           {item.kind === 'ticket'
                             ? item.code
                               ? `${item.code} - ${item.title}`
                               : item.title
                             : item.title}
                         </div>
-                        <div className="text-xs text-gray-600">
+                        <div className="mt-1 text-sm text-gray-700">
                           {item.startTime}–{item.endTime}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="mt-1 text-sm text-gray-500">
                           {item.location}
                           {item.worker ? ` · ${item.worker}` : ''}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {item.kind === 'ticket' && (
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                              statusClasses[(item as any).status || 'assignat']
-                            }`}
-                          >
-                            {(item as any).status || 'assignat'}
-                          </span>
-                        )}
-                        {item.kind === 'preventiu' && (
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                              statusClasses[(item as any).lastStatus || 'pendent'] ||
-                              'bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            {(item as any).lastStatus || 'pendent'}
-                            {typeof (item as any).lastProgress === 'number'
-                              ? ` · ${(item as any).lastProgress}%`
-                              : ''}
-                          </span>
-                        )}
+                      <div className="flex flex-col gap-3 md:items-end">
+                        <div className="flex flex-wrap gap-2">
+                          {item.kind === 'ticket' && (
+                            <span
+                              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                                statusClasses[(item as any).status || 'assignat']
+                              }`}
+                            >
+                              {getStatusLabel((item as any).status, 'assignat')}
+                            </span>
+                          )}
+                          {item.kind === 'preventiu' && (
+                            <span
+                              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                                statusClasses[(item as any).lastStatus || 'pendent'] ||
+                                'bg-slate-100 text-slate-700'
+                              }`}
+                            >
+                              {getStatusLabel((item as any).lastStatus, 'pendent')}
+                              {typeof (item as any).lastProgress === 'number'
+                                ? ` · ${(item as any).lastProgress}%`
+                                : ''}
+                            </span>
+                          )}
+                        </div>
                         <button
                           type="button"
-                          className="shrink-0 rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white"
+                          className="min-h-[44px] shrink-0 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white"
                           onClick={() =>
                             item.kind === 'ticket'
                               ? openTicket(
@@ -541,99 +585,128 @@ export default function PreventiusFullsPage() {
         </div>
 
         {selectedTicket && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-gray-800">
-                  {selectedTicket.ticketCode || selectedTicket.incidentNumber || 'Ticket'}
-                </div>
-                <button
-                  type="button"
-                  className="text-gray-500 hover:text-gray-700"
-                  onClick={() => setSelectedTicket(null)}
-                >
-                  ×
-                </button>
-              </div>
-              <div className="mt-2 text-xs text-gray-500">
-                {selectedTicket.location || ''} {selectedTicket.machine ? `· ${selectedTicket.machine}` : ''}
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {allowedNext(selectedTicket.status).map((next) => (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:px-4">
+            <div className="w-full max-w-2xl rounded-t-3xl bg-white shadow-2xl md:rounded-3xl">
+              <div className="sticky top-0 rounded-t-3xl border-b border-slate-100 bg-white px-5 pb-4 pt-3 md:px-6">
+                <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-slate-200 md:hidden" />
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-base font-semibold text-gray-900 md:text-lg">
+                      {selectedTicket.ticketCode || selectedTicket.incidentNumber || 'Ticket'}
+                    </div>
+                    <div className="mt-1 text-sm text-gray-500">
+                      {selectedTicket.location || ''}
+                      {selectedTicket.machine ? ` · ${selectedTicket.machine}` : ''}
+                    </div>
+                  </div>
                   <button
-                    key={next}
                     type="button"
-                    onClick={() =>
-                      setStatusDraft((prev) => ({
-                        ...prev,
-                        status: next,
-                      }))
-                    }
-                    className={`px-3 py-1 rounded-full border text-xs ${
-                      statusDraft.status === next
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-white'
-                    }`}
+                    className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-slate-200 text-lg text-gray-500"
+                    onClick={() => setSelectedTicket(null)}
                   >
-                    {STATUS_LABELS[next]}
+                    ×
                   </button>
-                ))}
+                </div>
               </div>
-              <div className="mt-3 flex flex-wrap items-end gap-3">
-                <label className="text-xs text-gray-600">
-                  {statusDraft.status === 'resolut' ? 'Hora fi' : 'Hora inici'}
-                  <input
-                    type="time"
-                    className="mt-1 h-9 w-32 rounded-lg border px-2 text-xs"
-                    value={
-                      statusDraft.status === 'resolut'
-                        ? statusDraft.endTime
-                        : statusDraft.startTime
-                    }
-                    onChange={(e) =>
-                      setStatusDraft((prev) => ({
-                        ...prev,
-                        startTime:
-                          prev.status === 'resolut'
-                            ? prev.startTime
-                            : e.target.value,
-                        endTime:
-                          prev.status === 'resolut'
-                            ? e.target.value
-                            : prev.endTime,
-                      }))
-                    }
-                  />
-                </label>
+
+              <div className="max-h-[75vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
+                <div>
+                  <div className="text-sm font-medium text-gray-700">Canvi d'estat</div>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {allowedNext(selectedTicket.status).map((next) => (
+                      <button
+                        key={next}
+                        type="button"
+                        onClick={() =>
+                          setStatusDraft((prev) => ({
+                            ...prev,
+                            status: next,
+                          }))
+                        }
+                        className={`min-h-[52px] rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                          statusDraft.status === next
+                            ? 'border-emerald-600 bg-emerald-600 text-white'
+                            : 'border-slate-200 bg-white text-slate-700'
+                        }`}
+                      >
+                        {STATUS_LABELS[next]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,220px)_1fr]">
+                  <label className="text-sm text-gray-700">
+                    {statusDraft.status === 'fet' ||
+                    statusDraft.status === 'no_fet' ||
+                    statusDraft.status === 'validat'
+                      ? 'Hora fi'
+                      : 'Hora inici'}
+                    <input
+                      type="time"
+                      className="mt-2 h-12 w-full rounded-2xl border border-slate-200 px-4 text-base"
+                      value={
+                        statusDraft.status === 'fet' ||
+                        statusDraft.status === 'no_fet' ||
+                        statusDraft.status === 'validat'
+                          ? statusDraft.endTime
+                          : statusDraft.startTime
+                      }
+                      onChange={(e) =>
+                        setStatusDraft((prev) => ({
+                          ...prev,
+                          startTime:
+                            prev.status === 'fet' ||
+                            prev.status === 'no_fet' ||
+                            prev.status === 'validat'
+                              ? prev.startTime
+                              : e.target.value,
+                          endTime:
+                            prev.status === 'fet' ||
+                            prev.status === 'no_fet' ||
+                            prev.status === 'validat'
+                              ? e.target.value
+                              : prev.endTime,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label className="text-sm text-gray-700">
+                    Observacions
+                    <textarea
+                      className="mt-2 min-h-[140px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-base"
+                      rows={5}
+                      value={statusDraft.note}
+                      onChange={(e) =>
+                        setStatusDraft((prev) => ({
+                          ...prev,
+                          note: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
               </div>
-              <label className="mt-3 block text-xs text-gray-600">
-                Observacions
-                <textarea
-                  className="mt-1 w-full rounded-lg border px-2 py-1 text-xs"
-                  rows={3}
-                  value={statusDraft.note}
-                  onChange={(e) =>
-                    setStatusDraft((prev) => ({
-                      ...prev,
-                      note: e.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <div className="mt-4 flex justify-end gap-2">
+
+              <div className="sticky bottom-0 flex flex-col gap-3 rounded-b-3xl border-t border-slate-100 bg-white px-5 py-4 sm:flex-row sm:justify-end md:px-6">
                 <button
                   type="button"
-                  className="px-3 py-1 text-xs text-gray-600"
+                  className="min-h-[48px] rounded-full border border-slate-200 px-5 text-sm font-medium text-gray-600"
                   onClick={() => setSelectedTicket(null)}
                 >
                   Cancel·lar
                 </button>
                 <button
                   type="button"
-                  className="rounded-full bg-emerald-600 px-4 py-1 text-xs font-semibold text-white"
+                  className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white"
                   onClick={() => {
                     if (!statusDraft.status) return
-                    if (statusDraft.status === 'resolut') {
+                    if (
+                      statusDraft.status === 'fet' ||
+                      statusDraft.status === 'no_fet' ||
+                      statusDraft.status === 'validat'
+                    ) {
                       if (!statusDraft.endTime) {
                         alert('Omple hora fi.')
                         return
@@ -644,18 +717,18 @@ export default function PreventiusFullsPage() {
                     }
                     handleStatusChange(selectedTicket, statusDraft.status, {
                       startTime:
-                        statusDraft.status === 'resolut'
+                        statusDraft.status === 'fet' || statusDraft.status === 'no_fet' || statusDraft.status === 'validat'
                           ? undefined
                           : statusDraft.startTime,
                       endTime:
-                        statusDraft.status === 'resolut'
+                        statusDraft.status === 'fet' || statusDraft.status === 'no_fet' || statusDraft.status === 'validat'
                           ? statusDraft.endTime
                           : undefined,
                       note: statusDraft.note,
                     })
                   }}
                 >
-                  Guardar
+                  Guardar canvi
                 </button>
               </div>
             </div>

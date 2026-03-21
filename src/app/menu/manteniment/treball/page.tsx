@@ -9,7 +9,7 @@ import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { normalizeRole } from '@/lib/roles'
 
-type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'resolut' | 'validat'
+type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
 type TicketPriority = 'urgent' | 'alta' | 'normal' | 'baixa'
 
 type Ticket = {
@@ -33,7 +33,9 @@ const STATUS_LABELS: Record<TicketStatus, string> = {
   assignat: 'Assignat',
   en_curs: 'En curs',
   espera: 'Espera',
-  resolut: 'Resolut',
+  fet: 'Fet',
+  no_fet: 'No fet',
+  resolut: 'Validat',
   validat: 'Validat',
 }
 
@@ -207,8 +209,9 @@ export default function MaintenanceWorkPage() {
 
   const allowedNext = (status: TicketStatus) => {
     if (status === 'assignat') return ['en_curs', 'espera'] as TicketStatus[]
-    if (status === 'en_curs') return ['espera', 'resolut'] as TicketStatus[]
-    if (status === 'espera') return ['en_curs'] as TicketStatus[]
+    if (status === 'en_curs') return role === 'treballador' ? (['espera', 'fet', 'no_fet'] as TicketStatus[]) : (['espera', 'fet', 'no_fet', 'validat'] as TicketStatus[])
+    if (status === 'espera') return role === 'treballador' ? (['en_curs', 'fet', 'no_fet'] as TicketStatus[]) : (['en_curs', 'fet', 'no_fet', 'validat'] as TicketStatus[])
+    if (status === 'fet' || status === 'no_fet') return role === 'treballador' ? ([] as TicketStatus[]) : (['validat'] as TicketStatus[])
     return [] as TicketStatus[]
   }
 
@@ -272,7 +275,8 @@ export default function MaintenanceWorkPage() {
             { value: 'assignat', label: 'Assignat' },
             { value: 'en_curs', label: 'En curs' },
             { value: 'espera', label: 'Espera' },
-            { value: 'resolut', label: 'Resolut' },
+            { value: 'fet', label: 'Fet' },
+            { value: 'no_fet', label: 'No fet' },
           ]}
         />
 
@@ -395,14 +399,18 @@ export default function MaintenanceWorkPage() {
                                           ))}
                                         </div>
                                         <label className="text-xs text-gray-600">
-                                          {statusDraft.status === 'resolut'
+                                          {statusDraft.status === 'fet' ||
+                                          statusDraft.status === 'no_fet' ||
+                                          statusDraft.status === 'validat'
                                             ? 'Hora fi'
                                             : 'Hora inici'}
                                           <input
                                             type="time"
                                             className="mt-1 h-9 w-32 rounded-lg border px-2 text-xs"
                                             value={
-                                              statusDraft.status === 'resolut'
+                                              statusDraft.status === 'fet' ||
+                                              statusDraft.status === 'no_fet' ||
+                                              statusDraft.status === 'validat'
                                                 ? statusDraft.endTime
                                                 : statusDraft.startTime
                                             }
@@ -410,11 +418,15 @@ export default function MaintenanceWorkPage() {
                                               setStatusDraft((prev) => ({
                                                 ...prev,
                                                 startTime:
-                                                  prev.status === 'resolut'
+                                                  prev.status === 'fet' ||
+                                                  prev.status === 'no_fet' ||
+                                                  prev.status === 'validat'
                                                     ? prev.startTime
                                                     : e.target.value,
                                                 endTime:
-                                                  prev.status === 'resolut'
+                                                  prev.status === 'fet' ||
+                                                  prev.status === 'no_fet' ||
+                                                  prev.status === 'validat'
                                                     ? e.target.value
                                                     : prev.endTime,
                                               }))
@@ -449,7 +461,11 @@ export default function MaintenanceWorkPage() {
                                           className="rounded-full bg-emerald-600 px-4 py-1 text-xs font-semibold text-white"
                                           onClick={() => {
                                             if (!statusDraft.status) return
-                                            if (statusDraft.status === 'resolut') {
+                                            if (
+                                              statusDraft.status === 'fet' ||
+                                              statusDraft.status === 'no_fet' ||
+                                              statusDraft.status === 'validat'
+                                            ) {
                                               if (!statusDraft.endTime) {
                                                 alert('Omple hora fi.')
                                                 return
@@ -460,11 +476,15 @@ export default function MaintenanceWorkPage() {
                                             }
                                             handleStatusChange(ticket, statusDraft.status, {
                                               startTime:
-                                                statusDraft.status === 'resolut'
+                                                statusDraft.status === 'fet' ||
+                                                statusDraft.status === 'no_fet' ||
+                                                statusDraft.status === 'validat'
                                                   ? undefined
                                                   : statusDraft.startTime,
                                               endTime:
-                                                statusDraft.status === 'resolut'
+                                                statusDraft.status === 'fet' ||
+                                                statusDraft.status === 'no_fet' ||
+                                                statusDraft.status === 'validat'
                                                   ? statusDraft.endTime
                                                   : undefined,
                                               note: statusDraft.note,

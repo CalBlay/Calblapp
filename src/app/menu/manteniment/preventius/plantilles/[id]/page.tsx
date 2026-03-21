@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { Trash2 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
@@ -40,6 +40,7 @@ export default function PlantillaDetailPage() {
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string)
 
   const [template, setTemplate] = useState<Template | null>(null)
+  const [operators, setOperators] = useState<string[]>([])
   const [form, setForm] = useState<{
     name?: string
     periodicity?: Template['periodicity']
@@ -91,6 +92,28 @@ export default function PlantillaDetailPage() {
   }, [id])
 
   useEffect(() => {
+    const loadOperators = async () => {
+      try {
+        const res = await fetch('/api/personnel?department=manteniment', { cache: 'no-store' })
+        if (!res.ok) {
+          setOperators([])
+          return
+        }
+        const json = await res.json()
+        const list = Array.isArray(json?.data) ? json.data : []
+        const names = list
+          .map((item: any) => String(item?.name || '').trim())
+          .filter(Boolean)
+          .sort((a: string, b: string) => a.localeCompare(b))
+        setOperators(Array.from(new Set(names)))
+      } catch {
+        setOperators([])
+      }
+    }
+    loadOperators()
+  }, [])
+
+  useEffect(() => {
     const loadLastDone = async () => {
       try {
         const res = await fetch(
@@ -100,7 +123,7 @@ export default function PlantillaDetailPage() {
         if (!res.ok) return
         const json = await res.json()
         const list = Array.isArray(json?.records) ? json.records : []
-        const resolved = list.find((r: any) => r.status === 'resolut')
+        const resolved = list.find((r: any) => r.status === 'validat' || r.status === 'resolut')
         if (resolved?.completedAt) {
           const date = new Date(resolved.completedAt)
           const yyyy = date.getFullYear()
@@ -117,6 +140,10 @@ export default function PlantillaDetailPage() {
   }, [id])
 
   const lastDoneRequired = !form.lastDone
+  const backupOptions = useMemo(
+    () => operators.filter((operator) => operator !== (form.primaryOperator || '')),
+    [operators, form.primaryOperator]
+  )
 
   const save = async () => {
     const cleanSections: TemplateSection[] = sections
@@ -302,23 +329,42 @@ export default function PlantillaDetailPage() {
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Operari assignat</span>
-                  <input
+                  <select
                     className="h-10 rounded-xl border px-3"
                     value={form.primaryOperator || ''}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, primaryOperator: e.target.value }))
-                    }
-                  />
+                    onChange={(e) => {
+                      const next = e.target.value
+                      setForm((prev) => ({
+                        ...prev,
+                        primaryOperator: next,
+                        backupOperator: prev.backupOperator === next ? '' : prev.backupOperator,
+                      }))
+                    }}
+                  >
+                    <option value="">Sense assignar</option>
+                    {operators.map((operator) => (
+                      <option key={operator} value={operator}>
+                        {operator}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Segon operari</span>
-                  <input
+                  <select
                     className="h-10 rounded-xl border px-3"
                     value={form.backupOperator || ''}
                     onChange={(e) =>
                       setForm((prev) => ({ ...prev, backupOperator: e.target.value }))
                     }
-                  />
+                  >
+                    <option value="">Sense assignar</option>
+                    {backupOptions.map((operator) => (
+                      <option key={operator} value={operator}>
+                        {operator}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
             </div>

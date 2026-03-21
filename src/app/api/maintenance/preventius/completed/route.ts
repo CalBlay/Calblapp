@@ -29,6 +29,19 @@ type CompletedPayload = {
   checklist?: Record<string, boolean>
 }
 
+const normalizeCompletedStatus = (value?: string) => {
+  const status = String(value || 'pendent').trim().toLowerCase()
+  if (status === 'nou') return 'nou'
+  if (status === 'assignat' || status === 'pendent') return 'assignat'
+  if (status === 'espera') return 'espera'
+  if (status === 'resolut' || status === 'validat') return 'validat'
+  if (status === 'en curs') return 'en_curs'
+  if (status === 'fet') return 'fet'
+  if (status === 'no_fet' || status === 'no fet') return 'no_fet'
+  if (status === 'en_curs') return 'en_curs'
+  return 'assignat'
+}
+
 const computeProgress = (checklist?: Record<string, boolean>) => {
   if (!checklist || typeof checklist !== 'object') return 0
   const values = Object.values(checklist)
@@ -82,6 +95,7 @@ export async function GET(req: Request) {
         return {
           id: doc.id,
           ...data,
+          status: normalizeCompletedStatus(data.status),
         }
       })
       .sort((a: any, b: any) => {
@@ -104,6 +118,12 @@ export async function POST(req: Request) {
 
   const user = session.user as SessionUser
   const role = normalizeRole(user.role || '')
+  const dept = (user.department || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
   if (role !== 'admin' && role !== 'direccio' && role !== 'cap' && role !== 'treballador') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -116,7 +136,13 @@ export async function POST(req: Request) {
         ? body.completedAt
         : now
 
-    const normalizedStatus = String(body.status || 'pendent').trim().toLowerCase()
+    const normalizedStatus = normalizeCompletedStatus(body.status)
+    if (normalizedStatus === 'validat') {
+      const canValidate = role === 'admin' || role === 'direccio' || (role === 'cap' && dept === 'manteniment')
+      if (!canValidate) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+    }
 
     const payload = {
       plannedId: body.plannedId || null,
@@ -163,7 +189,7 @@ export async function POST(req: Request) {
       )
     }
 
-    if (body.templateId && normalizedStatus === 'resolut') {
+    if (body.templateId && normalizedStatus === 'validat') {
       const resolvedOn = toIsoDate(completedAt) || toIsoDate(Date.now())
       if (resolvedOn) {
         await db.collection('maintenancePreventiusTemplates').doc(body.templateId).set(
