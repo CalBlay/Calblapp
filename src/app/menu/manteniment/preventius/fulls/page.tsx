@@ -52,6 +52,7 @@ export default function PreventiusFullsPage() {
     return { start: value, end: value, mode: 'day' }
   })
   const [workerFilter, setWorkerFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
   const [plannedItems, setPlannedItems] = useState<
     Array<{
       id: string
@@ -232,15 +233,38 @@ export default function PreventiusFullsPage() {
     return Array.from(values).sort((a, b) => a.localeCompare(b))
   }, [filteredByDate])
 
+  const statusOptions = useMemo(() => {
+    const values = new Set<string>()
+    filteredByDate.forEach((item) => {
+      const raw =
+        item.kind === 'ticket'
+          ? String((item as any).status || 'assignat').trim().toLowerCase()
+          : String((item as any).lastStatus || 'pendent').trim().toLowerCase()
+      if (!raw) return
+      values.add(raw)
+    })
+    return Array.from(values).sort((a, b) => a.localeCompare(b))
+  }, [filteredByDate])
+
   const grouped = useMemo(() => {
     const workerNeedle = workerFilter.toLowerCase()
     const items = filteredByDate.filter((item) => {
-      if (!canFilterByWorker || workerFilter === 'all') return true
-      const workers = (item.worker || '')
-        .split(',')
-        .map((w) => w.trim().toLowerCase())
-        .filter(Boolean)
-      return workers.includes(workerNeedle)
+      const matchesWorker =
+        !canFilterByWorker || workerFilter === 'all'
+          ? true
+          : (item.worker || '')
+              .split(',')
+              .map((w) => w.trim().toLowerCase())
+              .filter(Boolean)
+              .includes(workerNeedle)
+
+      const itemStatus =
+        item.kind === 'ticket'
+          ? String((item as any).status || 'assignat').trim().toLowerCase()
+          : String((item as any).lastStatus || 'pendent').trim().toLowerCase()
+      const matchesStatus = statusFilter === 'all' ? true : itemStatus === statusFilter
+
+      return matchesWorker && matchesStatus
     })
 
     const map = new Map<string, typeof items>()
@@ -251,7 +275,7 @@ export default function PreventiusFullsPage() {
     })
 
     return Array.from(map.entries()).sort(([a], [b]) => (a > b ? 1 : -1))
-  }, [filteredByDate, workerFilter, canFilterByWorker])
+  }, [filteredByDate, workerFilter, statusFilter, canFilterByWorker])
 
   const statusClasses: Record<string, string> = {
     nou: 'bg-emerald-100 text-emerald-800',
@@ -430,7 +454,8 @@ export default function PreventiusFullsPage() {
     if (status === 'assignat') return ['en_curs', 'espera'] as TicketStatus[]
     if (status === 'en_curs') return role === 'treballador' ? (['espera', 'fet', 'no_fet'] as TicketStatus[]) : (['espera', 'fet', 'no_fet', 'validat'] as TicketStatus[])
     if (status === 'espera') return role === 'treballador' ? (['en_curs', 'fet', 'no_fet'] as TicketStatus[]) : (['en_curs', 'fet', 'no_fet', 'validat'] as TicketStatus[])
-    if (status === 'fet' || status === 'no_fet') return role === 'treballador' ? ([] as TicketStatus[]) : (['validat'] as TicketStatus[])
+    if (status === 'fet') return role === 'treballador' ? ([] as TicketStatus[]) : (['validat'] as TicketStatus[])
+    if (status === 'no_fet') return [] as TicketStatus[]
     return [] as TicketStatus[]
   }
 
@@ -474,34 +499,55 @@ export default function PreventiusFullsPage() {
           actions={<ExportMenu items={exportItems} />}
         />
 
-        <SmartFilters
-          modeDefault="day"
-          role="Treballador"
-          showDepartment={false}
-          showWorker={false}
-          showLocation={false}
-          showStatus={false}
-          onChange={handleDateChange}
-          initialStart={filters.start}
-          initialEnd={filters.end}
-        />
-        {canFilterByWorker && (
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">Treballador</label>
-            <select
-              className="h-9 rounded-xl border bg-white px-3 text-sm"
-              value={workerFilter}
-              onChange={(e) => setWorkerFilter(e.target.value)}
-            >
-              <option value="all">Tots</option>
-              {workerOptions.map((w) => (
-                <option key={w} value={w.toLowerCase()}>
-                  {w}
-                </option>
-              ))}
-            </select>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <SmartFilters
+              modeDefault="day"
+              role="Treballador"
+              showDepartment={false}
+              showWorker={false}
+              showLocation={false}
+              showStatus={false}
+              onChange={handleDateChange}
+              initialStart={filters.start}
+              initialEnd={filters.end}
+            />
           </div>
-        )}
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            {canFilterByWorker && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-600">Treballador</label>
+                <select
+                  className="h-9 rounded-xl border bg-white px-3 text-sm"
+                  value={workerFilter}
+                  onChange={(e) => setWorkerFilter(e.target.value)}
+                >
+                  <option value="all">Tots</option>
+                  {workerOptions.map((w) => (
+                    <option key={w} value={w.toLowerCase()}>
+                      {w}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-600">Estat</label>
+              <select
+                className="h-9 rounded-xl border bg-white px-3 text-sm"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="all">Tots</option>
+                {statusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {getStatusLabel(status, status)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
 
         <div id="manteniment-fulls-print-root" className="rounded-2xl border bg-white overflow-hidden">
           <div className="divide-y">

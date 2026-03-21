@@ -170,6 +170,43 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     let nextStatus = body.status ? normalizeStatus(body.status) : null
     const nextPriority = body.priority ? normalizePriority(body.priority) : null
+    const currentStatus = normalizeStatus(current.status)
+    const canValidate = role === 'admin' || (role === 'cap' && dept === 'manteniment')
+    const canReopen = role === 'admin' || (role === 'cap' && dept === 'manteniment')
+
+    const wantsDataEdit =
+      body.assignedToIds !== undefined ||
+      body.assignedToNames !== undefined ||
+      body.needsVehicle !== undefined ||
+      body.vehicleId !== undefined ||
+      body.vehiclePlate !== undefined ||
+      body.priority !== undefined ||
+      body.location !== undefined ||
+      body.machine !== undefined ||
+      body.description !== undefined ||
+      body.plannedStart !== undefined ||
+      body.plannedEnd !== undefined ||
+      body.estimatedMinutes !== undefined
+
+    if (currentStatus === 'validat') {
+      const onlyReopenRequest =
+        nextStatus === 'fet' &&
+        !wantsDataEdit &&
+        body.statusStartTime === undefined &&
+        body.statusEndTime === undefined &&
+        body.statusNote === undefined
+
+      if (!onlyReopenRequest) {
+        return NextResponse.json(
+          { error: 'Cal reobrir el ticket abans de modificar-lo' },
+          { status: 400 }
+        )
+      }
+
+      if (!canReopen) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+    }
 
     if (nextStatus) updates.status = nextStatus
     if (nextPriority) updates.priority = nextPriority
@@ -197,14 +234,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     if (nextStatus === 'validat') {
-      const canValidate = role === 'admin' || (role === 'cap' && dept === 'manteniment')
       if (!canValidate) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      if (currentStatus !== 'fet') {
+        return NextResponse.json({ error: 'Nomes es pot validar des de Fet' }, { status: 400 })
       }
     }
 
     if (role === 'treballador' && nextStatus) {
-      const currentStatus = normalizeStatus(current.status)
       const allowed: Record<string, string[]> = {
         assignat: ['en_curs', 'espera'],
         en_curs: ['espera', 'fet', 'no_fet'],

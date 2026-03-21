@@ -21,6 +21,9 @@ export interface Incident {
   pax?: number
   serviceType?: string
   fincaId?: string
+  imageUrl?: string | null
+  imagePath?: string | null
+  imageMeta?: { size?: number; type?: string } | null
 }
 
 const normalizeTimestamp = (ts: any): string => {

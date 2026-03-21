@@ -160,10 +160,10 @@ export default function MaintenanceWorkPage() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users', { cache: 'no-store' })
+      const res = await fetch('/api/personnel?department=manteniment', { cache: 'no-store' })
       if (!res.ok) return
       const json = await res.json()
-      const list = Array.isArray(json) ? json : []
+      const list = Array.isArray(json?.data) ? json.data : []
       const next: Record<string, string> = {}
       list.forEach((u: any) => {
         if (!u?.id) return
@@ -211,7 +211,8 @@ export default function MaintenanceWorkPage() {
     if (status === 'assignat') return ['en_curs', 'espera'] as TicketStatus[]
     if (status === 'en_curs') return role === 'treballador' ? (['espera', 'fet', 'no_fet'] as TicketStatus[]) : (['espera', 'fet', 'no_fet', 'validat'] as TicketStatus[])
     if (status === 'espera') return role === 'treballador' ? (['en_curs', 'fet', 'no_fet'] as TicketStatus[]) : (['en_curs', 'fet', 'no_fet', 'validat'] as TicketStatus[])
-    if (status === 'fet' || status === 'no_fet') return role === 'treballador' ? ([] as TicketStatus[]) : (['validat'] as TicketStatus[])
+    if (status === 'fet') return role === 'treballador' ? ([] as TicketStatus[]) : (['validat'] as TicketStatus[])
+    if (status === 'no_fet') return [] as TicketStatus[]
     return [] as TicketStatus[]
   }
 

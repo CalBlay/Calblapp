@@ -131,15 +131,49 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as CompletedPayload
     const now = Date.now()
+    const requestedId = (body.id || '').trim()
+    const currentSnap = requestedId
+      ? await db.collection('maintenancePreventiusCompleted').doc(requestedId).get()
+      : null
+    const currentRecord = currentSnap?.exists ? (currentSnap.data() as any) : null
+    const currentStatus = normalizeCompletedStatus(currentRecord?.status)
     const completedAt =
       typeof body.completedAt === 'string' || typeof body.completedAt === 'number'
         ? body.completedAt
         : now
 
     const normalizedStatus = normalizeCompletedStatus(body.status)
+    const canValidate = role === 'admin' || (role === 'cap' && dept === 'manteniment')
     if (normalizedStatus === 'validat') {
-      const canValidate = role === 'admin' || role === 'direccio' || (role === 'cap' && dept === 'manteniment')
       if (!canValidate) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      if (currentStatus !== 'fet') {
+        return NextResponse.json({ error: 'Nomes es pot validar des de Fet' }, { status: 400 })
+      }
+    }
+
+    if (currentStatus === 'validat') {
+      const canReopen = role === 'admin' || (role === 'cap' && dept === 'manteniment')
+      const onlyReopen =
+        normalizedStatus === 'fet' &&
+        body.title === undefined &&
+        body.worker === undefined &&
+        body.startTime === undefined &&
+        body.endTime === undefined &&
+        body.notes === undefined &&
+        body.completedAt === undefined &&
+        body.nextDue === undefined &&
+        body.checklist === undefined
+
+      if (!onlyReopen) {
+        return NextResponse.json(
+          { error: 'Cal reobrir el preventiu abans de modificar-lo' },
+          { status: 400 }
+        )
+      }
+
+      if (!canReopen) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
     }
@@ -164,7 +198,6 @@ export async function POST(req: Request) {
       updatedByName: user.name || '',
     }
 
-    const requestedId = (body.id || '').trim()
     let docId = ''
 
     if (requestedId) {

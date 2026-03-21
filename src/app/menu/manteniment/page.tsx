@@ -5,7 +5,15 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
-import { Wrench, Eye, CalendarCheck2, FileStack, CheckCircle2, ClipboardList } from 'lucide-react'
+import {
+  Wrench,
+  Eye,
+  CalendarCheck2,
+  FileStack,
+  CheckCircle2,
+  ClipboardList,
+  Database,
+} from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { normalizeRole } from '@/lib/roles'
@@ -284,6 +292,23 @@ export default function MantenimentIndexPage() {
                 <div>
                   <div className="text-base font-semibold text-gray-900">Plantilles</div>
                   <div className="text-xs text-gray-500">Plans i checklists</div>
+                </div>
+              </div>
+            </Link>
+          )}
+
+          {(isAdmin || isMaintenanceCap) && (
+            <Link
+              href="/menu/manteniment/dades"
+              className="border rounded-2xl p-4 hover:shadow-sm bg-gradient-to-br from-sky-50 to-blue-100"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-sky-700">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-base font-semibold text-gray-900">Dades</div>
+                  <div className="text-xs text-gray-500">Maquinaria i proveidors</div>
                 </div>
               </div>
             </Link>

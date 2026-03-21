@@ -46,6 +46,7 @@ type TemplatePayload = {
   location?: string
   primaryOperator?: string
   backupOperator?: string
+  autoPlanExcludedWeeks?: string[]
   sections?: TemplateSection[]
 }
 
@@ -74,6 +75,9 @@ export async function POST(req: Request) {
       location: (body.location || '').trim(),
       primaryOperator: (body.primaryOperator || '').trim(),
       backupOperator: (body.backupOperator || '').trim(),
+      autoPlanExcludedWeeks: Array.isArray(body.autoPlanExcludedWeeks)
+        ? body.autoPlanExcludedWeeks.map((v) => String(v))
+        : [],
       sections: Array.isArray(body.sections) ? body.sections : [],
       createdAt: now,
       createdById: user.id,

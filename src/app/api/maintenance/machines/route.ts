@@ -2,12 +2,35 @@ import { NextResponse } from 'next/server'
 import path from 'path'
 import fs from 'fs'
 import * as XLSX from 'xlsx'
+import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
+    const firestoreSnap = await db.collection('maintenanceMachines').get()
+    if (!firestoreSnap.empty) {
+      const machines = firestoreSnap.docs
+        .map((doc) => {
+          const data = doc.data() || {}
+          const code = String(data.code || '').trim()
+          const name = String(data.name || '').trim()
+          if (!code && !name) return null
+          return {
+            id: doc.id,
+            code,
+            name,
+            label: code && name ? `${code} · ${name}` : code || name,
+            active: data.active !== false,
+          }
+        })
+        .filter(Boolean)
+        .filter((item: any) => item.active !== false)
+
+      return NextResponse.json({ machines })
+    }
+
     const primaryPath = path.join(process.cwd(), 'scripts', 'Maquinaria.xlsx')
     const fallbackPath = path.join(process.cwd(), 'public', 'Maquinaria.xlsx')
     const filePath = fs.existsSync(primaryPath)

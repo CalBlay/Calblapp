@@ -21,6 +21,7 @@ type TemplatePatch = {
   location?: string
   primaryOperator?: string
   backupOperator?: string
+  autoPlanExcludedWeeks?: string[]
   sections?: TemplateSection[]
 }
 
@@ -68,6 +69,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       patch.primaryOperator = String(body.primaryOperator || '').trim()
     if (body.backupOperator !== undefined)
       patch.backupOperator = String(body.backupOperator || '').trim()
+    if (body.autoPlanExcludedWeeks !== undefined) {
+      patch.autoPlanExcludedWeeks = Array.isArray(body.autoPlanExcludedWeeks)
+        ? body.autoPlanExcludedWeeks.map((v) => String(v))
+        : []
+    }
     if (body.sections !== undefined) patch.sections = Array.isArray(body.sections) ? body.sections : []
 
     patch.updatedAt = Date.now()
@@ -101,4 +107,3 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
-

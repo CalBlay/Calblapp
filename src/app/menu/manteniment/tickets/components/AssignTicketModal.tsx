@@ -1,4 +1,13 @@
-import type { Dispatch, SetStateAction } from 'react'
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { Check, ChevronDown, ChevronUp, Plus } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import type {
   MachineItem,
   Ticket,
@@ -8,9 +17,19 @@ import type {
   UserItem,
 } from '../types'
 
+type SupplierOption = {
+  id: string
+  name: string
+  email?: string
+  phone?: string
+  specialty?: string
+  active?: boolean
+}
+
 type Props = {
   ticket: Ticket
   assignBusy: boolean
+  externalizeBusy: boolean
   assignDate: string
   setAssignDate: (value: string) => void
   assignStartTime: string
@@ -33,6 +52,8 @@ type Props = {
   setDetailsDescription: (value: string) => void
   detailsPriority: TicketPriority
   setDetailsPriority: (value: TicketPriority) => void
+  canReopen: boolean
+  canExternalize: boolean
   onUpdateDetails: () => void
   formatDateTime: (value?: number | string | null) => string
   statusLabels: Record<TicketStatus, string>
@@ -41,12 +62,62 @@ type Props = {
   setSelected: Dispatch<SetStateAction<Ticket | null>>
   onAssign: (ticket: Ticket, ids: string[], names: string[]) => void
   onAssignVehicle: (ticket: Ticket, needsVehicle: boolean, plate: string | null) => void
+  onReopen: (ticket: Ticket) => void
+  onExternalize: (
+    ticket: Ticket,
+    payload: {
+      supplierName: string
+      supplierEmail: string
+      subject: string
+      message: string
+      externalReference?: string | null
+      attachments?: Array<{
+        name: string
+        path: string
+        contentType?: string | null
+      }>
+    }
+  ) => Promise<void>
   onClose: () => void
+}
+
+function formatCreatedShort(value?: number | string | null) {
+  if (!value) return ''
+  const date =
+    typeof value === 'number'
+      ? new Date(value)
+      : typeof value === 'string'
+        ? new Date(value)
+        : null
+  if (!date || Number.isNaN(date.getTime())) return ''
+  const dd = String(date.getDate()).padStart(2, '0')
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  return `${dd}/${mm}`
+}
+
+function buildSupplierSubject(ticket: Ticket) {
+  const code = ticket.ticketCode || ticket.incidentNumber || 'TIC'
+  const location = String(ticket.location || '').trim()
+  return location
+    ? `Ticket manteniment ${code} - ${location}`
+    : `Ticket manteniment ${code}`
+}
+
+function buildSupplierMessage(ticket: Ticket) {
+  const lines = [
+    'Bon dia,',
+    '',
+    'Us preguem revisio i disponibilitat per aquesta incidencia.',
+    '',
+    'Gracies.',
+  ]
+  return lines.filter(Boolean).join('\n')
 }
 
 export default function AssignTicketModal({
   ticket,
   assignBusy,
+  externalizeBusy,
   assignDate,
   setAssignDate,
   assignStartTime,
@@ -69,6 +140,8 @@ export default function AssignTicketModal({
   setDetailsDescription,
   detailsPriority,
   setDetailsPriority,
+  canReopen,
+  canExternalize,
   onUpdateDetails,
   formatDateTime,
   statusLabels,
@@ -77,15 +150,172 @@ export default function AssignTicketModal({
   setSelected,
   onAssign,
   onAssignVehicle,
+  onReopen,
+  onExternalize,
   onClose,
 }: Props) {
   const isDeco = ticket.ticketType === 'deco'
+  const isValidated = ticket.status === 'validat' || ticket.status === 'resolut'
   const machineLabel = isDeco ? 'Material' : 'Maquinaria'
   const machinePlaceholder = isDeco ? 'Selecciona material' : 'Selecciona maquinaria'
   const eventTitleShort = (ticket.sourceEventTitle || '')
     .split('/')
     .map((chunk) => chunk.trim())
     .filter(Boolean)[0]
+  const createdLabel = formatCreatedShort(ticket.createdAt)
+  const externalHistory = Array.isArray(ticket.externalizationHistory)
+    ? [...ticket.externalizationHistory].sort((a, b) => (a.at || 0) - (b.at || 0))
+    : []
+  const latestExternal = externalHistory.length > 0 ? externalHistory[externalHistory.length - 1] : null
+
+  const [supplierName, setSupplierName] = useState('')
+  const [supplierEmail, setSupplierEmail] = useState('')
+  const [externalReference, setExternalReference] = useState('')
+  const [supplierSubject, setSupplierSubject] = useState('')
+  const [supplierMessage, setSupplierMessage] = useState('')
+  const [emailAttachments, setEmailAttachments] = useState<File[]>([])
+  const [emailAttachmentError, setEmailAttachmentError] = useState('')
+  const [showExternalizeSection, setShowExternalizeSection] = useState(false)
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
+  const [suppliersLoading, setSuppliersLoading] = useState(false)
+  const [supplierPickerOpen, setSupplierPickerOpen] = useState(false)
+  const [createSupplierOpen, setCreateSupplierOpen] = useState(false)
+  const [createSupplierBusy, setCreateSupplierBusy] = useState(false)
+
+  useEffect(() => {
+    setSupplierName(String(ticket.supplierName || '').trim())
+    setSupplierEmail(String(ticket.supplierEmail || '').trim())
+    setExternalReference(String(ticket.externalReference || '').trim())
+    setSupplierSubject(buildSupplierSubject(ticket))
+    setSupplierMessage(buildSupplierMessage(ticket))
+    setEmailAttachments([])
+    setEmailAttachmentError('')
+    setShowExternalizeSection(false)
+    setSupplierPickerOpen(false)
+    setCreateSupplierOpen(false)
+  }, [ticket.id, ticket.location, ticket.machine, ticket.description, ticket.ticketCode, ticket.incidentNumber, ticket.supplierName, ticket.supplierEmail, ticket.externalReference])
+
+  useEffect(() => {
+    if (!showExternalizeSection) return
+    let cancelled = false
+    const loadSuppliers = async () => {
+      try {
+        setSuppliersLoading(true)
+        const res = await fetch('/api/maintenance/data/suppliers', { cache: 'no-store' })
+        const json = res.ok ? await res.json() : { suppliers: [] }
+        if (cancelled) return
+        setSuppliers(
+          Array.isArray(json?.suppliers)
+            ? json.suppliers.filter((item: SupplierOption) => item?.active !== false)
+            : []
+        )
+      } finally {
+        if (!cancelled) setSuppliersLoading(false)
+      }
+    }
+    void loadSuppliers()
+    return () => {
+      cancelled = true
+    }
+  }, [showExternalizeSection])
+
+  const externalizeLabel = useMemo(
+    () => (externalHistory.length > 0 ? 'Reenviar a proveidor' : 'Enviar a proveidor'),
+    [externalHistory.length]
+  )
+
+  const selectedSupplierLabel = useMemo(() => {
+    const directMatch = suppliers.find(
+      (item) =>
+        item.name?.trim().toLowerCase() === supplierName.trim().toLowerCase() &&
+        item.email?.trim().toLowerCase() === supplierEmail.trim().toLowerCase()
+    )
+    if (directMatch) return directMatch.name
+    if (supplierName.trim()) return supplierName.trim()
+    return 'Selecciona proveidor'
+  }, [supplierEmail, supplierName, suppliers])
+
+  const addEmailAttachment = (file: File | null) => {
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      setEmailAttachmentError('Cada adjunt ha de pesar com a maxim 5MB.')
+      return
+    }
+    setEmailAttachmentError('')
+    setEmailAttachments((prev) => [...prev, file])
+  }
+
+  const removeEmailAttachment = (index: number) => {
+    setEmailAttachments((prev) => prev.filter((_, currentIndex) => currentIndex !== index))
+  }
+
+  const uploadEmailAttachments = async () => {
+    const uploaded: Array<{ name: string; path: string; contentType?: string | null }> = []
+    for (const file of emailAttachments) {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('ticketId', ticket.id)
+      const res = await fetch('/api/maintenance/upload-email-attachment', {
+        method: 'POST',
+        body: form,
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json?.error || 'No s ha pogut pujar un adjunt')
+      }
+      uploaded.push({
+        name: String(json?.name || file.name || 'adjunt').trim(),
+        path: String(json?.path || '').trim(),
+        contentType: String(json?.contentType || file.type || 'application/octet-stream').trim(),
+      })
+    }
+    return uploaded
+  }
+
+  const selectSupplier = (supplier: SupplierOption) => {
+    setSupplierName(String(supplier.name || '').trim())
+    setSupplierEmail(String(supplier.email || '').trim())
+    setSupplierPickerOpen(false)
+    setCreateSupplierOpen(false)
+  }
+
+  const createSupplierFromForm = async () => {
+    const cleanName = supplierName.trim()
+    if (!cleanName) {
+      setEmailAttachmentError('Cal informar el nom del proveidor nou.')
+      return
+    }
+    try {
+      setCreateSupplierBusy(true)
+      setEmailAttachmentError('')
+      const res = await fetch('/api/maintenance/data/suppliers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: cleanName,
+          email: supplierEmail.trim(),
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json?.error || 'No s ha pogut crear el proveidor')
+      }
+      const newSupplier: SupplierOption = {
+        id: String(json?.id || '').trim(),
+        name: cleanName,
+        email: supplierEmail.trim(),
+        active: true,
+      }
+      setSuppliers((prev) => [...prev, newSupplier].sort((a, b) => a.name.localeCompare(b.name)))
+      setCreateSupplierOpen(false)
+    } catch (error) {
+      setEmailAttachmentError(
+        error instanceof Error ? error.message : 'No s ha pogut crear el proveidor'
+      )
+    } finally {
+      setCreateSupplierBusy(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:p-4">
@@ -97,17 +327,27 @@ export default function AssignTicketModal({
               <div className="text-lg font-semibold text-gray-900">{ticket.machine}</div>
               <div className="mt-1 text-sm text-gray-500">
                 {ticket.ticketCode || ticket.incidentNumber || 'TIC'} · {ticket.location}
+                {createdLabel ? ` · Creat: ${createdLabel}` : ''}
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => onAssign(ticket, ticket.assignedToIds || [], ticket.assignedToNames || [])}
-                disabled={assignBusy}
-                className="min-h-[44px] rounded-full bg-emerald-600 px-5 text-sm font-semibold text-white"
+                disabled={assignBusy || isValidated}
+                className="min-h-[44px] rounded-full bg-emerald-600 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {assignBusy ? 'Assignant...' : 'Assignar'}
               </button>
+              {isValidated && canReopen && (
+                <button
+                  type="button"
+                  onClick={() => onReopen(ticket)}
+                  className="min-h-[44px] rounded-full border border-amber-300 px-5 text-sm font-semibold text-amber-700"
+                >
+                  Reobrir
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onClose}
@@ -120,6 +360,24 @@ export default function AssignTicketModal({
         </div>
 
         <div className="max-h-[75vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
+          {ticket.imageUrl && (
+            <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="text-sm font-semibold text-slate-800">Imatge adjunta</div>
+              <a
+                href={ticket.imageUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block overflow-hidden rounded-2xl border border-slate-200"
+              >
+                <img
+                  src={ticket.imageUrl}
+                  alt="Imatge del ticket"
+                  className="max-h-72 w-full object-cover"
+                />
+              </a>
+            </div>
+          )}
+
           {(ticket.source === 'whatsblapp' || ticket.source === 'incidencia') &&
             ticket.status === 'nou' && (
               <div className="space-y-4 rounded-2xl border p-4">
@@ -143,6 +401,7 @@ export default function AssignTicketModal({
                     <select
                       className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                       value={detailsLocation}
+                      disabled={isValidated}
                       onChange={(e) => setDetailsLocation(e.target.value)}
                     >
                       <option value="">Selecciona ubicacio</option>
@@ -159,6 +418,7 @@ export default function AssignTicketModal({
                     <select
                       className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                       value={detailsMachine}
+                      disabled={isValidated}
                       onChange={(e) => setDetailsMachine(e.target.value)}
                     >
                       <option value="">{machinePlaceholder}</option>
@@ -176,6 +436,7 @@ export default function AssignTicketModal({
                   <textarea
                     className="mt-2 min-h-[120px] w-full rounded-2xl border bg-gray-50 px-4 py-3 text-base"
                     value={detailsDescription}
+                    disabled={isValidated}
                     onChange={(e) => setDetailsDescription(e.target.value)}
                   />
                 </label>
@@ -186,6 +447,7 @@ export default function AssignTicketModal({
                     <button
                       key={key}
                       type="button"
+                      disabled={isValidated}
                       onClick={() => setDetailsPriority(key)}
                       className={`min-h-[44px] rounded-full border px-4 text-sm font-semibold ${
                         detailsPriority === key
@@ -205,7 +467,8 @@ export default function AssignTicketModal({
                   <button
                     type="button"
                     onClick={onUpdateDetails}
-                    className="min-h-[44px] rounded-full border px-4 text-sm font-medium"
+                    disabled={isValidated}
+                    className="min-h-[44px] rounded-full border px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Guardar dades
                   </button>
@@ -221,6 +484,7 @@ export default function AssignTicketModal({
                   type="date"
                   className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                   value={assignDate}
+                  disabled={isValidated}
                   onChange={(e) => setAssignDate(e.target.value)}
                 />
               </label>
@@ -231,6 +495,7 @@ export default function AssignTicketModal({
                   type="time"
                   className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                   value={assignStartTime}
+                  disabled={isValidated}
                   onChange={(e) => setAssignStartTime(e.target.value)}
                 />
               </label>
@@ -242,6 +507,7 @@ export default function AssignTicketModal({
                   step={60}
                   className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                   value={assignDuration}
+                  disabled={isValidated}
                   onChange={(e) => setAssignDuration(e.target.value)}
                 />
               </label>
@@ -254,6 +520,7 @@ export default function AssignTicketModal({
                   max={10}
                   className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                   value={workerCount}
+                  disabled={isValidated}
                   onChange={(e) => setWorkerCount(Number(e.target.value || 1))}
                 />
               </label>
@@ -263,6 +530,7 @@ export default function AssignTicketModal({
                 <select
                   className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
                   value={ticket.vehiclePlate || ''}
+                  disabled={isValidated}
                   onChange={(e) => onAssignVehicle(ticket, !!e.target.value, e.target.value || null)}
                 >
                   <option value="">Sense assignar</option>
@@ -296,11 +564,17 @@ export default function AssignTicketModal({
                     <input
                       type="checkbox"
                       checked={!!checked}
-                      disabled={!isAvailable}
+                      disabled={isValidated || !isAvailable}
                       onChange={(e) => {
                         const nextIds = new Set(ticket.assignedToIds || [])
                         if (e.target.checked) {
-                          if (nextIds.size >= workerCount) return
+                          if (nextIds.size >= workerCount) {
+                            if (workerCount === 1) {
+                              nextIds.clear()
+                            } else {
+                              return
+                            }
+                          }
                           nextIds.add(u.id)
                         } else {
                           nextIds.delete(u.id)
@@ -333,6 +607,310 @@ export default function AssignTicketModal({
             )}
           </div>
 
+          {canExternalize && (
+            <div className="space-y-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+              <button
+                type="button"
+                onClick={() => setShowExternalizeSection((prev) => !prev)}
+                className="flex min-h-[56px] w-full items-center justify-between gap-4 rounded-2xl border border-blue-100 bg-white px-4 py-3 text-left"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-900">Enviar a proveidor</div>
+                  <div className="mt-1 text-sm text-slate-600">
+                    Deriva el ticket per correu i el deixa en espera.
+                  </div>
+                  {latestExternal && (
+                    <div className="mt-2 text-xs text-slate-500">
+                      Ultim enviament: {latestExternal.supplierName || ticket.supplierName || 'Proveidor'} ·{' '}
+                      {formatDateTime(latestExternal.at || ticket.externalSentAt)}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {isValidated && (
+                    <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                      Reobrir abans d externalitzar
+                    </span>
+                  )}
+                  {showExternalizeSection ? (
+                    <ChevronUp className="h-5 w-5 text-slate-500" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5 text-slate-500" />
+                  )}
+                </div>
+              </button>
+
+              {showExternalizeSection && latestExternal && (
+                <div className="rounded-2xl border border-blue-100 bg-white px-4 py-3 text-sm text-slate-600">
+                  <div className="font-semibold text-slate-800">
+                    Ultim enviament: {latestExternal.supplierName || ticket.supplierName || 'Proveidor'}
+                  </div>
+                  <div className="mt-1">
+                    {latestExternal.supplierEmail || ticket.supplierEmail || 'Sense email'} ·{' '}
+                    {formatDateTime(latestExternal.at || ticket.externalSentAt)}
+                  </div>
+                  {(latestExternal.reference || ticket.externalReference) && (
+                    <div className="mt-1">
+                      Referencia: {latestExternal.reference || ticket.externalReference}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showExternalizeSection && (
+                <>
+              <div className="space-y-3 rounded-2xl border border-blue-100 bg-white px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-slate-900">Proveidor guardat</div>
+                  <button
+                    type="button"
+                    onClick={() => setCreateSupplierOpen((prev) => !prev)}
+                    disabled={isValidated || externalizeBusy}
+                    className="inline-flex min-h-[40px] items-center gap-2 rounded-full border px-4 text-sm text-slate-700 disabled:opacity-60"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {createSupplierOpen ? 'Tancar nou proveidor' : 'Nou proveidor'}
+                  </button>
+                </div>
+
+                <Popover open={supplierPickerOpen} onOpenChange={setSupplierPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      disabled={isValidated || externalizeBusy}
+                      className="flex min-h-[48px] w-full items-center justify-between rounded-2xl border bg-white px-4 text-left text-sm disabled:opacity-60"
+                    >
+                      <span className="truncate">
+                        {selectedSupplierLabel}
+                        {supplierEmail.trim() ? ` · ${supplierEmail.trim()}` : ''}
+                      </span>
+                      <ChevronDown className="h-4 w-4 text-slate-500" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[360px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Cerca proveidor..." />
+                      <CommandList>
+                        <CommandEmpty>
+                          {suppliersLoading ? 'Carregant proveidors...' : 'Sense resultats'}
+                        </CommandEmpty>
+                        {suppliers.map((supplier) => (
+                          <CommandItem
+                            key={supplier.id}
+                            value={`${supplier.name} ${supplier.email || ''} ${supplier.specialty || ''}`}
+                            onSelect={() => selectSupplier(supplier)}
+                          >
+                            <div className="flex min-w-0 flex-1 flex-col">
+                              <span className="truncate font-medium">{supplier.name}</span>
+                              <span className="truncate text-xs text-slate-500">
+                                {[supplier.email, supplier.specialty].filter(Boolean).join(' · ') ||
+                                  'Sense dades extra'}
+                              </span>
+                            </div>
+                            {supplier.name === selectedSupplierLabel && (
+                              <Check className="ml-2 h-4 w-4 text-emerald-600" />
+                            )}
+                          </CommandItem>
+                        ))}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+
+                {createSupplierOpen && (
+                  <div className="grid gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_1fr_auto]">
+                    <input
+                      type="text"
+                      className="h-12 rounded-2xl border bg-white px-4 text-base"
+                      value={supplierName}
+                      disabled={isValidated || externalizeBusy || createSupplierBusy}
+                      onChange={(e) => setSupplierName(e.target.value)}
+                      placeholder="Nom proveidor"
+                    />
+                    <input
+                      type="email"
+                      className="h-12 rounded-2xl border bg-white px-4 text-base"
+                      value={supplierEmail}
+                      disabled={isValidated || externalizeBusy || createSupplierBusy}
+                      onChange={(e) => setSupplierEmail(e.target.value)}
+                      placeholder="Email proveidor"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void createSupplierFromForm()}
+                      disabled={isValidated || externalizeBusy || createSupplierBusy}
+                      className="min-h-[48px] rounded-full bg-emerald-600 px-5 text-sm font-semibold text-white disabled:opacity-60"
+                    >
+                      {createSupplierBusy ? 'Creant...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="text-sm text-gray-700">
+                  Nom proveidor
+                  <input
+                    type="text"
+                    className="mt-2 h-12 w-full rounded-2xl border bg-white px-4 text-base"
+                    value={supplierName}
+                    disabled={isValidated || externalizeBusy}
+                    onChange={(e) => setSupplierName(e.target.value)}
+                  />
+                </label>
+
+                <label className="text-sm text-gray-700">
+                  Email proveidor
+                  <input
+                    type="email"
+                    className="mt-2 h-12 w-full rounded-2xl border bg-white px-4 text-base"
+                    value={supplierEmail}
+                    disabled={isValidated || externalizeBusy}
+                    onChange={(e) => setSupplierEmail(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="text-sm text-gray-700">
+                  Referencia externa
+                  <input
+                    type="text"
+                    className="mt-2 h-12 w-full rounded-2xl border bg-white px-4 text-base"
+                    value={externalReference}
+                    disabled={isValidated || externalizeBusy}
+                    onChange={(e) => setExternalReference(e.target.value)}
+                  />
+                </label>
+
+                <label className="text-sm text-gray-700">
+                  Assumpte
+                  <input
+                    type="text"
+                    className="mt-2 h-12 w-full rounded-2xl border bg-white px-4 text-base"
+                    value={supplierSubject}
+                    disabled={isValidated || externalizeBusy}
+                    onChange={(e) => setSupplierSubject(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <label className="block text-sm text-gray-700">
+                Missatge
+                <textarea
+                  className="mt-2 min-h-[140px] w-full rounded-2xl border bg-white px-4 py-3 text-base"
+                  value={supplierMessage}
+                  disabled={isValidated || externalizeBusy}
+                  onChange={(e) => setSupplierMessage(e.target.value)}
+                />
+              </label>
+
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-sm text-gray-500">Adjunts per enviar</label>
+                  <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
+                    Fitxer
+                    <input
+                      type="file"
+                      className="hidden"
+                      disabled={isValidated || externalizeBusy}
+                      onChange={(e) => addEmailAttachment(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
+                    Foto
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      disabled={isValidated || externalizeBusy}
+                      onChange={(e) => addEmailAttachment(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  {emailAttachmentError && (
+                    <span className="text-sm text-red-600">{emailAttachmentError}</span>
+                  )}
+                </div>
+
+                {ticket.imageUrl && (
+                  <div className="text-xs text-slate-600">
+                    La imatge adjunta del ticket tambe s enviara al proveidor.
+                  </div>
+                )}
+
+                {emailAttachments.length > 0 && (
+                  <div className="space-y-2 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                    {emailAttachments.map((file, index) => {
+                      return (
+                        <div
+                          key={`${file.name}-${file.size}-${index}`}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium text-slate-800">
+                              {file.name}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {Math.max(1, Math.round(file.size / 1024))} KB
+                            </div>
+                          </div>
+                          {file.type.startsWith('image/') ? (
+                            <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                              Imatge
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                              Fitxer
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            className="rounded-full border px-3 py-1 text-xs text-slate-600"
+                            onClick={() => removeEmailAttachment(index)}
+                          >
+                            Treure
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={isValidated || externalizeBusy}
+                  onClick={async () => {
+                    try {
+                      const attachments = await uploadEmailAttachments()
+                      await onExternalize(ticket, {
+                        supplierName: supplierName.trim(),
+                        supplierEmail: supplierEmail.trim(),
+                        subject: supplierSubject.trim(),
+                        message: supplierMessage.trim(),
+                        externalReference: externalReference.trim() || null,
+                        attachments,
+                      })
+                      setEmailAttachments([])
+                      setEmailAttachmentError('')
+                      setShowExternalizeSection(false)
+                    } catch (err) {
+                      const message = err instanceof Error ? err.message : 'No s ha pogut preparar l enviament'
+                      setEmailAttachmentError(message)
+                    }
+                  }}
+                  className="min-h-[44px] rounded-full bg-slate-900 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {externalizeBusy ? 'Enviant...' : externalizeLabel}
+                </button>
+              </div>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="space-y-3">
             <button
               type="button"
@@ -344,13 +922,20 @@ export default function AssignTicketModal({
             {showHistory && (
               <div className="space-y-2 rounded-2xl border p-4">
                 {(ticket.statusHistory || []).map((item, index) => (
-                  <div key={index} className="text-sm text-gray-500">
+                  <div key={`status-${index}`} className="text-sm text-gray-500">
                     {statusLabels[item.status]} · {formatDateTime(item.at)} · {item.byName || ''}
                   </div>
                 ))}
-                {(!ticket.statusHistory || ticket.statusHistory.length === 0) && (
-                  <div className="text-sm text-gray-400">Sense historial.</div>
-                )}
+                {externalHistory.map((item, index) => (
+                  <div key={`external-${index}`} className="text-sm text-slate-600">
+                    Proveidor · {item.supplierName || item.supplierEmail || 'Sense destinatari'} ·{' '}
+                    {formatDateTime(item.at)} · {item.byName || ''}
+                  </div>
+                ))}
+                {(!ticket.statusHistory || ticket.statusHistory.length === 0) &&
+                  externalHistory.length === 0 && (
+                    <div className="text-sm text-gray-400">Sense historial.</div>
+                  )}
               </div>
             )}
           </div>

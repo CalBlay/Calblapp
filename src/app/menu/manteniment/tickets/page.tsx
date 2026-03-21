@@ -106,6 +106,8 @@ export default function MaintenanceTicketsPage() {
   const {
     role: ticketRole,
     userId,
+    canReopen,
+    canExternalize,
     tickets,
     loading,
     error,
@@ -141,6 +143,7 @@ export default function MaintenanceTicketsPage() {
     selected,
     setSelected,
     assignBusy,
+    externalizeBusy,
     assignDate,
     setAssignDate,
     assignStartTime,
@@ -166,8 +169,10 @@ export default function MaintenanceTicketsPage() {
     handleImageChange,
     handleCreateTicket,
     handleAssign,
+    handleReopen,
     handleAssignVehicle,
     handleUpdateDetails,
+    handleExternalize,
     handleDelete,
     fetchMoreTickets,
     groupedTickets,
@@ -377,6 +382,9 @@ export default function MaintenanceTicketsPage() {
             setDetailsDescription={setDetailsDescription}
             detailsPriority={detailsPriority}
             setDetailsPriority={setDetailsPriority}
+            canReopen={canReopen}
+            canExternalize={canExternalize}
+            externalizeBusy={externalizeBusy}
             onUpdateDetails={handleUpdateDetails}
             formatDateTime={formatDateTime}
             statusLabels={STATUS_LABELS}
@@ -385,6 +393,8 @@ export default function MaintenanceTicketsPage() {
             setSelected={setSelected}
             onAssign={handleAssign}
             onAssignVehicle={handleAssignVehicle}
+            onReopen={handleReopen}
+            onExternalize={handleExternalize}
             onClose={() => setSelected(null)}
           />
         )}

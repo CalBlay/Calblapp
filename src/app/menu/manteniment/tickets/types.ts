@@ -36,6 +36,26 @@ export type Ticket = {
   imageMeta?: { size?: number; type?: string } | null
   needsVehicle?: boolean
   vehiclePlate?: string | null
+  externalized?: boolean
+  supplierName?: string | null
+  supplierEmail?: string | null
+  externalReference?: string | null
+  externalStatus?: 'sent' | 'resent' | 'answered' | 'closed' | null
+  externalSentAt?: number | string | null
+  externalSentById?: string | null
+  externalSentByName?: string | null
+  externalizationHistory?: Array<{
+    at: number
+    byId?: string
+    byName?: string
+    supplierName?: string | null
+    supplierEmail?: string | null
+    reference?: string | null
+    subject?: string | null
+    message?: string | null
+    attachmentNames?: string[]
+    status?: 'sent' | 'resent'
+  }>
   statusHistory?: Array<{
     status: TicketStatus
     at: number

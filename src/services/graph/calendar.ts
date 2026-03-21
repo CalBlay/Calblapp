@@ -1,3 +1,4 @@
+import { storageAdmin } from '@/lib/firebaseAdmin'
 import { getGraphToken } from '@/services/sharepoint/graph'
 
 type KickoffAttendee = {
@@ -83,6 +84,25 @@ type SendProjectMissedActivityEmailInput = {
     createdAt?: number
   }>
   url?: string
+}
+
+type SendMaintenanceSupplierEmailInput = {
+  senderEmail: string
+  recipient: ProjectRecipient
+  subject: string
+  ticketCode: string
+  location: string
+  machine?: string
+  description: string
+  priority?: string
+  createdAt?: number | string | null
+  reference?: string | null
+  message?: string
+  attachments?: Array<{
+    name: string
+    path: string
+    contentType?: string | null
+  }>
 }
 
 async function getAccessToken() {
@@ -399,6 +419,52 @@ export async function sendProjectMissedActivityEmail(input: SendProjectMissedAct
   }
 }
 
+export async function sendMaintenanceSupplierEmail(input: SendMaintenanceSupplierEmailInput) {
+  const recipientEmail = String(input.recipient.email || '').trim()
+  const senderEmail = String(input.senderEmail || '').trim()
+  const subject = String(input.subject || '').trim()
+  if (!recipientEmail || !senderEmail || !subject) return
+
+  const attachments = await buildMailAttachments(input.attachments || [])
+
+  const accessToken = await getAccessToken()
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(senderEmail)}/sendMail`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: {
+            contentType: 'HTML',
+            content: buildMaintenanceSupplierEmailHtml(input),
+          },
+          toRecipients: [
+            {
+              emailAddress: {
+                address: recipientEmail,
+                name: input.recipient.name || recipientEmail,
+              },
+            },
+          ],
+          attachments,
+        },
+        saveToSentItems: true,
+      }),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`No s ha pogut enviar el correu al proveidor: ${response.status} ${text}`)
+  }
+}
+
 function buildKickoffHtml(projectName: string, notes?: string) {
   const extra = notes?.trim()
     ? `<p><strong>Notes:</strong><br/>${escapeHtml(notes).replace(/\n/g, '<br/>')}</p>`
@@ -498,6 +564,65 @@ function buildProjectMissedActivityEmailHtml(input: SendProjectMissedActivityEma
   `
 }
 
+function buildMaintenanceSupplierEmailHtml(input: SendMaintenanceSupplierEmailInput) {
+  const createdLabel = formatFlexibleBarcelonaDate(input.createdAt)
+  const reference = String(input.reference || '').trim()
+  const priority = String(input.priority || '').trim()
+  const machine = String(input.machine || '').trim()
+  const message = String(input.message || '').trim()
+
+  return `
+    <div style="font-family:Segoe UI,Arial,sans-serif;color:#0f172a;line-height:1.45">
+      <div style="margin:0 0 14px;padding:12px 14px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff">
+        <p style="margin:0 0 6px"><strong>Ticket:</strong> ${escapeHtml(input.ticketCode || 'TIC')}</p>
+        <p style="margin:0 0 6px"><strong>Ubicacio:</strong> ${escapeHtml(input.location || '-')}</p>
+        <p style="margin:0"><strong>Prioritat:</strong> ${escapeHtml(priority || 'normal')}</p>
+      </div>
+      ${
+        message
+          ? `<div style="margin:0 0 14px">${escapeHtml(message).replace(/\n/g, '<br/>')}</div>`
+          : `<p style="margin:0 0 14px">Us fem arribar una incidencia de manteniment per a la seva revisio.</p>`
+      }
+      <div style="border:1px solid #dbeafe;border-radius:14px;padding:14px 16px;background:#f8fbff">
+        ${createdLabel ? `<p style="margin:0 0 8px"><strong>Creat:</strong> ${escapeHtml(createdLabel)}</p>` : ''}
+        ${machine ? `<p style="margin:0 0 8px"><strong>Maquinaria:</strong> ${escapeHtml(machine)}</p>` : ''}
+        ${reference ? `<p style="margin:0 0 8px"><strong>Referencia externa:</strong> ${escapeHtml(reference)}</p>` : ''}
+        <p style="margin:0"><strong>Descripcio:</strong><br/>${escapeHtml(input.description || '').replace(/\n/g, '<br/>')}</p>
+      </div>
+    </div>
+  `
+}
+
+async function buildMailAttachments(
+  attachments: Array<{ name: string; path: string; contentType?: string | null }>
+) {
+  const bucket = storageAdmin.bucket()
+  const result: Array<{
+    '@odata.type': '#microsoft.graph.fileAttachment'
+    name: string
+    contentType: string
+    contentBytes: string
+  }> = []
+
+  for (const attachment of attachments) {
+    const path = String(attachment.path || '').trim()
+    if (!path) continue
+    try {
+      const [buffer] = await bucket.file(path).download()
+      result.push({
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: String(attachment.name || 'adjunt.jpg').trim() || 'adjunt.jpg',
+        contentType: String(attachment.contentType || 'image/jpeg').trim() || 'image/jpeg',
+        contentBytes: buffer.toString('base64'),
+      })
+    } catch {
+      continue
+    }
+  }
+
+  return result
+}
+
 function formatDisplayDateTime(value?: number) {
   if (!value) return ''
   const date = new Date(value)
@@ -508,6 +633,23 @@ function formatDisplayDateTime(value?: number) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function formatFlexibleBarcelonaDate(value?: number | string | null) {
+  if (!value) return ''
+  const date =
+    typeof value === 'number'
+      ? new Date(value)
+      : typeof value === 'string'
+        ? new Date(value)
+        : null
+  if (!date || Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('ca-ES', {
+    timeZone: 'Europe/Madrid',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date)
 }
 
 function formatBarcelonaDateTime(value: string) {

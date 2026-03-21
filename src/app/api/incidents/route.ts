@@ -21,6 +21,9 @@ interface IncidentDoc {
   eventDate?: string;
   eventLocation?: string;
   category?: { id?: string; label?: string };
+  imageUrl?: string | null;
+  imagePath?: string | null;
+  imageMeta?: { size?: number; type?: string } | null;
   [key: string]: unknown;
 }
 
@@ -72,7 +75,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "JSON mal formatejat" }, { status: 400 });
     }
 
-    const { eventId, department, importance, description, respSala, category } =
+    const { eventId, department, importance, description, respSala, category, imageUrl, imagePath, imageMeta } =
       payload;
 
     if (!eventId || !department || !importance || !description || !respSala || !category) {
@@ -118,6 +121,9 @@ export async function POST(req: Request) {
         id: category?.id || "",
         label: category?.label || "",
       },
+      imageUrl: imageUrl || null,
+      imagePath: imagePath || null,
+      imageMeta: imageMeta || null,
     });
 
     const categoryId = String(category?.id || "").trim();
@@ -153,9 +159,9 @@ export async function POST(req: Request) {
         sourceEventTitle: ev.NomEvent || "",
         sourceEventLocation: ev.Ubicacio || "",
         sourceEventDate: ev.DataInici || ev.DataPeticio || "",
-        imageUrl: null,
-        imagePath: null,
-        imageMeta: null,
+        imageUrl: imageUrl || null,
+        imagePath: imagePath || null,
+        imageMeta: imageMeta || null,
         needsVehicle: false,
         vehicleId: null,
         vehiclePlate: null,

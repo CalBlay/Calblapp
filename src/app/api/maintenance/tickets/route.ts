@@ -290,6 +290,15 @@ export async function POST(req: Request) {
       needsVehicle: false,
       vehicleId: null,
       vehiclePlate: null,
+      externalized: false,
+      supplierName: null,
+      supplierEmail: null,
+      externalReference: null,
+      externalStatus: null,
+      externalSentAt: null,
+      externalSentById: null,
+      externalSentByName: null,
+      externalizationHistory: [],
       statusHistory: [
         {
           status,

@@ -1,4 +1,3 @@
-// file: src/components/events/EventIncidentsModal.tsx
 'use client'
 
 import React from 'react'
@@ -25,11 +24,10 @@ function importanceColor(level: string) {
   return 'bg-gray-50 text-gray-600 border border-gray-200'
 }
 
-// 🔎 Helper per netejar i extreure dades de l’event
 function parseEventTitle(summary: string) {
   if (!summary) return { name: '', ln: '', code: '' }
 
-  const parts = summary.split('-').map(p => p.trim())
+  const parts = summary.split('-').map((p) => p.trim())
 
   let ln = ''
   if (summary.startsWith('E-') || summary.startsWith('E -')) ln = 'Empresa'
@@ -39,8 +37,6 @@ function parseEventTitle(summary: string) {
   else ln = 'Altres'
 
   const name = parts.length > 1 ? parts[1] : summary
-
-  // Captura el codi darrere del "#"
   const match = summary.match(/#\s*([A-Z]\d+)/)
   const code = match ? match[1] : ''
 
@@ -56,68 +52,71 @@ export default function EventIncidentsModal({ open, onClose, eventId, eventSumma
       <DialogContent className="max-w-lg rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">
-            {name} – {ln}
+            {name} - {ln}
           </DialogTitle>
-          <div className="text-sm text-gray-600">LLISTAT D’INCIDÈNCIES</div>
-          {(code) && (
-            <div className="text-xs text-gray-400">
-              Codi: {code}
-            </div>
-          )}
+          <div className="text-sm text-gray-600">Llistat d'incidencies</div>
+          {code && <div className="text-xs text-gray-400">Codi: {code}</div>}
         </DialogHeader>
 
-        {loading && <p className="text-sm text-gray-500">Carregant incidències…</p>}
+        {loading && <p className="text-sm text-gray-500">Carregant incidencies...</p>}
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         {!loading && !error && incidents.length === 0 && (
-          <p className="text-sm text-gray-500">
-            No hi ha incidències per aquest esdeveniment.
-          </p>
+          <p className="text-sm text-gray-500">No hi ha incidencies per aquest esdeveniment.</p>
         )}
 
         {!loading && incidents.length > 0 && (
-          <div className="space-y-3 max-h-[70vh] overflow-y-auto">
-            {incidents.map((i) => (
+          <div className="max-h-[70vh] space-y-3 overflow-y-auto">
+            {incidents.map((incident) => (
               <div
-                key={i.id}
-                className="p-4 rounded-xl bg-white border border-gray-200 shadow-sm"
+                key={incident.id}
+                className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
               >
-                {/* ── Descripció ── */}
-                <div className="text-sm font-medium text-gray-900 mb-1">
-                  {i.description}
-                </div>
+                <div className="mb-1 text-sm font-medium text-gray-900">{incident.description}</div>
 
-                {/* ── Autor ── */}
-                {i.createdBy && (
-                  <div className="text-xs text-gray-600 mb-2">
-                    Usuari: <span className="font-semibold">{i.createdBy}</span>
+                {incident.imageUrl && (
+                  <a
+                    href={incident.imageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mb-2 block overflow-hidden rounded-xl border border-slate-200"
+                  >
+                    <img
+                      src={incident.imageUrl}
+                      alt="Incidencia"
+                      className="max-h-48 w-full object-cover"
+                    />
+                  </a>
+                )}
+
+                {incident.createdBy && (
+                  <div className="mb-2 text-xs text-gray-600">
+                    Usuari: <span className="font-semibold">{incident.createdBy}</span>
                   </div>
                 )}
 
-                {/* ── Info addicional ── */}
-                <div className="flex flex-wrap gap-2 text-xs mb-2">
-                  {i.department && (
-                    <span className="px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200">
-                      {i.department}
+                <div className="mb-2 flex flex-wrap gap-2 text-xs">
+                  {incident.department && (
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700">
+                      {incident.department}
                     </span>
                   )}
                   <span
-                    className={`px-2 py-0.5 rounded-full font-medium ${importanceColor(
-                      i.importance
+                    className={`rounded-full px-2 py-0.5 font-medium ${importanceColor(
+                      incident.importance
                     )}`}
                   >
-                    {i.importance}
+                    {incident.importance}
                   </span>
-                  {i.category && (
-                    <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                      {i.category.id} - {i.category.label}
+                  {incident.category && (
+                    <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-indigo-700">
+                      {incident.category.id} - {incident.category.label}
                     </span>
                   )}
                 </div>
 
-                {/* ── Data ── */}
                 <div className="text-xs text-gray-400">
-                  {new Date(i.createdAt).toLocaleString('ca-ES')}
+                  {new Date(incident.createdAt).toLocaleString('ca-ES')}
                 </div>
               </div>
             ))}

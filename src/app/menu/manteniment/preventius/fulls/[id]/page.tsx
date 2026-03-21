@@ -66,7 +66,8 @@ export default function PreventiusFullsFitxaPage() {
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .trim()
-  const canValidate = role === 'admin' || role === 'direccio' || (role === 'cap' && department === 'manteniment')
+  const canValidate = role === 'admin' || (role === 'cap' && department === 'manteniment')
+  const isValidated = lastRecord?.status === 'validat'
 
   const applyRecordToDraft = (record: any) => {
     if (!record) return
@@ -263,7 +264,7 @@ export default function PreventiusFullsFitxaPage() {
 
   const saveCompletion = async () => {
     if (!draft) return
-    if (lastRecord?.status === 'validat') {
+    if (isValidated) {
       alert('Aquest preventiu ja esta validat i no es pot editar.')
       return
     }
@@ -302,6 +303,22 @@ export default function PreventiusFullsFitxaPage() {
     } catch {
       setSaveStatus('error')
       setTimeout(() => setSaveStatus('idle'), 3000)
+    }
+  }
+
+  const handleReopen = async () => {
+    if (!lastRecord?.id || !canValidate) return
+    try {
+      const res = await fetch(`/api/maintenance/preventius/completed/${encodeURIComponent(lastRecord.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'fet' }),
+      })
+      if (!res.ok) throw new Error('reopen_failed')
+      setLastRecord((prev) => (prev ? { ...prev, status: 'fet' } : prev))
+      setDraft((prev) => (prev ? { ...prev, status: 'fet' } : prev))
+    } catch {
+      alert('No s’ha pogut reobrir el preventiu.')
     }
   }
 
@@ -452,7 +469,7 @@ export default function PreventiusFullsFitxaPage() {
                     type="time"
                     className="h-10 rounded-xl border px-3"
                     value={draft.startTime}
-                    disabled={lastRecord?.status === 'validat'}
+                    disabled={isValidated}
                     onChange={(e) => setDraft((d) => (d ? { ...d, startTime: e.target.value } : d))}
                   />
                 </label>
@@ -462,7 +479,7 @@ export default function PreventiusFullsFitxaPage() {
                     type="time"
                     className="h-10 rounded-xl border px-3"
                     value={draft.endTime}
-                    disabled={lastRecord?.status === 'validat'}
+                    disabled={isValidated}
                     onChange={(e) => setDraft((d) => (d ? { ...d, endTime: e.target.value } : d))}
                   />
                 </label>
@@ -471,7 +488,7 @@ export default function PreventiusFullsFitxaPage() {
                   <textarea
                     className="min-h-[120px] rounded-xl border px-3 py-2 text-sm"
                     value={draft.notes}
-                    disabled={lastRecord?.status === 'validat'}
+                    disabled={isValidated}
                     onChange={(e) => setDraft((d) => (d ? { ...d, notes: e.target.value } : d))}
                   />
                 </label>
@@ -480,7 +497,7 @@ export default function PreventiusFullsFitxaPage() {
                   <select
                     className="h-10 rounded-xl border px-3"
                     value={draft.status}
-                    disabled={lastRecord?.status === 'validat'}
+                    disabled={isValidated}
                     onChange={(e) => setDraft((d) => (d ? { ...d, status: e.target.value } : d))}
                   >
                     <option value="nou">Nou</option>
@@ -572,7 +589,7 @@ export default function PreventiusFullsFitxaPage() {
                                   <input
                                     type="checkbox"
                                     checked={!!checklistState[entryKey]}
-                                    disabled={lastRecord?.status === 'validat'}
+                                    disabled={isValidated}
                                     onChange={() =>
                                       setChecklistState((prev) => ({
                                         ...prev,
@@ -602,6 +619,15 @@ export default function PreventiusFullsFitxaPage() {
             )}
             {saveStatus === 'error' && (
               <div className="mr-auto text-xs text-red-600">No s'ha pogut guardar.</div>
+            )}
+            {isValidated && canValidate && (
+              <button
+                type="button"
+                className="mr-auto rounded-full border border-amber-300 px-4 py-2 text-xs font-semibold text-amber-700"
+                onClick={handleReopen}
+              >
+                Reobrir
+              </button>
             )}
             <button
               type="button"

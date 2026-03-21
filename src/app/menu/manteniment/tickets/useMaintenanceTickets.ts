@@ -29,6 +29,11 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
   const userId = (session?.user as any)?.id || ''
 
   const canValidate = role === 'admin' || (role === 'cap' && department === 'manteniment')
+  const canReopen = canValidate
+  const canExternalize =
+    role === 'admin' ||
+    role === 'direccio' ||
+    (role === 'cap' && (department === 'manteniment' || department === 'decoracio' || department === 'decoracions' || department === 'decoracion'))
 
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(false)
@@ -75,6 +80,7 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
 
   const [selected, setSelected] = useState<Ticket | null>(null)
   const [assignBusy, setAssignBusy] = useState(false)
+  const [externalizeBusy, setExternalizeBusy] = useState(false)
   const [assignDate, setAssignDate] = useState('')
   const [assignStartTime, setAssignStartTime] = useState('')
   const [assignDuration, setAssignDuration] = useState('01:00')
@@ -109,7 +115,8 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
   )
 
   const furgonetes = useMemo(
-    () => (transports as TransportItem[]).filter((t) => t.type === 'furgoneta'),
+    () =>
+      (transports as TransportItem[]).filter((t) => t.type === 'furgonetaManteniment'),
     [transports]
   )
 
@@ -179,10 +186,12 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users', { cache: 'no-store' })
+      const res = await fetch(`/api/personnel?department=${encodeURIComponent(targetDept)}`, {
+        cache: 'no-store',
+      })
       if (!res.ok) return
       const json = await res.json()
-      setUsers(Array.isArray(json) ? json : [])
+      setUsers(Array.isArray(json?.data) ? json.data : [])
     } catch {
       setUsers([])
     }
@@ -211,7 +220,7 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
     fetchLocations()
     fetchUsers()
     fetchMachines()
-  }, [])
+  }, [targetDept, ticketTypeFilter])
 
   useEffect(() => {
     setLocationQuery(createLocation)
@@ -410,6 +419,21 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
     }
   }
 
+  const handleReopen = async (ticket: Ticket) => {
+    try {
+      const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'fet' }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await fetchTickets()
+      setSelected((prev) => (prev ? { ...prev, status: 'fet' } : prev))
+    } catch (err: any) {
+      alert(err?.message || 'No s’ha pogut reobrir')
+    }
+  }
+
   const handleAssignVehicle = async (
     ticket: Ticket,
     needsVehicle: boolean,
@@ -466,6 +490,41 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
     }
   }
 
+  const handleExternalize = async (
+    ticket: Ticket,
+    payload: {
+      supplierName: string
+      supplierEmail: string
+      subject: string
+      message: string
+      externalReference?: string | null
+      attachments?: Array<{
+        name: string
+        path: string
+        contentType?: string | null
+      }>
+    }
+  ) => {
+    try {
+      setExternalizeBusy(true)
+      const res = await fetch(`/api/maintenance/tickets/${ticket.id}/externalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+      await fetchTickets()
+      if (json?.ticket) {
+        setSelected(json.ticket)
+      }
+    } catch (err: any) {
+      alert(err?.message || 'No s ha pogut enviar al proveidor')
+    } finally {
+      setExternalizeBusy(false)
+    }
+  }
+
   const loadAvailability = async () => {
     const { plannedStart, plannedEnd } = computePlanning()
     if (!plannedStart || !plannedEnd) {
@@ -502,7 +561,10 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
   }
 
   useEffect(() => {
-    loadAvailability()
+    const timer = window.setTimeout(() => {
+      void loadAvailability()
+    }, 300)
+    return () => window.clearTimeout(timer)
   }, [assignDate, assignStartTime, assignDuration])
 
   const handleDelete = async (ticket: Ticket) => {
@@ -545,6 +607,8 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
     department,
     userId,
     canValidate,
+    canReopen,
+    canExternalize,
     tickets,
     loading,
     error,
@@ -581,6 +645,7 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
     selected,
     setSelected,
     assignBusy,
+    externalizeBusy,
     assignDate,
     setAssignDate,
     assignStartTime,
@@ -607,8 +672,10 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
     handleCreateTicket,
     handleAssign,
     handleStatusChange,
+    handleReopen,
     handleAssignVehicle,
     handleUpdateDetails,
+    handleExternalize,
     handleDelete,
     fetchMoreTickets: () =>
       nextTicketsCursor

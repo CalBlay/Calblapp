@@ -31,6 +31,21 @@ type OccupiedRange = {
   end: Date
 }
 
+type MaintenancePlannedDoc = {
+  date?: string
+  startTime?: string
+  endTime?: string
+  workerIds?: string[]
+  workerNames?: string[]
+}
+
+type MaintenanceTicketDoc = {
+  plannedStart?: number | string | null
+  plannedEnd?: number | string | null
+  assignedToIds?: string[]
+  assignedToNames?: string[]
+}
+
 interface PersonnelDoc {
   name?: string
   role?: string
@@ -107,6 +122,19 @@ const addRangesFromRef = (
   pushIndexedRange(index, ref.name, range.start, range.end)
 }
 
+const addMaintenanceRange = (
+  index: Map<string, OccupiedRange[]>,
+  start: Date,
+  end: Date,
+  ids?: string[],
+  names?: string[]
+) => {
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return
+  const range = normalizeRange(start, end)
+  ;(ids || []).forEach((id) => pushIndexedRange(index, id, range.start, range.end))
+  ;(names || []).forEach((name) => pushIndexedRange(index, name, range.start, range.end))
+}
+
 export async function GET(request: NextRequest) {
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET })
   if (!token) {
@@ -172,6 +200,47 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         console.error(`[available] Error reading ${colId}:`, error)
       }
+    }
+
+    try {
+      const plannedSnap = await db.collection('maintenancePreventiusPlanned').get()
+      plannedSnap.docs.forEach((doc) => {
+        const data = doc.data() as MaintenancePlannedDoc
+        const date = String(data.date || '').trim()
+        const startTime = String(data.startTime || '').trim()
+        const endTime = String(data.endTime || '').trim()
+        if (!date || !startTime || !endTime) return
+        const start = buildDate(date, startTime)
+        const end = buildDate(date, endTime)
+        addMaintenanceRange(
+          occupancyIndex,
+          start,
+          end,
+          Array.isArray(data.workerIds) ? data.workerIds : [],
+          Array.isArray(data.workerNames) ? data.workerNames : []
+        )
+      })
+    } catch (error) {
+      console.error('[available] Error reading maintenancePreventiusPlanned:', error)
+    }
+
+    try {
+      const ticketsSnap = await db.collection('maintenanceTickets').get()
+      ticketsSnap.docs.forEach((doc) => {
+        const data = doc.data() as MaintenanceTicketDoc
+        if (!data.plannedStart || !data.plannedEnd) return
+        const start = new Date(Number(data.plannedStart))
+        const end = new Date(Number(data.plannedEnd))
+        addMaintenanceRange(
+          occupancyIndex,
+          start,
+          end,
+          Array.isArray(data.assignedToIds) ? data.assignedToIds : [],
+          Array.isArray(data.assignedToNames) ? data.assignedToNames : []
+        )
+      })
+    } catch (error) {
+      console.error('[available] Error reading maintenanceTickets:', error)
     }
 
     const personnelSnap = await db.collection('personnel').get()
