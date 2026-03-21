@@ -341,7 +341,7 @@ export default function ProjectRoomOpsChat({
     setMentionQuery('')
   }
 
-  const compressImage = async (file: File, maxSizeBytes = 1024 * 1024) => {
+  const compressImage = async (file: File, maxSizeBytes = 2 * 1024 * 1024) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
     img.src = url
@@ -390,7 +390,7 @@ export default function ProjectRoomOpsChat({
       setImageUploading(true)
       setPendingFile(null)
       const { blob, width, height, type, size } = await compressImage(file)
-      if (size > 1024 * 1024) throw new Error('La imatge encara pesa massa')
+      if (size > 2 * 1024 * 1024) throw new Error('La imatge encara pesa massa')
       const form = new FormData()
       form.append('file', blob, 'image.jpg')
       form.append('channelId', channelId)

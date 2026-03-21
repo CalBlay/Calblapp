@@ -81,10 +81,10 @@ export default function CreateIncidentModal({
       setImageError('')
       return
     }
-    if (file.size > 1024 * 1024) {
+    if (file.size > 2 * 1024 * 1024) {
       setImageFile(null)
       setImagePreview(null)
-      setImageError('La imatge supera 1MB. Fes-la mes petita.')
+      setImageError('La imatge supera 2MB. Fes-la mes petita.')
       return
     }
     setImageError('')

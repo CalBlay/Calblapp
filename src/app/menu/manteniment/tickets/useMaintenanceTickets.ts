@@ -264,10 +264,10 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
       setImageError(null)
       return
     }
-    if (file.size > 1024 * 1024) {
+    if (file.size > 2 * 1024 * 1024) {
       setCreateImageFile(null)
       setCreateImagePreview(null)
-      setImageError('La imatge supera 1MB. Fes-la més petita.')
+      setImageError('La imatge supera 2MB. Fes-la més petita.')
       return
     }
     setImageError(null)

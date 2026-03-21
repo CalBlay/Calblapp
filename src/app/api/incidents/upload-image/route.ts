@@ -5,7 +5,7 @@ import { storageAdmin } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
 
-const MAX_SIZE = 1024 * 1024
+const MAX_SIZE = 2 * 1024 * 1024
 
 const clean = (s: string) =>
   s
