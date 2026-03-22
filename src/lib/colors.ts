@@ -98,6 +98,17 @@ export const COLORS_STAGE: Record<string, string> = {
   pendent: 'bg-yellow-200',
 }
 
+export const MAINTENANCE_STATUS_BADGES: Record<string, string> = {
+  nou: 'bg-teal-100 text-teal-800',
+  assignat: 'bg-sky-100 text-sky-800',
+  en_curs: 'bg-amber-100 text-amber-800',
+  espera: 'bg-slate-100 text-slate-700',
+  fet: 'bg-emerald-100 text-emerald-800',
+  no_fet: 'bg-rose-100 text-rose-700',
+  resolut: 'bg-violet-100 text-violet-800',
+  validat: 'bg-violet-100 text-violet-800',
+}
+
 // ───────────────────────────────────────────────
 // 🔧 HELPERS
 // ───────────────────────────────────────────────
@@ -135,4 +146,9 @@ export const colorByStage = (stage?: string): string => {
 
   // Fallback neutre (no hauria de passar)
   return 'bg-gray-300'
+}
+
+export const maintenanceStatusBadge = (status?: string): string => {
+  const key = (status || '').trim().toLowerCase()
+  return MAINTENANCE_STATUS_BADGES[key] || 'bg-slate-100 text-slate-700'
 }

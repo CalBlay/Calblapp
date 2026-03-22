@@ -52,6 +52,7 @@ type Props = {
   setDetailsDescription: (value: string) => void
   detailsPriority: TicketPriority
   setDetailsPriority: (value: TicketPriority) => void
+  canValidate: boolean
   canReopen: boolean
   canExternalize: boolean
   onUpdateDetails: () => void
@@ -61,6 +62,11 @@ type Props = {
   setShowHistory: (value: boolean | ((prev: boolean) => boolean)) => void
   setSelected: Dispatch<SetStateAction<Ticket | null>>
   onAssign: (ticket: Ticket, ids: string[], names: string[]) => void
+  onStatusChange: (
+    ticket: Ticket,
+    status: TicketStatus,
+    meta?: { supplierResolvedAt?: number | null; note?: string | null }
+  ) => void
   onAssignVehicle: (ticket: Ticket, needsVehicle: boolean, plate: string | null) => void
   onReopen: (ticket: Ticket) => void
   onExternalize: (
@@ -114,6 +120,16 @@ function buildSupplierMessage(ticket: Ticket) {
   return lines.filter(Boolean).join('\n')
 }
 
+function formatDateInput(value?: number | string | null) {
+  if (!value && value !== 0) return ''
+  const date = typeof value === 'number' ? new Date(value) : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 export default function AssignTicketModal({
   ticket,
   assignBusy,
@@ -140,6 +156,7 @@ export default function AssignTicketModal({
   setDetailsDescription,
   detailsPriority,
   setDetailsPriority,
+  canValidate,
   canReopen,
   canExternalize,
   onUpdateDetails,
@@ -149,6 +166,7 @@ export default function AssignTicketModal({
   setShowHistory,
   setSelected,
   onAssign,
+  onStatusChange,
   onAssignVehicle,
   onReopen,
   onExternalize,
@@ -173,12 +191,14 @@ export default function AssignTicketModal({
   const [externalReference, setExternalReference] = useState('')
   const [supplierSubject, setSupplierSubject] = useState('')
   const [supplierMessage, setSupplierMessage] = useState('')
+  const [supplierResolvedDate, setSupplierResolvedDate] = useState('')
   const [emailAttachments, setEmailAttachments] = useState<File[]>([])
   const [emailAttachmentError, setEmailAttachmentError] = useState('')
   const [showExternalizeSection, setShowExternalizeSection] = useState(false)
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
   const [suppliersLoading, setSuppliersLoading] = useState(false)
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false)
+  const [supplierSearch, setSupplierSearch] = useState('')
   const [createSupplierOpen, setCreateSupplierOpen] = useState(false)
   const [createSupplierBusy, setCreateSupplierBusy] = useState(false)
 
@@ -188,10 +208,14 @@ export default function AssignTicketModal({
     setExternalReference(String(ticket.externalReference || '').trim())
     setSupplierSubject(buildSupplierSubject(ticket))
     setSupplierMessage(buildSupplierMessage(ticket))
+    setSupplierResolvedDate(
+      formatDateInput(ticket.supplierResolvedAt || ticket.externalSentAt || Date.now())
+    )
     setEmailAttachments([])
     setEmailAttachmentError('')
     setShowExternalizeSection(false)
     setSupplierPickerOpen(false)
+    setSupplierSearch('')
     setCreateSupplierOpen(false)
   }, [ticket.id, ticket.location, ticket.machine, ticket.description, ticket.ticketCode, ticket.incidentNumber, ticket.supplierName, ticket.supplierEmail, ticket.externalReference])
 
@@ -235,6 +259,18 @@ export default function AssignTicketModal({
     return 'Selecciona proveidor'
   }, [supplierEmail, supplierName, suppliers])
 
+  const filteredSuppliers = useMemo(() => {
+    const needle = supplierSearch.trim().toLowerCase()
+    if (!needle) return suppliers
+    return suppliers.filter((supplier) =>
+      [supplier.name, supplier.email, supplier.specialty]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(needle)
+    )
+  }, [supplierSearch, suppliers])
+
   const addEmailAttachment = (file: File | null) => {
     if (!file) return
     if (file.size > 5 * 1024 * 1024) {
@@ -276,6 +312,7 @@ export default function AssignTicketModal({
     setSupplierName(String(supplier.name || '').trim())
     setSupplierEmail(String(supplier.email || '').trim())
     setSupplierPickerOpen(false)
+    setSupplierSearch('')
     setCreateSupplierOpen(false)
   }
 
@@ -375,6 +412,68 @@ export default function AssignTicketModal({
                   className="max-h-72 w-full object-cover"
                 />
               </a>
+            </div>
+          )}
+
+          {(ticket.externalized || ticket.status === 'fet') && (
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {ticket.externalized ? (
+                  <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-800">
+                    Proveidor
+                  </span>
+                ) : null}
+                {ticket.externalized ? (
+                  <span className="text-sm text-slate-600">
+                    {ticket.supplierName || ticket.supplierEmail || 'Sense proveidor'}
+                  </span>
+                ) : null}
+              </div>
+
+              {ticket.externalized && ticket.status === 'espera' && canValidate ? (
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="text-sm text-gray-700">
+                    Data resolucio proveidor
+                    <input
+                      type="date"
+                      className="mt-2 h-12 rounded-2xl border bg-white px-4 text-base"
+                      value={supplierResolvedDate}
+                      onChange={(e) => setSupplierResolvedDate(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onStatusChange(ticket, 'fet', {
+                        supplierResolvedAt: supplierResolvedDate
+                          ? new Date(`${supplierResolvedDate}T12:00:00`).getTime()
+                          : Date.now(),
+                        note: 'Resolt per proveidor',
+                      })
+                    }
+                    className="min-h-[44px] rounded-full border border-emerald-300 px-4 text-sm font-semibold text-emerald-700"
+                  >
+                    Marcar fet
+                  </button>
+                </div>
+              ) : null}
+
+              {ticket.status === 'fet' && canValidate ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  {ticket.externalized ? (
+                    <div className="text-sm text-slate-600">
+                      Resolucio proveidor: {formatDateTime(ticket.supplierResolvedAt)}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => onStatusChange(ticket, 'validat')}
+                    className="min-h-[44px] rounded-full border border-violet-300 px-4 text-sm font-semibold text-violet-700"
+                  >
+                    Validar
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -698,7 +797,12 @@ export default function AssignTicketModal({
                           <CommandItem
                             key={supplier.id}
                             value={`${supplier.name} ${supplier.email || ''} ${supplier.specialty || ''}`}
+                            onClick={() => selectSupplier(supplier)}
                             onSelect={() => selectSupplier(supplier)}
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              selectSupplier(supplier)
+                            }}
                           >
                             <div className="flex min-w-0 flex-1 flex-col">
                               <span className="truncate font-medium">{supplier.name}</span>

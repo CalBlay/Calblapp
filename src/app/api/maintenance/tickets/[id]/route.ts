@@ -33,6 +33,7 @@ type UpdatePayload = {
   plannedStart?: number | null
   plannedEnd?: number | null
   estimatedMinutes?: number | null
+  supplierResolvedAt?: number | null
   statusStartTime?: string | null
   statusEndTime?: string | null
   statusNote?: string | null
@@ -186,7 +187,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       body.description !== undefined ||
       body.plannedStart !== undefined ||
       body.plannedEnd !== undefined ||
-      body.estimatedMinutes !== undefined
+      body.estimatedMinutes !== undefined ||
+      body.supplierResolvedAt !== undefined
 
     if (currentStatus === 'validat') {
       const onlyReopenRequest =
@@ -221,6 +223,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (body.plannedStart !== undefined) updates.plannedStart = body.plannedStart
     if (body.plannedEnd !== undefined) updates.plannedEnd = body.plannedEnd
     if (body.estimatedMinutes !== undefined) updates.estimatedMinutes = body.estimatedMinutes
+    if (body.supplierResolvedAt !== undefined) updates.supplierResolvedAt = body.supplierResolvedAt
 
     if (body.assignedToIds !== undefined) {
       updates.assignedAt = body.assignedToIds.length ? Date.now() : null
@@ -243,6 +246,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     if (role === 'treballador' && nextStatus) {
+      if (current.externalized && nextStatus === 'fet') {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
       const allowed: Record<string, string[]> = {
         assignat: ['en_curs', 'espera'],
         en_curs: ['espera', 'fet', 'no_fet'],

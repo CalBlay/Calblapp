@@ -122,6 +122,7 @@ export default function usePlannerData({
         }, {})
         setTicketById(lookup)
         const mapped = list
+          .filter((t: any) => !t.externalized)
           .filter((t: any) => !['fet', 'no_fet', 'resolut', 'validat'].includes(String(t.status || '')))
           .map((t: any) => {
             const code = t.ticketCode || t.incidentNumber || 'TIC'
@@ -300,6 +301,7 @@ export default function usePlannerData({
       }, {})
       setTicketById(nextTicketById)
       const ticketsMapped: ScheduledItem[] = ticketList
+        .filter((t: any) => !t.externalized)
         .filter((t: any) => t.plannedStart && t.plannedEnd)
         .map((t: any) => {
           const start = new Date(Number(t.plannedStart))

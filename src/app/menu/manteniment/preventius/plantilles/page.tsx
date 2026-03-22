@@ -5,8 +5,11 @@ import * as XLSX from 'xlsx'
 import { jsPDF } from 'jspdf'
 import { FileSpreadsheet, Printer, Trash2 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import { useFilters } from '@/context/FiltersContext'
+import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import FloatingAddButton from '@/components/ui/floating-add-button'
+import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
 
 type TemplateSection = { location: string; items: { label: string }[] }
 type Template = {
@@ -408,6 +411,7 @@ const parseWorkbook = (fileName: string, wb: XLSX.WorkBook): ImportPreview => {
 }
 
 export default function PreventiusPlantillesPage() {
+  const { setContent } = useFilters()
   const [templates, setTemplates] = useState<Template[]>([])
   const [search, setSearch] = useState('')
   const [periodicity, setPeriodicity] = useState('all')
@@ -430,6 +434,46 @@ export default function PreventiusPlantillesPage() {
   useEffect(() => {
     loadTemplates()
   }, [])
+
+  useEffect(() => {
+    setContent(
+      <div className="space-y-4 p-4">
+        <label className="space-y-2 text-sm text-slate-700">
+          <span className="font-medium">Cerca</span>
+          <input
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            placeholder="Cerca per nom, ubicacio o operari"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+
+        <label className="space-y-2 text-sm text-slate-700">
+          <span className="font-medium">Temporalitat</span>
+          <select
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            value={periodicity}
+            onChange={(e) => setPeriodicity(e.target.value)}
+          >
+            {PERIODICITY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex justify-end">
+          <ResetFilterButton
+            onClick={() => {
+              setSearch('')
+              setPeriodicity('all')
+            }}
+          />
+        </div>
+      </div>
+    )
+  }, [periodicity, search, setContent])
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -713,6 +757,27 @@ export default function PreventiusPlantillesPage() {
       <div className="w-full max-w-5xl mx-auto p-4 space-y-4">
         <ModuleHeader subtitle="Plantilles (plans) i checklists" />
 
+        <MaintenanceToolbar
+          onOpenFilters={() => undefined}
+          rightSlot={
+            <>
+              {periodicity !== 'all' ? (
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  {
+                    PERIODICITY_OPTIONS.find((option) => option.value === periodicity)?.label ||
+                    periodicity
+                  }
+                </span>
+              ) : null}
+              {search.trim() ? (
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  Cerca activa
+                </span>
+              ) : null}
+            </>
+          }
+        />
+
         <div className="rounded-2xl border bg-white p-4 space-y-3">
           <div className="text-sm font-semibold text-gray-900">Importar plantilla</div>
           <div className="text-xs text-gray-600">
@@ -816,26 +881,10 @@ export default function PreventiusPlantillesPage() {
         </div>
 
         <div className="rounded-2xl border bg-white p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm font-semibold text-gray-900">Plantilles</div>
-            <div className="flex items-center gap-2">
-              <input
-                className="h-10 w-full sm:w-[260px] rounded-xl border bg-white px-3 text-sm"
-                placeholder="Cerca per nom, ubicacio o operari"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <select
-                className="h-10 rounded-xl border bg-white px-3 text-sm"
-                value={periodicity}
-                onChange={(e) => setPeriodicity(e.target.value)}
-              >
-                {PERIODICITY_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Plantilles</div>
+              <div className="text-xs text-gray-500">{filtered.length} resultats</div>
             </div>
           </div>
         </div>

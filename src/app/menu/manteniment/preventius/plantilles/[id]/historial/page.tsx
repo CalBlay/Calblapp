@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { format } from 'date-fns'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import { maintenanceStatusBadge } from '@/lib/colors'
 import { RoleGuard } from '@/lib/withRoleGuard'
 
 type Template = {
@@ -49,17 +50,6 @@ const STATUS_LABELS: Record<string, string> = {
   no_fet: 'No fet',
   resolut: 'Validat',
   validat: 'Validat',
-}
-
-const STATUS_BADGES: Record<string, string> = {
-  nou: 'bg-emerald-100 text-emerald-800',
-  assignat: 'bg-sky-100 text-sky-800',
-  en_curs: 'bg-amber-100 text-amber-800',
-  espera: 'bg-slate-100 text-slate-700',
-  fet: 'bg-green-100 text-green-800',
-  no_fet: 'bg-rose-100 text-rose-700',
-  resolut: 'bg-violet-100 text-violet-800',
-  validat: 'bg-violet-100 text-violet-800',
 }
 
 const formatDateTime = (value?: string | number) => {
@@ -186,7 +176,7 @@ export default function PlantillaHistorialPage() {
                         </span>
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                            STATUS_BADGES[statusKey] || 'bg-slate-100 text-slate-700'
+                            maintenanceStatusBadge(statusKey)
                           }`}
                         >
                           {getStatusLabel(record.status)}

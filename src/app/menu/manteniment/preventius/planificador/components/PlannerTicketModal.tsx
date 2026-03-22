@@ -77,6 +77,7 @@ export default function PlannerTicketModal({
   const { data: session } = useSession()
   const role = normalizeRole((session?.user as any)?.role || '')
   const department = normalizeDept((session?.user as any)?.department || '')
+  const canValidate = role === 'admin' || (role === 'cap' && department === 'manteniment')
   const canReopen = role === 'admin' || (role === 'cap' && department === 'manteniment')
   const canExternalize =
     role === 'admin' ||
@@ -295,6 +296,28 @@ export default function PlannerTicketModal({
     }
   }
 
+  const handleStatusChange = async (
+    ticket: Ticket,
+    status: keyof typeof STATUS_LABELS,
+    meta?: { supplierResolvedAt?: number | null; note?: string | null }
+  ) => {
+    try {
+      const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status,
+          supplierResolvedAt: meta?.supplierResolvedAt,
+          statusNote: meta?.note,
+        }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await Promise.all([loadTicket(), onRefresh()])
+    } catch (err: any) {
+      alert(err?.message || 'No s ha pogut actualitzar')
+    }
+  }
+
   const handleExternalize = async (
     ticket: Ticket,
     payload: {
@@ -359,6 +382,7 @@ export default function PlannerTicketModal({
       setDetailsDescription={setDetailsDescription}
       detailsPriority={detailsPriority}
       setDetailsPriority={setDetailsPriority}
+      canValidate={canValidate}
       canReopen={canReopen}
       canExternalize={canExternalize}
       onUpdateDetails={handleUpdateDetails}
@@ -368,6 +392,7 @@ export default function PlannerTicketModal({
       setShowHistory={setShowHistory}
       setSelected={setSelected}
       onAssign={handleAssign}
+      onStatusChange={handleStatusChange}
       onAssignVehicle={handleAssignVehicle}
       onReopen={handleReopen}
       onExternalize={handleExternalize}

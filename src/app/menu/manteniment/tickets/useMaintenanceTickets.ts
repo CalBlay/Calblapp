@@ -404,16 +404,33 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
     }
   }
 
-  const handleStatusChange = async (ticket: Ticket, status: TicketStatus) => {
+  const handleStatusChange = async (
+    ticket: Ticket,
+    status: TicketStatus,
+    meta?: { supplierResolvedAt?: number | null; note?: string | null }
+  ) => {
     try {
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({
+          status,
+          supplierResolvedAt: meta?.supplierResolvedAt,
+          statusNote: meta?.note,
+        }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       await fetchTickets()
-      setSelected((prev) => (prev ? { ...prev, status } : prev))
+      setSelected((prev) =>
+        prev
+          ? {
+              ...prev,
+              status,
+              supplierResolvedAt:
+                meta?.supplierResolvedAt !== undefined ? meta.supplierResolvedAt : prev.supplierResolvedAt,
+            }
+          : prev
+      )
     } catch (err: any) {
       alert(err?.message || 'No s’ha pogut actualitzar')
     }

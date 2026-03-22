@@ -1,15 +1,17 @@
 ﻿'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { format, parseISO } from 'date-fns'
+import { addDays, addWeeks, endOfWeek, format, parseISO, startOfWeek, subDays, subWeeks } from 'date-fns'
 import * as XLSX from 'xlsx'
 import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
+import { useFilters } from '@/context/FiltersContext'
+import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import ExportMenu from '@/components/export/ExportMenu'
 import { normalizeRole } from '@/lib/roles'
+import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
 type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
 
 type Ticket = {
@@ -44,10 +46,11 @@ const getStatusLabel = (status?: string | null, fallback = 'pendent') => {
 
 export default function PreventiusFullsPage() {
   const { data: session } = useSession()
+  const { setContent } = useFilters()
   const searchParams = useSearchParams()
   const role = normalizeRole((session?.user as any)?.role || '')
   const canFilterByWorker = role === 'admin' || role === 'direccio' || role === 'cap'
-  const [filters, setFiltersState] = useState<{ start: string; end: string; mode: 'day' }>(() => {
+  const [filters, setFiltersState] = useState<{ start: string; end: string; mode: 'day' | 'week' }>(() => {
     const value = format(new Date(), 'yyyy-MM-dd')
     return { start: value, end: value, mode: 'day' }
   })
@@ -101,8 +104,9 @@ export default function PreventiusFullsPage() {
     setFiltersState((prev) => {
       const nextStart = queryStart || prev.start
       const nextEnd = queryEnd || prev.end
-      if (prev.start === nextStart && prev.end === nextEnd) return prev
-      return { ...prev, start: nextStart, end: nextEnd }
+      const nextMode = nextStart === nextEnd ? 'day' : 'week'
+      if (prev.start === nextStart && prev.end === nextEnd && prev.mode === nextMode) return prev
+      return { ...prev, start: nextStart, end: nextEnd, mode: nextMode }
     })
   }, [queryEnd, queryStart])
 
@@ -204,11 +208,45 @@ export default function PreventiusFullsPage() {
     }
   }, [queryTicketId, selectedTicket?.id, ticketItems])
 
-  const handleDateChange = (f: SmartFiltersChange) => {
-    if (!f.start) return
-    const value = format(new Date(f.start), 'yyyy-MM-dd')
-    setFiltersState({ start: value, end: value, mode: 'day' })
+  const currentStart = useMemo(() => parseISO(filters.start), [filters.start])
+  const currentEnd = useMemo(() => parseISO(filters.end), [filters.end])
+
+  const setMode = (nextMode: 'day' | 'week') => {
+    if (nextMode === 'day') {
+      const value = format(currentStart, 'yyyy-MM-dd')
+      setFiltersState({ start: value, end: value, mode: 'day' })
+      return
+    }
+    const weekStart = startOfWeek(currentStart, { weekStartsOn: 1 })
+    const weekEnd = endOfWeek(currentStart, { weekStartsOn: 1 })
+    setFiltersState({
+      start: format(weekStart, 'yyyy-MM-dd'),
+      end: format(weekEnd, 'yyyy-MM-dd'),
+      mode: 'week',
+    })
   }
+
+  const shiftRange = (direction: 'prev' | 'next') => {
+    if (filters.mode === 'day') {
+      const next = direction === 'next' ? addDays(currentStart, 1) : subDays(currentStart, 1)
+      const value = format(next, 'yyyy-MM-dd')
+      setFiltersState({ start: value, end: value, mode: 'day' })
+      return
+    }
+    const next = direction === 'next' ? addWeeks(currentStart, 1) : subWeeks(currentStart, 1)
+    const weekStart = startOfWeek(next, { weekStartsOn: 1 })
+    const weekEnd = endOfWeek(next, { weekStartsOn: 1 })
+    setFiltersState({
+      start: format(weekStart, 'yyyy-MM-dd'),
+      end: format(weekEnd, 'yyyy-MM-dd'),
+      mode: 'week',
+    })
+  }
+
+  const rangeLabel =
+    filters.mode === 'day'
+      ? format(currentStart, 'dd MMM yyyy')
+      : `${format(currentStart, 'd MMM')} - ${format(currentEnd, 'd MMM')}`
 
   const filteredByDate = useMemo(() => {
     const start = parseISO(filters.start)
@@ -290,6 +328,55 @@ export default function PreventiusFullsPage() {
   }
 
   const exportBase = `manteniment-fulls-${filters.start || 'start'}-${filters.end || 'end'}`
+
+  useEffect(() => {
+    setContent(
+      <div className="space-y-4 p-4">
+        {canFilterByWorker ? (
+          <label className="space-y-2 text-sm text-slate-700">
+            <span className="font-medium">Treballador</span>
+            <select
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              value={workerFilter}
+              onChange={(e) => setWorkerFilter(e.target.value)}
+            >
+              <option value="all">Tots</option>
+              {workerOptions.map((w) => (
+                <option key={w} value={w.toLowerCase()}>
+                  {w}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        <label className="space-y-2 text-sm text-slate-700">
+          <span className="font-medium">Estat</span>
+          <select
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">Tots</option>
+            {statusOptions.map((status) => (
+              <option key={status} value={status}>
+                {getStatusLabel(status, status)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex justify-end">
+          <ResetFilterButton
+            onClick={() => {
+              setWorkerFilter('all')
+              setStatusFilter('all')
+            }}
+          />
+        </div>
+      </div>
+    )
+  }, [canFilterByWorker, setContent, statusFilter, statusOptions, workerFilter, workerOptions])
 
   const exportRows = useMemo(
     () =>
@@ -499,54 +586,30 @@ export default function PreventiusFullsPage() {
           actions={<ExportMenu items={exportItems} />}
         />
 
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0 flex-1">
-            <SmartFilters
-              modeDefault="day"
-              role="Treballador"
-              showDepartment={false}
-              showWorker={false}
-              showLocation={false}
-              showStatus={false}
-              onChange={handleDateChange}
-              initialStart={filters.start}
-              initialEnd={filters.end}
-            />
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            {canFilterByWorker && (
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-600">Treballador</label>
-                <select
-                  className="h-9 rounded-xl border bg-white px-3 text-sm"
-                  value={workerFilter}
-                  onChange={(e) => setWorkerFilter(e.target.value)}
-                >
-                  <option value="all">Tots</option>
-                  {workerOptions.map((w) => (
-                    <option key={w} value={w.toLowerCase()}>
-                      {w}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-600">Estat</label>
-              <select
-                className="h-9 rounded-xl border bg-white px-3 text-sm"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="all">Tots</option>
-                {statusOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {getStatusLabel(status, status)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+        <MaintenanceToolbar
+          rangeLabel={rangeLabel}
+          onPrev={() => shiftRange('prev')}
+          onNext={() => shiftRange('next')}
+          modeValue={filters.mode}
+          modeOptions={[
+            { value: 'day', label: 'Dia' },
+            { value: 'week', label: 'Setmana' },
+          ]}
+          onModeChange={(value) => setMode(value as 'day' | 'week')}
+          onOpenFilters={() => undefined}
+        />
+
+        <div className="flex flex-wrap gap-2">
+          {canFilterByWorker && workerFilter !== 'all' ? (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+              {workerOptions.find((w) => w.toLowerCase() === workerFilter) || workerFilter}
+            </span>
+          ) : null}
+          {statusFilter !== 'all' ? (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+              {getStatusLabel(statusFilter, statusFilter)}
+            </span>
+          ) : null}
         </div>
 
         <div id="manteniment-fulls-print-root" className="rounded-2xl border bg-white overflow-hidden">

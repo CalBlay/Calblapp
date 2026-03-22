@@ -44,6 +44,7 @@ export type Ticket = {
   externalSentAt?: number | string | null
   externalSentById?: string | null
   externalSentByName?: string | null
+  supplierResolvedAt?: number | string | null
   externalizationHistory?: Array<{
     at: number
     byId?: string

@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Database, Factory, Truck } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import { useFilters } from '@/context/FiltersContext'
+import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { RoleGuard } from '@/lib/withRoleGuard'
+import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
 
 type MachineRow = {
   id: string
@@ -53,6 +56,7 @@ const emptySupplier = {
 }
 
 export default function MaintenanceDataPage() {
+  const { setContent } = useFilters()
   const [tab, setTab] = useState<'machines' | 'suppliers'>('machines')
   const [machines, setMachines] = useState<MachineRow[]>([])
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([])
@@ -82,6 +86,43 @@ export default function MaintenanceDataPage() {
   useEffect(() => {
     void loadData()
   }, [])
+
+  useEffect(() => {
+    setContent(
+      <div className="space-y-4 p-4">
+        {tab === 'machines' ? (
+          <label className="space-y-2 text-sm text-slate-700">
+            <span className="font-medium">Cerca maquinaria</span>
+            <input
+              value={machineSearch}
+              onChange={(e) => setMachineSearch(e.target.value)}
+              placeholder="Cerca codi, nom o ubicacio..."
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            />
+          </label>
+        ) : (
+          <label className="space-y-2 text-sm text-slate-700">
+            <span className="font-medium">Cerca proveidor</span>
+            <input
+              value={supplierSearch}
+              onChange={(e) => setSupplierSearch(e.target.value)}
+              placeholder="Cerca nom, email o especialitat..."
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            />
+          </label>
+        )}
+
+        <div className="flex justify-end">
+          <ResetFilterButton
+            onClick={() => {
+              setMachineSearch('')
+              setSupplierSearch('')
+            }}
+          />
+        </div>
+      </div>
+    )
+  }, [machineSearch, setContent, supplierSearch, tab])
 
   const filteredMachines = useMemo(() => {
     const q = machineSearch.trim().toLowerCase()
@@ -152,6 +193,23 @@ export default function MaintenanceDataPage() {
       <div className="mx-auto w-full max-w-6xl space-y-4 p-4">
         <ModuleHeader title="Manteniment" subtitle="Dades" mainHref="/menu/manteniment" />
 
+        <MaintenanceToolbar
+          onOpenFilters={() => undefined}
+          rightSlot={
+            tab === 'machines' ? (
+              machineSearch.trim() ? (
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  Cerca maquinaria activa
+                </span>
+              ) : null
+            ) : supplierSearch.trim() ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                Cerca proveidor activa
+              </span>
+            ) : null
+          }
+        />
+
         <div className="grid gap-3 sm:grid-cols-2">
           <button
             type="button"
@@ -204,12 +262,6 @@ export default function MaintenanceDataPage() {
                     Llistat de maquinaria
                   </div>
                 </div>
-                <input
-                  value={machineSearch}
-                  onChange={(e) => setMachineSearch(e.target.value)}
-                  placeholder="Cerca codi, nom o ubicacio..."
-                  className="h-11 w-full max-w-xs rounded-2xl border px-4 text-sm"
-                />
               </div>
               <div className="space-y-2">
                 {loading ? (
@@ -307,12 +359,6 @@ export default function MaintenanceDataPage() {
             <section className="rounded-2xl border bg-white p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="text-sm font-semibold text-slate-900">Llistat de proveidors</div>
-                <input
-                  value={supplierSearch}
-                  onChange={(e) => setSupplierSearch(e.target.value)}
-                  placeholder="Cerca nom, email o especialitat..."
-                  className="h-11 w-full max-w-xs rounded-2xl border px-4 text-sm"
-                />
               </div>
               <div className="space-y-2">
                 {loading ? (

@@ -106,6 +106,9 @@ export default function MaintenanceTicketsDecoPage() {
   const {
     role: ticketRole,
     userId,
+    canValidate,
+    canReopen,
+    canExternalize,
     loading,
     error,
     hasMoreTickets,
@@ -140,6 +143,7 @@ export default function MaintenanceTicketsDecoPage() {
     selected,
     setSelected,
     assignBusy,
+    externalizeBusy,
     assignDate,
     setAssignDate,
     assignStartTime,
@@ -165,8 +169,11 @@ export default function MaintenanceTicketsDecoPage() {
     handleImageChange,
     handleCreateTicket,
     handleAssign,
+    handleStatusChange,
+    handleReopen,
     handleAssignVehicle,
     handleUpdateDetails,
+    handleExternalize,
     handleDelete,
     fetchMoreTickets,
     groupedTickets,
@@ -313,6 +320,10 @@ export default function MaintenanceTicketsDecoPage() {
             setDetailsDescription={setDetailsDescription}
             detailsPriority={detailsPriority}
             setDetailsPriority={setDetailsPriority}
+            canValidate={canValidate}
+            canReopen={canReopen}
+            canExternalize={canExternalize}
+            externalizeBusy={externalizeBusy}
             onUpdateDetails={handleUpdateDetails}
             formatDateTime={formatDateTime}
             statusLabels={STATUS_LABELS}
@@ -320,7 +331,10 @@ export default function MaintenanceTicketsDecoPage() {
             setShowHistory={setShowHistory}
             setSelected={setSelected}
             onAssign={handleAssign}
+            onStatusChange={handleStatusChange}
             onAssignVehicle={handleAssignVehicle}
+            onReopen={handleReopen}
+            onExternalize={handleExternalize}
             onClose={() => setSelected(null)}
           />
         )}

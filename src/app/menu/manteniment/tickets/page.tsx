@@ -106,6 +106,7 @@ export default function MaintenanceTicketsPage() {
   const {
     role: ticketRole,
     userId,
+    canValidate,
     canReopen,
     canExternalize,
     tickets,
@@ -169,6 +170,7 @@ export default function MaintenanceTicketsPage() {
     handleImageChange,
     handleCreateTicket,
     handleAssign,
+    handleStatusChange,
     handleReopen,
     handleAssignVehicle,
     handleUpdateDetails,
@@ -181,6 +183,16 @@ export default function MaintenanceTicketsPage() {
   const queryTicketId = (searchParams?.get('ticketId') || '').trim()
   const queryStart = (searchParams?.get('start') || '').trim()
   const queryEnd = (searchParams?.get('end') || '').trim()
+
+  const closeSelectedTicket = () => {
+    setSelected(null)
+    if (!searchParams) return
+    if (!queryTicketId) return
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('ticketId')
+    const nextQuery = params.toString()
+    router.replace(nextQuery ? `/menu/manteniment/tickets?${nextQuery}` : '/menu/manteniment/tickets')
+  }
 
   useEffect(() => {
     if (!queryStart && !queryEnd) return
@@ -241,22 +253,6 @@ export default function MaintenanceTicketsPage() {
           }
         />
 
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-sm text-emerald-900">
-          <div className="flex items-center gap-2 flex-wrap">
-            <ClipboardList className="h-4 w-4 text-emerald-700" />
-            <span className="font-semibold">Tickets de manteniment</span>
-            {newTicketsCount > 0 && (
-              <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
-                {newTicketsCount}
-              </span>
-            )}
-            <span className="text-xs font-medium text-emerald-800/80">Nous pendents</span>
-          </div>
-          <div className="mt-1 text-xs text-emerald-800/80">
-            Entrada general de tickets: revisio, creacio manual i assignacio. El comptador mostra els tickets nous pendents, no el total filtrat de la llista.
-          </div>
-        </div>
-
         <FiltersBar
           filters={filters}
           setFilters={(f) => setFilters((prev) => ({ ...prev, ...f }))}
@@ -284,6 +280,19 @@ export default function MaintenanceTicketsPage() {
 
         {loading && <p className="text-sm text-gray-500">Carregant...</p>}
         {error && <p className="text-sm text-red-500">{error}</p>}
+
+        <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="flex items-center gap-2 flex-wrap text-sm text-slate-900">
+            <ClipboardList className="h-4 w-4 text-emerald-700" />
+            <span className="font-semibold">Tickets de manteniment</span>
+            {newTicketsCount > 0 ? (
+              <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
+                {newTicketsCount}
+              </span>
+            ) : null}
+            <span className="text-xs text-slate-500">Nous pendents</span>
+          </div>
+        </section>
 
         {!loading && groupedTickets.length === 0 && (
           <p className="text-sm text-gray-500">No hi ha tickets encara.</p>
@@ -382,6 +391,7 @@ export default function MaintenanceTicketsPage() {
             setDetailsDescription={setDetailsDescription}
             detailsPriority={detailsPriority}
             setDetailsPriority={setDetailsPriority}
+            canValidate={canValidate}
             canReopen={canReopen}
             canExternalize={canExternalize}
             externalizeBusy={externalizeBusy}
@@ -392,10 +402,11 @@ export default function MaintenanceTicketsPage() {
             setShowHistory={setShowHistory}
             setSelected={setSelected}
             onAssign={handleAssign}
+            onStatusChange={handleStatusChange}
             onAssignVehicle={handleAssignVehicle}
             onReopen={handleReopen}
             onExternalize={handleExternalize}
-            onClose={() => setSelected(null)}
+            onClose={closeSelectedTicket}
           />
         )}
       </div>
