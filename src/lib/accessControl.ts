@@ -155,6 +155,9 @@ export const MODULES: ModuleDef[] = [
   { label: 'Usuaris', path: '/menu/users',
     roles: ['admin'] },
 
+  { label: 'Imatges', path: '/menu/media',
+    roles: ['admin'] },
+
   {
     label: 'Logística',
     path: '/menu/logistica',

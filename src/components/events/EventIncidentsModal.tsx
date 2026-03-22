@@ -74,19 +74,26 @@ export default function EventIncidentsModal({ open, onClose, eventId, eventSumma
               >
                 <div className="mb-1 text-sm font-medium text-gray-900">{incident.description}</div>
 
-                {incident.imageUrl && (
-                  <a
-                    href={incident.imageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mb-2 block overflow-hidden rounded-xl border border-slate-200"
-                  >
-                    <img
-                      src={incident.imageUrl}
-                      alt="Incidencia"
-                      className="max-h-48 w-full object-cover"
-                    />
-                  </a>
+                {Array.isArray(incident.images) && incident.images.length > 0 && (
+                  <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {incident.images.map((image, index) =>
+                      image?.url ? (
+                        <a
+                          key={`${incident.id}-image-${index}`}
+                          href={image.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block overflow-hidden rounded-xl border border-slate-200"
+                        >
+                          <img
+                            src={image.url}
+                            alt={`Incidencia ${index + 1}`}
+                            className="h-32 w-full object-cover"
+                          />
+                        </a>
+                      ) : null
+                    )}
+                  </div>
                 )}
 
                 {incident.createdBy && (

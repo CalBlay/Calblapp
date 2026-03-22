@@ -24,6 +24,11 @@ interface IncidentDoc {
   imageUrl?: string | null;
   imagePath?: string | null;
   imageMeta?: { size?: number; type?: string } | null;
+  images?: Array<{
+    url?: string | null;
+    path?: string | null;
+    meta?: { size?: number; type?: string } | null;
+  }>;
   [key: string]: unknown;
 }
 
@@ -75,7 +80,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "JSON mal formatejat" }, { status: 400 });
     }
 
-    const { eventId, department, importance, description, respSala, category, imageUrl, imagePath, imageMeta } =
+    const { eventId, department, importance, description, respSala, category, images, imageUrl, imagePath, imageMeta } =
       payload;
 
     if (!eventId || !department || !importance || !description || !respSala || !category) {
@@ -100,6 +105,22 @@ export async function POST(req: Request) {
     // 2️⃣ Generar número d’incidència
     const incidentNumber = await generateIncidentNumber();
 
+    const normalizedImages = Array.isArray(images)
+      ? images
+          .map((image: any) => ({
+            url: image?.url || null,
+            path: image?.path || null,
+            meta: image?.meta || null,
+          }))
+          .filter((image: any) => image.url || image.path)
+      : []
+
+    const primaryImage = normalizedImages[0] || {
+      url: imageUrl || null,
+      path: imagePath || null,
+      meta: imageMeta || null,
+    }
+
     // 3️⃣ Crear document incidència
     const docRef = await firestoreAdmin.collection("incidents").add({
       incidentNumber,
@@ -121,9 +142,10 @@ export async function POST(req: Request) {
         id: category?.id || "",
         label: category?.label || "",
       },
-      imageUrl: imageUrl || null,
-      imagePath: imagePath || null,
-      imageMeta: imageMeta || null,
+      imageUrl: primaryImage.url || null,
+      imagePath: primaryImage.path || null,
+      imageMeta: primaryImage.meta || null,
+      images: normalizedImages,
     });
 
     const categoryId = String(category?.id || "").trim();
@@ -159,9 +181,9 @@ export async function POST(req: Request) {
         sourceEventTitle: ev.NomEvent || "",
         sourceEventLocation: ev.Ubicacio || "",
         sourceEventDate: ev.DataInici || ev.DataPeticio || "",
-        imageUrl: imageUrl || null,
-        imagePath: imagePath || null,
-        imageMeta: imageMeta || null,
+        imageUrl: primaryImage.url || null,
+        imagePath: primaryImage.path || null,
+        imageMeta: primaryImage.meta || null,
         needsVehicle: false,
         vehicleId: null,
         vehiclePlate: null,

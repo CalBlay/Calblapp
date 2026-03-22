@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { storageAdmin } from '@/lib/firebaseAdmin'
 
-const MAX_SIZE = 3 * 1024 * 1024
+const MAX_SIZE = 1024 * 1024
 
 const clean = (s: string) =>
   s

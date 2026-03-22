@@ -21,6 +21,7 @@ import {
   ClipboardList,
   ClipboardCheck,
   Wrench,
+  Images,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { getVisibleModules } from '@/lib/accessControl'
@@ -189,6 +190,11 @@ const UI_MAP: Record<
     icon: Shield,
     color: 'from-gray-200 to-gray-50',
     iconColor: 'text-gray-600',
+  },
+  '/menu/media': {
+    icon: Images,
+    color: 'from-slate-100 to-gray-50',
+    iconColor: 'text-slate-700',
   },
   '/menu/logistica': {
     icon: Truck,

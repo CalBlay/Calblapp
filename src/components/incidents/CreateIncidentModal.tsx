@@ -26,6 +26,13 @@ interface CreateIncidentModalProps {
 
 const DEPARTAMENTS = ['Logistica', 'Sala', 'Cuina', 'Comercial']
 const IMPORTANCIES = ['Urgent', 'Alta', 'Normal', 'Baixa']
+const MAX_IMAGES = 3
+const MAX_SIZE = 1024 * 1024
+
+type PendingImage = {
+  file: File
+  preview: string
+}
 
 export default function CreateIncidentModal({
   open,
@@ -46,9 +53,9 @@ export default function CreateIncidentModal({
   const [category, setCategory] = useState(categories[0])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [images, setImages] = useState<PendingImage[]>([])
   const [imageError, setImageError] = useState('')
+  const imagesRef = React.useRef<PendingImage[]>([])
 
   useEffect(() => {
     setDepartment(normalizedUserDepartment)
@@ -59,12 +66,24 @@ export default function CreateIncidentModal({
       setImportance('Normal')
       setDescription('')
       setCategory(categories[0])
-      setImageFile(null)
-      setImagePreview(null)
+      setImages((current) => {
+        current.forEach((item) => URL.revokeObjectURL(item.preview))
+        return []
+      })
       setImageError('')
       setError('')
     }
   }, [open])
+
+  useEffect(() => {
+    imagesRef.current = images
+  }, [images])
+
+  useEffect(() => {
+    return () => {
+      imagesRef.current.forEach((item) => URL.revokeObjectURL(item.preview))
+    }
+  }, [])
 
   const departmentOptions = React.useMemo(() => {
     const list = [...DEPARTAMENTS]
@@ -74,39 +93,119 @@ export default function CreateIncidentModal({
     return list
   }, [normalizedUserDepartment])
 
-  const handleImageChange = (file: File | null) => {
-    if (!file) {
-      setImageFile(null)
-      setImagePreview(null)
-      setImageError('')
-      return
+  const compressImage = async (file: File, maxSizeBytes = MAX_SIZE) => {
+    const img = new Image()
+    const tempUrl = URL.createObjectURL(file)
+    img.src = tempUrl
+    await new Promise((resolve, reject) => {
+      img.onload = resolve
+      img.onerror = reject
+    })
+
+    const maxDim = 1600
+    let { width, height } = img
+    if (width > maxDim || height > maxDim) {
+      const ratio = Math.min(maxDim / width, maxDim / height)
+      width = Math.round(width * ratio)
+      height = Math.round(height * ratio)
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setImageFile(null)
-      setImagePreview(null)
-      setImageError('La imatge supera 2MB. Fes-la mes petita.')
-      return
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('No s ha pogut preparar la imatge')
+    ctx.drawImage(img, 0, 0, width, height)
+
+    let quality = 0.86
+    let blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', quality)
+    )
+
+    while (blob && blob.size > maxSizeBytes && quality > 0.45) {
+      quality -= 0.08
+      blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
     }
-    setImageError('')
-    setImageFile(file)
-    setImagePreview(URL.createObjectURL(file))
+
+    URL.revokeObjectURL(tempUrl)
+    if (!blob) throw new Error('No s ha pogut comprimir la imatge')
+    return new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'incident-image'}.jpg`, {
+      type: 'image/jpeg',
+    })
   }
 
-  const uploadImageIfNeeded = async () => {
-    if (!imageFile) return { url: null, path: null, meta: null }
-    const form = new FormData()
-    form.append('file', imageFile)
-    form.append('eventId', event.id)
-    const res = await fetch('/api/incidents/upload-image', {
-      method: 'POST',
-      body: form,
-    })
-    if (!res.ok) {
-      const json = await res.json().catch(() => ({}))
-      throw new Error(json?.error || 'No s ha pogut pujar la imatge')
+  const handleImageChange = async (fileList: FileList | null) => {
+    const selected = fileList ? Array.from(fileList) : []
+    if (!selected.length) return
+
+    const remainingSlots = MAX_IMAGES - images.length
+    if (remainingSlots <= 0) {
+      setImageError('Nomes pots adjuntar fins a 3 fotos.')
+      return
     }
-    const json = await res.json()
-    return { url: json.url || null, path: json.path || null, meta: json.meta || null }
+
+    const nextFiles = selected.slice(0, remainingSlots)
+
+    try {
+      const compressed = await Promise.all(
+        nextFiles.map(async (file) => {
+          if (!file.type.startsWith('image/')) {
+            throw new Error('Nomes es permeten imatges.')
+          }
+          const optimized = await compressImage(file)
+          if (optimized.size > MAX_SIZE) {
+            throw new Error('Una imatge encara supera 1MB despres de comprimir-se.')
+          }
+          return {
+            file: optimized,
+            preview: URL.createObjectURL(optimized),
+          }
+        })
+      )
+
+      setImageError(
+        selected.length > remainingSlots ? 'Nomes s han afegit les primeres 3 fotos.' : ''
+      )
+      setImages((current) => [...current, ...compressed].slice(0, MAX_IMAGES))
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : 'Error preparant les imatges')
+    }
+  }
+
+  const removeImage = (index: number) => {
+    setImages((current) => {
+      const target = current[index]
+      if (target) URL.revokeObjectURL(target.preview)
+      return current.filter((_, currentIndex) => currentIndex !== index)
+    })
+  }
+
+  const uploadImagesIfNeeded = async () => {
+    if (!images.length) return []
+
+    const uploaded = await Promise.all(
+      images.map(async (image) => {
+        const form = new FormData()
+        form.append('file', image.file)
+        form.append('eventId', event.id)
+        const res = await fetch('/api/incidents/upload-image', {
+          method: 'POST',
+          body: form,
+        })
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}))
+          throw new Error(json?.error || 'No s ha pogut pujar una de les imatges')
+        }
+        const json = await res.json()
+        return {
+          url: json.url || null,
+          path: json.path || null,
+          meta: json.meta || null,
+        }
+      })
+    )
+
+    return uploaded.filter((item) => item.url || item.path)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -115,7 +214,7 @@ export default function CreateIncidentModal({
     setError('')
 
     try {
-      const image = await uploadImageIfNeeded()
+      const uploadedImages = await uploadImagesIfNeeded()
 
       const res = await fetch('/api/incidents', {
         method: 'POST',
@@ -127,9 +226,7 @@ export default function CreateIncidentModal({
           description,
           respSala: userName,
           category,
-          imageUrl: image.url,
-          imagePath: image.path,
-          imageMeta: image.meta,
+          images: uploadedImages,
         }),
       })
 
@@ -226,14 +323,18 @@ export default function CreateIncidentModal({
 
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <label className="text-sm text-gray-500">Adjuntar</label>
+              <label className="text-sm text-gray-500">Adjuntar fins a 3 fotos</label>
               <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
                 Fitxer
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
-                  onChange={(e) => handleImageChange(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    void handleImageChange(e.target.files)
+                    e.currentTarget.value = ''
+                  }}
                 />
               </label>
               <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
@@ -243,18 +344,35 @@ export default function CreateIncidentModal({
                   accept="image/*"
                   capture="environment"
                   className="hidden"
-                  onChange={(e) => handleImageChange(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    void handleImageChange(e.target.files)
+                    e.currentTarget.value = ''
+                  }}
                 />
               </label>
+              <span className="text-xs text-gray-500">{images.length}/{MAX_IMAGES}</span>
               {imageError && <span className="text-sm text-red-600">{imageError}</span>}
             </div>
 
-            {imagePreview && (
-              <img
-                src={imagePreview}
-                alt="Previsualitzacio"
-                className="max-h-56 w-full rounded-2xl object-cover"
-              />
+            {images.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {images.map((image, index) => (
+                  <div key={`${image.preview}-${index}`} className="relative overflow-hidden rounded-2xl border">
+                    <img
+                      src={image.preview}
+                      alt={`Previsualitzacio ${index + 1}`}
+                      className="h-28 w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(index)}
+                      className="absolute right-1 top-1 rounded-full bg-black/60 px-2 py-1 text-xs text-white"
+                    >
+                      X
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 

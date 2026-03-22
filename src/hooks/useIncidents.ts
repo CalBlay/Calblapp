@@ -24,6 +24,11 @@ export interface Incident {
   imageUrl?: string | null
   imagePath?: string | null
   imageMeta?: { size?: number; type?: string } | null
+  images?: Array<{
+    url?: string | null
+    path?: string | null
+    meta?: { size?: number; type?: string } | null
+  }>
 }
 
 const normalizeTimestamp = (ts: any): string => {
@@ -115,6 +120,18 @@ export function useIncidents(_filters: {
           const normalized = raw.map((inc: any) => ({
             ...inc,
             importance: normalizeImportance(inc.importance),
+            images:
+              Array.isArray(inc.images) && inc.images.length > 0
+                ? inc.images
+                : inc.imageUrl || inc.imagePath
+                ? [
+                    {
+                      url: inc.imageUrl || null,
+                      path: inc.imagePath || null,
+                      meta: inc.imageMeta || null,
+                    },
+                  ]
+                : [],
           }))
           setIncidents(normalized as Incident[])
         }

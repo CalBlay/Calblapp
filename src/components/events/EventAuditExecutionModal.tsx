@@ -69,6 +69,51 @@ function normalizeDepartment(raw?: string): string {
   return value
 }
 
+const MAX_AUDIT_IMAGE_SIZE = 1024 * 1024
+
+async function compressImage(file: File, maxSizeBytes = MAX_AUDIT_IMAGE_SIZE) {
+  const img = new Image()
+  const tempUrl = URL.createObjectURL(file)
+  img.src = tempUrl
+
+  await new Promise((resolve, reject) => {
+    img.onload = resolve
+    img.onerror = reject
+  })
+
+  const maxDim = 1600
+  let { width, height } = img
+  if (width > maxDim || height > maxDim) {
+    const ratio = Math.min(maxDim / width, maxDim / height)
+    width = Math.round(width * ratio)
+    height = Math.round(height * ratio)
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('No s ha pogut preparar la imatge')
+  ctx.drawImage(img, 0, 0, width, height)
+
+  let quality = 0.86
+  let blob: Blob | null = await new Promise((resolve) =>
+    canvas.toBlob(resolve, 'image/jpeg', quality)
+  )
+
+  while (blob && blob.size > maxSizeBytes && quality > 0.45) {
+    quality -= 0.08
+    blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
+  }
+
+  URL.revokeObjectURL(tempUrl)
+  if (!blob) throw new Error('No s ha pogut comprimir la imatge')
+
+  return new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'audit-photo'}.jpg`, {
+    type: 'image/jpeg',
+  })
+}
+
 export default function EventAuditExecutionModal({ open, onClose, event, user }: Props) {
   const [hasIncidents, setHasIncidents] = useState(true)
   const [notes, setNotes] = useState('')
@@ -241,8 +286,16 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     setUploadingItemId(itemId)
     setError('')
     try {
+      if (!file.type.startsWith('image/')) {
+        throw new Error('Nomes es permeten imatges')
+      }
+      const optimizedFile = await compressImage(file)
+      if (optimizedFile.size > MAX_AUDIT_IMAGE_SIZE) {
+        throw new Error('La imatge encara pesa massa despres de comprimir-se')
+      }
+
       const form = new FormData()
-      form.append('file', file)
+      form.append('file', optimizedFile)
       form.append('eventId', eventId)
       form.append('department', department)
       form.append('itemId', itemId)
