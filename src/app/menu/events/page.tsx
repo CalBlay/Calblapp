@@ -12,6 +12,7 @@ import EventsDayGroup from '@/components/events/EventsDayGroup'
 import EventMenuModal from '@/components/events/EventMenuModal'
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
 import EventAvisosReadOnlyModal from '@/components/events/EventAvisosReadOnlyModal'
+import EventAuditExecutionModal from '@/components/events/EventAuditExecutionModal'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import FiltersBar, { FiltersState } from '@/components/layout/FiltersBar'
 
@@ -103,6 +104,9 @@ export default function EventsPage() {
 
   const [isMenuOpen, setMenuOpen] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<EventMenuData | null>(null)
+  const [auditEvent, setAuditEvent] = useState<EventMenuData | null>(null)
+  const [isAuditOpen, setAuditOpen] = useState(false)
+  const auditOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [docsEvent, setDocsEvent] = useState<{
     eventId: string
@@ -281,11 +285,26 @@ export default function EventsPage() {
 
   useEffect(() => {
     return () => {
+      if (auditOpenTimerRef.current) {
+        clearTimeout(auditOpenTimerRef.current)
+      }
       if (suppressTimerRef.current) {
         clearTimeout(suppressTimerRef.current)
       }
     }
   }, [])
+
+  const openAuditExecution = useCallback(() => {
+    if (!selectedEvent) return
+    setAuditEvent(selectedEvent)
+    setMenuOpen(false)
+    if (auditOpenTimerRef.current) {
+      clearTimeout(auditOpenTimerRef.current)
+    }
+    auditOpenTimerRef.current = setTimeout(() => {
+      setAuditOpen(true)
+    }, 30)
+  }, [selectedEvent])
 
   return (
     <div className={`space-y-5 px-4 pb-8 ${suppressMenuInteraction ? 'pointer-events-none select-none' : ''}`}>
@@ -338,9 +357,24 @@ export default function EventsPage() {
           event={selectedEvent}
           user={userForModal}
           onClose={() => setMenuOpen(false)}
-          onOpenDocuments={openDocuments}
+          onOpenAuditExecution={openAuditExecution}
           onAvisosStateChange={handleAvisosStateChange}
           suppressMenuInteraction={suppressMenuInteraction}
+        />
+      )}
+
+      {auditEvent && (
+        <EventAuditExecutionModal
+          open={isAuditOpen}
+          onClose={() => setAuditOpen(false)}
+          event={{
+            id: auditEvent.id,
+            summary: auditEvent.summary,
+            start: auditEvent.start,
+            eventCode: auditEvent.eventCode || undefined,
+            location: auditEvent.location,
+          }}
+          user={{ department: userForModal.department, name: userForModal.name }}
         />
       )}
 

@@ -8,7 +8,13 @@ import { RoleGuard } from '@/lib/withRoleGuard'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import type { AuditItemType, AuditTemplateBlock, AuditTemplateDetail, AuditTemplateItem } from '@/types/auditoria'
+import type {
+  AuditItemType,
+  AuditItemWeightMode,
+  AuditTemplateBlock,
+  AuditTemplateDetail,
+  AuditTemplateItem,
+} from '@/types/auditoria'
 import { cn } from '@/lib/utils'
 
 type TemplateState = {
@@ -23,9 +29,25 @@ const ITEM_TYPES: Array<{ value: AuditItemType; label: string }> = [
   { value: 'photo', label: 'Foto' },
 ]
 const DEFAULT_TEMPLATE_NAME = 'Escriure nom de la nova plantilla'
+const DEFAULT_ITEM_WEIGHT_MODE: AuditItemWeightMode = 'equal'
 
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+}
+
+function rounded2(value: number) {
+  return Math.round(value * 100) / 100
+}
+
+function buildEqualItemWeights(items: AuditTemplateItem[]) {
+  if (!items.length) return items
+  const base = Math.floor((100 / items.length) * 100) / 100
+  let remaining = 100
+  return items.map((item, index) => {
+    const weight = index === items.length - 1 ? rounded2(remaining) : base
+    remaining = rounded2(remaining - weight)
+    return { ...item, weight }
+  })
 }
 
 export default function AuditoriaPlantillaEditPage() {
@@ -57,7 +79,9 @@ export default function AuditoriaPlantillaEditPage() {
     return data.blocks.every((block) => {
       if (!String(block.title || '').trim()) return false
       if (!Array.isArray(block.items) || block.items.length === 0) return false
-      return block.items.every((item) => String(item.label || '').trim().length > 0)
+      if (!block.items.every((item) => String(item.label || '').trim().length > 0)) return false
+      if ((block.itemWeightMode || DEFAULT_ITEM_WEIGHT_MODE) !== 'manual') return true
+      return rounded2(block.items.reduce((sum, item) => sum + Number(item.weight || 0), 0)) === 100
     })
   }, [data, weightTotal])
 
@@ -99,6 +123,24 @@ export default function AuditoriaPlantillaEditPage() {
     }))
   }
 
+  const updateBlockWeightMode = (blockId: string, mode: AuditItemWeightMode) => {
+    setData((prev) => ({
+      ...prev,
+      blocks: prev.blocks.map((b) => {
+        if (b.id !== blockId) return b
+        const nextItems =
+          mode === 'manual'
+            ? buildEqualItemWeights((b.items || []).map((item) => ({ ...item, weight: item.weight ?? 0 })))
+            : (b.items || []).map((item) => {
+                const next = { ...item }
+                delete next.weight
+                return next
+              })
+        return { ...b, itemWeightMode: mode, items: nextItems }
+      }),
+    }))
+  }
+
   const removeBlock = (blockId: string) => {
     setData((prev) => ({ ...prev, blocks: prev.blocks.filter((b) => b.id !== blockId) }))
   }
@@ -112,6 +154,7 @@ export default function AuditoriaPlantillaEditPage() {
           id: makeId('b'),
           title: '',
           weight: 0,
+          itemWeightMode: DEFAULT_ITEM_WEIGHT_MODE,
           items: [],
         },
       ],
@@ -125,7 +168,13 @@ export default function AuditoriaPlantillaEditPage() {
         b.id === blockId
           ? {
               ...b,
-              items: [...(b.items || []), { id: makeId('i'), label: '', type: 'checklist' }],
+              items:
+                (b.itemWeightMode || DEFAULT_ITEM_WEIGHT_MODE) === 'manual'
+                  ? buildEqualItemWeights([
+                      ...(b.items || []),
+                      { id: makeId('i'), label: '', type: 'checklist', weight: 0 },
+                    ])
+                  : [...(b.items || []), { id: makeId('i'), label: '', type: 'checklist' }],
             }
           : b
       ),
@@ -150,7 +199,15 @@ export default function AuditoriaPlantillaEditPage() {
     setData((prev) => ({
       ...prev,
       blocks: prev.blocks.map((b) =>
-        b.id === blockId ? { ...b, items: b.items.filter((i) => i.id !== itemId) } : b
+        b.id === blockId
+          ? {
+              ...b,
+              items:
+                (b.itemWeightMode || DEFAULT_ITEM_WEIGHT_MODE) === 'manual'
+                  ? buildEqualItemWeights(b.items.filter((i) => i.id !== itemId))
+                  : b.items.filter((i) => i.id !== itemId),
+            }
+          : b
       ),
     }))
   }
@@ -319,12 +376,43 @@ export default function AuditoriaPlantillaEditPage() {
                       </Button>
                     </div>
 
+                    <div className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-2">
+                      <select
+                        value={block.itemWeightMode || DEFAULT_ITEM_WEIGHT_MODE}
+                        onChange={(e) =>
+                          updateBlockWeightMode(
+                            block.id,
+                            e.target.value === 'manual' ? 'manual' : 'equal'
+                          )
+                        }
+                        className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm"
+                      >
+                        <option value="equal">Repartiment automatic</option>
+                        <option value="manual">Ponderacio manual</option>
+                      </select>
+                      <div className="h-10 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm flex items-center text-slate-700">
+                        {(block.itemWeightMode || DEFAULT_ITEM_WEIGHT_MODE) === 'manual'
+                          ? `Suma items: ${rounded2(
+                              (block.items || []).reduce((sum, item) => sum + Number(item.weight || 0), 0)
+                            )}%`
+                          : 'El pes del bloc es repartira igual entre els items'}
+                      </div>
+                    </div>
+
                     <div className="text-[11px] font-medium text-slate-600 uppercase tracking-wide">
                       Items
                     </div>
                     <div className="space-y-2">
                       {(block.items || []).map((item) => (
-                        <div key={item.id} className="grid grid-cols-1 sm:grid-cols-[1fr_180px_auto] gap-2">
+                        <div
+                          key={item.id}
+                          className={[
+                            'grid grid-cols-1 gap-2',
+                            (block.itemWeightMode || DEFAULT_ITEM_WEIGHT_MODE) === 'manual'
+                              ? 'sm:grid-cols-[1fr_180px_120px_auto]'
+                              : 'sm:grid-cols-[1fr_180px_auto]',
+                          ].join(' ')}
+                        >
                           <Input
                             value={item.label}
                             onChange={(e) => updateItem(block.id, item.id, { label: e.target.value })}
@@ -348,6 +436,19 @@ export default function AuditoriaPlantillaEditPage() {
                               </option>
                             ))}
                           </select>
+                          {(block.itemWeightMode || DEFAULT_ITEM_WEIGHT_MODE) === 'manual' ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step="0.01"
+                              value={String(item.weight ?? 0)}
+                              onChange={(e) =>
+                                updateItem(block.id, item.id, { weight: Number(e.target.value || 0) })
+                              }
+                              placeholder="% item"
+                            />
+                          ) : null}
                           <Button
                             variant="ghost"
                             size="icon"

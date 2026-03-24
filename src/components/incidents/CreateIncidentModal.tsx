@@ -102,29 +102,36 @@ export default function CreateIncidentModal({
       img.onerror = reject
     })
 
-    const maxDim = 1600
+    let maxDim = 1600
     let { width, height } = img
-    if (width > maxDim || height > maxDim) {
-      const ratio = Math.min(maxDim / width, maxDim / height)
-      width = Math.round(width * ratio)
-      height = Math.round(height * ratio)
-    }
 
     const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('No s ha pogut preparar la imatge')
-    ctx.drawImage(img, 0, 0, width, height)
 
     let quality = 0.86
-    let blob: Blob | null = await new Promise((resolve) =>
-      canvas.toBlob(resolve, 'image/jpeg', quality)
-    )
+    let blob: Blob | null = null
 
-    while (blob && blob.size > maxSizeBytes && quality > 0.45) {
-      quality -= 0.08
+    while (true) {
+      if (width > maxDim || height > maxDim) {
+        const ratio = Math.min(maxDim / width, maxDim / height)
+        width = Math.round(width * ratio)
+        height = Math.round(height * ratio)
+      }
+
+      canvas.width = width
+      canvas.height = height
+      ctx.clearRect(0, 0, width, height)
+      ctx.drawImage(img, 0, 0, width, height)
       blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
+      if (blob && blob.size <= maxSizeBytes) break
+      if (quality > 0.38) {
+        quality -= 0.08
+        continue
+      }
+      if (maxDim <= 900) break
+      maxDim = Math.max(900, Math.round(maxDim * 0.82))
+      quality = 0.74
     }
 
     URL.revokeObjectURL(tempUrl)

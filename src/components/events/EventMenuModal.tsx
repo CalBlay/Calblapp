@@ -36,7 +36,6 @@ import CreateModificationModal from './CreateModificationModal'
 import EventSpacesModal from './EventSpacesModal'
 import EventAvisosModal from './EventAvisosModal'
 import EventClosingModal from './EventClosingModal'
-import EventAuditExecutionModal from './EventAuditExecutionModal'
 
 
 /** ───────────────────────── Helpers ───────────────────────── */
@@ -82,6 +81,7 @@ interface EventMenuModalProps {
     name?: string
   }
   onClose: () => void
+  onOpenAuditExecution?: () => void
   onAvisosStateChange?: (state: { eventCode: string | null; hasAvisos: boolean; lastAvisoDate?: string }) => void
   suppressMenuInteraction?: boolean
 }
@@ -179,6 +179,7 @@ export default function EventMenuModal({
   event,
   user,
   onClose,
+  onOpenAuditExecution,
   onAvisosStateChange,
   suppressMenuInteraction = false,
 }: EventMenuModalProps) {
@@ -186,7 +187,6 @@ export default function EventMenuModal({
   const router = useRouter()
 
   // Internals
-  const [showAuditExecution, setShowAuditExecution] = useState(false)
   const [pendingDocsOpen, setPendingDocsOpen] = useState(false)
 
   const [showPersonnel, setShowPersonnel] = useState(false)
@@ -307,15 +307,6 @@ const treballadorsPersons =
     }).format(value)
   const formatNumber = (value: number) =>
     new Intl.NumberFormat('ca-ES', { maximumFractionDigits: 0 }).format(value)
-const incidentEvent = {
-  id: String(event.id),
-  summary: event.summary,
-  start: event.start,
-  eventCode: String(event.eventCode || event.code || '').trim() || undefined,
-  location: event.location ?? event.fincaCode ?? undefined,
-}
-
- 
   // ✅ Seccions per ordenar i donar sentit (més “app”)
 const operativa = useMemo(
   () =>
@@ -327,7 +318,10 @@ const operativa = useMemo(
             badge: 'Auditoria',
             icon: AlertTriangle,
             tone: 'warning' as const,
-            onClick: () => setShowAuditExecution(true),
+            onClick: () => {
+              onClose()
+              onOpenAuditExecution?.()
+            },
           }
         : null,
 
@@ -395,7 +389,8 @@ const operativa = useMemo(
     canSeeModifications,
     canWriteAvisos,
     canCloseEvent,
-    
+    onClose,
+    onOpenAuditExecution,
   ]
 )
 
@@ -638,14 +633,6 @@ const recursos = useMemo(
 
 
       {/* ─────────── MODALS INTERNES EXISTENTS ─────────── */}
-      <EventAuditExecutionModal
-        open={showAuditExecution}
-        onClose={() => setShowAuditExecution(false)}
-        event={incidentEvent}
-        user={{ department: user.department, name: user.name }}
-      />
-
-
      <EventPersonnelModal
   open={showPersonnel}
   onClose={() => setShowPersonnel(false)}

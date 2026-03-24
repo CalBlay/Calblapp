@@ -15,17 +15,20 @@ export type AuditTemplatePreview = {
 }
 
 export type AuditItemType = 'checklist' | 'rating' | 'photo'
+export type AuditItemWeightMode = 'equal' | 'manual'
 
 export type AuditTemplateItem = {
   id: string
   label: string
   type: AuditItemType
+  weight?: number
 }
 
 export type AuditTemplateBlock = {
   id: string
   title: string
   weight: number
+  itemWeightMode?: AuditItemWeightMode
   items: AuditTemplateItem[]
 }
 

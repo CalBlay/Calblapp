@@ -70,6 +70,7 @@ function normalizeDepartment(raw?: string): string {
 }
 
 const MAX_AUDIT_IMAGE_SIZE = 1024 * 1024
+const MAX_AUDIT_PHOTOS_TOTAL = 10
 
 async function compressImage(file: File, maxSizeBytes = MAX_AUDIT_IMAGE_SIZE) {
   const img = new Image()
@@ -81,29 +82,36 @@ async function compressImage(file: File, maxSizeBytes = MAX_AUDIT_IMAGE_SIZE) {
     img.onerror = reject
   })
 
-  const maxDim = 1600
+  let maxDim = 1600
   let { width, height } = img
-  if (width > maxDim || height > maxDim) {
-    const ratio = Math.min(maxDim / width, maxDim / height)
-    width = Math.round(width * ratio)
-    height = Math.round(height * ratio)
-  }
 
   const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('No s ha pogut preparar la imatge')
-  ctx.drawImage(img, 0, 0, width, height)
 
   let quality = 0.86
-  let blob: Blob | null = await new Promise((resolve) =>
-    canvas.toBlob(resolve, 'image/jpeg', quality)
-  )
+  let blob: Blob | null = null
 
-  while (blob && blob.size > maxSizeBytes && quality > 0.45) {
-    quality -= 0.08
+  while (true) {
+    if (width > maxDim || height > maxDim) {
+      const ratio = Math.min(maxDim / width, maxDim / height)
+      width = Math.round(width * ratio)
+      height = Math.round(height * ratio)
+    }
+
+    canvas.width = width
+    canvas.height = height
+    ctx.clearRect(0, 0, width, height)
+    ctx.drawImage(img, 0, 0, width, height)
     blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
+    if (blob && blob.size <= maxSizeBytes) break
+    if (quality > 0.38) {
+      quality -= 0.08
+      continue
+    }
+    if (maxDim <= 900) break
+    maxDim = Math.max(900, Math.round(maxDim * 0.82))
+    quality = 0.74
   }
 
   URL.revokeObjectURL(tempUrl)
@@ -139,6 +147,14 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const incidentIds = useMemo(() => incidents.map((i) => i.id).filter(Boolean), [incidents])
   const canFinalize = !hasIncidents || (hasIncidents && incidentIds.length > 0)
   const isLocked = executionStatus !== 'draft'
+  const totalAuditPhotos = useMemo(
+    () =>
+      Object.values(answers).reduce(
+        (sum, answer) => sum + (Array.isArray(answer.photos) ? answer.photos.length : 0),
+        0
+      ),
+    [answers]
+  )
 
   useEffect(() => {
     if (!open || !eventId || !department) return
@@ -283,6 +299,10 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
 
   const uploadPhoto = async (itemId: string, blockId: string, file: File | null) => {
     if (!file) return
+    if (totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) {
+      setError(`L'auditoria admet com a maxim ${MAX_AUDIT_PHOTOS_TOTAL} fotos.`)
+      return
+    }
     setUploadingItemId(itemId)
     setError('')
     try {
@@ -369,6 +389,9 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                 <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                   <ClipboardCheck className="w-4 h-4 text-cyan-700" />
                   Auditoria
+                  <span className="rounded-full bg-cyan-100 px-2 py-[3px] text-xs font-semibold text-cyan-800">
+                    Fotos {totalAuditPhotos}/{MAX_AUDIT_PHOTOS_TOTAL}
+                  </span>
                   <span
                     className={[
                       'ml-auto rounded-full px-2 py-[3px] text-xs font-semibold',
@@ -447,14 +470,15 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                             accept="image/*"
                                             capture="environment"
                                             className="hidden"
-                                            disabled={isLocked}
-                                            onChange={(e) =>
-                                              uploadPhoto(
+                                            disabled={isLocked || totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL}
+                                            onChange={(e) => {
+                                              void uploadPhoto(
                                                 itemId,
                                                 String(block.id || ''),
                                                 e.currentTarget.files?.[0] || null
                                               )
-                                            }
+                                              e.currentTarget.value = ''
+                                            }}
                                           />
                                         </label>
                                         <label className="inline-flex min-h-10 items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-1 cursor-pointer text-sm">
@@ -464,20 +488,22 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                             type="file"
                                             accept="image/*"
                                             className="hidden"
-                                            disabled={isLocked}
-                                            onChange={(e) =>
-                                              uploadPhoto(
+                                            disabled={isLocked || totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL}
+                                            onChange={(e) => {
+                                              void uploadPhoto(
                                                 itemId,
                                                 String(block.id || ''),
                                                 e.currentTarget.files?.[0] || null
                                               )
-                                            }
+                                              e.currentTarget.value = ''
+                                            }}
                                           />
                                         </label>
                                       </div>
                                       <div className="text-[11px] text-slate-600">
                                         Fotos: {current?.photos?.length || 0}
                                         {uploadingItemId === itemId ? ' - Pujant...' : ''}
+                                        {!isLocked && totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL ? ' - Limit total assolit' : ''}
                                       </div>
                                       {Array.isArray(current?.photos) && current.photos.length > 0 ? (
                                         <div className="grid grid-cols-3 gap-2 pt-1">

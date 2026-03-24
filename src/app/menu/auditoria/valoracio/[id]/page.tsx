@@ -21,11 +21,18 @@ type DetailBlock = {
   id?: string
   title?: string
   weight?: number
-  items?: Array<{ id?: string; label?: string; type?: string }>
+  itemWeightMode?: 'equal' | 'manual' | string
+  items?: Array<{ id?: string; label?: string; type?: string; weight?: number }>
 }
 
 type ReviewBlockCheck = {
   blockId: string
+  isValid: boolean
+}
+
+type ReviewItemCheck = {
+  blockId: string
+  itemId: string
   isValid: boolean
 }
 
@@ -45,6 +52,7 @@ type ExecutionDetail = {
   reviewedByName?: string
   reviewNote?: string | null
   reviewBlockChecks?: ReviewBlockCheck[]
+  reviewItemChecks?: ReviewItemCheck[]
 }
 
 const formatDate = (ts?: number) => {
@@ -69,7 +77,7 @@ export default function AuditoriaValoracioDetailPage() {
   const [detail, setDetail] = useState<ExecutionDetail | null>(null)
   const [reviewNote, setReviewNote] = useState('')
   const [saving, setSaving] = useState(false)
-  const [blockChecks, setBlockChecks] = useState<Record<string, boolean | null>>({})
+  const [itemChecks, setItemChecks] = useState<Record<string, boolean | null>>({})
 
   const navQuery = useMemo(() => {
     const q = new URLSearchParams()
@@ -95,13 +103,29 @@ export default function AuditoriaValoracioDetailPage() {
       setReviewNote(String(execution?.reviewNote || ''))
 
       const initialChecks: Record<string, boolean | null> = {}
-      const reviewChecks = Array.isArray(execution?.reviewBlockChecks) ? execution.reviewBlockChecks : []
-      reviewChecks.forEach((b) => {
-        const blockId = String(b?.blockId || '').trim()
-        if (!blockId || typeof b?.isValid !== 'boolean') return
-        initialChecks[blockId] = b.isValid
-      })
-      setBlockChecks(initialChecks)
+      const reviewItemChecks = Array.isArray(execution?.reviewItemChecks) ? execution.reviewItemChecks : []
+      if (reviewItemChecks.length > 0) {
+        reviewItemChecks.forEach((itemCheck) => {
+          const blockId = String(itemCheck?.blockId || '').trim()
+          const itemId = String(itemCheck?.itemId || '').trim()
+          if (!blockId || !itemId || typeof itemCheck?.isValid !== 'boolean') return
+          initialChecks[`${blockId}::${itemId}`] = itemCheck.isValid
+        })
+      } else {
+        const reviewBlockChecks = Array.isArray(execution?.reviewBlockChecks) ? execution.reviewBlockChecks : []
+        reviewBlockChecks.forEach((blockCheck) => {
+          const blockId = String(blockCheck?.blockId || '').trim()
+          if (!blockId || typeof blockCheck?.isValid !== 'boolean') return
+          const block = (execution?.templateBlocks || []).find(
+            (candidate, idx) => String(candidate?.id || `b-${idx + 1}`) === blockId
+          )
+          ;(block?.items || []).forEach((item, itemIdx) => {
+            const itemId = String(item?.id || `i-${blockId}-${itemIdx + 1}`)
+            initialChecks[`${blockId}::${itemId}`] = blockCheck.isValid
+          })
+        })
+      }
+      setItemChecks(initialChecks)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error carregant auditoria')
       setDetail(null)
@@ -144,35 +168,46 @@ export default function AuditoriaValoracioDetailPage() {
   const prevId = currentNavIndex > 0 ? navIds[currentNavIndex - 1] : null
   const nextId = currentNavIndex >= 0 && currentNavIndex < navIds.length - 1 ? navIds[currentNavIndex + 1] : null
 
-  const allBlocksChecked = useMemo(() => {
+  const allItemsChecked = useMemo(() => {
     const blocks = Array.isArray(detail?.templateBlocks) ? detail.templateBlocks : []
     if (!blocks.length) return false
     return blocks.every((block, idx) => {
       const blockId = String(block?.id || `b-${idx + 1}`)
-      return typeof blockChecks[blockId] === 'boolean'
+      const items = Array.isArray(block?.items) ? block.items : []
+      if (!items.length) return false
+      return items.every((item, itemIdx) => {
+        const itemId = String(item?.id || `i-${idx + 1}-${itemIdx + 1}`)
+        return typeof itemChecks[`${blockId}::${itemId}`] === 'boolean'
+      })
     })
-  }, [detail?.templateBlocks, blockChecks])
+  }, [detail?.templateBlocks, itemChecks])
 
-  const toggleBlockCheck = (blockId: string) => {
-    setBlockChecks((prev) => {
-      const current = prev[blockId]
-      if (current === true) return { ...prev, [blockId]: false }
-      return { ...prev, [blockId]: true }
+  const toggleItemCheck = (blockId: string, itemId: string) => {
+    const key = `${blockId}::${itemId}`
+    setItemChecks((prev) => {
+      const current = prev[key]
+      if (current === true) return { ...prev, [key]: false }
+      return { ...prev, [key]: true }
     })
   }
 
   const saveValidation = async () => {
-    if (!detail?.id || saving || !allBlocksChecked) return
+    if (!detail?.id || saving || !allItemsChecked) return
     setSaving(true)
     setError('')
     try {
       const blocks = Array.isArray(detail.templateBlocks) ? detail.templateBlocks : []
-      const payloadChecks = blocks.map((block, idx) => {
+      const payloadChecks = blocks.flatMap((block, idx) => {
         const blockId = String(block?.id || `b-${idx + 1}`)
-        return {
-          blockId,
-          isValid: blockChecks[blockId] === true,
-        }
+        const items = Array.isArray(block?.items) ? block.items : []
+        return items.map((item, itemIdx) => {
+          const itemId = String(item?.id || `i-${idx + 1}-${itemIdx + 1}`)
+          return {
+            blockId,
+            itemId,
+            isValid: itemChecks[`${blockId}::${itemId}`] === true,
+          }
+        })
       })
 
       const res = await fetch(`/api/auditoria/executions/${detail.id}`, {
@@ -180,7 +215,7 @@ export default function AuditoriaValoracioDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           note: reviewNote,
-          blockChecks: payloadChecks,
+          itemChecks: payloadChecks,
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -268,35 +303,29 @@ export default function AuditoriaValoracioDetailPage() {
 
               {(detail.templateBlocks || []).map((block, bIdx) => {
                 const blockId = String(block.id || `b-${bIdx + 1}`)
-                const current = blockChecks[blockId]
+                const items = Array.isArray(block.items) ? block.items : []
+                const checkedCount = items.filter((item, itemIdx) => {
+                  const itemId = String(item?.id || `i-${bIdx + 1}-${itemIdx + 1}`)
+                  return itemChecks[`${blockId}::${itemId}`] === true
+                }).length
                 return (
                   <section key={blockId} className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="text-lg font-semibold text-gray-900">{block.title || `Bloc ${bIdx + 1}`}</h3>
-                      <button
-                        type="button"
-                        disabled={detail.status !== 'completed'}
-                        onClick={() => toggleBlockCheck(blockId)}
-                        className="inline-flex items-center justify-center h-9 w-9 disabled:opacity-50"
-                        title={current === false ? 'No validat' : current === true ? 'Validat' : 'Pendent'}
-                      >
-                        {current === false ? (
-                          <XCircle className="w-6 h-6 text-red-600" />
-                        ) : current === true ? (
-                          <CheckCircle2 className="w-6 h-6 text-emerald-600" />
-                        ) : (
-                          <Circle className="w-6 h-6 text-gray-400" />
-                        )}
-                      </button>
+                      <div className="text-xs rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+                        {checkedCount}/{items.length} items validats
+                      </div>
                     </div>
 
                     <div className="space-y-2 pl-1">
-                      {(block.items || []).map((item, iIdx) => {
+                      {items.map((item, iIdx) => {
                         const answer = answersByItemId.get(String(item.id || ''))
                         const type = String(item.type || 'checklist')
                         const photos = Array.isArray(answer?.photos)
                           ? answer.photos.filter((p) => String(p?.url || '').trim())
                           : []
+                        const itemId = String(item.id || `i-${bIdx + 1}-${iIdx + 1}`)
+                        const current = itemChecks[`${blockId}::${itemId}`]
 
                         const value =
                           type === 'checklist'
@@ -307,7 +336,33 @@ export default function AuditoriaValoracioDetailPage() {
 
                         return (
                           <div key={String(item.id || iIdx)} className="space-y-1">
-                            <div className="text-sm font-medium text-gray-900">{item.label || `Item ${iIdx + 1}`}</div>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-gray-900">
+                                  {item.label || `Item ${iIdx + 1}`}
+                                </div>
+                                {Number(item.weight || 0) > 0 && (
+                                  <div className="text-[11px] text-slate-500">
+                                    Pes dins bloc: {Number(item.weight || 0)}%
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                disabled={detail.status !== 'completed'}
+                                onClick={() => toggleItemCheck(blockId, itemId)}
+                                className="inline-flex items-center justify-center h-9 w-9 shrink-0 disabled:opacity-50"
+                                title={current === false ? 'No validat' : current === true ? 'Validat' : 'Pendent'}
+                              >
+                                {current === false ? (
+                                  <XCircle className="w-6 h-6 text-red-600" />
+                                ) : current === true ? (
+                                  <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                                ) : (
+                                  <Circle className="w-6 h-6 text-gray-400" />
+                                )}
+                              </button>
+                            </div>
                             {type !== 'photo' && <div className="text-sm text-gray-700">Resposta: {value}</div>}
                             {type === 'photo' && photos.length > 0 && (
                               <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -342,7 +397,7 @@ export default function AuditoriaValoracioDetailPage() {
                       size="icon"
                       title="Desar validacio"
                       aria-label="Desar validacio"
-                      disabled={saving || !allBlocksChecked}
+                      disabled={saving || !allItemsChecked}
                       onClick={saveValidation}
                       className="text-blue-600 hover:text-blue-700"
                     >

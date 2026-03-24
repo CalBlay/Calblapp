@@ -8,6 +8,7 @@ import { normalizeRole } from '@/lib/roles'
 
 type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 type ItemType = 'checklist' | 'rating' | 'photo'
+type ItemWeightMode = 'equal' | 'manual'
 
 function normalizeDept(raw?: string): Department | null {
   const value = (raw || '')
@@ -34,6 +35,10 @@ function normalizeItemType(raw?: string): ItemType {
   return 'checklist'
 }
 
+function normalizeItemWeightMode(raw?: string): ItemWeightMode {
+  return String(raw || '').toLowerCase() === 'manual' ? 'manual' : 'equal'
+}
+
 function sanitizeBlocks(input: unknown) {
   if (!Array.isArray(input)) return []
 
@@ -42,16 +47,21 @@ function sanitizeBlocks(input: unknown) {
       const b = (block || {}) as Record<string, unknown>
       const weightRaw = Number(b.weight ?? 0)
       const weight = Number.isFinite(weightRaw) ? Math.max(0, Math.min(100, weightRaw)) : 0
+      const itemWeightMode = normalizeItemWeightMode(String(b.itemWeightMode || 'equal'))
       const itemsRaw = Array.isArray(b.items) ? b.items : []
       const items = itemsRaw
         .map((it, itemIdx) => {
           const i = (it || {}) as Record<string, unknown>
           const label = String(i.label || '').trim()
           if (!label) return null
+          const weightRaw = Number(i.weight ?? 0)
+          const itemWeight =
+            Number.isFinite(weightRaw) && weightRaw >= 0 ? Math.min(100, weightRaw) : 0
           return {
             id: String(i.id || `i-${blockIdx + 1}-${itemIdx + 1}`),
             label,
             type: normalizeItemType(String(i.type || 'checklist')),
+            weight: itemWeightMode === 'manual' ? itemWeight : undefined,
           }
         })
         .filter(Boolean)
@@ -62,6 +72,7 @@ function sanitizeBlocks(input: unknown) {
         id: String(b.id || `b-${blockIdx + 1}`),
         title,
         weight,
+        itemWeightMode,
         items,
       }
     })
@@ -78,7 +89,10 @@ function isTemplateComplete(name: string, blocks: Array<any>) {
   return blocks.every((b) => {
     if (!String(b?.title || '').trim()) return false
     if (!Array.isArray(b?.items) || b.items.length === 0) return false
-    return b.items.every((i: any) => String(i?.label || '').trim().length > 0)
+    if (!b.items.every((i: any) => String(i?.label || '').trim().length > 0)) return false
+    if (normalizeItemWeightMode(String(b?.itemWeightMode || 'equal')) !== 'manual') return true
+    const total = b.items.reduce((sum: number, i: any) => sum + (Number(i?.weight) || 0), 0)
+    return Math.round(total * 100) / 100 === 100
   })
 }
 

@@ -94,12 +94,19 @@ export default function AuditoriaPlantillaViewPage() {
                   <div key={block.id} className="rounded-xl border p-3">
                     <div className="flex items-center justify-between">
                       <div className="font-medium text-gray-900">{block.title}</div>
-                      <div className="text-sm text-gray-600">Pes: {block.weight}%</div>
+                      <div className="text-sm text-gray-600">
+                        Pes: {block.weight}% · {(block.itemWeightMode || 'equal') === 'manual' ? 'Manual' : 'Automatic'}
+                      </div>
                     </div>
                     <ul className="mt-2 text-sm text-gray-700 list-disc list-inside space-y-1">
                       {block.items.map((item) => (
                         <li key={item.id}>
-                          {item.label} <span className="text-gray-500">({item.type})</span>
+                          {item.label}{' '}
+                          <span className="text-gray-500">
+                            ({item.type}
+                            {(block.itemWeightMode || 'equal') === 'manual' ? ` · ${Number(item.weight || 0)}%` : ''}
+                            )
+                          </span>
                         </li>
                       ))}
                     </ul>

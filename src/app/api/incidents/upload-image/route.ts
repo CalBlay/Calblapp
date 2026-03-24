@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
+import { randomUUID } from 'crypto'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { storageAdmin } from '@/lib/firebaseAdmin'
 
@@ -39,7 +40,7 @@ export async function POST(req: Request) {
 
     const bytes = Buffer.from(await file.arrayBuffer())
     const ext = file.type.includes('png') ? 'png' : file.type.includes('webp') ? 'webp' : 'jpg'
-    const path = `incidents/${eventId}/${userId}/${Date.now()}.${ext}`
+    const path = `incidents/${eventId}/${userId}/${Date.now()}_${randomUUID()}.${ext}`
 
     const bucket = storageAdmin.bucket()
     const fileRef = bucket.file(path)

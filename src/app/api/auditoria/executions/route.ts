@@ -13,7 +13,8 @@ type TemplateBlock = {
   id?: string
   title?: string
   weight?: number
-  items?: Array<{ id?: string; label?: string; type?: string }>
+  itemWeightMode?: 'equal' | 'manual' | string
+  items?: Array<{ id?: string; label?: string; type?: string; weight?: number }>
 }
 
 function normalizeDept(raw?: string): Department | null {
@@ -196,6 +197,7 @@ export async function POST(req: Request) {
           completedByName: null,
           compliancePct: 0,
           reviewBlockChecks: [],
+          reviewItemChecks: [],
           reviewNote: null,
           reviewedAt: null,
           reviewedById: null,
@@ -238,6 +240,7 @@ export async function POST(req: Request) {
           completedByName: null,
           compliancePct: 0,
           reviewBlockChecks: [],
+          reviewItemChecks: [],
           reviewNote: null,
           reviewedAt: null,
           reviewedById: null,

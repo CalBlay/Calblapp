@@ -8,11 +8,23 @@ import { normalizeRole } from '@/lib/roles'
 
 type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 
-type TemplateItem = { id?: string; type?: string }
-type TemplateBlock = { id?: string; title?: string; weight?: number; items?: TemplateItem[] }
+type TemplateItem = { id?: string; type?: string; weight?: number }
+type TemplateBlock = {
+  id?: string
+  title?: string
+  weight?: number
+  itemWeightMode?: 'equal' | 'manual' | string
+  items?: TemplateItem[]
+}
 
 type ReviewBlockCheck = {
   blockId: string
+  isValid: boolean
+}
+
+type ReviewItemCheck = {
+  blockId: string
+  itemId: string
   isValid: boolean
 }
 
@@ -47,6 +59,49 @@ function normalizeBlockChecks(input: unknown): ReviewBlockCheck[] {
     .filter((x): x is ReviewBlockCheck => Boolean(x))
 }
 
+function normalizeItemChecks(input: unknown): ReviewItemCheck[] {
+  if (!Array.isArray(input)) return []
+  return input
+    .map((x) => {
+      const v = (x || {}) as { blockId?: unknown; itemId?: unknown; isValid?: unknown }
+      const blockId = String(v.blockId || '').trim()
+      const itemId = String(v.itemId || '').trim()
+      if (!blockId || !itemId || typeof v.isValid !== 'boolean') return null
+      return { blockId, itemId, isValid: v.isValid }
+    })
+    .filter((x): x is ReviewItemCheck => Boolean(x))
+}
+
+function resolveBlockItemWeights(block: TemplateBlock, index: number) {
+  const items = Array.isArray(block?.items) ? block.items : []
+  if (!items.length) return []
+  const blockWeight = Number(block?.weight || 0)
+  const mode = String(block?.itemWeightMode || 'equal').toLowerCase() === 'manual' ? 'manual' : 'equal'
+  const fallbackShare = blockWeight / items.length
+  if (mode !== 'manual') {
+    return items.map((item, itemIdx) => ({
+      blockId: String(block?.id || `b-${index + 1}`),
+      itemId: String(item?.id || `i-${index + 1}-${itemIdx + 1}`),
+      weight: fallbackShare,
+    }))
+  }
+
+  const internalTotal = items.reduce((sum, item) => sum + Math.max(0, Number(item?.weight || 0)), 0)
+  if (internalTotal <= 0) {
+    return items.map((item, itemIdx) => ({
+      blockId: String(block?.id || `b-${index + 1}`),
+      itemId: String(item?.id || `i-${index + 1}-${itemIdx + 1}`),
+      weight: fallbackShare,
+    }))
+  }
+
+  return items.map((item, itemIdx) => ({
+    blockId: String(block?.id || `b-${index + 1}`),
+    itemId: String(item?.id || `i-${index + 1}-${itemIdx + 1}`),
+    weight: round2((Math.max(0, Number(item?.weight || 0)) / internalTotal) * blockWeight),
+  }))
+}
+
 function complianceFromChecks(blocksInput: unknown, checksInput: unknown) {
   const blocks = Array.isArray(blocksInput) ? (blocksInput as TemplateBlock[]) : []
   const checks = normalizeBlockChecks(checksInput)
@@ -69,12 +124,46 @@ function complianceFromChecks(blocksInput: unknown, checksInput: unknown) {
   return round2((weighted / totalWeight) * 100)
 }
 
+function complianceFromItemChecks(blocksInput: unknown, checksInput: unknown) {
+  const blocks = Array.isArray(blocksInput) ? (blocksInput as TemplateBlock[]) : []
+  const checks = normalizeItemChecks(checksInput)
+  if (!blocks.length || !checks.length) return 0
+
+  const byItem = new Map(checks.map((c) => [`${c.blockId}::${c.itemId}`, c.isValid]))
+  let weighted = 0
+  let totalWeight = 0
+
+  blocks.forEach((block, blockIdx) => {
+    const resolvedItems = resolveBlockItemWeights(block, blockIdx)
+    resolvedItems.forEach((item) => {
+      totalWeight += item.weight
+      if (byItem.get(`${item.blockId}::${item.itemId}`) === true) weighted += item.weight
+    })
+  })
+
+  if (totalWeight <= 0) return 0
+  return round2((weighted / totalWeight) * 100)
+}
+
 function checksCompletion(blocksInput: unknown, checksInput: unknown) {
   const blocks = Array.isArray(blocksInput) ? (blocksInput as TemplateBlock[]) : []
   const checks = normalizeBlockChecks(checksInput)
   if (!blocks.length) return false
   const ids = new Set(checks.map((c) => c.blockId))
   return blocks.every((b, i) => ids.has(String(b?.id || `b-${i + 1}`)))
+}
+
+function itemChecksCompletion(blocksInput: unknown, checksInput: unknown) {
+  const blocks = Array.isArray(blocksInput) ? (blocksInput as TemplateBlock[]) : []
+  const checks = normalizeItemChecks(checksInput)
+  if (!blocks.length) return false
+  const ids = new Set(checks.map((c) => `${c.blockId}::${c.itemId}`))
+  return blocks.every((block, blockIdx) => {
+    const blockId = String(block?.id || `b-${blockIdx + 1}`)
+    const items = Array.isArray(block?.items) ? block.items : []
+    if (!items.length) return false
+    return items.every((item, itemIdx) => ids.has(`${blockId}::${String(item?.id || `i-${blockIdx + 1}-${itemIdx + 1}`)}`))
+  })
 }
 
 async function getTemplateBlocksForRun(run: Record<string, unknown>) {
@@ -126,7 +215,13 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
 
     const templateBlocks = await getTemplateBlocksForRun(run)
     const reviewBlockChecks = normalizeBlockChecks(run.reviewBlockChecks)
-    const compliancePct = Number(run.compliancePct || complianceFromChecks(templateBlocks, reviewBlockChecks))
+    const reviewItemChecks = normalizeItemChecks(run.reviewItemChecks)
+    const compliancePct = Number(
+      run.compliancePct ||
+        (reviewItemChecks.length
+          ? complianceFromItemChecks(templateBlocks, reviewItemChecks)
+          : complianceFromChecks(templateBlocks, reviewBlockChecks))
+    )
 
     return NextResponse.json(
       {
@@ -135,6 +230,7 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
           ...run,
           templateBlocks,
           reviewBlockChecks,
+          reviewItemChecks,
           compliancePct: round2(compliancePct),
         },
       },
@@ -156,6 +252,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       action?: 'reopen'
       note?: string
       blockChecks?: Array<{ blockId?: string; isValid?: boolean }>
+      itemChecks?: Array<{ blockId?: string; itemId?: string; isValid?: boolean }>
     }
     const action = body?.action === 'reopen' ? 'reopen' : null
 
@@ -178,6 +275,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           status: 'completed',
           compliancePct: 0,
           reviewBlockChecks: [],
+          reviewItemChecks: [],
           reviewNote: null,
           reviewedAt: null,
           reviewedById: null,
@@ -191,21 +289,30 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     const templateBlocks = await getTemplateBlocksForRun(run)
     const blockChecks = normalizeBlockChecks(body.blockChecks)
+    const itemChecks = normalizeItemChecks(body.itemChecks)
 
-    if (!checksCompletion(templateBlocks, blockChecks)) {
+    const usesItemChecks = itemChecks.length > 0
+    if (usesItemChecks) {
+      if (!itemChecksCompletion(templateBlocks, itemChecks)) {
+        return NextResponse.json({ error: 'Cal validar tots els items (si o no)' }, { status: 400 })
+      }
+    } else if (!checksCompletion(templateBlocks, blockChecks)) {
       return NextResponse.json({ error: 'Cal validar tots els blocs (si o no)' }, { status: 400 })
     }
 
-    const allValid = blockChecks.every((b) => b.isValid)
+    const allValid = usesItemChecks ? itemChecks.every((i) => i.isValid) : blockChecks.every((b) => b.isValid)
     const status = allValid ? 'validated' : 'rejected'
-    const compliancePct = complianceFromChecks(templateBlocks, blockChecks)
+    const compliancePct = usesItemChecks
+      ? complianceFromItemChecks(templateBlocks, itemChecks)
+      : complianceFromChecks(templateBlocks, blockChecks)
     const now = Date.now()
 
     await ref.set(
       {
         status,
         compliancePct,
-        reviewBlockChecks: blockChecks,
+        reviewBlockChecks: usesItemChecks ? [] : blockChecks,
+        reviewItemChecks: usesItemChecks ? itemChecks : [],
         reviewNote: note || null,
         reviewedAt: now,
         reviewedById: auth.user.id,
