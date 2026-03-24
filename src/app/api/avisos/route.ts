@@ -76,9 +76,6 @@ export async function PUT(req: NextRequest) {
   }
 
   const docRef = db.collection('avisos').doc(id)
-  const snap = await docRef.get()
-  const prev = snap.exists ? (snap.data() as any) : null
-  const code = prev?.code as string | undefined
 
   await docRef.update({
     content,

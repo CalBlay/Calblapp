@@ -7,7 +7,7 @@ declare global {
       'mgt-file-picker': {
         resource?: string;
         scopes?: string;
-        [key: string]: any; // evita squiggles de propietats extra
+        [key: string]: unknown; // evita squiggles de propietats extra
       };
     }
   }

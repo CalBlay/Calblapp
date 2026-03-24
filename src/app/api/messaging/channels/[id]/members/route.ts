@@ -7,6 +7,19 @@ import { normalizeRole } from '@/lib/roles'
 export const runtime = 'nodejs'
 
 type SessionUser = { id: string; role?: string }
+type ChannelRecord = Record<string, unknown> & { source?: string }
+type ChannelMemberRecord = Record<string, unknown> & {
+  userId?: string
+  userName?: string
+  hidden?: boolean
+}
+type UserRecord = Record<string, unknown> & {
+  role?: string
+  rol?: string
+  nivell?: string
+  nivel?: string
+  level?: string
+}
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -21,7 +34,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   try {
     const channelSnap = await db.collection('channels').doc(id).get()
-    const channel = channelSnap.exists ? (channelSnap.data() as any) : {}
+    const channel = channelSnap.exists ? (channelSnap.data() as ChannelRecord) : {}
     const isEventChannel = String(channel?.source || '') === 'events'
 
     if (role !== 'admin' && role !== 'direccio') {
@@ -44,7 +57,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
     const baseMembers = membersSnap.docs
       .map((d) => {
-        const data = d.data() as any
+        const data = d.data() as ChannelMemberRecord
         return {
           userId: data.userId,
           userName: data.userName || '',
@@ -52,7 +65,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         }
       })
 
-    const resolveRole = (data: any) =>
+    const resolveRole = (data: UserRecord) =>
       normalizeRole(
         data?.role ||
           data?.rol ||
@@ -62,7 +75,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           ''
       )
 
-    let hiddenByRole = new Set<string>()
+    const hiddenByRole = new Set<string>()
     if (isEventChannel) {
       const ids = baseMembers.map((m) => m.userId).filter(Boolean)
       if (ids.length > 0) {
@@ -70,7 +83,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         const snaps = await db.getAll(...refs)
         snaps.forEach((doc) => {
           if (!doc.exists) return
-          const data = doc.data() as any
+          const data = doc.data() as UserRecord
           const r = resolveRole(data)
           if (r === 'admin' || r === 'direccio') {
             hiddenByRole.add(doc.id)

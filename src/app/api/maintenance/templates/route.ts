@@ -14,6 +14,15 @@ type SessionUser = {
   department?: string
 }
 
+type TemplateDocument = TemplatePayload & {
+  createdAt?: number
+  updatedAt?: number
+  createdById?: string
+  createdByName?: string
+  updatedById?: string
+  updatedByName?: string
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session?.user) {
@@ -29,8 +38,8 @@ export async function GET() {
   try {
     const snap = await db.collection('maintenancePreventiusTemplates').get()
     const templates = snap.docs
-      .map((doc) => ({ id: doc.id, ...(doc.data() as any) }))
-      .sort((a: any, b: any) => String(a.name || '').localeCompare(String(b.name || '')))
+      .map((doc) => ({ id: doc.id, ...(doc.data() as TemplateDocument) }))
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
     return NextResponse.json({ templates })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'

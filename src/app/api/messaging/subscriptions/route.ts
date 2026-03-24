@@ -13,12 +13,28 @@ type SessionUser = {
   role?: string
 }
 
+type UserRecord = Record<string, unknown> & {
+  opsChannelsConfigurable?: string[]
+  opsEventsConfigurable?: boolean
+  opsEventsEnabled?: boolean
+  opsProjectsConfigurable?: boolean
+  name?: string
+}
+
+type ChannelRecord = Record<string, unknown> & {
+  source?: string
+}
+
+type ChannelMemberRecord = Record<string, unknown> & {
+  channelId?: string
+}
+
 const ALLOWED_SOURCES = new Set(['finques', 'restaurants', 'events', 'projects'])
 
 async function getAllowedChannelIds(userId: string): Promise<string[]> {
   const userSnap = await db.collection('users').doc(userId).get()
   if (!userSnap.exists) return []
-  const data = userSnap.data() as any
+  const data = userSnap.data() as UserRecord
   const ids = Array.isArray(data?.opsChannelsConfigurable)
     ? data.opsChannelsConfigurable.map(String).filter(Boolean)
     : []
@@ -28,7 +44,7 @@ async function getAllowedChannelIds(userId: string): Promise<string[]> {
 async function getEventsFlags(userId: string): Promise<{ configurable: boolean; enabled: boolean }> {
   const userSnap = await db.collection('users').doc(userId).get()
   if (!userSnap.exists) return { configurable: false, enabled: false }
-  const data = userSnap.data() as any
+  const data = userSnap.data() as UserRecord
   const configurable = Boolean(data?.opsEventsConfigurable)
   const enabled = configurable ? Boolean(data?.opsEventsEnabled) : false
   return { configurable, enabled }
@@ -37,7 +53,7 @@ async function getEventsFlags(userId: string): Promise<{ configurable: boolean; 
 async function getProjectsConfigurable(userId: string): Promise<boolean> {
   const userSnap = await db.collection('users').doc(userId).get()
   if (!userSnap.exists) return true
-  const data = userSnap.data() as any
+  const data = userSnap.data() as UserRecord
   return typeof data?.opsProjectsConfigurable === 'boolean'
     ? Boolean(data.opsProjectsConfigurable)
     : true
@@ -79,11 +95,11 @@ export async function GET(req: Request) {
     ])
 
     const subscribed = new Set(
-      memberSnap.docs.map((d) => (d.data() as any).channelId).filter(Boolean)
+      memberSnap.docs.map((d) => (d.data() as ChannelMemberRecord).channelId).filter(Boolean)
     )
 
     const channels = channelsSnap.docs
-      .map((d) => ({ id: d.id, ...(d.data() as any) }))
+      .map((d) => ({ id: d.id, ...(d.data() as ChannelRecord) }))
       .filter((ch) => ALLOWED_SOURCES.has(String(ch.source || '')))
       .filter((ch) => {
         const source = String(ch.source || '')
@@ -136,13 +152,13 @@ export async function POST(req: Request) {
     const projectsConfigurable = await getProjectsConfigurable(targetUserId)
 
     const targetUserSnap = await db.collection('users').doc(targetUserId).get()
-    const targetUserName = (targetUserSnap.data() as any)?.name || ''
+    const targetUserName = (targetUserSnap.data() as UserRecord | undefined)?.name || ''
     const channelIds = Array.isArray(body.channelIds)
       ? body.channelIds.map(String).filter(Boolean)
       : []
     const allowedChannelsSnap = await db.collection('channels').get()
     const channelsById = new Map(
-      allowedChannelsSnap.docs.map((doc) => [doc.id, { id: doc.id, ...(doc.data() as any) }])
+      allowedChannelsSnap.docs.map((doc) => [doc.id, { id: doc.id, ...(doc.data() as ChannelRecord) }])
     )
     let filteredChannelIds = channelIds.filter((id) => {
       const channel = channelsById.get(id)
@@ -155,7 +171,7 @@ export async function POST(req: Request) {
     if (isAdminTarget) {
       const allowedChannelIds = new Set(
         allowedChannelsSnap.docs
-          .map((doc) => ({ id: doc.id, ...(doc.data() as any) }))
+          .map((doc) => ({ id: doc.id, ...(doc.data() as ChannelRecord) }))
           .filter((channel) => ALLOWED_SOURCES.has(String(channel.source || '')) && String(channel.source || '') !== 'events')
           .map((channel) => String(channel.id))
       )
@@ -179,12 +195,12 @@ export async function POST(req: Request) {
       .get()
 
     const existing = new Set(
-      memberSnap.docs.map((d) => (d.data() as any).channelId).filter(Boolean)
+      memberSnap.docs.map((d) => (d.data() as ChannelMemberRecord).channelId).filter(Boolean)
     )
-    let next = new Set(filteredChannelIds)
+    const next = new Set(filteredChannelIds)
     if (eventsFlags.configurable || isAdminTarget) {
       const eventMemberIds = memberSnap.docs
-        .map((d) => (d.data() as any)?.channelId)
+        .map((d) => (d.data() as ChannelMemberRecord)?.channelId)
         .filter((id) => typeof id === 'string' && id.startsWith('event_'))
 
       if (eventsEnabled) {
@@ -198,7 +214,7 @@ export async function POST(req: Request) {
 
     // Remove old
     memberSnap.docs.forEach((doc) => {
-      const chId = (doc.data() as any).channelId
+      const chId = (doc.data() as ChannelMemberRecord).channelId
       if (!next.has(chId)) {
         batch.delete(doc.ref)
       }

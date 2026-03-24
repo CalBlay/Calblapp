@@ -11,6 +11,19 @@ type SessionUser = {
   role?: string
 }
 
+type MessageRecord = Record<string, unknown> & {
+  channelId?: string
+  senderId?: string
+  imagePath?: string
+  body?: string
+  createdAt?: number
+}
+
+type ChannelMemberRecord = Record<string, unknown> & {
+  userId?: string
+  unreadCount?: number
+}
+
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) {
@@ -29,7 +42,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    const msg = snap.data() as any
+    const msg = snap.data() as MessageRecord
     const channelId = msg?.channelId
     const senderId = msg?.senderId
     const imagePath = msg?.imagePath
@@ -45,7 +58,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
 
     const memberDocs = membersSnap.docs
     const readRefs = memberDocs.map((d) => {
-      const uid = (d.data() as any)?.userId
+      const uid = (d.data() as ChannelMemberRecord)?.userId
       return db.collection('messageReads').doc(`${id}_${uid}`)
     })
     const readSnaps = readRefs.length ? await db.getAll(...readRefs) : []
@@ -55,7 +68,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     batch.delete(msgRef)
 
     for (const doc of memberDocs) {
-      const data = doc.data() as any
+      const data = doc.data() as ChannelMemberRecord
       const uid = data?.userId
       if (!uid || uid === senderId) continue
       const readId = `${id}_${uid}`
@@ -79,7 +92,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
         .get()
 
       if (!latestSnap.empty) {
-        const latest = latestSnap.docs[0].data() as any
+        const latest = latestSnap.docs[0].data() as MessageRecord
         const preview = latest?.body ? String(latest.body).slice(0, 180) : 'Imatge'
         await channelRef.set(
           { lastMessagePreview: preview, lastMessageAt: latest.createdAt || 0 },

@@ -2,15 +2,15 @@
 'use client'
 
 import * as React from 'react'
+import type { DateRange, SelectSingleEventHandler, SelectRangeEventHandler } from 'react-day-picker'
 import { DayPicker } from 'react-day-picker'
 import 'react-day-picker/dist/style.css'
-import { addDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 interface CalendarProps {
   mode?: 'single' | 'range'
-  selected?: any
-  onSelect?: (value: any) => void
+  selected?: Date | DateRange | undefined
+  onSelect?: SelectSingleEventHandler | SelectRangeEventHandler
 }
 
 export function Calendar({ mode = 'single', selected, onSelect }: CalendarProps) {

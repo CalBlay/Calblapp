@@ -58,11 +58,12 @@ export async function POST(req: Request) {
     // 🟢 IMPORTANT — Retornem ID perquè CalendarNewEventModal pugui adjuntar fitxers
     return NextResponse.json({ success: true, id }, { status: 200 })
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('❌ Error creant esdeveniment manual:', err)
     return NextResponse.json(
-      { error: 'Error desant a Firestore', details: err.message },
+      { error: 'Error desant a Firestore', details: err instanceof Error ? err.message : 'Error intern' },
       { status: 500 }
     )
   }
 }
+

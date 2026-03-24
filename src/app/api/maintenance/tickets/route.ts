@@ -7,7 +7,6 @@ import {
   buildTicketBody,
   notifyMaintenanceManagers,
 } from '@/lib/maintenanceNotifications'
-import admin from 'firebase-admin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -34,6 +33,17 @@ type TicketPayload = {
   plannedStart?: number | null
   plannedEnd?: number | null
   estimatedMinutes?: number | null
+}
+
+type MaintenanceTicketRecord = Record<string, unknown> & {
+  ticketCode?: string
+  incidentNumber?: string
+  status?: string
+  priority?: string
+  ticketType?: string
+  createdAt?: string | number | { toDate?: () => Date }
+  plannedStart?: string | number | null
+  assignedAt?: string | number | null
 }
 
 const normalizePriority = (value?: string) => {
@@ -67,7 +77,7 @@ async function generateTicketCode(): Promise<string> {
   return `TIC${String(next).padStart(6, '0')}`
 }
 
-function getTicketTimelineMs(ticket: any): number | null {
+function getTicketTimelineMs(ticket: MaintenanceTicketRecord): number | null {
   const base = ticket?.plannedStart ?? ticket?.assignedAt ?? ticket?.createdAt ?? null
   if (typeof base === 'number' && Number.isFinite(base)) return base
   if (typeof base === 'string') {
@@ -127,7 +137,7 @@ export async function GET(req: Request) {
     const fallbackRef = ref
     const mapTickets = (snap: FirebaseFirestore.QuerySnapshot) =>
       snap.docs.map((doc) => {
-        const data = doc.data() as any
+        const data = doc.data() as MaintenanceTicketRecord
         const createdAt =
           data.createdAt && typeof data.createdAt.toDate === 'function'
             ? data.createdAt.toDate().toISOString()
@@ -142,7 +152,7 @@ export async function GET(req: Request) {
         }
       })
 
-    let rawTickets: any[] = []
+    let rawTickets: MaintenanceTicketRecord[] = []
     try {
       let orderedRef = ref.orderBy('createdAt', 'desc')
       if (cursorCreatedAt > 0) orderedRef = orderedRef.startAfter(cursorCreatedAt)
@@ -161,21 +171,21 @@ export async function GET(req: Request) {
     let tickets = rawTickets
 
     if (code) {
-      tickets = tickets.filter((t: any) => {
+      tickets = tickets.filter((t) => {
         const ticketCode = String(t.ticketCode || '').toUpperCase()
         const incident = String(t.incidentNumber || '').toUpperCase()
         return ticketCode === code || incident === code
       })
     }
     if (ticketType === 'maquinaria') {
-      tickets = tickets.filter((t: any) => String(t.ticketType || 'maquinaria').toLowerCase() !== 'deco')
+      tickets = tickets.filter((t) => String(t.ticketType || 'maquinaria').toLowerCase() !== 'deco')
     } else if (ticketType && ticketType !== 'all' && ticketType !== 'deco') {
-      tickets = tickets.filter((t: any) => String(t.ticketType || '').toLowerCase() === ticketType)
+      tickets = tickets.filter((t) => String(t.ticketType || '').toLowerCase() === ticketType)
     }
     if (start || end) {
       const startMs = start ? new Date(`${start}T00:00:00.000Z`).getTime() : null
       const endMs = end ? new Date(`${end}T23:59:59.999Z`).getTime() : null
-      tickets = tickets.filter((t: any) => {
+      tickets = tickets.filter((t) => {
         const timelineMs = getTicketTimelineMs(t)
         if (timelineMs === null) return false
         if (startMs !== null && timelineMs < startMs) return false
@@ -184,7 +194,7 @@ export async function GET(req: Request) {
       })
     }
     if (cursorCreatedAt > 0) {
-      tickets = tickets.filter((t: any) => {
+      tickets = tickets.filter((t) => {
         const createdAtMs =
           typeof t.createdAt === 'string' ? new Date(t.createdAt).getTime() : Number(t.createdAt || 0)
         return createdAtMs > 0 && createdAtMs < cursorCreatedAt

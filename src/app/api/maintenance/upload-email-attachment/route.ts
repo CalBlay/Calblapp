@@ -6,6 +6,7 @@ import { storageAdmin } from '@/lib/firebaseAdmin'
 export const runtime = 'nodejs'
 
 const MAX_SIZE = 5 * 1024 * 1024
+type SessionUser = { id?: string }
 
 const cleanSegment = (value: string) =>
   value
@@ -29,7 +30,8 @@ export async function POST(req: Request) {
     const form = await req.formData()
     const file = form.get('file') as File | null
     const ticketId = cleanSegment(String(form.get('ticketId') || ''))
-    const userId = cleanSegment(String((session.user as any)?.id || ''))
+    const user = session.user as SessionUser | undefined
+    const userId = cleanSegment(String(user?.id || ''))
 
     if (!file || !ticketId || !userId) {
       return NextResponse.json({ error: 'Missing data' }, { status: 400 })

@@ -52,6 +52,16 @@ function parseRoleForFilters(role: string): 'Admin' | 'Direcció' | 'Cap Departa
   return 'Treballador'
 }
 
+interface PreparationExportRow {
+  PreparacioData: string
+  PreparacioHora: string
+  Event: string
+  Ubicacio: string
+  Pax: string | number
+  DataEvent: string
+  HoraEvent: string
+}
+
 export default function LogisticsPage() {
   const { data: session } = useSession()
   const role = (session?.user?.role || '').toLowerCase()
@@ -156,7 +166,7 @@ export default function LogisticsPage() {
     ? `preparacio-logistica-${dateRange.start}-${dateRange.end}`
     : 'preparacio-logistica-setmana'
 
-  const exportRows = useMemo(() => {
+  const exportRows = useMemo<PreparationExportRow[]>(() => {
     return rows.map((ev) => ({
       PreparacioData: ev.PreparacioData || '',
       PreparacioHora: ev.PreparacioHora || '',
@@ -184,7 +194,7 @@ export default function LogisticsPage() {
       .replace(/'/g, '&#39;')
 
   const buildPdfTableHtml = () => {
-    const cols = [
+    const cols: Array<keyof PreparationExportRow> = [
       'PreparacioData',
       'PreparacioHora',
       'Event',
@@ -198,7 +208,7 @@ export default function LogisticsPage() {
     const body = exportRows
       .map((row) => {
         const cells = cols
-          .map((key) => `<td>${escapeHtml(String((row as any)[key] ?? ''))}</td>`)
+          .map((key) => `<td>${escapeHtml(String(row[key] ?? ''))}</td>`)
           .join('')
         return `<tr>${cells}</tr>`
       })

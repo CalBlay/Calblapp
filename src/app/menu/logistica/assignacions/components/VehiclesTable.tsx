@@ -4,9 +4,10 @@ import React, { useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import VehicleRow from './VehicleRow'
+import type { TransportAssignmentItem } from '../hooks/useTransportAssignments'
 
 interface Props {
-  item: any
+  item: TransportAssignmentItem
   onChanged: () => void
   onEditingChange?: (rowKey: string, isEditing: boolean) => void
 }

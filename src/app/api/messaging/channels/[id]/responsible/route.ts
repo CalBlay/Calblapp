@@ -7,6 +7,7 @@ import { normalizeRole } from '@/lib/roles'
 export const runtime = 'nodejs'
 
 type SessionUser = { id: string; role?: string }
+type ChannelMemberRecord = Record<string, unknown> & { userName?: string }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -39,7 +40,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ error: 'User not in channel' }, { status: 400 })
     }
 
-    const member = memberSnap.docs[0].data() as any
+    const member = memberSnap.docs[0].data() as ChannelMemberRecord
     const responsibleUserName = member.userName || ''
 
     await db.collection('channels').doc(id).set(
@@ -58,4 +59,3 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
-

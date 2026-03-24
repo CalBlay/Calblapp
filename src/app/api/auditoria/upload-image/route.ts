@@ -6,6 +6,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { storageAdmin } from '@/lib/firebaseAdmin'
 
 const MAX_SIZE = 1024 * 1024
+type SessionUser = { id?: string }
 
 const clean = (s: string) =>
   s
@@ -25,7 +26,8 @@ export async function POST(req: Request) {
     const eventId = clean(String(form.get('eventId') || ''))
     const department = clean(String(form.get('department') || ''))
     const itemId = clean(String(form.get('itemId') || ''))
-    const userId = clean(String((session.user as any)?.id || ''))
+    const user = session.user as SessionUser | undefined
+    const userId = clean(String(user?.id || ''))
 
     if (!file || !eventId || !department || !itemId || !userId) {
       return NextResponse.json({ error: 'Missing data' }, { status: 400 })

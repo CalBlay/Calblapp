@@ -16,7 +16,55 @@ type Item = {
   location: string
   pax: number
   status: 'draft' | 'confirmed'
-  rows: any[]
+  rows: TransportAssignmentRow[]
+}
+
+type TransportAssignmentRow = {
+  id: string
+  department: string
+  name: string
+  plate: string
+  vehicleType: string
+  startDate: string
+  endDate: string
+  startTime: string
+  arrivalTime: string
+  endTime: string
+}
+
+type StageVerdEventRecord = Record<string, unknown> & {
+  code?: string
+  DataInici?: string
+  HoraInici?: string
+  HoraFi?: string
+  NomEvent?: string
+  Ubicacio?: string
+  NumPax?: number | string
+}
+
+type QuadrantConductorRecord = {
+  id?: string
+  name?: string
+  plate?: string
+  vehicleType?: string
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  arrivalTime?: string
+  endTime?: string
+}
+
+type QuadrantRecord = Record<string, unknown> & {
+  code?: string
+  status?: string
+  transportRequested?: boolean
+  numDrivers?: number | string
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  arrivalTime?: string
+  endTime?: string
+  conductors?: QuadrantConductorRecord[]
 }
 
 export async function GET(req: Request) {
@@ -41,7 +89,7 @@ export async function GET(req: Request) {
     const map = new Map<string, Item>()
 
     eventsSnap.docs.forEach(doc => {
-      const e = doc.data()
+      const e = doc.data() as StageVerdEventRecord
       if (!e?.code) return
 
       map.set(String(e.code), {
@@ -72,7 +120,7 @@ export async function GET(req: Request) {
         .get()
 
       snap.docs.forEach(doc => {
-        const q = doc.data()
+        const q = doc.data() as QuadrantRecord
         const code = String(q?.code || '')
         if (!map.has(code)) return
 
@@ -97,7 +145,7 @@ export async function GET(req: Request) {
 
         // conductors → files
         if (hasDrivers) {
-          q.conductors.forEach((c: any) => {
+          q.conductors.forEach((c) => {
             item.rows.push({
               id: c.id || `${dept}-${Math.random()}`,
               department: dept,

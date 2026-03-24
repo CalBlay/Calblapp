@@ -6,6 +6,7 @@ import { storageAdmin } from '@/lib/firebaseAdmin'
 export const runtime = 'nodejs'
 
 const MAX_SIZE = 1024 * 1024
+type SessionUser = { id?: string }
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -17,7 +18,8 @@ export async function POST(req: Request) {
     const form = await req.formData()
     const file = form.get('file') as File | null
     const channelId = String(form.get('channelId') || '').trim()
-    const userId = String((session.user as any)?.id || '').trim()
+    const user = session.user as SessionUser | undefined
+    const userId = String(user?.id || '').trim()
 
     if (!file || !channelId || !userId) {
       return NextResponse.json({ error: 'Missing data' }, { status: 400 })

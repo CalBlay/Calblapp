@@ -8,10 +8,10 @@ declare global {
         React.HTMLAttributes<HTMLElement>,
         HTMLElement
       > & {
-        ref?: React.Ref<any>;
+        ref?: React.Ref<HTMLElement>;
         resource?: string;
         scopes?: string;
-        [key: string]: any;
+        [key: string]: unknown;
       };
     }
   }

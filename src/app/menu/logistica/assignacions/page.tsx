@@ -28,6 +28,27 @@ interface AssignmentVehicleRow {
   endDate?: string
 }
 
+interface AssignmentExportRow {
+  Data: string
+  HoraEvent: string
+  HoraFiEvent: string
+  Event: string
+  Ubicacio: string
+  Pax: string | number
+  Estat: string
+  Servei: string
+  Codi: string
+  Departament: string
+  Conductor: string
+  Matricula: string
+  Vehicle: string
+  Sortida: string
+  Arribada: string
+  Fi: string
+  DataSortida: string
+  DataArribada: string
+}
+
 export default function TransportAssignacionsPage() {
   useSession()
 
@@ -60,7 +81,7 @@ export default function TransportAssignacionsPage() {
   const exportBase = `assignacions-logistica-${filters.start}-${filters.end}`
 
   const exportRows = useMemo(() => {
-    const rows: Record<string, string | number>[] = []
+    const rows: AssignmentExportRow[] = []
 
     items.forEach((it) => {
       const vehicles: AssignmentVehicleRow[] = Array.isArray(it.rows) ? it.rows : []
@@ -128,7 +149,7 @@ export default function TransportAssignacionsPage() {
       .replace(/'/g, '&#39;')
 
   const buildPdfTableHtml = () => {
-    const cols = [
+    const cols: Array<keyof AssignmentExportRow> = [
       'Data',
       'HoraEvent',
       'HoraFiEvent',
@@ -153,7 +174,7 @@ export default function TransportAssignacionsPage() {
     const body = exportRows
       .map((row) => {
         const cells = cols
-          .map((key) => `<td>${escapeHtml(String((row as any)[key] ?? ''))}</td>`)
+          .map((key) => `<td>${escapeHtml(String(row[key] ?? ''))}</td>`)
           .join('')
         return `<tr>${cells}</tr>`
       })

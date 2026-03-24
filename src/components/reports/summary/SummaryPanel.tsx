@@ -10,6 +10,10 @@ type PersonalRes = { summary?: { hours?: number; people?: number } }
 type EventsRes = {
   summary?: { totalEvents?: number; avgPax?: number }
   data?: Array<{ id: string; name: string; ln: string; pax: number; location: string; commercial: string; serviceType?: string }>
+  options?: {
+    events?: EventsOptions[]
+    lines?: string[]
+  }
 }
 type FinancialRes = { summary?: { revenue?: number; cost?: number; marginPct?: number } }
 type VehiclesRes = { vehicles?: Array<{ distanceKm?: number; cost?: number }> }
@@ -59,8 +63,8 @@ export function SummaryPanel() {
           serviceType: event.serviceType || '',
         }))
       )
-      setEventOptions(Array.isArray((events as any)?.options?.events) ? (events as any).options.events : [])
-      setLineOptions(Array.isArray((events as any)?.options?.lines) ? (events as any).options.lines : [])
+      setEventOptions(Array.isArray(events.options?.events) ? events.options.events : [])
+      setLineOptions(Array.isArray(events.options?.lines) ? events.options.lines : [])
 
       setKpis({
         hours: personal.summary?.hours?.toFixed ? personal.summary.hours.toFixed(1) : personal.summary?.hours || 0,

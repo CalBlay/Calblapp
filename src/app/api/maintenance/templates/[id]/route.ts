@@ -25,6 +25,15 @@ type TemplatePatch = {
   sections?: TemplateSection[]
 }
 
+type TemplateDocument = TemplatePatch & {
+  createdAt?: number
+  updatedAt?: number
+  createdById?: string
+  createdByName?: string
+  updatedById?: string
+  updatedByName?: string
+}
+
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -40,7 +49,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const ref = db.collection('maintenancePreventiusTemplates').doc(id)
     const snap = await ref.get()
     if (!snap.exists) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    return NextResponse.json({ template: { id: snap.id, ...(snap.data() as any) } })
+    return NextResponse.json({ template: { id: snap.id, ...(snap.data() as TemplateDocument) } })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -60,7 +69,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params
   try {
     const body = (await req.json()) as TemplatePatch
-    const patch: any = {}
+    const patch: Record<string, unknown> = {}
     if (body.name !== undefined) patch.name = String(body.name || '').trim()
     if (body.periodicity !== undefined) patch.periodicity = body.periodicity
     if (body.lastDone !== undefined) patch.lastDone = body.lastDone

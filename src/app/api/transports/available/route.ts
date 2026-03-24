@@ -47,6 +47,27 @@ type Occupation = {
   end: Date
 }
 
+type QuadrantConductorRecord = {
+  plate?: string
+  startDate?: string
+  startTime?: string
+  endDate?: string
+  endTime?: string
+}
+
+type QuadrantRecord = Record<string, unknown> & {
+  conductors?: QuadrantConductorRecord[]
+}
+
+type ManualAssignmentRecord = Record<string, unknown> & {
+  plate?: string
+  startDate?: string
+  startTime?: string
+  endDate?: string
+  endTime?: string
+  status?: string
+}
+
 const ACTIVE_ASSIGNMENT_STATUSES = new Set(['pending', 'confirmed', 'addedToTorns'])
 
 const resolveRange = (startDate?: string, startTime?: string, endDate?: string, endTime?: string) => {
@@ -113,10 +134,10 @@ export async function POST(req: Request) {
         .get()
 
       snap.docs.forEach(doc => {
-        const q = doc.data()
+        const q = doc.data() as QuadrantRecord
         const conductors = Array.isArray(q.conductors) ? q.conductors : []
 
-        conductors.forEach((c: any) => {
+        conductors.forEach((c) => {
           if (!c?.plate || !c?.startDate || !c?.startTime) return
           const range = resolveRange(c.startDate, c.startTime, c.endDate, c.endTime)
           if (!range) return
@@ -157,7 +178,7 @@ export async function POST(req: Request) {
     }
 
     assignDocs.forEach(doc => {
-      const a = doc.data() as any
+      const a = doc.data() as ManualAssignmentRecord
       const status = String(a?.status || 'pending')
       if (!ACTIVE_ASSIGNMENT_STATUSES.has(status)) return
 

@@ -30,6 +30,23 @@ type ExternalizePayload = {
   }>
 }
 
+type MaintenanceTicketExternalizeRecord = Record<string, unknown> & {
+  ticketType?: string
+  status?: string
+  ticketCode?: string
+  incidentNumber?: string
+  location?: string
+  machine?: string
+  description?: string
+  priority?: string
+  createdAt?: string | number | null
+  imagePath?: string | null
+  imageMeta?: {
+    type?: string
+  } | null
+  externalizationHistory?: Array<Record<string, unknown>>
+}
+
 const normalizeDept = (raw?: string) =>
   (raw || '')
     .toString()
@@ -116,7 +133,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    const current = snap.data() as Record<string, any>
+    const current = snap.data() as MaintenanceTicketExternalizeRecord
     const ticketType = String(current.ticketType || 'maquinaria').trim().toLowerCase()
     const capAllowed =
       role === 'cap' &&
@@ -222,7 +239,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     await ref.set(updates, { merge: true })
 
     const updatedSnap = await ref.get()
-    const updated = updatedSnap.data() as Record<string, any>
+    const updated = updatedSnap.data() as MaintenanceTicketExternalizeRecord
 
     return NextResponse.json({
       success: true,

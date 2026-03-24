@@ -42,20 +42,6 @@ function normalizeColId(id: string): string {
     .toLowerCase()
 }
 
-// Deriva la lÃ­nia de negoci segons codi/summary (fallback)
-const lnFromCodeOrSummary = (code?: string | null, summary?: string | null) => {
-  const src = String(code || '').trim() || String(summary || '').trim()
-  const m = src.match(/([A-Za-z])/)
-  const ch = (m?.[1] || '').toUpperCase()
-  switch (ch) {
-    case 'E': return { lnKey: 'empresa', lnLabel: 'Empresa' }
-    case 'C': return { lnKey: 'casaments', lnLabel: 'Casaments' }
-    case 'F': return { lnKey: 'foodlovers', lnLabel: 'Foodlovers' }
-    case 'A': return { lnKey: 'agenda', lnLabel: 'Agenda' }
-    default:  return { lnKey: 'altres', lnLabel: 'Altres' }
-  }
-}
-
 /* ================== Tipus ================== */
 interface QuadrantDoc {
   id: string
@@ -72,6 +58,8 @@ type AvisoSummary = {
   department: string
   createdAt: string
 }
+
+type StageVerdDoc = Record<string, unknown>
 
 /* ================== Collections map ================== */
 const COLS_MAP: Record<string, string> = {}
@@ -262,7 +250,7 @@ export async function GET(req: NextRequest) {
     const snap = await db.collection('stage_verd').get()
 
     const base = (snap.docs || []).map((doc) => {
-      const d = doc.data() as any
+      const d = doc.data() as StageVerdDoc
 
       const startISO = d?.DataInici ? `${d.DataInici}T00:00:00.000Z` : null
       const endISO = d?.DataFi ? `${d.DataFi}T00:00:00.000Z` : startISO

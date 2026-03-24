@@ -40,6 +40,23 @@ type UpdatePayload = {
   statusNote?: string | null
 }
 
+type MaintenanceTicketRecord = Record<string, unknown> & {
+  status?: string
+  ticketCode?: string
+  incidentNumber?: string
+  ticketType?: string
+  createdById?: string
+  createdByName?: string
+  assignedToIds?: string[]
+  assignedToNames?: string[]
+  machine?: string
+  location?: string
+  description?: string
+  priority?: string
+  source?: string
+  externalized?: boolean
+}
+
 const normalizePriority = (value?: string) => {
   const v = (value || '').trim().toLowerCase()
   if (v === 'urgent') return 'urgent'
@@ -86,7 +103,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    const data = snap.data() as any
+    const data = snap.data() as MaintenanceTicketRecord
     if (role === 'treballador') {
       const assignedIds: string[] = Array.isArray(data.assignedToIds) ? data.assignedToIds : []
       if (!assignedIds.includes(user.id)) {
@@ -144,7 +161,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (!snap.exists) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
-    const current = snap.data() as any
+    const current = snap.data() as MaintenanceTicketRecord
 
     if (role === 'treballador') {
       const assignedIds: string[] = Array.isArray(current.assignedToIds)
@@ -374,7 +391,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    const data = snap.data() as any
+    const data = snap.data() as MaintenanceTicketRecord
     const canDeleteAny =
       role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
     if (data.createdById !== user.id && !canDeleteAny) {

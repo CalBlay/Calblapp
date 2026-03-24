@@ -17,6 +17,28 @@ type SessionUser = {
   role?: string
 }
 
+type MessageRecord = Record<string, unknown> & {
+  ticketId?: string
+  ticketCode?: string
+  channelId?: string
+  body?: string
+  createdAt?: number
+}
+
+type ChannelRecord = Record<string, unknown> & {
+  source?: string
+  responsibleUserId?: string
+  location?: string
+  name?: string
+}
+
+type ChannelMemberRecord = Record<string, unknown> & {
+  userId?: string
+  unreadCount?: number
+  hidden?: boolean
+  notify?: boolean
+}
+
 async function sendPushToUids(baseUrl: string, uids: string[], title: string, body: string, url: string) {
   if (!uids.length) return
   await Promise.all(
@@ -67,7 +89,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       return NextResponse.json({ error: 'Message not found' }, { status: 404 })
     }
 
-    const msg = msgSnap.data() as any
+    const msg = msgSnap.data() as MessageRecord
     if (msg?.ticketId) {
       return NextResponse.json(
         { ticketId: msg.ticketId, ticketCode: msg.ticketCode || null },
@@ -85,7 +107,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
     }
 
-    const channel = channelSnap.data() as any
+    const channel = channelSnap.data() as ChannelRecord
     const source = channel?.source || ''
     if (source !== 'finques') {
       return NextResponse.json({ error: 'Channel not allowed' }, { status: 400 })
@@ -159,7 +181,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     const memberDocs = membersSnap.docs
     const memberIds = memberDocs.map((d) => d.id)
-    const memberUserIds = memberDocs.map((d) => (d.data() as any)?.userId).filter(Boolean)
+    const memberUserIds = memberDocs.map((d) => (d.data() as ChannelMemberRecord)?.userId).filter(Boolean)
 
     const summaryRef = db.collection('messages').doc()
     const summaryData = {
@@ -194,7 +216,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     for (const docId of memberIds) {
       const ref = db.collection('channelMembers').doc(docId)
-      const member = memberDocs.find((d) => d.id === docId)?.data() as any
+      const member = memberDocs.find((d) => d.id === docId)?.data() as ChannelMemberRecord | undefined
       const memberUserId = member?.userId
       if (!memberUserId || memberUserId === user.id) continue
       if (member?.hidden || member?.notify === false) continue
@@ -244,7 +266,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           memberUserIds
             .filter((uid) => uid && uid !== user.id)
             .filter((uid) => {
-              const m = memberDocs.find((d) => (d.data() as any)?.userId === uid)?.data() as any
+              const m = memberDocs.find((d) => (d.data() as ChannelMemberRecord)?.userId === uid)?.data() as ChannelMemberRecord | undefined
               return !m?.hidden && m?.notify !== false
             })
             .map((uid) =>
@@ -261,7 +283,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     const mutedUsers = new Set(
       memberDocs
-        .map((d) => d.data() as any)
+        .map((d) => d.data() as ChannelMemberRecord)
         .filter((m) => m?.muted || m?.notify === false || m?.hidden)
         .map((m) => m.userId)
     )

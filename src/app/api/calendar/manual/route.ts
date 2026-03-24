@@ -9,7 +9,7 @@ export const runtime = 'nodejs'
 ---------------------------------------------------- */
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
+    const body = (await req.json()) as Record<string, unknown>
 
     if (!body.NomEvent || !body.DataInici) {
       return NextResponse.json(
@@ -50,10 +50,10 @@ export async function POST(req: Request) {
     await db.collection('stage_verd').doc(id).set(newEvent)
 
     return NextResponse.json({ ok: true, id })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('âŒ Error POST manual:', err)
     return NextResponse.json(
-      { error: 'Error desant a Firestore', details: err.message },
+      { error: 'Error desant a Firestore', details: err instanceof Error ? err.message : 'Error intern' },
       { status: 500 }
     )
   }
@@ -75,10 +75,10 @@ export async function GET() {
     }))
 
     return NextResponse.json({ data })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('âŒ Error GET manuals:', err)
     return NextResponse.json(
-      { error: 'Error llegint de Firestore', details: err.message },
+      { error: 'Error llegint de Firestore', details: err instanceof Error ? err.message : 'Error intern' },
       { status: 500 }
     )
   }

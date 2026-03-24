@@ -17,6 +17,33 @@ type SessionUser = {
   role?: string
 }
 
+type ChannelRecord = Record<string, unknown> & {
+  source?: string
+  responsibleUserId?: string
+  location?: string
+  status?: string
+  name?: string
+}
+
+type ChannelMemberRecord = Record<string, unknown> & {
+  userId?: string
+  unreadCount?: number
+  hidden?: boolean
+  notify?: boolean
+  muted?: boolean
+  projectMissedActivityPending?: boolean
+  projectMissedActivityWindowStartedAt?: number
+  projectMissedActivityDueAt?: number
+}
+
+type MessageRecord = Record<string, unknown> & {
+  createdAt?: number
+  visibility?: 'channel' | 'direct'
+  targetUserIds?: string[]
+  senderId?: string
+  body?: string
+}
+
 async function sendPushToUids(baseUrl: string, uids: string[], title: string, body: string, url: string) {
   if (!uids.length) return
   await Promise.all(
@@ -68,7 +95,7 @@ async function createTicketFromMessage(args: {
 
   const channelSnap = await db.collection('channels').doc(channelId).get()
   if (!channelSnap.exists) return null
-  const channel = channelSnap.data() as any
+  const channel = channelSnap.data() as ChannelRecord
 
   const source = channel?.source || ''
   if (source !== 'finques') return null
@@ -91,7 +118,7 @@ async function createTicketFromMessage(args: {
     .get()
   const memberDocs = membersSnap.docs
   const memberIds = memberDocs.map((d) => d.id)
-  const memberUserIds = memberDocs.map((d) => (d.data() as any)?.userId).filter(Boolean)
+  const memberUserIds = memberDocs.map((d) => (d.data() as ChannelMemberRecord)?.userId).filter(Boolean)
 
   const summaryRef = db.collection('messages').doc()
   const summaryData = {
@@ -166,7 +193,7 @@ async function createTicketFromMessage(args: {
 
   for (const docId of memberIds) {
     const ref = db.collection('channelMembers').doc(docId)
-    const member = memberDocs.find((d) => d.id === docId)?.data() as any
+    const member = memberDocs.find((d) => d.id === docId)?.data() as ChannelMemberRecord | undefined
     const memberUserId = member?.userId
     if (!memberUserId || memberUserId === userId) continue
     batch.set(ref, { unreadCount: Number(member?.unreadCount || 0) + 1 }, { merge: true })
@@ -244,12 +271,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     let snap
     try {
       snap = await query.orderBy('createdAt', 'desc').limit(limit).get()
-    } catch (err: any) {
-      const msg = String(err?.message || '')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : ''
       if (msg.toLowerCase().includes('requires an index')) {
         const fallback = await query.limit(50).get()
         const docs = fallback.docs
-          .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          .map((d) => ({ id: d.id, ...(d.data() as MessageRecord) }))
           .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
           .slice(0, limit)
         const filtered = docs.filter((m) => {
@@ -264,8 +291,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       throw err
     }
 
-    let messages = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
-    messages = messages.filter((m: any) => {
+    let messages = snap.docs.map((d) => ({ id: d.id, ...(d.data() as MessageRecord) }))
+    messages = messages.filter((m) => {
       if (m.visibility === 'direct') {
         const targets = Array.isArray(m.targetUserIds) ? m.targetUserIds : []
         return targets.includes(userId) || m.senderId === userId
@@ -333,11 +360,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const msgRef = db.collection('messages').doc()
 
     const channelSnap = await db.collection('channels').doc(id).get()
-    const channelData = channelSnap.exists ? (channelSnap.data() as any) : null
+    const channelData = channelSnap.exists ? (channelSnap.data() as ChannelRecord) : null
     if (String(channelData?.status || '').toLowerCase() === 'archived') {
       return NextResponse.json({ error: 'Canal tancat' }, { status: 400 })
     }
-    const channelName = channelSnap.exists ? (channelSnap.data() as any)?.name : ''
+    const channelName = channelSnap.exists ? (channelSnap.data() as ChannelRecord)?.name : ''
     const channelSource = String(channelData?.source || '').toLowerCase()
     const data = {
       channelId: id,
@@ -365,7 +392,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     const memberDocs = membersSnap.docs
     const memberIds = memberDocs.map((d) => d.id)
-    const memberUserIds = memberDocs.map((d) => (d.data() as any)?.userId).filter(Boolean)
+    const memberUserIds = memberDocs.map((d) => (d.data() as ChannelMemberRecord)?.userId).filter(Boolean)
 
     if (visibility === 'direct' && !memberUserIds.includes(targetUserId)) {
       return NextResponse.json({ error: 'Target user not in channel' }, { status: 400 })
@@ -389,7 +416,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     // Update unread counts
     for (const docId of memberIds) {
       const ref = db.collection('channelMembers').doc(docId)
-      const member = memberDocs.find((d) => d.id === docId)?.data() as any
+      const member = memberDocs.find((d) => d.id === docId)?.data() as ChannelMemberRecord | undefined
       const memberUserId = member?.userId
 
       if (memberUserId === userId) continue
@@ -434,7 +461,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         }
 
         const recipients = memberDocs
-          .map((d) => d.data() as any)
+          .map((d) => d.data() as ChannelMemberRecord)
           .filter((m) => !m?.hidden && m?.notify !== false)
           .map((m) => m.userId)
           .filter((uid) => uid && uid !== userId)
@@ -453,7 +480,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const recipients = memberDocs
-      .map((d) => d.data() as any)
+      .map((d) => d.data() as ChannelMemberRecord)
       .filter((m) => !m?.hidden && m?.notify !== false)
       .map((m) => m.userId)
       .filter((uid) => uid && uid !== userId)
@@ -461,7 +488,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     const mutedUsers = new Set(
       memberDocs
-        .map((d) => d.data() as any)
+        .map((d) => d.data() as ChannelMemberRecord)
         .filter((m) => m?.muted || m?.notify === false || m?.hidden)
         .map((m) => m.userId)
     )
@@ -519,7 +546,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       if (ticketResult) {
         const mutedUsersForTicket = new Set(
           memberDocs
-            .map((d) => d.data() as any)
+            .map((d) => d.data() as ChannelMemberRecord)
             .filter((m) => m?.muted)
             .map((m) => m.userId)
         )

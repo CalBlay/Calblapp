@@ -65,7 +65,6 @@ export async function GET(request: Request) {
   const user = session.user as SessionUser
   const role = normalizeRole(user.role)
   const userName = (user.name || user.email || '').toString().trim()
-  const userDept = user.department || ''
 
   const { searchParams } = new URL(request.url)
   const fromStr = searchParams.get('from')
@@ -85,7 +84,7 @@ export async function GET(request: Request) {
   // 🔹 2. Construïm els esdeveniments
   const built: BuiltEvent[] = []
   snap.forEach((doc) => {
-    const d = doc.data() as any
+    const d = doc.data() as Record<string, unknown>
     const dataInici = d.DataInici ? new Date(d.DataInici) : null
     if (!dataInici) return
 

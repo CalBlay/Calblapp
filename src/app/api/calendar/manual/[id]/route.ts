@@ -1,7 +1,6 @@
 // ✅ file: src/app/api/calendar/manual/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { firestoreAdmin } from '@/lib/firebaseAdmin'
 
 
 export const runtime = 'nodejs'
@@ -63,7 +62,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (Object.prototype.hasOwnProperty.call(data, 'code')) {
       const snap = await docRef.get()
       const prevCode = String(snap.get('code') || '').trim()
-      const nextCode = String((data as Record<string, any>).code || '').trim()
+      const nextCode = String(data.code || '').trim()
       if (prevCode !== nextCode) {
         codeMeta = {
           codeSource: 'manual',
@@ -99,11 +98,13 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
     console.log(`🗑️ Esdeveniment ${params.id} eliminat de ${collection}`)
     return NextResponse.json({ ok: true })
-  } catch (err: any) {
-    console.error('❌ Error DELETE:', err?.message || err)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error eliminant esdeveniment'
+    console.error('Error DELETE:', message)
     return NextResponse.json(
-      { error: err?.message || 'Error eliminant esdeveniment' },
+      { error: message },
       { status: 500 }
     )
   }
 }
+

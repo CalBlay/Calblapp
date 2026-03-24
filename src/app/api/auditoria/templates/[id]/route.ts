@@ -79,7 +79,9 @@ function sanitizeBlocks(input: unknown) {
     .filter(Boolean)
 }
 
-function isTemplateComplete(name: string, blocks: Array<any>) {
+type SanitizedBlock = ReturnType<typeof sanitizeBlocks>[number]
+
+function isTemplateComplete(name: string, blocks: SanitizedBlock[]) {
   if (!String(name || '').trim()) return false
   if (!Array.isArray(blocks) || blocks.length === 0) return false
 
@@ -89,9 +91,9 @@ function isTemplateComplete(name: string, blocks: Array<any>) {
   return blocks.every((b) => {
     if (!String(b?.title || '').trim()) return false
     if (!Array.isArray(b?.items) || b.items.length === 0) return false
-    if (!b.items.every((i: any) => String(i?.label || '').trim().length > 0)) return false
+    if (!b.items.every((i) => String(i?.label || '').trim().length > 0)) return false
     if (normalizeItemWeightMode(String(b?.itemWeightMode || 'equal')) !== 'manual') return true
-    const total = b.items.reduce((sum: number, i: any) => sum + (Number(i?.weight) || 0), 0)
+    const total = b.items.reduce((sum: number, i) => sum + (Number(i?.weight) || 0), 0)
     return Math.round(total * 100) / 100 === 100
   })
 }

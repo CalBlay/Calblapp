@@ -14,14 +14,28 @@ import {
 import {
   invalidateAvailableVehiclesCache,
   useAvailableVehicles,
+  type AvailableVehicle,
 } from '@/hooks/logistics/useAvailableVehicles'
 
 type Driver = { id: string; name: string }
+type AssignmentVehicleRow = {
+  id?: string
+  department?: string
+  name?: string
+  plate?: string
+  matricula?: string
+  vehiclePlate?: string
+  vehicleType?: string
+  startDate?: string
+  arrivalTime?: string
+  endTime?: string
+  startTime?: string
+}
 
 interface Props {
   eventCode: string
   expectedVehicleType?: string
-  row: any | null
+  row: AssignmentVehicleRow | null
   rowIndex?: number
   eventDay: string
   eventStartTime: string
@@ -132,7 +146,7 @@ export default function VehicleRow({
   const plateOptions = useMemo(() => {
     if (!vehicleType) return []
 
-    const options = availableVehicles.filter(
+    const options: AvailableVehicle[] = availableVehicles.filter(
       (v) => v.type === vehicleType && v.available === true
     )
 
@@ -142,7 +156,7 @@ export default function VehicleRow({
         plate,
         type: vehicleType,
         available: true,
-      } as any)
+      })
     }
 
     return options

@@ -13,6 +13,16 @@ type SessionUser = {
   name?: string
 }
 
+type ChannelRecord = Record<string, unknown> & {
+  lastMessageAt?: number
+}
+
+type ChannelMemberRecord = Record<string, unknown> & {
+  channelId?: string
+  unreadCount?: number
+  muted?: boolean
+}
+
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user) {
@@ -32,7 +42,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
       const snap = await db.collection('channels').get()
-      const channels = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
+      const channels = snap.docs.map((d) => ({ id: d.id, ...(d.data() as ChannelRecord) }))
       return NextResponse.json({ channels })
     }
 
@@ -44,7 +54,7 @@ export async function GET(req: Request) {
 
     const memberships = memberSnap.docs.map((d) => ({
       id: d.id,
-      ...(d.data() as any),
+      ...(d.data() as ChannelMemberRecord),
     }))
 
     const channelIds = memberships.map((m) => m.channelId).filter(Boolean)
@@ -57,7 +67,7 @@ export async function GET(req: Request) {
     const channelMap = new Map(
       channelSnaps
         .filter((c) => c.exists)
-        .map((c) => [c.id, { id: c.id, ...(c.data() as any) }])
+        .map((c) => [c.id, { id: c.id, ...(c.data() as ChannelRecord) }])
     )
 
     const channels = memberships
@@ -71,7 +81,7 @@ export async function GET(req: Request) {
         }
       })
       .filter(Boolean)
-      .sort((a: any, b: any) => {
+      .sort((a, b) => {
         const av = typeof a.lastMessageAt === 'number' ? a.lastMessageAt : 0
         const bv = typeof b.lastMessageAt === 'number' ? b.lastMessageAt : 0
         return bv - av

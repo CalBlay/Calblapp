@@ -63,10 +63,13 @@ async function getSharePointMeta(itemId: string) {
 
   if (!res.ok) throw new Error(`SharePoint meta error ${res.status}`)
 
-  const json = await res.json()
+  const json = (await res.json()) as {
+    name?: string
+    file?: { mimeType?: string }
+  }
   return {
-    name: (json as any)?.name as string | undefined,
-    mimeType: (json as any)?.file?.mimeType as string | undefined,
+    name: json.name,
+    mimeType: json.file?.mimeType,
   }
 }
 

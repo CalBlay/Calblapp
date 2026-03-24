@@ -32,6 +32,36 @@ type AssignmentInput = {
   notes?: string
 }
 
+type QuadrantConductorRecord = {
+  plate?: string
+  startDate?: string
+  startTime?: string
+  endDate?: string
+  endTime?: string
+  status?: string
+}
+
+type QuadrantRecord = Record<string, unknown> & {
+  status?: string
+  conductors?: QuadrantConductorRecord[]
+}
+
+type AssignmentRecord = Record<string, unknown> & {
+  plate?: string
+  startDate?: string
+  startTime?: string
+  endDate?: string
+  endTime?: string
+  status?: string
+  dayKeys?: string[]
+}
+
+type TokenLike = {
+  name?: string
+  email?: string
+  sub?: string
+}
+
 const quadrantCollections = [
   'quadrantsLogistica',
   'quadrantsServeis',
@@ -71,10 +101,10 @@ async function getQuadrantOccupations(plate: string): Promise<Occupation[]> {
     const snap = await db.collection(col).get()
 
     snap.docs.forEach(doc => {
-      const q = doc.data()
+      const q = doc.data() as QuadrantRecord
       const conductors = Array.isArray(q.conductors) ? q.conductors : []
 
-      conductors.forEach((c: any) => {
+      conductors.forEach((c) => {
         if (!c?.plate || c.plate !== plate) return
         if (!c?.startDate || !c?.startTime) return
 
@@ -106,7 +136,7 @@ async function getAssignmentOccupations(
   snap.docs.forEach(doc => {
     if (opts?.ignoreId && doc.id === opts.ignoreId) return
 
-    const data = doc.data() as any
+    const data = doc.data() as AssignmentRecord
     const status = String(data?.status || 'pending')
     if (!ACTIVE_STATUSES.has(status)) return
 
@@ -185,6 +215,7 @@ export async function POST(req: NextRequest) {
   try {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const authToken = token as TokenLike
 
     const body = (await req.json()) as AssignmentInput
     const cleaned = sanitizeInput(body)
@@ -227,7 +258,7 @@ export async function POST(req: NextRequest) {
       status: 'pending',
       createdAt: now,
       updatedAt: now,
-      createdBy: (token as any)?.name || (token as any)?.email || (token as any)?.sub || 'system',
+      createdBy: authToken.name || authToken.email || authToken.sub || 'system',
     }
 
     const ref = await db.collection(COLLECTION).add(doc)
@@ -250,7 +281,7 @@ export async function GET(req: NextRequest) {
     const includeCancelled = searchParams.get('includeCancelled') === 'true'
 
     const base = db.collection(COLLECTION)
-    const filters: Array<(a: any) => boolean> = []
+    const filters: Array<(a: AssignmentRecord) => boolean> = []
     let query: FirebaseFirestore.Query = base
 
     if (date) {
@@ -263,7 +294,7 @@ export async function GET(req: NextRequest) {
       filters.push(a => a.plate === plate)
     }
 
-    const applyFilters = (items: any[]) =>
+    const applyFilters = (items: AssignmentRecord[]) =>
       items.filter(a => {
         if (!includeCancelled && a.status === 'cancelled') return false
         return filters.every(f => f(a))
@@ -274,14 +305,14 @@ export async function GET(req: NextRequest) {
       const all = await base.get()
       return {
         docs: all.docs.filter(d => {
-          const data = d.data() as any
+          const data = d.data() as AssignmentRecord
           return applyFilters([{ ...data, id: d.id }]).length > 0
         }),
       } as FirebaseFirestore.QuerySnapshot
     })
 
     const assignments = snap.docs
-      .map(d => ({ id: d.id, ...(d.data() as any) }))
+      .map(d => ({ id: d.id, ...(d.data() as AssignmentRecord) }))
       .filter(a => (includeCancelled ? true : a.status !== 'cancelled'))
       .sort((a, b) => {
         const aKey = `${a.startDate || ''}T${a.startTime || ''}`

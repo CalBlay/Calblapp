@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
     const events = (snap.docs || [])
       .map((doc) => {
-        const d = doc.data() as any
+        const d = doc.data() as Record<string, unknown>
 
         console.log(
           `[events/quadrants] CODE → ${d?.code || d?.C_digo || '(sense codi)'} | NomEvent: ${d?.NomEvent}`

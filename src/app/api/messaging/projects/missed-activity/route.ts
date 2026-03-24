@@ -14,6 +14,7 @@ type SessionUser = {
 }
 
 type ChannelMemberData = {
+  channelId?: string
   userId?: string
   userName?: string
   hidden?: boolean
@@ -96,7 +97,7 @@ export async function GET(req: Request) {
     const member = doc.data() as ChannelMemberData
     if (Number(member.projectMissedActivityDueAt || 0) > now) continue
     processed += 1
-    const channelId = String((doc.data() as any)?.channelId || '').trim()
+    const channelId = String(member.channelId || '').trim()
     const userId = String(member.userId || '').trim()
     const windowStartedAt = Number(member.projectMissedActivityWindowStartedAt || 0)
 

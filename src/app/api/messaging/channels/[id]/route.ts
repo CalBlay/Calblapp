@@ -8,6 +8,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 type SessionUser = { id: string; role?: string }
+type ChannelRecord = Record<string, unknown>
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -36,5 +37,5 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     }
   }
 
-  return NextResponse.json({ channel: { id: channelSnap.id, ...(channelSnap.data() as any) } })
+  return NextResponse.json({ channel: { id: channelSnap.id, ...(channelSnap.data() as ChannelRecord) } })
 }

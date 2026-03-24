@@ -18,6 +18,35 @@ type Occupation = {
   status?: string
 }
 
+type QuadrantConductorRecord = {
+  plate?: string
+  startDate?: string
+  startTime?: string
+  endDate?: string
+  endTime?: string
+  status?: string
+}
+
+type QuadrantRecord = Record<string, unknown> & {
+  status?: string
+  conductors?: QuadrantConductorRecord[]
+}
+
+type AssignmentRecord = Record<string, unknown> & {
+  plate?: string
+  startDate?: string
+  startTime?: string
+  endDate?: string
+  endTime?: string
+  status?: string
+}
+
+type TokenLike = {
+  name?: string
+  email?: string
+  sub?: string
+}
+
 const quadrantCollections = [
   'quadrantsLogistica',
   'quadrantsServeis',
@@ -38,10 +67,10 @@ async function getQuadrantOccupations(plate: string): Promise<Occupation[]> {
     const snap = await db.collection(col).get()
 
     snap.docs.forEach(doc => {
-      const q = doc.data()
+      const q = doc.data() as QuadrantRecord
       const conductors = Array.isArray(q.conductors) ? q.conductors : []
 
-      conductors.forEach((c: any) => {
+      conductors.forEach((c) => {
         if (!c?.plate || c.plate !== plate) return
         if (!c?.startDate || !c?.startTime) return
 
@@ -73,7 +102,7 @@ async function getAssignmentOccupations(
   snap.docs.forEach(doc => {
     if (opts?.ignoreId && doc.id === opts.ignoreId) return
 
-    const data = doc.data() as any
+    const data = doc.data() as AssignmentRecord
     const status = String(data?.status || 'pending')
     if (!ACTIVE_STATUSES.has(status)) return
 
@@ -113,6 +142,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   try {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const authToken = token as TokenLike
 
     const id = params?.id
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
@@ -127,7 +157,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const snap = await ref.get()
     if (!snap.exists) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    const data = snap.data() as any
+    const data = snap.data() as AssignmentRecord
     const plate = data?.plate
     const startDate = data?.startDate
     const startTime = data?.startTime
@@ -164,7 +194,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await ref.update({
       status: targetStatus,
       updatedAt: now,
-      updatedBy: (token as any)?.name || (token as any)?.email || (token as any)?.sub || 'system',
+      updatedBy: authToken.name || authToken.email || authToken.sub || 'system',
       confirmedAt: targetStatus === 'cancelled' ? null : now,
     })
 

@@ -10,6 +10,7 @@ import {
   Truck,
   CalendarClock,
   Route,
+  type LucideIcon,
 } from 'lucide-react'
 import { getVisibleModules } from '@/lib/accessControl'
 
@@ -33,7 +34,7 @@ export default function LogisticsHubPage() {
           {submodules.map(sub => {
             const key = sub.path.split('/').pop() || sub.path
 
-            const styleMap: Record<string, { bg: string; text: string; border: string; Icon: any }> = {
+            const styleMap: Record<string, { bg: string; text: string; border: string; Icon: LucideIcon }> = {
               preparacio: { bg: 'bg-[#e9f8ee]', text: 'text-[#155e37]', border: 'border-[#c7eed6]', Icon: ClipboardCheck },
               assignacions: { bg: 'bg-[#eef2ff]', text: 'text-[#3730a3]', border: 'border-[#c7d2fe]', Icon: Route },
               disponibilitat: { bg: 'bg-[#e8f5ff]', text: 'text-[#0f5c99]', border: 'border-[#c9e6ff]', Icon: CalendarClock },

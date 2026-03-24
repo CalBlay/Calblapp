@@ -13,6 +13,12 @@ import {
 } from '@/hooks/logistics/useAvailableVehicles'
 import { invalidateAvailablePersonnelCache } from '@/hooks/logistics/useAvailablePersonnel'
 
+type DepartmentOption = 'logistica' | 'serveis'
+type Driver = {
+  id: string
+  name: string
+}
+
 type Props = {
   eventCode: string
   eventDay: string
@@ -30,21 +36,32 @@ export default function VehicleRowEditor({
   onSaved,
   onCancel,
 }: Props) {
-  const [department, setDepartment] = useState<'logistica' | 'serveis'>('logistica')
+  const [department, setDepartment] = useState<DepartmentOption>('logistica')
   const [vehicleType, setVehicleType] = useState('')
   const [plate, setPlate] = useState('')
   const [driverId, setDriverId] = useState('')
   const [date, setDate] = useState(eventDay)
   const [startTime, setStartTime] = useState(eventStartTime)
   const [endTime, setEndTime] = useState(eventEndTime)
-  const [drivers, setDrivers] = useState<any[]>([])
+  const [drivers, setDrivers] = useState<Driver[]>([])
 
   useEffect(() => {
     async function loadDrivers() {
       const res = await fetch(`/api/personnel/by-department?dept=${department}`)
       if (!res.ok) return setDrivers([])
       const data = await res.json()
-      setDrivers(Array.isArray(data.items) ? data.items : [])
+      setDrivers(
+        Array.isArray(data.items)
+          ? data.items
+              .filter(
+                (item: unknown): item is Driver =>
+                  typeof item === 'object' &&
+                  item !== null &&
+                  typeof (item as Driver).id === 'string' &&
+                  typeof (item as Driver).name === 'string'
+              )
+          : []
+      )
     }
     loadDrivers()
   }, [department])
@@ -94,7 +111,7 @@ export default function VehicleRowEditor({
       <select
         className="rounded border px-2 py-1 text-sm"
         value={department}
-        onChange={(e) => setDepartment(e.target.value as any)}
+        onChange={(e) => setDepartment(e.target.value as DepartmentOption)}
       >
         <option value="logistica">Logistica</option>
         <option value="serveis">Serveis</option>

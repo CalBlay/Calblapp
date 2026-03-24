@@ -5,6 +5,7 @@ import React, { useMemo, useState } from 'react'
 import TransportList from '@/components/transports/TransportList'
 import NewTransportModal from '@/components/transports/NewTransportModal'
 import { useTransports } from '@/hooks/useTransports'
+import type { Transport } from '@/hooks/useTransports'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import FloatingAddButton from '@/components/ui/floating-add-button'
 import { Input } from '@/components/ui/input'
@@ -24,7 +25,7 @@ import {
 export default function LogisticsTransportsPage() {
   const { data: transports = [], refetch } = useTransports()
   const [isModalOpen, setModalOpen] = useState(false)
-  const [editingTransport, setEditingTransport] = useState<any | null>(null)
+  const [editingTransport, setEditingTransport] = useState<Transport | null>(null)
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<TransportFiltersState>({
@@ -54,12 +55,12 @@ export default function LogisticsTransportsPage() {
     setModalOpen(true)
   }
 
-  const handleEdit = (t: any) => {
+  const handleEdit = (t: Transport) => {
     setEditingTransport(t)
     setModalOpen(true)
   }
 
-  const handleDelete = async (t: any) => {
+  const handleDelete = async (t: Transport) => {
     const confirmDelete = window.confirm(`Vols eliminar el vehicle ${t.plate}?`)
     if (!confirmDelete) return
 

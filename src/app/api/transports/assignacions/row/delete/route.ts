@@ -6,12 +6,23 @@ export const runtime = 'nodejs'
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
+type QuadrantConductorRecord = { id?: string }
+type QuadrantRecord = Record<string, unknown> & {
+  conductors?: QuadrantConductorRecord[]
+}
+
+type TokenLike = {
+  name?: string
+  email?: string
+}
+
 export async function POST(req: NextRequest) {
   try {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const authToken = token as TokenLike
 
     const { eventCode, department, rowId } = await req.json()
 
@@ -33,16 +44,16 @@ export async function POST(req: NextRequest) {
     }
 
     const ref = snap.docs[0].ref
-    const data = snap.docs[0].data() as any
+    const data = snap.docs[0].data() as QuadrantRecord
 
     const conductors = Array.isArray(data.conductors) ? data.conductors : []
 
-    const nextConductors = conductors.filter((c: any) => c.id !== rowId)
+    const nextConductors = conductors.filter((c) => c.id !== rowId)
 
     await ref.update({
       conductors: nextConductors,
       updatedAt: new Date().toISOString(),
-      updatedBy: (token as any)?.name || (token as any)?.email || 'system',
+      updatedBy: authToken.name || authToken.email || 'system',
     })
 
     return NextResponse.json({ ok: true })

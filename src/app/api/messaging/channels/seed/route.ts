@@ -6,6 +6,8 @@ import { normalizeRole } from '@/lib/roles'
 
 export const runtime = 'nodejs'
 
+type SessionUser = { id?: string; role?: string }
+
 const PILOT_LOCATIONS = [
   { source: 'finques', location: 'Clos la Plana' },
   { source: 'finques', location: 'Josep Massachs' },
@@ -33,7 +35,8 @@ export async function POST() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const role = normalizeRole((session.user as any)?.role || '')
+  const user = session.user as SessionUser | undefined
+  const role = normalizeRole(user?.role || '')
   if (role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -54,7 +57,7 @@ export async function POST() {
           source: ch.source,
           location: ch.location,
           name,
-          createdBy: (session.user as any)?.id || 'system',
+          createdBy: user?.id || 'system',
           createdAt: now,
           lastMessagePreview: '',
           lastMessageAt: 0,

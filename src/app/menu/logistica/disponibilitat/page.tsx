@@ -34,6 +34,40 @@ type Conductor = {
   name: string
 }
 
+type AvailabilityExportRow = {
+  Data: string
+  HoraInici: string
+  HoraFi: string
+  Matricula: string
+  Tipus: string
+  Disponible: string
+}
+
+type AssignmentApiRow = {
+  plate?: string
+  vehicleType?: string
+  conductorName?: string
+  destination?: string
+  notes?: string
+  status?: string
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  endTime?: string
+}
+
+type AssignmentExportRow = {
+  Data: string
+  HoraInici: string
+  HoraFi: string
+  Matricula: string
+  Vehicle: string
+  Conductor: string
+  Destinacio: string
+  Notes: string
+  Estat: string
+}
+
 export default function DisponibilitatLogisticaPage() {
   const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [startTime, setStartTime] = useState('06:00')
@@ -142,8 +176,8 @@ export default function DisponibilitatLogisticaPage() {
       invalidateAvailableVehiclesCache()
       invalidateAvailablePersonnelCache()
       await refetchVehicles(true)
-    } catch (e: any) {
-      setAssignError(e?.message || 'Error creant assignació')
+    } catch (error: unknown) {
+      setAssignError(error instanceof Error ? error.message : 'Error creant assignació')
     } finally {
       setAssignLoading(false)
     }
@@ -159,7 +193,7 @@ export default function DisponibilitatLogisticaPage() {
   )}-${endTime.replace(':', '')}`
 
   const exportRows = useMemo(
-    () =>
+    (): AvailabilityExportRow[] =>
       filteredVehicles.map((v) => ({
         Data: date,
         HoraInici: startTime,
@@ -187,7 +221,7 @@ export default function DisponibilitatLogisticaPage() {
       .replace(/'/g, '&#39;')
 
   const buildPdfTableHtml = () => {
-    const cols = [
+    const cols: Array<keyof AvailabilityExportRow> = [
       'Data',
       'HoraInici',
       'HoraFi',
@@ -200,7 +234,7 @@ export default function DisponibilitatLogisticaPage() {
     const body = exportRows
       .map((row) => {
         const cells = cols
-          .map((key) => `<td>${escapeHtml(String((row as any)[key] ?? ''))}</td>`)
+          .map((key) => `<td>${escapeHtml(String(row[key] ?? ''))}</td>`)
           .join('')
         return `<tr>${cells}</tr>`
       })
@@ -267,13 +301,13 @@ export default function DisponibilitatLogisticaPage() {
       throw new Error('No s ha pogut carregar assignacions')
     }
     const data = await res.json()
-    const assignments = Array.isArray(data?.assignments) ? data.assignments : []
+    const assignments: AssignmentApiRow[] = Array.isArray(data?.assignments) ? data.assignments : []
 
     const rangeStart = parseTime(startTime)
     const rangeEnd = parseTime(endTime)
     const hasRange = rangeStart != null && rangeEnd != null && rangeEnd > rangeStart
 
-    const filtered = assignments.filter((a: any) => {
+    const filtered = assignments.filter((a) => {
       if (selectedVehicle?.plate && a?.plate !== selectedVehicle.plate) return false
 
       const startDate = String(a?.startDate || '')
@@ -292,7 +326,7 @@ export default function DisponibilitatLogisticaPage() {
       return true
     })
 
-    return filtered.map((a: any) => ({
+    return filtered.map((a): AssignmentExportRow => ({
       Data: a?.startDate || date,
       HoraInici: a?.startTime || '',
       HoraFi: a?.endTime || '',
@@ -321,8 +355,8 @@ export default function DisponibilitatLogisticaPage() {
   const handleExportAssignmentsPdf = async () => {
     try {
       const rows = await loadAssignmentRows()
-      const cols = [
-        'Data',
+      const cols: Array<keyof AvailabilityExportRow> = [
+      'Data',
         'HoraInici',
         'HoraFi',
         'Matricula',
@@ -334,7 +368,7 @@ export default function DisponibilitatLogisticaPage() {
       ]
       const header = cols.map((c) => `<th>${escapeHtml(c)}</th>`).join('')
       const body = rows
-        .map((row: any) => {
+        .map((row) => {
           const cells = cols
             .map((key) => `<td>${escapeHtml(String(row?.[key] ?? ''))}</td>`)
             .join('')
@@ -675,4 +709,9 @@ export default function DisponibilitatLogisticaPage() {
     </main>
   )
 }
+
+
+
+
+
 

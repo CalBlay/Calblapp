@@ -8,12 +8,56 @@ export const runtime = 'nodejs'
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
+type RowInput = {
+  id?: string
+  name?: string
+  plate?: string
+  vehicleType?: string
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  arrivalTime?: string
+  endTime?: string
+}
+
+type SaveBody = {
+  eventCode?: string
+  department?: string
+  rowId?: string
+  rowIndex?: number
+  data?: RowInput
+  originalPlate?: string
+}
+
+type QuadrantConductorRecord = RowInput & {
+  id?: string
+  department?: string
+  createdAt?: string
+  createdBy?: string
+  updatedAt?: string
+  updatedBy?: string
+}
+
+type QuadrantRecord = Record<string, unknown> & {
+  conductors?: QuadrantConductorRecord[]
+  startDate?: string
+  startTime?: string
+  arrivalTime?: string
+  endTime?: string
+}
+
+type TokenLike = {
+  name?: string
+  email?: string
+}
+
 export async function POST(req: NextRequest) {
   try {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const authToken = token as TokenLike
 
-    const body = await req.json()
+    const body = (await req.json()) as SaveBody
     const { eventCode, department, rowId, rowIndex, data, originalPlate } = body || {}
 
     if (!eventCode || !department || !data) {
@@ -33,10 +77,10 @@ export async function POST(req: NextRequest) {
 
     const doc = snap.docs[0]
     const ref = doc.ref
-    const current = doc.data() as any
+    const current = doc.data() as QuadrantRecord
 
     const now = new Date().toISOString()
-    const user = (token as any)?.name || (token as any)?.email || 'system'
+    const user = authToken.name || authToken.email || 'system'
 
     const conductors = Array.isArray(current.conductors) ? current.conductors : []
 
@@ -47,7 +91,7 @@ export async function POST(req: NextRequest) {
     const origPlateNorm = normPlate(originalPlate)
 
     let replaced = false
-    const nextConductors = conductors.map((c: any) => {
+    const nextConductors = conductors.map((c) => {
       const curPlateNorm = normPlate(c?.plate)
       if (
         c?.id === idToUse ||

@@ -29,7 +29,7 @@ export async function GET() {
     let workbook: XLSX.WorkBook
     try {
       workbook = XLSX.readFile(filePath, { cellDates: false })
-    } catch (err) {
+    } catch {
       const buffer = fs.readFileSync(filePath)
       workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false })
     }

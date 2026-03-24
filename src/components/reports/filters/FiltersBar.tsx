@@ -43,7 +43,9 @@ export function FiltersBar({
 
   const update = (partial: Partial<Filters>) => {
     const next = { ...value, ...partial }
-    const changed = Object.keys(next).some(k => (next as any)[k] !== (value as any)[k])
+    const changed = (Object.keys(next) as Array<keyof Filters>).some(
+      (key) => next[key] !== value[key]
+    )
     if (changed) onChange(next)
   }
 

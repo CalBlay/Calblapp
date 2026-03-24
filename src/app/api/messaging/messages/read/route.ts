@@ -6,6 +6,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 export const runtime = 'nodejs'
 
 type SessionUser = { id: string }
+type MessageRecord = Record<string, unknown> & { readCount?: number }
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
         ])
         if (readSnap.exists) return
         if (!msgSnap.exists) return
-        const current = (msgSnap.data() as any)?.readCount || 0
+        const current = (msgSnap.data() as MessageRecord)?.readCount || 0
         tx.set(readRef, { messageId, userId, readAt: now }, { merge: true })
         tx.set(msgRef, { readCount: current + 1 }, { merge: true })
       })
