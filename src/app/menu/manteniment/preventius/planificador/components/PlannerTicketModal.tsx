@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTransports } from '@/hooks/useTransports'
+import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
 import AssignTicketModal from '@/app/menu/manteniment/tickets/components/AssignTicketModal'
 import type {
@@ -77,13 +78,13 @@ export default function PlannerTicketModal({
   const { data: session } = useSession()
   const role = normalizeRole((session?.user as any)?.role || '')
   const department = normalizeDept((session?.user as any)?.department || '')
-  const canValidate = role === 'admin' || (role === 'cap' && department === 'manteniment')
-  const canReopen = role === 'admin' || (role === 'cap' && department === 'manteniment')
+  const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
+  const canReopen = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
   const canExternalize =
     role === 'admin' ||
     role === 'direccio' ||
     (role === 'cap' &&
-      (department === 'manteniment' ||
+      (isMaintenanceCapDepartment(department) ||
         department === 'decoracio' ||
         department === 'decoracions' ||
         department === 'decoracion'))

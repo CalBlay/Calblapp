@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import admin from 'firebase-admin'
@@ -67,7 +68,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .trim()
-  const canReopen = role === 'admin' || (role === 'cap' && dept === 'manteniment')
+  const canReopen = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
   if (!canReopen) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }

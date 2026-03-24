@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { normalizeRole } from '@/lib/roles'
+import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 
 const normalizeDept = (raw?: string) =>
   (raw || '')
@@ -21,7 +22,7 @@ export default function PreventiusIndexPage() {
   const userDepartment = normalizeDept((session?.user as any)?.department || '')
 
   const isMaintenanceWorker = userRole === 'treballador' && userDepartment === 'manteniment'
-  const isMaintenanceCap = userRole === 'cap' && userDepartment === 'manteniment'
+  const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(userDepartment)
   const isAdmin = userRole === 'admin' || userRole === 'direccio'
 
   return (

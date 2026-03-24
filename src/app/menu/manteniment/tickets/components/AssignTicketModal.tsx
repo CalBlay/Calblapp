@@ -1,13 +1,5 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import { Check, ChevronDown, ChevronUp, Plus } from 'lucide-react'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
+import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
 import type {
   MachineItem,
   Ticket,
@@ -197,8 +189,6 @@ export default function AssignTicketModal({
   const [showExternalizeSection, setShowExternalizeSection] = useState(false)
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
   const [suppliersLoading, setSuppliersLoading] = useState(false)
-  const [supplierPickerOpen, setSupplierPickerOpen] = useState(false)
-  const [supplierSearch, setSupplierSearch] = useState('')
   const [createSupplierOpen, setCreateSupplierOpen] = useState(false)
   const [createSupplierBusy, setCreateSupplierBusy] = useState(false)
 
@@ -214,8 +204,6 @@ export default function AssignTicketModal({
     setEmailAttachments([])
     setEmailAttachmentError('')
     setShowExternalizeSection(false)
-    setSupplierPickerOpen(false)
-    setSupplierSearch('')
     setCreateSupplierOpen(false)
   }, [ticket.id, ticket.location, ticket.machine, ticket.description, ticket.ticketCode, ticket.incidentNumber, ticket.supplierName, ticket.supplierEmail, ticket.externalReference])
 
@@ -248,28 +236,14 @@ export default function AssignTicketModal({
     [externalHistory.length]
   )
 
-  const selectedSupplierLabel = useMemo(() => {
-    const directMatch = suppliers.find(
+  const selectedSupplierId = useMemo(() => {
+    const match = suppliers.find(
       (item) =>
         item.name?.trim().toLowerCase() === supplierName.trim().toLowerCase() &&
         item.email?.trim().toLowerCase() === supplierEmail.trim().toLowerCase()
     )
-    if (directMatch) return directMatch.name
-    if (supplierName.trim()) return supplierName.trim()
-    return 'Selecciona proveidor'
+    return match?.id || ''
   }, [supplierEmail, supplierName, suppliers])
-
-  const filteredSuppliers = useMemo(() => {
-    const needle = supplierSearch.trim().toLowerCase()
-    if (!needle) return suppliers
-    return suppliers.filter((supplier) =>
-      [supplier.name, supplier.email, supplier.specialty]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(needle)
-    )
-  }, [supplierSearch, suppliers])
 
   const addEmailAttachment = (file: File | null) => {
     if (!file) return
@@ -311,8 +285,6 @@ export default function AssignTicketModal({
   const selectSupplier = (supplier: SupplierOption) => {
     setSupplierName(String(supplier.name || '').trim())
     setSupplierEmail(String(supplier.email || '').trim())
-    setSupplierPickerOpen(false)
-    setSupplierSearch('')
     setCreateSupplierOpen(false)
   }
 
@@ -772,54 +744,30 @@ export default function AssignTicketModal({
                   </button>
                 </div>
 
-                <Popover open={supplierPickerOpen} onOpenChange={setSupplierPickerOpen}>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      disabled={isValidated || externalizeBusy}
-                      className="flex min-h-[48px] w-full items-center justify-between rounded-2xl border bg-white px-4 text-left text-sm disabled:opacity-60"
-                    >
-                      <span className="truncate">
-                        {selectedSupplierLabel}
-                        {supplierEmail.trim() ? ` · ${supplierEmail.trim()}` : ''}
-                      </span>
-                      <ChevronDown className="h-4 w-4 text-slate-500" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[360px] p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder="Cerca proveidor..." />
-                      <CommandList>
-                        <CommandEmpty>
-                          {suppliersLoading ? 'Carregant proveidors...' : 'Sense resultats'}
-                        </CommandEmpty>
-                        {suppliers.map((supplier) => (
-                          <CommandItem
-                            key={supplier.id}
-                            value={`${supplier.name} ${supplier.email || ''} ${supplier.specialty || ''}`}
-                            onClick={() => selectSupplier(supplier)}
-                            onSelect={() => selectSupplier(supplier)}
-                            onMouseDown={(e) => {
-                              e.preventDefault()
-                              selectSupplier(supplier)
-                            }}
-                          >
-                            <div className="flex min-w-0 flex-1 flex-col">
-                              <span className="truncate font-medium">{supplier.name}</span>
-                              <span className="truncate text-xs text-slate-500">
-                                {[supplier.email, supplier.specialty].filter(Boolean).join(' · ') ||
-                                  'Sense dades extra'}
-                              </span>
-                            </div>
-                            {supplier.name === selectedSupplierLabel && (
-                              <Check className="ml-2 h-4 w-4 text-emerald-600" />
-                            )}
-                          </CommandItem>
-                        ))}
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                <select
+                  className="min-h-[48px] w-full rounded-2xl border bg-white px-4 text-sm disabled:opacity-60"
+                  value={selectedSupplierId}
+                  disabled={isValidated || externalizeBusy || suppliersLoading}
+                  onChange={(e) => {
+                    const nextId = String(e.target.value || '')
+                    const nextSupplier = suppliers.find((supplier) => supplier.id === nextId)
+                    if (nextSupplier) {
+                      selectSupplier(nextSupplier)
+                      return
+                    }
+                    setSupplierName('')
+                    setSupplierEmail('')
+                  }}
+                >
+                  <option value="">
+                    {suppliersLoading ? 'Carregant proveidors...' : 'Selecciona proveidor'}
+                  </option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {[supplier.name, supplier.email].filter(Boolean).join(' · ')}
+                    </option>
+                  ))}
+                </select>
 
                 {createSupplierOpen && (
                   <div className="grid gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_1fr_auto]">

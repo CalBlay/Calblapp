@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { useSession } from 'next-auth/react'
 import { RoleGuard } from '@/lib/withRoleGuard'
+import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import ExportMenu from '@/components/export/ExportMenu'
 import { normalizeRole } from '@/lib/roles'
 
@@ -66,7 +67,7 @@ export default function PreventiusFullsFitxaPage() {
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .trim()
-  const canValidate = role === 'admin' || (role === 'cap' && department === 'manteniment')
+  const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
   const isValidated = lastRecord?.status === 'validat'
 
   const applyRecordToDraft = (record: any) => {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
 import {
   buildTicketBody,
@@ -93,7 +94,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       }
     }
 
-    if (role === 'cap' && dept !== 'manteniment' && dept !== 'decoracio' && dept !== 'decoracions' && dept !== 'decoracion') {
+    if (
+      role === 'cap' &&
+      !isMaintenanceCapDepartment(dept) &&
+      dept !== 'decoracio' &&
+      dept !== 'decoracions' &&
+      dept !== 'decoracion'
+    ) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -172,8 +179,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     let nextStatus = body.status ? normalizeStatus(body.status) : null
     const nextPriority = body.priority ? normalizePriority(body.priority) : null
     const currentStatus = normalizeStatus(current.status)
-    const canValidate = role === 'admin' || (role === 'cap' && dept === 'manteniment')
-    const canReopen = role === 'admin' || (role === 'cap' && dept === 'manteniment')
+    const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
+    const canReopen = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
 
     const wantsDataEdit =
       body.assignedToIds !== undefined ||
@@ -369,7 +376,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
 
     const data = snap.data() as any
     const canDeleteAny =
-      role === 'admin' || (role === 'cap' && dept === 'manteniment')
+      role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
     if (data.createdById !== user.id && !canDeleteAny) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }

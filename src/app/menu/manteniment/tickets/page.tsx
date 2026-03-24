@@ -8,6 +8,7 @@ import { RoleGuard } from '@/lib/withRoleGuard'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import FiltersBar from '@/components/layout/FiltersBar'
 import { normalizeRole } from '@/lib/roles'
+import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { markTicketSeen } from '@/lib/maintenanceSeen'
 import { useMaintenanceNewCount } from '@/hooks/useMaintenanceNewCount'
 import { useMaintenanceTickets } from './useMaintenanceTickets'
@@ -89,10 +90,12 @@ export default function MaintenanceTicketsPage() {
   const department = normalizeDept((session?.user as any)?.department || '')
   const userRole = normalizeRole((session?.user as any)?.role || '')
   const isMaintenance = department === 'manteniment'
+  const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(department)
   const hasAccess =
     userRole === 'admin' ||
     userRole === 'direccio' ||
-    ((userRole === 'cap' || userRole === 'treballador') && isMaintenance)
+    isMaintenanceCap ||
+    (userRole === 'treballador' && isMaintenance)
 
   const { count: newTicketsCount } = useMaintenanceNewCount({ ticketType: 'maquinaria' })
 
@@ -180,6 +183,22 @@ export default function MaintenanceTicketsPage() {
     groupedTickets,
   } = useMaintenanceTickets({ ticketType: 'maquinaria' })
 
+  const displayStatusLabels: Record<TicketStatus, string> = canValidate
+    ? STATUS_LABELS
+    : {
+        ...STATUS_LABELS,
+        resolut: 'Fet',
+        validat: 'Fet',
+      }
+
+  const displayStatusBadgeClasses: Record<TicketStatus, string> = canValidate
+    ? statusBadgeClasses
+    : {
+        ...statusBadgeClasses,
+        resolut: statusBadgeClasses.fet,
+        validat: statusBadgeClasses.fet,
+      }
+
   const queryTicketId = (searchParams?.get('ticketId') || '').trim()
   const queryStart = (searchParams?.get('start') || '').trim()
   const queryEnd = (searchParams?.get('end') || '').trim()
@@ -266,7 +285,7 @@ export default function MaintenanceTicketsPage() {
             { value: 'espera', label: STATUS_LABELS.espera },
             { value: 'fet', label: STATUS_LABELS.fet },
             { value: 'no_fet', label: STATUS_LABELS.no_fet },
-            { value: 'validat', label: STATUS_LABELS.validat },
+            ...(canValidate ? [{ value: 'validat', label: STATUS_LABELS.validat }] : []),
           ]}
           priorityLabel="Importancia"
           priorityOptions={[
@@ -312,9 +331,9 @@ export default function MaintenanceTicketsPage() {
             (ticketRole === 'cap' && isMaintenance)
           }
           formatDateTime={formatDateTime}
-          statusBadgeClasses={statusBadgeClasses}
+          statusBadgeClasses={displayStatusBadgeClasses}
           priorityBadgeClasses={priorityBadgeClasses}
-          statusLabels={STATUS_LABELS}
+          statusLabels={displayStatusLabels}
           priorityLabels={PRIORITY_LABELS}
         />
 
@@ -397,7 +416,7 @@ export default function MaintenanceTicketsPage() {
             externalizeBusy={externalizeBusy}
             onUpdateDetails={handleUpdateDetails}
             formatDateTime={formatDateTime}
-            statusLabels={STATUS_LABELS}
+            statusLabels={displayStatusLabels}
             showHistory={showHistory}
             setShowHistory={setShowHistory}
             setSelected={setSelected}

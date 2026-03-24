@@ -10,6 +10,8 @@ import { useFilters } from '@/context/FiltersContext'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import ExportMenu from '@/components/export/ExportMenu'
+import { useTransports } from '@/hooks/useTransports'
+import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
 import { normalizeRole } from '@/lib/roles'
 import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
 type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
@@ -24,6 +26,8 @@ type Ticket = {
   priority?: 'urgent' | 'alta' | 'normal' | 'baixa'
   status: TicketStatus
   assignedToNames?: string[]
+  vehicleId?: string | null
+  vehiclePlate?: string | null
 }
 
 const STATUS_LABELS: Record<TicketStatus, string> = {
@@ -46,6 +50,7 @@ const getStatusLabel = (status?: string | null, fallback = 'pendent') => {
 
 export default function PreventiusFullsPage() {
   const { data: session } = useSession()
+  const { data: transports } = useTransports()
   const { setContent } = useFilters()
   const searchParams = useSearchParams()
   const role = normalizeRole((session?.user as any)?.role || '')
@@ -85,6 +90,8 @@ export default function PreventiusFullsPage() {
       endTime: string
       location?: string
       worker?: string
+      vehicleId?: string | null
+      vehiclePlate?: string | null
       templateId?: string
     }>
   >([])
@@ -186,6 +193,8 @@ export default function PreventiusFullsPage() {
               endTime: format(end, 'HH:mm'),
               location: t.location || '',
               worker: Array.isArray(t.assignedToNames) ? t.assignedToNames.join(', ') : '',
+              vehicleId: t.vehicleId || null,
+              vehiclePlate: t.vehiclePlate || null,
             }
           })
         setTicketItems(mapped)
@@ -283,6 +292,14 @@ export default function PreventiusFullsPage() {
     })
     return Array.from(values).sort((a, b) => a.localeCompare(b))
   }, [filteredByDate])
+
+  const transportById = useMemo(
+    () =>
+      new Map(
+        (transports || []).map((transport) => [String(transport.id || ''), transport])
+      ),
+    [transports]
+  )
 
   const grouped = useMemo(() => {
     const workerNeedle = workerFilter.toLowerCase()
@@ -624,68 +641,90 @@ export default function PreventiusFullsPage() {
                 </div>
                 <div className="divide-y">
                   {items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-base font-semibold text-gray-900">
-                          {item.kind === 'ticket'
-                            ? item.code
-                              ? `${item.code} - ${item.title}`
-                              : item.title
-                            : item.title}
-                        </div>
-                        <div className="mt-1 text-sm text-gray-700">
-                          {item.startTime}–{item.endTime}
-                        </div>
-                        <div className="mt-1 text-sm text-gray-500">
-                          {item.location}
-                          {item.worker ? ` · ${item.worker}` : ''}
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-3 md:items-end">
-                        <div className="flex flex-wrap gap-2">
-                          {item.kind === 'ticket' && (
-                            <span
-                              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                                statusClasses[(item as any).status || 'assignat']
-                              }`}
-                            >
-                              {getStatusLabel((item as any).status, 'assignat')}
-                            </span>
-                          )}
-                          {item.kind === 'preventiu' && (
-                            <span
-                              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                                statusClasses[(item as any).lastStatus || 'pendent'] ||
-                                'bg-slate-100 text-slate-700'
-                              }`}
-                            >
-                              {getStatusLabel((item as any).lastStatus, 'pendent')}
-                              {typeof (item as any).lastProgress === 'number'
-                                ? ` · ${(item as any).lastProgress}%`
-                                : ''}
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          className="min-h-[44px] shrink-0 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white"
-                          onClick={() =>
-                            item.kind === 'ticket'
-                              ? openTicket(
-                                  item.id,
-                                  (item as any).code,
-                                  (item as any).ticketType
-                                )
-                              : openFitxa(item.id, (item as any).lastRecordId || null)
-                          }
+                    (() => {
+                      const assignedTransport =
+                        item.kind === 'ticket' && (item as any).vehicleId
+                          ? transportById.get(String((item as any).vehicleId || ''))
+                          : null
+                      const vehicleLabel =
+                        item.kind === 'ticket'
+                          ? [
+                              assignedTransport?.type
+                                ? TRANSPORT_TYPE_LABELS[String(assignedTransport.type)] ||
+                                  String(assignedTransport.type)
+                                : '',
+                              String((item as any).vehiclePlate || '').trim(),
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')
+                          : ''
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between"
                         >
-                          {item.kind === 'ticket' ? 'Obrir ticket' : 'Obrir fitxa'}
-                        </button>
-                      </div>
-                    </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-base font-semibold text-gray-900">
+                              {item.kind === 'ticket'
+                                ? item.code
+                                  ? `${item.code} - ${item.title}`
+                                  : item.title
+                                : item.title}
+                            </div>
+                            <div className="mt-1 text-sm text-gray-700">
+                              {item.startTime}–{item.endTime}
+                            </div>
+                            <div className="mt-1 text-sm text-gray-500">
+                              {item.location}
+                              {item.worker ? ` · ${item.worker}` : ''}
+                              {vehicleLabel ? ` · ${vehicleLabel}` : ''}
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-3 md:items-end">
+                            <div className="flex flex-wrap gap-2">
+                              {item.kind === 'ticket' && (
+                                <span
+                                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                                    statusClasses[(item as any).status || 'assignat']
+                                  }`}
+                                >
+                                  {getStatusLabel((item as any).status, 'assignat')}
+                                </span>
+                              )}
+                              {item.kind === 'preventiu' && (
+                                <span
+                                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                                    statusClasses[(item as any).lastStatus || 'pendent'] ||
+                                    'bg-slate-100 text-slate-700'
+                                  }`}
+                                >
+                                  {getStatusLabel((item as any).lastStatus, 'pendent')}
+                                  {typeof (item as any).lastProgress === 'number'
+                                    ? ` · ${(item as any).lastProgress}%`
+                                    : ''}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              className="min-h-[44px] shrink-0 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white"
+                              onClick={() =>
+                                item.kind === 'ticket'
+                                  ? openTicket(
+                                      item.id,
+                                      (item as any).code,
+                                      (item as any).ticketType
+                                    )
+                                  : openFitxa(item.id, (item as any).lastRecordId || null)
+                              }
+                            >
+                              {item.kind === 'ticket' ? 'Obrir ticket' : 'Obrir fitxa'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })()
                   ))}
                 </div>
               </div>

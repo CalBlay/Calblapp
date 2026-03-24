@@ -24,8 +24,9 @@ export interface ModuleDef {
 
 /** 🔐 CATÀLEG ÚNIC DE MÒDULS */
 const TORNS_CAP_DEPARTMENTS = new Set(['logistica', 'cuina', 'serveis'])
+const MAINTENANCE_CAP_DEPARTMENTS = new Set(['manteniment', 'logistica'])
 
-const normalizeDept = (raw?: string) => {
+export const normalizeDept = (raw?: string) => {
   const base = (raw || '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
@@ -35,6 +36,9 @@ const normalizeDept = (raw?: string) => {
   if (compact === 'foodlover' || compact === 'foodlovers') return 'foodlovers'
   return base
 }
+
+export const isMaintenanceCapDepartment = (raw?: string) =>
+  MAINTENANCE_CAP_DEPARTMENTS.has(normalizeDept(raw))
 
 export const MODULES: ModuleDef[] = [
   { label: 'Torns', path: '/menu/torns', roles: ['admin','direccio','cap','treballador'] },
@@ -87,27 +91,32 @@ export const MODULES: ModuleDef[] = [
 
   { label: 'Manteniment', path: '/menu/manteniment',
     roles: ['admin','direccio','cap'],
-    departments: ['manteniment','Total'],
+    departments: ['manteniment','logistica','Total'],
     submodules: [
       {
         label: 'Planificador',
         path: '/menu/manteniment/preventius',
         roles: ['admin','direccio','cap'],
-        departments: ['manteniment'],
+        departments: ['manteniment','logistica'],
       },
       {
         label: 'Tickets',
         path: '/menu/manteniment/tickets',
         roles: ['admin','direccio','cap'],
-        departments: ['manteniment'],
+        departments: ['manteniment','logistica'],
       },
       {
         label: 'Dades',
         path: '/menu/manteniment/dades',
         roles: ['admin','direccio','cap'],
-        departments: ['manteniment'],
+        departments: ['manteniment','logistica'],
       },
-      { label: 'Seguiment', path: '/menu/manteniment/seguiment', roles: ['admin','direccio','cap'] },
+      {
+        label: 'Seguiment',
+        path: '/menu/manteniment/seguiment',
+        roles: ['admin','direccio','cap'],
+        departments: ['manteniment','logistica'],
+      },
     ],
   },
 

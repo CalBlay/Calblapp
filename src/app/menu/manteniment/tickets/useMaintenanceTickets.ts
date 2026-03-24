@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
 import { useSession } from 'next-auth/react'
 import { useTransports } from '@/hooks/useTransports'
+import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
 import type {
   MachineItem,
@@ -28,12 +29,17 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
   const department = normalizeDept((session?.user as any)?.department || '')
   const userId = (session?.user as any)?.id || ''
 
-  const canValidate = role === 'admin' || (role === 'cap' && department === 'manteniment')
+  const isMaintenanceCap = role === 'cap' && isMaintenanceCapDepartment(department)
+  const canValidate = role === 'admin' || isMaintenanceCap
   const canReopen = canValidate
   const canExternalize =
     role === 'admin' ||
     role === 'direccio' ||
-    (role === 'cap' && (department === 'manteniment' || department === 'decoracio' || department === 'decoracions' || department === 'decoracion'))
+    (role === 'cap' &&
+      (isMaintenanceCapDepartment(department) ||
+        department === 'decoracio' ||
+        department === 'decoracions' ||
+        department === 'decoracion'))
 
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(false)

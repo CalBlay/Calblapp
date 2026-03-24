@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 
@@ -143,7 +144,7 @@ export async function POST(req: Request) {
         : now
 
     const normalizedStatus = normalizeCompletedStatus(body.status)
-    const canValidate = role === 'admin' || (role === 'cap' && dept === 'manteniment')
+    const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
     if (normalizedStatus === 'validat') {
       if (!canValidate) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -154,7 +155,7 @@ export async function POST(req: Request) {
     }
 
     if (currentStatus === 'validat') {
-      const canReopen = role === 'admin' || (role === 'cap' && dept === 'manteniment')
+      const canReopen = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
       const onlyReopen =
         normalizedStatus === 'fet' &&
         body.title === undefined &&

@@ -17,6 +17,7 @@ import {
 import { useSession } from 'next-auth/react'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { normalizeRole } from '@/lib/roles'
+import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useMaintenanceAssignedCount } from '@/hooks/useMaintenanceAssignedCount'
 import { getAblyClient } from '@/lib/ablyClient'
@@ -71,7 +72,7 @@ export default function MantenimentIndexPage() {
   const userDepartment = normalizeDept((session?.user as any)?.department || '')
   const userId = String((session?.user as any)?.id || '').trim()
   const isMaintenanceWorker = userRole === 'treballador' && userDepartment === 'manteniment'
-  const isMaintenanceCap = userRole === 'cap' && userDepartment === 'manteniment'
+  const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(userDepartment)
   const isAdmin = userRole === 'admin' || userRole === 'direccio'
   const isProductionWorker = userRole === 'treballador' && userDepartment === 'produccio'
   const isCommercial = userRole === 'comercial'

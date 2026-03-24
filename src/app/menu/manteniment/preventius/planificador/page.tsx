@@ -14,6 +14,7 @@ import {
   getPriorityTone,
   getWorkerBadgeClass,
   minutesFromTime,
+  normalizeName,
   timeFromMinutes,
 } from './utils'
 import PlannerSidebar from './components/PlannerSidebar'
@@ -51,6 +52,7 @@ export default function PreventiusPlanificadorPage() {
 
   const weekStart = useMemo(() => parseISO(filters.start), [filters.start])
   const weekLabel = format(weekStart, "yyyy-'W'II")
+  const selectedWorker = String(filters.responsable || '__all__')
   const days = useMemo(
     () => Array.from({ length: DAY_COUNT }, (_, i) => addDays(weekStart, i)),
     [weekStart]
@@ -77,6 +79,27 @@ export default function PreventiusPlanificadorPage() {
     preventiusFilter,
     ticketsAgeFilter,
   })
+
+  const workerOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          scheduledItems
+            .flatMap((item) => item.workers || [])
+            .map((worker) => String(worker || '').trim())
+            .filter(Boolean)
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [scheduledItems]
+  )
+
+  const filteredScheduledItems = useMemo(() => {
+    if (!selectedWorker || selectedWorker === '__all__') return scheduledItems
+    const normalizedSelected = normalizeName(selectedWorker)
+    return scheduledItems.filter((item) =>
+      item.workers.some((worker) => normalizeName(worker) === normalizedSelected)
+    )
+  }, [scheduledItems, selectedWorker])
 
   const getRowIndex = (time: string) => {
     const [hh, mm] = time.split(':').map(Number)
@@ -391,7 +414,11 @@ export default function PreventiusPlanificadorPage() {
           mainHref="/menu/manteniment"
         />
 
-        <FiltersBar filters={filters} setFilters={setFilters} />
+        <FiltersBar
+          filters={filters}
+          setFilters={setFilters}
+          responsables={workerOptions}
+        />
 
         <div className="space-y-4 lg:hidden">
           <div className="flex items-center justify-between gap-3">
@@ -435,7 +462,7 @@ export default function PreventiusPlanificadorPage() {
 
           <div className="space-y-3">
             {days.map((day, dayIndex) => {
-              const dayItems = scheduledItems
+              const dayItems = filteredScheduledItems
                 .filter((item) => item.dayIndex === dayIndex)
                 .sort((a, b) => minutesFromTime(a.start) - minutesFromTime(b.start))
               return (
@@ -715,11 +742,11 @@ export default function PreventiusPlanificadorPage() {
           )}
 
           <div className="grid grid-cols-[200px_1fr] gap-3">
-            <PlannerSidebar
-              tab={tab}
-              visibleItems={visibleItems}
-              scheduledItems={scheduledItems}
-              desktop
+              <PlannerSidebar
+                tab={tab}
+                visibleItems={visibleItems}
+                scheduledItems={scheduledItems}
+                desktop
               onOpenPendingItem={openPendingItem}
               onReturnToPending={(data) => {
                 void handleReturnToPending(data)
@@ -771,7 +798,7 @@ export default function PreventiusPlanificadorPage() {
               >
                 <div />
                 {days.map((_, colIdx) => {
-                  const dayItems = scheduledItems
+                  const dayItems = filteredScheduledItems
                     .filter((i) => i.dayIndex === colIdx)
                     .map((i) => ({
                       item: i,

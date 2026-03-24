@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import admin from 'firebase-admin'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { sendMaintenanceSupplierEmail } from '@/services/graph/calendar'
@@ -121,7 +122,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       role === 'cap' &&
       ((ticketType === 'deco' &&
         ['decoracio', 'decoracions', 'decoracion'].includes(dept)) ||
-        (ticketType !== 'deco' && dept === 'manteniment'))
+        (ticketType !== 'deco' && isMaintenanceCapDepartment(dept)))
     if (role === 'cap' && !capAllowed) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
