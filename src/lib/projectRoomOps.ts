@@ -1,8 +1,8 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
-type ProjectRoomLike = {
-  id: string
-  name: string
+export type ProjectRoomLike = Record<string, unknown> & {
+  id?: string
+  name?: string
   kind?: 'block' | 'manual'
   blockId?: string
   departments?: string[]
@@ -13,9 +13,11 @@ type ProjectRoomLike = {
   opsSyncedAt?: number
 }
 
-type ProjectBlockLike = {
-  id: string
+export type ProjectBlockLike = Record<string, unknown> & {
+  id?: string
+  name?: string
   owner?: string
+  tasks?: Record<string, unknown>[]
 }
 
 type ProjectLike = {
@@ -89,15 +91,15 @@ export async function syncProjectRoomOpsChannel(params: {
 }) {
   const { project, roomId } = params
   const rooms = Array.isArray(project.rooms) ? [...project.rooms] : []
-  const roomIndex = rooms.findIndex((room) => room.id === roomId)
+  const roomIndex = rooms.findIndex((room) => String(room.id || '') === roomId)
   if (roomIndex < 0) {
     throw new Error('Sala no trobada')
   }
 
   const room = rooms[roomIndex]
   const now = Date.now()
-  const channelId = room.opsChannelId || buildProjectRoomChannelId(project.id, room.id)
-  const block = (project.blocks || []).find((item) => item.id === room.blockId)
+  const channelId = String(room.opsChannelId || '') || buildProjectRoomChannelId(project.id, String(room.id || roomId))
+  const block = (project.blocks || []).find((item) => String(item.id || '') === String(room.blockId || ''))
   const responsibleName = String(block?.owner || project.owner || '').trim()
   const responsibleUser = responsibleName ? await findUserByName(responsibleName) : null
 
@@ -123,7 +125,7 @@ export async function syncProjectRoomOpsChannel(params: {
     location: roomName,
     projectId: project.id,
     projectName: String(project.name || '').trim(),
-    roomId: room.id,
+    roomId: String(room.id || roomId),
     roomName,
     roomKind: room.kind || 'manual',
     blockId: String(room.blockId || ''),

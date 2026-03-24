@@ -163,6 +163,10 @@ export type KickoffData = {
   attendees: KickoffAttendee[]
   status?: string
   graphWebLink?: string
+  organizerEmail?: string
+  invitedAt?: number
+  graphEventId?: string
+  graphJoinUrl?: string
   emailNotificationStatus?: 'sent' | 'failed'
   emailNotificationError?: string
 }

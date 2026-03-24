@@ -12,12 +12,19 @@ import {
   sendTaskAssignmentEmail,
 } from '@/services/graph/calendar'
 import Ably from 'ably'
+import type { ProjectBlockLike, ProjectRoomLike } from '@/lib/projectRoomOps'
 
 type SessionUser = {
   id: string
   name?: string
   role?: string
   department?: string | null
+}
+
+type UserLookup = {
+  id: string
+  name?: string
+  email?: string
 }
 
 const EMPTY_KICKOFF = {
@@ -54,7 +61,7 @@ async function findUserByName(rawName: string) {
 
   if (snap.empty) return null
   const doc = snap.docs[0]
-  return { id: doc.id, ...(doc.data() as Record<string, unknown>) }
+  return { id: doc.id, ...(doc.data() as Record<string, unknown>) } as UserLookup
 }
 
 async function findUserById(userId: string) {
@@ -62,7 +69,7 @@ async function findUserById(userId: string) {
   if (!id) return null
   const doc = await db.collection('users').doc(id).get()
   if (!doc.exists) return null
-  return { id: doc.id, ...(doc.data() as Record<string, unknown>) }
+  return { id: doc.id, ...(doc.data() as Record<string, unknown>) } as UserLookup
 }
 
 async function notifyTaskOwnerAssignment(params: {
@@ -196,11 +203,11 @@ const buildAutoRoomFromBlock = (data: Record<string, unknown>, roomId: string) =
   return {
     id: roomId,
     name: String(block.name || departments[0] || block.department || 'Sala de bloc'),
-    kind: 'block',
+    kind: 'block' as const,
     blockId,
     opsChannelId: '',
     opsChannelName: '',
-    opsChannelSource: 'projects',
+    opsChannelSource: 'projects' as const,
     opsSyncedAt: 0,
     departments,
     participants,
@@ -270,7 +277,7 @@ export async function GET(
     }
 
     const data = snap.data() as Record<string, unknown>
-    const rooms = Array.isArray(data.rooms) ? [...(data.rooms as Record<string, unknown>[])] : []
+    const rooms = Array.isArray(data.rooms) ? [...(data.rooms as ProjectRoomLike[])] : []
     let room = rooms.find((item) => String(item.id || '') === roomId) || null
 
     if (!room) {
@@ -396,7 +403,7 @@ export async function PATCH(
 
     let taskAssignmentNotifications: Promise<unknown>[] = []
     if (Array.isArray(payload.tasks) && String(rooms[roomIndex].blockId || '')) {
-      const blocks = Array.isArray(data.blocks) ? [...(data.blocks as Record<string, unknown>[])] : []
+      const blocks = Array.isArray(data.blocks) ? [...(data.blocks as ProjectBlockLike[])] : []
       const blockIndex = blocks.findIndex(
         (block) => String(block.id || '') === String(rooms[roomIndex].blockId || '')
       )
@@ -457,9 +464,9 @@ export async function PATCH(
         owner: String(data.owner || ''),
         rooms,
         blocks: Array.isArray(nextPayload.blocks)
-          ? (nextPayload.blocks as Record<string, unknown>[])
+          ? (nextPayload.blocks as ProjectBlockLike[])
           : Array.isArray(data.blocks)
-            ? (data.blocks as Record<string, unknown>[])
+            ? (data.blocks as ProjectBlockLike[])
             : [],
       },
       roomId,
@@ -500,7 +507,7 @@ export async function POST(
     }
 
     const data = snap.data() as Record<string, unknown>
-    const rooms = Array.isArray(data.rooms) ? [...(data.rooms as Record<string, unknown>[])] : []
+    const rooms = Array.isArray(data.rooms) ? [...(data.rooms as ProjectRoomLike[])] : []
     let roomIndex = rooms.findIndex((room) => String(room.id || '') === roomId)
     if (roomIndex === -1) {
       const autoRoom = buildAutoRoomFromBlock(data, roomId)
@@ -527,7 +534,7 @@ export async function POST(
         name: String(data.name || ''),
         owner: String(data.owner || ''),
         rooms,
-        blocks: Array.isArray(data.blocks) ? (data.blocks as Record<string, unknown>[]) : [],
+        blocks: Array.isArray(data.blocks) ? (data.blocks as ProjectBlockLike[]) : [],
       },
       roomId,
     })
@@ -565,7 +572,7 @@ export async function PUT(
     }
 
     const data = snap.data() as Record<string, unknown>
-    const rooms = Array.isArray(data.rooms) ? [...(data.rooms as Record<string, unknown>[])] : []
+    const rooms = Array.isArray(data.rooms) ? [...(data.rooms as ProjectRoomLike[])] : []
     let exists = rooms.some((room) => String(room.id || '') === roomId)
     if (!exists) {
       const autoRoom = buildAutoRoomFromBlock(data, roomId)
@@ -585,7 +592,7 @@ export async function PUT(
         name: String(data.name || ''),
         owner: String(data.owner || ''),
         rooms,
-        blocks: Array.isArray(data.blocks) ? (data.blocks as Record<string, unknown>[]) : [],
+        blocks: Array.isArray(data.blocks) ? (data.blocks as ProjectBlockLike[]) : [],
       },
       roomId,
     })

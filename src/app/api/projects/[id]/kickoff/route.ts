@@ -10,7 +10,7 @@ import {
   createKickoffCalendarEvent,
   sendKickoffNotificationEmail,
 } from '@/services/graph/calendar'
-import { deriveProjectPhase } from '@/app/menu/projects/components/project-shared'
+import { deriveProjectPhase, type KickoffData } from '@/app/menu/projects/components/project-shared'
 
 type SessionUser = {
   id: string
@@ -68,6 +68,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       attendees?: KickoffAttendeeInput[]
     }
 
+    const projectSnap = await db.collection('projects').doc(id).get()
+    if (!projectSnap.exists) {
+      return NextResponse.json({ error: 'Projecte no trobat' }, { status: 404 })
+    }
+
+    const project = projectSnap.data() as Record<string, unknown>
+    const currentKickoff =
+      project.kickoff && typeof project.kickoff === 'object'
+        ? (project.kickoff as Record<string, unknown>)
+        : {}
     const date = String(body.date || '').trim()
     const startTime = String(body.startTime || '').trim()
     const durationMinutes = Number(body.durationMinutes || 0)
@@ -94,17 +104,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (attendees.length === 0) {
       return NextResponse.json({ error: 'No hi ha assistents seleccionats' }, { status: 400 })
     }
-
-    const projectSnap = await db.collection('projects').doc(id).get()
-    if (!projectSnap.exists) {
-      return NextResponse.json({ error: 'Projecte no trobat' }, { status: 404 })
-    }
-
-    const project = projectSnap.data() as Record<string, unknown>
-    const currentKickoff =
-      project.kickoff && typeof project.kickoff === 'object'
-        ? (project.kickoff as Record<string, unknown>)
-        : {}
     const organizerSnap = await db.collection('users').doc(auth.user.id).get()
     const organizerData = organizerSnap.exists ? (organizerSnap.data() as Record<string, unknown>) : {}
     const organizerEmail = String(organizerData.email || auth.user.email || '').trim()
@@ -151,7 +150,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         err instanceof Error ? err.message : 'No s ha pogut enviar el correu de convocatoria'
     }
 
-    const kickoff = {
+    const kickoff: KickoffData = {
       date,
       startTime,
       durationMinutes,

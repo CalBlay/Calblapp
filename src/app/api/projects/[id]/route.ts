@@ -8,6 +8,7 @@ import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
 import { canAccessProjects } from '@/lib/projectAccess'
 import { deriveProjectPhase } from '@/app/menu/projects/components/project-shared'
 import { archiveProjectRoomOpsChannel } from '@/lib/projectRoomOps'
+import type { KickoffData, ProjectBlock } from '@/app/menu/projects/components/project-shared'
 import {
   createBlockDeadlineCalendarEvent,
   createTaskDeadlineCalendarEvent,
@@ -21,6 +22,12 @@ type SessionUser = {
   name?: string
   role?: string
   department?: string | null
+}
+
+type UserLookup = {
+  id: string
+  name?: string
+  email?: string
 }
 
 const normalizeComparableText = (value?: string | null) =>
@@ -122,7 +129,7 @@ async function findUserByName(rawName: string) {
 
   if (snap.empty) return null
   const doc = snap.docs[0]
-  return { id: doc.id, ...(doc.data() as Record<string, unknown>) }
+  return { id: doc.id, ...(doc.data() as Record<string, unknown>) } as UserLookup
 }
 
 async function findUserById(userId: string) {
@@ -130,12 +137,12 @@ async function findUserById(userId: string) {
   if (!id) return null
   const doc = await db.collection('users').doc(id).get()
   if (!doc.exists) return null
-  return { id: doc.id, ...(doc.data() as Record<string, unknown>) }
+  return { id: doc.id, ...(doc.data() as Record<string, unknown>) } as UserLookup
 }
 
 function createUserResolver() {
-  const byId = new Map<string, Promise<Record<string, unknown> | null>>()
-  const byName = new Map<string, Promise<Record<string, unknown> | null>>()
+  const byId = new Map<string, Promise<UserLookup | null>>()
+  const byName = new Map<string, Promise<UserLookup | null>>()
 
   return {
     findById(userId: string) {
@@ -663,8 +670,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     payload.phase = deriveProjectPhase({
       launchDate: String(payload.launchDate ?? currentData.launchDate ?? ''),
-      kickoff: (payload.kickoff ?? currentData.kickoff ?? null) as Record<string, unknown> | null,
-      blocks: (Array.isArray(payload.blocks) ? payload.blocks : currentData.blocks || []) as Array<Record<string, unknown>>,
+      kickoff: (payload.kickoff ?? currentData.kickoff ?? null) as KickoffData,
+      blocks: (Array.isArray(payload.blocks) ? payload.blocks : currentData.blocks || []) as ProjectBlock[],
     })
 
     const nextRooms = Array.isArray(payload.rooms)

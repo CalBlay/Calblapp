@@ -6,7 +6,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { canAccessProjects } from '@/lib/projectAccess'
-import { syncProjectRoomOpsChannel } from '@/lib/projectRoomOps'
+import { syncProjectRoomOpsChannel, type ProjectBlockLike, type ProjectRoomLike } from '@/lib/projectRoomOps'
 
 type SessionUser = {
   id: string
@@ -36,11 +36,11 @@ const buildAutoRoomFromBlock = (data: Record<string, unknown>, roomId: string) =
   return {
     id: roomId,
     name: String(block.name || departments[0] || block.department || 'Sala de bloc'),
-    kind: 'block',
+    kind: 'block' as const,
     blockId,
     opsChannelId: '',
     opsChannelName: '',
-    opsChannelSource: 'projects',
+    opsChannelSource: 'projects' as const,
     opsSyncedAt: 0,
     departments,
     participants,
@@ -86,7 +86,7 @@ export async function POST(
     }
 
     const data = snap.data() as Record<string, unknown>
-    const initialRooms = Array.isArray(data.rooms) ? [...(data.rooms as Record<string, unknown>[])] : []
+    const initialRooms = Array.isArray(data.rooms) ? [...(data.rooms as ProjectRoomLike[])] : []
     const roomsToSync = requestedRoomIds.length > 0
       ? requestedRoomIds
       : initialRooms.map((room) => String(room.id || '')).filter(Boolean)
@@ -106,7 +106,7 @@ export async function POST(
       name: String(data.name || ''),
       owner: String(data.owner || ''),
       rooms: workingRooms,
-      blocks: Array.isArray(data.blocks) ? (data.blocks as Record<string, unknown>[]) : [],
+      blocks: Array.isArray(data.blocks) ? (data.blocks as ProjectBlockLike[]) : [],
     }
 
     const syncedRoomsById = new Map<string, Record<string, unknown>>()
@@ -118,8 +118,8 @@ export async function POST(
         },
         roomId,
       })
-      workingRooms = syncResult.rooms as Record<string, unknown>[]
-      syncedRoomsById.set(roomId, syncResult.room as Record<string, unknown>)
+      workingRooms = syncResult.rooms as ProjectRoomLike[]
+      syncedRoomsById.set(roomId, syncResult.room as ProjectRoomLike)
     }
 
     await projectRef.set(
