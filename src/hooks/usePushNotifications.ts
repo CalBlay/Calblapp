@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
+import type { PluginListenerHandle } from '@capacitor/core'
 
 export function usePushNotifications() {
   const [permission, setPermission] = useState<NotificationPermission>('default')
@@ -73,16 +74,29 @@ export function usePushNotifications() {
         }
 
         const token = await new Promise<string>((resolve, reject) => {
-          const reg = PushNotifications.addListener('registration', (token) => {
-            reg.remove()
-            err.remove()
+          let regHandle: PluginListenerHandle | null = null
+          let errHandle: PluginListenerHandle | null = null
+
+          const cleanup = () => {
+            regHandle?.remove()
+            errHandle?.remove()
+          }
+
+          void PushNotifications.addListener('registration', (token) => {
+            cleanup()
             resolve(token.value)
+          }).then((handle) => {
+            regHandle = handle
           })
-          const err = PushNotifications.addListener('registrationError', (error) => {
-            reg.remove()
-            err.remove()
-            reject(error?.message || 'Error registrant push')
+
+          void PushNotifications.addListener('registrationError', (error) => {
+            cleanup()
+            const message = error instanceof Error ? error.message : 'Error registrant push'
+            reject(message)
+          }).then((handle) => {
+            errHandle = handle
           })
+
           PushNotifications.register()
         })
 

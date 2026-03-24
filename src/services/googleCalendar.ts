@@ -20,6 +20,8 @@ export interface CalendarEvent {
   [key: string]: unknown
 }
 
+export type GoogleEvent = CalendarEvent
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔐 AUTENTICACIÓ UNIVERSAL (Vercel + Local + Base64 tolerant)
@@ -91,7 +93,7 @@ export async function getCalendarEvents(from: string, to: string): Promise<Calen
   if (!calendarId) throw new Error('Falta NEXT_PUBLIC_GOOGLE_CALENDAR_ID')
 
   const auth = await authenticate()
-  const calendar = google.calendar({ version: 'v3', auth })
+  const calendar = (google as any).calendar({ version: 'v3', auth })
 
   const events: CalendarEvent[] = []
   let pageToken: string | undefined
@@ -123,7 +125,7 @@ export async function fetchGoogleEventById(id: string): Promise<CalendarEvent | 
   if (!calendarId) throw new Error('Falta NEXT_PUBLIC_GOOGLE_CALENDAR_ID')
 
   const auth = await authenticate()
-  const calendar = google.calendar({ version: 'v3', auth })
+  const calendar = (google as any).calendar({ version: 'v3', auth })
 
   try {
     const resp = await calendar.events.get({

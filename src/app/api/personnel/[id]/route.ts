@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { db, firestoreAdmin } from '@/lib/firebaseAdmin'
+import { firestoreAdmin } from '@/lib/firebaseAdmin'
 
 
 /** Estructura mínima d’un document de personnel */

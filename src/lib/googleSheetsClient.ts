@@ -12,4 +12,4 @@ const jwtClient = new google.auth.JWT(
   ['https://www.googleapis.com/auth/spreadsheets.readonly']
 )
 
-export const sheets = google.sheets({ version: 'v4', auth: jwtClient })
+export const sheets = (google as any).sheets({ version: 'v4', auth: jwtClient })

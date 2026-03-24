@@ -1,12 +1,12 @@
 // file: src/app/api/modifications/[id]/route.ts
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
 import { getToken } from 'next-auth/jwt'
 
 const normalize = (v?: string | null) => (v || '').toLowerCase().trim()
 
-async function assertCanEdit(req: Request, docId: string) {
+async function assertCanEdit(req: NextRequest, docId: string) {
   const token = await getToken({ req })
   if (!token) return { ok: false, status: 401, error: 'No autoritzat' }
 
@@ -26,7 +26,7 @@ async function assertCanEdit(req: Request, docId: string) {
 }
 
 export async function PATCH(
-  req: Request,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -60,7 +60,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  req: Request,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {

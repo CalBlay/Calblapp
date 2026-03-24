@@ -32,9 +32,7 @@ import {
   useTornNotificationCount,
 } from '@/hooks/useAdminNotifications'
 import { useMessagingUnreadCount } from '@/hooks/useMessagingUnread'
-import { useMaintenanceNewCount } from '@/hooks/useMaintenanceNewCount'
 import { useMaintenanceNotificationCount } from '@/hooks/useMaintenanceNotificationCount'
-import { normalizeRole } from '@/lib/roles'
 
 /* ─────────────────────────────────────────────
    TIPUS
@@ -253,26 +251,7 @@ function MenuContent({ user }: { user: SessionUser }) {
   const { count: tornCount } = useTornNotificationCount()
   const { count: messagingCount } = useMessagingUnreadCount()
   const { count: maintenanceNotificationCount } = useMaintenanceNotificationCount()
-  const { count: maintenanceNewCountDeco } = useMaintenanceNewCount({ ticketType: 'deco' })
-  const normDept = (raw?: string) =>
-    (raw || '')
-      .toString()
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .toLowerCase()
-      .trim()
-  const role = normalizeRole(user.role || '')
-  const dept = normDept(user.department)
-  const isDecorationsCap = role === 'cap' && (dept === 'decoracio' || dept === 'decoracions')
-  const isAdminOrDir = role === 'admin' || role === 'direccio'
-
   const maintenanceBadge = maintenanceNotificationCount
-
-  const decoBadge = isDecorationsCap
-    ? maintenanceNewCountDeco
-    : isAdminOrDir
-    ? maintenanceNewCountDeco
-    : 0
 
   // 🔑 ÚNICA FONT DE MÒDULS
   const modules = getVisibleModules(user)
@@ -326,11 +305,6 @@ function MenuContent({ user }: { user: SessionUser }) {
                 {mod.path === '/menu/manteniment' && maintenanceBadge > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                     {maintenanceBadge}
-                  </span>
-                )}
-                {mod.path === '/menu/deco' && decoBadge > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                    {decoBadge}
                   </span>
                 )}
                 {mod.path === '/menu/projects' && projectAssignmentCount > 0 && (

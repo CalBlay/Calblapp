@@ -120,25 +120,6 @@ export const MODULES: ModuleDef[] = [
     ],
   },
 
-  { label: 'Deco', path: '/menu/deco',
-    roles: ['admin'],
-    departments: ['decoracio','decoracions','decoracion','Total'],
-    submodules: [
-      {
-        label: 'Tickets',
-        path: '/menu/manteniment/tickets-deco',
-        roles: ['admin'],
-        departments: ['decoracio','decoracions','decoracion'],
-      },
-      {
-        label: 'Fulls de treball',
-        path: '/menu/manteniment/treball',
-        roles: ['admin'],
-        departments: ['decoracio','decoracions','decoracion'],
-      },
-    ],
-  },
-
   { label: 'Quadrants', path: '/menu/quadrants',
     roles: ['admin','direccio','cap'] ,
     departments: ['logistica','cuina','serveis'],

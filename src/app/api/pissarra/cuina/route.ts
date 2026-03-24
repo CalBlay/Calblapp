@@ -143,7 +143,7 @@ export async function GET(req: NextRequest) {
       let driverIdx = 0
       let workerIdx = 0
 
-      const buildGroup = (group?: QuadrantDoc['groups'][number]) => {
+      const buildGroup = (group?: NonNullable<QuadrantDoc['groups']>[number]) => {
         if (!group) return null
         const driversTotal = Number(group.drivers || 0)
         const workersTotal = Number(group.workers || 0)

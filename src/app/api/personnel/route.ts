@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
         unavailableUntil: data.unavailableUntil ?? null,
         unavailableIndefinite: data.unavailableIndefinite ?? false,
         unavailableNotifiedFor: data.unavailableNotifiedFor ?? null,
-        unavailableNotifiedAt: data.unavailableNotifiedAt ?? null,
+        unavailableNotifiedAt: data.unavailableNotifiedAt ?? undefined,
         hasUser: hasUser.get(doc.id) || false,
         requestStatus: reqStatus.get(doc.id) || 'none',
       }

@@ -1,6 +1,6 @@
 // src/app/api/transports/route.ts
 import { NextResponse } from 'next/server'
-import { db, firestoreAdmin } from '@/lib/firebaseAdmin'
+import { firestoreAdmin } from '@/lib/firebaseAdmin'
 
 
 // Afegir transport

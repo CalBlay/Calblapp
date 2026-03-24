@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import type { Query } from 'firebase-admin/firestore'
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
@@ -21,7 +22,8 @@ export async function GET(req: Request) {
   const status = (searchParams.get('status') || 'pending').trim()
 
   try {
-    let query = firestoreAdmin.collection('userRequests')
+    const requestsRef = firestoreAdmin.collection('userRequests')
+    let query: Query = requestsRef
 
     if (status) {
       query = query.where('status', '==', status)

@@ -12,10 +12,16 @@ import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { markTicketSeen } from '@/lib/maintenanceSeen'
 import { useMaintenanceNewCount } from '@/hooks/useMaintenanceNewCount'
 import { useMaintenanceTickets } from './useMaintenanceTickets'
-import type { TicketPriority, TicketStatus, TicketType } from './types'
+import type { TicketPriority, TicketStatus } from './types'
 import TicketsList from './components/TicketsList'
 import CreateTicketModal from './components/CreateTicketModal'
 import AssignTicketModal from './components/AssignTicketModal'
+
+type SessionUser = {
+  id?: string
+  role?: string
+  department?: string
+}
 
 const normalizeDept = (raw?: string) =>
   (raw || '')
@@ -41,11 +47,6 @@ const PRIORITY_LABELS: Record<TicketPriority, string> = {
   alta: 'Alta',
   normal: 'Normal',
   baixa: 'Baixa',
-}
-
-const TICKET_TYPE_LABELS: Record<TicketType, string> = {
-  maquinaria: 'Maquinaria',
-  deco: 'Deco',
 }
 
 const statusBadgeClasses: Record<TicketStatus, string> = {
@@ -87,8 +88,9 @@ export default function MaintenanceTicketsPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const department = normalizeDept((session?.user as any)?.department || '')
-  const userRole = normalizeRole((session?.user as any)?.role || '')
+  const sessionUser = (session?.user || {}) as SessionUser
+  const department = normalizeDept(sessionUser.department || '')
+  const userRole = normalizeRole(sessionUser.role || '')
   const isMaintenance = department === 'manteniment'
   const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(department)
   const hasAccess =
@@ -97,14 +99,12 @@ export default function MaintenanceTicketsPage() {
     isMaintenanceCap ||
     (userRole === 'treballador' && isMaintenance)
 
-  const { count: newTicketsCount } = useMaintenanceNewCount({ ticketType: 'maquinaria' })
+  const { count: newTicketsCount } = useMaintenanceNewCount()
 
   useEffect(() => {
     if (status === 'loading') return
     if (!hasAccess) router.replace('/menu')
   }, [hasAccess, router, status])
-
-  if (!hasAccess && status !== 'loading') return null
 
   const {
     role: ticketRole,
@@ -139,8 +139,6 @@ export default function MaintenanceTicketsPage() {
     setCreateDescription,
     createPriority,
     setCreatePriority,
-    createTicketType,
-    setCreateTicketType,
     createImagePreview,
     createBusy,
     imageError,
@@ -181,7 +179,7 @@ export default function MaintenanceTicketsPage() {
     handleDelete,
     fetchMoreTickets,
     groupedTickets,
-  } = useMaintenanceTickets({ ticketType: 'maquinaria' })
+  } = useMaintenanceTickets()
 
   const displayStatusLabels: Record<TicketStatus, string> = canValidate
     ? STATUS_LABELS
@@ -205,8 +203,7 @@ export default function MaintenanceTicketsPage() {
 
   const closeSelectedTicket = () => {
     setSelected(null)
-    if (!searchParams) return
-    if (!queryTicketId) return
+    if (!searchParams || !queryTicketId) return
     const params = new URLSearchParams(searchParams.toString())
     params.delete('ticketId')
     const nextQuery = params.toString()
@@ -226,12 +223,14 @@ export default function MaintenanceTicketsPage() {
   useEffect(() => {
     if (!queryTicketId) return
     if (selected?.id === queryTicketId) return
+
     const existing = tickets.find((ticket) => String(ticket.id) === queryTicketId)
     if (existing) {
       setSelected(existing)
       return
     }
     if (loading) return
+
     let cancelled = false
     const loadSingle = async () => {
       try {
@@ -240,18 +239,19 @@ export default function MaintenanceTicketsPage() {
         })
         if (!res.ok) return
         const json = await res.json()
-        if (!cancelled && json?.ticket) {
-          setSelected(json.ticket)
-        }
+        if (!cancelled && json?.ticket) setSelected(json.ticket)
       } catch {
         return
       }
     }
+
     void loadSingle()
     return () => {
       cancelled = true
     }
   }, [loading, queryTicketId, selected?.id, setSelected, tickets])
+
+  if (!hasAccess && status !== 'loading') return null
 
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
@@ -261,9 +261,9 @@ export default function MaintenanceTicketsPage() {
           subtitle="Tickets"
           mainHref="/menu/manteniment"
           actions={
-            (ticketRole === 'admin' || ticketRole === 'direccio' || (ticketRole === 'cap' && isMaintenance)) ? (
+            ticketRole === 'admin' || ticketRole === 'direccio' || (ticketRole === 'cap' && isMaintenance) ? (
               <button
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-full"
+                className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
                 onClick={() => setShowCreate(true)}
               >
                 + Nou ticket
@@ -274,7 +274,7 @@ export default function MaintenanceTicketsPage() {
 
         <FiltersBar
           filters={filters}
-          setFilters={(f) => setFilters((prev) => ({ ...prev, ...f }))}
+          setFilters={(next) => setFilters((prev) => ({ ...prev, ...next }))}
           locations={locations}
           statusLabel="Estat"
           statusOptions={[
@@ -301,7 +301,7 @@ export default function MaintenanceTicketsPage() {
         {error && <p className="text-sm text-red-500">{error}</p>}
 
         <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex items-center gap-2 flex-wrap text-sm text-slate-900">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-900">
             <ClipboardList className="h-4 w-4 text-emerald-700" />
             <span className="font-semibold">Tickets de manteniment</span>
             {newTicketsCount > 0 ? (
@@ -356,8 +356,6 @@ export default function MaintenanceTicketsPage() {
             machines={machines}
             createPriority={createPriority}
             setCreatePriority={setCreatePriority}
-            createTicketType={createTicketType}
-            setCreateTicketType={setCreateTicketType}
             locationQuery={locationQuery}
             setLocationQuery={setLocationQuery}
             createLocation={createLocation}
@@ -373,8 +371,6 @@ export default function MaintenanceTicketsPage() {
             showMachineList={showMachineList}
             setShowMachineList={setShowMachineList}
             priorityLabels={PRIORITY_LABELS}
-            ticketTypeLabels={TICKET_TYPE_LABELS}
-            showTicketTypeSelector={false}
             onClose={() => setShowCreate(false)}
             onCreate={handleCreateTicket}
             createBusy={createBusy}

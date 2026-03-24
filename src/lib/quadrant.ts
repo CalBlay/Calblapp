@@ -1,5 +1,5 @@
 // file: src/lib/quadrant.ts
-import { firestore } from './firebaseAdmin'
+import { firestoreAdmin } from './firebaseAdmin'
 
 export interface DraftRow {
   id: string
@@ -29,7 +29,7 @@ export async function saveDraftRows(
   draft: DraftRow[]
 ): Promise<void> {
   const docId = `${department}:${weekStart}:${weekEnd}`
-  await firestore
+  await firestoreAdmin
     .collection('quadrantDrafts')
     .doc(docId)
     .set({ department, weekStart, weekEnd, draft }, { merge: true })

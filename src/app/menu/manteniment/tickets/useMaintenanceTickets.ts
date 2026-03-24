@@ -1,19 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
-import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
 import { useSession } from 'next-auth/react'
-import { useTransports } from '@/hooks/useTransports'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
-import type {
-  MachineItem,
-  Ticket,
-  TicketPriority,
-  TicketStatus,
-  TicketType,
-  TransportItem,
-  UserItem,
-} from './types'
+import type { Ticket, TicketPriority, TicketStatus } from './types'
 import type { FiltersState } from '@/components/layout/FiltersBar'
+import { useMaintenanceTicketCatalog } from './useMaintenanceTicketCatalog'
+import { useMaintenanceTicketComposer } from './useMaintenanceTicketComposer'
+
+type SessionUser = {
+  id?: string
+  role?: string
+  department?: string
+}
+
+type ErrorWithMessage = {
+  message?: string
+}
+
+type AvailabilityItem = {
+  id: string
+}
 
 const normalizeDept = (raw?: string) =>
   (raw || '')
@@ -23,11 +30,12 @@ const normalizeDept = (raw?: string) =>
     .toLowerCase()
     .trim()
 
-export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
+export function useMaintenanceTickets() {
   const { data: session } = useSession()
-  const role = normalizeRole((session?.user as any)?.role || '')
-  const department = normalizeDept((session?.user as any)?.department || '')
-  const userId = (session?.user as any)?.id || ''
+  const sessionUser = (session?.user || {}) as SessionUser
+  const role = normalizeRole(sessionUser.role || '')
+  const department = normalizeDept(sessionUser.department || '')
+  const userId = sessionUser.id || ''
 
   const isMaintenanceCap = role === 'cap' && isMaintenanceCapDepartment(department)
   const canValidate = role === 'admin' || isMaintenanceCap
@@ -35,11 +43,7 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
   const canExternalize =
     role === 'admin' ||
     role === 'direccio' ||
-    (role === 'cap' &&
-      (isMaintenanceCapDepartment(department) ||
-        department === 'decoracio' ||
-        department === 'decoracions' ||
-        department === 'decoracion'))
+    (role === 'cap' && isMaintenanceCapDepartment(department))
 
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(false)
@@ -49,11 +53,11 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
   const [loadingMoreTickets, setLoadingMoreTickets] = useState(false)
 
   const initial: FiltersState = useMemo(() => {
-    const s = startOfWeek(new Date(), { weekStartsOn: 1 })
-    const e = endOfWeek(new Date(), { weekStartsOn: 1 })
+    const start = startOfWeek(new Date(), { weekStartsOn: 1 })
+    const end = endOfWeek(new Date(), { weekStartsOn: 1 })
     return {
-      start: format(s, 'yyyy-MM-dd'),
-      end: format(e, 'yyyy-MM-dd'),
+      start: format(start, 'yyyy-MM-dd'),
+      end: format(end, 'yyyy-MM-dd'),
       status: '__all__',
       priority: '__all__',
       location: '__all__',
@@ -61,28 +65,9 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
   }, [])
 
   const [filters, setFilters] = useState<FiltersState>(initial)
-
   const statusFilter = filters.status ?? '__all__'
   const priorityFilter = filters.priority ?? '__all__'
   const locationFilter = filters.location ?? '__all__'
-  const ticketTypeFilter = options?.ticketType || 'maquinaria'
-
-  const [locations, setLocations] = useState<string[]>([])
-  const [machines, setMachines] = useState<MachineItem[]>([])
-
-  const [showCreate, setShowCreate] = useState(false)
-  const [createLocation, setCreateLocation] = useState('')
-  const [createMachine, setCreateMachine] = useState('')
-  const [locationQuery, setLocationQuery] = useState('')
-  const [machineQuery, setMachineQuery] = useState('')
-  const [showLocationList, setShowLocationList] = useState(false)
-  const [showMachineList, setShowMachineList] = useState(false)
-  const [createDescription, setCreateDescription] = useState('')
-  const [createPriority, setCreatePriority] = useState<TicketPriority>('normal')
-  const [createTicketType, setCreateTicketType] = useState<TicketType>(ticketTypeFilter)
-  const [createImageFile, setCreateImageFile] = useState<File | null>(null)
-  const [createImagePreview, setCreateImagePreview] = useState<string | null>(null)
-  const [createBusy, setCreateBusy] = useState(false)
 
   const [selected, setSelected] = useState<Ticket | null>(null)
   const [assignBusy, setAssignBusy] = useState(false)
@@ -93,148 +78,100 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
   const [workerCount, setWorkerCount] = useState(1)
   const [availableIds, setAvailableIds] = useState<string[]>([])
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
-  const [imageError, setImageError] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [detailsLocation, setDetailsLocation] = useState('')
   const [detailsMachine, setDetailsMachine] = useState('')
   const [detailsDescription, setDetailsDescription] = useState('')
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
 
-  const [users, setUsers] = useState<UserItem[]>([])
+  const { locations, machines, maintenanceUsers, furgonetes } = useMaintenanceTicketCatalog()
 
-  const { data: transports } = useTransports()
+  const fetchTickets = useCallback(
+    async (opts?: { append?: boolean; cursorCreatedAt?: number }) => {
+      const append = Boolean(opts?.append)
+      const cursorCreatedAt = opts?.cursorCreatedAt
 
-  const targetDept = ticketTypeFilter === 'deco' ? 'decoracio' : 'manteniment'
-  const maintenanceUsers = useMemo(
-    () =>
-      users.filter((u) => {
-        const dept = normalizeDept(u.departmentLower || u.department)
-        const role = normalizeRole(u.role || '')
-        const isAssignable = role === 'treballador' || role === 'cap'
-        if (!isAssignable) return false
-        if (ticketTypeFilter === 'deco') {
-          return dept === 'decoracio' || dept === 'decoracions' || dept === 'decoracion'
+      try {
+        if (append) {
+          setLoadingMoreTickets(true)
+        } else {
+          setLoading(true)
+          setError(null)
         }
-        return dept === 'manteniment'
-      }),
-    [users, ticketTypeFilter]
+
+        const params = new URLSearchParams()
+        params.set('limit', '100')
+        params.set('ticketType', 'maquinaria')
+        if (statusFilter !== '__all__') params.set('status', statusFilter)
+        if (priorityFilter !== '__all__') params.set('priority', priorityFilter)
+        if (locationFilter !== '__all__') params.set('location', locationFilter)
+        if (filters.start) params.set('start', filters.start)
+        if (filters.end) params.set('end', filters.end)
+        if (cursorCreatedAt && cursorCreatedAt > 0) {
+          params.set('cursorCreatedAt', String(cursorCreatedAt))
+        }
+
+        const res = await fetch(`/api/maintenance/tickets?${params.toString()}`, {
+          cache: 'no-store',
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+        const json = await res.json()
+        const nextTickets = Array.isArray(json?.tickets) ? json.tickets : []
+        setTickets((prev) => (append ? [...prev, ...nextTickets] : nextTickets))
+        setHasMoreTickets(Boolean(json?.hasMore))
+        setNextTicketsCursor(
+          typeof json?.nextCursorCreatedAt === 'number' && json.nextCursorCreatedAt > 0
+            ? json.nextCursorCreatedAt
+            : null
+        )
+      } catch {
+        setError("No s'han pogut carregar els tickets.")
+        if (!append) setTickets([])
+        setHasMoreTickets(false)
+        setNextTicketsCursor(null)
+      } finally {
+        if (append) {
+          setLoadingMoreTickets(false)
+        } else {
+          setLoading(false)
+        }
+      }
+    },
+    [filters.end, filters.start, locationFilter, priorityFilter, statusFilter]
   )
 
-  const furgonetes = useMemo(
-    () =>
-      (transports as TransportItem[]).filter((t) => t.type === 'furgonetaManteniment'),
-    [transports]
-  )
-
-  const fetchTickets = async (opts?: { append?: boolean; cursorCreatedAt?: number }) => {
-    const append = Boolean(opts?.append)
-    const cursorCreatedAt = opts?.cursorCreatedAt
-    try {
-      if (append) {
-        setLoadingMoreTickets(true)
-      } else {
-        setLoading(true)
-        setError(null)
-      }
-      const params = new URLSearchParams()
-      params.set('limit', '100')
-      if (statusFilter !== '__all__') params.set('status', statusFilter)
-      if (priorityFilter !== '__all__') params.set('priority', priorityFilter)
-      if (ticketTypeFilter) params.set('ticketType', ticketTypeFilter)
-      if (locationFilter && locationFilter !== '__all__') {
-        params.set('location', locationFilter)
-      }
-      if (filters.start) params.set('start', filters.start)
-      if (filters.end) params.set('end', filters.end)
-      if (cursorCreatedAt && cursorCreatedAt > 0) {
-        params.set('cursorCreatedAt', String(cursorCreatedAt))
-      }
-      const res = await fetch(`/api/maintenance/tickets?${params.toString()}`, {
-        cache: 'no-store',
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      const nextTickets = Array.isArray(json?.tickets) ? json.tickets : []
-      setTickets((prev) => (append ? [...prev, ...nextTickets] : nextTickets))
-      setHasMoreTickets(Boolean(json?.hasMore))
-      setNextTicketsCursor(
-        typeof json?.nextCursorCreatedAt === 'number' && json.nextCursorCreatedAt > 0
-          ? json.nextCursorCreatedAt
-          : null
-      )
-    } catch (err: any) {
-      void err
-      setError('No s’han pogut carregar els tickets.')
-      if (!append) {
-        setTickets([])
-      }
-      setHasMoreTickets(false)
-      setNextTicketsCursor(null)
-    } finally {
-      if (append) {
-        setLoadingMoreTickets(false)
-      } else {
-        setLoading(false)
-      }
-    }
-  }
-
-  const fetchLocations = async () => {
-    try {
-      const res = await fetch('/api/spaces/internal', { cache: 'no-store' })
-      if (!res.ok) return
-      const json = await res.json()
-      setLocations(Array.isArray(json?.locations) ? json.locations : [])
-    } catch {
-      setLocations([])
-    }
-  }
-
-  const fetchUsers = async () => {
-    try {
-      const res = await fetch(`/api/personnel?department=${encodeURIComponent(targetDept)}`, {
-        cache: 'no-store',
-      })
-      if (!res.ok) return
-      const json = await res.json()
-      setUsers(Array.isArray(json?.data) ? json.data : [])
-    } catch {
-      setUsers([])
-    }
-  }
-
-  const fetchMachines = async () => {
-    if (ticketTypeFilter === 'deco') {
-      setMachines([])
-      return
-    }
-    try {
-      const res = await fetch('/api/maintenance/machines', { cache: 'no-store' })
-      if (!res.ok) return
-      const json = await res.json()
-      setMachines(Array.isArray(json?.machines) ? json.machines : [])
-    } catch {
-      setMachines([])
-    }
-  }
+  const {
+    showCreate,
+    setShowCreate,
+    createLocation,
+    setCreateLocation,
+    createMachine,
+    setCreateMachine,
+    locationQuery,
+    setLocationQuery,
+    machineQuery,
+    setMachineQuery,
+    showLocationList,
+    setShowLocationList,
+    showMachineList,
+    setShowMachineList,
+    createDescription,
+    setCreateDescription,
+    createPriority,
+    setCreatePriority,
+    createImagePreview,
+    createBusy,
+    imageError,
+    handleImageChange,
+    handleCreateTicket,
+  } = useMaintenanceTicketComposer({
+    refreshTickets: () => fetchTickets(),
+  })
 
   useEffect(() => {
-    fetchTickets()
-  }, [statusFilter, priorityFilter, locationFilter, ticketTypeFilter, filters.start, filters.end])
-
-  useEffect(() => {
-    fetchLocations()
-    fetchUsers()
-    fetchMachines()
-  }, [targetDept, ticketTypeFilter])
-
-  useEffect(() => {
-    setLocationQuery(createLocation)
-  }, [createLocation])
-
-  useEffect(() => {
-    setMachineQuery(createMachine)
-  }, [createMachine])
+    void fetchTickets()
+  }, [fetchTickets])
 
   useEffect(() => {
     if (!selected) return
@@ -248,117 +185,52 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
     setDetailsMachine(selected.machine || '')
     setDetailsDescription(selected.description || '')
     setDetailsPriority(selected.priority || 'normal')
-  }, [selected?.id])
+  }, [selected])
 
   useEffect(() => {
-    if (!selected) return
-    if (!selected.assignedToIds) return
+    if (!selected?.assignedToIds) return
     if (selected.assignedToIds.length <= workerCount) return
+
     const trimmed = selected.assignedToIds.slice(0, workerCount)
     const trimmedNames = maintenanceUsers
-      .filter((u) => trimmed.includes(u.id))
-      .map((u) => u.name)
+      .filter((user) => trimmed.includes(user.id))
+      .map((user) => user.name)
+
     setSelected((prev) =>
       prev ? { ...prev, assignedToIds: trimmed, assignedToNames: trimmedNames } : prev
     )
-  }, [workerCount])
+  }, [maintenanceUsers, selected, workerCount])
 
-  const handleImageChange = (file: File | null) => {
-    if (!file) {
-      setCreateImageFile(null)
-      setCreateImagePreview(null)
-      setImageError(null)
-      return
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      setCreateImageFile(null)
-      setCreateImagePreview(null)
-      setImageError('La imatge supera 2MB. Fes-la més petita.')
-      return
-    }
-    setImageError(null)
-    setCreateImageFile(file)
-    setCreateImagePreview(URL.createObjectURL(file))
-  }
-
-  const uploadImageIfNeeded = async () => {
-    if (!createImageFile) return { url: null, path: null, meta: null }
-    const form = new FormData()
-    form.append('file', createImageFile)
-    const res = await fetch('/api/maintenance/upload-image', {
-      method: 'POST',
-      body: form,
-    })
-    if (!res.ok) {
-      const json = await res.json().catch(() => ({}))
-      throw new Error(json?.error || 'No s’ha pogut pujar la imatge')
-    }
-    const json = await res.json()
-    return { url: json.url || null, path: json.path || null, meta: json.meta || null }
-  }
-
-  const handleCreateTicket = async () => {
-    if (!createLocation || !createMachine || !createDescription) return
-    try {
-      setCreateBusy(true)
-      const image = await uploadImageIfNeeded()
-      const res = await fetch('/api/maintenance/tickets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: createLocation,
-          machine: createMachine,
-          description: createDescription,
-          priority: createPriority,
-          ticketType: createTicketType,
-          source: 'manual',
-          imageUrl: image.url,
-          imagePath: image.path,
-          imageMeta: image.meta,
-        }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setShowCreate(false)
-      setCreateLocation('')
-      setCreateMachine('')
-      setCreateDescription('')
-      setCreatePriority('normal')
-      setCreateTicketType(ticketTypeFilter)
-      setCreateImageFile(null)
-      setCreateImagePreview(null)
-      await fetchTickets()
-    } catch (err: any) {
-      alert(err?.message || 'Error creant ticket')
-    } finally {
-      setCreateBusy(false)
-    }
-  }
-
-  const computePlanning = () => {
+  const computePlanning = useCallback(() => {
     if (!assignDate || !assignStartTime || !assignDuration) {
       return { plannedStart: null, plannedEnd: null, estimatedMinutes: null }
     }
+
     const start = new Date(`${assignDate}T${assignStartTime}:00`)
     if (Number.isNaN(start.getTime())) {
       return { plannedStart: null, plannedEnd: null, estimatedMinutes: null }
     }
-    const parsed = assignDuration.trim()
-    const parts = parsed.split(':')
-    const hours = Number(parts[0] || 0)
-    const mins = Number(parts[1] || 0)
-    const minutes = Math.max(1, hours * 60 + mins)
+
+    const [hoursRaw, minutesRaw] = assignDuration.trim().split(':')
+    const minutes = Math.max(1, Number(hoursRaw || 0) * 60 + Number(minutesRaw || 0))
     const end = new Date(start.getTime() + minutes * 60 * 1000)
-    return { plannedStart: start.getTime(), plannedEnd: end.getTime(), estimatedMinutes: minutes }
-  }
+
+    return {
+      plannedStart: start.getTime(),
+      plannedEnd: end.getTime(),
+      estimatedMinutes: minutes,
+    }
+  }, [assignDate, assignDuration, assignStartTime])
 
   const handleAssign = async (ticket: Ticket, assignedIds: string[], assignedNames: string[]) => {
     try {
-    if ((ticket.source === 'whatsblapp' || ticket.source === 'incidencia') && ticket.status === 'nou') {
-      if (!detailsLocation.trim() || !detailsDescription.trim()) {
-        alert('Completa ubicació i observacions abans d’assignar.')
-        return
+      if ((ticket.source === 'whatsblapp' || ticket.source === 'incidencia') && ticket.status === 'nou') {
+        if (!detailsLocation.trim() || !detailsDescription.trim()) {
+          alert("Completa ubicacio i observacions abans d'assignar.")
+          return
+        }
       }
-    }
+
       setAssignBusy(true)
       const { plannedStart, plannedEnd, estimatedMinutes } = computePlanning()
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
@@ -389,6 +261,7 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
       await fetchTickets()
       setSelected((prev) =>
         prev
@@ -403,8 +276,9 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
           : prev
       )
       setSelected(null)
-    } catch (err: any) {
-      alert(err?.message || 'Error assignant')
+    } catch (err: unknown) {
+      const error = err as ErrorWithMessage
+      alert(error?.message || 'Error assignant')
     } finally {
       setAssignBusy(false)
     }
@@ -426,6 +300,7 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
       await fetchTickets()
       setSelected((prev) =>
         prev
@@ -433,12 +308,15 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
               ...prev,
               status,
               supplierResolvedAt:
-                meta?.supplierResolvedAt !== undefined ? meta.supplierResolvedAt : prev.supplierResolvedAt,
+                meta?.supplierResolvedAt !== undefined
+                  ? meta.supplierResolvedAt
+                  : prev.supplierResolvedAt,
             }
           : prev
       )
-    } catch (err: any) {
-      alert(err?.message || 'No s’ha pogut actualitzar')
+    } catch (err: unknown) {
+      const error = err as ErrorWithMessage
+      alert(error?.message || "No s'ha pogut actualitzar")
     }
   }
 
@@ -452,16 +330,13 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       await fetchTickets()
       setSelected((prev) => (prev ? { ...prev, status: 'fet' } : prev))
-    } catch (err: any) {
-      alert(err?.message || 'No s’ha pogut reobrir')
+    } catch (err: unknown) {
+      const error = err as ErrorWithMessage
+      alert(error?.message || "No s'ha pogut reobrir")
     }
   }
 
-  const handleAssignVehicle = async (
-    ticket: Ticket,
-    needsVehicle: boolean,
-    plate: string | null
-  ) => {
+  const handleAssignVehicle = async (ticket: Ticket, needsVehicle: boolean, plate: string | null) => {
     try {
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
         method: 'PATCH',
@@ -477,8 +352,9 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
       setSelected((prev) =>
         prev ? { ...prev, needsVehicle, vehiclePlate: needsVehicle ? plate : null } : prev
       )
-    } catch (err: any) {
-      alert(err?.message || 'No s’ha pogut guardar')
+    } catch (err: unknown) {
+      const error = err as ErrorWithMessage
+      alert(error?.message || "No s'ha pogut guardar")
     }
   }
 
@@ -496,6 +372,7 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
       await fetchTickets()
       setSelected((prev) =>
         prev
@@ -508,8 +385,9 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
             }
           : prev
       )
-    } catch (err: any) {
-      alert(err?.message || 'No s’han pogut desar els canvis')
+    } catch (err: unknown) {
+      const error = err as ErrorWithMessage
+      alert(error?.message || "No s'han pogut desar els canvis")
     }
   }
 
@@ -537,23 +415,24 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+
       await fetchTickets()
-      if (json?.ticket) {
-        setSelected(json.ticket)
-      }
-    } catch (err: any) {
-      alert(err?.message || 'No s ha pogut enviar al proveidor')
+      if (json?.ticket) setSelected(json.ticket)
+    } catch (err: unknown) {
+      const error = err as ErrorWithMessage
+      alert(error?.message || 'No s ha pogut enviar al proveidor')
     } finally {
       setExternalizeBusy(false)
     }
   }
 
-  const loadAvailability = async () => {
+  const loadAvailability = useCallback(async () => {
     const { plannedStart, plannedEnd } = computePlanning()
     if (!plannedStart || !plannedEnd) {
       setAvailableIds([])
       return
     }
+
     const startDate = new Date(plannedStart)
     const endDate = new Date(plannedEnd)
     const sd = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(
@@ -576,19 +455,19 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
         return
       }
       const json = await res.json()
-      const list = Array.isArray(json?.treballadors) ? json.treballadors : []
-      setAvailableIds(list.map((p: any) => p.id))
+      const list: AvailabilityItem[] = Array.isArray(json?.treballadors) ? json.treballadors : []
+      setAvailableIds(list.map((person) => person.id))
     } finally {
       setAvailabilityLoading(false)
     }
-  }
+  }, [computePlanning])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadAvailability()
     }, 300)
     return () => window.clearTimeout(timer)
-  }, [assignDate, assignStartTime, assignDuration])
+  }, [loadAvailability])
 
   const handleDelete = async (ticket: Ticket) => {
     if (!confirm('Eliminar el ticket?')) return
@@ -598,32 +477,33 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       await fetchTickets()
-    } catch (err: any) {
-      alert(err?.message || 'No s’ha pogut eliminar')
+    } catch (err: unknown) {
+      const error = err as ErrorWithMessage
+      alert(error?.message || "No s'ha pogut eliminar")
     }
   }
 
   const groupedTickets = useMemo(() => {
     const start = parseISO(filters.start)
     const end = parseISO(filters.end)
-    const list = tickets.filter((t) => {
-      const base = (t as any).plannedStart || (t as any).assignedAt || t.createdAt
+    const filtered = tickets.filter((ticket) => {
+      const base = ticket.plannedStart || ticket.assignedAt || ticket.createdAt
       const date = typeof base === 'string' ? new Date(base) : new Date(Number(base))
       if (Number.isNaN(date.getTime())) return false
       return date >= start && date <= new Date(end.getTime() + 24 * 60 * 60 * 1000)
     })
-    const grouped = list.reduce<Record<string, Ticket[]>>((acc, t) => {
-      const base = (t as any).plannedStart || (t as any).assignedAt || t.createdAt
+
+    const grouped = filtered.reduce<Record<string, Ticket[]>>((acc, ticket) => {
+      const base = ticket.plannedStart || ticket.assignedAt || ticket.createdAt
       const day =
-        typeof base === 'string'
-          ? base.slice(0, 10)
-          : format(new Date(Number(base)), 'yyyy-MM-dd')
+        typeof base === 'string' ? base.slice(0, 10) : format(new Date(Number(base)), 'yyyy-MM-dd')
       acc[day] ||= []
-      acc[day].push(t)
+      acc[day].push(ticket)
       return acc
     }, {})
+
     return Object.entries(grouped).sort(([a], [b]) => (a > b ? 1 : -1))
-  }, [tickets, filters.start, filters.end])
+  }, [filters.end, filters.start, tickets])
 
   return {
     role,
@@ -660,8 +540,6 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
     setCreateDescription,
     createPriority,
     setCreatePriority,
-    createTicketType,
-    setCreateTicketType,
     createImagePreview,
     createBusy,
     imageError,
@@ -707,4 +585,3 @@ export function useMaintenanceTickets(options?: { ticketType?: TicketType }) {
     groupedTickets,
   }
 }
-

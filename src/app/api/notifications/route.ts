@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import type { Query } from 'firebase-admin/firestore'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -28,10 +29,11 @@ export async function GET(req: Request) {
   const type = (searchParams.get('type') || '').trim()
 
   try {
-    let baseRef = db
+    const notificationsRef = db
       .collection('users')
       .doc(userId)
       .collection('notifications')
+    let baseRef: Query = notificationsRef
 
     if (type) {
       baseRef = baseRef.where('type', '==', type)
@@ -80,10 +82,11 @@ export async function PATCH(req: Request) {
     const type = (body.type || '').trim()
     const notificationId = (body.notificationId || '').trim()
 
-    let baseRef = db
+    const notificationsRef = db
       .collection('users')
       .doc(userId)
       .collection('notifications')
+    let baseRef: Query = notificationsRef
 
     if (type) {
       baseRef = baseRef.where('type', '==', type)

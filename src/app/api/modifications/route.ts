@@ -1,5 +1,5 @@
 // filename: src/app/api/modifications/route.ts
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { firestoreAdmin } from "@/lib/firebaseAdmin"
 import admin from "firebase-admin"
 import { getToken } from "next-auth/jwt"
@@ -43,7 +43,7 @@ async function generateModificationNumber(): Promise<string> {
   return `MOD${String(next).padStart(6, "0")}`
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const token = await getToken({ req })
     if (!token) return NextResponse.json({ error: "No autoritzat" }, { status: 401 })

@@ -37,6 +37,10 @@ type AggregatedMediaItem = {
   title: string
 }
 
+function isNonNull<T>(value: T | null): value is T {
+  return value !== null
+}
+
 function requireAdmin(role?: string) {
   return normalizeRole(role || '') === 'admin'
 }
@@ -103,7 +107,7 @@ async function collectIncidentRefs(): Promise<MediaRef[]> {
         title: titleBits.join(' · ') || `Incidencia ${doc.id}`,
       }
     })
-    .filter((item): item is MediaRef => Boolean(item))
+    .filter(isNonNull)
 }
 
 async function collectMaintenanceRefs(): Promise<MediaRef[]> {
@@ -132,7 +136,7 @@ async function collectMaintenanceRefs(): Promise<MediaRef[]> {
         title: titleBits.join(' · ') || `Ticket ${doc.id}`,
       }
     })
-    .filter((item): item is MediaRef => Boolean(item))
+    .filter(isNonNull)
 }
 
 async function collectMessagingRefs(): Promise<MediaRef[]> {
@@ -160,7 +164,7 @@ async function collectMessagingRefs(): Promise<MediaRef[]> {
         title: titleBits.join(' · ') || `Missatge ${doc.id}`,
       }
     })
-    .filter((item): item is MediaRef => Boolean(item))
+    .filter(isNonNull)
 }
 
 async function collectAuditRefs(): Promise<MediaRef[]> {

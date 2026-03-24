@@ -33,9 +33,9 @@ export async function getEventsByWeek(
   const apiKey = process.env.GOOGLE_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
   if (process.env.GOOGLE_REFRESH_TOKEN) {
     const auth = await getAuthClient();
-    calendar = google.calendar({ version: 'v3', auth });
+    calendar = (google as any).calendar({ version: 'v3', auth });
   } else if (apiKey) {
-    calendar = google.calendar({ version: 'v3', auth: apiKey });
+    calendar = (google as any).calendar({ version: 'v3', auth: apiKey });
   } else {
     throw new Error(
       'No hi ha credencials: defineix GOOGLE_REFRESH_TOKEN o GOOGLE_API_KEY / NEXT_PUBLIC_GOOGLE_API_KEY'

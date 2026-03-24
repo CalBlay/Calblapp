@@ -1,5 +1,5 @@
 // file: src/services/sync/sapSync.ts
-import { firestoreAdmin as firestore } from '../../lib/firebaseAdmin'
+import { firestoreAdmin } from '../../lib/firebaseAdmin'
 
 import { SapRow, normalizeDateToISO, toLower, isFuzzyMatch } from '@/lib/parseSapCsv'
 
@@ -27,7 +27,7 @@ export async function syncRowsToFirestore(rows: SapRow[], opts?: { threshold?: n
   // Per rendiment: creem un map local per evitar reconsultar els mateixos conjunts
   const cache = new Map<string, FsEvent[]>()
 
-  const batch = firestore.batch()
+  const batch = firestoreAdmin.batch()
   let pending = 0
   const flush = async () => {
     if (pending > 0) {
@@ -54,7 +54,7 @@ export async function syncRowsToFirestore(rows: SapRow[], opts?: { threshold?: n
       candidates = cache.get(cacheKey)!
     } else {
       // Query a stage_verd per ComercialLower + DataInici
-      const snap = await firestore
+      const snap = await firestoreAdmin
         .collection('stage_verd')
         .where('ComercialLower', '==', sapCom)
         .where('DataInici', '==', sapDate)

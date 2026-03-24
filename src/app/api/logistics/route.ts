@@ -142,8 +142,8 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const startStr = start
-    const endStr = end
+    const startStr = String(start)
+    const endStr = String(end)
     const docs = await loadStageVerdRange(startStr, endStr)
     const events: LogisticsEvent[] = []
 

@@ -1,6 +1,7 @@
 // src/services/reports.ts
-import { firestore } from './db'
+import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { Timestamp } from 'firebase-admin/firestore'
+import type { Query } from 'firebase-admin/firestore'
 
 export interface ReportFilters {
   department:   string
@@ -38,7 +39,7 @@ interface QuadrantDoc {
 
 export async function getPersonnelReport(filters: ReportFilters) {
   // 1) Consulta quadrants segons dates
-  let q = firestoreAdmin.collection('quadrants')
+  let q: Query = firestoreAdmin.collection('quadrants')
   if (filters.from) q = q.where('weekStart', '>=', Timestamp.fromDate(new Date(filters.from)))
   if (filters.to)   q = q.where('weekStart', '<=', Timestamp.fromDate(new Date(filters.to)))
   const quadSnap = await q.get()

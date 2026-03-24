@@ -1,12 +1,10 @@
-import type { MachineItem, TicketPriority, TicketType } from '../types'
+import type { MachineItem, TicketPriority } from '../types'
 
 type Props = {
   locations: string[]
   machines: MachineItem[]
   createPriority: TicketPriority
   setCreatePriority: (value: TicketPriority) => void
-  createTicketType: TicketType
-  setCreateTicketType: (value: TicketType) => void
   locationQuery: string
   setLocationQuery: (value: string) => void
   createLocation: string
@@ -22,8 +20,6 @@ type Props = {
   showMachineList: boolean
   setShowMachineList: (value: boolean) => void
   priorityLabels: Record<TicketPriority, string>
-  ticketTypeLabels: Record<TicketType, string>
-  showTicketTypeSelector?: boolean
   onClose: () => void
   onCreate: () => void
   createBusy: boolean
@@ -37,8 +33,6 @@ export default function CreateTicketModal({
   machines,
   createPriority,
   setCreatePriority,
-  createTicketType,
-  setCreateTicketType,
   locationQuery,
   setLocationQuery,
   createLocation,
@@ -54,8 +48,6 @@ export default function CreateTicketModal({
   showMachineList,
   setShowMachineList,
   priorityLabels,
-  ticketTypeLabels,
-  showTicketTypeSelector = true,
   onClose,
   onCreate,
   createBusy,
@@ -63,9 +55,6 @@ export default function CreateTicketModal({
   imageError,
   imagePreview,
 }: Props) {
-  const isDeco = createTicketType === 'deco'
-  const machinePlaceholder = isDeco ? 'Cerca material...' : 'Cerca maquinaria...'
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:p-4"
@@ -105,31 +94,12 @@ export default function CreateTicketModal({
               onClick={onClose}
               className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-slate-200 text-lg text-gray-500"
             >
-              ×
+              x
             </button>
           </div>
         </div>
 
         <div className="max-h-[75vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
-          {showTicketTypeSelector && (
-            <div className="flex flex-wrap gap-2">
-              {(['maquinaria', 'deco'] as TicketType[]).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setCreateTicketType(key)}
-                  className={`min-h-[44px] rounded-full border px-4 text-sm font-semibold ${
-                    createTicketType === key
-                      ? 'border-emerald-600 bg-emerald-600 text-white'
-                      : 'border-gray-200 bg-gray-100 text-gray-800'
-                  }`}
-                >
-                  {ticketTypeLabels[key]}
-                </button>
-              ))}
-            </div>
-          )}
-
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="relative">
               <input
@@ -154,31 +124,29 @@ export default function CreateTicketModal({
                   className="absolute right-3 top-3 text-base text-gray-400 hover:text-gray-600"
                   aria-label="Esborrar"
                 >
-                  ×
+                  x
                 </button>
               )}
               {showLocationList && (
-                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-2xl border bg-white shadow">
+                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow">
                   {locations
-                    .filter((loc) => loc.toLowerCase().includes(locationQuery.toLowerCase()))
-                    .map((loc) => (
+                    .filter((location) => location.toLowerCase().includes(locationQuery.toLowerCase()))
+                    .map((location) => (
                       <button
-                        key={loc}
+                        key={location}
                         type="button"
                         onClick={() => {
-                          setCreateLocation(loc)
-                          setLocationQuery(loc)
+                          setCreateLocation(location)
+                          setLocationQuery(location)
                           setShowLocationList(false)
                         }}
                         className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
                       >
-                        {loc}
+                        {location}
                       </button>
                     ))}
-                  {locations.filter((loc) => loc.toLowerCase().includes(locationQuery.toLowerCase()))
-                    .length === 0 && (
-                    <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>
-                  )}
+                  {locations.filter((location) => location.toLowerCase().includes(locationQuery.toLowerCase()))
+                    .length === 0 && <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>}
                 </div>
               )}
             </div>
@@ -186,7 +154,7 @@ export default function CreateTicketModal({
             <div className="relative">
               <input
                 className="h-12 w-full rounded-2xl border px-4 pr-10 text-base"
-                placeholder={machinePlaceholder}
+                placeholder="Cerca maquinaria..."
                 value={machineQuery}
                 onFocus={() => setShowMachineList(true)}
                 onChange={(e) => {
@@ -206,34 +174,32 @@ export default function CreateTicketModal({
                   className="absolute right-3 top-3 text-base text-gray-400 hover:text-gray-600"
                   aria-label="Esborrar"
                 >
-                  ×
+                  x
                 </button>
               )}
               {showMachineList && (
-                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-2xl border bg-white shadow">
+                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow">
                   {machines
-                    .filter((m) => m.label.toLowerCase().includes(machineQuery.toLowerCase()))
-                    .map((m) => (
+                    .filter((machine) => machine.label.toLowerCase().includes(machineQuery.toLowerCase()))
+                    .map((machine) => (
                       <button
-                        key={m.code + m.name}
+                        key={machine.code + machine.name}
                         type="button"
                         onClick={() => {
-                          setCreateMachine(m.label)
-                          setMachineQuery(m.label)
+                          setCreateMachine(machine.label)
+                          setMachineQuery(machine.label)
                           setShowMachineList(false)
                         }}
                         className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
                       >
-                        {m.label}
+                        {machine.label}
                       </button>
                     ))}
-                  {machines.filter((m) => m.label.toLowerCase().includes(machineQuery.toLowerCase()))
-                    .length === 0 && (
-                    <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>
-                  )}
+                  {machines.filter((machine) => machine.label.toLowerCase().includes(machineQuery.toLowerCase()))
+                    .length === 0 && <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>}
                 </div>
               )}
-              {machines.length === 0 && !isDeco && (
+              {machines.length === 0 && (
                 <div className="mt-1 text-xs text-amber-600">No s'ha pogut carregar la maquinaria.</div>
               )}
             </div>
@@ -287,7 +253,7 @@ export default function CreateTicketModal({
             onClick={onClose}
             className="min-h-[48px] rounded-full border px-5 text-sm font-medium"
           >
-            Cancel·lar
+            Cancel.lar
           </button>
           <button
             type="button"

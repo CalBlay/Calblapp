@@ -24,6 +24,11 @@ interface TokenWithUser {
   user?: { email?: string }
 }
 
+type ValidUser = {
+  userId: string
+  name: string
+}
+
 const norm = (v?: string) =>
   (v || '')
     .toString()
@@ -33,6 +38,32 @@ const norm = (v?: string) =>
     .trim()
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+async function resolveValidUsers(doc: QuadrantDoc | null): Promise<ValidUser[]> {
+  if (!doc) return []
+
+  const assignedNames = [
+    doc.responsable?.name,
+    ...(doc.conductors || []).map((person) => person.name),
+    ...(doc.treballadors || []).map((person) => person.name),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+
+  if (assignedNames.length === 0) return []
+
+  const wanted = new Set(assignedNames.map((value) => norm(value)))
+  const usersSnap = await db.collection('users').get()
+
+  return usersSnap.docs
+    .map((userDoc) => {
+      const data = userDoc.data() as { name?: string }
+      const name = String(data.name || '').trim()
+      if (!name || !wanted.has(norm(name))) return null
+      return { userId: userDoc.id, name }
+    })
+    .filter((item): item is ValidUser => item !== null)
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -71,6 +102,7 @@ export async function POST(req: NextRequest) {
     const snap = await ref.get()
     const prev = snap.exists ? (snap.data() as QuadrantDoc) : null
     const already = prev?.status === 'confirmed'
+    const validUsers = await resolveValidUsers(prev)
 
     // -------------------------------------------------------
     // 4) Confirmar quadrant

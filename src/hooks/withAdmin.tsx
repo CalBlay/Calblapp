@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
 import { normalizeRole } from '@/lib/roles'
 
-export function withAdmin<P>(Component: React.ComponentType<P>) {
+export function withAdmin<P extends object>(Component: React.ComponentType<P>) {
   const Wrapped: React.FC<P> = (props: P) => {
     const { data: session, status } = useSession()
     const router = useRouter()
