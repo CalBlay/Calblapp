@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { Clock, Filter, MapPin, RefreshCw, Truck } from 'lucide-react'
 import * as XLSX from 'xlsx'
@@ -43,7 +43,6 @@ export default function DisponibilitatLogisticaPage() {
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleAvailability | null>(null)
   const [destination, setDestination] = useState('')
   const [notes, setNotes] = useState('')
-  const [conductors, setConductors] = useState<Conductor[]>([])
   const [conductorId, setConductorId] = useState('')
   const [assignLoading, setAssignLoading] = useState(false)
   const [assignError, setAssignError] = useState<string | null>(null)
@@ -95,9 +94,10 @@ export default function DisponibilitatLogisticaPage() {
     enabled: Boolean(selectedVehicle && date && startTime && endTime),
   })
 
-  useEffect(() => {
-    setConductors(availableConductors.map((c) => ({ id: c.id, name: c.name })))
-  }, [availableConductors])
+  const conductors = useMemo<Conductor[]>(
+    () => availableConductors.map((c) => ({ id: c.id, name: c.name })),
+    [availableConductors]
+  )
 
   const handleAssign = async () => {
     if (!selectedVehicle) return

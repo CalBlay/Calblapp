@@ -10,7 +10,7 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 
 import FilterButton from '@/components/ui/filter-button'
 import { useFilters } from '@/context/FiltersContext'
-import SpacesFilters from '@/components/spaces/SpacesFilters'
+import SpacesFilters, { type SpacesFilterState } from '@/components/spaces/SpacesFilters'
 
 export default function SpacesPage() {
   const toISODate = (date: Date) => date.toISOString().split('T')[0]
@@ -18,7 +18,11 @@ export default function SpacesPage() {
   // -------------------------------
   // ðŸ”¹ Estat de filtres
   // -------------------------------
-  const [filters, setFilters] = useState(() => {
+  const [filters, setFilters] = useState<SpacesFilterState & {
+    baseDate: string
+    month: number
+    year: number
+  }>(() => {
     const today = new Date()
     return {
       stage: 'all',

@@ -216,6 +216,7 @@ export default function ProjectDocumentsTab({
       category: 'kickoff',
       label: "Acta de la reunió d'arrencada",
       name: "Acta-reunio-arrencada.txt",
+      path: '',
       url: kickoffMinutesUrl,
     }
   }, [kickoffMinutesUrl, project.kickoff?.minutes])
@@ -465,3 +466,4 @@ export default function ProjectDocumentsTab({
     </section>
   )
 }
+

@@ -2,14 +2,43 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import type { TransportType } from '@/lib/transportTypes'
+import {
+  normalizeTransportType,
+  type TransportType,
+} from '@/lib/transportTypes'
+
+interface TransportDocument {
+  id: string
+  name: string
+  url: string
+  uploadedAt: string
+}
+
+interface TransportApiItem {
+  id?: string
+  plate?: string
+  type?: TransportType
+  conductorId?: string | null
+  conductorName?: string | null
+  conductor?: string | null
+  available?: boolean
+  status?: string | null
+  itvDate?: string | null
+  itvExpiry?: string | null
+  lastService?: string | null
+  nextService?: string | null
+  documents?: TransportDocument[]
+}
 
 export interface Transport {
   id: string
   plate: string
   type: TransportType
   conductorId?: string | null
+  conductorName?: string | null
+  conductor?: string | null
   available: boolean
+  status?: string | null
 
   // 🔹 Camps nous de manteniment / documentació
   itvDate?: string | null          // Data ITV feta
@@ -17,12 +46,7 @@ export interface Transport {
   lastService?: string | null      // Última revisió
   nextService?: string | null      // Properà revisió
 
-  documents?: Array<{
-    id: string
-    name: string
-    url: string
-    uploadedAt: string
-  }>
+  documents?: TransportDocument[]
 }
 
 interface UseTransportsResult {
@@ -54,18 +78,21 @@ export function useTransports(): UseTransportsResult {
       const json = await res.json()
 
       // Acceptem formats flexibles: { data: [...] } o directament [...]
-      const list: any[] = Array.isArray(json)
+      const list: TransportApiItem[] = Array.isArray(json)
         ? json
         : Array.isArray(json?.data)
         ? json.data
         : []
 
-      const mapped: Transport[] = list.map((t: any) => ({
-        id: t.id,
-        plate: t.plate,
-        type: t.type,
+      const mapped: Transport[] = list.map((t, index) => ({
+        id: t.id ?? String(index),
+        plate: t.plate ?? '',
+        type: normalizeTransportType(t.type) as TransportType,
         conductorId: t.conductorId ?? null,
+        conductorName: t.conductorName ?? null,
+        conductor: t.conductor ?? null,
         available: typeof t.available === 'boolean' ? t.available : true,
+        status: t.status ?? null,
         itvDate: t.itvDate ?? null,
         itvExpiry: t.itvExpiry ?? null,
         lastService: t.lastService ?? null,
@@ -74,7 +101,7 @@ export function useTransports(): UseTransportsResult {
       }))
 
       setData(mapped)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[useTransports] Error carregant transports:', err)
       setError('No s’han pogut carregar els transports')
       setData([])

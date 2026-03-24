@@ -14,8 +14,16 @@ interface Props {
   inc: Incident
   isEditing: boolean
   onStartEdit: () => void
-  editValues: any
-  setEditValues: (v: any) => void
+  editValues: {
+    description?: string
+    originDepartment?: string
+    priority?: string
+  }
+  setEditValues: (
+    updater: (
+      prev: { description?: string; originDepartment?: string; priority?: string }
+    ) => { description?: string; originDepartment?: string; priority?: string }
+  ) => void
   onUpdate: (d: Partial<Incident>) => void
 }
 
@@ -99,9 +107,7 @@ export default function IncidentsRow({
           <Input
             value={editValues.description}
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) =>
-              setEditValues((v: any) => ({ ...v, description: e.target.value }))
-            }
+            onChange={(e) => setEditValues((v) => ({ ...v, description: e.target.value }))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 onUpdate({ description: e.currentTarget.value })
@@ -124,12 +130,11 @@ export default function IncidentsRow({
           <Select
             value={editValues.originDepartment}
             onValueChange={(val) => {
-              setEditValues((v: any) => ({ ...v, originDepartment: val }))
+              setEditValues((v) => ({ ...v, originDepartment: val }))
               onUpdate({ originDepartment: val })
             }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <SelectTrigger><SelectValue placeholder="Dept." /></SelectTrigger>
+            <SelectTrigger onClick={(e) => e.stopPropagation()}><SelectValue placeholder="Dept." /></SelectTrigger>
             <SelectContent>
               <SelectItem value="cuina">Cuina</SelectItem>
               <SelectItem value="serveis">Serveis</SelectItem>
@@ -149,12 +154,11 @@ export default function IncidentsRow({
           <Select
             value={editValues.priority}
             onValueChange={(val) => {
-              setEditValues((v: any) => ({ ...v, priority: val }))
+              setEditValues((v) => ({ ...v, priority: val }))
               onUpdate({ priority: val })
             }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <SelectTrigger><SelectValue placeholder="Prioritat" /></SelectTrigger>
+            <SelectTrigger onClick={(e) => e.stopPropagation()}><SelectValue placeholder="Prioritat" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="urgent">Urgent</SelectItem>
               <SelectItem value="alta">Alta</SelectItem>

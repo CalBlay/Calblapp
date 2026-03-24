@@ -407,7 +407,7 @@ export default function QuadrantsPage() {
         </p>
       )}
 
-      {error && (
+      {Boolean(error) && (
         <p className="text-center text-red-600 py-10">
           {String(error)}
         </p>

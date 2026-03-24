@@ -163,14 +163,14 @@ export async function buildLedger(
     const startISO = `${baseDate}T${q.startTime || '00:00'}:00`
     const hrs = toHrs(baseDate, q.startTime, getRangeEnd(q), q.endTime)
 
-    const persons: string[] = [
+    const persons = [
       ...(Array.isArray(q.treballadors) ? q.treballadors.map((x) => x?.name).filter(Boolean) : []),
       ...(Array.isArray(q.conductors) ? q.conductors.map((x) => x?.name).filter(Boolean) : []),
       ...(Array.isArray(q.responsables)
         ? q.responsables.map((x) => x?.name).filter(Boolean)
         : []),
       ...(q.responsable?.name ? [q.responsable.name] : []),
-    ]
+    ].filter((name): name is string => typeof name === 'string' && Boolean(name))
 
     for (const name of persons) {
       if (startISO >= `${weekStartISO}T00:00:00` && startISO < `${weekEndISO}T23:59:59`) {

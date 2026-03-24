@@ -169,30 +169,30 @@ export function normalizePremises(
   }
 ): Premises {
   const conditions = Array.isArray(raw?.conditions)
-    ? raw.conditions
-        .map((condition, index) => {
-          const locations = Array.isArray(condition?.locations)
-            ? condition.locations
-                .map((item) => String(item || '').trim())
-                .filter(Boolean)
-            : []
-          const responsible = String(
-            condition?.responsible || condition?.worker || ''
-          ).trim()
-          const responsibleId = String(condition?.responsibleId || '').trim()
-          if (!locations.length && !responsible && !responsibleId) return null
-          return {
-            id: String(condition?.id || makeConditionId({
-              locations,
-              responsible,
-              index,
-            })),
+    ? raw.conditions.reduce<PremiseCondition[]>((acc, condition, index) => {
+        const locations = Array.isArray(condition?.locations)
+          ? condition.locations
+              .map((item) => String(item || '').trim())
+              .filter(Boolean)
+          : []
+        const responsible = String(
+          condition?.responsible || condition?.worker || ''
+        ).trim()
+        const responsibleIdValue = String(condition?.responsibleId || '').trim()
+        const responsibleId = responsibleIdValue || undefined
+        if (!locations.length && !responsible && !responsibleId) return acc
+        acc.push({
+          id: String(condition?.id || makeConditionId({
             locations,
-            responsibleId,
             responsible,
-          }
+            index,
+          })),
+          locations,
+          responsibleId,
+          responsible,
         })
-        .filter((item): item is PremiseCondition => Boolean(item))
+        return acc
+      }, [])
     : []
 
   const driverCrews = Array.isArray(raw?.driverCrews)

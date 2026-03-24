@@ -65,7 +65,7 @@ const ALLERGEN_FILTER_OPTIONS: Array<{ value: AllergenFilter; label: string }> =
   { value: 'SI', label: 'Sí' },
 ]
 
-const buildAllergenFilters = (list: AllergenItem[]) =>
+const buildAllergenFilters = (list: readonly AllergenItem[]) =>
   list.reduce<Record<string, AllergenFilter>>((acc, allergen) => {
     acc[allergen.key] = 'ANY'
     return acc
@@ -86,7 +86,7 @@ export default function AllergensSearchPage() {
   const [plats, setPlats] = useState<Plat[]>([])
   const [categories, setCategories] = useState<OptionItem[]>([])
   const [families, setFamilies] = useState<OptionItem[]>([])
-  const [allergensCatalog, setAllergensCatalog] = useState<AllergenItem[]>(DEFAULT_ALLERGENS)
+  const [allergensCatalog, setAllergensCatalog] = useState<AllergenItem[]>(() => [...DEFAULT_ALLERGENS])
   const [searchText, setSearchText] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [familyFilter, setFamilyFilter] = useState('all')
@@ -145,7 +145,7 @@ export default function AllergensSearchPage() {
       if (dbAllergens.length) {
         setAllergensCatalog(sortAllergensByStandardOrder(dbAllergens))
       } else {
-        setAllergensCatalog(DEFAULT_ALLERGENS)
+        setAllergensCatalog([...DEFAULT_ALLERGENS])
       }
     }
 

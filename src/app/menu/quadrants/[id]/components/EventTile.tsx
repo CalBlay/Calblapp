@@ -13,8 +13,8 @@ interface QuadrantEvent {
   summary: string
   start?: string
   end?: string
-  location?: string
-  numPax?: number
+  location?: string | null
+  numPax?: number | null
   service?: string
   commercial?: string
   code?: string

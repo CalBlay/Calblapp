@@ -130,6 +130,7 @@ type Props = {
   onClick?: () => void
   onEventClick?: () => void
   onAvisosClick?: () => void
+  onChatClick?: () => void
 }
 
 export default function TornCardWorker({ item, onClick, onEventClick, onAvisosClick, onChatClick }: Props) {

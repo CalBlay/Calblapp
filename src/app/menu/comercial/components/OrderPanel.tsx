@@ -11,7 +11,7 @@ import {
 interface Props {
   orderSummary: { items: number; services: number; templates: number }
   showAllGroups: boolean
-  setShowAllGroups: (value: boolean) => void
+  setShowAllGroups: React.Dispatch<React.SetStateAction<boolean>>
   actionLog: string[]
   exportItems: { label: string; onClick: () => void; disabled?: boolean }[]
   duplicateSources: { id: string; label: string }[]
@@ -24,10 +24,10 @@ interface Props {
     template: string
     items: OrderLine[]
   }>
-  activeGroup?: { key: string; items: OrderLine[] }
+  activeGroup?: { key: string; items: OrderLine[] } | null
   showActiveOnly: boolean
   setActiveGroupKey: (key: string) => void
-  groupRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>
+  groupRefs: React.MutableRefObject<Record<string, HTMLButtonElement | null>>
   editingLineId: string | null
   editingQty: number
   setEditingLineId: (id: string | null) => void
@@ -35,6 +35,7 @@ interface Props {
   currentOrder?: OrderState
   updateLineQty: (lineId: string, qty: number) => void
   removeLine: (lineId: string) => void
+  clearOrder?: () => void
   showAllGroupsLabel: string
   serviceMeta: Record<string, { time?: string; location?: string }>
 }
@@ -218,7 +219,9 @@ export default function OrderPanel({
                               isActive ? 'cmd-group-active' : ''
                             }`}
                             onClick={() => toggleGroup(group.key)}
-                            ref={(el) => (groupRefs.current[group.key] = el)}
+                            ref={(el) => {
+                              groupRefs.current[group.key] = el
+                            }}
                           >
                             <span>
                               {group.template} ({group.items.length})

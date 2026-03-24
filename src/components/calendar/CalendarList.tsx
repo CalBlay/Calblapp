@@ -21,7 +21,7 @@ export default function CalendarList({ deals, loading }: CalendarListProps) {
   const grouped = useMemo(() => {
     const acc: Record<string, Deal[]> = {}
     deals.forEach((d) => {
-      const key = (d.DataInici || d.Data || '').slice(0, 10)
+      const key = String(d.DataInici || '').slice(0, 10)
       if (!acc[key]) acc[key] = []
       acc[key].push(d)
     })

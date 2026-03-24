@@ -197,7 +197,7 @@ export const deriveKickoffAttendees = (
       name,
       email,
       department,
-      attended: existing?.attended !== false,
+      attended: true,
     })
   }
 

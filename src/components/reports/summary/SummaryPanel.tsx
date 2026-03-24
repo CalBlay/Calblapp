@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FiltersBar, type Filters } from '@/components/reports/filters/FiltersBar'
 import { KpiCard } from './KpiCard'
-import { EventsTable } from './EventsTable'
+import { EventsTable, type EventRow } from './EventsTable'
 
 type PersonalRes = { summary?: { hours?: number; people?: number } }
 type EventsRes = {
@@ -30,7 +30,7 @@ export function SummaryPanel() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [kpis, setKpis] = useState<Record<string, string | number>>({})
-  const [eventsList, setEventsList] = useState<EventsRes['data']>([])
+  const [eventsList, setEventsList] = useState<EventRow[]>([])
   const [eventOptions, setEventOptions] = useState<EventsOptions[]>([])
   const [lineOptions, setLineOptions] = useState<string[]>([])
 
@@ -53,7 +53,12 @@ export function SummaryPanel() {
 
       const vehKm = (vehicles.vehicles || []).reduce((acc, v) => acc + Number(v.distanceKm || 0), 0)
       const vehCost = (vehicles.vehicles || []).reduce((acc, v) => acc + Number(v.cost || 0), 0)
-      setEventsList(events.data || [])
+      setEventsList(
+        (events.data || []).map((event) => ({
+          ...event,
+          serviceType: event.serviceType || '',
+        }))
+      )
       setEventOptions(Array.isArray((events as any)?.options?.events) ? (events as any).options.events : [])
       setLineOptions(Array.isArray((events as any)?.options?.lines) ? (events as any).options.lines : [])
 

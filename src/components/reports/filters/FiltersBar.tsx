@@ -63,7 +63,7 @@ export function FiltersBar({
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           <SmartFilters
-            role="admin"
+            role="Admin"
             onChange={handleDates}
             showDepartment={false}
             showCommercial={false}

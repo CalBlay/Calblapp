@@ -268,7 +268,7 @@ export function useQuadrantFormState({
     const workers = Number(ettData.workers || 0)
     if (!workers) return null
     return {
-      name: 'ETT',
+      name: 'ETT' as const,
       workers,
       startDate: ettData.serviceDate || startDate,
       endDate: ettData.serviceDate || endDate,

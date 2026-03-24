@@ -64,19 +64,22 @@ const pickEdgeTime = (
   values: Array<string | undefined | null>,
   mode: 'min' | 'max'
 ) => {
-  let best: { text: string; value: number } | null = null
+  let bestText: string | undefined
+  let bestValue: number | null = null
   values.forEach((candidate) => {
     const minutes = timeToMinutes(candidate)
     if (minutes === null || !candidate) return
-    if (!best) {
-      best = { text: candidate, value: minutes }
+    if (bestValue === null) {
+      bestText = candidate
+      bestValue = minutes
       return
     }
-    if (mode === 'min' ? minutes < best.value : minutes > best.value) {
-      best = { text: candidate, value: minutes }
+    if (mode === 'min' ? minutes < bestValue : minutes > bestValue) {
+      bestText = candidate
+      bestValue = minutes
     }
   })
-  return best?.text
+  return bestText
 }
 
 const mergePeople = (groups: any[][]) => {

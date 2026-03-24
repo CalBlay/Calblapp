@@ -7,13 +7,16 @@ export interface Incident {
   createdAt: string
   department: string
   description: string
+  incidentNumber?: string
   eventId: string
   eventTitle?: string
   eventCode?: string
   eventLocation?: string
   eventDate?: string
   eventCommercial?: string
+  originDepartment?: string
   importance: string
+  priority?: string
   status: string
   createdBy?: string
   category?: { id: string; label: string }

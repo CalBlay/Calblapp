@@ -23,7 +23,7 @@ import {
   Wrench,
   Images,
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import type { LucideIcon, LucideProps } from 'lucide-react'
 import { getVisibleModules } from '@/lib/accessControl'
 import {
   useAdminUserRequestCount,
@@ -46,9 +46,9 @@ interface SessionUser {
 /* ─────────────────────────────────────────────
    MAPA UI (només estètica, NO permisos)
 ───────────────────────────────────────────── */
-const OPSIA_ICON_VARIANT: 'a' | 'b' = 'b'
+const OPSIA_ICON_VARIANT = 'b' as 'a' | 'b'
 
-const OpsiaIconA: LucideIcon = (props) => (
+const OpsiaIconA = (props: LucideProps) => (
   <svg
     viewBox="0 0 24 24"
     fill="none"
@@ -75,7 +75,7 @@ const OpsiaIconA: LucideIcon = (props) => (
   </svg>
 )
 
-const OpsiaIconB: LucideIcon = (props) => (
+const OpsiaIconB = (props: LucideProps) => (
   <svg
     viewBox="0 0 24 24"
     fill="none"
@@ -102,7 +102,9 @@ const OpsiaIconB: LucideIcon = (props) => (
   </svg>
 )
 
-const OpsiaIcon: LucideIcon = OPSIA_ICON_VARIANT === 'a' ? OpsiaIconA : OpsiaIconB
+const OpsiaIcon: LucideIcon = OPSIA_ICON_VARIANT === 'a'
+  ? (OpsiaIconA as LucideIcon)
+  : (OpsiaIconB as LucideIcon)
 
 const UI_MAP: Record<
   string,

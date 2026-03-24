@@ -14,8 +14,20 @@ export interface ReportPersonnelRow {
   eventsCount: number
 }
 
+interface ReportPersonnelResponse {
+  stats: {
+    totalPersonnel: number
+    totalHours: number
+    extraHours: number
+    topResponsables: string
+  }
+  chartByPerson: { name: string; hours: number }[]
+  chartDonut: { name: string; value: number }[]
+  rows: ReportPersonnelRow[]
+}
+
 export function useReportPersonnel(filters: ReportFilters) {
-  const [data, setData]       = useState<ReportPersonnelRow[] | null>(null)
+  const [data, setData]       = useState<ReportPersonnelResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string|null>(null)
 
@@ -43,7 +55,7 @@ export function useReportPersonnel(filters: ReportFilters) {
         console.log("[useReportPersonnel] payload rebut:", payload)
 
         if (!res.ok) throw new Error(payload.error || res.statusText)
-        return payload?.data as ReportPersonnelRow[]
+        return payload?.data as ReportPersonnelResponse
       })
       .then(setData)
       .catch((err: unknown) => {

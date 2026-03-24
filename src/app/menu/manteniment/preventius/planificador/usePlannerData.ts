@@ -28,6 +28,23 @@ type UsePlannerDataArgs = {
   ticketsAgeFilter: 'all' | 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus'
 }
 
+type PlannerTicketLike = Partial<Ticket> & {
+  id?: string | number
+  externalized?: boolean
+  status?: string
+  ticketCode?: string
+  incidentNumber?: string
+  description?: string
+  machine?: string
+  location?: string
+  estimatedMinutes?: number | string
+  createdAt?: unknown
+  plannedStart?: number | string
+  plannedEnd?: number | string
+  assignedToNames?: unknown[]
+  priority?: TicketCard['priority']
+}
+
 export default function usePlannerData({
   weekStart,
   dayCount,
@@ -114,8 +131,8 @@ export default function usePlannerData({
         })
         if (!res.ok) return
         const json = await res.json()
-        const list = Array.isArray(json?.tickets) ? json.tickets : []
-        const lookup = list.reduce<Record<string, Ticket>>((acc, ticket) => {
+        const list: PlannerTicketLike[] = Array.isArray(json?.tickets) ? json.tickets : []
+        const lookup = list.reduce((acc: Record<string, Ticket>, ticket) => {
           if (!ticket?.id) return acc
           acc[String(ticket.id)] = ticket as Ticket
           return acc
@@ -293,8 +310,10 @@ export default function usePlannerData({
         .filter(Boolean) as ScheduledItem[]
 
       const ticketsJson = ticketsRes.ok ? await ticketsRes.json() : { tickets: [] }
-      const ticketList = Array.isArray(ticketsJson?.tickets) ? ticketsJson.tickets : []
-      const nextTicketById = ticketList.reduce<Record<string, Ticket>>((acc, ticket) => {
+      const ticketList: PlannerTicketLike[] = Array.isArray(ticketsJson?.tickets)
+        ? ticketsJson.tickets
+        : []
+      const nextTicketById = ticketList.reduce((acc: Record<string, Ticket>, ticket) => {
         if (!ticket?.id) return acc
         acc[String(ticket.id)] = ticket as Ticket
         return acc

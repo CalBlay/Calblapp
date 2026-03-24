@@ -755,7 +755,6 @@ export default function AuditoriaValoracioPage() {
                         size="sm"
                         disabled={savingConfig || !configDirty}
                         onClick={async () => {
-                          if (valuationDepartment === 'all') return
                           const ok = await saveDepartmentConfig(valuationDepartment as Department, {
                             ...currentConfig,
                             enabled: true,

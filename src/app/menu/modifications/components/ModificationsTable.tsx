@@ -16,6 +16,15 @@ interface Props {
   currentUserEmail?: string
 }
 
+type DayGroupEvent = {
+  eventTitle?: string
+  eventCode?: string
+  location?: string
+  commercial?: string
+  count: number
+  rows: Modification[]
+}
+
 export default function ModificationsTable({
   modifications,
   onUpdate,
@@ -25,7 +34,7 @@ export default function ModificationsTable({
   currentUserEmail,
 }: Props) {
   // Agrupació per dia -> esdeveniment
-  const days = modifications.reduce((acc: any, mod) => {
+  const days = modifications.reduce((acc: Record<string, Record<string, DayGroupEvent>>, mod) => {
     const day = (mod.eventDate || mod.createdAt || '').slice(0, 10)
     if (!acc[day]) acc[day] = {}
     const key = mod.eventId || 'no-event'
@@ -44,13 +53,13 @@ export default function ModificationsTable({
     acc[day][key].rows.push(mod)
     acc[day][key].count += 1
     return acc
-  }, {} as Record<string, any>)
+  }, {} as Record<string, Record<string, DayGroupEvent>>)
 
   const sortedDays = Object.keys(days).sort()
   const dayEntries = sortedDays.map((day) => {
-    const events = Object.values(days[day])
+    const events = Object.values(days[day] || {})
     const totalCount = events.reduce(
-      (sum: number, event: any) => sum + (event.count || 0),
+      (sum: number, event) => sum + (event.count || 0),
       0
     )
     return { day, events, totalCount }
@@ -73,7 +82,7 @@ export default function ModificationsTable({
               </span>
           </div>
 
-          {events.map((event: any, i: number) => (
+          {events.map((event, i: number) => (
             <ModificationsEventGroup
               key={i}
               event={event}

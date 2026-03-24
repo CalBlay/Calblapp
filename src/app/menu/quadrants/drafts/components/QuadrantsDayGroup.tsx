@@ -46,7 +46,6 @@ export default function QuadrantsDayGroup({ date, quadrants }: Props) {
           <QuadrantCard
             key={`${(q.department || '').toLowerCase()}::${q.id}`}
             quadrant={q}
-            onClick={() => router.push(`/menu/quadrants/drafts/${q.id}`)}
           />
         ))}
       </div>

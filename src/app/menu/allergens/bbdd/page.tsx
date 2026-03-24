@@ -93,7 +93,7 @@ type PlatLookupItem = {
 
 const buildAllergensState = (
   source: Record<string, string | null> = {},
-  list: AllergenItem[] = DEFAULT_ALLERGENS
+  list: readonly AllergenItem[] = DEFAULT_ALLERGENS
 ): Record<string, AllergenValue> => {
   const state: Record<string, AllergenValue> = {}
   list.forEach(({ key }) => {
@@ -151,7 +151,7 @@ const toAllergenKey = (value: string) => {
     .join('')
 }
 
-const DEFAULT_ALLERGEN_KEYS = new Set(DEFAULT_ALLERGENS.map(allergen => allergen.key))
+const DEFAULT_ALLERGEN_KEYS = new Set<string>(DEFAULT_ALLERGENS.map(allergen => allergen.key))
 
 const defaultFormState: FormState = {
   code: '',
@@ -192,7 +192,7 @@ export default function AllergensBbddPage() {
   const [categories, setCategories] = useState<OptionItem[]>([])
   const [families, setFamilies] = useState<OptionItem[]>([])
   const [menusCatalog, setMenusCatalog] = useState<OptionItem[]>([])
-  const [allergensCatalog, setAllergensCatalog] = useState<AllergenItem[]>(DEFAULT_ALLERGENS)
+  const [allergensCatalog, setAllergensCatalog] = useState<AllergenItem[]>(() => [...DEFAULT_ALLERGENS])
   const [allergensSource, setAllergensSource] = useState<'default' | 'db'>('default')
   const [platsIndex, setPlatsIndex] = useState<PlatLookupItem[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -301,7 +301,7 @@ export default function AllergensBbddPage() {
         setAllergensCatalog(sortAllergensByStandardOrder(dbAllergens))
         setAllergensSource('db')
       } else {
-        setAllergensCatalog(DEFAULT_ALLERGENS)
+        setAllergensCatalog([...DEFAULT_ALLERGENS])
         setAllergensSource('default')
       }
 
@@ -454,7 +454,7 @@ export default function AllergensBbddPage() {
           )
         )
       )
-      setAllergensCatalog(DEFAULT_ALLERGENS)
+      setAllergensCatalog([...DEFAULT_ALLERGENS])
       setAllergensSource('db')
       setStatus('Allergens base guardats.')
     } catch (err) {

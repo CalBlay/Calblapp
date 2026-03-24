@@ -49,6 +49,17 @@ type RoomDetailResponse = {
   users: UserOption[]
 }
 
+type ResolvedRoom = NonNullable<ProjectResponse['rooms'][number]>
+type ProjectDocumentItem = NonNullable<ProjectData['documents']>[number]
+
+const appendProjectDocument = (
+  documents: ProjectData['documents'] | undefined,
+  document: ProjectDocumentItem
+): ProjectDocumentItem[] =>
+  [...(documents || []), document].filter(
+    (item): item is ProjectDocumentItem => Boolean(item)
+  )
+
 export default function ProjectRoomDetailPage() {
   const params = useParams<{ id: string; roomId: string }>()
   const { data: session } = useSession()
@@ -153,7 +164,7 @@ export default function ProjectRoomDetailPage() {
     }
   }, [params, project, room])
 
-  const currentRoom = room || fallbackRoom
+  const currentRoom: ResolvedRoom | null = room || fallbackRoom
   const currentBlock =
     linkedBlock ||
     (fallbackRoom ? project?.blocks?.find((block) => block.id === fallbackRoom.blockId) || null : null)
@@ -320,8 +331,8 @@ export default function ProjectRoomDetailPage() {
   }, [params?.id, params?.roomId, currentRoom?.id, currentRoom?.opsChannelId])
 
   const persistRoom = async (
-    nextRoom: NonNullable<typeof currentRoom>,
-    nextTasks?: typeof currentBlock.tasks
+    nextRoom: ResolvedRoom,
+    nextTasks?: typeof linkedTasks
   ) => {
     if (!params?.id || !params?.roomId) return
     setSaving(true)
@@ -337,7 +348,7 @@ export default function ProjectRoomDetailPage() {
 
       const payload = (await res.json().catch(() => ({}))) as {
         error?: string
-        room?: NonNullable<typeof currentRoom>
+          room?: ResolvedRoom
       }
       if (!res.ok) throw new Error(payload.error || 'No s ha pogut guardar la sala')
       if (payload.room) {
@@ -348,9 +359,7 @@ export default function ProjectRoomDetailPage() {
     }
   }
 
-  const updateRoomLocal = (
-    updater: (currentRoom: NonNullable<typeof currentRoom>) => NonNullable<typeof currentRoom>
-  ) => {
+  const updateRoomLocal = (updater: (currentRoom: ResolvedRoom) => ResolvedRoom) => {
     setProject((current) => {
       if (!current) return current
       const exists = (current.rooms || []).some((item) => item.id === params?.roomId)
@@ -448,15 +457,16 @@ export default function ProjectRoomDetailPage() {
       })
       const payload = (await res.json().catch(() => ({}))) as {
         error?: string
-        document?: NonNullable<typeof room>['documents'][number]
+        document?: NonNullable<ProjectData['documents'][number]>
       }
       if (!res.ok || !payload.document) {
         throw new Error(payload.error || 'No s ha pogut adjuntar el document')
       }
+      const uploadedDocument = payload.document
 
       updateRoomLocal((current) => ({
         ...current,
-        documents: [...(current.documents || []), payload.document],
+        documents: appendProjectDocument(current.documents, uploadedDocument),
       }))
       setPendingDocument(null)
       toast({ title: 'Document de sala guardat' })
@@ -492,12 +502,13 @@ export default function ProjectRoomDetailPage() {
       if (!res.ok || !payload.document) {
         throw new Error(payload.error || 'No s ha pogut adjuntar el document inicial')
       }
+      const uploadedDocument = payload.document
 
       setProject((current) =>
         current
           ? {
               ...current,
-              documents: [...(current.documents || []), payload.document],
+              documents: appendProjectDocument(current.documents, uploadedDocument),
             }
           : current
       )
@@ -935,8 +946,8 @@ export default function ProjectRoomDetailPage() {
                         ...room,
                         documents: (room.documents || []).some(
                           (item) =>
-                            (item?.id || item?.url || item?.path) ===
-                            (document?.id || document?.url || document?.path)
+                            (item?.id || item?.url || `${item?.name || ''}-${item?.label || ''}`) ===
+                            (document?.id || document?.url || `${document?.name || ''}-${document?.label || ''}`)
                         )
                           ? room.documents || []
                           : [...(room.documents || []), document],
@@ -1021,7 +1032,7 @@ export default function ProjectRoomDetailPage() {
                     <div className="space-y-2">
                       {visibleDocuments.map((document) => (
                         <div
-                          key={document?.id || document?.url || document?.path}
+                          key={document?.id || document?.url || `${document?.name || ''}-${document?.label || ''}`}
                           className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 px-4 py-3"
                         >
                           <div>
@@ -1041,7 +1052,7 @@ export default function ProjectRoomDetailPage() {
                             <div className="mt-1 text-xs text-slate-500">
                               {documentsView === 'initial'
                                 ? 'Projecte'
-                                : roomDocuments.some((item) => (item?.id || item?.url || item?.path) === (document?.id || document?.url || document?.path))
+                                : roomDocuments.some((item) => (item?.id || item?.url || `${item?.name || ''}-${item?.label || ''}`) === (document?.id || document?.url || `${document?.name || ''}-${document?.label || ''}`))
                                   ? currentRoom?.name || 'Sala'
                                   : currentBlock?.name || 'Projecte'}
                               {document?.category ? ` · ${document.category}` : ''}
@@ -1127,8 +1138,8 @@ export default function ProjectRoomDetailPage() {
                       >
                         <div className="text-sm font-medium text-slate-900">{task.title}</div>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <span className={`rounded-full px-2.5 py-1 font-medium ${colorByDepartment(task.department || getPrimaryBlockDepartment(currentBlock || undefined) || '')}`}>
-                            {task.department || getPrimaryBlockDepartment(currentBlock || undefined) || 'Sense departament'}
+                          <span className={`rounded-full px-2.5 py-1 font-medium ${colorByDepartment(task.department || getPrimaryBlockDepartment(currentBlock || { department: '', departments: [] }) || '')}`}>
+                            {task.department || getPrimaryBlockDepartment(currentBlock || { department: '', departments: [] }) || 'Sense departament'}
                           </span>
                           <span>{task.owner || 'Sense responsable'}</span>
                           <span>·</span>

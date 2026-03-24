@@ -62,6 +62,9 @@ export default function CalendarView({
 
       return {
         ...ev,
+        service: ev.service ?? undefined,
+        commercial: ev.commercial ?? undefined,
+        numPax: ev.numPax ?? undefined,
         quadrantStatus,
       }
     })

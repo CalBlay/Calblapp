@@ -337,7 +337,6 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
   const handleClear = () => {
     setFormData({
       code: '',
-      LN: '',
       NomEvent: '',
       DataInici: date || '',
       DataFi: '',
@@ -479,7 +478,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
           <div>
             <label className="block text-xs text-gray-500 mb-1">Ubicacio</label>
             <SearchFincaInput
-              value={formData.Ubicacio}
+              value={typeof formData.Ubicacio === 'string' ? formData.Ubicacio : ''}
               onChange={(val) => handleChange('Ubicacio', val)}
             />
           </div>
@@ -487,7 +486,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
           <div>
             <label className="block text-xs text-gray-500 mb-1">Servei</label>
             <SearchServeiInput
-              value={formData.Servei}
+              value={typeof formData.Servei === 'string' ? formData.Servei : ''}
               onChange={(val) => handleChange('Servei', val)}
             />
           </div>

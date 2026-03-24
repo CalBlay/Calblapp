@@ -36,7 +36,7 @@ export default function ProjectDetailPage() {
   const searchParams = useSearchParams()
   const [project, setProject] = useState<ProjectData | null>(null)
   const [error, setError] = useState('')
-  const requestedTab = searchParams.get('tab')
+  const requestedTab = searchParams?.get('tab')
   const initialTab: WorkspaceTab =
     requestedTab === 'blocks' ||
     requestedTab === 'tasks' ||
@@ -80,7 +80,10 @@ export default function ProjectDetailPage() {
             data.phase ||
             deriveProjectPhase({
               launchDate: data.launchDate || '',
-              kickoff: data.kickoff || null,
+              kickoff: {
+                ...EMPTY_KICKOFF,
+                ...(data.kickoff || {}),
+              },
               blocks: Array.isArray(data.blocks) ? data.blocks : [],
             }),
           status: data.status || '',
@@ -200,7 +203,7 @@ export default function ProjectDetailPage() {
             ...EMPTY_KICKOFF,
             ...(data.kickoff || {}),
                 attendees: Array.isArray(data.kickoff?.attendees)
-                  ? data.kickoff!.attendees!.map((item) => ({
+                  ? data.kickoff.attendees.map((item) => ({
                       key: item.key || '',
                       department: item.department || '',
                       userId: item.userId || '',
@@ -210,7 +213,7 @@ export default function ProjectDetailPage() {
                     }))
                   : [],
             excludedKeys: Array.isArray(data.kickoff?.excludedKeys)
-              ? data.kickoff!.excludedKeys!.map(String)
+              ? data.kickoff.excludedKeys.map(String)
               : [],
           },
         })
@@ -247,7 +250,7 @@ export default function ProjectDetailPage() {
         ) : null}
 
         {project ? (
-          <ProjectWorkspace projectId={params.id} initialProject={project} initialTab={initialTab} />
+          <ProjectWorkspace projectId={params?.id || ''} initialProject={project} initialTab={initialTab} />
         ) : null}
       </div>
     </RoleGuard>

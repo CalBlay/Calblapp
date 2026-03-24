@@ -758,6 +758,14 @@ export default function ProjectEditor() {
               onRemoveDepartmentFromBlock={removeDepartmentFromBlock}
               onRemoveBlock={removeBlock}
               onRemoveDocument={() => undefined}
+              manualKickoffEmail=""
+              kickoffReady={false}
+              sendingKickoff={false}
+              onKickoffFieldChange={() => undefined}
+              onManualKickoffEmailChange={() => undefined}
+              onAddManualKickoffEmail={() => undefined}
+              onSendKickoff={() => undefined}
+              onRemoveKickoffAttendee={() => undefined}
               showSaveButton={false}
               showBaseSection={false}
               showKickoffSection={false}

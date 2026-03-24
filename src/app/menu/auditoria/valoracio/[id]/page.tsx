@@ -83,7 +83,7 @@ export default function AuditoriaValoracioDetailPage() {
     const q = new URLSearchParams()
     const keys = ['fromTs', 'toTs', 'status', 'department', 'q']
     keys.forEach((key) => {
-      const value = String(searchParams.get(key) || '').trim()
+      const value = String(searchParams?.get(key) || '').trim()
       if (value) q.set(key, value)
     })
     return q

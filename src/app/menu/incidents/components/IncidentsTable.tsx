@@ -11,11 +11,23 @@ interface Props {
   onUpdate: (id: string, data: Partial<Incident>) => void
 }
 
+type GroupedIncidentEvent = {
+  eventTitle?: string
+  eventCode?: string
+  ln?: string
+  location?: string
+  serviceType?: string
+  pax?: number
+  fincaId?: string
+  commercial: string
+  rows: Incident[]
+}
+
 const formatDayCountLabel = (count: number) =>
   count === 1 ? '1 incid.' : `${count} inc.`
 
 export default function IncidentsTable({ incidents, onUpdate }: Props) {
-  const days = incidents.reduce((acc: any, inc) => {
+  const days = incidents.reduce<Record<string, Record<string, GroupedIncidentEvent>>>((acc, inc) => {
     const day = (inc.eventDate || '').slice(0, 10)
     if (!acc[day]) acc[day] = {}
     const key = inc.eventId || 'no-event'
@@ -36,13 +48,13 @@ export default function IncidentsTable({ incidents, onUpdate }: Props) {
 
     acc[day][key].rows.push(inc)
     return acc
-  }, {} as Record<string, any>)
+  }, {})
 
   const sortedDays = Object.keys(days).sort()
   const dayEntries = sortedDays.map((day) => {
-    const events = Object.values(days[day])
+    const events = Object.values(days[day] || {})
     const totalCount = events.reduce(
-      (sum: number, event: any) => sum + (event.rows?.length || 0),
+      (sum: number, event) => sum + event.rows.length,
       0
     )
 
@@ -60,7 +72,7 @@ export default function IncidentsTable({ incidents, onUpdate }: Props) {
             </span>
           </div>
 
-          {events.map((event: any, i: number) => (
+          {events.map((event, i: number) => (
             <IncidentsEventGroup key={i} event={event} onUpdate={onUpdate} />
           ))}
         </div>

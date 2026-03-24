@@ -58,7 +58,7 @@ export function useComercialState() {
   const [actionLog, setActionLog] = useState<string[]>([])
 
   const [ordersByEvent, setOrdersByEvent] = useState<Record<string, OrderState>>({})
-  const groupRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const groupRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
   useEffect(() => {
     let active = true

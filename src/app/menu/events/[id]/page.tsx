@@ -37,7 +37,7 @@ export default async function EventDetailPage({ params }: Params) {
       user.department.slice(1).toLowerCase()
     const colName = `quadrants${deptNorm}`
 
-    const snap = await firestoreAdmin.collection(colName).doc(eventId).get()
+    const snap = await db.collection(colName).doc(eventId).get()
     if (snap.exists) {
       const data = snap.data() || {}
       const respName = String(data?.responsable?.name || '').toLowerCase().trim()
@@ -63,9 +63,8 @@ export default async function EventDetailPage({ params }: Params) {
 
       {/* Passem props a EventMenuModal */}
       <EventMenuModal
-        event={{ id: eventId, summary: ev.summary, start: ev.start.dateTime ?? ev.start.date! }}
-        user={{ id: user?.id, role: user?.role, department: user?.department, name: user?.name }}
-        canCreateIncident={isPrivileged}
+        event={{ id: eventId, summary: ev.summary || '', start: ev.start.dateTime ?? ev.start.date ?? '' }}
+        user={{ id: user?.id, role: user?.role, department: user?.department ?? undefined, name: user?.name ?? undefined }}
         onClose={() => {}}
       />
     </div>

@@ -24,13 +24,13 @@ export type DraftInput = {
   id: string
   code?: string
   eventName?: string
-  location?: string
+  location?: string | Record<string, unknown>
   department?: string
   startDate: string
-  startTime: string
-  endDate: string
-  endTime: string
-  arrivalTime?: string
+  startTime?: string
+  endDate?: string
+  endTime?: string
+  arrivalTime?: string | null
   meetingPoint?: string
   groups?: Array<{
     id?: string | null
@@ -53,8 +53,8 @@ export type DraftInput = {
   totalWorkers?: number
   status?: string
   responsableId?: string
-  responsableName?: string
-  responsable?: Partial<Row>
+  responsableName?: string | Record<string, unknown>
+  responsable?: Partial<Row> | null
   conductors?: Array<Partial<Row>>
   treballadors?: Array<Partial<Row>>
   brigades?: Array<Partial<Row>> // afegit per coherència amb DraftsTable

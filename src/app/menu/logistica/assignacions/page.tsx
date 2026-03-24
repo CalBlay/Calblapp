@@ -9,9 +9,24 @@ import * as XLSX from 'xlsx'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
 import ExportMenu from '@/components/export/ExportMenu'
-import { useTransportAssignments } from './hooks/useTransportAssignments'
+import {
+  useTransportAssignments,
+  type TransportAssignmentItem,
+} from './hooks/useTransportAssignments'
 import TransportAssignmentCard from './components/TransportAssignmentCard'
 import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
+
+interface AssignmentVehicleRow {
+  department?: string
+  name?: string
+  plate?: string
+  vehicleType?: string
+  startTime?: string
+  arrivalTime?: string
+  endTime?: string
+  startDate?: string
+  endDate?: string
+}
 
 export default function TransportAssignacionsPage() {
   useSession()
@@ -33,13 +48,13 @@ export default function TransportAssignacionsPage() {
     useTransportAssignments(filters.start, filters.end)
 
   const grouped = useMemo(() => {
-    const map: Record<string, any[]> = {}
+    const map: Record<string, TransportAssignmentItem[]> = {}
     for (const it of items) {
       const day = it.day || 'sense-data'
       if (!map[day]) map[day] = []
       map[day].push(it)
     }
-    return Object.entries(map).sort(([a, b]) => a.localeCompare(b))
+    return Object.entries(map).sort(([dayA], [dayB]) => dayA.localeCompare(dayB))
   }, [items])
 
   const exportBase = `assignacions-logistica-${filters.start}-${filters.end}`
@@ -48,7 +63,7 @@ export default function TransportAssignacionsPage() {
     const rows: Record<string, string | number>[] = []
 
     items.forEach((it) => {
-      const vehicles = Array.isArray(it.rows) ? it.rows : []
+      const vehicles: AssignmentVehicleRow[] = Array.isArray(it.rows) ? it.rows : []
       const base = {
         Data: it.day || '',
         HoraEvent: it.eventStartTime || '',
@@ -77,13 +92,14 @@ export default function TransportAssignacionsPage() {
         return
       }
 
-      vehicles.forEach((v: any) => {
+      vehicles.forEach((v) => {
         rows.push({
           ...base,
           Departament: v.department || '',
           Conductor: v.name || '',
           Matricula: v.plate || '',
-          Vehicle: TRANSPORT_TYPE_LABELS[v.vehicleType] || v.vehicleType || '',
+          Vehicle:
+            TRANSPORT_TYPE_LABELS[v.vehicleType || ''] || v.vehicleType || '',
           Sortida: v.startTime || '',
           Arribada: v.arrivalTime || '',
           Fi: v.endTime || '',

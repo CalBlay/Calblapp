@@ -89,6 +89,7 @@ export default function EventAvisosModal({ open, onClose, eventCode, user, onAvi
 
   const handleDelete = async (aviso?: Aviso | null) => {
     const target = aviso ?? editing
+    if (!target) return
     if (!canEditAviso(target)) return
 
     try {

@@ -152,6 +152,9 @@ export function useProjectKickoffActions({
       })
 
       const payload = await readKickoffResponse(res)
+      if (!payload) {
+        throw new Error(`No s'ha pogut crear la convocatoria ()`)
+      }
       if (!res.ok || !payload.kickoff) {
         throw new Error(payload?.error || `No s'ha pogut crear la convocatòria (${res.status})`)
       }
@@ -296,3 +299,4 @@ export function useProjectKickoffActions({
     reopenKickoffMinutes,
   }
 }
+

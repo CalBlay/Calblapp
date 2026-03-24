@@ -16,17 +16,20 @@ export default function PersonnelReportPage() {
     fromDate:   '2025-06-01',
     toDate:     '2025-06-30',
     eventName:  '',
-    responsible:''
+    department: '',
+    workerName: ''
   })
   const [applied, setApplied] = useState<ReportFilters>(draft)
 
   // --- 2) DADES DEL REPORT SEGONS FILTRES APLICATS ---
   const { data, loading, error } = useReportPersonnel({
-    type:   'personnel',
-    from:   applied.fromDate,
-    to:     applied.toDate,
-    event:  applied.eventName,
-    responsible: applied.responsible
+    department: applied.department,
+    role: '',
+    from: applied.fromDate,
+    to: applied.toDate,
+    event: applied.eventName,
+    responsible: applied.workerName,
+    businessLine: '',
   })
 
   // --- 3) HANDLERS DE FILTRES ---
@@ -40,7 +43,8 @@ export default function PersonnelReportPage() {
       fromDate:   '',
       toDate:     '',
       eventName:  '',
-      responsible:''
+      department: '',
+      workerName: ''
     }
     setDraft(reset)
     setApplied(reset)
@@ -53,10 +57,10 @@ export default function PersonnelReportPage() {
 
   // --- 5) PREPAREM ELS KPI TILES ---
   const kpis = [
-    { label:'Total Personal',     value:String(data.stats.totalPersonnel), icon:'👥', bg:'bg-blue-600' },
-    { label:'Hores Treballades',  value:String(data.stats.totalHours),      icon:'⏳', bg:'bg-green-600' },
-    { label:'Hores Extres',       value:String(data.stats.extraHours),      icon:'⚡', bg:'bg-yellow-600' },
-    { label:'Top Responsables',   value:data.stats.topResponsables,        icon:'⭐', bg:'bg-indigo-600' }
+    { label:'Total Personal',     value:String(data.stats.totalPersonnel), icon:'People', bg:'bg-blue-600' },
+    { label:'Hores Treballades',  value:String(data.stats.totalHours),      icon:'Hours', bg:'bg-green-600' },
+    { label:'Hores Extres',       value:String(data.stats.extraHours),      icon:'Extra', bg:'bg-yellow-600' },
+    { label:'Top Responsables',   value:data.stats.topResponsables,        icon:'Top', bg:'bg-indigo-600' }
   ]
 
   return (
@@ -65,6 +69,7 @@ export default function PersonnelReportPage() {
       <aside className="w-full lg:w-72">
         <FilterSidebar
           filters={draft}
+          departments={[]}
           onChange={onChange}
           onApply={onApply}
           onReset={onReset}
@@ -88,7 +93,7 @@ export default function PersonnelReportPage() {
           >
             <div className="bg-white shadow rounded p-4">
               <h3 className="text-lg font-semibold mb-2">Hores Treballades per Persona</h3>
-              <LineChart data={data.chartByPerson} />
+              <LineChart data={data.chartByPerson.map((item) => ({ name: item.name, value: item.hours }))} />
             </div>
           </motion.div>
           <motion.div
@@ -111,3 +116,4 @@ export default function PersonnelReportPage() {
     </div>
   )
 }
+

@@ -90,6 +90,7 @@ export interface Draft {
     responsibleId?: string | null
     responsibleName?: string | null
   }>
+  timetables?: Array<{ startTime: string; endTime: string }>
 
   // Comptadors requerits
   responsablesNeeded?: number
@@ -131,7 +132,7 @@ const selectEdgeTime = (
       best = { value, text: candidate }
     }
   })
-  if (best) return best.text
+  if (best) return (best as { value: number; text: string }).text
   return fallback
 }
 
@@ -157,8 +158,8 @@ export default function DraftsPage() {
   const searchParams = useSearchParams()
 
   // 📅 Rang inicial (ve de la pantalla de Quadrants)
-  const startParam = searchParams.get('start')
-  const endParam = searchParams.get('end')
+  const startParam = searchParams?.get('start')
+  const endParam = searchParams?.get('end')
 
   const [dateRange, setDateRange] = useState<[string, string]>(() => {
     if (startParam && endParam) {

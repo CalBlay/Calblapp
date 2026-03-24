@@ -173,6 +173,7 @@ export type KickoffData = {
 
 export type ProjectData = {
   id: string
+  createdAt?: string | number | null
   name: string
   sponsor: string
   owner: string

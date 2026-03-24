@@ -12,7 +12,7 @@ export default function PersonnelDetailPage() {
   const router = useRouter()
 
   if (isLoading) return <p>Carregant perfil…</p>
-  if (error) return <p className="text-red-600">Error: {error.message}</p>
+  if (error) return <p className="text-red-600">Error: {String(error)}</p>
 
   const person = personnel.find(p => p.id === id)
   if (!person) {

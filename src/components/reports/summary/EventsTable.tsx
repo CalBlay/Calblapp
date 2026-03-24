@@ -1,5 +1,5 @@
 // file: src/components/reports/summary/EventsTable.tsx
-type EventRow = {
+export type EventRow = {
   id: string
   name: string
   ln: string

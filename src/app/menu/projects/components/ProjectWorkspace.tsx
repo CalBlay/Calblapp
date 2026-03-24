@@ -575,13 +575,14 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
   const saveDocuments = async () => {
     const hasFile = Boolean(pendingDocumentFile)
     if (!hasFile) return true
+    const pendingFileName = pendingDocumentFile?.name || ''
 
     try {
       setSavingOverview(true)
       await saveProject('Document guardat', project, {
         file: pendingDocumentFile,
         fileCategory: documentDraft.category,
-        fileLabel: documentDraft.label.trim() || pendingDocumentFile.name,
+        fileLabel: documentDraft.label.trim() || pendingFileName,
         sections: ['documents'],
         onUploaded: (stored) => {
           setProject((current) => ({
@@ -811,7 +812,7 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
         activeTab={activeTab}
         visibleTabs={visibleTabs}
         onTabChange={handleTabChange}
-        canDelete={canDeleteProject}
+        canDelete={Boolean(canDeleteProject)}
         deleting={deletingProject}
         onDelete={handleDeleteProject}
       />
@@ -933,11 +934,11 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
               kickoffAttendeeOptions={kickoffAttendeeOptions}
               departmentResponsibleOptions={departmentResponsibleOptions}
               maxDeadline={maxDeadline}
-              canViewKickoffSection
-              canCreateBlocks={canCreateOrRemoveBlocks}
+              canViewKickoffSection={Boolean(hasFullProjectVisibility)}
+              canCreateBlocks={Boolean(canCreateOrRemoveBlocks)}
               canEditBlock={canEditSpecificBlock}
               canAccessBlockRoom={canAccessSpecificBlockRoom}
-              canEditBlockOwner={isProjectOwner}
+              canEditBlockOwner={Boolean(isProjectOwner)}
             />
           ) : null}
 
@@ -969,7 +970,7 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
               onRemoveTaskDocument={removeTaskDocument}
               taskResponsibleOptions={taskResponsibleOptions}
               maxDeadline={maxDeadline}
-              canCreateTasks={canCreateOrRemoveBlocks}
+              canCreateTasks={Boolean(canCreateOrRemoveBlocks)}
               canSaveTasks={canSaveTasks}
               canManageTask={canManageSpecificTask}
               canAccessTaskOps={canAccessSpecificTaskOps}

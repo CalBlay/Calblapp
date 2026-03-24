@@ -18,7 +18,7 @@ interface EventData {
   NomEvent?: string
   pax?: number | string
   start: string
-  end: string
+  end: string | null
   location?: string
   Ubicacio?: string
   eventCode?: string | null
@@ -30,6 +30,7 @@ interface EventData {
   avisosUnread?: number
   chatUnread?: number
   canChat?: boolean
+  horaInici?: string
 }
 
 interface Props {

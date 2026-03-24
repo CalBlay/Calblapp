@@ -11,7 +11,7 @@ export interface EventData {
   summary: string
   pax?: number | string
   start: string
-  end: string
+  end: string | null
   location?: string
   lnKey?: 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
   lnLabel?: string
@@ -21,6 +21,12 @@ export interface EventData {
   commercial?: string | null
   chatUnread?: number
   canChat?: boolean
+  horaInici?: string
+  lastAviso?: {
+    content: string
+    department: string
+    createdAt: string
+  } | null
 }
 
 interface Props {

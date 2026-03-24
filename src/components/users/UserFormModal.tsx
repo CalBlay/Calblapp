@@ -197,7 +197,10 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         phone,
         email,
         available,
-        isDriver,
+        driver: {
+          ...(user.driver || {}),
+          isDriver,
+        },
         workerRank,
         opsChannelsConfigurable,
         opsEventsConfigurable,

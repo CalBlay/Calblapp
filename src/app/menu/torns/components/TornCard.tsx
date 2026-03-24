@@ -163,6 +163,7 @@ type Props = {
   onClick?: () => void
   onEventClick?: () => void
   onAvisosClick?: () => void
+  onChatClick?: () => void
 }
 
 export default function TornCard({ item, onClick, onEventClick, onAvisosClick, onChatClick }: Props) {

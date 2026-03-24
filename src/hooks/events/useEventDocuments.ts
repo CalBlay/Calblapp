@@ -6,6 +6,12 @@ import { useEffect, useState } from 'react'
 export type EventDoc = {
   id: string
   title: string
+  name?: string
+  fileName?: string
+  label?: string
+  kind?: string
+  category?: string
+  updatedAt?: string | number | null
   mimeType?: string
   source: 'calendar-attachment' | 'description-link' | 'firestore-file' | 'firestore-link'
   url: string

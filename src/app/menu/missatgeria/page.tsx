@@ -360,7 +360,8 @@ export default function MissatgeriaPage() {
     channel.subscribe('typing', (msg) => {
       const data = msg?.data as { userId?: string; userName?: string } | undefined
       if (!data?.userId || data.userId === userId) return
-      setTypingUsers((prev) => ({ ...prev, [data.userId]: Date.now() }))
+      const typingUserId = String(data.userId)
+      setTypingUsers((prev) => ({ ...prev, [typingUserId]: Date.now() }))
     })
     direct?.subscribe('message', handleMessage)
 

@@ -296,16 +296,22 @@ export default function PreventiusFullsFitxaPage() {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'preventiu'}`
+  const exportTitle = draft?.title || 'Preventiu'
+  const exportStatus = draft?.status || ''
+  const exportStartTime = draft?.startTime || ''
+  const exportEndTime = draft?.endTime || ''
+  const exportWorker = draft?.worker || ''
+  const exportNotes = draft?.notes || ''
 
   const handleExportExcel = () => {
     const metadata = [
       {
-        Titol: draft.title,
-        Estat: draft.status,
-        HoraInici: draft.startTime,
-        HoraFi: draft.endTime,
-        Operari: draft.worker || '',
-        Observacions: draft.notes || '',
+        Titol: exportTitle,
+        Estat: exportStatus,
+        HoraInici: exportStartTime,
+        HoraFi: exportEndTime,
+        Operari: exportWorker,
+        Observacions: exportNotes,
       },
     ]
     const wb = XLSX.utils.book_new()
@@ -351,13 +357,13 @@ export default function PreventiusFullsFitxaPage() {
     </style>
   </head>
   <body>
-    <h1>${escapeHtml(draft.title)}</h1>
+    <h1>${escapeHtml(exportTitle)}</h1>
     <div class="meta block">
-      Estat: ${escapeHtml(draft.status)} · Hora: ${escapeHtml(draft.startTime)}-${escapeHtml(
-      draft.endTime
-    )} · Operari: ${escapeHtml(draft.worker || '')}
+      Estat: ${escapeHtml(exportStatus)} · Hora: ${escapeHtml(exportStartTime)}-${escapeHtml(
+      exportEndTime
+    )} · Operari: ${escapeHtml(exportWorker)}
     </div>
-    <div class="meta block">Observacions: ${escapeHtml(draft.notes || '')}</div>
+    <div class="meta block">Observacions: ${escapeHtml(exportNotes)}</div>
     <table>
       <thead><tr><th>Grup</th><th>Camp</th><th>Fet</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -601,3 +607,4 @@ export default function PreventiusFullsFitxaPage() {
     </RoleGuard>
   )
 }
+

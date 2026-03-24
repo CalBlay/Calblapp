@@ -14,28 +14,42 @@ interface CalendarProps {
 }
 
 export function Calendar({ mode = 'single', selected, onSelect }: CalendarProps) {
+  const sharedProps = {
+    locale: es,
+    showOutsideDays: true,
+    numberOfMonths: 1,
+    defaultMonth: selected?.from || new Date(),
+    weekStartsOn: 1 as const,
+    styles: {
+      caption: { textTransform: 'capitalize' as const },
+      head_cell: { textTransform: 'capitalize' as const, color: '#666' },
+    },
+    modifiersClassNames: {
+      selected: 'bg-blue-600 text-white rounded-full',
+      range_start: 'bg-blue-500 text-white rounded-full',
+      range_end: 'bg-blue-500 text-white rounded-full',
+      range_middle: 'bg-blue-100 text-blue-700',
+    },
+  }
+
   return (
     <div className="p-2 bg-white rounded-xl shadow-md">
-      <DayPicker
-        mode={mode}
-        selected={selected}
-        onSelect={onSelect}
-        locale={es}
-        showOutsideDays
-        numberOfMonths={1}
-        defaultMonth={selected?.from || new Date()}
-        weekStartsOn={1}
-        styles={{
-          caption: { textTransform: 'capitalize' },
-          head_cell: { textTransform: 'capitalize', color: '#666' },
-        }}
-        modifiersClassNames={{
-          selected: 'bg-blue-600 text-white rounded-full',
-          range_start: 'bg-blue-500 text-white rounded-full',
-          range_end: 'bg-blue-500 text-white rounded-full',
-          range_middle: 'bg-blue-100 text-blue-700',
-        }}
-      />
+      {mode === 'range' ? (
+        <DayPicker
+          {...sharedProps}
+          mode="range"
+          required={false}
+          selected={selected}
+          onSelect={onSelect}
+        />
+      ) : (
+        <DayPicker
+          {...sharedProps}
+          mode="single"
+          selected={selected}
+          onSelect={onSelect}
+        />
+      )}
     </div>
   )
 }

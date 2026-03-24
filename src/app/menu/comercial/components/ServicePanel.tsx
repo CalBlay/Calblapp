@@ -26,12 +26,12 @@ interface Props {
   activeArticles: string[]
   totalArticlesPages: number
   articlesPage: number
-  setArticlesPage: (page: number) => void
+  setArticlesPage: React.Dispatch<React.SetStateAction<number>>
   pagedConcepts: ConceptNode[]
   concepts: ConceptNode[]
   conceptsPage: number
   totalConceptsPages: number
-  setConceptsPage: (page: number) => void
+  setConceptsPage: React.Dispatch<React.SetStateAction<number>>
   conceptsPerPage: number
   selectedConcept: ConceptNode | null
   articlesPerPage: number

@@ -36,6 +36,14 @@ interface DraftDoc {
   updatedAt?: { toDate: () => Date }
 }
 
+interface DraftResponseDoc extends Omit<DraftDoc, 'updatedAt'> {
+  responsableId?: string | null
+  conductors: string[]
+  treballadors: string[]
+  status: string
+  updatedAt: string | null
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const from = searchParams.get('from')
@@ -56,7 +64,7 @@ export async function GET(request: NextRequest) {
 
   const snap = await q.get()
 
-  const drafts: DraftDoc[] = snap.docs
+  const drafts: DraftResponseDoc[] = snap.docs
     .map(doc => ({ id: doc.id, ...(doc.data() as Omit<DraftDoc, 'id'>) }))
     .filter(d => {
       if (d.startDate < from) return false

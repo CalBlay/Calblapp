@@ -69,7 +69,11 @@ export async function getPersonnelByDepartment(
       id: doc.id,
       name: data.name || doc.id,
       role,
-      driver: data.driver || { isDriver: false, camioGran: false, camioPetit: false },
+      driver: {
+        isDriver: Boolean(data.driver?.isDriver),
+        camioGran: Boolean(data.driver?.camioGran),
+        camioPetit: Boolean(data.driver?.camioPetit),
+      },
       available: !!data.available,
       department: data.department,
     }

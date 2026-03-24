@@ -15,7 +15,7 @@ interface FirestorePerson {
   startTime?: string
   endDate?: string
   endTime?: string
-  arrivalTime?: string
+  arrivalTime?: string | null
   plate?: string
   vehicleType?: string
   type?: string
@@ -75,6 +75,13 @@ interface FirestoreDraftDoc {
   DataInici?: string
   DataFi?: string
   Ubicacio?: string
+  arrivalTime?: string | null
+  service?: string | null
+  Servei?: string | null
+  numPax?: number | null
+  NumPax?: number | null
+  commercial?: string | null
+  Comercial?: string | null
 
   [key: string]: unknown
 }
@@ -136,6 +143,9 @@ type Draft = {
   status: 'confirmed' | 'draft'
   confirmedAt?: string | null
   confirmed: boolean
+  service?: string | null
+  numPax?: number | null
+  commercial?: string | null
 }
 
 type Dept = string

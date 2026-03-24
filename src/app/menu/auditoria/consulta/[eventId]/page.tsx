@@ -87,8 +87,8 @@ export default function AuditoriaConsultaEventPage() {
   const [detail, setDetail] = useState<DetailExecution | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
-  const fromTs = String(searchParams.get('fromTs') || '').trim()
-  const toTs = String(searchParams.get('toTs') || '').trim()
+  const fromTs = String(searchParams?.get('fromTs') || '').trim()
+  const toTs = String(searchParams?.get('toTs') || '').trim()
 
   const load = async () => {
     setLoading(true)

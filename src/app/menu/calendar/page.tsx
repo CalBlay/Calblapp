@@ -17,7 +17,7 @@ import CalendarWeekView from '@/components/calendar/CalendarWeekView'
 import CalendarNewEventModal from '@/components/calendar/CalendarNewEventModal'
 import CalendarRangeView from '@/components/calendar/CalendarRangeView'
 import Legend from '@/components/calendar/CalendarLegend'
-import CalendarFilters from '@/components/calendar/CalendarFilters'
+import CalendarFilters, { CalendarLN } from '@/components/calendar/CalendarFilters'
 import { useSession } from 'next-auth/react'
 import FilterButton from '@/components/ui/filter-button'
 import FloatingAddButton from '@/components/ui/floating-add-button'
@@ -41,7 +41,7 @@ type ViewMode = 'month' | 'week' | 'range'
 
 type CalendarViewState = {
   mode: ViewMode
-  ln: string[]
+  ln: CalendarLN[]
   stage: string
   commercial: string[]
   codeStatus: string
@@ -51,7 +51,7 @@ type CalendarViewState = {
 }
 
 type CalendarFilterChange = {
-  ln?: string[]
+  ln?: CalendarLN[]
   stage?: string
   commercial?: string[]
   codeStatus?: string
@@ -59,10 +59,12 @@ type CalendarFilterChange = {
 
 const STORAGE_KEY = 'calblay.calendar.filters.v1'
 const toIso = (d: Date) => format(d, 'yyyy-MM-dd')
-const EMPTY_FILTER_LIST: string[] = []
+const EMPTY_FILTER_LIST: CalendarLN[] = []
 const toArray = (value: unknown) => {
   if (Array.isArray(value)) {
-    return value.filter((v) => typeof v === 'string' && v.trim())
+    return value.filter(
+      (v): v is CalendarLN => typeof v === 'string' && Boolean(v.trim())
+    )
   }
   if (typeof value === 'string') {
     const trimmed = value.trim()
@@ -75,9 +77,9 @@ const toArray = (value: unknown) => {
     ) {
       return []
     }
-    return [trimmed]
+    return [trimmed as CalendarLN]
   }
-  return []
+  return [] as CalendarLN[]
 }
 
 /* ------------------------------ */

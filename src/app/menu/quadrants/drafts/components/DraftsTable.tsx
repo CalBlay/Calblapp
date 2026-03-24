@@ -61,7 +61,7 @@ export default function DraftsTable({
       numDrivers: phase?.numDrivers ?? rawDraft.numDrivers,
       responsableName: phase?.responsableName || null,
       responsable: phase?.responsableName
-        ? { name: phase.responsableName, meetingPoint }
+        ? ({ name: phase.responsableName, meetingPoint } as Partial<Row>)
         : null,
       conductors: Array.isArray(phase?.conductors) ? phase.conductors : [],
       treballadors: Array.isArray(phase?.treballadors) ? phase.treballadors : [],
@@ -1201,7 +1201,7 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
       </div>
         </div>
 
-        {hasInlineEditor && (
+        {hasInlineEditor && currentEditingRow && (
           <div className="hidden lg:block lg:w-[36%] min-w-[360px]">
             <div className="sticky top-3 rounded-lg bg-blue-50/40 p-3">
               <RowEditor
@@ -1218,7 +1218,7 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
         )}
       </div>
 
-      {hasInlineEditor && (
+      {hasInlineEditor && currentEditingRow && (
         <div className="lg:hidden bg-blue-50/40 px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
           <RowEditor
             row={currentEditingRow}

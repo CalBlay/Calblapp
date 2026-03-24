@@ -255,11 +255,12 @@ export default function TornsPage() {
       return
     }
 
-    const isResponsible =
+    const isResponsible = Boolean(
       normalizedUserName &&
       t.workerName &&
       norm(t.workerName) === normalizedUserName &&
       norm(t.workerRole) === 'responsable'
+    )
 
     setEventMenuData({
       id: t.eventId,

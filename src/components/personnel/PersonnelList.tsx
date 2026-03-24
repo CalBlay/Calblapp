@@ -35,15 +35,15 @@ function VehicleIcon({ type }: { type?: string }) {
   const t = type.toLowerCase()
 
   if (t === 'camiogran')
-    return <Truck className="w-4 h-4 text-blue-800" title="Camió gran" />
+    return <Truck className="w-4 h-4 text-blue-800" />
 
   if (t === 'camiopetit')
-    return <Truck className="w-4 h-4 text-green-700" title="Camió petit" />
+    return <Truck className="w-4 h-4 text-green-700" />
 
   if (t === 'furgoneta')
-    return <Car className="w-4 h-4 text-orange-600" title="Furgoneta" />
+    return <Car className="w-4 h-4 text-orange-600" />
 
-  return <Truck className="w-4 h-4 text-gray-500" title={type} />
+  return <Truck className="w-4 h-4 text-gray-500" />
 }
 
 /* 🎨 Colors franja departament */

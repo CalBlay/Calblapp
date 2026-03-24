@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, Paperclip, Save } from 'lucide-react'
+import { ChevronDown, Paperclip, Save, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'

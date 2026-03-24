@@ -17,9 +17,13 @@ export const DEFAULT_ALLERGENS = [
 
 export const ALLERGENS = DEFAULT_ALLERGENS
 
-const ORDER_INDEX = new Map(DEFAULT_ALLERGENS.map((item, index) => [item.key, index]))
+const ORDER_INDEX = new Map<string, number>(
+  DEFAULT_ALLERGENS.map((item, index) => [item.key, index])
+)
 
-export function sortAllergensByStandardOrder<T extends { key: string; label: string }>(items: T[]): T[] {
+export function sortAllergensByStandardOrder<T extends { key: string; label: string }>(
+  items: readonly T[]
+): T[] {
   return [...items].sort((a, b) => {
     const aIndex = ORDER_INDEX.get(a.key)
     const bIndex = ORDER_INDEX.get(b.key)

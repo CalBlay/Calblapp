@@ -405,7 +405,7 @@ export default function PissarraPage() {
                 session?.user?.role === 'admin'
                   ? 'Admin'
                   : session?.user?.role === 'direccio'
-                  ? 'Direccio'
+                  ? 'Direcció'
                   : session?.user?.role === 'cap'
                   ? 'Cap Departament'
                   : 'Treballador'

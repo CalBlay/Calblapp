@@ -30,6 +30,8 @@ type SessionUser = {
   name?: string
 }
 
+type LnKey = 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
+
 type EventMenuData = {
   id: string
   summary: string
@@ -37,7 +39,7 @@ type EventMenuData = {
   location?: string
   eventCode?: string | null
   responsableName?: string
-  lnKey?: string
+  lnKey?: LnKey
   isResponsible?: boolean
   fincaId?: string | null
   fincaCode?: string | null
@@ -244,13 +246,14 @@ export default function EventsPage() {
   const handleAvisosStateChange = useCallback(
     (info: { eventCode: string | null; hasAvisos: boolean; lastAvisoDate?: string }) => {
       if (!info.eventCode) return
+      const eventCode = info.eventCode
       setAvisosState(prev => {
-        const current = prev[info.eventCode]
+        const current = prev[eventCode]
         const next = { hasAvisos: info.hasAvisos, lastAvisoDate: info.lastAvisoDate }
         if (current && current.hasAvisos === next.hasAvisos && current.lastAvisoDate === next.lastAvisoDate) {
           return prev
         }
-        return { ...prev, [info.eventCode]: next }
+        return { ...prev, [eventCode]: next }
       })
     },
     []
@@ -319,10 +322,20 @@ export default function EventsPage() {
         setFilters={f => setFilters(prev => ({ ...prev, ...f }))}
         visibleFilters={[]}
         hiddenFilters={['ln', 'responsable', 'location']}
-        lnOptions={Array.from(new Set(filteredEvents.map(e => e.lnKey).filter(Boolean))).sort()}
+        lnOptions={Array.from(
+          new Set(
+            filteredEvents
+              .map(e => e.lnKey)
+              .filter((value): value is LnKey => Boolean(value))
+          )
+        ).sort()}
         responsables={responsablesDetailed?.map(r => r.name).filter(Boolean) ?? []}
         locations={Array.from(
-          new Set(filteredEvents.map(e => e.locationShort || e.location).filter(Boolean))
+          new Set(
+            filteredEvents
+              .map(e => e.locationShort || e.location)
+              .filter((value): value is string => Boolean(value))
+          )
         ).sort()}
       />
 

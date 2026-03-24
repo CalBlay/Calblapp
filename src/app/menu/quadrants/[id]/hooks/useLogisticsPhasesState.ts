@@ -298,7 +298,7 @@ export function useLogisticsPhasesState({
       .filter((phase) => phaseSettings[phase.key]?.selected ?? true)
       .map((phase) => phase.key)
     if (keys.length) return keys
-    return ['entrega']
+    return ['entrega'] as LogisticPhaseKey[]
   }, [phaseSettings])
 
   const totalDriverCount = useMemo(

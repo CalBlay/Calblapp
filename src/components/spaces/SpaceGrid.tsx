@@ -5,8 +5,16 @@ import { useState } from 'react'
 import { format, addDays, startOfWeek } from 'date-fns'
 import { ca } from 'date-fns/locale'
 import SpaceCell from './SpaceCell'
-import type { SpaceRow } from '@/services/spaces/spaces'
 import SpaceEventModal from '@/components/spaces/SpaceEventModal'
+
+type SpaceRow = {
+  fincaId?: string
+  finca: string
+  dies: Array<{
+    date: string
+    events: Array<Record<string, unknown>>
+  }>
+}
 
 /**
  * ðŸ” Adapter
