@@ -63,6 +63,10 @@ export default function ServicePhasePanel({
   toggleEtt,
   updateEtt,
 }: Props) {
+  const normalize = (value?: string) => String(value || "").trim().toLowerCase()
+
+  void meetingPoint
+
   return (
     <div className="space-y-4 rounded-2xl border border-dashed border-slate-200 bg-white p-4">
       <div className="flex items-start justify-between">
@@ -74,27 +78,42 @@ export default function ServicePhasePanel({
         </div>
       </div>
       <div className="grid gap-3">
-          {servicePhaseOptions.map((phase) => {
-            const groupsForPhase = groups.filter((g) => g.phaseKey === phase.key)
-            if (!groupsForPhase.length) return null
-            const isSelected = settings[phase.key]?.selected ?? true
-            const isVisible = visibility[phase.key] ?? true
-            const phaseEtt = ettState[phase.key]
-            const showPhaseContent = isVisible && isSelected
+        {servicePhaseOptions.map((phase) => {
+          const groupsForPhase = groups.filter((g) => g.phaseKey === phase.key)
+          if (!groupsForPhase.length) return null
 
-            return (
-              <PhaseCard
-                key={phase.key}
-                label={phase.label}
-                description="Activar per generar aquesta fase"
-                selected={isSelected}
-                visible={isVisible}
-                onToggleSelection={() => toggleSelection(phase.key)}
-                onToggleVisibility={() => toggleVisibility(phase.key)}
-              >
-                {showPhaseContent ? (
-                  <>
-                    {groupsForPhase.map((group, idx) => (
+          const isSelected = settings[phase.key]?.selected ?? true
+          const isVisible = visibility[phase.key] ?? true
+          const phaseEtt = ettState[phase.key]
+          const showPhaseContent = isVisible && isSelected
+
+          return (
+            <PhaseCard
+              key={phase.key}
+              label={phase.label}
+              description="Activar per generar aquesta fase"
+              selected={isSelected}
+              visible={isVisible}
+              onToggleSelection={() => toggleSelection(phase.key)}
+              onToggleVisibility={() => toggleVisibility(phase.key)}
+            >
+              {showPhaseContent ? (
+                <>
+                  {groupsForPhase.map((group, idx) => {
+                    const selectedElsewhere = new Set(
+                      groups
+                        .filter((candidate) => candidate.id !== group.id)
+                        .map((candidate) => normalize(candidate.driverId))
+                        .filter(Boolean)
+                    )
+
+                    const conductorsForGroup = availableConductors.filter(
+                      (conductor) =>
+                        normalize(conductor.id) === normalize(group.driverId) ||
+                        !selectedElsewhere.has(normalize(conductor.id))
+                    )
+
+                    return (
                       <div
                         key={group.id}
                         className="border border-slate-200 rounded-xl bg-white p-3 space-y-3"
@@ -185,7 +204,7 @@ export default function ServicePhasePanel({
                                 onCheckedChange={(checked) =>
                                   updateGroup(group.id, {
                                     needsDriver: Boolean(checked),
-                                    driverId: checked ? group.driverId : '',
+                                    driverId: checked ? group.driverId : "",
                                   })
                                 }
                               />
@@ -195,17 +214,17 @@ export default function ServicePhasePanel({
                             </div>
                             {group.needsDriver && (
                               <Select
-                                value={group.driverId || '__none__'}
+                                value={group.driverId || "__none__"}
                                 onValueChange={(value) =>
-                                  updateGroup(group.id, { driverId: value === '__none__' ? '' : value })
+                                  updateGroup(group.id, { driverId: value === "__none__" ? "" : value })
                                 }
                               >
                                 <SelectTrigger className="w-full">
-                                  <SelectValue placeholder="Selecciona un conductor…" />
+                                  <SelectValue placeholder="Selecciona un conductor..." />
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="__none__">Sense assignar</SelectItem>
-                                  {availableConductors.map((conductor) => (
+                                  {conductorsForGroup.map((conductor) => (
                                     <SelectItem key={conductor.id} value={conductor.id}>
                                       {conductor.name}
                                     </SelectItem>
@@ -216,83 +235,80 @@ export default function ServicePhasePanel({
                           </div>
                         </div>
                       </div>
-                    ))}
+                    )
+                  })}
 
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <Button variant="outline" size="sm" className="gap-1" onClick={() => addGroup(phase.key)}>
-                        + Grup
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-slate-900 border-slate-200 bg-white shadow-sm"
-                        onClick={() => toggleEtt(phase.key)}
-                      >
-                        {phaseEtt?.open ? "Amaga ETT" : "+ ETT"}
-                      </Button>
-                    </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Button variant="outline" size="sm" className="gap-1" onClick={() => addGroup(phase.key)}>
+                      + Grup
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-slate-900 border-slate-200 bg-white shadow-sm"
+                      onClick={() => toggleEtt(phase.key)}
+                    >
+                      {phaseEtt?.open ? "Amaga ETT" : "+ ETT"}
+                    </Button>
+                  </div>
 
-                    {phaseEtt?.open ? (
-                      <div className="space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <Label>Data servei</Label>
-                            <Input
-                              type="date"
-                              value={phaseEtt.data.serviceDate}
-                              onChange={(e) =>
-                                updateEtt(phase.key, { serviceDate: e.target.value })
-                              }
-                            />
-                          </div>
-                          <div>
-                            <Label>Meeting point</Label>
-                            <Input
-                              value={phaseEtt.data.meetingPoint}
-                              onChange={(e) =>
-                                updateEtt(phase.key, { meetingPoint: e.target.value })
-                              }
-                            />
-                          </div>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <Label>Hora inici</Label>
-                            <Input
-                              type="time"
-                              value={phaseEtt.data.startTime}
-                              onChange={(e) => updateEtt(phase.key, { startTime: e.target.value })}
-                            />
-                          </div>
-                          <div>
-                            <Label>Hora fi</Label>
-                            <Input
-                              type="time"
-                              value={phaseEtt.data.endTime}
-                              onChange={(e) => updateEtt(phase.key, { endTime: e.target.value })}
-                            />
-                          </div>
+                  {phaseEtt?.open ? (
+                    <div className="space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label>Data servei</Label>
+                          <Input
+                            type="date"
+                            value={phaseEtt.data.serviceDate}
+                            onChange={(e) => updateEtt(phase.key, { serviceDate: e.target.value })}
+                          />
                         </div>
                         <div>
-                          <Label>Treballadors ETT</Label>
+                          <Label>Meeting point</Label>
                           <Input
-                            type="number"
-                            min={0}
-                            value={phaseEtt.data.workers}
-                            onChange={(e) => updateEtt(phase.key, { workers: e.target.value })}
+                            value={phaseEtt.data.meetingPoint}
+                            onChange={(e) => updateEtt(phase.key, { meetingPoint: e.target.value })}
                           />
                         </div>
                       </div>
-                    ) : (
-                      <p className="text-xs text-slate-500">
-                        ETT · {phaseEtt?.data.workers || "0"} treballadors
-                      </p>
-                    )}
-                  </>
-                ) : null}
-              </PhaseCard>
-            )
-          })}
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label>Hora inici</Label>
+                          <Input
+                            type="time"
+                            value={phaseEtt.data.startTime}
+                            onChange={(e) => updateEtt(phase.key, { startTime: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label>Hora fi</Label>
+                          <Input
+                            type="time"
+                            value={phaseEtt.data.endTime}
+                            onChange={(e) => updateEtt(phase.key, { endTime: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Treballadors ETT</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={phaseEtt.data.workers}
+                          onChange={(e) => updateEtt(phase.key, { workers: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      ETT · {phaseEtt?.data.workers || "0"} treballadors
+                    </p>
+                  )}
+                </>
+              ) : null}
+            </PhaseCard>
+          )
+        })}
       </div>
     </div>
   )

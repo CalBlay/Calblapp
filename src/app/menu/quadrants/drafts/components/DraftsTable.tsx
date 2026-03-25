@@ -124,6 +124,26 @@ export default function DraftsTable({
     let extrasNeeded = extrasFromDoc
     let missingWorkersNeeded = 0
     const usedNames = new Set<string>()
+
+    const takePreferredServiceDriver = (group: any) => {
+      const preferredId = String(group?.driverId || '').trim()
+      const preferredName = norm(group?.driverName)
+
+      const preferredIdx = driversPool.findIndex((driver) => {
+        const driverId = String(driver?.id || '').trim()
+        const driverName = norm(driver?.name)
+        if (preferredId && driverId === preferredId) return true
+        if (preferredName && driverName === preferredName) return true
+        return false
+      })
+
+      if (preferredIdx >= 0) {
+        const [preferred] = driversPool.splice(preferredIdx, 1)
+        return preferred || null
+      }
+
+      return null
+    }
       
 
     groupDefs.forEach((group, idx) => {
@@ -148,8 +168,9 @@ export default function DraftsTable({
 
       const hasResponsible = Boolean(respName || respId)
       const respRowIndex = hasResponsible ? rows.length : -1
+      const preferredDriverRow = isServeisDept ? takePreferredServiceDriver(group) : null
       const mainDriverRow =
-        isServeisDept && driversPool.length > 0 ? driversPool[0] : null
+        isServeisDept ? preferredDriverRow || driversPool[0] || null : null
       if (hasResponsible) {
         rows.push({
           id: respId || '',
@@ -174,7 +195,7 @@ export default function DraftsTable({
       if (isServeisDept) {
         if (driversNeeded > 0) {
           let driverName = ''
-          let next = driversPool.shift()
+          let next = preferredDriverRow || driversPool.shift()
           while (next?.name && usedNames.has(norm(next.name))) {
             next = driversPool.shift()
           }

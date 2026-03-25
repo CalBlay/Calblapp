@@ -80,7 +80,11 @@ export async function loadDepartmentPersonnel(
         name: String(data?.name || '').trim(),
         department: norm(data?.department || ''),
         role: normRole(data?.role || ''),
-        isDriver: Boolean(data?.isDriver),
+        isDriver:
+          data?.isDriver === true ||
+          data?.driver?.isDriver === true ||
+          data?.driver?.camioGran === true ||
+          data?.driver?.camioPetit === true,
         available: data?.available !== false,
       }
     })

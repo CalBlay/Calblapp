@@ -436,6 +436,19 @@ export async function autoAssign(payload: {
         vehicleType: '',
       })
       reservedNames.add(norm(manualDriver.name))
+
+      const manualCrew =
+        dept === 'serveis' && Array.isArray(premises.driverCrews)
+          ? premises.driverCrews.find((crew) => {
+              const candidate = findPersonnelByCrewRef({
+                id: crew.driverId,
+                name: crew.driverName,
+              })
+              return !!candidate && norm(candidate.name) === norm(manualDriver.name)
+            })
+          : null
+
+      appendCrewCompanions(manualCrew)
     }
   }
 

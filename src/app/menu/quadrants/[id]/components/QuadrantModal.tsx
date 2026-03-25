@@ -359,7 +359,15 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
         payload.cuinaGroupCount = cuinaGroups.length
         groupsPayload.forEach((group) => addTimetable(group))
       } else if (isServeis) {
-        const groupsPayload = buildServiceGroupsPayload(manualResponsibleIdValue, manualResponsibleNameValue)
+        const groupsPayload = buildServiceGroupsPayload(
+          manualResponsibleIdValue,
+          manualResponsibleNameValue
+        ).map((group) => ({
+          ...group,
+          driverName: group.driverId
+            ? availableConductors.find((conductor) => conductor.id === group.driverId)?.name || null
+            : null,
+        }))
         payload.groups = groupsPayload
         payload.totalWorkers = serviceTotals.workers
         payload.numDrivers = serviceTotals.drivers
