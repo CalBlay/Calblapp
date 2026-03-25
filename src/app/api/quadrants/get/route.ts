@@ -10,6 +10,12 @@ const normalize = (s?: string | null): string =>
     .toLowerCase()
     .trim()
 
+const normalizeEventId = (value?: string | null): string =>
+  String(value || '')
+    .trim()
+    .split('__')[0]
+    .trim()
+
 async function resolveReadCollectionForDepartment(department: string) {
   const d = normalize(department)
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -114,10 +120,11 @@ export async function GET(req: Request) {
       const derivedEndTime = endTimes.length > 0 ? endTimes[endTimes.length - 1] : null
 
       const code = d.code || d.eventCode || d.eventId || doc.id
+      const eventId = normalizeEventId(d.eventId || code || doc.id)
 
       return {
         id: doc.id,
-        eventId: d.eventId || '',
+        eventId,
         code,
         eventCode: code,
         eventName: d.eventName || d.name || '',

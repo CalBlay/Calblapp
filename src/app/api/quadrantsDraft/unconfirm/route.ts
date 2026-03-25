@@ -9,6 +9,12 @@ export const runtime = 'nodejs'
 const norm = (s?: string | null) =>
   String(s ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
 
+const normalizeEventId = (value?: string | null) =>
+  String(value || '')
+    .trim()
+    .split('__')[0]
+    .trim()
+
 const canonicalCollectionFor = (dept: string) => {
   const key = norm(dept)
   return `quadrants${key.charAt(0).toUpperCase()}${key.slice(1)}`
@@ -63,7 +69,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { department, eventId } = (await req.json()) as { department: string; eventId: string }
+    const payload = (await req.json()) as { department: string; eventId: string }
+    const department = payload.department
+    const eventId = normalizeEventId(payload.eventId)
     if (!department || !eventId) {
       return NextResponse.json({ ok: false, error: 'Bad payload' }, { status: 400 })
     }

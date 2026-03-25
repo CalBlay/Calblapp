@@ -12,6 +12,11 @@ const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
 const unaccent = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const norm = (v?: string | null) => unaccent((v || '').toString().trim().toLowerCase())
 const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+const normalizeEventId = (value?: string | null) =>
+  String(value || '')
+    .trim()
+    .split('__')[0]
+    .trim()
 const calcDistanceKm = async (destination: string): Promise<number | null> => {
   if (!GOOGLE_KEY || !destination) return null
   try {
@@ -152,6 +157,7 @@ const uniquePersonnelLines = <T extends { name?: string | null; meetingPoint?: s
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    const canonicalEventId = normalizeEventId(String(body?.eventId || ''))
 
     const required = ['eventId', 'department', 'startDate', 'endDate']
     for (const k of required) {
@@ -215,7 +221,7 @@ export async function POST(req: NextRequest) {
 
       const toSave: QuadrantSave = {
         code: bodyForSave.code || '',
-        eventId: bodyForSave.eventId,
+        eventId: normalizeEventId(bodyForSave.eventId),
         eventName: bodyForSave.eventName || '',
         location: bodyForSave.location || '',
         meetingPoint: bodyForSave.meetingPoint || '',
@@ -487,8 +493,8 @@ export async function POST(req: NextRequest) {
     }
 
     const applyStageData = async (toSave: QuadrantSave) => {
-      const baseEventId = String(body.eventId || '').split('__event__')[0]
-      const stageDocId = baseEventId || body.eventId
+      const baseEventId = normalizeEventId(String(body.eventId || ''))
+      const stageDocId = baseEventId || canonicalEventId
       const stageSnap = await db.collection('stage_verd').doc(stageDocId).get()
       const stageData = stageSnap.exists ? stageSnap.data() : null
 
@@ -613,7 +619,7 @@ export async function POST(req: NextRequest) {
       const groupKey = String(phase.groupId || phase.groupsOverride?.[0]?.id || 'group')
         .trim()
         .replace(/[^a-zA-Z0-9_-]/g, '')
-      const docId = `${body.eventId}__${phaseKey}__${phaseDate}__${groupKey || 'group'}`
+      const docId = `${canonicalEventId}__${phaseKey}__${phaseDate}__${groupKey || 'group'}`
       await db.collection(collectionName).doc(docId).set(toSave, { merge: true })
     }
 
@@ -646,9 +652,9 @@ export async function POST(req: NextRequest) {
 
     const normalizedEventId =
       typeof toSave.eventId === 'string' && toSave.eventId.trim()
-        ? toSave.eventId.trim()
-        : String(body.eventId || '').trim()
-    const docIdForSingleFlow = deptNorm === 'cuina' ? normalizedEventId : String(body.eventId || '')
+        ? normalizeEventId(toSave.eventId)
+        : canonicalEventId
+    const docIdForSingleFlow = normalizedEventId
 
     await db.collection(collectionName).doc(docIdForSingleFlow).set(toSave, { merge: true })
 

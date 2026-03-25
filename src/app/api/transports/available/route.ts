@@ -83,7 +83,25 @@ const resolveRange = (startDate?: string, startTime?: string, endDate?: string, 
 ========================= */
 export async function POST(req: Request) {
   try {
-    const { startDate, startTime, endDate, endTime } = await req.json()
+    const rawBody = await req.text()
+    if (!rawBody.trim()) {
+      return NextResponse.json({ error: 'Missing body' }, { status: 400 })
+    }
+
+    let parsed: {
+      startDate?: string
+      startTime?: string
+      endDate?: string
+      endTime?: string
+    }
+
+    try {
+      parsed = JSON.parse(rawBody)
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
+
+    const { startDate, startTime, endDate, endTime } = parsed
 
     if (!startDate || !startTime || !endDate || !endTime) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })

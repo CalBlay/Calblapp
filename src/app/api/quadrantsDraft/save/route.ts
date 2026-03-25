@@ -15,6 +15,12 @@ const norm = (s?: string | null) =>
     .toLowerCase()
     .trim()
 
+const normalizeEventId = (value?: string | null) =>
+  String(value || '')
+    .trim()
+    .split('__')[0]
+    .trim()
+
 // Si no trobem col·lecció existent, fem un nom canònic
 const canonicalCollectionFor = (dept: string) => {
   const key = norm(dept)
@@ -181,7 +187,8 @@ export async function POST(req: NextRequest) {
     }
 
     const coll = await resolveDeptCollection(department)
-    const ref = db.collection(coll).doc(eventId)
+    const canonicalEventId = normalizeEventId(eventId)
+    const ref = db.collection(coll).doc(canonicalEventId)
     const isCuina = norm(department) === 'cuina'
     const isServeis = norm(department) === 'serveis'
     const isLogistica = norm(department) === 'logistica'
@@ -203,7 +210,7 @@ export async function POST(req: NextRequest) {
 
     const dataBase = {
       department: norm(department),
-      eventId,
+      eventId: canonicalEventId,
 
       // ⭐ Nou model multi-responsable
       responsables: responsables.map(toLine),
@@ -242,7 +249,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (isServeis && Array.isArray(groups) && groups.length > 0 && rows.some((r) => r.groupId)) {
-      const eventDocsSnap = await db.collection(coll).where('eventId', '==', eventId).get()
+      const eventDocsSnap = await db.collection(coll).where('eventId', '==', canonicalEventId).get()
       const existingDocs = eventDocsSnap.docs
       const baseDoc = existingDocs[0]?.data() || existing || {}
       const existingByGroup = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
@@ -317,7 +324,7 @@ export async function POST(req: NextRequest) {
         const numDrivers = conductorsForSave.length
         const docId =
           baseGroupDoc?.id ||
-          `${eventId}__event__${groupDate || previous?.startDate || 'nodate'}__${sanitizeGroupId(groupId)}`
+          `${canonicalEventId}__event__${groupDate || previous?.startDate || 'nodate'}__${sanitizeGroupId(groupId)}`
 
         keptDocIds.add(docId)
 
@@ -326,7 +333,7 @@ export async function POST(req: NextRequest) {
           {
             ...previous,
             department: norm(department),
-            eventId,
+            eventId: canonicalEventId,
             startDate: groupDate || previous?.startDate || '',
             endDate: groupDate || previous?.endDate || '',
             startTime,
@@ -449,7 +456,7 @@ export async function POST(req: NextRequest) {
     await ref.set(updateData, { merge: true })
 
     // Distància: sempre recalculada amb l'adreça actual
-    const evSnap = await db.collection('stage_verd').doc(String(eventId)).get()
+    const evSnap = await db.collection('stage_verd').doc(String(canonicalEventId)).get()
     const ev = evSnap.data() as any
     const destination = ev?.Ubicacio || ev?.location || ev?.address || ''
     const km = await calcDistanceKm(destination)

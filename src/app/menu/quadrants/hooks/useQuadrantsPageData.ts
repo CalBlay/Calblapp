@@ -27,6 +27,14 @@ export interface UseQuadrantsPageDataResult {
 const normalize = (value?: string) =>
   (value || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
 
+const normalizeDepartment = (value?: unknown) =>
+  (value || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
 const cleanText = (value?: unknown) => {
   const s = (value || '').toString().trim()
   if (!s) return ''
@@ -357,6 +365,10 @@ export function useQuadrantsPageData({
         const dept = (q.department || '').toString().trim().toLowerCase()
         // Cuina treballa amb una sola fase (event) i pot tenir docs antics sense phaseType.
         if (dept === 'cuina' && !p) return true
+        // Serveis pot tenir fases/grups sense document "event" pur.
+        // Si ja existeix qualsevol doc del quadrant, evitem afegir una fila pendent
+        // artificial que amaga el flux d'edició/reobertura.
+        if (normalizeDepartment(dept) === 'serveis') return true
         return false
       })
       if (hasEventDoc) return

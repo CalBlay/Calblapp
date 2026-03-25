@@ -46,6 +46,11 @@ const norm = (v?: string) =>
   (v || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+const normalizeEventId = (value?: string | null) =>
+  String(value || '')
+    .trim()
+    .split('__')[0]
+    .trim()
 
 async function calcDistanceKm(destination: string): Promise<number | null> {
   if (!GOOGLE_KEY || !destination) return null
@@ -196,7 +201,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const deptRaw: string = body?.department || body?.dept
-    const eventId: string = body?.eventId || body?.id
+    const eventId: string = normalizeEventId(body?.eventId || body?.id)
 
     if (!deptRaw || !eventId) {
       return NextResponse.json({ ok: false, error: 'Missing department or eventId' }, { status: 400 })
