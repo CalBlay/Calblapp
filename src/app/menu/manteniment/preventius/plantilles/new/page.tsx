@@ -78,10 +78,10 @@ export default function PlantillaNewPage() {
 
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
-      <div className="w-full max-w-3xl mx-auto p-4 space-y-4">
+      <div className="w-full max-w-5xl mx-auto p-4 space-y-5">
         <ModuleHeader subtitle="Nova plantilla" />
 
-        <div className="rounded-2xl border bg-white p-4 space-y-4">
+        <div className="rounded-2xl border bg-white p-5 space-y-5">
           <label className="flex flex-col gap-1">
             <span className="text-xs text-gray-600">Nom</span>
             <input
@@ -91,7 +91,7 @@ export default function PlantillaNewPage() {
             />
           </label>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-gray-600">Temporalitat</span>
               <select
@@ -126,7 +126,7 @@ export default function PlantillaNewPage() {
             />
           </label>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-gray-600">Operari assignat</span>
               <select

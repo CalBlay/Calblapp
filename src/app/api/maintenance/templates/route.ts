@@ -23,6 +23,26 @@ type TemplateDocument = TemplatePayload & {
   updatedByName?: string
 }
 
+const normalizeSections = (sections: unknown): TemplateSection[] =>
+  Array.isArray(sections)
+    ? sections
+        .map((section) => {
+          const record = section as {
+            location?: unknown
+            items?: Array<{ label?: unknown }> | unknown
+          }
+          return {
+            location: String(record?.location || '').trim(),
+            items: Array.isArray(record?.items)
+              ? record.items
+                  .map((item) => ({ label: String((item as { label?: unknown })?.label || '').trim() }))
+                  .filter((item) => item.label)
+              : [],
+          }
+        })
+        .filter((section) => section.location || section.items.length > 0)
+    : []
+
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session?.user) {
@@ -38,7 +58,14 @@ export async function GET() {
   try {
     const snap = await db.collection('maintenancePreventiusTemplates').get()
     const templates = snap.docs
-      .map((doc) => ({ id: doc.id, ...(doc.data() as TemplateDocument) }))
+      .map((doc) => {
+        const data = doc.data() as TemplateDocument
+        return {
+          id: doc.id,
+          ...data,
+          sections: normalizeSections(data.sections),
+        }
+      })
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
     return NextResponse.json({ templates })
   } catch (err: unknown) {

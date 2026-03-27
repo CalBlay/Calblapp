@@ -9,7 +9,7 @@ import { useFilters } from '@/context/FiltersContext'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import FloatingAddButton from '@/components/ui/floating-add-button'
-import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
+import FilterButton from '@/components/ui/filter-button'
 
 type TemplateSection = { location: string; items: { label: string }[] }
 type Template = {
@@ -39,6 +39,26 @@ type ImportPreview = {
   warnings: string[]
 }
 type ModelBImportMode = 'single' | 'split' | 'custom'
+
+const normalizeTemplateSections = (sections: unknown): TemplateSection[] =>
+  Array.isArray(sections)
+    ? sections
+        .map((section) => {
+          const record = section as {
+            location?: unknown
+            items?: Array<{ label?: unknown }> | unknown
+          }
+          return {
+            location: cleanText(record?.location),
+            items: Array.isArray(record?.items)
+              ? record.items
+                  .map((item) => ({ label: cleanText((item as { label?: unknown })?.label) }))
+                  .filter((item) => item.label)
+              : [],
+          }
+        })
+        .filter((section) => section.location || section.items.length > 0)
+    : []
 
 const PERIODICITY_OPTIONS: { value: string; label: string }[] = [
   { value: 'all', label: 'Totes' },
@@ -428,7 +448,20 @@ export default function PreventiusPlantillesPage() {
       return
     }
     const json = await res.json()
-    setTemplates(Array.isArray(json?.templates) ? json.templates : [])
+    setTemplates(
+      Array.isArray(json?.templates)
+        ? json.templates.map((template: Partial<Template> & { id?: string }) => ({
+            id: String(template.id || ''),
+            name: String(template.name || '').trim(),
+            periodicity: template.periodicity || null,
+            lastDone: template.lastDone || null,
+            location: String(template.location || '').trim(),
+            primaryOperator: String(template.primaryOperator || '').trim(),
+            backupOperator: String(template.backupOperator || '').trim(),
+            sections: normalizeTemplateSections(template.sections),
+          }))
+        : []
+    )
   }
 
   useEffect(() => {
@@ -438,16 +471,6 @@ export default function PreventiusPlantillesPage() {
   useEffect(() => {
     setContent(
       <div className="space-y-4 p-4">
-        <label className="space-y-2 text-sm text-slate-700">
-          <span className="font-medium">Cerca</span>
-          <input
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-            placeholder="Cerca per nom, ubicacio o operari"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </label>
-
         <label className="space-y-2 text-sm text-slate-700">
           <span className="font-medium">Temporalitat</span>
           <select
@@ -466,14 +489,13 @@ export default function PreventiusPlantillesPage() {
         <div className="flex justify-end">
           <ResetFilterButton
             onClick={() => {
-              setSearch('')
               setPeriodicity('all')
             }}
           />
         </div>
       </div>
     )
-  }, [periodicity, search, setContent])
+  }, [periodicity, setContent])
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -754,48 +776,41 @@ export default function PreventiusPlantillesPage() {
 
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
-      <div className="w-full max-w-5xl mx-auto p-4 space-y-4">
+      <div className="w-full max-w-6xl mx-auto p-4 space-y-4">
         <ModuleHeader subtitle="Plantilles (plans) i checklists" />
 
-        <MaintenanceToolbar
-          onOpenFilters={() => undefined}
-          rightSlot={
-            <>
-              {periodicity !== 'all' ? (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                  {
-                    PERIODICITY_OPTIONS.find((option) => option.value === periodicity)?.label ||
-                    periodicity
-                  }
-                </span>
-              ) : null}
-              {search.trim() ? (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                  Cerca activa
-                </span>
-              ) : null}
-            </>
-          }
-        />
-
         <div className="rounded-2xl border bg-white p-4 space-y-3">
-          <div className="text-sm font-semibold text-gray-900">Importar plantilla</div>
-          <div className="text-xs text-gray-600">
-            Carrega un fitxer Excel de preventiu. Detectem el model (A/B/C), el convertim a format estandard i et mostrem previsualitzacio abans de guardar.
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Importar plantilla</div>
+              <div className="text-xs text-gray-500">
+                Excel o CSV. Detectem el format i et mostrem una previsualitzacio abans de guardar.
+              </div>
+            </div>
+            <label className="inline-flex min-h-[44px] cursor-pointer items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100">
+              Seleccionar fitxer
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={(e) => handleFile(e.target.files?.[0])}
+              />
+            </label>
           </div>
-          <input
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="block w-full text-sm"
-            onChange={(e) => handleFile(e.target.files?.[0])}
-          />
 
           {preview && (
-            <div className="rounded-xl border p-3 space-y-2">
-              <div className="text-xs text-gray-700">
-                Fitxer: <span className="font-semibold">{preview.fileName}</span> · Model detectat: <span className="font-semibold">{preview.model}</span>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-3">
+              <div className="flex flex-col gap-1 text-xs text-gray-700 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  Fitxer: <span className="font-semibold">{preview.fileName}</span>
+                </div>
+                <div>
+                  Model: <span className="font-semibold">{preview.model}</span>
+                </div>
               </div>
-              <div className="text-xs text-gray-700">Plantilles detectades: {preview.templates.length}</div>
+              <div className="text-xs text-gray-700">
+                Plantilles detectades: <span className="font-semibold">{preview.templates.length}</span>
+              </div>
               {preview.warnings.map((w, idx) => (
                 <div key={idx} className="text-xs text-amber-700">{w}</div>
               ))}
@@ -854,11 +869,13 @@ export default function PreventiusPlantillesPage() {
                   )}
                 </div>
               )}
-              {preview.templates.slice(0, 4).map((t, idx) => (
-                <div key={`${t.name}-${idx}`} className="text-xs text-gray-700">
-                  {t.name} · {t.periodicity || 'sense temporalitat'} · {t.sections.length} seccions
-                </div>
-              ))}
+              <div className="space-y-1">
+                {preview.templates.slice(0, 4).map((t, idx) => (
+                  <div key={`${t.name}-${idx}`} className="text-xs text-gray-700">
+                    {t.name} · {t.periodicity || 'sense temporalitat'} · {(t.sections || []).length} seccions
+                  </div>
+                ))}
+              </div>
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
@@ -881,16 +898,43 @@ export default function PreventiusPlantillesPage() {
         </div>
 
         <div className="rounded-2xl border bg-white p-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Plantilles</div>
-              <div className="text-xs text-gray-500">{filtered.length} resultats</div>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900">Plantilles</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  <span>{filtered.length} resultats</span>
+                  {periodicity !== 'all' ? (
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
+                      {
+                        PERIODICITY_OPTIONS.find((option) => option.value === periodicity)?.label ||
+                        periodicity
+                      }
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="shrink-0 lg:hidden">
+                <FilterButton onClick={() => undefined} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 lg:min-w-[420px]">
+              <div className="w-full">
+                <input
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+                  placeholder="Cerca per nom, ubicacio o operari"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="hidden shrink-0 lg:block">
+                <FilterButton onClick={() => undefined} />
+              </div>
             </div>
           </div>
         </div>
 
         <div className="rounded-2xl border bg-white overflow-hidden">
-          <div className="px-4 py-3 border-b text-sm font-semibold text-gray-900">Llistat</div>
           <div className="divide-y">
             {filtered.length === 0 && (
               <div className="px-4 py-6 text-sm text-gray-500">No hi ha plantilles.</div>
@@ -910,7 +954,7 @@ export default function PreventiusPlantillesPage() {
                       <span>Temporalitat: {t.periodicity || '—'}</span>
                       <span>Ultima revisio: {t.lastDone || '—'}</span>
                       <span>Ubicacio: {t.location || '—'}</span>
-                      <span>Seccions: {t.sections.length}</span>
+                      <span>Seccions: {(t.sections || []).length}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

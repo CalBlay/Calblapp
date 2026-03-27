@@ -107,5 +107,6 @@ export function buildTicketBody(params: {
     (params.location || '').trim(),
     (params.description || '').trim(),
   ].filter(Boolean)
-  return parts.join(' · ')
+
+  return parts.join(' \u00B7 ')
 }

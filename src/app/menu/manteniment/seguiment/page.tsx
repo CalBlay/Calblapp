@@ -327,7 +327,7 @@ export default function MaintenanceSeguimentPage() {
 
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
-      <div className="space-y-5 px-4 pb-8">
+      <div className="mx-auto w-full max-w-7xl space-y-5 px-4 pb-8">
         <ModuleHeader title="Manteniment" subtitle="Seguiment" mainHref="/menu/manteniment" />
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-3">
@@ -481,14 +481,44 @@ export default function MaintenanceSeguimentPage() {
                               {ticket.priority || 'normal'}
                             </span>
                           </div>
-                          <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-500">
-                            <span>Ubicacio: {ticket.location || '-'}</span>
-                            <span>Maquina: {ticket.machine || '-'}</span>
-                            <span>Equip: {(ticket.assignedToNames || []).join(', ') || '-'}</span>
+                          <div className="grid gap-2 text-sm text-slate-500 md:grid-cols-2 xl:grid-cols-4">
+                            <div className="rounded-xl bg-slate-50 px-3 py-2">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                                Ubicacio
+                              </div>
+                              <div className="mt-1 text-slate-700">{ticket.location || '-'}</div>
+                            </div>
+                            <div className="rounded-xl bg-slate-50 px-3 py-2">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                                Maquina
+                              </div>
+                              <div className="mt-1 text-slate-700">{ticket.machine || '-'}</div>
+                            </div>
+                            <div className="rounded-xl bg-slate-50 px-3 py-2">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                                Equip
+                              </div>
+                              <div className="mt-1 text-slate-700">
+                                {(ticket.assignedToNames || []).join(', ') || '-'}
+                              </div>
+                            </div>
+                            <div className="rounded-xl bg-slate-50 px-3 py-2">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                                Referencia temporal
+                              </div>
+                              <div className="mt-1 text-slate-700">
+                                {effectiveDate ? formatDateTime(effectiveDate.toISOString()) : '-'}
+                              </div>
+                            </div>
                             {ticket.externalized ? (
-                              <span>
-                                Proveidor: {ticket.supplierName || ticket.supplierEmail || '-'}
-                              </span>
+                              <div className="rounded-xl bg-slate-50 px-3 py-2 md:col-span-2 xl:col-span-4">
+                                <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                                  Proveidor
+                                </div>
+                                <div className="mt-1 text-slate-700">
+                                  {ticket.supplierName || ticket.supplierEmail || '-'}
+                                </div>
+                              </div>
                             ) : null}
                           </div>
                         </div>
@@ -508,7 +538,7 @@ export default function MaintenanceSeguimentPage() {
                         <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr),minmax(0,1fr)]">
                           <div className="lg:col-span-2 space-y-3 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
                             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Historic
+                              Historial
                             </div>
                             <div className="space-y-2">
                               {(ticket.statusHistory || [])

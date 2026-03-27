@@ -37,6 +37,9 @@ type RowEditorProps = {
   row: Row
   available: AvailableData
   isServeisDept?: boolean
+  canEditMeetingPoint?: boolean
+  groupHasDriverController?: boolean
+  canEditArrivalTime?: boolean
   onPatch: (patch: Partial<Row>) => void
   onClose: () => void
   onRevert?: () => void
@@ -115,12 +118,18 @@ function EditorFields({
   row,
   available,
   isServeisDept = false,
+  canEditMeetingPoint = true,
+  groupHasDriverController = false,
+  canEditArrivalTime = true,
   onPatch,
   isLocked,
 }: {
   row: Row
   available: AvailableData
   isServeisDept?: boolean
+  canEditMeetingPoint?: boolean
+  groupHasDriverController?: boolean
+  canEditArrivalTime?: boolean
   onPatch: (patch: Partial<Row>) => void
   isLocked: boolean
 }) {
@@ -274,7 +283,10 @@ function EditorFields({
               const sel = list.find((p) => p.id === e.target.value)
               const displayName = sel?.name || sel?.alias || sel?.id || ''
               onPatch({ id: sel?.id || '', name: displayName })
-              if (sel?.meetingPoint)
+              const rowControlsMeetingPoint =
+                row.role === 'conductor' || (row.role === 'responsable' && row.isDriver)
+              const shouldSyncMeetingPoint = !isServeisDept || rowControlsMeetingPoint
+              if (shouldSyncMeetingPoint && sel?.meetingPoint)
                 onPatch({ meetingPoint: sel.meetingPoint })
             }}
             className="w-full rounded border px-2 py-1 text-sm"
@@ -296,7 +308,7 @@ function EditorFields({
             onChange={(e) => onPatch({ meetingPoint: e.target.value })}
             placeholder="Lloc..."
             className="w-full text-sm"
-            disabled={isLocked}
+            disabled={isLocked || !canEditMeetingPoint}
           />
         </div>
       </div>
@@ -357,7 +369,7 @@ function EditorFields({
               value={row.arrivalTime || ''}
               onChange={(e) => onPatch({ arrivalTime: e.target.value })}
               className="w-full text-sm"
-              disabled={isLocked}
+              disabled={isLocked || !canEditArrivalTime}
             />
           </div>
         </div>
@@ -412,7 +424,7 @@ function EditorFields({
             value={row.arrivalTime || ''}
             onChange={(e) => onPatch({ arrivalTime: e.target.value })}
             className="w-full text-sm"
-            disabled={isLocked || isServiceCompanion}
+            disabled={isLocked || isServiceCompanion || !canEditArrivalTime}
           />
         </div>
       </div>
@@ -424,7 +436,18 @@ function EditorFields({
    Component principal
 ------------------------------ */
 export default function RowEditor(props: RowEditorProps) {
-  const { row, available, isServeisDept = false, onPatch, onClose, onRevert, isLocked } = props
+  const {
+    row,
+    available,
+    isServeisDept = false,
+    canEditMeetingPoint = true,
+    groupHasDriverController = false,
+    canEditArrivalTime = true,
+    onPatch,
+    onClose,
+    onRevert,
+    isLocked,
+  } = props
   const isDesktop = useIsDesktop()
 
   const content = (
@@ -440,6 +463,9 @@ export default function RowEditor(props: RowEditorProps) {
         row={row}
         available={available}
         isServeisDept={isServeisDept}
+        canEditMeetingPoint={canEditMeetingPoint}
+        groupHasDriverController={groupHasDriverController}
+        canEditArrivalTime={canEditArrivalTime}
         onPatch={onPatch}
         isLocked={isLocked}
       />

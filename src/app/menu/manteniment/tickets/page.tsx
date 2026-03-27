@@ -255,7 +255,7 @@ export default function MaintenanceTicketsPage() {
 
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
-      <div className="space-y-5 px-4 pb-8">
+      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 pb-8">
         <ModuleHeader
           title="Manteniment"
           subtitle="Tickets"

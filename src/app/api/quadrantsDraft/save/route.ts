@@ -319,7 +319,7 @@ export async function POST(req: NextRequest) {
         const arrivalTime =
           timingAnchor?.arrivalTime ?? group.arrivalTime ?? groupRows[0]?.arrivalTime ?? previous?.arrivalTime ?? null
         const meetingPoint =
-          timingAnchor?.meetingPoint || group.meetingPoint || groupRows[0]?.meetingPoint || previous?.meetingPoint || ''
+          group.meetingPoint || timingAnchor?.meetingPoint || groupRows[0]?.meetingPoint || previous?.meetingPoint || ''
         const totalWorkers = names.size + extraCount
         const numDrivers = conductorsForSave.length
         const docId =

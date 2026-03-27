@@ -65,6 +65,22 @@ const buildWeekQuery = (value?: number | string | null) => {
   return `start=${format(start, 'yyyy-MM-dd')}&end=${format(end, 'yyyy-MM-dd')}`
 }
 
+const normalizeNotificationText = (value?: string | null) =>
+  String(value || '')
+    .replace(/Â·/g, '\u00B7')
+    .replace(/â€™/g, "'")
+    .replace(/â€œ/g, '"')
+    .replace(/â€\u009d/g, '"')
+    .replace(/Ã /g, 'à')
+    .replace(/Ã¨/g, 'è')
+    .replace(/Ã©/g, 'é')
+    .replace(/Ã­/g, 'í')
+    .replace(/Ã²/g, 'ò')
+    .replace(/Ã³/g, 'ó')
+    .replace(/Ãº/g, 'ú')
+    .replace(/Ã§/g, 'ç')
+    .trim()
+
 export default function MantenimentIndexPage() {
   const { data: session } = useSession()
   const router = useRouter()
@@ -121,11 +137,12 @@ export default function MantenimentIndexPage() {
 
   const extractNotificationLabel = (notification: MaintenanceNotification) => {
     const code = String(notification.ticketCode || '').trim()
-    const machine = String(notification.machine || '').trim()
-    const location = String(notification.location || '').trim()
-    const body = String(notification.body || '').trim()
-    const primaryBase = machine || location || body || notification.title || 'Ticket'
-    const primary = code ? `${code} Â· ${primaryBase}` : primaryBase
+    const machine = normalizeNotificationText(notification.machine)
+    const location = normalizeNotificationText(notification.location)
+    const body = normalizeNotificationText(notification.body)
+    const title = normalizeNotificationText(notification.title)
+    const primaryBase = machine || location || body || title || 'Ticket'
+    const primary = code ? `${code} \u00B7 ${primaryBase}` : primaryBase
     const secondary = location || body || machine || ''
 
     if (notification.type === 'maintenance_ticket_assigned') {
@@ -194,7 +211,7 @@ export default function MantenimentIndexPage() {
 
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
-      <div className="w-full max-w-2xl mx-auto p-4 space-y-4">
+      <div className="w-full max-w-6xl mx-auto p-4 space-y-5">
         <ModuleHeader title="Manteniment" subtitle="Gestió i assignació" />
 
         {maintenanceNotifications.length > 0 ? (
@@ -224,11 +241,11 @@ export default function MantenimentIndexPage() {
                       >
                         {label.primary}
                       </button>
-                      {label.secondary ? <span className="text-slate-400">Â·</span> : null}
+                      {label.secondary ? <span className="text-slate-400">{'\u00B7'}</span> : null}
                       {label.secondary ? (
                         <span className="truncate text-slate-500">{label.secondary}</span>
                       ) : (
-                        <span className="text-slate-400">{notification.title || ''}</span>
+                        <span className="text-slate-400">{normalizeNotificationText(notification.title)}</span>
                       )}
                     </div>
                     <button
@@ -246,11 +263,11 @@ export default function MantenimentIndexPage() {
           </section>
         ) : null}
 
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {(isAdmin || isMaintenanceCap || isMaintenanceWorker) && (
             <Link
               href="/menu/manteniment/tickets"
-              className="border rounded-2xl p-4 hover:shadow-sm bg-gradient-to-br from-amber-50 to-yellow-100"
+              className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-amber-50 to-yellow-100"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-amber-700">
@@ -267,7 +284,7 @@ export default function MantenimentIndexPage() {
           {(isAdmin || isMaintenanceCap) && (
             <Link
               href="/menu/manteniment/preventius/planificador"
-              className="border rounded-2xl p-4 hover:shadow-sm bg-gradient-to-br from-teal-50 to-cyan-100"
+              className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-teal-50 to-cyan-100"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-teal-700">
@@ -284,7 +301,7 @@ export default function MantenimentIndexPage() {
           {(isAdmin || isMaintenanceCap) && (
             <Link
               href="/menu/manteniment/preventius/plantilles"
-              className="border rounded-2xl p-4 hover:shadow-sm bg-gradient-to-br from-slate-50 to-gray-100"
+              className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-slate-50 to-gray-100"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-slate-700">
@@ -301,7 +318,7 @@ export default function MantenimentIndexPage() {
           {(isAdmin || isMaintenanceCap) && (
             <Link
               href="/menu/manteniment/dades"
-              className="border rounded-2xl p-4 hover:shadow-sm bg-gradient-to-br from-sky-50 to-blue-100"
+              className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-sky-50 to-blue-100"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-sky-700">
@@ -318,7 +335,7 @@ export default function MantenimentIndexPage() {
           {(isMaintenanceWorker || isMaintenanceCap || isAdmin) && (
             <Link
               href="/menu/manteniment/preventius/fulls"
-              className="border rounded-2xl p-4 hover:shadow-sm bg-gradient-to-br from-emerald-50 to-green-100"
+              className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-emerald-50 to-green-100"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-emerald-600">
@@ -342,7 +359,7 @@ export default function MantenimentIndexPage() {
           {(isAdmin || isMaintenanceCap || isCommercial || isProductionWorker) && (
             <Link
               href="/menu/manteniment/seguiment"
-              className="border rounded-2xl p-4 hover:shadow-sm bg-gradient-to-br from-indigo-50 to-purple-100"
+              className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-indigo-50 to-purple-100"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-indigo-600">
@@ -350,7 +367,7 @@ export default function MantenimentIndexPage() {
                 </div>
                 <div>
                   <div className="text-base font-semibold text-gray-900">Seguiment</div>
-                  <div className="text-xs text-gray-500">Consulta dâ€™estat</div>
+                  <div className="text-xs text-gray-500">Consulta d'estat</div>
                 </div>
               </div>
             </Link>

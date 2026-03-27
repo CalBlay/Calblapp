@@ -699,6 +699,12 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
           isServeisDept &&
           currentRow.groupId &&
           row.groupId === currentRow.groupId
+        const groupControlledByDriver = Boolean(
+          isServeisDept && currentRow.groupId && groupHasDriverController(currentRow.groupId)
+        )
+        const freeGroupMeetingPoint = Boolean(
+          isServeisDept && currentRow.groupId && !groupControlledByDriver
+        )
 
         const conductorEdited =
           currentRow.role === 'conductor' ||
@@ -715,6 +721,20 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
             startTime: nextRow.startTime,
             arrivalTime: nextRow.arrivalTime,
             meetingPoint: nextRow.meetingPoint,
+          }
+        }
+
+        if (
+          sameGroup &&
+          freeGroupMeetingPoint &&
+          (patch.meetingPoint !== undefined || patch.arrivalTime !== undefined)
+        ) {
+          return {
+            ...row,
+            meetingPoint:
+              patch.meetingPoint !== undefined ? nextRow.meetingPoint : row.meetingPoint,
+            arrivalTime:
+              patch.arrivalTime !== undefined ? nextRow.arrivalTime : row.arrivalTime,
           }
         }
 
@@ -994,6 +1014,26 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
   const showConductorButtons = !isServeisDept
   const currentEditingRow = editIdx !== null ? rows[editIdx] || null : null
   const hasInlineEditor = Boolean(currentEditingRow && editIdx !== null)
+  const groupHasDriverController = (groupId?: string) => {
+    if (!isServeisDept || !groupId) return false
+    return rows.some(
+      (row) =>
+        row.groupId === groupId &&
+        (row.role === 'conductor' || (row.role === 'responsable' && row.isDriver))
+    )
+  }
+  const canEditMeetingPoint = (row: Row | null) => {
+    if (!row || !isServeisDept || !row.groupId) return true
+    const controlsMeetingPoint =
+      row.role === 'conductor' || (row.role === 'responsable' && row.isDriver)
+    return controlsMeetingPoint || !groupHasDriverController(row.groupId)
+  }
+  const canEditArrivalTime = (row: Row | null) => {
+    if (!row || !isServeisDept || !row.groupId) return true
+    const controlsArrivalTime =
+      row.role === 'conductor' || (row.role === 'responsable' && row.isDriver)
+    return controlsArrivalTime || !groupHasDriverController(row.groupId)
+  }
 
   const addRowToGroup = (role: Role, groupId?: string) => {
     const group = hasStructuredGroups
@@ -1229,6 +1269,9 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
                 row={currentEditingRow}
                 available={availableForEditor}
                 isServeisDept={isServeisDept}
+                canEditMeetingPoint={canEditMeetingPoint(currentEditingRow)}
+                groupHasDriverController={groupHasDriverController(currentEditingRow.groupId)}
+                canEditArrivalTime={canEditArrivalTime(currentEditingRow)}
                 onPatch={patchRow}
                 onClose={endEdit}
                 onRevert={revertRow}
@@ -1245,6 +1288,9 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
             row={currentEditingRow}
             available={availableForEditor}
             isServeisDept={isServeisDept}
+            canEditMeetingPoint={canEditMeetingPoint(currentEditingRow)}
+            groupHasDriverController={groupHasDriverController(currentEditingRow.groupId)}
+            canEditArrivalTime={canEditArrivalTime(currentEditingRow)}
             onPatch={patchRow}
             onClose={endEdit}
             onRevert={revertRow}
@@ -1392,6 +1438,9 @@ const handleSaveAll = async (rowsOverride?: Row[]) => {
           row={currentEditingRow}
           available={availableForEditor}
           isServeisDept={isServeisDept}
+          canEditMeetingPoint={canEditMeetingPoint(currentEditingRow)}
+          groupHasDriverController={groupHasDriverController(currentEditingRow.groupId)}
+          canEditArrivalTime={canEditArrivalTime(currentEditingRow)}
           onPatch={patchRow}
           onClose={endEdit}
           onRevert={revertRow}
