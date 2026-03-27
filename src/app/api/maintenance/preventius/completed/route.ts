@@ -30,6 +30,8 @@ type CompletedPayload = {
   checklist?: Record<string, boolean>
 }
 
+type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
+
 const normalizeCompletedStatus = (value?: string) => {
   const status = String(value || 'pendent').trim().toLowerCase()
   if (status === 'nou') return 'nou'
@@ -42,6 +44,9 @@ const normalizeCompletedStatus = (value?: string) => {
   if (status === 'en_curs') return 'en_curs'
   return 'assignat'
 }
+
+const isCompletionOnlyStatus = (status: MaintenanceStatus) =>
+  status === 'fet' || status === 'no_fet' || status === 'validat'
 
 const computeProgress = (checklist?: Record<string, boolean>) => {
   if (!checklist || typeof checklist !== 'object') return 0
@@ -143,7 +148,7 @@ export async function POST(req: Request) {
         ? body.completedAt
         : now
 
-    const normalizedStatus = normalizeCompletedStatus(body.status)
+    const normalizedStatus = normalizeCompletedStatus(body.status) as MaintenanceStatus
     const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
     if (normalizedStatus === 'validat') {
       if (!canValidate) {
@@ -186,17 +191,26 @@ export async function POST(req: Request) {
       worker: body.worker || null,
       startTime: body.startTime || '',
       endTime: body.endTime || '',
-      status: normalizedStatus || 'pendent',
+      status: normalizedStatus,
       notes: body.notes || '',
       completedAt,
       nextDue: body.nextDue || null,
       checklist: body.checklist || {},
       createdById: user.id,
       createdByName: user.name || '',
-      createdAt: now,
+      createdAt: currentRecord?.createdAt || now,
       updatedAt: now,
       updatedById: user.id,
       updatedByName: user.name || '',
+      statusHistory: admin.firestore.FieldValue.arrayUnion({
+        status: normalizedStatus,
+        at: now,
+        byId: user.id,
+        byName: user.name || '',
+        startTime: isCompletionOnlyStatus(normalizedStatus) ? null : body.startTime || null,
+        endTime: isCompletionOnlyStatus(normalizedStatus) ? body.endTime || null : null,
+        note: body.notes || '',
+      }),
     }
 
     let docId = ''
@@ -214,7 +228,7 @@ export async function POST(req: Request) {
       await db.collection('maintenancePreventiusPlanned').doc(body.plannedId).set(
         {
           lastRecordId: docId,
-          lastStatus: normalizedStatus || 'pendent',
+          lastStatus: normalizedStatus,
           lastProgress: progress,
           lastCompletedAt: completedAt,
           lastUpdatedAt: now,

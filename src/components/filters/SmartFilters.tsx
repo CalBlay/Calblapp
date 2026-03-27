@@ -12,6 +12,8 @@ import {
   endOfWeek,
   startOfMonth,
   endOfMonth,
+  startOfYear,
+  endOfYear,
   parseISO,
   isValid,
   format,
@@ -19,6 +21,8 @@ import {
   subWeeks,
   addMonths,
   subMonths,
+  addYears,
+  subYears,
   addDays,
   subDays
 } from 'date-fns'
@@ -32,7 +36,7 @@ import {
 } from '@/components/ui/select'
 
 /* ==================== Tipus ==================== */
-type Mode = 'week' | 'month' | 'day' | 'range'
+type Mode = 'week' | 'month' | 'year' | 'day' | 'range'
 type Role = 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
 type RoleType = 'treballador' | 'conductor' | 'responsable' | 'all'
 
@@ -182,6 +186,16 @@ useEffect(() => {
       return
     }
 
+    if (modeDefault === 'year') {
+      setMode('year')
+      setAnchor(parsedStart)
+      setDayStr(initialStart)
+      setRangeStartStr(initialStart)
+      setRangeEndStr(initialEnd)
+      didInitRef.current = true
+      return
+    }
+
     if (initialStart === initialEnd) {
       setMode('day')
       setDayStr(initialStart)
@@ -275,6 +289,8 @@ useEffect(() => {
   const weekEnd = useMemo(() => endOfWeek(anchor, { weekStartsOn: 1 }), [anchor])
   const monthStart = useMemo(() => startOfMonth(anchor), [anchor])
   const monthEnd = useMemo(() => endOfMonth(anchor), [anchor])
+  const yearStart = useMemo(() => startOfYear(anchor), [anchor])
+  const yearEnd = useMemo(() => endOfYear(anchor), [anchor])
   const weekLabel = useMemo(
   () => `${format(weekStart, 'd MMM', { locale: es })} – ${format(weekEnd, 'd MMM', { locale: es })}`,
   [weekStart, weekEnd]
@@ -283,9 +299,11 @@ useEffect(() => {
     () => format(monthStart, 'MMMM yyyy', { locale: es }).replace(/^./, (char) => char.toUpperCase()),
     [monthStart]
   )
+  const yearLabel = useMemo(() => format(yearStart, 'yyyy', { locale: es }), [yearStart])
   const headerLabel = useMemo(() => {
     if (mode === 'week') return weekLabel
     if (mode === 'month') return monthLabel
+    if (mode === 'year') return yearLabel
     if (mode === 'day') {
       const d = parseISO(dayStr)
       return isValid(d) ? human(d) : 'Selecciona una data'
@@ -297,16 +315,18 @@ useEffect(() => {
       return `${human(a)} – ${human(b)}`
     }
     return 'Selecciona un rang de dates'
-  }, [mode, weekLabel, monthLabel, dayStr, rangeStartStr, rangeEndStr])
+  }, [mode, weekLabel, monthLabel, yearLabel, dayStr, rangeStartStr, rangeEndStr])
 
   const prev = () => {
     if (mode === 'week') setAnchor((p) => subWeeks(p, 1))
     if (mode === 'month') setAnchor((p) => subMonths(p, 1))
+    if (mode === 'year') setAnchor((p) => subYears(p, 1))
     if (mode === 'day') setDayStr(toIso(subDays(parseISO(dayStr), 1)))
   }
   const next = () => {
     if (mode === 'week') setAnchor((p) => addWeeks(p, 1))
     if (mode === 'month') setAnchor((p) => addMonths(p, 1))
+    if (mode === 'year') setAnchor((p) => addYears(p, 1))
     if (mode === 'day') setDayStr(toIso(addDays(parseISO(dayStr), 1)))
   }
 
@@ -323,6 +343,9 @@ useEffect(() => {
     } else if (mode === 'month') {
       start = toIso(monthStart)
       end = toIso(monthEnd)
+    } else if (mode === 'year') {
+      start = toIso(yearStart)
+      end = toIso(yearEnd)
     } else if (mode === 'day') {
       const d = parseISO(dayStr)
       if (isValid(d)) {
@@ -380,6 +403,8 @@ if (key !== lastPayloadRef.current) {
     weekEnd,
     monthStart,
     monthEnd,
+    yearStart,
+    yearEnd,
     dayStr,
     rangeStartStr,
     rangeEndStr,
@@ -588,7 +613,7 @@ if (key !== lastPayloadRef.current) {
       size="sm"
       className="h-9 px-4 rounded-lg border bg-white text-gray-900 flex items-center gap-1"
     >
-      {mode === 'week' ? 'Setmana' : mode === 'month' ? 'Mes' : mode === 'day' ? 'Dia' : 'Rang'}
+      {mode === 'week' ? 'Setmana' : mode === 'month' ? 'Mes' : mode === 'year' ? 'Any' : mode === 'day' ? 'Dia' : 'Rang'}
       <span className="text-gray-500 text-xs">▼</span>
     </Button>
   </PopoverTrigger>
@@ -607,7 +632,7 @@ if (key !== lastPayloadRef.current) {
         onClick={() => {
           setMode(opt)
           // 🔹 Reiniciem estats segons el mode
-          if (opt === 'week' || opt === 'month') {
+          if (opt === 'week' || opt === 'month' || opt === 'year') {
             setAnchor(new Date())
             setDayStr(toIso(new Date()))
             setRangeStartStr('')
@@ -622,7 +647,7 @@ if (key !== lastPayloadRef.current) {
           }
         }}
       >
-        {opt === 'week' ? 'Setmana' : opt === 'month' ? 'Mes' : opt === 'day' ? 'Dia' : 'Rang'}
+        {opt === 'week' ? 'Setmana' : opt === 'month' ? 'Mes' : opt === 'year' ? 'Any' : opt === 'day' ? 'Dia' : 'Rang'}
       </Button>
     ))}
   </PopoverContent>

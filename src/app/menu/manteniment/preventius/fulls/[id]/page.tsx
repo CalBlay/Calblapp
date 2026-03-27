@@ -18,12 +18,14 @@ type Template = {
   sections: TemplateSection[]
 }
 
+type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
+
 type Draft = {
   id: string
   title: string
   startTime: string
   endTime: string
-  status: string
+  status: MaintenanceStatus
   notes: string
   templateId: string | null
   worker: string
@@ -37,12 +39,55 @@ type CompletedRecord = {
   worker?: string | null
   startTime: string
   endTime: string
-  status: string
+  status: MaintenanceStatus
   notes: string
   completedAt: string
   nextDue: string | null
   checklist?: Record<string, boolean>
+  statusHistory?: Array<{
+    status: MaintenanceStatus
+    at: number
+    byName?: string
+    startTime?: string | null
+    endTime?: string | null
+    note?: string | null
+  }>
 }
+
+const STATUS_LABELS: Record<MaintenanceStatus, string> = {
+  nou: 'Nou',
+  assignat: 'Assignat',
+  en_curs: 'En curs',
+  espera: 'Espera',
+  fet: 'Fet',
+  no_fet: 'No fet',
+  validat: 'Validat',
+}
+
+const STATUS_BADGES: Record<MaintenanceStatus, string> = {
+  nou: 'bg-emerald-100 text-emerald-800',
+  assignat: 'bg-blue-100 text-blue-800',
+  en_curs: 'bg-amber-100 text-amber-800',
+  espera: 'bg-slate-100 text-slate-700',
+  fet: 'bg-green-100 text-green-800',
+  no_fet: 'bg-rose-100 text-rose-700',
+  validat: 'bg-purple-100 text-purple-800',
+}
+
+const normalizePreventiuStatus = (value?: string | null): MaintenanceStatus => {
+  const raw = String(value || 'assignat').trim().toLowerCase()
+  if (raw === 'nou') return 'nou'
+  if (raw === 'assignat' || raw === 'pendent') return 'assignat'
+  if (raw === 'en curs' || raw === 'en_curs') return 'en_curs'
+  if (raw === 'espera') return 'espera'
+  if (raw === 'fet') return 'fet'
+  if (raw === 'no fet' || raw === 'no_fet') return 'no_fet'
+  if (raw === 'resolut' || raw === 'validat') return 'validat'
+  return 'assignat'
+}
+
+const isCompletionOnlyStatus = (status: MaintenanceStatus) =>
+  status === 'fet' || status === 'no_fet' || status === 'validat'
 
 export default function PreventiusFullsFitxaPage() {
   const { data: session } = useSession()
@@ -69,13 +114,28 @@ export default function PreventiusFullsFitxaPage() {
     .trim()
   const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
   const isValidated = lastRecord?.status === 'validat'
+  const currentStatus = draft?.status || 'assignat'
+
+  const allowedNextStatuses = useMemo(() => {
+    if (!draft) return [] as MaintenanceStatus[]
+    if (draft.status === 'nou') return ['assignat'] as MaintenanceStatus[]
+    if (draft.status === 'assignat') return ['en_curs', 'espera'] as MaintenanceStatus[]
+    if (draft.status === 'en_curs') return ['espera', 'fet', 'no_fet'] as MaintenanceStatus[]
+    if (draft.status === 'espera') return ['en_curs', 'fet', 'no_fet'] as MaintenanceStatus[]
+    if (draft.status === 'fet' && canValidate) return ['validat'] as MaintenanceStatus[]
+    return [] as MaintenanceStatus[]
+  }, [canValidate, draft])
 
   const applyRecordToDraft = (record: any) => {
     if (!record) return
-    const rawStatus = String(record.status || 'assignat')
-    const normalizedStatus =
-      rawStatus === 'resolut' ? 'validat' : rawStatus === 'pendent' ? 'assignat' : rawStatus
-    setLastRecord({ ...record, status: normalizedStatus })
+    const normalizedStatus = normalizePreventiuStatus(record.status)
+    const history = Array.isArray(record.statusHistory)
+      ? record.statusHistory.map((item: any) => ({
+          ...item,
+          status: normalizePreventiuStatus(item?.status),
+        }))
+      : []
+    setLastRecord({ ...record, status: normalizedStatus, statusHistory: history })
     if (record.checklist) setChecklistState(record.checklist)
     setDraft({
       id: String(record.plannedId || plannedId),
@@ -269,6 +329,15 @@ export default function PreventiusFullsFitxaPage() {
       alert('Aquest preventiu ja esta validat i no es pot editar.')
       return
     }
+    if (isCompletionOnlyStatus(draft.status)) {
+      if (!draft.endTime) {
+        alert('Omple hora fi.')
+        return
+      }
+    } else if (draft.status !== 'nou' && !draft.startTime) {
+      alert('Omple hora inici.')
+      return
+    }
     setSaveStatus('saving')
     const now = new Date()
     const nextDue = computeNextDue(now, selectedTemplate?.periodicity)
@@ -294,10 +363,32 @@ export default function PreventiusFullsFitxaPage() {
           ...record,
         }),
       })
-      if (!res.ok) throw new Error('save_failed')
       const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error || 'save_failed')
       const docId = json?.id ? String(json.id) : `comp_${Date.now()}`
-      setLastRecord({ ...(record as any), id: docId })
+      const nextHistory = Array.isArray(lastRecord?.statusHistory)
+        ? [
+            ...(lastRecord?.statusHistory || []),
+            {
+              status: draft.status,
+              at: Date.now(),
+              byName: String((session?.user as any)?.name || ''),
+              startTime: isCompletionOnlyStatus(draft.status) ? null : draft.startTime || null,
+              endTime: isCompletionOnlyStatus(draft.status) ? draft.endTime || null : null,
+              note: draft.notes || '',
+            },
+          ]
+        : [
+            {
+              status: draft.status,
+              at: Date.now(),
+              byName: String((session?.user as any)?.name || ''),
+              startTime: isCompletionOnlyStatus(draft.status) ? null : draft.startTime || null,
+              endTime: isCompletionOnlyStatus(draft.status) ? draft.endTime || null : null,
+              note: draft.notes || '',
+            },
+          ]
+      setLastRecord({ ...(record as any), id: docId, statusHistory: nextHistory })
       setActiveRecordId(docId)
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
@@ -319,7 +410,7 @@ export default function PreventiusFullsFitxaPage() {
       setLastRecord((prev) => (prev ? { ...prev, status: 'fet' } : prev))
       setDraft((prev) => (prev ? { ...prev, status: 'fet' } : prev))
     } catch {
-      alert('No s’ha pogut reobrir el preventiu.')
+      alert("No s'ha pogut reobrir el preventiu.")
     }
   }
 
@@ -499,23 +590,41 @@ export default function PreventiusFullsFitxaPage() {
                     onChange={(e) => setDraft((d) => (d ? { ...d, notes: e.target.value } : d))}
                   />
                 </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-600">Estat</span>
-                  <select
-                    className="h-10 rounded-xl border px-3"
-                    value={draft.status}
-                    disabled={isValidated}
-                    onChange={(e) => setDraft((d) => (d ? { ...d, status: e.target.value } : d))}
-                  >
-                    <option value="nou">Nou</option>
-                    <option value="assignat">Assignat</option>
-                    <option value="en_curs">En curs</option>
-                    <option value="espera">Espera</option>
-                    <option value="fet">Fet</option>
-                    <option value="no_fet">No fet</option>
-                    {canValidate ? <option value="validat">Validat</option> : null}
-                  </select>
-                </label>
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Estat actual</span>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_BADGES[currentStatus]}`}
+                    >
+                      {STATUS_LABELS[currentStatus]}
+                    </span>
+                    {draft.worker ? (
+                      <span className="text-xs text-slate-500">Operari: {draft.worker}</span>
+                    ) : null}
+                  </div>
+
+                  {!isValidated && allowedNextStatuses.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-xs text-slate-600">Canvi d'estat</div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {allowedNextStatuses.map((status) => (
+                          <button
+                            key={status}
+                            type="button"
+                            onClick={() => setDraft((prev) => (prev ? { ...prev, status } : prev))}
+                            className={`rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                              draft.status === status
+                                ? 'border-emerald-600 bg-emerald-600 text-white'
+                                : 'border-slate-200 bg-white text-slate-700'
+                            }`}
+                          >
+                            {STATUS_LABELS[status]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
 
                 <div className="flex flex-col gap-2">
                   <div className="text-xs text-gray-600">Adjuntar imatge</div>
@@ -615,6 +724,35 @@ export default function PreventiusFullsFitxaPage() {
                   })}
                 </div>
               )}
+
+              {lastRecord?.statusHistory?.length ? (
+                <div className="mt-4 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Historial</div>
+                  <div className="space-y-2">
+                    {[...(lastRecord.statusHistory || [])]
+                      .slice()
+                      .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))
+                      .map((item, index) => (
+                        <div key={`${item.status}-${item.at}-${index}`} className="rounded-xl border bg-white px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_BADGES[item.status]}`}
+                            >
+                              {STATUS_LABELS[item.status]}
+                            </span>
+                            <span className="text-xs text-slate-500">{item.byName || '-'}</span>
+                            {item.startTime || item.endTime ? (
+                              <span className="text-xs text-slate-500">
+                                {item.startTime || '--:--'} {item.endTime ? `- ${item.endTime}` : ''}
+                              </span>
+                            ) : null}
+                          </div>
+                          {item.note ? <div className="mt-2 text-xs text-slate-600">{item.note}</div> : null}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

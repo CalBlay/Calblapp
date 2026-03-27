@@ -14,7 +14,7 @@ import { useTransports } from '@/hooks/useTransports'
 import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
 import { normalizeRole } from '@/lib/roles'
 import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
-type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
+type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
 
 type Ticket = {
   id: string
@@ -24,28 +24,36 @@ type Ticket = {
   machine?: string
   description?: string
   priority?: 'urgent' | 'alta' | 'normal' | 'baixa'
-  status: TicketStatus
+  status: MaintenanceStatus
   assignedToNames?: string[]
   vehicleId?: string | null
   vehiclePlate?: string | null
 }
 
-const STATUS_LABELS: Record<TicketStatus, string> = {
+const STATUS_LABELS: Record<MaintenanceStatus, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
   en_curs: 'En curs',
   espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
-  resolut: 'Validat',
   validat: 'Validat',
 }
 
-const getStatusLabel = (status?: string | null, fallback = 'pendent') => {
-  const key = String(status || fallback).trim().toLowerCase()
-  if (key in STATUS_LABELS) return STATUS_LABELS[key as TicketStatus]
-  if (key === 'pendent') return 'Pendent'
-  return key || fallback
+const normalizeMaintenanceStatus = (status?: string | null): MaintenanceStatus => {
+  const key = String(status || 'assignat').trim().toLowerCase()
+  if (key === 'nou') return 'nou'
+  if (key === 'assignat' || key === 'pendent') return 'assignat'
+  if (key === 'en curs' || key === 'en_curs') return 'en_curs'
+  if (key === 'espera') return 'espera'
+  if (key === 'fet') return 'fet'
+  if (key === 'no fet' || key === 'no_fet') return 'no_fet'
+  if (key === 'resolut' || key === 'validat') return 'validat'
+  return 'assignat'
+}
+
+const getStatusLabel = (status?: string | null, fallback = 'assignat') => {
+  return STATUS_LABELS[normalizeMaintenanceStatus(status || fallback)]
 }
 
 export default function PreventiusFullsPage() {
@@ -83,7 +91,7 @@ export default function PreventiusFullsPage() {
       kind: 'ticket'
       title: string
       code?: string
-      status?: 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
+      status?: MaintenanceStatus
       ticketType?: 'maquinaria' | 'deco'
       date: string
       startTime: string
@@ -97,7 +105,7 @@ export default function PreventiusFullsPage() {
   >([])
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
   const [statusDraft, setStatusDraft] = useState<{
-    status?: TicketStatus
+    status?: MaintenanceStatus
     startTime: string
     endTime: string
     note: string
@@ -186,7 +194,7 @@ export default function PreventiusFullsPage() {
               kind: 'ticket' as const,
               title,
               code,
-              status: t.status || 'nou',
+              status: normalizeMaintenanceStatus(t.status),
               ticketType: t.ticketType === 'deco' ? 'deco' : 'maquinaria',
               date: format(start, 'yyyy-MM-dd'),
               startTime: format(start, 'HH:mm'),
@@ -285,8 +293,8 @@ export default function PreventiusFullsPage() {
     filteredByDate.forEach((item) => {
       const raw =
         item.kind === 'ticket'
-          ? String((item as any).status || 'assignat').trim().toLowerCase()
-          : String((item as any).lastStatus || 'pendent').trim().toLowerCase()
+          ? normalizeMaintenanceStatus((item as any).status)
+          : normalizeMaintenanceStatus((item as any).lastStatus)
       if (!raw) return
       values.add(raw)
     })
@@ -315,8 +323,8 @@ export default function PreventiusFullsPage() {
 
       const itemStatus =
         item.kind === 'ticket'
-          ? String((item as any).status || 'assignat').trim().toLowerCase()
-          : String((item as any).lastStatus || 'pendent').trim().toLowerCase()
+          ? normalizeMaintenanceStatus((item as any).status)
+          : normalizeMaintenanceStatus((item as any).lastStatus)
       const matchesStatus = statusFilter === 'all' ? true : itemStatus === statusFilter
 
       return matchesWorker && matchesStatus
@@ -339,9 +347,7 @@ export default function PreventiusFullsPage() {
     espera: 'bg-slate-100 text-slate-700',
     fet: 'bg-green-100 text-green-800',
     no_fet: 'bg-rose-100 text-rose-700',
-    resolut: 'bg-purple-100 text-purple-800',
     validat: 'bg-purple-100 text-purple-800',
-    pendent: 'bg-slate-100 text-slate-700',
   }
 
   const exportBase = `manteniment-fulls-${filters.start || 'start'}-${filters.end || 'end'}`
@@ -401,8 +407,8 @@ export default function PreventiusFullsPage() {
         items.map((item) => {
           const isTicket = item.kind === 'ticket'
           const status = isTicket
-            ? (item as any).status || 'assignat'
-            : (item as any).lastStatus || 'pendent'
+            ? normalizeMaintenanceStatus((item as any).status)
+            : normalizeMaintenanceStatus((item as any).lastStatus)
           const progress =
             !isTicket && typeof (item as any).lastProgress === 'number'
               ? `${(item as any).lastProgress}%`
@@ -416,7 +422,7 @@ export default function PreventiusFullsPage() {
             HoraFi: item.endTime || '',
             Ubicacio: item.location || '',
             Operari: item.worker || '',
-            Estat: getStatusLabel(status, isTicket ? 'assignat' : 'pendent'),
+            Estat: getStatusLabel(status, 'assignat'),
             Progres: progress,
           }
         })
@@ -554,18 +560,25 @@ export default function PreventiusFullsPage() {
     }
   }
 
-  const allowedNext = (status: TicketStatus) => {
-    if (status === 'assignat') return ['en_curs', 'espera'] as TicketStatus[]
-    if (status === 'en_curs') return role === 'treballador' ? (['espera', 'fet', 'no_fet'] as TicketStatus[]) : (['espera', 'fet', 'no_fet', 'validat'] as TicketStatus[])
-    if (status === 'espera') return role === 'treballador' ? (['en_curs', 'fet', 'no_fet'] as TicketStatus[]) : (['en_curs', 'fet', 'no_fet', 'validat'] as TicketStatus[])
-    if (status === 'fet') return role === 'treballador' ? ([] as TicketStatus[]) : (['validat'] as TicketStatus[])
-    if (status === 'no_fet') return [] as TicketStatus[]
-    return [] as TicketStatus[]
+  const allowedNext = (status: MaintenanceStatus) => {
+    if (status === 'assignat') return ['en_curs', 'espera'] as MaintenanceStatus[]
+    if (status === 'en_curs')
+      return role === 'treballador'
+        ? (['espera', 'fet', 'no_fet'] as MaintenanceStatus[])
+        : (['espera', 'fet', 'no_fet', 'validat'] as MaintenanceStatus[])
+    if (status === 'espera')
+      return role === 'treballador'
+        ? (['en_curs', 'fet', 'no_fet'] as MaintenanceStatus[])
+        : (['en_curs', 'fet', 'no_fet', 'validat'] as MaintenanceStatus[])
+    if (status === 'fet')
+      return role === 'treballador' ? ([] as MaintenanceStatus[]) : (['validat'] as MaintenanceStatus[])
+    if (status === 'no_fet') return [] as MaintenanceStatus[]
+    return [] as MaintenanceStatus[]
   }
 
   const handleStatusChange = async (
     ticket: Ticket,
-    status: TicketStatus,
+    status: MaintenanceStatus,
     meta?: { startTime?: string; endTime?: string; note?: string }
   ) => {
     try {
@@ -686,7 +699,7 @@ export default function PreventiusFullsPage() {
                               {item.kind === 'ticket' && (
                                 <span
                                   className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                                    statusClasses[(item as any).status || 'assignat']
+                                    statusClasses[normalizeMaintenanceStatus((item as any).status)]
                                   }`}
                                 >
                                   {getStatusLabel((item as any).status, 'assignat')}
@@ -695,11 +708,11 @@ export default function PreventiusFullsPage() {
                               {item.kind === 'preventiu' && (
                                 <span
                                   className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                                    statusClasses[(item as any).lastStatus || 'pendent'] ||
+                                    statusClasses[normalizeMaintenanceStatus((item as any).lastStatus)] ||
                                     'bg-slate-100 text-slate-700'
                                   }`}
                                 >
-                                  {getStatusLabel((item as any).lastStatus, 'pendent')}
+                                  {getStatusLabel((item as any).lastStatus, 'assignat')}
                                   {typeof (item as any).lastProgress === 'number'
                                     ? ` · ${(item as any).lastProgress}%`
                                     : ''}

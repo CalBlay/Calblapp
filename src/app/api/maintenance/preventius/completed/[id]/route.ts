@@ -15,6 +15,8 @@ type SessionUser = {
   role?: string
 }
 
+type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
+
 const normalizeCompletedStatus = (value?: string) => {
   const status = String(value || 'pendent').trim().toLowerCase()
   if (status === 'nou') return 'nou'
@@ -77,7 +79,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   try {
     const body = (await req.json()) as { status?: string; reason?: string | null }
-    const nextStatus = normalizeCompletedStatus(body.status)
+    const nextStatus = normalizeCompletedStatus(body.status) as MaintenanceStatus
     if (nextStatus !== 'fet') {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
@@ -115,6 +117,18 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       },
       { merge: true }
     )
+
+    const plannedId = String(current?.plannedId || '').trim()
+    if (plannedId) {
+      await db.collection('maintenancePreventiusPlanned').doc(plannedId).set(
+        {
+          lastStatus: 'fet',
+          lastUpdatedAt: now,
+          lastRecordId: id,
+        },
+        { merge: true }
+      )
+    }
 
     return NextResponse.json({ ok: true })
   } catch (err: unknown) {
