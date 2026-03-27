@@ -27,14 +27,13 @@ export default function PreventiusIndexPage() {
 
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
-      <div className="w-full max-w-6xl mx-auto p-4 space-y-5">
+      <div className="mx-auto w-full max-w-6xl space-y-5 p-4">
         <ModuleHeader subtitle="Preventius i neteges (nou)" />
 
         <div className="max-w-4xl rounded-2xl border bg-white p-5 text-sm text-gray-700">
           <div className="font-semibold text-gray-900">Com funciona</div>
           <div className="mt-1">
-            Plantilles -> ordres generades -> planificacio setmanal (cap) -> full diari
-            (operari) -> historial i traçabilitat.
+            {'Plantilles -> ordres generades -> planificacio setmanal (cap) -> full diari (operari) -> historial i tracabilitat.'}
           </div>
         </div>
 
@@ -42,11 +41,11 @@ export default function PreventiusIndexPage() {
           {(isAdmin || isMaintenanceCap) && (
             <Link
               href="/menu/manteniment/preventius/planificador"
-              className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-teal-50 to-cyan-100"
+              className="rounded-2xl border bg-gradient-to-br from-teal-50 to-cyan-100 p-5 hover:shadow-sm"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-teal-700">
-                  <CalendarRange className="w-5 h-5" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-teal-700 shadow">
+                  <CalendarRange className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="text-base font-semibold text-gray-900">Planificador</div>
@@ -59,11 +58,11 @@ export default function PreventiusIndexPage() {
           {(isAdmin || isMaintenanceCap || isMaintenanceWorker) && (
             <Link
               href="/menu/manteniment/preventius/fulls"
-              className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-emerald-50 to-green-100"
+              className="rounded-2xl border bg-gradient-to-br from-emerald-50 to-green-100 p-5 hover:shadow-sm"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-emerald-700">
-                  <ListChecks className="w-5 h-5" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-emerald-700 shadow">
+                  <ListChecks className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="text-base font-semibold text-gray-900">Full diari</div>
@@ -76,11 +75,11 @@ export default function PreventiusIndexPage() {
           {(isAdmin || isMaintenanceCap) && (
             <Link
               href="/menu/manteniment/preventius/plantilles"
-              className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-slate-50 to-gray-100"
+              className="rounded-2xl border bg-gradient-to-br from-slate-50 to-gray-100 p-5 hover:shadow-sm"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-slate-700">
-                  <FileStack className="w-5 h-5" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-700 shadow">
+                  <FileStack className="h-5 w-5" />
                 </div>
                 <div>
                   <div className="text-base font-semibold text-gray-900">Plantilles</div>
