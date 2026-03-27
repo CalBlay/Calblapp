@@ -37,6 +37,7 @@ type Props = {
   persistTicketPlanning: (item: ScheduledItem) => Promise<void>
   loadWeekSchedule: () => Promise<void>
   onUnplanPreventiu: (plannedId: string, templateId?: string | null) => Promise<void>
+  onUnplanTicket: (ticketId: string, scheduledId?: string) => Promise<boolean>
 }
 
 export default function PlannerEditModal({
@@ -56,6 +57,7 @@ export default function PlannerEditModal({
   persistTicketPlanning,
   loadWeekSchedule,
   onUnplanPreventiu,
+  onUnplanTicket,
 }: Props) {
   const [dateOpen, setDateOpen] = useState(false)
   const [externalizeBusy, setExternalizeBusy] = useState(false)
@@ -539,19 +541,11 @@ export default function PlannerEditModal({
                 if (!ticketId) return
                 try {
                   setScheduledItems((prev) => prev.filter((item) => item.id !== draft.id))
-                  await fetch(`/api/maintenance/tickets/${ticketId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      plannedStart: null,
-                      plannedEnd: null,
-                      estimatedMinutes: null,
-                      assignedToIds: [],
-                      assignedToNames: [],
-                      assignedAt: null,
-                      assignedByName: null,
-                    }),
-                  })
+                  const ok = await onUnplanTicket(ticketId, draft.id)
+                  if (!ok) {
+                    await loadWeekSchedule()
+                    return
+                  }
                 } catch {
                   await loadWeekSchedule()
                 }

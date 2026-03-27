@@ -37,6 +37,8 @@ type MaintenanceTicketExternalizeRecord = Record<string, unknown> & {
   incidentNumber?: string
   location?: string
   machine?: string
+  workLocation?: string
+  operatorTitle?: string
   description?: string
   priority?: string
   createdAt?: string | number | null
@@ -168,9 +170,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       },
       subject,
       ticketCode: String(current.ticketCode || current.incidentNumber || 'TIC').trim(),
-      location: String(current.location || '').trim(),
+      location: String(current.workLocation || current.location || '').trim(),
       machine: String(current.machine || '').trim(),
-      description: String(current.description || '').trim(),
+      description: String(current.operatorTitle || current.description || '').trim(),
       priority: String(current.priority || '').trim(),
       createdAt: current.createdAt || null,
       reference: externalReference || null,

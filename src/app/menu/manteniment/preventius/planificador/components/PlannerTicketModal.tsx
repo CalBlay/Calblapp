@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTransports } from '@/hooks/useTransports'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
+import { formatDateTimeValue } from '@/lib/date-format'
 import { normalizeRole } from '@/lib/roles'
 import AssignTicketModal from '@/app/menu/manteniment/tickets/components/AssignTicketModal'
 import type {
@@ -36,20 +37,7 @@ const normalizeDept = (raw?: string) =>
     .trim()
 
 const formatDateTime = (value?: number | string | null) => {
-  if (!value) return ''
-  const date =
-    typeof value === 'string'
-      ? new Date(value)
-      : typeof value === 'number'
-        ? new Date(value)
-        : new Date()
-  if (Number.isNaN(date.getTime())) return ''
-  const dd = String(date.getDate()).padStart(2, '0')
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const yyyy = date.getFullYear()
-  const hh = String(date.getHours()).padStart(2, '0')
-  const mi = String(date.getMinutes()).padStart(2, '0')
-  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`
+  return formatDateTimeValue(value, '')
 }
 
 const STATUS_LABELS = {
@@ -104,10 +92,12 @@ export default function PlannerTicketModal({
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [detailsLocation, setDetailsLocation] = useState('')
+  const [detailsWorkLocation, setDetailsWorkLocation] = useState('')
   const [detailsMachine, setDetailsMachine] = useState('')
   const [detailsDescription, setDetailsDescription] = useState('')
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
   const { data: transports } = useTransports()
+  const availabilityCacheRef = useRef<Map<string, string[]>>(new Map())
 
   const maintenanceUsers = useMemo(
     () =>
@@ -126,37 +116,39 @@ export default function PlannerTicketModal({
     [transports]
   )
 
-  const loadTicket = async () => {
+  const applyTicketState = useCallback((ticket: Ticket) => {
+    setSelected(ticket)
+    setDetailsLocation(ticket.location || '')
+    setDetailsWorkLocation(ticket.workLocation || '')
+    setDetailsMachine(ticket.machine || '')
+    setDetailsDescription(ticket.operatorTitle || '')
+    setDetailsPriority(ticket.priority || 'normal')
+    setWorkerCount(Math.max(1, ticket.assignedToIds?.length || ticket.assignedToNames?.length || 1))
+  }, [])
+
+  const loadTicket = useCallback(async () => {
     const res = await fetch(`/api/maintenance/tickets/${encodeURIComponent(ticketId)}`, {
       cache: 'no-store',
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const json = await res.json()
     const ticket = json?.ticket as Ticket
-    setSelected(ticket)
-    setDetailsLocation(ticket.location || '')
-    setDetailsMachine(ticket.machine || '')
-    setDetailsDescription(ticket.description || '')
-    setDetailsPriority(ticket.priority || 'normal')
-    setWorkerCount(Math.max(1, ticket.assignedToIds?.length || ticket.assignedToNames?.length || 1))
-  }
+    applyTicketState(ticket)
+    return ticket
+  }, [applyTicketState, ticketId])
 
   useEffect(() => {
-    setSelected(initialTicket || null)
     if (initialTicket) {
-      setDetailsLocation(initialTicket.location || '')
-      setDetailsMachine(initialTicket.machine || '')
-      setDetailsDescription(initialTicket.description || '')
-      setDetailsPriority(initialTicket.priority || 'normal')
-      setWorkerCount(
-        Math.max(1, initialTicket.assignedToIds?.length || initialTicket.assignedToNames?.length || 1)
-      )
+      applyTicketState(initialTicket)
+    } else {
+      setSelected(null)
     }
-  }, [initialTicket, ticketId])
+  }, [applyTicketState, initialTicket, ticketId])
 
   useEffect(() => {
+    if (initialTicket) return
     void loadTicket().catch(() => undefined)
-  }, [ticketId])
+  }, [initialTicket, loadTicket])
 
   const computePlanning = () => {
     if (!assignDate || !assignStartTime || !assignDuration) {
@@ -190,6 +182,13 @@ export default function PlannerTicketModal({
     ).padStart(2, '0')}`
     const st = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`
     const et = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`
+    const availabilityKey = `${sd}|${ed}|${st}|${et}`
+
+    const cached = availabilityCacheRef.current.get(availabilityKey)
+    if (cached) {
+      setAvailableIds(cached)
+      return
+    }
 
     try {
       setAvailabilityLoading(true)
@@ -203,7 +202,9 @@ export default function PlannerTicketModal({
       }
       const json = await res.json()
       const list = Array.isArray(json?.treballadors) ? json.treballadors : []
-      setAvailableIds(list.map((p: any) => p.id))
+      const nextIds = list.map((p: any) => p.id)
+      availabilityCacheRef.current.set(availabilityKey, nextIds)
+      setAvailableIds(nextIds)
     } finally {
       setAvailabilityLoading(false)
     }
@@ -232,7 +233,9 @@ export default function PlannerTicketModal({
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      await Promise.all([loadTicket(), onRefresh()])
+      const json = await res.json().catch(() => null)
+      if (json?.ticket) applyTicketState(json.ticket as Ticket)
+      await onRefresh()
       onClose()
     } catch (err: any) {
       alert(err?.message || 'Error assignant')
@@ -244,6 +247,7 @@ export default function PlannerTicketModal({
   const handleAssignVehicle = async (
     ticket: Ticket,
     needsVehicle: boolean,
+    vehicleType: string | null,
     plate: string | null
   ) => {
     try {
@@ -252,12 +256,18 @@ export default function PlannerTicketModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           needsVehicle,
+          vehicleType: needsVehicle ? vehicleType : null,
           vehiclePlate: needsVehicle ? plate : null,
           vehicleId: null,
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      await loadTicket()
+      const json = await res.json().catch(() => null)
+      if (json?.ticket) {
+        applyTicketState(json.ticket as Ticket)
+      } else {
+        await loadTicket()
+      }
     } catch (err: any) {
       alert(err?.message || 'No s ha pogut guardar')
     }
@@ -270,14 +280,17 @@ export default function PlannerTicketModal({
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          location: detailsLocation.trim(),
+          location: !String(selected.location || '').trim() ? detailsLocation.trim() : undefined,
+          workLocation: detailsWorkLocation.trim() || null,
           machine: detailsMachine.trim(),
-          description: detailsDescription.trim(),
+          operatorTitle: detailsDescription.trim(),
           priority: detailsPriority,
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      await Promise.all([loadTicket(), onRefresh()])
+      const json = await res.json().catch(() => null)
+      if (json?.ticket) applyTicketState(json.ticket as Ticket)
+      await onRefresh()
     } catch (err: any) {
       alert(err?.message || 'No s han pogut desar els canvis')
     }
@@ -291,7 +304,9 @@ export default function PlannerTicketModal({
         body: JSON.stringify({ status: 'fet' }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      await Promise.all([loadTicket(), onRefresh()])
+      const json = await res.json().catch(() => null)
+      if (json?.ticket) applyTicketState(json.ticket as Ticket)
+      await onRefresh()
     } catch (err: any) {
       alert(err?.message || 'No s ha pogut reobrir')
     }
@@ -313,7 +328,9 @@ export default function PlannerTicketModal({
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      await Promise.all([loadTicket(), onRefresh()])
+      const json = await res.json().catch(() => null)
+      if (json?.ticket) applyTicketState(json.ticket as Ticket)
+      await onRefresh()
     } catch (err: any) {
       alert(err?.message || 'No s ha pogut actualitzar')
     }
@@ -343,10 +360,8 @@ export default function PlannerTicketModal({
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
-      await Promise.all([loadTicket(), onRefresh()])
-      if (json?.ticket) {
-        setSelected(json.ticket)
-      }
+      if (json?.ticket) applyTicketState(json.ticket as Ticket)
+      await onRefresh()
     } catch (err: any) {
       alert(err?.message || 'No s ha pogut enviar al proveidor')
     } finally {
@@ -377,6 +392,8 @@ export default function PlannerTicketModal({
       machines={machines}
       detailsLocation={detailsLocation}
       setDetailsLocation={setDetailsLocation}
+      detailsWorkLocation={detailsWorkLocation}
+      setDetailsWorkLocation={setDetailsWorkLocation}
       detailsMachine={detailsMachine}
       setDetailsMachine={setDetailsMachine}
       detailsDescription={detailsDescription}

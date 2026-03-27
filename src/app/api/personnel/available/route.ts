@@ -85,7 +85,7 @@ function uniqueById<T extends { id: string }>(arr: T[]): T[] {
 }
 
 const buildDate = (date?: string, time?: string) =>
-  new Date(`${date || ''}T${time || '00:00'}:00Z`)
+  new Date(`${date || ''}T${time || '00:00'}:00`)
 
 const normalizeRange = (start: Date, end: Date) =>
   end <= start ? { start, end: new Date(end.getTime() + 24 * 60 * 60 * 1000) } : { start, end }

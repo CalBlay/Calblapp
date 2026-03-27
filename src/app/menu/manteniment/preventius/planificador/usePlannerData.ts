@@ -45,6 +45,94 @@ type PlannerTicketLike = Partial<Ticket> & {
   priority?: TicketCard['priority']
 }
 
+function normalizePlannerTicketStatus(value?: unknown) {
+  const v = String(value || '')
+    .trim()
+    .toLowerCase()
+  if (v === 'assignat') return 'assignat'
+  if (v === 'en_curs' || v === 'en curs') return 'en_curs'
+  if (v === 'espera') return 'espera'
+  if (v === 'fet') return 'fet'
+  if (v === 'no_fet' || v === 'no fet') return 'no_fet'
+  if (v === 'resolut' || v === 'validat') return 'validat'
+  return 'nou'
+}
+
+function mapPendingTickets(list: PlannerTicketLike[]) {
+  return list
+    .filter((t: any) => !t.externalized)
+    .filter((t: any) => !t.plannedStart && !t.plannedEnd)
+    .filter((t: any) => ['nou', 'no_fet'].includes(normalizePlannerTicketStatus(t.status)))
+    .map((t: any) => {
+      const code = t.ticketCode || t.incidentNumber || 'TIC'
+      const title = t.operatorTitle || t.description || t.machine || t.location || ''
+      const minutes = Number(t.estimatedMinutes || 60)
+      const ageDays = getAgeDays(t.createdAt)
+      return {
+        id: String(t.id || code),
+        code,
+        title,
+        priority: (t.priority || 'normal') as TicketCard['priority'],
+        minutes,
+        status: normalizePlannerTicketStatus(t.status),
+        createdAt: t.createdAt || null,
+        ageDays,
+        ageBucket: getAgeBucket(ageDays),
+        location: t.workLocation || t.location || '',
+        machine: t.machine || '',
+      }
+    })
+}
+
+function buildTicketLookup(list: PlannerTicketLike[]) {
+  return list.reduce((acc: Record<string, Ticket>, ticket) => {
+    if (!ticket?.id) return acc
+    acc[String(ticket.id)] = ticket as Ticket
+    return acc
+  }, {})
+}
+
+function mapPlannedTickets(
+  ticketList: PlannerTicketLike[],
+  weekStart: Date,
+  dayCount: number,
+  startStr: string,
+  endStr: string
+) {
+  return ticketList
+    .filter((t: any) => !t.externalized)
+    .filter((t: any) => t.plannedStart && t.plannedEnd)
+    .map((t: any) => {
+      const start = new Date(Number(t.plannedStart))
+      const end = new Date(Number(t.plannedEnd))
+      const date = format(start, 'yyyy-MM-dd')
+      if (date < startStr || date > endStr) return null
+      const dayIndex = Math.round((parseISO(date).getTime() - weekStart.getTime()) / 86400000)
+      if (dayIndex < 0 || dayIndex >= dayCount) return null
+      const workers = Array.isArray(t.assignedToNames) ? t.assignedToNames.map(String) : []
+      const title = String(t.operatorTitle || t.description || t.machine || t.workLocation || t.location || '')
+      const code = String(t.ticketCode || t.incidentNumber || 'TIC')
+      return {
+        id: String(t.id || ''),
+        kind: 'ticket' as const,
+        title: `${code} - ${title}`.trim(),
+        workers,
+        workersCount: workers.length || 1,
+        dayIndex,
+        start: format(start, 'HH:mm'),
+        end: format(end, 'HH:mm'),
+        minutes: Math.max(30, Number(t.estimatedMinutes || 60)),
+        priority: (t.priority || 'normal') as ScheduledItem['priority'],
+        location: String(t.workLocation || t.location || ''),
+        machine: String(t.machine || ''),
+        createdAt: t.createdAt || null,
+        templateId: null,
+        ticketId: String(t.id || ''),
+      }
+    })
+    .filter(Boolean) as ScheduledItem[]
+}
+
 export default function usePlannerData({
   weekStart,
   dayCount,
@@ -61,6 +149,17 @@ export default function usePlannerData({
   const [machines, setMachines] = useState<Array<{ code: string; name: string; label: string }>>([])
   const [users, setUsers] = useState<Array<{ id: string; name: string; department?: string }>>([])
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([])
+
+  const loadTicketsData = useCallback(async () => {
+    const res = await fetch('/api/maintenance/tickets?ticketType=maquinaria', { cache: 'no-store' })
+    const json = res.ok ? await res.json() : { tickets: [] }
+    const list: PlannerTicketLike[] = Array.isArray(json?.tickets) ? json.tickets : []
+    return {
+      list,
+      lookup: buildTicketLookup(list),
+      pending: mapPendingTickets(list),
+    }
+  }, [])
 
   const dueTemplates = useMemo<DueTemplate[]>(() => {
     const weekEnd = addDays(weekStart, dayCount - 1)
@@ -123,132 +222,66 @@ export default function usePlannerData({
   }, [])
 
   useEffect(() => {
-    if (tab !== 'tickets') return
-    const loadTickets = async () => {
+    const loadMasterData = async () => {
       try {
-        const res = await fetch('/api/maintenance/tickets?ticketType=maquinaria', {
-          cache: 'no-store',
-        })
-        if (!res.ok) return
-        const json = await res.json()
-        const list: PlannerTicketLike[] = Array.isArray(json?.tickets) ? json.tickets : []
-        const lookup = list.reduce((acc: Record<string, Ticket>, ticket) => {
-          if (!ticket?.id) return acc
-          acc[String(ticket.id)] = ticket as Ticket
-          return acc
-        }, {})
-        setTicketById(lookup)
-        const mapped = list
-          .filter((t: any) => !t.externalized)
-          .filter((t: any) => !['fet', 'no_fet', 'resolut', 'validat'].includes(String(t.status || '')))
-          .map((t: any) => {
-            const code = t.ticketCode || t.incidentNumber || 'TIC'
-            const title = t.description || t.machine || t.location || ''
-            const minutes = Number(t.estimatedMinutes || 60)
-            const ageDays = getAgeDays(t.createdAt)
-            return {
-              id: String(t.id || code),
-              code,
-              title,
-              priority: (t.priority || 'normal') as TicketCard['priority'],
-              minutes,
-              status: String(t.status || ''),
-              createdAt: t.createdAt || null,
-              ageDays,
-              ageBucket: getAgeBucket(ageDays),
-              location: t.location || '',
-              machine: t.machine || '',
-            }
-          })
-        setRealTickets(mapped)
-      } catch {
-        return
-      }
-    }
-    void loadTickets()
-  }, [tab])
+        const [templatesRes, locationsRes, machinesRes, usersRes, ticketsData] = await Promise.all([
+          fetch('/api/maintenance/templates', { cache: 'no-store' }),
+          fetch('/api/spaces/internal', { cache: 'no-store' }),
+          fetch('/api/maintenance/machines', { cache: 'no-store' }),
+          fetch('/api/personnel?department=manteniment', { cache: 'no-store' }),
+          loadTicketsData(),
+        ])
 
-  useEffect(() => {
-    const loadTemplates = async () => {
-      try {
-        const res = await fetch('/api/maintenance/templates', { cache: 'no-store' })
-        if (!res.ok) {
-          setTemplates([])
-          return
-        }
-        const json = await res.json()
-        const list = Array.isArray(json?.templates) ? json.templates : []
-        const mapped = list
-          .filter((t: any) => t?.id && (t?.name || t?.title))
-          .map((t: any) => ({
-            id: String(t.id),
-            name: String(t.name || t.title || ''),
-            periodicity: t.periodicity,
-            lastDone: t.lastDone || null,
-            location: t.location || '',
-            primaryOperator: t.primaryOperator || '',
-            backupOperator: t.backupOperator || '',
-            autoPlanExcludedWeeks: Array.isArray(t.autoPlanExcludedWeeks)
-              ? t.autoPlanExcludedWeeks.map(String)
-              : [],
-          }))
-        setTemplates(mapped)
+        const templatesJson = templatesRes.ok ? await templatesRes.json() : { templates: [] }
+        const templateList = Array.isArray(templatesJson?.templates) ? templatesJson.templates : []
+        setTemplates(
+          templateList
+            .filter((t: any) => t?.id && (t?.name || t?.title))
+            .map((t: any) => ({
+              id: String(t.id),
+              name: String(t.name || t.title || ''),
+              periodicity: t.periodicity,
+              lastDone: t.lastDone || null,
+              location: t.location || '',
+              primaryOperator: t.primaryOperator || '',
+              backupOperator: t.backupOperator || '',
+              autoPlanExcludedWeeks: Array.isArray(t.autoPlanExcludedWeeks)
+                ? t.autoPlanExcludedWeeks.map(String)
+                : [],
+            }))
+        )
+
+        const locationsJson = locationsRes.ok ? await locationsRes.json() : { locations: [] }
+        setLocations(Array.isArray(locationsJson?.locations) ? locationsJson.locations : [])
+
+        const machinesJson = machinesRes.ok ? await machinesRes.json() : { machines: [] }
+        setMachines(Array.isArray(machinesJson?.machines) ? machinesJson.machines : [])
+
+        const usersJson = usersRes.ok ? await usersRes.json() : { data: [] }
+        const usersList = Array.isArray(usersJson?.data) ? usersJson.data : []
+        setUsers(
+          usersList
+            .filter((u: any) => u?.id && u?.name)
+            .map((u: any) => ({
+              id: String(u.id),
+              name: String(u.name),
+              department: (u.departmentLower || u.department || '').toString(),
+            }))
+        )
+
+        setTicketById(ticketsData.lookup)
+        setRealTickets(ticketsData.pending)
       } catch {
         setTemplates([])
-      }
-    }
-    void loadTemplates()
-  }, [])
-
-  useEffect(() => {
-    const loadLocations = async () => {
-      try {
-        const res = await fetch('/api/spaces/internal', { cache: 'no-store' })
-        if (!res.ok) return
-        const json = await res.json()
-        setLocations(Array.isArray(json?.locations) ? json.locations : [])
-      } catch {
         setLocations([])
-      }
-    }
-    void loadLocations()
-  }, [])
-
-  useEffect(() => {
-    const loadMachines = async () => {
-      try {
-        const res = await fetch('/api/maintenance/machines', { cache: 'no-store' })
-        if (!res.ok) return
-        const json = await res.json()
-        setMachines(Array.isArray(json?.machines) ? json.machines : [])
-      } catch {
         setMachines([])
-      }
-    }
-    void loadMachines()
-  }, [])
-
-  useEffect(() => {
-    const loadUsers = async () => {
-      try {
-        const res = await fetch('/api/personnel?department=manteniment', { cache: 'no-store' })
-        if (!res.ok) return
-        const json = await res.json()
-        const list = Array.isArray(json?.data) ? json.data : []
-        const mapped = list
-          .filter((u: any) => u?.id && u?.name)
-          .map((u: any) => ({
-            id: String(u.id),
-            name: String(u.name),
-            department: (u.departmentLower || u.department || '').toString(),
-          }))
-        setUsers(mapped)
-      } catch {
         setUsers([])
+        setTicketById({})
+        setRealTickets([])
       }
     }
-    void loadUsers()
-  }, [])
+    void loadMasterData()
+  }, [loadTicketsData])
 
   const resolveWorkerIds = useCallback(
     (names: string[]) => {
@@ -271,12 +304,12 @@ export default function usePlannerData({
     const startStr = format(weekStart, 'yyyy-MM-dd')
     const endStr = format(addDays(weekStart, dayCount - 1), 'yyyy-MM-dd')
     try {
-      const [plannedRes, ticketsRes] = await Promise.all([
+      const [plannedRes, ticketsData] = await Promise.all([
         fetch(
           `/api/maintenance/preventius/planned?start=${encodeURIComponent(startStr)}&end=${encodeURIComponent(endStr)}`,
           { cache: 'no-store' }
         ),
-        fetch('/api/maintenance/tickets?ticketType=maquinaria', { cache: 'no-store' }),
+        loadTicketsData(),
       ])
 
       const plannedJson = plannedRes.ok ? await plannedRes.json() : { items: [] }
@@ -309,48 +342,10 @@ export default function usePlannerData({
         })
         .filter(Boolean) as ScheduledItem[]
 
-      const ticketsJson = ticketsRes.ok ? await ticketsRes.json() : { tickets: [] }
-      const ticketList: PlannerTicketLike[] = Array.isArray(ticketsJson?.tickets)
-        ? ticketsJson.tickets
-        : []
-      const nextTicketById = ticketList.reduce((acc: Record<string, Ticket>, ticket) => {
-        if (!ticket?.id) return acc
-        acc[String(ticket.id)] = ticket as Ticket
-        return acc
-      }, {})
-      setTicketById(nextTicketById)
-      const ticketsMapped: ScheduledItem[] = ticketList
-        .filter((t: any) => !t.externalized)
-        .filter((t: any) => t.plannedStart && t.plannedEnd)
-        .map((t: any) => {
-          const start = new Date(Number(t.plannedStart))
-          const end = new Date(Number(t.plannedEnd))
-          const date = format(start, 'yyyy-MM-dd')
-          if (date < startStr || date > endStr) return null
-          const dayIndex = Math.round((parseISO(date).getTime() - weekStart.getTime()) / 86400000)
-          if (dayIndex < 0 || dayIndex >= dayCount) return null
-          const workers = Array.isArray(t.assignedToNames) ? t.assignedToNames.map(String) : []
-          const title = String(t.description || t.machine || t.location || '')
-          const code = String(t.ticketCode || t.incidentNumber || 'TIC')
-          return {
-            id: String(t.id || ''),
-            kind: 'ticket' as const,
-            title: `${code} - ${title}`.trim(),
-            workers,
-            workersCount: workers.length || 1,
-            dayIndex,
-            start: format(start, 'HH:mm'),
-            end: format(end, 'HH:mm'),
-            minutes: Math.max(30, Number(t.estimatedMinutes || 60)),
-            priority: (t.priority || 'normal') as ScheduledItem['priority'],
-            location: String(t.location || ''),
-            machine: String(t.machine || ''),
-            createdAt: t.createdAt || null,
-            templateId: null,
-            ticketId: String(t.id || ''),
-          }
-        })
-        .filter(Boolean) as ScheduledItem[]
+      const ticketList = ticketsData.list
+      setTicketById(ticketsData.lookup)
+      setRealTickets(ticketsData.pending)
+      const ticketsMapped = mapPlannedTickets(ticketList, weekStart, dayCount, startStr, endStr)
 
       const workingPreventius = [...plannedMapped]
       const workingAgenda: ScheduledItem[] = [...plannedMapped, ...ticketsMapped]
@@ -480,7 +475,7 @@ export default function usePlannerData({
         void loadWeekSchedule()
       }
     }
-  }, [dayCount, dueTemplates, resolveWorkerIds, templates, weekStart])
+  }, [dayCount, dueTemplates, loadTicketsData, resolveWorkerIds, templates, weekStart])
 
   useEffect(() => {
     void loadWeekSchedule()
@@ -558,6 +553,10 @@ export default function usePlannerData({
           machine: item.machine || undefined,
           assignedToNames: assignedToNames.length ? assignedToNames : undefined,
           assignedToIds: assignedToIds.length ? assignedToIds : undefined,
+          ...(normalizePlannerTicketStatus(ticketById[ticketId]?.status) === 'no_fet' &&
+          assignedToIds.length > 0
+            ? { status: 'assignat' }
+            : {}),
         }),
       })
 
@@ -565,7 +564,7 @@ export default function usePlannerData({
         throw new Error('ticket_planning_failed')
       }
     },
-    [resolveWorkerIds, weekStart]
+    [resolveWorkerIds, ticketById, weekStart]
   )
 
   const legendWorkers = useMemo(() => {

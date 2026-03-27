@@ -1,4 +1,5 @@
 import { format, parseISO } from 'date-fns'
+import { formatDayMonthValue } from '@/lib/date-format'
 import type { TicketCard } from './types'
 
 export const WORKER_BADGE_CLASSES = [
@@ -174,16 +175,7 @@ export const getAgeBadgeClass = (ageBucket: TicketCard['ageBucket']) => {
 }
 
 export const formatTicketCreatedAt = (value?: string | number | null) => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return format(new Date(value), 'dd/MM')
-  }
-  if (typeof value === 'string') {
-    const parsed = new Date(value)
-    if (!Number.isNaN(parsed.getTime())) {
-      return format(parsed, 'dd/MM')
-    }
-  }
-  return ''
+  return formatDayMonthValue(value, '')
 }
 
 export const minutesFromTime = (time: string) => {

@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
+import { formatDateOnly, formatDateTimeValue, formatTimeValue } from '@/lib/date-format'
+import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
+import { typography } from '@/lib/typography'
+import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
 import type {
   MachineItem,
   Ticket,
@@ -8,6 +12,17 @@ import type {
   TransportItem,
   UserItem,
 } from '../types'
+import AssignTicketModalHeader from './assign-ticket-modal/AssignTicketModalHeader'
+import AssignTicketSummary from './assign-ticket-modal/AssignTicketSummary'
+import AssignTicketContextSection from './assign-ticket-modal/AssignTicketContextSection'
+import AssignTicketPlanningSection from './assign-ticket-modal/AssignTicketPlanningSection'
+import {
+  buildEventMeta,
+  buildSupplierMessage,
+  buildSupplierSubject,
+  formatDateInput,
+  getSourceText,
+} from './assign-ticket-modal/helpers'
 
 type SupplierOption = {
   id: string
@@ -38,6 +53,8 @@ type Props = {
   machines: MachineItem[]
   detailsLocation: string
   setDetailsLocation: (value: string) => void
+  detailsWorkLocation: string
+  setDetailsWorkLocation: (value: string) => void
   detailsMachine: string
   setDetailsMachine: (value: string) => void
   detailsDescription: string
@@ -47,7 +64,7 @@ type Props = {
   canValidate: boolean
   canReopen: boolean
   canExternalize: boolean
-  onUpdateDetails: () => void
+  onUpdateDetails: () => void | Promise<void>
   formatDateTime: (value?: number | string | null) => string
   statusLabels: Record<TicketStatus, string>
   showHistory: boolean
@@ -59,7 +76,12 @@ type Props = {
     status: TicketStatus,
     meta?: { supplierResolvedAt?: number | null; note?: string | null }
   ) => void
-  onAssignVehicle: (ticket: Ticket, needsVehicle: boolean, plate: string | null) => void
+  onAssignVehicle: (
+    ticket: Ticket,
+    needsVehicle: boolean,
+    vehicleType: string | null,
+    plate: string | null
+  ) => void
   onReopen: (ticket: Ticket) => void
   onExternalize: (
     ticket: Ticket,
@@ -77,49 +99,6 @@ type Props = {
     }
   ) => Promise<void>
   onClose: () => void
-}
-
-function formatCreatedShort(value?: number | string | null) {
-  if (!value) return ''
-  const date =
-    typeof value === 'number'
-      ? new Date(value)
-      : typeof value === 'string'
-        ? new Date(value)
-        : null
-  if (!date || Number.isNaN(date.getTime())) return ''
-  const dd = String(date.getDate()).padStart(2, '0')
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  return `${dd}/${mm}`
-}
-
-function buildSupplierSubject(ticket: Ticket) {
-  const code = ticket.ticketCode || ticket.incidentNumber || 'TIC'
-  const location = String(ticket.location || '').trim()
-  return location
-    ? `Ticket manteniment ${code} - ${location}`
-    : `Ticket manteniment ${code}`
-}
-
-function buildSupplierMessage(ticket: Ticket) {
-  const lines = [
-    'Bon dia,',
-    '',
-    'Us preguem revisio i disponibilitat per aquesta incidencia.',
-    '',
-    'Gracies.',
-  ]
-  return lines.filter(Boolean).join('\n')
-}
-
-function formatDateInput(value?: number | string | null) {
-  if (!value && value !== 0) return ''
-  const date = typeof value === 'number' ? new Date(value) : new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const yyyy = date.getFullYear()
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const dd = String(date.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
 }
 
 export default function AssignTicketModal({
@@ -142,6 +121,8 @@ export default function AssignTicketModal({
   machines,
   detailsLocation,
   setDetailsLocation,
+  detailsWorkLocation,
+  setDetailsWorkLocation,
   detailsMachine,
   setDetailsMachine,
   detailsDescription,
@@ -166,17 +147,49 @@ export default function AssignTicketModal({
 }: Props) {
   const isDeco = ticket.ticketType === 'deco'
   const isValidated = ticket.status === 'validat' || ticket.status === 'resolut'
+  const isPlanningStage = ticket.status === 'nou' || ticket.status === 'no_fet'
+  const isAssignedStage = ticket.status === 'assignat'
   const machineLabel = isDeco ? 'Material' : 'Maquinaria'
   const machinePlaceholder = isDeco ? 'Selecciona material' : 'Selecciona maquinaria'
-  const eventTitleShort = (ticket.sourceEventTitle || '')
-    .split('/')
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)[0]
-  const createdLabel = formatCreatedShort(ticket.createdAt)
+  const createdDateLabel = formatDateOnly(ticket.createdAt, '-')
+  const createdFullLabel = formatDateTimeValue(ticket.createdAt, '-')
   const externalHistory = Array.isArray(ticket.externalizationHistory)
     ? [...ticket.externalizationHistory].sort((a, b) => (a.at || 0) - (b.at || 0))
     : []
   const latestExternal = externalHistory.length > 0 ? externalHistory[externalHistory.length - 1] : null
+  const hasInternalAssignees = (ticket.assignedToIds?.length || 0) > 0
+  const isExternallyManaged = Boolean(ticket.externalized || ticket.supplierEmail || ticket.supplierName)
+  const providerBlockedByInternal = hasInternalAssignees && !isExternallyManaged
+  const planningBlockedByProvider = isExternallyManaged
+  const headerTitle = String(ticket.operatorTitle || ticket.description || ticket.machine || ticket.location || 'Ticket').trim()
+  const originLocation = String(ticket.sourceEventLocation || ticket.location || detailsLocation || '').trim()
+  const headerMeta = [ticket.ticketCode || ticket.incidentNumber || 'TIC', originLocation]
+    .filter(Boolean)
+    .join(' - ')
+  const eventMeta = buildEventMeta(ticket.sourceEventTitle, ticket.sourceEventDate)
+  const savedPlanningLabel = ticket.plannedStart
+    ? [
+        formatDateOnly(ticket.plannedStart),
+        formatTimeValue(ticket.plannedStart, ''),
+        ticket.plannedEnd ? formatTimeValue(ticket.plannedEnd, '') : '',
+      ]
+        .filter(Boolean)
+        .join(' - ')
+    : ''
+  const machineOptions = useMemo(
+    () =>
+      Array.from(new Set(machines.map((machine) => String(machine.label || '').trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b)
+      ),
+    [machines]
+  )
+  const detailsDirty =
+    (!String(ticket.location || '').trim() &&
+      detailsLocation.trim() !== String(ticket.location || '').trim()) ||
+    detailsWorkLocation.trim() !== String(ticket.workLocation || '').trim() ||
+    detailsMachine.trim() !== String(ticket.machine || '').trim() ||
+    detailsDescription.trim() !== String(ticket.operatorTitle || '').trim() ||
+    detailsPriority !== (ticket.priority || 'normal')
 
   const [supplierName, setSupplierName] = useState('')
   const [supplierEmail, setSupplierEmail] = useState('')
@@ -186,11 +199,84 @@ export default function AssignTicketModal({
   const [supplierResolvedDate, setSupplierResolvedDate] = useState('')
   const [emailAttachments, setEmailAttachments] = useState<File[]>([])
   const [emailAttachmentError, setEmailAttachmentError] = useState('')
-  const [showExternalizeSection, setShowExternalizeSection] = useState(false)
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([])
   const [suppliersLoading, setSuppliersLoading] = useState(false)
   const [createSupplierOpen, setCreateSupplierOpen] = useState(false)
   const [createSupplierBusy, setCreateSupplierBusy] = useState(false)
+  const [machinePickerOpen, setMachinePickerOpen] = useState(false)
+  const [machineQuery, setMachineQuery] = useState('')
+  const [ticketInfoOpen, setTicketInfoOpen] = useState(true)
+  const [jobDetailsOpen, setJobDetailsOpen] = useState(true)
+  const [planningOpen, setPlanningOpen] = useState(true)
+  const [providerOpen, setProviderOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [selectedVehicleType, setSelectedVehicleType] = useState<string>(
+    String(ticket.vehicleType || '').trim()
+  )
+
+  const planningWindow = useMemo(() => {
+    if (!assignDate || !assignStartTime || !assignDuration) return null
+    const start = new Date(`${assignDate}T${assignStartTime}:00`)
+    if (Number.isNaN(start.getTime())) return null
+    const parts = assignDuration.trim().split(':')
+    const hours = Number(parts[0] || 0)
+    const mins = Number(parts[1] || 0)
+    const minutes = Math.max(1, hours * 60 + mins)
+    const end = new Date(start.getTime() + minutes * 60000)
+    const startDate = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(
+      start.getDate()
+    ).padStart(2, '0')}`
+    const endDate = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(
+      end.getDate()
+    ).padStart(2, '0')}`
+    const startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`
+    const endTime = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`
+    return { startDate, endDate, startTime, endTime }
+  }, [assignDate, assignDuration, assignStartTime])
+
+  const { vehicles: availableVehicles } = useAvailableVehicles({
+    startDate: planningWindow?.startDate,
+    endDate: planningWindow?.endDate,
+    startTime: planningWindow?.startTime,
+    endTime: planningWindow?.endTime,
+    department: 'manteniment',
+    enabled: Boolean(planningWindow && !isValidated),
+  })
+
+  const filteredMachineOptions = useMemo(() => {
+    const query = machineQuery.trim().toLowerCase()
+    if (!query) return machineOptions
+    return machineOptions.filter((option) => option.toLowerCase().includes(query))
+  }, [machineOptions, machineQuery])
+
+  const vehicleTypeOptions = useMemo(
+    () => [
+      { value: 'furgonetaManteniment', label: TRANSPORT_TYPE_LABELS.furgonetaManteniment || 'Furgoneta manteniment' },
+      { value: 'camioPPlataforma', label: TRANSPORT_TYPE_LABELS.camioPPlataforma || 'Camio P.Plataforma' },
+    ],
+    []
+  )
+
+  const availableVehicleOptions = useMemo(() => {
+    const base = planningWindow ? availableVehicles.filter((vehicle) => vehicle.available) : furgonetes
+    return base
+      .filter((vehicle) => !selectedVehicleType || vehicle.type === selectedVehicleType)
+      .sort((a, b) => String(a.plate || '').localeCompare(String(b.plate || '')))
+  }, [availableVehicles, furgonetes, planningWindow, selectedVehicleType])
+  const ticketImages = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...(Array.isArray(ticket.imageUrls) ? ticket.imageUrls : []),
+            ticket.imageUrl || '',
+          ]
+            .map((value) => String(value || '').trim())
+            .filter(Boolean)
+        )
+      ).slice(0, 3),
+    [ticket.imageUrl, ticket.imageUrls]
+  )
 
   useEffect(() => {
     setSupplierName(String(ticket.supplierName || '').trim())
@@ -203,12 +289,43 @@ export default function AssignTicketModal({
     )
     setEmailAttachments([])
     setEmailAttachmentError('')
-    setShowExternalizeSection(false)
+    setProviderOpen(false)
     setCreateSupplierOpen(false)
-  }, [ticket.id, ticket.location, ticket.machine, ticket.description, ticket.ticketCode, ticket.incidentNumber, ticket.supplierName, ticket.supplierEmail, ticket.externalReference])
+  }, [
+    ticket.id,
+    ticket.location,
+    ticket.machine,
+    ticket.description,
+    ticket.operatorTitle,
+    ticket.ticketCode,
+    ticket.incidentNumber,
+    ticket.supplierName,
+    ticket.supplierEmail,
+    ticket.externalReference,
+  ])
 
   useEffect(() => {
-    if (!showExternalizeSection) return
+    if (providerBlockedByInternal && providerOpen) {
+      setProviderOpen(false)
+    }
+  }, [providerBlockedByInternal, providerOpen])
+
+  useEffect(() => {
+    const normalizedTicketType = String(ticket.vehicleType || '').trim()
+    if (normalizedTicketType) {
+      setSelectedVehicleType(normalizedTicketType)
+      return
+    }
+    if (!ticket.vehiclePlate) {
+      setSelectedVehicleType('')
+      return
+    }
+    const matchedVehicle = furgonetes.find((vehicle) => vehicle.plate === ticket.vehiclePlate)
+    setSelectedVehicleType(String(matchedVehicle?.type || '').trim())
+  }, [furgonetes, ticket.vehiclePlate, ticket.vehicleType])
+
+  useEffect(() => {
+    if (!providerOpen) return
     let cancelled = false
     const loadSuppliers = async () => {
       try {
@@ -229,7 +346,7 @@ export default function AssignTicketModal({
     return () => {
       cancelled = true
     }
-  }, [showExternalizeSection])
+  }, [providerOpen])
 
   const externalizeLabel = useMemo(
     () => (externalHistory.length > 0 ? 'Reenviar a proveidor' : 'Enviar a proveidor'),
@@ -326,66 +443,84 @@ export default function AssignTicketModal({
     }
   }
 
+  const handleCloseModal = async () => {
+    if (detailsDirty && !isValidated) {
+      try {
+        await onUpdateDetails()
+      } catch {
+        // The wrapper already reports the save error.
+      }
+    }
+    onClose()
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:p-4">
       <div className="w-full max-w-3xl rounded-t-3xl bg-white shadow-2xl md:rounded-3xl">
-        <div className="sticky top-0 rounded-t-3xl border-b border-slate-100 bg-white px-5 pb-4 pt-3 md:px-6">
-          <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-slate-200 md:hidden" />
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-lg font-semibold text-gray-900">{ticket.machine}</div>
-              <div className="mt-1 text-sm text-gray-500">
-                {ticket.ticketCode || ticket.incidentNumber || 'TIC'} · {ticket.location}
-                {createdLabel ? ` · Creat: ${createdLabel}` : ''}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onAssign(ticket, ticket.assignedToIds || [], ticket.assignedToNames || [])}
-                disabled={assignBusy || isValidated}
-                className="min-h-[44px] rounded-full bg-emerald-600 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {assignBusy ? 'Assignant...' : 'Assignar'}
-              </button>
-              {isValidated && canReopen && (
-                <button
-                  type="button"
-                  onClick={() => onReopen(ticket)}
-                  className="min-h-[44px] rounded-full border border-amber-300 px-5 text-sm font-semibold text-amber-700"
-                >
-                  Reobrir
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-slate-200 text-lg text-gray-500"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-        </div>
+        <AssignTicketModalHeader
+          headerTitle={headerTitle}
+          headerMeta={headerMeta}
+          eventMeta={eventMeta}
+          assignBusy={assignBusy}
+          isAssignedStage={isAssignedStage}
+          isValidated={isValidated}
+          canReopen={canReopen}
+          onAssign={() => onAssign(ticket, ticket.assignedToIds || [], ticket.assignedToNames || [])}
+          onReopen={() => onReopen(ticket)}
+        />
 
         <div className="max-h-[75vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
-          {ticket.imageUrl && (
-            <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="text-sm font-semibold text-slate-800">Imatge adjunta</div>
-              <a
-                href={ticket.imageUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="block overflow-hidden rounded-2xl border border-slate-200"
-              >
-                <img
-                  src={ticket.imageUrl}
-                  alt="Imatge del ticket"
-                  className="max-h-72 w-full object-cover"
+          <section className="space-y-4 rounded-2xl border p-4">
+            <button
+              type="button"
+              onClick={() => setTicketInfoOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+            >
+              <div className={typography('sectionTitle')}>Informacio del ticket</div>
+              {ticketInfoOpen ? (
+                <ChevronUp className="h-5 w-5 text-slate-500" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-slate-500" />
+              )}
+            </button>
+
+            {ticketInfoOpen ? (
+              <>
+                <AssignTicketSummary
+                  isPlanningStage={isPlanningStage}
+                  savedPlanningLabel={savedPlanningLabel}
+                  createdDateLabel={createdDateLabel}
+                  createdFullLabel={createdFullLabel}
+                  createdByName={ticket.createdByName}
+                  sourceText={getSourceText(ticket.source)}
+                  assignedToNames={ticket.assignedToNames}
                 />
-              </a>
-            </div>
-          )}
+
+                {ticketImages.length > 0 && (
+                  <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className={typography('sectionTitle')}>Imatges adjuntes</div>
+                    <div className={`grid gap-3 ${ticketImages.length > 1 ? 'md:grid-cols-3' : ''}`}>
+                      {ticketImages.map((imageUrl, index) => (
+                        <a
+                          key={`${imageUrl}-${index}`}
+                          href={imageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block overflow-hidden rounded-2xl border border-slate-200"
+                        >
+                          <img
+                            src={imageUrl}
+                            alt={`Imatge del ticket ${index + 1}`}
+                            className="h-40 w-full object-cover"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </section>
 
           {(ticket.externalized || ticket.status === 'fet') && (
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -449,250 +584,141 @@ export default function AssignTicketModal({
             </div>
           )}
 
-          {(ticket.source === 'whatsblapp' || ticket.source === 'incidencia') &&
-            ticket.status === 'nou' && (
-              <div className="space-y-4 rounded-2xl border p-4">
-                <div className="text-sm font-semibold text-gray-700">Revisio del ticket</div>
-                {(ticket.sourceEventTitle || ticket.sourceEventCode || ticket.sourceEventDate) && (
-                  <div className="rounded-2xl border bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    <div className="font-semibold text-slate-700">
-                      {eventTitleShort || ticket.sourceEventTitle || 'Esdeveniment'}
-                    </div>
-                    <div>
-                      {(ticket.sourceEventCode || '').trim()}
-                      {ticket.sourceEventCode && ticket.sourceEventDate ? ' · ' : ''}
-                      {(ticket.sourceEventDate || '').trim()}
+          <section className="space-y-4 rounded-2xl border p-4">
+            <button
+              type="button"
+              onClick={() => setJobDetailsOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+            >
+              <div className={typography('sectionTitle')}>Dades de la feina</div>
+              {jobDetailsOpen ? (
+                <ChevronUp className="h-5 w-5 text-slate-500" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-slate-500" />
+              )}
+            </button>
+
+            {jobDetailsOpen ? (
+              <>
+                {(ticket.source === 'whatsblapp' || ticket.source === 'incidencia' || isPlanningStage) &&
+                  isPlanningStage && (
+                    <AssignTicketContextSection
+                      showOriginLocationField={!String(ticket.location || ticket.sourceEventLocation || '').trim()}
+                      locations={locations}
+                      detailsLocation={detailsLocation}
+                      setDetailsLocation={setDetailsLocation}
+                      machineLabel={machineLabel}
+                      machinePlaceholder={machinePlaceholder}
+                      machinePickerOpen={machinePickerOpen}
+                      setMachinePickerOpen={setMachinePickerOpen}
+                      machineQuery={machineQuery}
+                      setMachineQuery={setMachineQuery}
+                      filteredMachineOptions={filteredMachineOptions}
+                      detailsMachine={detailsMachine}
+                      setDetailsMachine={setDetailsMachine}
+                      detailsDescription={detailsDescription}
+                      setDetailsDescription={setDetailsDescription}
+                      detailsWorkLocation={detailsWorkLocation}
+                      setDetailsWorkLocation={setDetailsWorkLocation}
+                      detailsPriority={detailsPriority}
+                      setDetailsPriority={setDetailsPriority}
+                      isDeco={isDeco}
+                      isValidated={isValidated}
+                    />
+                  )}
+
+                {isAssignedStage && (
+                  <div className="space-y-4">
+                    <div className={typography('sectionTitle')}>Feina planificada</div>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <div className={typography('eyebrow')}>Ubicacio</div>
+                        <div className={`mt-2 ${typography('bodyMd')}`}>{ticket.location || 'Sense ubicacio'}</div>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <div className={typography('eyebrow')}>{machineLabel}</div>
+                        <div className={`mt-2 ${typography('bodyMd')}`}>{ticket.machine || 'Sense assignar'}</div>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                        <div className={typography('eyebrow')}>Origen</div>
+                        <div className={`mt-2 ${typography('bodyMd')}`}>{getSourceText(ticket.source)}</div>
+                      </div>
                     </div>
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <label className="text-sm text-gray-700">
-                    Ubicacio
-                    <select
-                      className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
-                      value={detailsLocation}
-                      disabled={isValidated}
-                      onChange={(e) => setDetailsLocation(e.target.value)}
-                    >
-                      <option value="">Selecciona ubicacio</option>
-                      {locations.map((loc) => (
-                        <option key={loc} value={loc}>
-                          {loc}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+              </>
+            ) : null}
+          </section>
 
-                  <label className="text-sm text-gray-700">
-                    {machineLabel}
-                    <select
-                      className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
-                      value={detailsMachine}
-                      disabled={isValidated}
-                      onChange={(e) => setDetailsMachine(e.target.value)}
-                    >
-                      <option value="">{machinePlaceholder}</option>
-                      {machines.map((m) => (
-                        <option key={`${m.code}-${m.name}`} value={m.label}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <label className="block text-sm text-gray-700">
-                  Observacions
-                  <textarea
-                    className="mt-2 min-h-[120px] w-full rounded-2xl border bg-gray-50 px-4 py-3 text-base"
-                    value={detailsDescription}
-                    disabled={isValidated}
-                    onChange={(e) => setDetailsDescription(e.target.value)}
-                  />
-                </label>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm text-gray-500">Importancia</span>
-                  {(['urgent', 'alta', 'normal', 'baixa'] as TicketPriority[]).map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      disabled={isValidated}
-                      onClick={() => setDetailsPriority(key)}
-                      className={`min-h-[44px] rounded-full border px-4 text-sm font-semibold ${
-                        detailsPriority === key
-                          ? 'border-emerald-600 bg-emerald-600 text-white'
-                          : 'border-gray-200 bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {key === 'urgent'
-                        ? 'Urgent'
-                        : key === 'alta'
-                          ? 'Alta'
-                          : key === 'normal'
-                            ? 'Normal'
-                            : 'Baixa'}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={onUpdateDetails}
-                    disabled={isValidated}
-                    className="min-h-[44px] rounded-full border px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Guardar dades
-                  </button>
-                </div>
+          <section className="space-y-4 rounded-2xl border p-4">
+            <button
+              type="button"
+              onClick={() => !planningBlockedByProvider && setPlanningOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-3 text-left disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={planningBlockedByProvider}
+            >
+              <div className="min-w-0">
+                <div className={typography('sectionTitle')}>Planificar i assignar</div>
+                {planningBlockedByProvider ? (
+                  <div className="mt-1 text-xs text-slate-500">
+                    El ticket esta externalitzat. Cal gestionar-lo des del bloc de proveidor.
+                  </div>
+                ) : null}
               </div>
-            )}
-
-          <div className="space-y-4 rounded-2xl border p-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-              <label className="text-sm text-gray-700">
-                Data
-                <input
-                  type="date"
-                  className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
-                  value={assignDate}
-                  disabled={isValidated}
-                  onChange={(e) => setAssignDate(e.target.value)}
-                />
-              </label>
-
-              <label className="text-sm text-gray-700">
-                Hora
-                <input
-                  type="time"
-                  className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
-                  value={assignStartTime}
-                  disabled={isValidated}
-                  onChange={(e) => setAssignStartTime(e.target.value)}
-                />
-              </label>
-
-              <label className="text-sm text-gray-700">
-                Hores estimades
-                <input
-                  type="time"
-                  step={60}
-                  className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
-                  value={assignDuration}
-                  disabled={isValidated}
-                  onChange={(e) => setAssignDuration(e.target.value)}
-                />
-              </label>
-
-              <label className="text-sm text-gray-700">
-                Treballadors
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
-                  value={workerCount}
-                  disabled={isValidated}
-                  onChange={(e) => setWorkerCount(Number(e.target.value || 1))}
-                />
-              </label>
-
-              <label className="text-sm text-gray-700">
-                Furgoneta
-                <select
-                  className="mt-2 h-12 w-full rounded-2xl border bg-gray-50 px-4 text-base"
-                  value={ticket.vehiclePlate || ''}
-                  disabled={isValidated}
-                  onChange={(e) => onAssignVehicle(ticket, !!e.target.value, e.target.value || null)}
-                >
-                  <option value="">Sense assignar</option>
-                  {furgonetes.map((t) => (
-                    <option key={t.id} value={t.plate}>
-                      {t.plate}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="flex items-center gap-3 text-sm text-gray-500">
-              {availabilityLoading && <span>Comprovant disponibilitat...</span>}
-              {!availabilityLoading && assignDate && assignStartTime && (
-                <span className="font-medium text-emerald-700">Nomes disponibles</span>
+              {planningOpen && !planningBlockedByProvider ? (
+                <ChevronUp className="h-5 w-5 text-slate-500" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-slate-500" />
               )}
-            </div>
+            </button>
 
-            <div className="flex flex-wrap gap-3">
-              {maintenanceUsers.map((u) => {
-                const checked = ticket.assignedToIds?.includes(u.id)
-                const isAvailable = availableIds.length === 0 || availableIds.includes(u.id)
-                return (
-                  <label
-                    key={u.id}
-                    className={`flex min-h-[44px] items-center gap-3 rounded-full border px-4 py-2 text-sm ${
-                      checked ? 'border-emerald-200 bg-emerald-100' : 'bg-white'
-                    } ${!isAvailable ? 'opacity-40' : ''}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!!checked}
-                      disabled={isValidated || !isAvailable}
-                      onChange={(e) => {
-                        const nextIds = new Set(ticket.assignedToIds || [])
-                        if (e.target.checked) {
-                          if (nextIds.size >= workerCount) {
-                            if (workerCount === 1) {
-                              nextIds.clear()
-                            } else {
-                              return
-                            }
-                          }
-                          nextIds.add(u.id)
-                        } else {
-                          nextIds.delete(u.id)
-                        }
-                        const nextIdList = Array.from(nextIds)
-                        const nextNames = maintenanceUsers
-                          .filter((item) => nextIdList.includes(item.id))
-                          .map((item) => item.name)
-                        setSelected((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                assignedToIds: nextIdList,
-                                assignedToNames: nextNames,
-                              }
-                            : prev
-                        )
-                      }}
-                    />
-                    <span>{u.name}</span>
-                  </label>
-                )
-              })}
-            </div>
-
-            {ticket.assignedAt && (
-              <div className="text-sm text-gray-500">
-                Assignat: {formatDateTime(ticket.assignedAt)} · {ticket.assignedByName || ''}
-              </div>
-            )}
-          </div>
+            {planningOpen ? (
+              <AssignTicketPlanningSection
+                isAssignedStage={isAssignedStage}
+                isValidated={isValidated || planningBlockedByProvider}
+                assignDate={assignDate}
+                setAssignDate={setAssignDate}
+                assignStartTime={assignStartTime}
+                setAssignStartTime={setAssignStartTime}
+                assignDuration={assignDuration}
+                setAssignDuration={setAssignDuration}
+                workerCount={workerCount}
+                setWorkerCount={setWorkerCount}
+                availabilityLoading={availabilityLoading}
+                hasAvailabilityContext={Boolean(assignDate && assignStartTime && assignDuration)}
+                maintenanceUsers={maintenanceUsers}
+                availableIds={availableIds}
+                ticket={ticket}
+                setSelected={setSelected}
+                selectedVehicleType={selectedVehicleType}
+                setSelectedVehicleType={setSelectedVehicleType}
+                vehicleTypeOptions={vehicleTypeOptions}
+                availableVehicleOptions={availableVehicleOptions}
+                onAssignVehicle={onAssignVehicle}
+                formatDateTime={formatDateTime}
+              />
+            ) : null}
+          </section>
 
           {canExternalize && (
-            <div className="space-y-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+            <section className="space-y-4 rounded-2xl border p-4">
               <button
                 type="button"
-                onClick={() => setShowExternalizeSection((prev) => !prev)}
-                className="flex min-h-[56px] w-full items-center justify-between gap-4 rounded-2xl border border-blue-100 bg-white px-4 py-3 text-left"
+                onClick={() => !providerBlockedByInternal && setProviderOpen((prev) => !prev)}
+                disabled={providerBlockedByInternal}
+                className="flex w-full items-center justify-between gap-3 text-left disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-slate-900">Enviar a proveidor</div>
+                  <div className={typography('sectionTitle')}>Enviar a proveidor</div>
                   <div className="mt-1 text-sm text-slate-600">
-                    Deriva el ticket per correu i el deixa en espera.
+                    {providerBlockedByInternal
+                      ? 'Treure els operaris assignats abans d externalitzar el ticket.'
+                      : 'Deriva el ticket per correu i el deixa en espera.'}
                   </div>
                   {latestExternal && (
                     <div className="mt-2 text-xs text-slate-500">
-                      Ultim enviament: {latestExternal.supplierName || ticket.supplierName || 'Proveidor'} ·{' '}
+                      Ultim enviament: {latestExternal.supplierName || ticket.supplierName || 'Proveidor'} -{' '}
                       {formatDateTime(latestExternal.at || ticket.externalSentAt)}
                     </div>
                   )}
@@ -703,7 +729,7 @@ export default function AssignTicketModal({
                       Reobrir abans d externalitzar
                     </span>
                   )}
-                  {showExternalizeSection ? (
+                  {providerOpen ? (
                     <ChevronUp className="h-5 w-5 text-slate-500" />
                   ) : (
                     <ChevronDown className="h-5 w-5 text-slate-500" />
@@ -711,13 +737,13 @@ export default function AssignTicketModal({
                 </div>
               </button>
 
-              {showExternalizeSection && latestExternal && (
-                <div className="rounded-2xl border border-blue-100 bg-white px-4 py-3 text-sm text-slate-600">
+              {providerOpen && latestExternal && (
+                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   <div className="font-semibold text-slate-800">
                     Ultim enviament: {latestExternal.supplierName || ticket.supplierName || 'Proveidor'}
                   </div>
                   <div className="mt-1">
-                    {latestExternal.supplierEmail || ticket.supplierEmail || 'Sense email'} ·{' '}
+                    {latestExternal.supplierEmail || ticket.supplierEmail || 'Sense email'} -{' '}
                     {formatDateTime(latestExternal.at || ticket.externalSentAt)}
                   </div>
                   {(latestExternal.reference || ticket.externalReference) && (
@@ -728,15 +754,15 @@ export default function AssignTicketModal({
                 </div>
               )}
 
-              {showExternalizeSection && (
+              {providerOpen && (
                 <>
-              <div className="space-y-3 rounded-2xl border border-blue-100 bg-white px-4 py-4">
+              <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm font-semibold text-slate-900">Proveidor guardat</div>
                   <button
                     type="button"
                     onClick={() => setCreateSupplierOpen((prev) => !prev)}
-                    disabled={isValidated || externalizeBusy}
+                    disabled={isValidated || externalizeBusy || providerBlockedByInternal}
                     className="inline-flex min-h-[40px] items-center gap-2 rounded-full border px-4 text-sm text-slate-700 disabled:opacity-60"
                   >
                     <Plus className="h-4 w-4" />
@@ -747,7 +773,7 @@ export default function AssignTicketModal({
                 <select
                   className="min-h-[48px] w-full rounded-2xl border bg-white px-4 text-sm disabled:opacity-60"
                   value={selectedSupplierId}
-                  disabled={isValidated || externalizeBusy || suppliersLoading}
+                  disabled={isValidated || externalizeBusy || suppliersLoading || providerBlockedByInternal}
                   onChange={(e) => {
                     const nextId = String(e.target.value || '')
                     const nextSupplier = suppliers.find((supplier) => supplier.id === nextId)
@@ -764,7 +790,7 @@ export default function AssignTicketModal({
                   </option>
                   {suppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
-                      {[supplier.name, supplier.email].filter(Boolean).join(' · ')}
+                      {[supplier.name, supplier.email].filter(Boolean).join(' - ')}
                     </option>
                   ))}
                 </select>
@@ -806,7 +832,7 @@ export default function AssignTicketModal({
                     type="text"
                     className="mt-2 h-12 w-full rounded-2xl border bg-white px-4 text-base"
                     value={supplierName}
-                    disabled={isValidated || externalizeBusy}
+                    disabled={isValidated || externalizeBusy || providerBlockedByInternal}
                     onChange={(e) => setSupplierName(e.target.value)}
                   />
                 </label>
@@ -817,7 +843,7 @@ export default function AssignTicketModal({
                     type="email"
                     className="mt-2 h-12 w-full rounded-2xl border bg-white px-4 text-base"
                     value={supplierEmail}
-                    disabled={isValidated || externalizeBusy}
+                    disabled={isValidated || externalizeBusy || providerBlockedByInternal}
                     onChange={(e) => setSupplierEmail(e.target.value)}
                   />
                 </label>
@@ -830,7 +856,7 @@ export default function AssignTicketModal({
                     type="text"
                     className="mt-2 h-12 w-full rounded-2xl border bg-white px-4 text-base"
                     value={externalReference}
-                    disabled={isValidated || externalizeBusy}
+                    disabled={isValidated || externalizeBusy || providerBlockedByInternal}
                     onChange={(e) => setExternalReference(e.target.value)}
                   />
                 </label>
@@ -841,7 +867,7 @@ export default function AssignTicketModal({
                     type="text"
                     className="mt-2 h-12 w-full rounded-2xl border bg-white px-4 text-base"
                     value={supplierSubject}
-                    disabled={isValidated || externalizeBusy}
+                    disabled={isValidated || externalizeBusy || providerBlockedByInternal}
                     onChange={(e) => setSupplierSubject(e.target.value)}
                   />
                 </label>
@@ -852,7 +878,7 @@ export default function AssignTicketModal({
                 <textarea
                   className="mt-2 min-h-[140px] w-full rounded-2xl border bg-white px-4 py-3 text-base"
                   value={supplierMessage}
-                  disabled={isValidated || externalizeBusy}
+                  disabled={isValidated || externalizeBusy || providerBlockedByInternal}
                   onChange={(e) => setSupplierMessage(e.target.value)}
                 />
               </label>
@@ -865,7 +891,7 @@ export default function AssignTicketModal({
                     <input
                       type="file"
                       className="hidden"
-                      disabled={isValidated || externalizeBusy}
+                      disabled={isValidated || externalizeBusy || providerBlockedByInternal}
                       onChange={(e) => addEmailAttachment(e.target.files?.[0] || null)}
                     />
                   </label>
@@ -876,7 +902,7 @@ export default function AssignTicketModal({
                       accept="image/*"
                       capture="environment"
                       className="hidden"
-                      disabled={isValidated || externalizeBusy}
+                      disabled={isValidated || externalizeBusy || providerBlockedByInternal}
                       onChange={(e) => addEmailAttachment(e.target.files?.[0] || null)}
                     />
                   </label>
@@ -933,9 +959,12 @@ export default function AssignTicketModal({
               <div className="flex justify-end">
                 <button
                   type="button"
-                  disabled={isValidated || externalizeBusy}
+                  disabled={isValidated || externalizeBusy || providerBlockedByInternal}
                   onClick={async () => {
                     try {
+                      if (detailsDirty) {
+                        await onUpdateDetails()
+                      }
                       const attachments = await uploadEmailAttachments()
                       await onExternalize(ticket, {
                         supplierName: supplierName.trim(),
@@ -947,7 +976,7 @@ export default function AssignTicketModal({
                       })
                       setEmailAttachments([])
                       setEmailAttachmentError('')
-                      setShowExternalizeSection(false)
+                      setProviderOpen(false)
                     } catch (err) {
                       const message = err instanceof Error ? err.message : 'No s ha pogut preparar l enviament'
                       setEmailAttachmentError(message)
@@ -960,28 +989,36 @@ export default function AssignTicketModal({
               </div>
                 </>
               )}
-            </div>
+            </section>
           )}
 
-          <div className="space-y-3">
+          <section className="space-y-3 rounded-2xl border p-4">
             <button
               type="button"
-              onClick={() => setShowHistory((prev) => !prev)}
-              className="text-sm font-medium text-gray-600 underline"
+              onClick={() => {
+                setHistoryOpen((prev) => !prev)
+                setShowHistory((prev) => !prev)
+              }}
+              className="flex w-full items-center justify-between gap-3 text-left"
             >
-              Historic
+              <div className={typography('sectionTitle')}>Historial</div>
+              {historyOpen ? (
+                <ChevronUp className="h-5 w-5 text-slate-500" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-slate-500" />
+              )}
             </button>
-            {showHistory && (
+            {historyOpen && showHistory && (
               <div className="space-y-2 rounded-2xl border p-4">
                 {(ticket.statusHistory || []).map((item, index) => (
                   <div key={`status-${index}`} className="text-sm text-gray-500">
-                    {statusLabels[item.status]} · {formatDateTime(item.at)} · {item.byName || ''}
+                    {statusLabels[item.status]} - {formatDateTime(item.at)} - {item.byName || ''}
                   </div>
                 ))}
                 {externalHistory.map((item, index) => (
                   <div key={`external-${index}`} className="text-sm text-slate-600">
-                    Proveidor · {item.supplierName || item.supplierEmail || 'Sense destinatari'} ·{' '}
-                    {formatDateTime(item.at)} · {item.byName || ''}
+                    Proveidor - {item.supplierName || item.supplierEmail || 'Sense destinatari'} -{' '}
+                    {formatDateTime(item.at)} - {item.byName || ''}
                   </div>
                 ))}
                 {(!ticket.statusHistory || ticket.statusHistory.length === 0) &&
@@ -990,13 +1027,13 @@ export default function AssignTicketModal({
                   )}
               </div>
             )}
-          </div>
+          </section>
         </div>
 
         <div className="sticky bottom-0 flex justify-end rounded-b-3xl border-t border-slate-100 bg-white px-5 py-4 md:px-6">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => void handleCloseModal()}
             className="min-h-[48px] rounded-full border px-5 text-sm font-medium"
           >
             Tancar

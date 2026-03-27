@@ -80,6 +80,7 @@ export function useMaintenanceTickets() {
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [detailsLocation, setDetailsLocation] = useState('')
+  const [detailsWorkLocation, setDetailsWorkLocation] = useState('')
   const [detailsMachine, setDetailsMachine] = useState('')
   const [detailsDescription, setDetailsDescription] = useState('')
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
@@ -182,8 +183,9 @@ export function useMaintenanceTickets() {
     setAvailableIds([])
     setShowHistory(false)
     setDetailsLocation(selected.location || '')
+    setDetailsWorkLocation(selected.workLocation || '')
     setDetailsMachine(selected.machine || '')
-    setDetailsDescription(selected.description || '')
+    setDetailsDescription(selected.operatorTitle || '')
     setDetailsPriority(selected.priority || 'normal')
   }, [selected])
 
@@ -225,8 +227,8 @@ export function useMaintenanceTickets() {
   const handleAssign = async (ticket: Ticket, assignedIds: string[], assignedNames: string[]) => {
     try {
       if ((ticket.source === 'whatsblapp' || ticket.source === 'incidencia') && ticket.status === 'nou') {
-        if (!detailsLocation.trim() || !detailsDescription.trim()) {
-          alert("Completa ubicacio i observacions abans d'assignar.")
+        if (!(ticket.location || detailsLocation).trim()) {
+          alert("Completa la ubicacio abans d'assignar.")
           return
         }
       }
@@ -243,14 +245,15 @@ export function useMaintenanceTickets() {
           plannedEnd,
           estimatedMinutes,
           location:
-            ticket.source === 'whatsblapp' || ticket.source === 'incidencia'
+            (ticket.source === 'whatsblapp' || ticket.source === 'incidencia') && !String(ticket.location || '').trim()
               ? detailsLocation.trim()
               : undefined,
+          workLocation: detailsWorkLocation.trim() || null,
           machine:
             ticket.source === 'whatsblapp' || ticket.source === 'incidencia'
               ? detailsMachine.trim()
               : undefined,
-          description:
+          operatorTitle:
             ticket.source === 'whatsblapp' || ticket.source === 'incidencia'
               ? detailsDescription.trim()
               : undefined,
@@ -272,6 +275,15 @@ export function useMaintenanceTickets() {
               plannedStart,
               plannedEnd,
               estimatedMinutes,
+              location:
+                (ticket.source === 'whatsblapp' || ticket.source === 'incidencia') && !String(prev.location || '').trim()
+                  ? detailsLocation.trim()
+                  : prev.location,
+              workLocation: detailsWorkLocation.trim() || null,
+              operatorTitle:
+                ticket.source === 'whatsblapp' || ticket.source === 'incidencia'
+                  ? detailsDescription.trim()
+                  : prev.operatorTitle,
             }
           : prev
       )
@@ -336,13 +348,19 @@ export function useMaintenanceTickets() {
     }
   }
 
-  const handleAssignVehicle = async (ticket: Ticket, needsVehicle: boolean, plate: string | null) => {
+  const handleAssignVehicle = async (
+    ticket: Ticket,
+    needsVehicle: boolean,
+    vehicleType: string | null,
+    plate: string | null
+  ) => {
     try {
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           needsVehicle,
+          vehicleType: needsVehicle ? vehicleType : null,
           vehiclePlate: needsVehicle ? plate : null,
           vehicleId: null,
         }),
@@ -350,7 +368,14 @@ export function useMaintenanceTickets() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       await fetchTickets()
       setSelected((prev) =>
-        prev ? { ...prev, needsVehicle, vehiclePlate: needsVehicle ? plate : null } : prev
+        prev
+          ? {
+              ...prev,
+              needsVehicle,
+              vehicleType: needsVehicle ? vehicleType : null,
+              vehiclePlate: needsVehicle ? plate : null,
+            }
+          : prev
       )
     } catch (err: unknown) {
       const error = err as ErrorWithMessage
@@ -365,9 +390,10 @@ export function useMaintenanceTickets() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          location: detailsLocation.trim(),
+          location: !String(selected.location || '').trim() ? detailsLocation.trim() : undefined,
+          workLocation: detailsWorkLocation.trim() || null,
           machine: detailsMachine.trim(),
-          description: detailsDescription.trim(),
+          operatorTitle: detailsDescription.trim(),
           priority: detailsPriority,
         }),
       })
@@ -378,9 +404,10 @@ export function useMaintenanceTickets() {
         prev
           ? {
               ...prev,
-              location: detailsLocation.trim(),
+              location: !String(prev.location || '').trim() ? detailsLocation.trim() : prev.location,
+              workLocation: detailsWorkLocation.trim() || null,
               machine: detailsMachine.trim(),
-              description: detailsDescription.trim(),
+              operatorTitle: detailsDescription.trim(),
               priority: detailsPriority,
             }
           : prev
@@ -561,6 +588,8 @@ export function useMaintenanceTickets() {
     setShowHistory,
     detailsLocation,
     setDetailsLocation,
+    detailsWorkLocation,
+    setDetailsWorkLocation,
     detailsMachine,
     setDetailsMachine,
     detailsDescription,

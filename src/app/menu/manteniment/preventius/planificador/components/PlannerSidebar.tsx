@@ -42,7 +42,7 @@ export default function PlannerSidebar({
   onReturnToPending,
 }: Props) {
   const wrapperClass = desktop
-    ? 'rounded-2xl border bg-white p-3'
+    ? 'flex h-full min-h-0 flex-col rounded-2xl border bg-white p-3'
     : 'rounded-2xl border bg-white p-4'
   const titleClass = desktop ? 'text-xs font-semibold text-gray-900' : 'text-sm font-semibold text-gray-900'
   const listClass = desktop ? 'mt-3 space-y-2' : 'mt-3 space-y-3'
@@ -70,12 +70,7 @@ export default function PlannerSidebar({
       <div className={titleClass}>
         {tab === 'preventius' ? 'Preventius pendents' : 'Tickets pendents'}
       </div>
-      {desktop && onReturnToPending && (
-        <div className="mt-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-2 py-2 text-[10px] text-slate-500">
-          Arrossega aqui una tasca planificada per tornar-la a pendents.
-        </div>
-      )}
-      <div className={listClass}>
+      <div className={[listClass, desktop ? 'min-h-0 flex-1 overflow-y-auto pr-1' : ''].join(' ')}>
         {tab === 'preventius' &&
           (visibleItems as DueTemplate[]).map((item) => {
             const alreadyPlanned = scheduledItems.some(
@@ -295,7 +290,7 @@ export default function PlannerSidebar({
           })}
       </div>
       {desktop && (
-        <div className="mt-3 text-[11px] text-gray-500">
+        <div className="mt-3 shrink-0 text-[11px] text-gray-500">
           Arrossega cards al calendari i edita hora inici/fi i operari.
         </div>
       )}

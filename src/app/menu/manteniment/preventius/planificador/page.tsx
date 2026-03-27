@@ -7,6 +7,7 @@ import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
+import { typography } from '@/lib/typography'
 import type { PlannerDraft, ScheduledItem } from './types'
 import {
   PRIORITY_LABEL,
@@ -27,6 +28,19 @@ const GRID_GAP = 1
 const HEADER_HEIGHT = 32
 const TIME_COL_WIDTH = 80
 const DAY_COUNT = 6
+
+function normalizePlannerTicketStatus(value?: string | null) {
+  const v = String(value || '')
+    .trim()
+    .toLowerCase()
+  if (v === 'assignat') return 'assignat'
+  if (v === 'en_curs' || v === 'en curs') return 'en_curs'
+  if (v === 'espera') return 'espera'
+  if (v === 'fet') return 'fet'
+  if (v === 'no_fet' || v === 'no fet') return 'no_fet'
+  if (v === 'resolut' || v === 'validat') return 'validat'
+  return 'nou'
+}
 
 export default function PreventiusPlanificadorPage() {
   const [filters, setFiltersState] = useState<FiltersState>(() => {
@@ -100,6 +114,66 @@ export default function PreventiusPlanificadorPage() {
       item.workers.some((worker) => normalizeName(worker) === normalizedSelected)
     )
   }, [scheduledItems, selectedWorker])
+
+  const scheduledItemsByDay = useMemo(() => {
+    const grouped = new Map<number, ScheduledItem[]>()
+    filteredScheduledItems.forEach((item) => {
+      const list = grouped.get(item.dayIndex) || []
+      list.push(item)
+      grouped.set(item.dayIndex, list)
+    })
+    grouped.forEach((list, dayIndex) => {
+      grouped.set(
+        dayIndex,
+        [...list].sort((a, b) => minutesFromTime(a.start) - minutesFromTime(b.start))
+      )
+    })
+    return grouped
+  }, [filteredScheduledItems])
+
+  const positionedScheduledItemsByDay = useMemo(() => {
+    const grouped = new Map<
+      number,
+      Array<{ item: ScheduledItem; col: number; group: number; columns: number }>
+    >()
+
+    days.forEach((_, dayIndex) => {
+      const dayItems = (scheduledItemsByDay.get(dayIndex) || []).map((item) => ({
+        item,
+        startMin: minutesFromTime(item.start),
+        endMin: minutesFromTime(item.end),
+      }))
+
+      const positioned: Array<{ item: ScheduledItem; col: number; group: number }> = []
+      let active: Array<{ endMin: number; col: number; group: number }> = []
+      let groupId = 0
+
+      dayItems.forEach((entry) => {
+        active = active.filter((a) => a.endMin > entry.startMin)
+        if (active.length === 0) groupId += 1
+        const used = new Set(active.map((a) => a.col))
+        let col = 0
+        while (used.has(col)) col += 1
+        active.push({ endMin: entry.endMin, col, group: groupId })
+        positioned.push({ item: entry.item, col, group: groupId })
+      })
+
+      const groupMax: Record<number, number> = {}
+      positioned.forEach((p) => {
+        groupMax[p.group] = Math.max(groupMax[p.group] || 0, p.col + 1)
+      })
+
+      grouped.set(
+        dayIndex,
+        positioned.map((entry) => ({
+          ...entry,
+          columns: Math.max(1, groupMax[entry.group] || 1),
+        }))
+      )
+    })
+
+    return grouped
+  }, [days, scheduledItemsByDay])
 
   const getRowIndex = (time: string) => {
     const [hh, mm] = time.split(':').map(Number)
@@ -358,24 +432,48 @@ export default function PreventiusPlanificadorPage() {
         await unplanPreventiu(target.id, target.templateId)
       } else {
         const ticketId = target.ticketId || target.id
-        await fetch(`/api/maintenance/tickets/${ticketId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            plannedStart: null,
-            plannedEnd: null,
-            estimatedMinutes: null,
-            assignedToIds: [],
-            assignedToNames: [],
-            assignedAt: null,
-            assignedByName: null,
-          }),
-        })
+        const ok = await unplanTicket(ticketId, target.id)
+        if (!ok) return
       }
     } catch {
       await loadWeekSchedule()
       return
     }
+  }
+
+  const unplanTicket = async (ticketId: string, scheduledId?: string) => {
+    const current = ticketById[ticketId]
+    const status = normalizePlannerTicketStatus(current?.status)
+
+    if (!['nou', 'assignat', 'no_fet'].includes(status)) {
+      window.alert('Només pots tornar a pendents tickets en estat Nou, Assignat o No fet.')
+      await loadWeekSchedule()
+      return false
+    }
+
+    const nextStatus = status === 'no_fet' ? 'no_fet' : 'nou'
+    const res = await fetch(`/api/maintenance/tickets/${ticketId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: nextStatus,
+        plannedStart: null,
+        plannedEnd: null,
+        estimatedMinutes: null,
+        assignedToIds: [],
+        assignedToNames: [],
+      }),
+    })
+
+    if (!res.ok) {
+      if (scheduledId) {
+        setScheduledItems((prev) => prev.filter((item) => item.id !== scheduledId))
+      }
+      throw new Error('ticket_unplan_failed')
+    }
+
+    await loadWeekSchedule()
+    return true
   }
 
   const unplanPreventiu = async (plannedId: string, templateId?: string | null) => {
@@ -422,8 +520,8 @@ export default function PreventiusPlanificadorPage() {
 
         <div className="space-y-4 lg:hidden">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-xs text-gray-500">DL–DS · Jornada base 08:00–17:00</div>
-            <div className="text-xs text-gray-500">Setmana: {weekLabel}</div>
+            <div className={typography('bodyXs')}>DL-DS · Jornada base 08:00-17:00</div>
+            <div className={typography('bodyXs')}>Setmana: {weekLabel}</div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -462,17 +560,15 @@ export default function PreventiusPlanificadorPage() {
 
           <div className="space-y-3">
             {days.map((day, dayIndex) => {
-              const dayItems = filteredScheduledItems
-                .filter((item) => item.dayIndex === dayIndex)
-                .sort((a, b) => minutesFromTime(a.start) - minutesFromTime(b.start))
+              const dayItems = scheduledItemsByDay.get(dayIndex) || []
               return (
                 <div key={format(day, 'yyyy-MM-dd')} className="rounded-2xl border bg-white p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-gray-900">
+                      <div className={typography('sectionTitle')}>
                         {format(day, 'EEEE dd/MM', { locale: ca })}
                       </div>
-                      <div className="text-xs text-gray-500">{dayItems.length} tasques</div>
+                      <div className={typography('bodyXs')}>{dayItems.length} tasques</div>
                     </div>
                     {tab === 'preventius' && (
                       <button
@@ -502,8 +598,8 @@ export default function PreventiusPlanificadorPage() {
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="text-sm font-semibold text-gray-900">{item.title}</div>
-                              <div className="mt-1 text-sm text-gray-600">
+                              <div className={typography('sectionTitle')}>{item.title}</div>
+                              <div className={`mt-1 ${typography('bodySm')}`}>
                                 {item.start} - {item.end}
                                 {item.location ? ` · ${item.location}` : ''}
                               </div>
@@ -538,11 +634,6 @@ export default function PreventiusPlanificadorPage() {
         </div>
 
         <div className="hidden lg:block space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-xs text-gray-500">DL–DS · Jornada base 08:00–17:00</div>
-            <div className="text-xs text-gray-500">Setmana: {weekLabel}</div>
-          </div>
-
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -672,23 +763,22 @@ export default function PreventiusPlanificadorPage() {
                 </button>
               </>
             )}
+            <button
+              type="button"
+              onClick={() => setShowLegend((v) => !v)}
+              className="ml-auto inline-flex items-center gap-1 text-xs text-gray-600"
+            >
+              {showLegend ? (
+                <>
+                  Amagar llegenda <ChevronUp size={14} />
+                </>
+              ) : (
+                <>
+                  Mostrar llegenda <ChevronDown size={14} />
+                </>
+              )}
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setShowLegend((v) => !v)}
-            className="text-xs text-gray-600 flex items-center gap-1 w-fit"
-          >
-            {showLegend ? (
-              <>
-                Amagar llegenda <ChevronUp size={14} />
-              </>
-            ) : (
-              <>
-                Mostrar llegenda <ChevronDown size={14} />
-              </>
-            )}
-          </button>
 
           {showLegend && (
             <div className="rounded-xl border bg-white p-3 text-xs text-gray-700">
@@ -741,7 +831,7 @@ export default function PreventiusPlanificadorPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-[200px_1fr] gap-3">
+          <div className="grid h-[calc(100vh-250px)] min-h-[620px] grid-cols-[200px_1fr] gap-3">
               <PlannerSidebar
                 tab={tab}
                 visibleItems={visibleItems}
@@ -753,176 +843,150 @@ export default function PreventiusPlanificadorPage() {
               }}
             />
 
-            <div className="rounded-2xl border bg-white p-3 overflow-x-auto relative">
-              <div
-                className="grid gap-px bg-gray-100 text-xs"
-                style={{
-                  gridTemplateColumns: `${TIME_COL_WIDTH}px repeat(${DAY_COUNT}, minmax(160px, 1fr))`,
-                  gridTemplateRows: `${HEADER_HEIGHT}px repeat(${timeSlots.length - 1}, ${ROW_HEIGHT}px)`,
-                }}
-              >
-                <div className="bg-white" />
-                {days.map((d, i) => (
-                  <div key={i} className="bg-white px-2 py-2 font-semibold text-gray-700">
-                    {format(d, 'EEE dd/MM', { locale: ca })}
-                  </div>
-                ))}
-
-                {timeSlots.slice(0, -1).map((t, rowIdx) => (
-                  <React.Fragment key={t}>
-                    <div className="bg-white px-2 py-2 text-gray-500">{t}</div>
-                    {days.map((_, colIdx) => (
-                      <div
-                        key={`${rowIdx}-${colIdx}`}
-                        className="bg-white"
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          const data = e.dataTransfer.getData('text/plain')
-                          handleDrop(colIdx, t, data)
-                        }}
-                        onClick={() => handleCreateEmpty(colIdx, t)}
-                      />
-                    ))}
-                  </React.Fragment>
-                ))}
-              </div>
-
-              <div
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: `${TIME_COL_WIDTH}px repeat(${DAY_COUNT}, minmax(160px, 1fr))`,
-                  gridTemplateRows: `${HEADER_HEIGHT}px repeat(${timeSlots.length - 1}, ${ROW_HEIGHT}px)`,
-                  gap: `${GRID_GAP}px`,
-                }}
-              >
-                <div />
-                {days.map((_, colIdx) => {
-                  const dayItems = filteredScheduledItems
-                    .filter((i) => i.dayIndex === colIdx)
-                    .map((i) => ({
-                      item: i,
-                      startMin: minutesFromTime(i.start),
-                      endMin: minutesFromTime(i.end),
-                    }))
-                    .sort((a, b) => a.startMin - b.startMin)
-
-                  const positioned: Array<{ item: ScheduledItem; col: number; group: number }> = []
-                  let active: Array<{ endMin: number; col: number; group: number }> = []
-                  let groupId = 0
-
-                  dayItems.forEach((entry) => {
-                    active = active.filter((a) => a.endMin > entry.startMin)
-                    if (active.length === 0) groupId += 1
-                    const used = new Set(active.map((a) => a.col))
-                    let col = 0
-                    while (used.has(col)) col += 1
-                    active.push({ endMin: entry.endMin, col, group: groupId })
-                    positioned.push({ item: entry.item, col, group: groupId })
-                  })
-
-                  const groupMax: Record<number, number> = {}
-                  positioned.forEach((p) => {
-                    groupMax[p.group] = Math.max(groupMax[p.group] || 0, p.col + 1)
-                  })
-
-                  const gapPx = 8
-
-                  return (
-                    <div
-                      key={colIdx}
-                      className="relative overflow-hidden"
-                      style={{
-                        gridColumn: `${colIdx + 2} / ${colIdx + 3}`,
-                        gridRow: `2 / span ${timeSlots.length - 1}`,
-                      }}
-                    >
-                      {positioned.map(({ item, col, group }) => {
-                        const rowStart = getRowIndex(item.start)
-                        const rowEnd = getRowIndex(item.end)
-                        const rows = Math.max(1, rowEnd - rowStart)
-                        const height = rows * ROW_HEIGHT + Math.max(0, rows - 1) * GRID_GAP
-                        const top = rowStart * (ROW_HEIGHT + GRID_GAP)
-                        const columns = Math.max(1, groupMax[group])
-                        const widthPercent = 100 / columns
-                        const leftPercent = col * widthPercent
-                        const priority: NonNullable<ScheduledItem['priority']> =
-                          item.priority || 'normal'
-                        const tone = getPriorityTone(item.kind, priority)
-                        const visibleWorkers = item.workers.slice(0, 2)
-                        const compactWorkers =
-                          item.workers.length > 2 ||
-                          visibleWorkers.reduce((total, worker) => total + worker.length, 0) > 12
-                        const displayTitle =
-                          item.kind === 'ticket'
-                            ? item.title.replace(/^[A-Z]{2,}\d+\s*-\s*/i, '').trim() || item.title
-                            : item.title
-                        return (
-                          <div
-                            key={item.id}
-                            className={`absolute border ${tone.card} rounded-lg pl-3 pr-2 py-1 text-[11px] text-gray-800 cursor-pointer pointer-events-auto overflow-hidden`}
-                            style={{
-                              top,
-                              height,
-                              width: `calc(${widthPercent}% - ${gapPx}px)`,
-                              left: `calc(${leftPercent}% + ${gapPx / 2}px)`,
-                              boxSizing: 'border-box',
-                              maxWidth: '100%',
-                            }}
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.effectAllowed = 'move'
-                              e.dataTransfer.setData(
-                                'text/plain',
-                                JSON.stringify({ type: 'scheduled', id: item.id })
-                              )
-                            }}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={(e) => {
-                              const data = e.dataTransfer.getData('text/plain')
-                              handleDrop(item.dayIndex, item.start, data)
-                            }}
-                            onClick={() => handleEdit(item)}
-                          >
-                            <span className={`absolute left-0 top-0 h-full w-1 ${tone.marker}`} />
-                            <div className="font-semibold leading-snug line-clamp-2">
-                              {displayTitle}
-                            </div>
-                            {item.location && (
-                              <div className="mt-1 line-clamp-1 text-[10px] text-gray-600">
-                                {item.location}
-                              </div>
-                            )}
-                            <div className="mt-1 flex flex-wrap items-center gap-1">
-                              {visibleWorkers.map((worker) => (
-                                <span
-                                  key={`${item.id}-${worker}`}
-                                  className={[
-                                    'inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
-                                    getWorkerBadgeClass(worker),
-                                  ].join(' ')}
-                                  title={worker}
-                                >
-                                  {compactWorkers ? getInitials(worker) : worker}
-                                </span>
-                              ))}
-                              {item.workers.length > 2 && (
-                                <span
-                                  className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700"
-                                  title={item.workers.join(', ')}
-                                >
-                                  +{item.workers.length - 2}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
+            <div className="flex h-full min-h-0 flex-col rounded-2xl border bg-white p-3">
+              <div className="relative min-h-0 flex-1 overflow-auto">
+                <div
+                  className="grid gap-px bg-gray-100 text-xs"
+                  style={{
+                    gridTemplateColumns: `${TIME_COL_WIDTH}px repeat(${DAY_COUNT}, minmax(160px, 1fr))`,
+                    gridTemplateRows: `${HEADER_HEIGHT}px repeat(${timeSlots.length - 1}, ${ROW_HEIGHT}px)`,
+                  }}
+                >
+                  <div className="bg-white" />
+                  {days.map((d, i) => (
+                    <div key={i} className="bg-white px-2 py-2 font-semibold text-gray-700">
+                      {format(d, 'EEE dd/MM', { locale: ca })}
                     </div>
-                  )
-                })}
+                  ))}
+
+                  {timeSlots.slice(0, -1).map((t, rowIdx) => (
+                    <React.Fragment key={t}>
+                      <div className="bg-white px-2 py-2 text-gray-500">{t}</div>
+                      {days.map((_, colIdx) => (
+                        <div
+                          key={`${rowIdx}-${colIdx}`}
+                          className="bg-white"
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            const data = e.dataTransfer.getData('text/plain')
+                            handleDrop(colIdx, t, data)
+                          }}
+                          onClick={() => handleCreateEmpty(colIdx, t)}
+                        />
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </div>
+
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: `${TIME_COL_WIDTH}px repeat(${DAY_COUNT}, minmax(160px, 1fr))`,
+                    gridTemplateRows: `${HEADER_HEIGHT}px repeat(${timeSlots.length - 1}, ${ROW_HEIGHT}px)`,
+                    gap: `${GRID_GAP}px`,
+                  }}
+                >
+                  <div />
+                  {days.map((_, colIdx) => {
+                    const positioned = positionedScheduledItemsByDay.get(colIdx) || []
+                    const gapPx = 8
+
+                    return (
+                      <div
+                        key={colIdx}
+                        className="relative overflow-hidden"
+                        style={{
+                          gridColumn: `${colIdx + 2} / ${colIdx + 3}`,
+                          gridRow: `2 / span ${timeSlots.length - 1}`,
+                        }}
+                      >
+                        {positioned.map(({ item, col, columns }) => {
+                          const rowStart = getRowIndex(item.start)
+                          const rowEnd = getRowIndex(item.end)
+                          const rows = Math.max(1, rowEnd - rowStart)
+                          const height = rows * ROW_HEIGHT + Math.max(0, rows - 1) * GRID_GAP
+                          const top = rowStart * (ROW_HEIGHT + GRID_GAP)
+                          const widthPercent = 100 / columns
+                          const leftPercent = col * widthPercent
+                          const priority: NonNullable<ScheduledItem['priority']> =
+                            item.priority || 'normal'
+                          const tone = getPriorityTone(item.kind, priority)
+                          const visibleWorkers = item.workers.slice(0, 2)
+                          const compactWorkers =
+                            item.workers.length > 2 ||
+                            visibleWorkers.reduce((total, worker) => total + worker.length, 0) > 12
+                          const displayTitle =
+                            item.kind === 'ticket'
+                              ? item.title.replace(/^[A-Z]{2,}\d+\s*-\s*/i, '').trim() || item.title
+                              : item.title
+                          return (
+                            <div
+                              key={item.id}
+                              className={`absolute border ${tone.card} rounded-lg pl-3 pr-2 py-1 text-[11px] text-gray-800 cursor-pointer pointer-events-auto overflow-hidden`}
+                              style={{
+                                top,
+                                height,
+                                width: `calc(${widthPercent}% - ${gapPx}px)`,
+                                left: `calc(${leftPercent}% + ${gapPx / 2}px)`,
+                                boxSizing: 'border-box',
+                                maxWidth: '100%',
+                              }}
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.effectAllowed = 'move'
+                                e.dataTransfer.setData(
+                                  'text/plain',
+                                  JSON.stringify({ type: 'scheduled', id: item.id })
+                                )
+                              }}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                const data = e.dataTransfer.getData('text/plain')
+                                handleDrop(item.dayIndex, item.start, data)
+                              }}
+                              onClick={() => handleEdit(item)}
+                            >
+                              <span className={`absolute left-0 top-0 h-full w-1 ${tone.marker}`} />
+                              <div className="font-semibold leading-snug line-clamp-2">
+                                {displayTitle}
+                              </div>
+                              {item.location && (
+                                <div className="mt-1 line-clamp-1 text-[10px] text-gray-600">
+                                  {item.location}
+                                </div>
+                              )}
+                              <div className="mt-1 flex flex-wrap items-center gap-1">
+                                {visibleWorkers.map((worker) => (
+                                  <span
+                                    key={`${item.id}-${worker}`}
+                                    className={[
+                                      'inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                                      getWorkerBadgeClass(worker),
+                                    ].join(' ')}
+                                    title={worker}
+                                  >
+                                    {compactWorkers ? getInitials(worker) : worker}
+                                  </span>
+                                ))}
+                                {item.workers.length > 2 && (
+                                  <span
+                                    className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700"
+                                    title={item.workers.join(', ')}
+                                  >
+                                    +{item.workers.length - 2}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-              <div className="mt-2 text-[11px] text-gray-500">
+              <div className="mt-2 shrink-0 text-[11px] text-gray-500">
                 Disponibilitat: un operari esta lliure si no te cap tasca solapada en aquella franja.
               </div>
             </div>
@@ -965,6 +1029,7 @@ export default function PreventiusPlanificadorPage() {
             persistTicketPlanning={persistTicketPlanning}
             loadWeekSchedule={loadWeekSchedule}
             onUnplanPreventiu={unplanPreventiu}
+            onUnplanTicket={unplanTicket}
           />
         )}
       </div>

@@ -25,12 +25,15 @@ type UpdatePayload = {
   assignedToIds?: string[]
   assignedToNames?: string[]
   needsVehicle?: boolean
+  vehicleType?: string | null
   vehicleId?: string | null
   vehiclePlate?: string | null
   priority?: 'urgent' | 'alta' | 'normal' | 'baixa'
   location?: string
+  workLocation?: string | null
   machine?: string
   description?: string
+  operatorTitle?: string | null
   plannedStart?: number | null
   plannedEnd?: number | null
   estimatedMinutes?: number | null
@@ -51,7 +54,9 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   assignedToNames?: string[]
   machine?: string
   location?: string
+  workLocation?: string | null
   description?: string
+  operatorTitle?: string | null
   priority?: string
   source?: string
   externalized?: boolean
@@ -175,13 +180,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       const wantsAssign =
         body.assignedToIds !== undefined ||
         body.assignedToNames !== undefined ||
-        body.needsVehicle !== undefined ||
+      body.needsVehicle !== undefined ||
+        body.vehicleType !== undefined ||
         body.vehicleId !== undefined ||
         body.vehiclePlate !== undefined ||
         body.priority !== undefined ||
         body.location !== undefined ||
-        body.machine !== undefined ||
-        body.description !== undefined
+        body.workLocation !== undefined ||
+      body.machine !== undefined ||
+      body.description !== undefined ||
+      body.operatorTitle !== undefined
       if (wantsAssign) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
@@ -203,12 +211,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       body.assignedToIds !== undefined ||
       body.assignedToNames !== undefined ||
       body.needsVehicle !== undefined ||
+      body.vehicleType !== undefined ||
       body.vehicleId !== undefined ||
       body.vehiclePlate !== undefined ||
       body.priority !== undefined ||
       body.location !== undefined ||
+      body.workLocation !== undefined ||
       body.machine !== undefined ||
       body.description !== undefined ||
+      body.operatorTitle !== undefined ||
       body.plannedStart !== undefined ||
       body.plannedEnd !== undefined ||
       body.estimatedMinutes !== undefined ||
@@ -237,11 +248,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (nextStatus) updates.status = nextStatus
     if (nextPriority) updates.priority = nextPriority
     if (body.location !== undefined) updates.location = String(body.location).trim()
+    if (body.workLocation !== undefined) updates.workLocation = String(body.workLocation || '').trim() || null
     if (body.machine !== undefined) updates.machine = String(body.machine).trim()
     if (body.description !== undefined) updates.description = String(body.description).trim()
+    if (body.operatorTitle !== undefined) updates.operatorTitle = String(body.operatorTitle || '').trim()
     if (body.assignedToIds !== undefined) updates.assignedToIds = body.assignedToIds
     if (body.assignedToNames !== undefined) updates.assignedToNames = body.assignedToNames
     if (body.needsVehicle !== undefined) updates.needsVehicle = body.needsVehicle
+    if (body.vehicleType !== undefined) updates.vehicleType = body.vehicleType
     if (body.vehicleId !== undefined) updates.vehicleId = body.vehicleId
     if (body.vehiclePlate !== undefined) updates.vehiclePlate = body.vehiclePlate
     if (body.plannedStart !== undefined) updates.plannedStart = body.plannedStart

@@ -25,6 +25,24 @@ export const formatDateOnly = (value?: string | number | null, fallback = '-') =
   }).format(parsed)
 }
 
+export const formatDayMonthValue = (value?: string | number | null, fallback = '-') => {
+  const parsed = parseDateValue(value)
+  if (!parsed) return fallback
+  return new Intl.DateTimeFormat('ca-ES', {
+    day: '2-digit',
+    month: '2-digit',
+  }).format(parsed)
+}
+
+export const formatTimeValue = (value?: string | number | null, fallback = '-') => {
+  const parsed = parseDateValue(value)
+  if (!parsed) return fallback
+  return new Intl.DateTimeFormat('ca-ES', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
+}
+
 export const formatDateTimeValue = (value?: string | number | null, fallback = '-') => {
   const parsed = parseDateValue(value)
   if (!parsed) return fallback

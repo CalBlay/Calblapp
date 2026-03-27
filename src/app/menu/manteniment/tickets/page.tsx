@@ -160,6 +160,8 @@ export default function MaintenanceTicketsPage() {
     setShowHistory,
     detailsLocation,
     setDetailsLocation,
+    detailsWorkLocation,
+    setDetailsWorkLocation,
     detailsMachine,
     setDetailsMachine,
     detailsDescription,
@@ -400,6 +402,8 @@ export default function MaintenanceTicketsPage() {
             machines={machines}
             detailsLocation={detailsLocation}
             setDetailsLocation={setDetailsLocation}
+            detailsWorkLocation={detailsWorkLocation}
+            setDetailsWorkLocation={setDetailsWorkLocation}
             detailsMachine={detailsMachine}
             setDetailsMachine={setDetailsMachine}
             detailsDescription={detailsDescription}

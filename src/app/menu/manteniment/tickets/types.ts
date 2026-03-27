@@ -7,8 +7,10 @@ export type Ticket = {
   ticketCode?: string | null
   incidentNumber?: string | null
   location: string
+  workLocation?: string | null
   machine: string
   description: string
+  operatorTitle?: string | null
   priority: TicketPriority
   status: TicketStatus
   ticketType?: TicketType
@@ -32,9 +34,11 @@ export type Ticket = {
   plannedEnd?: number | null
   estimatedMinutes?: number | null
   imageUrl?: string | null
+  imageUrls?: string[] | null
   imagePath?: string | null
   imageMeta?: { size?: number; type?: string } | null
   needsVehicle?: boolean
+  vehicleType?: string | null
   vehiclePlate?: string | null
   externalized?: boolean
   supplierName?: string | null

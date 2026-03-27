@@ -570,24 +570,24 @@ function buildMaintenanceSupplierEmailHtml(input: SendMaintenanceSupplierEmailIn
   const priority = String(input.priority || '').trim()
   const machine = String(input.machine || '').trim()
   const message = String(input.message || '').trim()
+  const description = String(input.description || '').trim()
+  const lines = [
+    `<p style="margin:0 0 8px"><strong>Ticket:</strong> ${escapeHtml(input.ticketCode || 'TIC')}</p>`,
+    `<p style="margin:0 0 8px"><strong>Ubicacio:</strong> ${escapeHtml(input.location || '-')}</p>`,
+    machine ? `<p style="margin:0 0 8px"><strong>Maquinaria:</strong> ${escapeHtml(machine)}</p>` : '',
+    `<p style="margin:0 0 8px"><strong>Prioritat:</strong> ${escapeHtml(priority || 'normal')}</p>`,
+    createdLabel ? `<p style="margin:0 0 8px"><strong>Creat:</strong> ${escapeHtml(createdLabel)}</p>` : '',
+    reference ? `<p style="margin:0 0 8px"><strong>Referencia externa:</strong> ${escapeHtml(reference)}</p>` : '',
+    description ? `<p style="margin:0 0 8px"><strong>Descripcio:</strong> ${escapeHtml(description)}</p>` : '',
+    message ? `<div style="margin:12px 0 0">${escapeHtml(message).replace(/\n/g, '<br/>')}</div>` : '',
+  ]
+    .filter(Boolean)
+    .join('')
 
   return `
     <div style="font-family:Segoe UI,Arial,sans-serif;color:#0f172a;line-height:1.45">
-      <div style="margin:0 0 14px;padding:12px 14px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff">
-        <p style="margin:0 0 6px"><strong>Ticket:</strong> ${escapeHtml(input.ticketCode || 'TIC')}</p>
-        <p style="margin:0 0 6px"><strong>Ubicacio:</strong> ${escapeHtml(input.location || '-')}</p>
-        <p style="margin:0"><strong>Prioritat:</strong> ${escapeHtml(priority || 'normal')}</p>
-      </div>
-      ${
-        message
-          ? `<div style="margin:0 0 14px">${escapeHtml(message).replace(/\n/g, '<br/>')}</div>`
-          : `<p style="margin:0 0 14px">Us fem arribar una incidencia de manteniment per a la seva revisio.</p>`
-      }
-      <div style="border:1px solid #dbeafe;border-radius:14px;padding:14px 16px;background:#f8fbff">
-        ${createdLabel ? `<p style="margin:0 0 8px"><strong>Creat:</strong> ${escapeHtml(createdLabel)}</p>` : ''}
-        ${machine ? `<p style="margin:0 0 8px"><strong>Maquinaria:</strong> ${escapeHtml(machine)}</p>` : ''}
-        ${reference ? `<p style="margin:0 0 8px"><strong>Referencia externa:</strong> ${escapeHtml(reference)}</p>` : ''}
-        <p style="margin:0"><strong>Descripcio:</strong><br/>${escapeHtml(input.description || '').replace(/\n/g, '<br/>')}</p>
+      <div style="margin:0;padding:14px 16px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff">
+        ${lines}
       </div>
     </div>
   `

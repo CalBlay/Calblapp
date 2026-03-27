@@ -28,7 +28,7 @@ export default function TicketsList({
 }: Props) {
   const renderPrimaryTitle = (ticket: Ticket) => {
     const machine = String(ticket.machine || '').trim()
-    const description = String(ticket.description || '').trim()
+    const description = String(ticket.operatorTitle || ticket.description || '').trim()
     if (machine && description) return `${machine} · ${description}`
     return machine || description || ticket.ticketCode || ticket.incidentNumber || 'Ticket'
   }
