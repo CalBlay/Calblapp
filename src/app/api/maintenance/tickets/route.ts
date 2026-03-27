@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import {
   buildTicketBody,
   notifyMaintenanceManagers,
@@ -44,6 +45,7 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   createdAt?: string | number | { toDate?: () => Date }
   plannedStart?: string | number | null
   assignedAt?: string | number | null
+  statusHistory?: Array<{ status?: string; at?: string | number | { toDate?: () => Date } | null }>
 }
 
 const normalizePriority = (value?: string) => {
@@ -91,6 +93,45 @@ function getTicketTimelineMs(ticket: MaintenanceTicketRecord): number | null {
   return null
 }
 
+function getTicketDateByMode(
+  ticket: MaintenanceTicketRecord,
+  mode: 'all' | 'planned' | 'created' | 'updated' | 'completed'
+): number | null {
+  const toMs = (value: unknown): number | null => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string') {
+      const parsed = new Date(value).getTime()
+      return Number.isNaN(parsed) ? null : parsed
+    }
+    if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+      const parsed = (value as { toDate: () => Date }).toDate().getTime()
+      return Number.isNaN(parsed) ? null : parsed
+    }
+    return null
+  }
+
+  if (mode === 'planned') return toMs(ticket.plannedStart)
+  if (mode === 'created') return toMs(ticket.createdAt)
+  if (mode === 'updated') {
+    const history = Array.isArray(ticket.statusHistory) ? ticket.statusHistory : []
+    const latest = history
+      .map((entry) => toMs(entry?.at))
+      .filter((value): value is number => value !== null)
+      .sort((a, b) => b - a)[0]
+    return latest ?? toMs(ticket.assignedAt) ?? toMs(ticket.createdAt)
+  }
+  if (mode === 'completed') {
+    const history = Array.isArray(ticket.statusHistory) ? ticket.statusHistory : []
+    const completed = history
+      .filter((entry) => normalizeStatus(String(entry?.status || '')) === 'validat')
+      .map((entry) => toMs(entry?.at))
+      .filter((value): value is number => value !== null)
+      .sort((a, b) => b - a)[0]
+    return completed
+  }
+  return getTicketTimelineMs(ticket)
+}
+
 export async function GET(req: Request) {
   const startedAt = Date.now()
   const session = await getServerSession(authOptions)
@@ -106,7 +147,14 @@ export async function GET(req: Request) {
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .trim()
-  if (role !== 'admin' && role !== 'direccio' && role !== 'cap' && role !== 'treballador') {
+  if (
+    role !== 'admin' &&
+    role !== 'direccio' &&
+    role !== 'cap' &&
+    role !== 'treballador' &&
+    role !== 'comercial' &&
+    role !== 'usuari'
+  ) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -119,8 +167,19 @@ export async function GET(req: Request) {
   const code = (searchParams.get('code') || '').trim().toUpperCase()
   const start = (searchParams.get('start') || '').trim()
   const end = (searchParams.get('end') || '').trim()
+  const dateMode = ((searchParams.get('dateMode') || 'all').trim().toLowerCase() || 'all') as
+    | 'all'
+    | 'planned'
+    | 'created'
+    | 'updated'
+    | 'completed'
   const cursorCreatedAt = Number(searchParams.get('cursorCreatedAt') || 0)
   const limit = Math.max(1, Math.min(200, Number(searchParams.get('limit') || 100)))
+
+  const canViewAllTickets =
+    role === 'admin' ||
+    role === 'direccio' ||
+    (role === 'cap' && isMaintenanceCapDepartment(dept))
 
   try {
     let ref: FirebaseFirestore.Query = db.collection('maintenanceTickets')
@@ -132,8 +191,8 @@ export async function GET(req: Request) {
       ref = ref.where('ticketType', '==', 'deco')
     }
 
-    if (role === 'treballador' && dept === 'manteniment' && user.id) {
-      ref = ref.where('assignedToIds', 'array-contains', user.id)
+    if (!canViewAllTickets && user.id) {
+      ref = ref.where('createdById', '==', user.id)
     } else if (assignedToId) {
       ref = ref.where('assignedToIds', 'array-contains', assignedToId)
     }
@@ -187,11 +246,11 @@ export async function GET(req: Request) {
     } else if (ticketType && ticketType !== 'all' && ticketType !== 'deco') {
       tickets = tickets.filter((t) => String(t.ticketType || '').toLowerCase() === ticketType)
     }
-    if (start || end) {
+    if ((start || end) && dateMode !== 'all') {
       const startMs = start ? new Date(`${start}T00:00:00.000Z`).getTime() : null
       const endMs = end ? new Date(`${end}T23:59:59.999Z`).getTime() : null
       tickets = tickets.filter((t) => {
-        const timelineMs = getTicketTimelineMs(t)
+        const timelineMs = getTicketDateByMode(t, dateMode)
         if (timelineMs === null) return false
         if (startMs !== null && timelineMs < startMs) return false
         if (endMs !== null && timelineMs > endMs) return false
@@ -227,6 +286,7 @@ export async function GET(req: Request) {
       ticketType,
       hasCode: Boolean(code),
       hasDateRange: Boolean(start || end),
+      dateMode,
       assignedToId: assignedToId || (role === 'treballador' ? user.id : ''),
       requestedLimit: limit,
       returned: slicedTickets.length,
@@ -253,7 +313,14 @@ export async function POST(req: Request) {
 
   const user = session.user as SessionUser
   const role = normalizeRole(user.role || '')
-  if (role !== 'admin' && role !== 'direccio' && role !== 'cap') {
+  if (
+    role !== 'admin' &&
+    role !== 'direccio' &&
+    role !== 'cap' &&
+    role !== 'treballador' &&
+    role !== 'comercial' &&
+    role !== 'usuari'
+  ) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

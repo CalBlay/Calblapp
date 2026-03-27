@@ -1,16 +1,20 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ClipboardList } from 'lucide-react'
+import { endOfWeek, format, startOfWeek } from 'date-fns'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import FiltersBar from '@/components/layout/FiltersBar'
+import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
+import FilterButton from '@/components/ui/filter-button'
+import ResetFilterButton from '@/components/ui/ResetFilterButton'
+import { useFilters } from '@/context/FiltersContext'
 import { normalizeRole } from '@/lib/roles'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { markTicketSeen } from '@/lib/maintenanceSeen'
-import { useMaintenanceNewCount } from '@/hooks/useMaintenanceNewCount'
+import { formatDateOnly, formatDateTimeValue } from '@/lib/date-format'
+import { typography } from '@/lib/typography'
 import { useMaintenanceTickets } from './useMaintenanceTickets'
 import type { TicketPriority, TicketStatus } from './types'
 import TicketsList from './components/TicketsList'
@@ -49,6 +53,14 @@ const PRIORITY_LABELS: Record<TicketPriority, string> = {
   baixa: 'Baixa',
 }
 
+const DATE_MODE_LABELS: Record<'all' | 'planned' | 'created' | 'updated' | 'completed', string> = {
+  all: 'Sense filtre de data',
+  planned: 'Data planificada',
+  created: 'Data creacio',
+  updated: 'Ultim canvi',
+  completed: 'Data tancament',
+}
+
 const statusBadgeClasses: Record<TicketStatus, string> = {
   nou: 'bg-emerald-100 text-emerald-800',
   assignat: 'bg-blue-100 text-blue-800',
@@ -67,39 +79,30 @@ const priorityBadgeClasses: Record<TicketPriority, string> = {
   baixa: 'bg-blue-100 text-blue-700',
 }
 
-const formatDateTime = (value?: number | string | null) => {
-  if (!value) return ''
-  const date =
-    typeof value === 'string'
-      ? new Date(value)
-      : typeof value === 'number'
-      ? new Date(value)
-      : new Date()
-  if (Number.isNaN(date.getTime())) return ''
-  const dd = String(date.getDate()).padStart(2, '0')
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const yyyy = date.getFullYear()
-  const hh = String(date.getHours()).padStart(2, '0')
-  const mi = String(date.getMinutes()).padStart(2, '0')
-  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`
-}
-
 export default function MaintenanceTicketsPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { setContent } = useFilters()
   const sessionUser = (session?.user || {}) as SessionUser
   const department = normalizeDept(sessionUser.department || '')
   const userRole = normalizeRole(sessionUser.role || '')
   const isMaintenance = department === 'manteniment'
   const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(department)
+  const canManageAllTickets =
+    userRole === 'admin' ||
+    userRole === 'direccio' ||
+    (userRole === 'cap' && isMaintenanceCapDepartment(department))
   const hasAccess =
     userRole === 'admin' ||
     userRole === 'direccio' ||
-    isMaintenanceCap ||
-    (userRole === 'treballador' && isMaintenance)
+    userRole === 'cap' ||
+    userRole === 'treballador' ||
+    userRole === 'comercial' ||
+    userRole === 'usuari'
 
-  const { count: newTicketsCount } = useMaintenanceNewCount()
+  const formatDateTime = (value?: number | string | null) => formatDateTimeValue(value, '')
+  const [dateResetSignal, setDateResetSignal] = useState(0)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -181,7 +184,96 @@ export default function MaintenanceTicketsPage() {
     handleDelete,
     fetchMoreTickets,
     groupedTickets,
+    ticketSummary,
   } = useMaintenanceTickets()
+
+  useEffect(() => {
+    setContent(
+      <div key={`tickets-filters-${filters.dateMode ?? 'all'}-${dateResetSignal}`} className="space-y-4 p-4">
+        <label className="space-y-2 text-sm text-slate-700">
+          <span className="font-medium">Tipus de data</span>
+          <select
+            value={filters.dateMode ?? 'all'}
+            onChange={(e) => setFilters((prev) => ({ ...prev, dateMode: e.target.value as typeof prev.dateMode }))}
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+          >
+            <option value="all">Sense filtre de data</option>
+            <option value="planned">Data planificada</option>
+            <option value="created">Data creacio</option>
+            <option value="updated">Ultim canvi</option>
+            <option value="completed">Data tancament</option>
+          </select>
+        </label>
+        <label className="space-y-2 text-sm text-slate-700">
+          <span className="font-medium">Estat</span>
+          <select
+            value={filters.status ?? '__all__'}
+            onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+          >
+            <option value="__all__">Tots</option>
+            <option value="nou">{STATUS_LABELS.nou}</option>
+            <option value="assignat">{STATUS_LABELS.assignat}</option>
+            <option value="en_curs">{STATUS_LABELS.en_curs}</option>
+            <option value="espera">{STATUS_LABELS.espera}</option>
+            <option value="fet">{STATUS_LABELS.fet}</option>
+            <option value="no_fet">{STATUS_LABELS.no_fet}</option>
+            {canValidate ? <option value="validat">{STATUS_LABELS.validat}</option> : null}
+          </select>
+        </label>
+        <label className="space-y-2 text-sm text-slate-700">
+          <span className="font-medium">Importancia</span>
+          <select
+            value={filters.priority ?? '__all__'}
+            onChange={(e) => setFilters((prev) => ({ ...prev, priority: e.target.value }))}
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+          >
+            <option value="__all__">Totes</option>
+            <option value="urgent">{PRIORITY_LABELS.urgent}</option>
+            <option value="alta">{PRIORITY_LABELS.alta}</option>
+            <option value="normal">{PRIORITY_LABELS.normal}</option>
+            <option value="baixa">{PRIORITY_LABELS.baixa}</option>
+          </select>
+        </label>
+        <label className="space-y-2 text-sm text-slate-700">
+          <span className="font-medium">Ubicació</span>
+          <select
+            value={filters.location ?? '__all__'}
+            onChange={(e) => setFilters((prev) => ({ ...prev, location: e.target.value }))}
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+          >
+            <option value="__all__">Totes</option>
+            {locations.map((location) => (
+              <option key={location} value={location}>
+                {location}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex justify-end">
+          <ResetFilterButton
+            onClick={() => {
+              const start = startOfWeek(new Date(), { weekStartsOn: 1 })
+              const end = endOfWeek(new Date(), { weekStartsOn: 1 })
+              const next = {
+                ...filters,
+                start: format(start, 'yyyy-MM-dd'),
+                end: format(end, 'yyyy-MM-dd'),
+                status: '__all__',
+                priority: '__all__',
+                location: '__all__',
+                dateMode: 'all' as const,
+              }
+              setFilters(next)
+              setDateResetSignal((current) => current + 1)
+            }}
+          />
+        </div>
+      </div>
+    )
+
+    return () => setContent(null)
+  }, [canValidate, dateResetSignal, filters, locations, setContent, setFilters])
 
   const displayStatusLabels: Record<TicketStatus, string> = canValidate
     ? STATUS_LABELS
@@ -256,14 +348,14 @@ export default function MaintenanceTicketsPage() {
   if (!hasAccess && status !== 'loading') return null
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+      <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador', 'comercial', 'usuari']}>
       <div className="mx-auto w-full max-w-6xl space-y-5 px-4 pb-8">
         <ModuleHeader
           title="Manteniment"
           subtitle="Tickets"
           mainHref="/menu/manteniment"
           actions={
-            ticketRole === 'admin' || ticketRole === 'direccio' || (ticketRole === 'cap' && isMaintenance) ? (
+            hasAccess ? (
               <button
                 className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
                 onClick={() => setShowCreate(true)}
@@ -274,44 +366,106 @@ export default function MaintenanceTicketsPage() {
           }
         />
 
-        <FiltersBar
-          filters={filters}
-          setFilters={(next) => setFilters((prev) => ({ ...prev, ...next }))}
-          locations={locations}
-          statusLabel="Estat"
-          statusOptions={[
-            { value: '__all__', label: 'Tots' },
-            { value: 'nou', label: STATUS_LABELS.nou },
-            { value: 'assignat', label: STATUS_LABELS.assignat },
-            { value: 'en_curs', label: STATUS_LABELS.en_curs },
-            { value: 'espera', label: STATUS_LABELS.espera },
-            { value: 'fet', label: STATUS_LABELS.fet },
-            { value: 'no_fet', label: STATUS_LABELS.no_fet },
-            ...(canValidate ? [{ value: 'validat', label: STATUS_LABELS.validat }] : []),
-          ]}
-          priorityLabel="Importancia"
-          priorityOptions={[
-            { value: '__all__', label: 'Totes' },
-            { value: 'urgent', label: PRIORITY_LABELS.urgent },
-            { value: 'alta', label: PRIORITY_LABELS.alta },
-            { value: 'normal', label: PRIORITY_LABELS.normal },
-            { value: 'baixa', label: PRIORITY_LABELS.baixa },
-          ]}
-        />
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-3 xl:flex-nowrap">
+            <div className="shrink-0">
+              <SmartFilters
+                modeDefault="week"
+                modeOptions={['week', 'month', 'year', 'day', 'range']}
+                resetSignal={dateResetSignal}
+                role="Treballador"
+                showDepartment={false}
+                showWorker={false}
+                showLocation={false}
+                showStatus={false}
+                onChange={(next: SmartFiltersChange) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    start: next.start || '',
+                    end: next.end || '',
+                  }))
+                }
+                initialStart={filters.start}
+                initialEnd={filters.end}
+              />
+            </div>
+            <div className="flex min-w-[260px] flex-1 items-center gap-2">
+              <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                {DATE_MODE_LABELS[filters.dateMode ?? 'all']}
+              </span>
+              {(filters.dateMode ?? 'all') !== 'all' && filters.start && filters.end ? (
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                  {filters.start === filters.end
+                    ? formatDateOnly(filters.start, filters.start)
+                    : `${formatDateOnly(filters.start, filters.start)} - ${formatDateOnly(filters.end, filters.end)}`}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterButton />
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {filters.status && filters.status !== '__all__' ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                {STATUS_LABELS[filters.status as TicketStatus]}
+              </span>
+            ) : null}
+            {filters.priority && filters.priority !== '__all__' ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                {PRIORITY_LABELS[filters.priority as TicketPriority]}
+              </span>
+            ) : null}
+            {filters.location && filters.location !== '__all__' ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                {filters.location}
+              </span>
+            ) : null}
+            {(filters.dateMode ?? 'all') !== 'all' ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                {DATE_MODE_LABELS[filters.dateMode ?? 'all']}
+              </span>
+            ) : null}
+          </div>
+        </div>
 
         {loading && <p className="text-sm text-gray-500">Carregant...</p>}
         {error && <p className="text-sm text-red-500">{error}</p>}
 
-        <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-900">
-            <ClipboardList className="h-4 w-4 text-emerald-700" />
-            <span className="font-semibold">Tickets de manteniment</span>
-            {newTicketsCount > 0 ? (
-              <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
-                {newTicketsCount}
-              </span>
-            ) : null}
-            <span className="text-xs text-slate-500">Nous pendents</span>
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="rounded-2xl border bg-white px-4 py-3">
+            <div className={typography('eyebrow')}>
+              Nous i reoberts
+            </div>
+            <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.inbox}</div>
+          </div>
+          <div className="rounded-2xl border bg-white px-4 py-3">
+            <div className={typography('eyebrow')}>
+              Planificats
+            </div>
+            <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.planned}</div>
+          </div>
+          <div className="rounded-2xl border bg-white px-4 py-3">
+            <div className={typography('eyebrow')}>
+              En curs / espera
+            </div>
+            <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.active}</div>
+          </div>
+          <div className="rounded-2xl border bg-white px-4 py-3">
+            <div className={typography('eyebrow')}>
+              Pendents validar
+            </div>
+            <div className={`mt-2 ${typography('kpiValue')}`}>
+              {ticketSummary.pendingValidation}
+            </div>
+          </div>
+          <div className="rounded-2xl border bg-white px-4 py-3">
+            <div className={typography('eyebrow')}>
+              Externalitzats
+            </div>
+            <div className={`mt-2 ${typography('kpiValue')}`}>
+              {ticketSummary.externalized}
+            </div>
           </div>
         </section>
 
@@ -322,6 +476,7 @@ export default function MaintenanceTicketsPage() {
         <TicketsList
           groupedTickets={groupedTickets}
           onSelect={(ticket) => {
+            if (!canManageAllTickets) return
             markTicketSeen(ticket.id, 'maquinaria')
             setSelected(ticket)
           }}

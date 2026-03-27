@@ -95,7 +95,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .trim()
-  if (role !== 'admin' && role !== 'direccio' && role !== 'cap' && role !== 'treballador') {
+  if (
+    role !== 'admin' &&
+    role !== 'direccio' &&
+    role !== 'cap' &&
+    role !== 'treballador' &&
+    role !== 'comercial' &&
+    role !== 'usuari'
+  ) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -109,20 +116,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const data = snap.data() as MaintenanceTicketRecord
-    if (role === 'treballador') {
-      const assignedIds: string[] = Array.isArray(data.assignedToIds) ? data.assignedToIds : []
-      if (!assignedIds.includes(user.id)) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    }
+    const canViewAllTickets =
+      role === 'admin' ||
+      role === 'direccio' ||
+      (role === 'cap' && isMaintenanceCapDepartment(dept))
 
-    if (
-      role === 'cap' &&
-      !isMaintenanceCapDepartment(dept) &&
-      dept !== 'decoracio' &&
-      dept !== 'decoracions' &&
-      dept !== 'decoracion'
-    ) {
+    if (!canViewAllTickets && data.createdById !== user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

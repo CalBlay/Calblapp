@@ -58,6 +58,7 @@ export function useMaintenanceTickets() {
     return {
       start: format(start, 'yyyy-MM-dd'),
       end: format(end, 'yyyy-MM-dd'),
+      dateMode: 'all',
       status: '__all__',
       priority: '__all__',
       location: '__all__',
@@ -68,6 +69,7 @@ export function useMaintenanceTickets() {
   const statusFilter = filters.status ?? '__all__'
   const priorityFilter = filters.priority ?? '__all__'
   const locationFilter = filters.location ?? '__all__'
+  const dateModeFilter = filters.dateMode ?? 'all'
 
   const [selected, setSelected] = useState<Ticket | null>(null)
   const [assignBusy, setAssignBusy] = useState(false)
@@ -108,6 +110,7 @@ export function useMaintenanceTickets() {
         if (locationFilter !== '__all__') params.set('location', locationFilter)
         if (filters.start) params.set('start', filters.start)
         if (filters.end) params.set('end', filters.end)
+        if (dateModeFilter !== 'all') params.set('dateMode', dateModeFilter)
         if (cursorCreatedAt && cursorCreatedAt > 0) {
           params.set('cursorCreatedAt', String(cursorCreatedAt))
         }
@@ -139,7 +142,7 @@ export function useMaintenanceTickets() {
         }
       }
     },
-    [filters.end, filters.start, locationFilter, priorityFilter, statusFilter]
+    [dateModeFilter, filters.end, filters.start, locationFilter, priorityFilter, statusFilter]
   )
 
   const {
@@ -512,25 +515,112 @@ export function useMaintenanceTickets() {
 
   const groupedTickets = useMemo(() => {
     const start = parseISO(filters.start)
-    const end = parseISO(filters.end)
-    const filtered = tickets.filter((ticket) => {
-      const base = ticket.plannedStart || ticket.assignedAt || ticket.createdAt
+    const end = new Date(parseISO(filters.end).getTime() + 24 * 60 * 60 * 1000)
+    const getFilterDate = (ticket: Ticket) => {
+      if (dateModeFilter === 'planned') return ticket.plannedStart || null
+      if (dateModeFilter === 'created') return ticket.createdAt || null
+      if (dateModeFilter === 'updated') {
+        const latest = (ticket.statusHistory || [])
+          .slice()
+          .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]?.at
+        return latest || ticket.assignedAt || ticket.createdAt || null
+      }
+      if (dateModeFilter === 'completed') {
+        return (ticket.statusHistory || [])
+          .filter((entry) => entry.status === 'validat' || entry.status === 'resolut')
+          .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]?.at || null
+      }
+      return ticket.plannedStart || ticket.assignedAt || ticket.createdAt || null
+    }
+    const inRange = tickets.filter((ticket) => {
+      if (dateModeFilter === 'all') return true
+      const base = getFilterDate(ticket)
       const date = typeof base === 'string' ? new Date(base) : new Date(Number(base))
       if (Number.isNaN(date.getTime())) return false
-      return date >= start && date <= new Date(end.getTime() + 24 * 60 * 60 * 1000)
+      return date >= start && date <= end
     })
 
-    const grouped = filtered.reduce<Record<string, Ticket[]>>((acc, ticket) => {
-      const base = ticket.plannedStart || ticket.assignedAt || ticket.createdAt
-      const day =
-        typeof base === 'string' ? base.slice(0, 10) : format(new Date(Number(base)), 'yyyy-MM-dd')
-      acc[day] ||= []
-      acc[day].push(ticket)
-      return acc
-    }, {})
+    const sortTickets = (list: Ticket[]) =>
+      [...list].sort((a, b) => {
+        const toDateValue = (value?: string | number | null) => {
+          if (typeof value === 'string') {
+            const parsed = new Date(value).getTime()
+            return Number.isNaN(parsed) ? 0 : parsed
+          }
+          return Number(value || 0)
+        }
+        const getDayKey = (value?: string | number | null) => {
+          const date = new Date(toDateValue(value))
+          if (Number.isNaN(date.getTime())) return ''
+          return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+        }
+        const priorityWeight = { urgent: 0, alta: 1, normal: 2, baixa: 3 }
+        const ta = toDateValue(a.createdAt)
+        const tb = toDateValue(b.createdAt)
+        const dayA = getDayKey(a.createdAt)
+        const dayB = getDayKey(b.createdAt)
+        if (dayA === dayB) {
+          const pa = priorityWeight[a.priority]
+          const pb = priorityWeight[b.priority]
+          if (pa !== pb) return pa - pb
+        }
+        return tb - ta
+      })
 
-    return Object.entries(grouped).sort(([a], [b]) => (a > b ? 1 : -1))
-  }, [filters.end, filters.start, tickets])
+    const sections = [
+      {
+        key: 'inbox',
+        title: 'Nous i per decidir',
+        note: 'Entrades noves o reobertes pendents d enfocar',
+        items: inRange.filter((ticket) => ticket.status === 'nou' || ticket.status === 'no_fet'),
+      },
+      {
+        key: 'planned',
+        title: 'Planificats',
+        note: 'Feines assignades amb franja o a punt de passar a execucio',
+        items: inRange.filter((ticket) => ticket.status === 'assignat'),
+      },
+      {
+        key: 'active',
+        title: 'En curs i en espera',
+        note: 'Feines obertes que ja s estan executant o bloquejades',
+        items: inRange.filter((ticket) => ticket.status === 'en_curs' || ticket.status === 'espera'),
+      },
+      {
+        key: 'validation',
+        title: 'Pendents de validar',
+        note: 'Tickets resolts per operari o proveidor pendents de revisio final',
+        items: inRange.filter((ticket) => ticket.status === 'fet'),
+      },
+      {
+        key: 'external',
+        title: 'Externalitzats',
+        note: 'Tickets derivats a proveidor',
+        items: inRange.filter((ticket) => ticket.externalized),
+      },
+      {
+        key: 'closed',
+        title: 'Validats',
+        note: 'Feines tancades i validades',
+        items: inRange.filter((ticket) => ticket.status === 'validat' || ticket.status === 'resolut'),
+      },
+    ]
+
+    return sections
+      .map((section) => ({ ...section, items: sortTickets(section.items) }))
+      .filter((section) => section.items.length > 0)
+  }, [dateModeFilter, filters.end, filters.start, tickets])
+
+  const ticketSummary = useMemo(
+    () => ({
+      inbox: tickets.filter((ticket) => ticket.status === 'nou' || ticket.status === 'no_fet').length,
+      planned: tickets.filter((ticket) => ticket.status === 'assignat').length,
+      active: tickets.filter((ticket) => ticket.status === 'en_curs' || ticket.status === 'espera').length,
+      pendingValidation: tickets.filter((ticket) => ticket.status === 'fet').length,
+      externalized: tickets.filter((ticket) => ticket.externalized).length,
+    }),
+    [tickets]
+  )
 
   return {
     role,
@@ -612,5 +702,6 @@ export function useMaintenanceTickets() {
         ? fetchTickets({ append: true, cursorCreatedAt: nextTicketsCursor })
         : Promise.resolve(),
     groupedTickets,
+    ticketSummary,
   }
 }

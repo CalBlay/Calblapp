@@ -12,6 +12,7 @@ export type FiltersState = {
   start: string
   end: string
   mode?: 'week' | 'day' | 'range'
+  dateMode?: 'all' | 'planned' | 'created' | 'updated' | 'completed'
   ln?: string
   responsable?: string
   location?: string
