@@ -84,7 +84,7 @@ export async function GET(request: Request) {
   // 🔹 2. Construïm els esdeveniments
   const built: BuiltEvent[] = []
   snap.forEach((doc) => {
-    const d = doc.data() as Record<string, unknown>
+    const d = doc.data() as Record<string, any>
     const dataInici = d.DataInici ? new Date(d.DataInici) : null
     if (!dataInici) return
 

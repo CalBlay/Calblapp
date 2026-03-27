@@ -59,7 +59,7 @@ type AvisoSummary = {
   createdAt: string
 }
 
-type StageVerdDoc = Record<string, unknown>
+type StageVerdDoc = Record<string, any>
 
 /* ================== Collections map ================== */
 const COLS_MAP: Record<string, string> = {}

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
+import admin from 'firebase-admin'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'

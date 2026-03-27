@@ -195,13 +195,15 @@ export async function POST(req: Request) {
       .get()
 
     const existing = new Set(
-      memberSnap.docs.map((d) => (d.data() as ChannelMemberRecord).channelId).filter(Boolean)
+      memberSnap.docs
+        .map((d) => (d.data() as ChannelMemberRecord).channelId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
     )
     const next = new Set(filteredChannelIds)
     if (eventsFlags.configurable || isAdminTarget) {
       const eventMemberIds = memberSnap.docs
         .map((d) => (d.data() as ChannelMemberRecord)?.channelId)
-        .filter((id) => typeof id === 'string' && id.startsWith('event_'))
+        .filter((id): id is string => typeof id === 'string' && id.startsWith('event_'))
 
       if (eventsEnabled) {
         eventMemberIds.forEach((id) => next.add(id))
@@ -215,6 +217,7 @@ export async function POST(req: Request) {
     // Remove old
     memberSnap.docs.forEach((doc) => {
       const chId = (doc.data() as ChannelMemberRecord).channelId
+      if (!chId) return
       if (!next.has(chId)) {
         batch.delete(doc.ref)
       }

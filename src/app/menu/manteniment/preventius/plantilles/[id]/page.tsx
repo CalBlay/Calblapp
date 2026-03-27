@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { Trash2 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
@@ -17,6 +17,7 @@ type Template = {
   location?: string
   primaryOperator?: string
   backupOperator?: string
+  active?: boolean
   sections: TemplateSection[]
 }
 
@@ -37,6 +38,7 @@ const createLocalId = () => {
 
 export default function PlantillaDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string)
 
   const [template, setTemplate] = useState<Template | null>(null)
@@ -48,10 +50,12 @@ export default function PlantillaDetailPage() {
     location?: string
     primaryOperator?: string
     backupOperator?: string
+    active?: boolean
   }>({})
   const [sections, setSections] = useState<EditableSection[]>([])
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({})
   const [savedAt, setSavedAt] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -70,6 +74,7 @@ export default function PlantillaDetailPage() {
           location: found.location || '',
           primaryOperator: found.primaryOperator || '',
           backupOperator: found.backupOperator || '',
+          active: found.active !== false,
         })
         const mappedSections: EditableSection[] = (Array.isArray(found.sections) ? found.sections : [])
           .map((sec) => ({
@@ -170,6 +175,7 @@ export default function PlantillaDetailPage() {
           location: form.location || '',
           primaryOperator: form.primaryOperator || '',
           backupOperator: form.backupOperator || '',
+          active: form.active !== false,
           sections: cleanSections,
         }),
       })
@@ -180,6 +186,7 @@ export default function PlantillaDetailPage() {
           ? {
               ...prev,
               name: String(form.name || prev.name),
+              active: form.active !== false,
               sections: cleanSections,
             }
           : prev
@@ -247,6 +254,39 @@ export default function PlantillaDetailPage() {
     if (win) win.opener = null
   }
 
+  const setTemplateActive = async (active: boolean) => {
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/maintenance/templates/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active }),
+      })
+      if (!res.ok) throw new Error('toggle_failed')
+      setForm((prev) => ({ ...prev, active }))
+      setTemplate((prev) => (prev ? { ...prev, active } : prev))
+      setSavedAt(new Date().toISOString())
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const deleteTemplate = async () => {
+    const ok = window.confirm(`Vols eliminar la plantilla "${form.name || template?.name || ''}"?`)
+    if (!ok) return
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/maintenance/templates/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error('delete_failed')
+      router.push('/menu/manteniment/dades')
+      router.refresh()
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   if (!template) {
     return (
       <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
@@ -261,15 +301,41 @@ export default function PlantillaDetailPage() {
         <ModuleHeader subtitle={form.name || template.name} />
 
         <div className="border-b px-4 py-3 sm:px-6 sm:py-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-base font-semibold text-gray-900">{form.name || template.name}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-base font-semibold text-gray-900">{form.name || template.name}</div>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                form.active !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {form.active !== false ? 'Activa' : 'Inactiva'}
+            </span>
+          </div>
           <div className="flex items-center gap-2">
             {savedAt && <div className="text-xs text-emerald-700">Guardat</div>}
             <button
               type="button"
-              className="rounded-full border px-4 py-2 text-xs text-gray-600"
+              className="rounded-full border px-4 py-2 text-xs text-gray-600 disabled:opacity-50"
+              onClick={() => void setTemplateActive(form.active === false)}
+              disabled={actionLoading}
+            >
+              {form.active === false ? 'Activar' : 'Desactivar'}
+            </button>
+            <button
+              type="button"
+              className="rounded-full border px-4 py-2 text-xs text-gray-600 disabled:opacity-50"
               onClick={openHistory}
+              disabled={actionLoading}
             >
               Historial
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-red-300 px-4 py-2 text-xs text-red-700 disabled:opacity-50"
+              onClick={() => void deleteTemplate()}
+              disabled={actionLoading}
+            >
+              Eliminar
             </button>
           </div>
         </div>

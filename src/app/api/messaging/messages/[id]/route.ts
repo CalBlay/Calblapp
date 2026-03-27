@@ -82,6 +82,9 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     await batch.commit()
 
     // Update channel preview if needed
+    if (!channelId) {
+      return NextResponse.json({ success: true })
+    }
     const channelRef = db.collection('channels').doc(channelId)
     try {
       const latestSnap = await db

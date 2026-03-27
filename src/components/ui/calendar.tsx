@@ -18,7 +18,6 @@ export function Calendar({ mode = 'single', selected, onSelect }: CalendarProps)
     locale: es,
     showOutsideDays: true,
     numberOfMonths: 1,
-    defaultMonth: selected?.from || new Date(),
     weekStartsOn: 1 as const,
     styles: {
       caption: { textTransform: 'capitalize' as const },
@@ -32,6 +31,10 @@ export function Calendar({ mode = 'single', selected, onSelect }: CalendarProps)
     },
   }
 
+  const selectedRange = mode === 'range' ? (selected as DateRange | undefined) : undefined
+  const selectedDate = mode === 'single' ? (selected as Date | undefined) : undefined
+  const defaultMonth = mode === 'range' ? selectedRange?.from || new Date() : selectedDate || new Date()
+
   return (
     <div className="p-2 bg-white rounded-xl shadow-md">
       {mode === 'range' ? (
@@ -39,15 +42,17 @@ export function Calendar({ mode = 'single', selected, onSelect }: CalendarProps)
           {...sharedProps}
           mode="range"
           required={false}
-          selected={selected}
-          onSelect={onSelect}
+          defaultMonth={defaultMonth}
+          selected={selectedRange}
+          onSelect={onSelect as SelectRangeEventHandler | undefined}
         />
       ) : (
         <DayPicker
           {...sharedProps}
           mode="single"
-          selected={selected}
-          onSelect={onSelect}
+          defaultMonth={defaultMonth}
+          selected={selectedDate}
+          onSelect={onSelect as SelectSingleEventHandler | undefined}
         />
       )}
     </div>

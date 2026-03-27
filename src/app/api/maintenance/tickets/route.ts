@@ -84,6 +84,10 @@ function getTicketTimelineMs(ticket: MaintenanceTicketRecord): number | null {
     const parsed = new Date(base).getTime()
     return Number.isNaN(parsed) ? null : parsed
   }
+  if (base && typeof base === 'object' && typeof base.toDate === 'function') {
+    const parsed = base.toDate().getTime()
+    return Number.isNaN(parsed) ? null : parsed
+  }
   return null
 }
 
@@ -138,9 +142,10 @@ export async function GET(req: Request) {
     const mapTickets = (snap: FirebaseFirestore.QuerySnapshot) =>
       snap.docs.map((doc) => {
         const data = doc.data() as MaintenanceTicketRecord
+        const createdAtSource = data.createdAt
         const createdAt =
-          data.createdAt && typeof data.createdAt.toDate === 'function'
-            ? data.createdAt.toDate().toISOString()
+          createdAtSource && typeof createdAtSource === 'object' && typeof createdAtSource.toDate === 'function'
+            ? createdAtSource.toDate().toISOString()
             : data.createdAt || ''
         return {
           id: doc.id,

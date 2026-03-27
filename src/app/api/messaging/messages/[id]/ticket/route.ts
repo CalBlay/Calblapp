@@ -289,7 +289,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     )
 
     const pushRecipients = memberUserIds.filter(
-      (uid) => uid && uid !== user.id && !mutedUsers.has(uid)
+      (uid): uid is string => typeof uid === 'string' && uid.length > 0 && uid !== user.id && !mutedUsers.has(uid)
     )
 
     const baseUrl = new URL(req.url).origin

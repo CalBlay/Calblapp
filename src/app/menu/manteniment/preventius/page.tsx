@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { CalendarRange, FileStack, ListChecks } from 'lucide-react'
+import { CalendarRange, ListChecks } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
@@ -33,7 +33,7 @@ export default function PreventiusIndexPage() {
         <div className="max-w-4xl rounded-2xl border bg-white p-5 text-sm text-gray-700">
           <div className="font-semibold text-gray-900">Com funciona</div>
           <div className="mt-1">
-            {'Plantilles -> ordres generades -> planificacio setmanal (cap) -> full diari (operari) -> historial i tracabilitat.'}
+            {'Dades > Preventius -> ordres generades -> planificacio setmanal (cap) -> full diari (operari) -> historial i tracabilitat.'}
           </div>
         </div>
 
@@ -72,22 +72,6 @@ export default function PreventiusIndexPage() {
             </Link>
           )}
 
-          {(isAdmin || isMaintenanceCap) && (
-            <Link
-              href="/menu/manteniment/preventius/plantilles"
-              className="rounded-2xl border bg-gradient-to-br from-slate-50 to-gray-100 p-5 hover:shadow-sm"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-700 shadow">
-                  <FileStack className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="text-base font-semibold text-gray-900">Plantilles</div>
-                  <div className="text-xs text-gray-500">Plans i checklists</div>
-                </div>
-              </div>
-            </Link>
-          )}
         </div>
       </div>
     </RoleGuard>

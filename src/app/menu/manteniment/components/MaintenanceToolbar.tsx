@@ -30,11 +30,12 @@ export default function MaintenanceToolbar({
 }: Props) {
   const hasDateNav = Boolean(rangeLabel)
   const hasModeSelect = Boolean(modeValue && modeOptions?.length && onModeChange)
+  const hasLeftControls = hasDateNav || hasModeSelect
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
+        <div className={`flex min-w-0 flex-wrap items-center gap-3 ${hasLeftControls ? '' : 'lg:hidden'}`}>
           {hasDateNav ? (
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
               <button
@@ -70,7 +71,7 @@ export default function MaintenanceToolbar({
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className={`flex flex-wrap items-center gap-2 ${hasLeftControls ? 'justify-end' : 'justify-start lg:w-full'}`}>
           {rightSlot}
           {onOpenFilters ? <FilterButton onClick={onOpenFilters} /> : null}
         </div>

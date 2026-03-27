@@ -483,7 +483,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       .map((d) => d.data() as ChannelMemberRecord)
       .filter((m) => !m?.hidden && m?.notify !== false)
       .map((m) => m.userId)
-      .filter((uid) => uid && uid !== userId)
+      .filter((uid): uid is string => typeof uid === 'string' && uid.length > 0 && uid !== userId)
       .filter((uid) => (visibility === 'direct' ? uid === targetUserId : true))
 
     const mutedUsers = new Set(
@@ -491,6 +491,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         .map((d) => d.data() as ChannelMemberRecord)
         .filter((m) => m?.muted || m?.notify === false || m?.hidden)
         .map((m) => m.userId)
+        .filter((uid): uid is string => typeof uid === 'string' && uid.length > 0)
     )
 
     const pushRecipients = recipients.filter((uid) => !mutedUsers.has(uid))
@@ -530,7 +531,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
           await Promise.all(
             ticketResult.memberUserIds
-              .filter((uid) => uid && uid !== userId)
+              .filter((uid): uid is string => typeof uid === 'string' && uid.length > 0 && uid !== userId)
               .map((uid) =>
                 rest.channels.get(`user:${uid}:inbox`).publish('updated', {
                   channelId: id,
@@ -551,7 +552,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             .map((m) => m.userId)
         )
         const pushRecipientsTicket = ticketResult.memberUserIds.filter(
-          (uid) => uid && uid !== userId && !mutedUsersForTicket.has(uid)
+          (uid): uid is string =>
+            typeof uid === 'string' && uid.length > 0 && uid !== userId && !mutedUsersForTicket.has(uid)
         )
         await sendPushToUids(baseUrl, pushRecipientsTicket, title, ticketResult.summaryData.body, url)
       }

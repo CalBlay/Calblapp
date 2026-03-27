@@ -21,6 +21,7 @@ type TemplatePatch = {
   location?: string
   primaryOperator?: string
   backupOperator?: string
+  active?: boolean
   autoPlanExcludedWeeks?: string[]
   sections?: TemplateSection[]
 }
@@ -78,6 +79,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       patch.primaryOperator = String(body.primaryOperator || '').trim()
     if (body.backupOperator !== undefined)
       patch.backupOperator = String(body.backupOperator || '').trim()
+    if (body.active !== undefined) patch.active = body.active !== false
     if (body.autoPlanExcludedWeeks !== undefined) {
       patch.autoPlanExcludedWeeks = Array.isArray(body.autoPlanExcludedWeeks)
         ? body.autoPlanExcludedWeeks.map((v) => String(v))

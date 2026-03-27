@@ -23,6 +23,12 @@ type ChannelMemberRecord = Record<string, unknown> & {
   muted?: boolean
 }
 
+type ChannelWithMemberMeta = ChannelRecord & {
+  id: string
+  unreadCount: number
+  muted: boolean
+}
+
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user) {
@@ -57,7 +63,9 @@ export async function GET(req: Request) {
       ...(d.data() as ChannelMemberRecord),
     }))
 
-    const channelIds = memberships.map((m) => m.channelId).filter(Boolean)
+    const channelIds = memberships
+      .map((m) => m.channelId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
     if (channelIds.length === 0) {
       return NextResponse.json({ channels: [] })
     }
@@ -72,6 +80,7 @@ export async function GET(req: Request) {
 
     const channels = memberships
       .map((m) => {
+        if (!m.channelId) return null
         const c = channelMap.get(m.channelId)
         if (!c) return null
         return {
@@ -80,7 +89,7 @@ export async function GET(req: Request) {
           muted: Boolean(m.muted),
         }
       })
-      .filter(Boolean)
+      .filter((channel): channel is ChannelWithMemberMeta => channel !== null)
       .sort((a, b) => {
         const av = typeof a.lastMessageAt === 'number' ? a.lastMessageAt : 0
         const bv = typeof b.lastMessageAt === 'number' ? b.lastMessageAt : 0

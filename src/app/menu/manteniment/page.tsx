@@ -9,7 +9,6 @@ import {
   Wrench,
   Eye,
   CalendarCheck2,
-  FileStack,
   CheckCircle2,
   ClipboardList,
   Database,
@@ -293,23 +292,6 @@ export default function MantenimentIndexPage() {
                 <div>
                   <div className="text-base font-semibold text-gray-900">Planificador</div>
                   <div className="text-xs text-gray-500">Preventius + tickets</div>
-                </div>
-              </div>
-            </Link>
-          )}
-
-          {(isAdmin || isMaintenanceCap) && (
-            <Link
-              href="/menu/manteniment/preventius/plantilles"
-              className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-slate-50 to-gray-100"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-slate-700">
-                  <FileStack className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="text-base font-semibold text-gray-900">Plantilles</div>
-                  <div className="text-xs text-gray-500">Plans i checklists</div>
                 </div>
               </div>
             </Link>
