@@ -67,6 +67,14 @@ const normalizeStatus = (value?: string) => {
   return 'nou'
 }
 
+const normalizeName = (value?: string) =>
+  (value || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+
 async function generateTicketCode(): Promise<string> {
   const counterRef = db.collection('counters').doc('maintenanceTickets')
   const next = await db.runTransaction(async (tx) => {
@@ -141,6 +149,7 @@ export async function GET(req: Request) {
 
   const user = session.user as SessionUser
   const role = normalizeRole(user.role || '')
+  const sessionName = normalizeName(user.name || '')
   const deptRaw = (user.department || '').toString()
   const dept = deptRaw
     .normalize('NFD')
@@ -191,10 +200,10 @@ export async function GET(req: Request) {
       ref = ref.where('ticketType', '==', 'deco')
     }
 
-    if (!canViewAllTickets && user.id) {
-      ref = ref.where('createdById', '==', user.id)
-    } else if (assignedToId) {
+    if (assignedToId && canViewAllTickets) {
       ref = ref.where('assignedToIds', 'array-contains', assignedToId)
+    } else if (!canViewAllTickets && !assignedToId && user.id) {
+      ref = ref.where('createdById', '==', user.id)
     }
 
     const fallbackRef = ref
@@ -239,6 +248,16 @@ export async function GET(req: Request) {
         const ticketCode = String(t.ticketCode || '').toUpperCase()
         const incident = String(t.incidentNumber || '').toUpperCase()
         return ticketCode === code || incident === code
+      })
+    }
+    if (assignedToId && !canViewAllTickets) {
+      tickets = tickets.filter((t) => {
+        const assignedIds = Array.isArray((t as any).assignedToIds) ? (t as any).assignedToIds.map(String) : []
+        const assignedNames = Array.isArray((t as any).assignedToNames)
+          ? (t as any).assignedToNames.map((name: unknown) => normalizeName(String(name || '')))
+          : []
+        const effectiveAssignedId = user.id || assignedToId
+        return assignedIds.includes(effectiveAssignedId) || (!!sessionName && assignedNames.includes(sessionName))
       })
     }
     if (ticketType === 'maquinaria') {

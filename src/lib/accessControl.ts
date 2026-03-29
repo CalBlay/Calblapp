@@ -94,6 +94,12 @@ export const MODULES: ModuleDef[] = [
     departments: ['manteniment','logistica','Total'],
     submodules: [
       {
+        label: 'Jornada',
+        path: '/menu/manteniment/preventius/fulls',
+        roles: ['admin','direccio','cap','treballador'],
+        departments: ['manteniment','logistica'],
+      },
+      {
         label: 'Planificador',
         path: '/menu/manteniment/preventius',
         roles: ['admin','direccio','cap'],
@@ -256,6 +262,13 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
     })
     .map(mod => {
       if (!mod.submodules) return mod
+
+      if (isMaintenanceWorker && mod.path === '/menu/manteniment') {
+        return {
+          ...mod,
+          submodules: mod.submodules.filter((sub) => sub.path === '/menu/manteniment/preventius/fulls'),
+        }
+      }
 
       const visibleSubmodules = mod.submodules.filter(sub => {
         if (sub.path === '/menu/allergens/bbdd') {

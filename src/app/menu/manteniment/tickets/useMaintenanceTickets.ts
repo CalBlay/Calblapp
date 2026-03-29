@@ -572,25 +572,25 @@ export function useMaintenanceTickets() {
         key: 'inbox',
         title: 'Nous i per decidir',
         note: 'Entrades noves o reobertes pendents d enfocar',
-        items: inRange.filter((ticket) => ticket.status === 'nou' || ticket.status === 'no_fet'),
+        items: inRange.filter((ticket) => !ticket.externalized && (ticket.status === 'nou' || ticket.status === 'no_fet')),
       },
       {
         key: 'planned',
         title: 'Planificats',
         note: 'Feines assignades amb franja o a punt de passar a execucio',
-        items: inRange.filter((ticket) => ticket.status === 'assignat'),
+        items: inRange.filter((ticket) => !ticket.externalized && ticket.status === 'assignat'),
       },
       {
         key: 'active',
         title: 'En curs i en espera',
         note: 'Feines obertes que ja s estan executant o bloquejades',
-        items: inRange.filter((ticket) => ticket.status === 'en_curs' || ticket.status === 'espera'),
+        items: inRange.filter((ticket) => !ticket.externalized && (ticket.status === 'en_curs' || ticket.status === 'espera')),
       },
       {
         key: 'validation',
         title: 'Pendents de validar',
         note: 'Tickets resolts per operari o proveidor pendents de revisio final',
-        items: inRange.filter((ticket) => ticket.status === 'fet'),
+        items: inRange.filter((ticket) => !ticket.externalized && ticket.status === 'fet'),
       },
       {
         key: 'external',
@@ -613,10 +613,10 @@ export function useMaintenanceTickets() {
 
   const ticketSummary = useMemo(
     () => ({
-      inbox: tickets.filter((ticket) => ticket.status === 'nou' || ticket.status === 'no_fet').length,
-      planned: tickets.filter((ticket) => ticket.status === 'assignat').length,
-      active: tickets.filter((ticket) => ticket.status === 'en_curs' || ticket.status === 'espera').length,
-      pendingValidation: tickets.filter((ticket) => ticket.status === 'fet').length,
+      inbox: tickets.filter((ticket) => !ticket.externalized && (ticket.status === 'nou' || ticket.status === 'no_fet')).length,
+      planned: tickets.filter((ticket) => !ticket.externalized && ticket.status === 'assignat').length,
+      active: tickets.filter((ticket) => !ticket.externalized && (ticket.status === 'en_curs' || ticket.status === 'espera')).length,
+      pendingValidation: tickets.filter((ticket) => !ticket.externalized && ticket.status === 'fet').length,
       externalized: tickets.filter((ticket) => ticket.externalized).length,
     }),
     [tickets]

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
@@ -16,7 +16,7 @@ import { markTicketSeen } from '@/lib/maintenanceSeen'
 import { formatDateOnly, formatDateTimeValue } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
 import { useMaintenanceTickets } from './useMaintenanceTickets'
-import type { TicketPriority, TicketStatus } from './types'
+import type { Ticket, TicketPriority, TicketStatus } from './types'
 import TicketsList from './components/TicketsList'
 import CreateTicketModal from './components/CreateTicketModal'
 import AssignTicketModal from './components/AssignTicketModal'
@@ -61,6 +61,8 @@ const DATE_MODE_LABELS: Record<'all' | 'planned' | 'created' | 'updated' | 'comp
   completed: 'Data tancament',
 }
 
+const EXECUTION_STATUSES = new Set<TicketStatus>(['en_curs', 'espera', 'fet', 'validat'])
+
 const statusBadgeClasses: Record<TicketStatus, string> = {
   nou: 'bg-emerald-100 text-emerald-800',
   assignat: 'bg-blue-100 text-blue-800',
@@ -79,6 +81,14 @@ const priorityBadgeClasses: Record<TicketPriority, string> = {
   baixa: 'bg-blue-100 text-blue-700',
 }
 
+const KPI_STYLES = {
+  inbox: 'border-amber-200 bg-amber-50/70',
+  planned: 'border-sky-200 bg-sky-50/70',
+  active: 'border-blue-200 bg-blue-50/70',
+  validation: 'border-emerald-200 bg-emerald-50/70',
+  external: 'border-violet-200 bg-violet-50/70',
+} as const
+
 export default function MaintenanceTicketsPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -88,18 +98,22 @@ export default function MaintenanceTicketsPage() {
   const department = normalizeDept(sessionUser.department || '')
   const userRole = normalizeRole(sessionUser.role || '')
   const isMaintenance = department === 'manteniment'
+  const isMaintenanceWorker = userRole === 'treballador' && isMaintenance
   const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(department)
   const canManageAllTickets =
     userRole === 'admin' ||
     userRole === 'direccio' ||
     (userRole === 'cap' && isMaintenanceCapDepartment(department))
   const hasAccess =
+    !isMaintenanceWorker &&
+    (
     userRole === 'admin' ||
     userRole === 'direccio' ||
     userRole === 'cap' ||
     userRole === 'treballador' ||
     userRole === 'comercial' ||
     userRole === 'usuari'
+    )
 
   const formatDateTime = (value?: number | string | null) => formatDateTimeValue(value, '')
   const [dateResetSignal, setDateResetSignal] = useState(0)
@@ -345,6 +359,24 @@ export default function MaintenanceTicketsPage() {
     }
   }, [loading, queryTicketId, selected?.id, setSelected, tickets])
 
+  const handleOpenTicket = useCallback(
+    (ticket: Ticket) => {
+      if (!canManageAllTickets) return
+
+      markTicketSeen(ticket.id, 'maquinaria')
+
+      if (EXECUTION_STATUSES.has(ticket.status)) {
+        const url = `/menu/manteniment/preventius/fulls?ticketId=${encodeURIComponent(ticket.id)}`
+        const win = window.open(url, '_blank', 'noopener')
+        if (win) win.opener = null
+        return
+      }
+
+      setSelected(ticket)
+    },
+    [canManageAllTickets, markTicketSeen, setSelected]
+  )
+
   if (!hasAccess && status !== 'loading') return null
 
   return (
@@ -433,25 +465,25 @@ export default function MaintenanceTicketsPage() {
         {error && <p className="text-sm text-red-500">{error}</p>}
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <div className="rounded-2xl border bg-white px-4 py-3">
+          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.inbox}`}>
             <div className={typography('eyebrow')}>
               Nous i reoberts
             </div>
             <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.inbox}</div>
           </div>
-          <div className="rounded-2xl border bg-white px-4 py-3">
+          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.planned}`}>
             <div className={typography('eyebrow')}>
               Planificats
             </div>
             <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.planned}</div>
           </div>
-          <div className="rounded-2xl border bg-white px-4 py-3">
+          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.active}`}>
             <div className={typography('eyebrow')}>
               En curs / espera
             </div>
             <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.active}</div>
           </div>
-          <div className="rounded-2xl border bg-white px-4 py-3">
+          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.validation}`}>
             <div className={typography('eyebrow')}>
               Pendents validar
             </div>
@@ -459,7 +491,7 @@ export default function MaintenanceTicketsPage() {
               {ticketSummary.pendingValidation}
             </div>
           </div>
-          <div className="rounded-2xl border bg-white px-4 py-3">
+          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.external}`}>
             <div className={typography('eyebrow')}>
               Externalitzats
             </div>
@@ -480,6 +512,7 @@ export default function MaintenanceTicketsPage() {
             markTicketSeen(ticket.id, 'maquinaria')
             setSelected(ticket)
           }}
+          onOpenTicket={handleOpenTicket}
           onDelete={handleDelete}
           canDelete={(ticket) =>
             ticket.createdById === userId ||

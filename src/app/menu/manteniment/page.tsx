@@ -263,7 +263,7 @@ export default function MantenimentIndexPage() {
         ) : null}
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {(isAdmin || isMaintenanceCap || isMaintenanceWorker) && (
+          {(isAdmin || isMaintenanceCap) && (
             <Link
               href="/menu/manteniment/tickets"
               className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-amber-50 to-yellow-100"

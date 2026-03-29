@@ -48,7 +48,13 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
       department: user?.department || undefined,
     })
     const hasModuleAccess = pathname
-      ? visibleModules.some((mod) => pathname.startsWith(mod.path))
+      ? visibleModules.some((mod) => {
+          if (pathname === mod.path) return true
+          if (mod.submodules?.length) {
+            return mod.submodules.some((sub) => pathname.startsWith(sub.path))
+          }
+          return pathname.startsWith(mod.path)
+        })
       : false
 
     if (!session || (!normalizedAllowed.includes(role) && !hasModuleAccess)) {

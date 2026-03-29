@@ -23,7 +23,7 @@ type Props = {
   onClose: () => void
   onCreate: () => void
   createBusy: boolean
-  onImageChange: (file: File | null) => void
+  onImageChange: (file: File | null) => void | Promise<void>
   imageError: string | null
   imagePreview?: string | null
 }

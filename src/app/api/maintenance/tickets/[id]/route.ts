@@ -60,6 +60,8 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   priority?: string
   source?: string
   externalized?: boolean
+  plannedStart?: number | string | null
+  plannedEnd?: number | string | null
 }
 
 const normalizePriority = (value?: string) => {
@@ -79,6 +81,27 @@ const normalizeStatus = (value?: string) => {
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
   if (v === 'resolut' || v === 'validat') return 'validat'
   return 'nou'
+}
+
+const normalizeName = (value?: string) =>
+  (value || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+
+const toMillis = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = new Date(value).getTime()
+    return Number.isNaN(parsed) ? null : parsed
+  }
+  if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    const parsed = (value as { toDate: () => Date }).toDate().getTime()
+    return Number.isNaN(parsed) ? null : parsed
+  }
+  return null
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -121,7 +144,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       role === 'direccio' ||
       (role === 'cap' && isMaintenanceCapDepartment(dept))
 
-    if (!canViewAllTickets && data.createdById !== user.id) {
+    const assignedIds = Array.isArray(data.assignedToIds) ? data.assignedToIds.map(String) : []
+    const assignedNames = Array.isArray(data.assignedToNames)
+      ? data.assignedToNames.map((name) => normalizeName(String(name || '')))
+      : []
+    const sessionName = normalizeName(user.name || '')
+    const canViewAssignedTicket =
+      assignedIds.includes(String(user.id || '')) ||
+      (!!sessionName && assignedNames.includes(sessionName))
+
+    if (!canViewAllTickets && data.createdById !== user.id && !canViewAssignedTicket) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -261,6 +293,58 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (body.plannedEnd !== undefined) updates.plannedEnd = body.plannedEnd
     if (body.estimatedMinutes !== undefined) updates.estimatedMinutes = body.estimatedMinutes
     if (body.supplierResolvedAt !== undefined) updates.supplierResolvedAt = body.supplierResolvedAt
+
+    const planningTouched =
+      body.plannedStart !== undefined ||
+      body.plannedEnd !== undefined ||
+      body.assignedToIds !== undefined ||
+      body.assignedToNames !== undefined
+
+    const previousPlannedStart = toMillis(current.plannedStart)
+    const previousPlannedEnd = toMillis(current.plannedEnd)
+    const nextPlannedStart =
+      body.plannedStart !== undefined ? toMillis(body.plannedStart) : previousPlannedStart
+    const nextPlannedEnd =
+      body.plannedEnd !== undefined ? toMillis(body.plannedEnd) : previousPlannedEnd
+    const previousHadPlanning = previousPlannedStart !== null && previousPlannedEnd !== null
+    const nextHasPlanning = nextPlannedStart !== null && nextPlannedEnd !== null
+    const planningChanged =
+      previousPlannedStart !== nextPlannedStart ||
+      previousPlannedEnd !== nextPlannedEnd ||
+      body.assignedToIds !== undefined ||
+      body.assignedToNames !== undefined
+
+    if (planningTouched && planningChanged) {
+      let planningAction: 'planificat' | 'replanificat' | 'desplanificat' | null = null
+      if (!previousHadPlanning && nextHasPlanning) planningAction = 'planificat'
+      if (previousHadPlanning && !nextHasPlanning) planningAction = 'desplanificat'
+      if (previousHadPlanning && nextHasPlanning) planningAction = 'replanificat'
+
+      if (planningAction) {
+        updates.planningHistory = admin.firestore.FieldValue.arrayUnion({
+          action: planningAction,
+          at: Date.now(),
+          byId: user.id,
+          byName: user.name || '',
+          plannedStart: nextPlannedStart,
+          plannedEnd: nextPlannedEnd,
+          previousPlannedStart,
+          previousPlannedEnd,
+          assignedToNames:
+            body.assignedToNames !== undefined
+              ? body.assignedToNames
+              : Array.isArray(current.assignedToNames)
+                ? current.assignedToNames
+                : [],
+          note:
+            planningAction === 'desplanificat'
+              ? 'Torna a pendents'
+              : planningAction === 'replanificat'
+                ? 'Canvi de franja o assignacio'
+                : '',
+        })
+      }
+    }
 
     if (body.assignedToIds !== undefined) {
       updates.assignedAt = body.assignedToIds.length ? Date.now() : null

@@ -4,6 +4,7 @@ import { formatDateOnly, formatDateTimeValue, formatTimeValue } from '@/lib/date
 import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
 import { typography } from '@/lib/typography'
 import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
+import { optimizeUploadFile } from '@/lib/file-optimization'
 import type {
   MachineItem,
   Ticket,
@@ -362,14 +363,15 @@ export default function AssignTicketModal({
     return match?.id || ''
   }, [supplierEmail, supplierName, suppliers])
 
-  const addEmailAttachment = (file: File | null) => {
+  const addEmailAttachment = async (file: File | null) => {
     if (!file) return
-    if (file.size > 5 * 1024 * 1024) {
+    const optimizedFile = await optimizeUploadFile(file, 5 * 1024 * 1024)
+    if (optimizedFile.size > 5 * 1024 * 1024) {
       setEmailAttachmentError('Cada adjunt ha de pesar com a maxim 5MB.')
       return
     }
     setEmailAttachmentError('')
-    setEmailAttachments((prev) => [...prev, file])
+    setEmailAttachments((prev) => [...prev, optimizedFile])
   }
 
   const removeEmailAttachment = (index: number) => {

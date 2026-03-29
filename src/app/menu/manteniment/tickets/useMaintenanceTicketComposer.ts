@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { optimizeUploadFile } from '@/lib/file-optimization'
 import type { TicketPriority } from './types'
 
 type Params = {
@@ -43,22 +44,23 @@ export function useMaintenanceTicketComposer({ refreshTickets }: Params) {
     setImageError(null)
   }
 
-  const handleImageChange = (file: File | null) => {
+  const handleImageChange = async (file: File | null) => {
     if (!file) {
       setCreateImageFile(null)
       setCreateImagePreview(null)
       setImageError(null)
       return
     }
-    if (file.size > 2 * 1024 * 1024) {
+    const optimizedFile = await optimizeUploadFile(file, 2 * 1024 * 1024)
+    if (optimizedFile.size > 2 * 1024 * 1024) {
       setCreateImageFile(null)
       setCreateImagePreview(null)
       setImageError("La imatge supera 2MB. Fes-la mes petita.")
       return
     }
     setImageError(null)
-    setCreateImageFile(file)
-    setCreateImagePreview(URL.createObjectURL(file))
+    setCreateImageFile(optimizedFile)
+    setCreateImagePreview(URL.createObjectURL(optimizedFile))
   }
 
   const uploadImageIfNeeded = async () => {

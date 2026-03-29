@@ -115,6 +115,7 @@ export default function PreventiusFullsFitxaPage() {
   const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
   const isValidated = lastRecord?.status === 'validat'
   const currentStatus = draft?.status || 'assignat'
+  const isChecklistReadOnly = isValidated
 
   const allowedNextStatuses = useMemo(() => {
     if (!draft) return [] as MaintenanceStatus[]
@@ -705,13 +706,21 @@ export default function PreventiusFullsFitxaPage() {
                                   <input
                                     type="checkbox"
                                     checked={!!checklistState[entryKey]}
-                                    disabled={isValidated}
-                                    onChange={() =>
+                                    disabled={isChecklistReadOnly}
+                                    onChange={() => {
+                                      if (isChecklistReadOnly) return
                                       setChecklistState((prev) => ({
                                         ...prev,
                                         [entryKey]: !prev[entryKey],
                                       }))
-                                    }
+                                      setDraft((prev) => {
+                                        if (!prev) return prev
+                                        if (prev.status === 'assignat') {
+                                          return { ...prev, status: 'en_curs' }
+                                        }
+                                        return prev
+                                      })
+                                    }}
                                   />
                                   <span className="leading-snug">{it.label}</span>
                                 </label>

@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { addDays, addWeeks, endOfWeek, format, parseISO, startOfWeek, subDays, subWeeks } from 'date-fns'
 import * as XLSX from 'xlsx'
 import { useSession } from 'next-auth/react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useFilters } from '@/context/FiltersContext'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
@@ -15,6 +15,9 @@ import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
 import { normalizeRole } from '@/lib/roles'
 import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
 type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
+
+const WORKER_VISIBLE_JOURNEY_STATUSES = new Set<MaintenanceStatus>(['assignat', 'en_curs', 'espera', 'fet'])
+const PROGRESS_VISIBLE_STATUSES = new Set<MaintenanceStatus>(['en_curs', 'espera', 'fet', 'validat'])
 
 type Ticket = {
   id: string
@@ -60,8 +63,11 @@ export default function PreventiusFullsPage() {
   const { data: session } = useSession()
   const { data: transports } = useTransports()
   const { setContent } = useFilters()
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const role = normalizeRole((session?.user as any)?.role || '')
+  const userId = String((session?.user as any)?.id || '').trim()
   const canFilterByWorker = role === 'admin' || role === 'direccio' || role === 'cap'
   const [filters, setFiltersState] = useState<{ start: string; end: string; mode: 'day' | 'week' }>(() => {
     const value = format(new Date(), 'yyyy-MM-dd')
@@ -69,6 +75,7 @@ export default function PreventiusFullsPage() {
   })
   const [workerFilter, setWorkerFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [kindFilter, setKindFilter] = useState<'all' | 'preventiu' | 'ticket'>('all')
   const [plannedItems, setPlannedItems] = useState<
     Array<{
       id: string
@@ -79,6 +86,10 @@ export default function PreventiusFullsPage() {
       endTime: string
       location?: string
       worker?: string
+      machine?: string
+      vehicleId?: string | null
+      vehiclePlate?: string | null
+      hasMedia?: boolean
       templateId?: string | null
       lastRecordId?: string | null
       lastStatus?: string | null
@@ -98,8 +109,10 @@ export default function PreventiusFullsPage() {
       endTime: string
       location?: string
       worker?: string
+      machine?: string
       vehicleId?: string | null
       vehiclePlate?: string | null
+      hasMedia?: boolean
       templateId?: string
     }>
   >([])
@@ -110,9 +123,22 @@ export default function PreventiusFullsPage() {
     endTime: string
     note: string
   }>({ startTime: '', endTime: '', note: '' })
+  const [refreshKey, setRefreshKey] = useState(0)
   const queryTicketId = (searchParams?.get('ticketId') || '').trim()
   const queryStart = (searchParams?.get('start') || '').trim()
   const queryEnd = (searchParams?.get('end') || '').trim()
+
+  const closeSelectedTicket = () => {
+    setSelectedTicket(null)
+    setStatusDraft({ status: undefined, startTime: '', endTime: '', note: '' })
+
+    const basePath = pathname || '/menu/manteniment/preventius/fulls'
+    const params = new URLSearchParams(searchParams?.toString() || '')
+    if (!params.has('ticketId')) return
+    params.delete('ticketId')
+    const nextQuery = params.toString()
+    router.replace(nextQuery ? `${basePath}?${nextQuery}` : basePath, { scroll: false })
+  }
 
   useEffect(() => {
     if (!queryStart && !queryEnd) return
@@ -149,6 +175,10 @@ export default function PreventiusFullsPage() {
             endTime: String(item.endTime || ''),
             location: String(item.location || ''),
             worker: Array.isArray(item.workerNames) ? item.workerNames.join(', ') : '',
+            machine: String(item.machine || ''),
+            vehicleId: item.vehicleId || null,
+            vehiclePlate: item.vehiclePlate || null,
+            hasMedia: Boolean(item.imageUrl || (Array.isArray(item.imageUrls) && item.imageUrls.length > 0)),
             templateId: item.templateId || null,
             lastRecordId: item.lastRecordId || null,
             lastStatus: item.lastStatus || null,
@@ -167,7 +197,7 @@ export default function PreventiusFullsPage() {
     const onFocus = () => loadPlannedItems(filters.start, filters.end)
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [filters.start, filters.end])
+  }, [filters.start, filters.end, refreshKey])
 
   useEffect(() => {
     const loadTickets = async (start: string, end: string) => {
@@ -176,6 +206,7 @@ export default function PreventiusFullsPage() {
         params.set('ticketType', 'maquinaria')
         if (start) params.set('start', start)
         if (end) params.set('end', end)
+        if (role === 'treballador' && userId) params.set('assignedToId', userId)
         const res = await fetch(`/api/maintenance/tickets?${params.toString()}`, {
           cache: 'no-store',
         })
@@ -184,6 +215,11 @@ export default function PreventiusFullsPage() {
         const list = Array.isArray(json?.tickets) ? json.tickets : []
         const mapped = list
           .filter((t: any) => t.plannedStart && t.plannedEnd)
+          .filter((t: any) =>
+            role === 'treballador'
+              ? WORKER_VISIBLE_JOURNEY_STATUSES.has(normalizeMaintenanceStatus(t.status))
+              : true
+          )
           .map((t: any) => {
             const start = new Date(Number(t.plannedStart))
             const end = new Date(Number(t.plannedEnd))
@@ -201,8 +237,10 @@ export default function PreventiusFullsPage() {
               endTime: format(end, 'HH:mm'),
               location: t.location || '',
               worker: Array.isArray(t.assignedToNames) ? t.assignedToNames.join(', ') : '',
+              machine: t.machine || '',
               vehicleId: t.vehicleId || null,
               vehiclePlate: t.vehiclePlate || null,
+              hasMedia: Boolean(t.imageUrl || (Array.isArray(t.imageUrls) && t.imageUrls.length > 0)),
             }
           })
         setTicketItems(mapped)
@@ -214,7 +252,7 @@ export default function PreventiusFullsPage() {
     const onFocus = () => loadTickets(filters.start, filters.end)
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [filters.start, filters.end])
+  }, [filters.start, filters.end, role, userId, refreshKey])
 
   useEffect(() => {
     if (!queryTicketId) return
@@ -222,8 +260,44 @@ export default function PreventiusFullsPage() {
     const existing = ticketItems.find((item) => item.id === queryTicketId)
     if (existing) {
       openTicket(existing.id, existing.code, existing.ticketType)
+      return
+    }
+
+    let cancelled = false
+    const loadDirectTicket = async () => {
+      try {
+        const res = await fetch(`/api/maintenance/tickets/${encodeURIComponent(queryTicketId)}`, {
+          cache: 'no-store',
+        })
+        if (!res.ok) return
+        const json = await res.json()
+        if (!cancelled && json?.ticket) {
+          setSelectedTicket(json.ticket as Ticket)
+        }
+      } catch {
+        return
+      }
+    }
+
+    void loadDirectTicket()
+    return () => {
+      cancelled = true
     }
   }, [queryTicketId, selectedTicket?.id, ticketItems])
+
+  useEffect(() => {
+    if (!selectedTicket) {
+      setStatusDraft({ status: undefined, startTime: '', endTime: '', note: '' })
+      return
+    }
+
+    setStatusDraft({
+      status: undefined,
+      startTime: '',
+      endTime: '',
+      note: '',
+    })
+  }, [selectedTicket?.id])
 
   const currentStart = useMemo(() => parseISO(filters.start), [filters.start])
   const currentEnd = useMemo(() => parseISO(filters.end), [filters.end])
@@ -295,11 +369,12 @@ export default function PreventiusFullsPage() {
         item.kind === 'ticket'
           ? normalizeMaintenanceStatus((item as any).status)
           : normalizeMaintenanceStatus((item as any).lastStatus)
+      if (role === 'treballador' && !WORKER_VISIBLE_JOURNEY_STATUSES.has(raw)) return
       if (!raw) return
       values.add(raw)
     })
     return Array.from(values).sort((a, b) => a.localeCompare(b))
-  }, [filteredByDate])
+  }, [filteredByDate, role])
 
   const transportById = useMemo(
     () =>
@@ -312,6 +387,8 @@ export default function PreventiusFullsPage() {
   const grouped = useMemo(() => {
     const workerNeedle = workerFilter.toLowerCase()
     const items = filteredByDate.filter((item) => {
+      const matchesKind =
+        kindFilter === 'all' ? true : kindFilter === 'ticket' ? item.kind === 'ticket' : item.kind === 'preventiu'
       const matchesWorker =
         !canFilterByWorker || workerFilter === 'all'
           ? true
@@ -325,9 +402,11 @@ export default function PreventiusFullsPage() {
         item.kind === 'ticket'
           ? normalizeMaintenanceStatus((item as any).status)
           : normalizeMaintenanceStatus((item as any).lastStatus)
+      const matchesWorkerStatus =
+        role === 'treballador' ? WORKER_VISIBLE_JOURNEY_STATUSES.has(itemStatus) : true
       const matchesStatus = statusFilter === 'all' ? true : itemStatus === statusFilter
 
-      return matchesWorker && matchesStatus
+      return matchesKind && matchesWorker && matchesWorkerStatus && matchesStatus
     })
 
     const map = new Map<string, typeof items>()
@@ -338,7 +417,7 @@ export default function PreventiusFullsPage() {
     })
 
     return Array.from(map.entries()).sort(([a], [b]) => (a > b ? 1 : -1))
-  }, [filteredByDate, workerFilter, statusFilter, canFilterByWorker])
+  }, [filteredByDate, kindFilter, workerFilter, statusFilter, canFilterByWorker, role])
 
   const statusClasses: Record<string, string> = {
     nou: 'bg-emerald-100 text-emerald-800',
@@ -410,7 +489,9 @@ export default function PreventiusFullsPage() {
             ? normalizeMaintenanceStatus((item as any).status)
             : normalizeMaintenanceStatus((item as any).lastStatus)
           const progress =
-            !isTicket && typeof (item as any).lastProgress === 'number'
+            !isTicket &&
+            PROGRESS_VISIBLE_STATUSES.has(status) &&
+            typeof (item as any).lastProgress === 'number'
               ? `${(item as any).lastProgress}%`
               : ''
           return {
@@ -532,6 +613,16 @@ export default function PreventiusFullsPage() {
     ticketType?: 'maquinaria' | 'deco'
   ) => {
     try {
+      const directRes = await fetch(`/api/maintenance/tickets/${encodeURIComponent(id)}`, {
+        cache: 'no-store',
+      })
+      if (directRes.ok) {
+        const directJson = await directRes.json()
+        if (directJson?.ticket) {
+          setSelectedTicket(directJson.ticket as Ticket)
+          return
+        }
+      }
       if (code) {
         const res = await fetch(
           `/api/maintenance/tickets?ticketType=${ticketType || 'maquinaria'}&code=${encodeURIComponent(code)}`,
@@ -593,7 +684,8 @@ export default function PreventiusFullsPage() {
         }),
       })
       if (!res.ok) throw new Error()
-      setSelectedTicket(null)
+      setRefreshKey((prev) => prev + 1)
+      closeSelectedTicket()
     } catch {
       alert('No s’ha pogut actualitzar')
     }
@@ -630,6 +722,29 @@ export default function PreventiusFullsPage() {
         />
 
         <div className="flex flex-wrap gap-2">
+          <div className="inline-flex rounded-full border border-slate-200 bg-white p-1">
+            {[
+              { value: 'preventiu', label: 'Preventius' },
+              { value: 'ticket', label: 'Tickets' },
+              { value: 'all', label: 'Tots' },
+            ].map((option) => {
+              const active = kindFilter === option.value
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setKindFilter(option.value as 'all' | 'preventiu' | 'ticket')}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    active
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
           {canFilterByWorker && workerFilter !== 'all' ? (
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
               {workerOptions.find((w) => w.toLowerCase() === workerFilter) || workerFilter}
@@ -655,12 +770,16 @@ export default function PreventiusFullsPage() {
                 <div className="divide-y">
                   {items.map((item) => (
                     (() => {
+                      const isTicket = item.kind === 'ticket'
+                      const itemStatus = isTicket
+                        ? normalizeMaintenanceStatus((item as any).status)
+                        : normalizeMaintenanceStatus((item as any).lastStatus)
                       const assignedTransport =
-                        item.kind === 'ticket' && (item as any).vehicleId
+                        isTicket && (item as any).vehicleId
                           ? transportById.get(String((item as any).vehicleId || ''))
                           : null
                       const vehicleLabel =
-                        item.kind === 'ticket'
+                        isTicket || (item as any).vehicleId || (item as any).vehiclePlate
                           ? [
                               assignedTransport?.type
                                 ? TRANSPORT_TYPE_LABELS[String(assignedTransport.type)] ||
@@ -671,6 +790,10 @@ export default function PreventiusFullsPage() {
                               .filter(Boolean)
                               .join(' · ')
                           : ''
+                      const machineLabel =
+                        typeof (item as any).machine === 'string' ? String((item as any).machine || '').trim() : ''
+                      const hasMedia = Boolean((item as any).hasMedia)
+                      const typeLabel = isTicket ? 'Ticket' : 'Preventiu'
 
                       return (
                         <div
@@ -678,42 +801,54 @@ export default function PreventiusFullsPage() {
                           className="flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between"
                         >
                           <div className="min-w-0 flex-1">
-                            <div className="text-base font-semibold text-gray-900">
-                              {item.kind === 'ticket'
-                                ? item.code
-                                  ? `${item.code} - ${item.title}`
-                                  : item.title
-                                : item.title}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                  isTicket
+                                    ? 'bg-sky-50 text-sky-700 ring-1 ring-sky-200'
+                                    : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                                }`}
+                              >
+                                {typeLabel}
+                              </span>
+                              <div className="min-w-0 text-base font-semibold text-gray-900">
+                                {isTicket
+                                  ? (item as any).code
+                                    ? `${(item as any).code} - ${item.title}`
+                                    : item.title
+                                  : item.title}
+                              </div>
                             </div>
-                            <div className="mt-1 text-sm text-gray-700">
+                            <div className="mt-2 text-sm font-medium text-gray-700">
                               {item.startTime}–{item.endTime}
                             </div>
-                            <div className="mt-1 text-sm text-gray-500">
-                              {item.location}
-                              {item.worker ? ` · ${item.worker}` : ''}
-                              {vehicleLabel ? ` · ${vehicleLabel}` : ''}
+                            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+                              {item.location ? <span>Ubicació: {item.location}</span> : null}
+                              {machineLabel ? <span>Màquina: {machineLabel}</span> : null}
+                              {vehicleLabel ? <span>Vehicle: {vehicleLabel}</span> : null}
+                              {hasMedia ? <span>Fotos/Adjunts</span> : null}
+                              {item.worker ? <span>Operari: {item.worker}</span> : null}
                             </div>
                           </div>
                           <div className="flex flex-col gap-3 md:items-end">
                             <div className="flex flex-wrap gap-2">
-                              {item.kind === 'ticket' && (
+                              {isTicket && (
                                 <span
-                                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                                    statusClasses[normalizeMaintenanceStatus((item as any).status)]
-                                  }`}
+                                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${statusClasses[itemStatus]}`}
                                 >
                                   {getStatusLabel((item as any).status, 'assignat')}
                                 </span>
                               )}
-                              {item.kind === 'preventiu' && (
+                              {!isTicket && (
                                 <span
                                   className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                                    statusClasses[normalizeMaintenanceStatus((item as any).lastStatus)] ||
-                                    'bg-slate-100 text-slate-700'
+                                    statusClasses[itemStatus] || 'bg-slate-100 text-slate-700'
                                   }`}
                                 >
                                   {getStatusLabel((item as any).lastStatus, 'assignat')}
-                                  {typeof (item as any).lastProgress === 'number'
+                                  {PROGRESS_VISIBLE_STATUSES.has(
+                                    itemStatus
+                                  ) && typeof (item as any).lastProgress === 'number'
                                     ? ` · ${(item as any).lastProgress}%`
                                     : ''}
                                 </span>
@@ -763,7 +898,7 @@ export default function PreventiusFullsPage() {
                   <button
                     type="button"
                     className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-slate-200 text-lg text-gray-500"
-                    onClick={() => setSelectedTicket(null)}
+                    onClick={closeSelectedTicket}
                   >
                     ×
                   </button>
@@ -854,7 +989,7 @@ export default function PreventiusFullsPage() {
                 <button
                   type="button"
                   className="min-h-[48px] rounded-full border border-slate-200 px-5 text-sm font-medium text-gray-600"
-                  onClick={() => setSelectedTicket(null)}
+                  onClick={closeSelectedTicket}
                 >
                   Cancel·lar
                 </button>

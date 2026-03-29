@@ -61,6 +61,17 @@ export type Ticket = {
     attachmentNames?: string[]
     status?: 'sent' | 'resent'
   }>
+  planningHistory?: Array<{
+    action: 'planificat' | 'replanificat' | 'desplanificat'
+    at: number
+    byName?: string
+    plannedStart?: number | null
+    plannedEnd?: number | null
+    previousPlannedStart?: number | null
+    previousPlannedEnd?: number | null
+    assignedToNames?: string[]
+    note?: string | null
+  }>
   statusHistory?: Array<{
     status: TicketStatus
     at: number
