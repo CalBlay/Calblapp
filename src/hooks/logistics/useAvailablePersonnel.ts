@@ -8,6 +8,9 @@ export interface PersonnelOption {
   role: string
   status: 'available' | 'conflict' | 'notfound'
   reason?: string
+  isDriver?: boolean
+  camioPetit?: boolean
+  camioGran?: boolean
 }
 
 export interface UseAvailablePersonnelOptions {
@@ -72,6 +75,9 @@ const cleanList = (
       role: person.role,
       status: (person.status as PersonnelOption['status']) || 'notfound',
       reason: person.reason,
+      isDriver: person.isDriver === true,
+      camioPetit: person.camioPetit === true,
+      camioGran: person.camioGran === true,
     }))
 
 async function fetchPersonnel(opts: Required<Pick<UseAvailablePersonnelOptions, 'departament' | 'startDate' | 'endDate' | 'startTime' | 'endTime'>> & Pick<UseAvailablePersonnelOptions, 'excludeEventId'>) {

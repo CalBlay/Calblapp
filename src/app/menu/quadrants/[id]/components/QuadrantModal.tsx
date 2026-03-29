@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
@@ -23,6 +24,7 @@ import { useQuadrantFormState } from '../hooks/useQuadrantFormState'
 import LogisticsPhasePanel from './LogisticsPhasePanel'
 import ServicePhasePanel from './ServicePhasePanel'
 import { TRANSPORT_TYPE_LABELS, normalizeTransportType } from '@/lib/transportTypes'
+import { canDriverHandleVehicleType } from '@/lib/driverCapabilities'
 
 const extractDate = (iso = '') => iso.split('T')[0] || ''
 
@@ -154,6 +156,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     servicePhaseGroups,
     servicePhaseSettings,
     toggleServicePhaseSelection,
+    updateServicePhaseSetting,
     servicePhaseVisibility,
     toggleServicePhaseVisibility,
     addServiceGroup,
@@ -667,6 +670,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               ettState={servicePhaseEtt}
               availableConductors={availableConductors}
               toggleSelection={toggleServicePhaseSelection}
+              updateSetting={updateServicePhaseSetting}
               toggleVisibility={toggleServicePhaseVisibility}
               addGroup={addServiceGroup}
               removeGroup={removeServiceGroup}
@@ -684,6 +688,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               phaseResponsibles={phaseResponsibles}
               phaseVehicleAssignments={phaseVehicleAssignments}
               availableVehicles={availableVehicles}
+              availableConductors={availableConductors}
               availableResponsables={availableResponsables}
               togglePhaseVisibility={togglePhaseVisibility}
               updatePhaseForm={updatePhaseForm}
@@ -721,22 +726,24 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                       </div>
                       <div>
                         <Label className="mb-2 block">Opcions grup</Label>
-                        <label className="flex items-center gap-2 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
+                        <div className="flex items-center gap-2 text-sm text-slate-700">
+                          <Switch
+                            id={`cuina-needs-responsible-${group.id}`}
                             checked={group.wantsResponsible}
-                            onChange={(e) =>
+                            onCheckedChange={(checked) =>
                               updateCuinaGroup(group.id, {
-                                wantsResponsible: e.target.checked,
+                                wantsResponsible: Boolean(checked),
                                 responsibleId:
-                                  e.target.checked && !group.responsibleId && manualResp && manualResp !== '__auto__'
+                                  checked && !group.responsibleId && manualResp && manualResp !== '__auto__'
                                     ? manualResp
                                     : group.responsibleId,
                               })
                             }
                           />
-                          Cal responsable en aquest grup
-                        </label>
+                          <Label htmlFor={`cuina-needs-responsible-${group.id}`} className="mb-0">
+                            Necessita responsable?
+                          </Label>
+                        </div>
                       </div>
                     </div>
                     {group.wantsResponsible && (
@@ -855,16 +862,25 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                               <SelectItem value="__auto__">— Automatic segons disponibilitat —</SelectItem>
                               {group.wantsResponsible &&
                                 (group.responsibleId || (manualResp && manualResp !== '__auto__')) &&
-                                availableConductors.some(
-                                  (conductor) =>
-                                    conductor.id ===
-                                    (group.responsibleId || (manualResp !== '__auto__' ? manualResp : ''))
-                                ) && (
+                                availableConductors.some((conductor) => {
+                                  const responsibleId =
+                                    group.responsibleId || (manualResp !== '__auto__' ? manualResp : '')
+                                  return (
+                                    conductor.id === responsibleId &&
+                                    canDriverHandleVehicleType(conductor, group.vehicleType || '')
+                                  )
+                                }) && (
                                   <SelectItem value="__responsable__">
                                     Responsable
                                   </SelectItem>
                                 )}
-                              {availableConductors.map((conductor) => (
+                              {availableConductors
+                                .filter(
+                                  (conductor) =>
+                                    conductor.id === group.driverMode ||
+                                    canDriverHandleVehicleType(conductor, group.vehicleType || '')
+                                )
+                                .map((conductor) => (
                                 <SelectItem key={conductor.id} value={conductor.id}>
                                   {conductor.name}
                                 </SelectItem>

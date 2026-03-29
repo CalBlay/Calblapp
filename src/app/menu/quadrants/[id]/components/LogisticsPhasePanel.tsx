@@ -16,8 +16,10 @@ import {
   TRANSPORT_TYPE_OPTIONS,
   normalizeTransportType,
 } from "@/lib/transportTypes"
+import { canDriverHandleVehicleType } from "@/lib/driverCapabilities"
 import {
   logisticPhaseOptions,
+  AvailableConductor,
   LogisticPhaseKey,
   LogisticPhaseForm,
   LogisticPhaseSetting,
@@ -33,6 +35,7 @@ type Props = {
   phaseResponsibles: Record<LogisticPhaseKey, string>
   phaseVehicleAssignments: Record<LogisticPhaseKey, VehicleAssignment[]>
   availableVehicles: AvailableVehicle[]
+  availableConductors: AvailableConductor[]
   availableResponsables: Array<{ id: string; name: string }>
   togglePhaseVisibility: (key: LogisticPhaseKey) => void
   updatePhaseForm: (key: LogisticPhaseKey, patch: Partial<LogisticPhaseForm>) => void
@@ -52,6 +55,7 @@ export default function LogisticsPhasePanel({
   phaseResponsibles,
   phaseVehicleAssignments,
   availableVehicles,
+  availableConductors,
   availableResponsables,
   togglePhaseVisibility,
   updatePhaseForm,
@@ -77,9 +81,7 @@ export default function LogisticsPhasePanel({
           const settings = phaseSettings[phase.key]
           const visible = phaseVisibility[phase.key]
           const assignments = phaseVehicleAssignments[phase.key] ?? []
-          const needsResponsible =
-            (settings?.needsResponsible ?? phase.key === "event") &&
-            phase.key === "event"
+          const showsResponsibleControls = phase.key === "event"
 
           return (
             <PhaseCard
@@ -185,7 +187,7 @@ export default function LogisticsPhasePanel({
                 />
               </div>
 
-              {phase.key === "event" && needsResponsible && (
+              {showsResponsibleControls && (
                 <>
                   <div className="flex items-center gap-2">
                     <Switch
@@ -245,6 +247,11 @@ export default function LogisticsPhasePanel({
                       if (assign.vehicleId && assign.vehicleId === vehicle.id) return true
                       return !assignedVehicleIds.has(vehicle.id)
                     })
+                    const compatibleConductors = availableConductors.filter(
+                      (conductor) =>
+                        conductor.id === assign.conductorId ||
+                        canDriverHandleVehicleType(conductor, assign.vehicleType)
+                    )
 
                     return (
                       <div
@@ -259,6 +266,7 @@ export default function LogisticsPhasePanel({
                               vehicleType: value,
                               vehicleId: "",
                               plate: "",
+                              conductorId: assign.conductorId || null,
                             })
                           }
                         >
@@ -273,6 +281,29 @@ export default function LogisticsPhasePanel({
                             ))}
                           </SelectContent>
                         </Select>
+                        <div className="space-y-1 pt-2">
+                          <Label>Conductor</Label>
+                          <Select
+                            value={assign.conductorId || "__auto__"}
+                            onValueChange={(value) =>
+                              updatePhaseVehicleAssignment(phase.key, idx, {
+                                conductorId: value === "__auto__" ? null : value,
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona conductor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__auto__">- Automatic segons disponibilitat -</SelectItem>
+                              {compatibleConductors.map((conductor) => (
+                                <SelectItem key={conductor.id} value={conductor.id}>
+                                  {conductor.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                         {assign.vehicleType && (
                           <>
                             <div className="text-xs text-gray-500">
@@ -285,6 +316,7 @@ export default function LogisticsPhasePanel({
                                   updatePhaseVehicleAssignment(phase.key, idx, {
                                     vehicleId: "",
                                     plate: "",
+                                    conductorId: assign.conductorId || null,
                                   })
                                   return
                                 }
@@ -295,6 +327,7 @@ export default function LogisticsPhasePanel({
                                   vehicleId: value,
                                   plate: chosen?.plate || "",
                                   vehicleType: normalizeTransportType(chosen?.type),
+                                  conductorId: assign.conductorId || chosen?.conductorId || null,
                                 })
                               }}
                             >

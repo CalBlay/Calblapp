@@ -157,37 +157,7 @@ export default function DraftsTableMobile({
             {renderDisplayItemsMobile(buildDisplayItems(rows))}
           </>
         ) : (
-          rows.map((row, index) => (
-            <div
-              key={`${row.role}-${row.id || 'noid'}-${index}`}
-              className={`p-3 text-sm ${editIdx === index ? 'bg-blue-50 border-l-2 border-blue-600' : ''}`}
-            >
-              <div className="flex justify-between items-center">
-                <span className="font-semibold text-gray-800">{row.name || '-'}</span>
-                <span className="text-xs text-gray-500">{row.role}</span>
-              </div>
-              <div className="text-xs text-gray-600 mt-1 space-y-0.5">
-                <div>Data: {row.startDate}</div>
-                <div>Hora: {row.startTime || '-'}</div>
-                <div>Punt: {row.meetingPoint || '-'}</div>
-                {row.vehicleType && <div>Vehicle: {row.vehicleType}</div>}
-              </div>
-              <div className="flex justify-end gap-2 mt-2">
-                <button
-                  onClick={() => startEdit(index)}
-                  className="px-2 py-1 rounded-md bg-blue-100 text-blue-700 text-xs"
-                >
-                  Edita
-                </button>
-                <button
-                  onClick={() => deleteRow(index)}
-                  className="px-2 py-1 rounded-md bg-red-100 text-red-700 text-xs"
-                >
-                  Elimina
-                </button>
-              </div>
-            </div>
-          ))
+          renderDisplayItemsMobile(buildDisplayItems(rows))
         )}
       </div>
 

@@ -16,6 +16,8 @@ export interface Personnel {
   role: string
   department?: string
   isDriver?: boolean
+  camioPetit?: boolean
+  camioGran?: boolean
   available?: boolean
   maxHoursWeek?: number
   lastAssignedAt?: string | null
@@ -205,6 +207,8 @@ export async function autoAssign(payload: {
     role: person.role,
     department: person.department,
     isDriver: person.isDriver,
+    camioPetit: person.camioPetit,
+    camioGran: person.camioGran,
     available: person.available,
   })) as Personnel[]
 
@@ -417,7 +421,7 @@ export async function autoAssign(payload: {
     })
   }
 
-  if (manualDriverId) {
+  if (manualDriverId && vehicles.length === 0) {
     const manualDriver = all.find((person) => person.id === manualDriverId) || null
     if (!manualDriver || !manualDriver.isDriver) {
       violations.push('manual_driver_missing')
@@ -454,6 +458,7 @@ export async function autoAssign(payload: {
   }
 
   if (
+    vehicles.length === 0 &&
     !manualDriverId &&
     preferredDrivers.length === 0 &&
     chosenResp?.isDriver &&
@@ -482,6 +487,7 @@ export async function autoAssign(payload: {
   }
 
   if (
+    vehicles.length === 0 &&
     !manualDriverId &&
     preferredDrivers.length === 0 &&
     dept === 'serveis' &&

@@ -2,6 +2,7 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { isEligibleByName } from './eligibility'
 import { normalizeVehicleType } from '@/utils/normalizeVehicleType'
+import { canDriverHandleVehicleType } from '@/lib/driverCapabilities'
 
 export type VehicleRequest = {
   vehicleType?: string
@@ -11,7 +12,15 @@ export type VehicleRequest = {
 }
 
 export type DriverPoolItem = {
-  p: { id: string; name: string; department?: string; maxHoursWeek?: number }
+  p: {
+    id: string
+    name: string
+    department?: string
+    maxHoursWeek?: number
+    isDriver?: boolean
+    camioPetit?: boolean
+    camioGran?: boolean
+  }
   weekAssigns: number
   weekHrs: number
   monthHrs: number
@@ -57,6 +66,14 @@ export async function assignVehiclesAndDrivers({
   vehiclesRequested,
 }: AssignDriverParams): Promise<DriverAssignment[]> {
   const drivers: DriverAssignment[] = []
+  const takeCompatibleDriver = (requestedVehicleType?: string) => {
+    const idx = driverPool.findIndex((candidate) =>
+      canDriverHandleVehicleType(candidate.p, requestedVehicleType)
+    )
+    if (idx < 0) return null
+    const [picked] = driverPool.splice(idx, 1)
+    return picked
+  }
 
   // ✅ Consulta correcta dels transports a Firestore (admin)
   const transportsSnap = await db.collection('transports').get()
@@ -95,6 +112,10 @@ export async function assignVehiclesAndDrivers({
       chosenVehicle = pool.shift() || null
     }
 
+    const requestedVehicleType = normalizeVehicleType(
+      chosenVehicle?.type || requested.vehicleType || ''
+    )
+
     // --- Cas 1: ni tipus ni matrícula ---
     if (!chosenVehicle && !requested.vehicleType && !requested.conductorId) {
       const pick = driverPool.shift()
@@ -113,7 +134,7 @@ export async function assignVehiclesAndDrivers({
     if (requested.conductorId) {
       const manualIdx = driverPool.findIndex((d) => d.p.id === requested.conductorId)
       const manual = manualIdx >= 0 ? driverPool[manualIdx] : null
-      if (manual) {
+      if (manual && canDriverHandleVehicleType(manual.p, requestedVehicleType)) {
         const elig = isEligibleByName(manual.p.name, startISO, endISO, baseCtx)
         if (elig.eligible) {
           assigned = manual.p.name
@@ -125,7 +146,7 @@ export async function assignVehiclesAndDrivers({
     if (!assigned && chosenVehicle?.conductorId) {
       const fixedIdx = driverPool.findIndex(d => d.p.id === chosenVehicle!.conductorId)
       const fixed = fixedIdx >= 0 ? driverPool[fixedIdx] : null
-      if (fixed) {
+      if (fixed && canDriverHandleVehicleType(fixed.p, requestedVehicleType)) {
         const elig = isEligibleByName(fixed.p.name, startISO, endISO, baseCtx)
         if (elig.eligible) {
           assigned = fixed.p.name
@@ -135,7 +156,7 @@ export async function assignVehiclesAndDrivers({
     }
 
     if (!assigned) {
-      const pick = driverPool.shift()
+      const pick = takeCompatibleDriver(requestedVehicleType)
       assigned = pick ? pick.p.name : 'Extra'
     }
 
@@ -143,9 +164,7 @@ export async function assignVehiclesAndDrivers({
       name: assigned || 'Extra',
       meetingPoint,
       plate: chosenVehicle?.plate || '',
-      vehicleType: normalizeVehicleType(
-        chosenVehicle?.type || requested.vehicleType || ''
-      ),
+      vehicleType: requestedVehicleType,
     })
   }
 

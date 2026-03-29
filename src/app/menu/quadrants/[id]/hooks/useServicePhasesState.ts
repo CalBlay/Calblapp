@@ -33,6 +33,7 @@ export type UseServicePhasesStateResult = {
   removeServiceGroup: (id: string, phaseKey: ServicePhaseKey) => void
   servicePhaseSettings: Record<ServicePhaseKey, ServicePhaseSetting>
   toggleServicePhaseSelection: (key: ServicePhaseKey) => void
+  updateServicePhaseSetting: (key: ServicePhaseKey, patch: Partial<ServicePhaseSetting>) => void
   servicePhaseVisibility: Record<ServicePhaseKey, boolean>
   toggleServicePhaseVisibility: (key: ServicePhaseKey) => void
   servicePhaseEtt: Record<ServicePhaseKey, ServicePhaseEtt>
@@ -71,7 +72,10 @@ const createServicePhaseVisibility = () =>
 
 const createServicePhaseSettings = () =>
   servicePhaseOptions.reduce((acc, phase) => {
-    acc[phase.key] = { selected: phase.key === 'event' }
+    acc[phase.key] = {
+      selected: phase.key === 'event',
+      needsResponsible: phase.key === 'event',
+    }
     return acc
   }, {} as Record<ServicePhaseKey, ServicePhaseSetting>)
 
@@ -175,6 +179,13 @@ export function useServicePhasesState({
     setServicePhaseSettings((prev) => ({ ...prev, [key]: { ...prev[key], selected: !prev[key].selected } }))
   }
 
+  const updateServicePhaseSetting = (key: ServicePhaseKey, patch: Partial<ServicePhaseSetting>) => {
+    setServicePhaseSettings((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], ...patch },
+    }))
+  }
+
   const toggleServicePhaseVisibility = (key: ServicePhaseKey) => {
     setServicePhaseVisibility((prev) => ({ ...prev, [key]: !prev[key] }))
   }
@@ -204,9 +215,12 @@ export function useServicePhasesState({
     return {
       workers: activeServiceGroups.reduce((sum, group) => sum + group.workers, 0),
       drivers: activeServiceGroups.filter((group) => group.needsDriver).length,
-      responsables: activeEventGroups.length > 0 ? 1 : 0,
+      responsables:
+        activeEventGroups.length > 0 && (servicePhaseSettings.event?.needsResponsible ?? true)
+          ? 1
+          : 0,
     }
-  }, [activeServiceGroups])
+  }, [activeServiceGroups, servicePhaseSettings])
 
   const selectedServiceGroups = useMemo(() => {
     if (activeServiceGroups.length) return activeServiceGroups
@@ -218,7 +232,9 @@ export function useServicePhasesState({
       let responsibleAssigned = false
       return selectedServiceGroups.map((group) => {
         const isEventPhase = group.phaseKey === 'event'
-        const wantsResponsible = isEventPhase && !responsibleAssigned
+        const phaseNeedsResponsible =
+          servicePhaseSettings[group.phaseKey]?.needsResponsible ?? isEventPhase
+        const wantsResponsible = isEventPhase && phaseNeedsResponsible && !responsibleAssigned
         if (wantsResponsible) responsibleAssigned = true
         return {
           id: group.id,
@@ -237,7 +253,7 @@ export function useServicePhasesState({
         }
       })
     },
-    [selectedServiceGroups]
+    [selectedServiceGroups, servicePhaseSettings]
   )
 
   return {
@@ -247,6 +263,7 @@ export function useServicePhasesState({
     removeServiceGroup,
     servicePhaseSettings,
     toggleServicePhaseSelection,
+    updateServicePhaseSetting,
     servicePhaseVisibility,
     toggleServicePhaseVisibility,
     servicePhaseEtt,

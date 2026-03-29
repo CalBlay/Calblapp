@@ -200,24 +200,6 @@ export async function GET(req: Request) {
               responsibleName: g.responsibleName || null,
             }))
           : undefined,
-        logisticaPhases: Array.isArray(d.logisticaPhases)
-          ? d.logisticaPhases.map((p: any) => ({
-              key: p.key || '',
-              label: p.label || '',
-              date: p.date || '',
-              endDate: p.endDate || '',
-              startTime: p.startTime || '',
-              endTime: p.endTime || '',
-              meetingPoint: p.meetingPoint || '',
-              totalWorkers: Number(p.totalWorkers || 0),
-              numDrivers: Number(p.numDrivers || 0),
-              wantsResp: !!p.wantsResp,
-              responsableId: p.responsableId || null,
-              responsableName: p.responsableName || null,
-              conductors: Array.isArray(p.conductors) ? p.conductors : [],
-              treballadors: Array.isArray(p.treballadors) ? p.treballadors : [],
-            }))
-          : undefined,
         status: typeof d.status === 'string' ? d.status.toLowerCase() : '',
       }
     }).filter((item) => {

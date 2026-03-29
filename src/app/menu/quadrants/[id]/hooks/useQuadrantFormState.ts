@@ -14,6 +14,7 @@ import {
   ServeiGroup,
   VehicleAssignment,
   AvailableVehicle,
+  AvailableConductor,
   LogisticPhaseKey,
   ServicePhaseKey,
 } from '../phaseConfig'
@@ -115,6 +116,7 @@ export interface QuadrantFormState {
   servicePhaseGroups: ServeiGroup[]
   servicePhaseSettings: Record<ServicePhaseKey, ServicePhaseSetting>
   toggleServicePhaseSelection: (key: ServicePhaseKey) => void
+  updateServicePhaseSetting: (key: ServicePhaseKey, patch: Partial<ServicePhaseSetting>) => void
   servicePhaseVisibility: Record<ServicePhaseKey, boolean>
   toggleServicePhaseVisibility: (key: ServicePhaseKey) => void
   addServiceGroup: (phaseKey: ServicePhaseKey) => void
@@ -128,7 +130,7 @@ export interface QuadrantFormState {
   ettData: ServicePhaseEttData
   setEttData: (value: ServicePhaseEttData) => void
   availableResponsables: Array<{ id: string; name: string }>
-  availableConductors: Array<{ id: string; name: string }>
+  availableConductors: AvailableConductor[]
   serviceTotals: {
     workers: number
     drivers: number
@@ -139,7 +141,8 @@ export interface QuadrantFormState {
     manualResponsibleName?: string | null
   ) => ServiceGroupPayload[]
   vehiclesPayload: LogisticPhasePayload['vehicles']
-  buildLogisticaPhases: (vehicles?: LogisticPhasePayload['vehicles']) => LogisticPhasePayload[]
+  buildVehiclesPayloadForPhase: (phaseKey: LogisticPhaseKey) => LogisticPhasePayload['vehicles']
+  buildLogisticaPhases: () => LogisticPhasePayload[]
   ettEntry: EttEntry | null
 }
 
@@ -186,6 +189,23 @@ export function useQuadrantFormState({
   const totalWorkersNumber = Number(totalWorkers) || 0
   const numDriversNumber = Number(numDrivers) || 0
 
+  const { responsables, conductors } = useAvailablePersonnel({
+    departament: department,
+    startDate,
+    endDate,
+    startTime,
+    endTime,
+  })
+
+  const availableResponsables = useMemo(
+    () => responsables.filter((r) => Boolean(r.id?.trim())),
+    [responsables]
+  )
+  const availableConductors = useMemo<AvailableConductor[]>(
+    () => conductors.filter((c) => Boolean(c.id?.trim())),
+    [conductors]
+  )
+
   const logistics = useLogisticsPhasesState({
     event,
     department,
@@ -197,6 +217,7 @@ export function useQuadrantFormState({
     location,
     totalWorkers: totalWorkersNumber,
     numDrivers: numDriversNumber,
+    availableConductors,
   })
 
   const services = useServicePhasesState({
@@ -227,6 +248,7 @@ export function useQuadrantFormState({
     isVehicleIdAssigned,
     availableVehicleCount,
     buildVehiclesPayload,
+    buildVehiclesPayloadForPhase,
     selectedLogisticPhaseKeys,
     totalDriverCount,
   } = logistics
@@ -238,6 +260,7 @@ export function useQuadrantFormState({
     removeServiceGroup,
     servicePhaseSettings,
     toggleServicePhaseSelection,
+    updateServicePhaseSetting,
     servicePhaseVisibility,
     toggleServicePhaseVisibility,
     servicePhaseEtt,
@@ -246,23 +269,6 @@ export function useQuadrantFormState({
     serviceTotals,
     buildServiceGroupsPayload,
   } = services
-
-  const { responsables, conductors } = useAvailablePersonnel({
-    departament: department,
-    startDate,
-    endDate,
-    startTime,
-    endTime,
-  })
-
-  const availableResponsables = useMemo(
-    () => responsables.filter((r) => Boolean(r.id?.trim())),
-    [responsables]
-  )
-  const availableConductors = useMemo(
-    () => conductors.filter((c) => Boolean(c.id?.trim())),
-    [conductors]
-  )
 
   const ettEntry = useMemo(() => {
     const workers = Number(ettData.workers || 0)
@@ -305,13 +311,14 @@ export function useQuadrantFormState({
   const vehiclesPayload = useMemo(() => buildVehiclesPayload(), [buildVehiclesPayload])
 
   const buildLogisticaPhases = useCallback(
-    (vehicles = vehiclesPayload) => {
+    () => {
       const baseMeetingPoint = meetingPoint || location || event.eventLocation || ''
       return selectedLogisticPhaseKeys.map((phaseKey) => {
         const form = phaseForms[phaseKey] ?? defaultPhaseForm
         const phaseSetting = phaseSettings[phaseKey] ?? { selected: true, needsResponsible: true }
         const phaseTimetables = buildTimetablesForPhase(form)
         const label = logisticPhaseOptions.find((phase) => phase.key === phaseKey)?.label || phaseKey
+        const phaseVehicles = buildVehiclesPayloadForPhase(phaseKey)
         return {
           label,
           phaseType: phaseKey,
@@ -324,7 +331,7 @@ export function useQuadrantFormState({
           wantsResp: phaseSetting.needsResponsible,
           responsableId: phaseSetting.needsResponsible ? getManualResponsible(phaseKey) : null,
           meetingPoint: form.meetingPoint || baseMeetingPoint,
-          vehicles,
+          vehicles: phaseVehicles,
           timetables: phaseTimetables,
         }
       })
@@ -340,7 +347,7 @@ export function useQuadrantFormState({
       phaseSettings,
       selectedLogisticPhaseKeys,
       getManualResponsible,
-      vehiclesPayload,
+      buildVehiclesPayloadForPhase,
     ]
   )
   const syncNumDrivers = useMemo(() => {
@@ -421,6 +428,7 @@ export function useQuadrantFormState({
     servicePhaseGroups,
     servicePhaseSettings,
     toggleServicePhaseSelection,
+    updateServicePhaseSetting,
     servicePhaseVisibility,
     toggleServicePhaseVisibility,
     addServiceGroup,
@@ -436,6 +444,7 @@ export function useQuadrantFormState({
     serviceTotals,
     buildServiceGroupsPayload,
     vehiclesPayload,
+    buildVehiclesPayloadForPhase,
     buildLogisticaPhases,
     ettEntry,
     availableResponsables,

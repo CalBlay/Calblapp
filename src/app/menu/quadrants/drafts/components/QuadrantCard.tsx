@@ -7,7 +7,6 @@ import DraftsTable from './DraftsTable'
 interface Props {
   quadrant: Draft
   autoExpand?: boolean
-  phaseKey?: string
   pendingPhases?: Array<{ key: string; label: string }>
   onCreatePhase?: (phaseKey: string) => void
 }
@@ -15,7 +14,6 @@ interface Props {
 export default function QuadrantCard({
   quadrant,
   autoExpand = false,
-  phaseKey,
   pendingPhases = [],
   onCreatePhase,
 }: Props) {
@@ -49,8 +47,7 @@ export default function QuadrantCard({
           </div>
         )}
 
-      <DraftsTable draft={quadrant} phaseKey={phaseKey} />
+      <DraftsTable draft={quadrant} />
     </div>
   )
 }
-

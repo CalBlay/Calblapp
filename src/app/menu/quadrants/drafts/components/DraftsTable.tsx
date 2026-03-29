@@ -17,8 +17,6 @@ import type { DraftInput, Row } from './types'
 import {
   buildInitialRowsBase,
   buildStructuredGroups,
-  ensureLogisticaWorkerCoverage,
-  normalizeDraftKey,
   normalizeDraftText,
 } from './draftsTableUtils'
 import {
@@ -43,11 +41,9 @@ type Vehicle = {
 }
 
 export default function DraftsTable({
-  draft: rawDraft,
-  phaseKey,
+  draft,
 }: {
   draft: DraftInput
-  phaseKey?: string
 }) {
   const normalizeDraftLocation = (value: DraftInput['location']) => {
     if (typeof value === 'string') return value
@@ -62,45 +58,6 @@ export default function DraftsTable({
     }
     return ''
   }
-
-  const phase = useMemo(() => {
-    if (!phaseKey) return null
-    const phases = Array.isArray((rawDraft as any).logisticaPhases)
-      ? (rawDraft as any).logisticaPhases
-      : []
-    const target = normalizeDraftKey(phaseKey)
-    return (
-      phases.find((p: any) => {
-        const key = normalizeDraftKey(p?.key || p?.label)
-        return key === target
-      }) || null
-    )
-  }, [rawDraft, phaseKey])
-
-  const draft = useMemo(() => {
-    if (!phase) return rawDraft
-    const meetingPoint = phase?.meetingPoint || rawDraft.meetingPoint || ''
-    const startDate = phase?.date || rawDraft.startDate
-    const endDate = phase?.endDate || phase?.date || rawDraft.endDate
-    return {
-      ...rawDraft,
-      startDate,
-      endDate,
-      startTime: phase?.startTime || rawDraft.startTime,
-      endTime: phase?.endTime || rawDraft.endTime,
-      meetingPoint,
-      totalWorkers: phase?.totalWorkers ?? rawDraft.totalWorkers,
-      numDrivers: phase?.numDrivers ?? rawDraft.numDrivers,
-      responsableName: phase?.responsableName || null,
-      responsable: phase?.responsableName
-        ? ({ name: phase.responsableName, meetingPoint } as Partial<Row>)
-        : null,
-      conductors: Array.isArray(phase?.conductors) ? phase.conductors : [],
-      treballadors: Array.isArray(phase?.treballadors) ? phase.treballadors : [],
-      legacyBrigades: [],
-      groups: [],
-    }
-  }, [rawDraft, phase])
   const { data: session } = useSession()
   const department =
     (draft.department ||
@@ -113,7 +70,6 @@ export default function DraftsTable({
   const eventLocationText = normalizeDraftLocation(draft.location)
   const structuredGroups = useMemo(() => buildStructuredGroups(draft.groups), [draft.groups])
   const isServeisDept = department === 'serveis'
-  const isLogisticaDept = department === 'logistica'
   const [groupDefs, setGroupDefs] = useState(structuredGroups)
   const hasStructuredGroups = groupDefs.length > 0
 
@@ -127,11 +83,7 @@ export default function DraftsTable({
     isCuinaDept,
     isServeisDept,
   })
-  const initialRows: Row[] = ensureLogisticaWorkerCoverage({
-    inputRows: initialRowsBase,
-    isLogisticaDept,
-    hasStructuredGroups,
-  })
+  const initialRows: Row[] = initialRowsBase
 
   const [rows, setRows] = useState<Row[]>(initialRows)
   const [editIdx, setEditIdx] = useState<number | null>(null)

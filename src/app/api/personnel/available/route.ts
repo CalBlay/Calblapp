@@ -16,6 +16,9 @@ type AvailEntry = {
   role: string
   status: 'available' | 'conflict'
   reason: string
+  isDriver?: boolean
+  camioPetit?: boolean
+  camioGran?: boolean
 }
 
 type PersonRef = {
@@ -291,12 +294,21 @@ export async function GET(request: NextRequest) {
         ? `No compleix descans minim (${minRest}h)`
         : ''
 
+      const isDriver =
+        data.isDriver === true ||
+        data.driver?.isDriver === true ||
+        data.driver?.camioGran === true ||
+        data.driver?.camioPetit === true
+
       const entry: AvailEntry = {
         id: doc.id,
         name: data.name || '',
         role: data.role || '',
         status: isAvailable ? 'available' : 'conflict',
         reason,
+        isDriver,
+        camioPetit: data.driver?.camioPetit === true,
+        camioGran: data.driver?.camioGran === true,
       }
 
       if (RESPONSABLE_ROLES.has(roleNorm)) {
@@ -306,12 +318,6 @@ export async function GET(request: NextRequest) {
       if (TREBALLADOR_ROLES.has(roleNorm)) {
         workers.push(entry)
       }
-
-      const isDriver =
-        data.isDriver === true ||
-        data.driver?.isDriver === true ||
-        data.driver?.camioGran === true ||
-        data.driver?.camioPetit === true
 
       if (isDriver) {
         conductors.push(entry)

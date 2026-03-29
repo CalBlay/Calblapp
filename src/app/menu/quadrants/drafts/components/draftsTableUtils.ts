@@ -418,6 +418,20 @@ type BuildInitialRowsBaseParams = {
   isServeisDept: boolean
 }
 
+const buildReservedPersonKeys = (draft: DraftInput) => {
+  const reserved = new Set<string>()
+  const push = (value?: string) => {
+    const key = normalizeDraftText(value)
+    if (key) reserved.add(key)
+  }
+
+  if (typeof draft.responsableName === 'string') push(draft.responsableName)
+  push(draft.responsable?.name)
+  ;(draft.conductors || []).forEach((c) => push(c?.name))
+
+  return reserved
+}
+
 export const buildInitialRowsBase = ({
   draft,
   hasStructuredGroups,
@@ -467,22 +481,34 @@ export const buildInitialRowsBase = ({
           plate: c.plate || '',
           vehicleType: c.vehicleType || '',
         })),
-        ...(draft.treballadors || []).map((t) => ({
-          id: t.id || '',
-          name: isCuinaDept && normalizeDraftText(t.name) === 'extra' ? 'ETT' : t.name || '',
-          role: 'treballador' as const,
-          isExternal:
-            isCuinaDept &&
-            (normalizeDraftText(t.name) === 'extra' || isExternalEttName(t.name)),
-          startDate: t.startDate || draft.startDate,
-          startTime: t.startTime || draft.startTime || '',
-          endDate: t.endDate || draft.endDate || draft.startDate,
-          endTime: t.endTime || draft.endTime || '',
-          meetingPoint: t.meetingPoint || defaultMeetingPoint,
-          arrivalTime: t.arrivalTime || draft.arrivalTime || '',
-          plate: '',
-          vehicleType: '',
-        })),
+        ...(() => {
+          const reservedPersonKeys =
+            department === 'logistica' ? buildReservedPersonKeys(draft) : new Set<string>()
+
+          return (draft.treballadors || [])
+            .filter((t) => {
+              if (department !== 'logistica') return true
+              const key = normalizeDraftText(t.name)
+              if (!key || key === 'extra') return true
+              return !reservedPersonKeys.has(key)
+            })
+            .map((t) => ({
+              id: t.id || '',
+              name: isCuinaDept && normalizeDraftText(t.name) === 'extra' ? 'ETT' : t.name || '',
+              role: 'treballador' as const,
+              isExternal:
+                isCuinaDept &&
+                (normalizeDraftText(t.name) === 'extra' || isExternalEttName(t.name)),
+              startDate: t.startDate || draft.startDate,
+              startTime: t.startTime || draft.startTime || '',
+              endDate: t.endDate || draft.endDate || draft.startDate,
+              endTime: t.endTime || draft.endTime || '',
+              meetingPoint: t.meetingPoint || defaultMeetingPoint,
+              arrivalTime: t.arrivalTime || draft.arrivalTime || '',
+              plate: '',
+              vehicleType: '',
+            }))
+        })(),
         ...expandLegacyBrigadesToExternalRows(draft.legacyBrigades, {
           startDate: draft.startDate,
           startTime: draft.startTime,
@@ -492,37 +518,3 @@ export const buildInitialRowsBase = ({
           arrivalTime: draft.arrivalTime,
         }),
       ]
-
-export const ensureLogisticaWorkerCoverage = ({
-  inputRows,
-  isLogisticaDept,
-  hasStructuredGroups,
-}: {
-  inputRows: Row[]
-  isLogisticaDept: boolean
-  hasStructuredGroups: boolean
-}) => {
-  if (!isLogisticaDept || hasStructuredGroups) return inputRows
-
-  const workerKeys = new Set(
-    inputRows
-      .filter((row) => row.role === 'treballador' && normalizeDraftText(row.name) !== 'extra')
-      .map((row) => row.id || normalizeDraftText(row.name))
-      .filter(Boolean)
-  )
-
-  const syntheticWorkers = inputRows
-    .filter((row) => row.role === 'responsable' || row.role === 'conductor')
-    .filter((row) => {
-      const key = row.id || normalizeDraftText(row.name)
-      return Boolean(key) && !workerKeys.has(key)
-    })
-    .map((row) => ({
-      ...row,
-      role: 'treballador' as const,
-      plate: '',
-      vehicleType: '',
-    }))
-
-  return [...inputRows, ...syntheticWorkers]
-}

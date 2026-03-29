@@ -38,6 +38,7 @@ type Props = {
   ettState: Record<ServicePhaseKey, ServicePhaseEtt>
   availableConductors: Array<{ id: string; name: string }>
   toggleSelection: (key: ServicePhaseKey) => void
+  updateSetting: (key: ServicePhaseKey, patch: Partial<ServicePhaseSetting>) => void
   toggleVisibility: (key: ServicePhaseKey) => void
   addGroup: (phaseKey: ServicePhaseKey) => void
   removeGroup: (id: string, phaseKey: ServicePhaseKey) => void
@@ -56,6 +57,7 @@ export default function ServicePhasePanel({
   ettState,
   availableConductors,
   toggleSelection,
+  updateSetting,
   toggleVisibility,
   addGroup,
   removeGroup,
@@ -99,6 +101,20 @@ export default function ServicePhasePanel({
             >
               {showPhaseContent ? (
                 <>
+                  {phase.key === 'event' && (
+                    <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <Switch
+                        id={`needs-responsible-${phase.key}`}
+                        checked={settings[phase.key]?.needsResponsible ?? true}
+                        onCheckedChange={(checked) =>
+                          updateSetting(phase.key, { needsResponsible: Boolean(checked) })
+                        }
+                      />
+                      <Label htmlFor={`needs-responsible-${phase.key}`} className="mb-0">
+                        Necessita responsable?
+                      </Label>
+                    </div>
+                  )}
                   {groupsForPhase.map((group, idx) => {
                     const selectedElsewhere = new Set(
                       groups

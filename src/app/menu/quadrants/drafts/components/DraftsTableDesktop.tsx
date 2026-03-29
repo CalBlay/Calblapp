@@ -159,7 +159,7 @@ export default function DraftsTableDesktop({
                 {renderDisplayItems(buildDisplayItems(rows))}
               </>
             ) : (
-              rows.map((row, index) => renderRow(row, index))
+              renderDisplayItems(buildDisplayItems(rows))
             )}
           </div>
         </div>

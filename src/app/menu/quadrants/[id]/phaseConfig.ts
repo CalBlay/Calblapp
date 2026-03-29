@@ -30,13 +30,23 @@ export type LogisticPhaseSetting = {
 
 export type ServicePhaseSetting = {
   selected: boolean
+  needsResponsible: boolean
 }
 
 export type VehicleAssignment = {
   vehicleType: string
   vehicleId: string
   plate: string
+  conductorId?: string | null
   arrivalTime?: string
+}
+
+export type AvailableConductor = {
+  id: string
+  name: string
+  isDriver?: boolean
+  camioPetit?: boolean
+  camioGran?: boolean
 }
 
 export type AvailableVehicle = {
