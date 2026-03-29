@@ -229,12 +229,14 @@ export async function POST(req: NextRequest) {
           meetingPoint: d.meetingPoint || bodyForSave.meetingPoint || '',
           plate: d.plate || '',
           vehicleType: d.vehicleType || '',
+          isJamonero: (d as any).isJamonero === true,
         })),
 
         treballadors: [
           ...staffClean.map((s) => ({
             name: s.name,
             meetingPoint: s.meetingPoint || bodyForSave.meetingPoint || '',
+            isJamonero: (s as any).isJamonero === true,
           })),
           ...externalWorkersRaw.map((worker: any) => ({
             name: worker.name,
@@ -273,6 +275,7 @@ export async function POST(req: NextRequest) {
             startTime: g.startTime || '',
             endTime: g.endTime || '',
             workers: Number(g.workers || 0),
+            jamoneros: Number(g.jamoneros || 0),
             drivers: Number(g.drivers || 0),
             needsDriver: !!g.needsDriver,
             driverId: g.driverId || null,
@@ -540,6 +543,7 @@ export async function POST(req: NextRequest) {
           startTime: g.startTime || body.startTime,
           endTime: g.endTime || body.endTime,
           totalWorkers: Number(g.workers || 0),
+          jamoneroCount: Number(g.jamoneros || 0),
           numDrivers: Number(g.drivers || 0),
           wantsResp,
           responsableId,
@@ -562,6 +566,7 @@ export async function POST(req: NextRequest) {
         endTime: phase.endTime || body.endTime,
         meetingPoint: phase.meetingPoint || body.meetingPoint || '',
         totalWorkers: Number(phase.totalWorkers || 0),
+        jamoneroCount: Number(phase.jamoneroCount || 0),
         numDrivers: Number(phase.numDrivers || 0),
         manualResponsibleId: phase.wantsResp ? phase.responsableId || null : null,
         manualDriverId: phase.manualDriverId || null,

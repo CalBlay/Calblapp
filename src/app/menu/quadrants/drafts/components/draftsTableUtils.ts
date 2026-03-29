@@ -202,6 +202,7 @@ export const buildGroupedRows = ({
         arrivalTime: mainDriverRow?.arrivalTime || groupArrivalTime,
         plate: '',
         vehicleType: '',
+        isJamonero: false,
       })
     }
 
@@ -247,6 +248,7 @@ export const buildGroupedRows = ({
             id: (group as any).driverId || '',
             name: driverName,
             role: 'conductor',
+            isJamonero: next?.isJamonero === true,
             groupId,
             startDate: next?.startDate || groupDate,
             startTime: next?.startTime || groupStartTime,
@@ -274,6 +276,7 @@ export const buildGroupedRows = ({
           id: driver?.id || '',
           name: driver?.name || 'Extra',
           role: 'conductor',
+          isJamonero: driver?.isJamonero === true,
           groupId,
           startDate: groupDate,
           startTime: groupStartTime,
@@ -315,6 +318,7 @@ export const buildGroupedRows = ({
           name: workerName,
           role: 'treballador',
           isExternal: isExternalEttName(workerName),
+          isJamonero: worker?.isJamonero === true,
           groupId,
           startDate: worker?.startDate || groupDate,
           startTime: worker?.startTime || groupStartTime,

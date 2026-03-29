@@ -26,6 +26,7 @@ type Totals = {
   workers: number
   drivers: number
   responsables: number
+  jamoneros: number
 }
 
 type Props = {
@@ -36,7 +37,10 @@ type Props = {
   settings: Record<ServicePhaseKey, ServicePhaseSetting>
   visibility: Record<ServicePhaseKey, boolean>
   ettState: Record<ServicePhaseKey, ServicePhaseEtt>
+  manualResponsibleId: string
+  availableResponsables: Array<{ id: string; name: string }>
   availableConductors: Array<{ id: string; name: string }>
+  setManualResponsible: (value: string) => void
   toggleSelection: (key: ServicePhaseKey) => void
   updateSetting: (key: ServicePhaseKey, patch: Partial<ServicePhaseSetting>) => void
   toggleVisibility: (key: ServicePhaseKey) => void
@@ -55,7 +59,10 @@ export default function ServicePhasePanel({
   settings,
   visibility,
   ettState,
+  manualResponsibleId,
+  availableResponsables,
   availableConductors,
+  setManualResponsible,
   toggleSelection,
   updateSetting,
   toggleVisibility,
@@ -68,15 +75,21 @@ export default function ServicePhasePanel({
   const normalize = (value?: string) => String(value || "").trim().toLowerCase()
 
   void meetingPoint
+  void manualResponsibleId
+  void setManualResponsible
+  void updateSetting
 
   return (
     <div className="space-y-4 rounded-2xl border border-dashed border-slate-200 bg-white p-4">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-slate-700">Fase serveis</p>
           <p className="text-xs text-slate-500">
             Treballadors {totals.workers} · Conductors {totals.drivers} · Fases {totals.responsables}
           </p>
+          {totals.jamoneros > 0 && (
+            <p className="text-xs text-amber-700">Jamoneros {totals.jamoneros}</p>
+          )}
         </div>
       </div>
       <div className="grid gap-3">
@@ -101,20 +114,6 @@ export default function ServicePhasePanel({
             >
               {showPhaseContent ? (
                 <>
-                  {phase.key === 'event' && (
-                    <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                      <Switch
-                        id={`needs-responsible-${phase.key}`}
-                        checked={settings[phase.key]?.needsResponsible ?? true}
-                        onCheckedChange={(checked) =>
-                          updateSetting(phase.key, { needsResponsible: Boolean(checked) })
-                        }
-                      />
-                      <Label htmlFor={`needs-responsible-${phase.key}`} className="mb-0">
-                        Necessita responsable?
-                      </Label>
-                    </div>
-                  )}
                   {groupsForPhase.map((group, idx) => {
                     const selectedElsewhere = new Set(
                       groups
@@ -130,11 +129,8 @@ export default function ServicePhasePanel({
                     )
 
                     return (
-                      <div
-                        key={group.id}
-                        className="border border-slate-200 rounded-xl bg-white p-3 space-y-3"
-                      >
-                        <div className="flex items-center justify-between text-xs text-slate-500">
+                      <div key={group.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                        <div className="mb-4 flex items-center justify-between text-xs text-slate-500">
                           <span>Grup {idx + 1}</span>
                           {groupsForPhase.length > 1 && (
                             <button
@@ -147,88 +143,67 @@ export default function ServicePhasePanel({
                           )}
                         </div>
 
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <Label>Data servei</Label>
-                            <Input
-                              type="date"
-                              value={group.serviceDate}
-                              onChange={(e) => updateGroup(group.id, { serviceDate: e.target.value })}
-                            />
-                          </div>
-                          <div>
-                            <Label>Meeting point</Label>
-                            <Input
-                              value={group.meetingPoint}
-                              onChange={(e) => updateGroup(group.id, { meetingPoint: e.target.value })}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <Label>Hora inici</Label>
-                            <Input
-                              type="time"
-                              value={group.startTime}
-                              onChange={(e) => updateGroup(group.id, { startTime: e.target.value })}
-                            />
-                          </div>
-                          <div>
-                            <Label>Hora fi</Label>
-                            <Input
-                              type="time"
-                              value={group.endTime}
-                              onChange={(e) => updateGroup(group.id, { endTime: e.target.value })}
-                            />
-                          </div>
-                        </div>
-
-                        {group.serviceDate !== eventStartDate && (
-                          <div>
-                            <Label>Nota del dia</Label>
-                            <Input
-                              type="text"
-                              placeholder="Muntatge"
-                              value={group.dateLabel}
-                              onChange={(e) => updateGroup(group.id, { dateLabel: e.target.value })}
-                            />
-                          </div>
-                        )}
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <Label>Treballadors</Label>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={group.workers}
-                              onChange={(e) =>
+                        <div className="grid gap-3 lg:grid-cols-[64px_minmax(220px,1fr)_64px_minmax(220px,1fr)_120px_120px_minmax(220px,1fr)_130px_130px_170px] lg:items-end">
+                          <div className="flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+                            <Switch
+                              id={`needs-responsible-${group.id}`}
+                              checked={group.wantsResponsible}
+                              onCheckedChange={(checked) =>
                                 updateGroup(group.id, {
-                                  workers: Number.isNaN(Number(e.target.value))
-                                    ? 0
-                                    : Number(e.target.value),
+                                  wantsResponsible: Boolean(checked),
+                                  responsibleId: checked ? group.responsibleId : "",
                                 })
                               }
                             />
                           </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                id={`needs-driver-${group.id}`}
-                                checked={group.needsDriver}
-                                onCheckedChange={(checked) =>
+                          <div>
+                            <Label>Responsable</Label>
+                            {group.wantsResponsible ? (
+                              <Select
+                                value={group.responsibleId || "__auto__"}
+                                onValueChange={(value) =>
                                   updateGroup(group.id, {
-                                    needsDriver: Boolean(checked),
-                                    driverId: checked ? group.driverId : "",
+                                    wantsResponsible: value !== "__none__",
+                                    responsibleId:
+                                      value === "__auto__" || value === "__none__" ? "" : value,
                                   })
                                 }
-                              />
-                              <Label htmlFor={`needs-driver-${group.id}`} className="mb-0">
-                                Necessita conductor?
-                              </Label>
-                            </div>
-                            {group.needsDriver && (
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Responsable de la fase..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__auto__">Automàtic</SelectItem>
+                                  <SelectItem value="__none__">Sense responsable</SelectItem>
+                                  {availableResponsables.map((resp) => (
+                                    <SelectItem key={resp.id} value={resp.id}>
+                                      {resp.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <div className="flex h-10 items-center rounded-md border border-slate-200 px-3 text-sm text-slate-400">
+                                Sense responsable
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+                            <Switch
+                              id={`needs-driver-${group.id}`}
+                              checked={group.needsDriver}
+                              onCheckedChange={(checked) =>
+                                updateGroup(group.id, {
+                                  needsDriver: Boolean(checked),
+                                  driverId: checked ? group.driverId : "",
+                                })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>Conductor</Label>
+                            {group.needsDriver ? (
                               <Select
                                 value={group.driverId || "__none__"}
                                 onValueChange={(value) =>
@@ -247,9 +222,86 @@ export default function ServicePhasePanel({
                                   ))}
                                 </SelectContent>
                               </Select>
+                            ) : (
+                              <div className="flex h-10 items-center rounded-md border border-slate-200 px-3 text-sm text-slate-400">
+                                Sense conductor
+                              </div>
                             )}
                           </div>
+                          <div>
+                            <Label>Treballadors</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={group.workers}
+                              onChange={(e) =>
+                                updateGroup(group.id, {
+                                  workers: Number.isNaN(Number(e.target.value))
+                                    ? 0
+                                    : Number(e.target.value),
+                                })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>Jamoneros</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={group.jamoneros}
+                              onChange={(e) =>
+                                updateGroup(group.id, {
+                                  jamoneros: Number.isNaN(Number(e.target.value))
+                                    ? 0
+                                    : Math.max(0, Number(e.target.value)),
+                                })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>Meeting point</Label>
+                            <Input
+                              value={group.meetingPoint}
+                              onChange={(e) => updateGroup(group.id, { meetingPoint: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <Label>Hora inici</Label>
+                            <Input
+                              type="time"
+                              value={group.startTime}
+                              onChange={(e) => updateGroup(group.id, { startTime: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <Label>Hora fi</Label>
+                            <Input
+                              type="time"
+                              value={group.endTime}
+                              onChange={(e) => updateGroup(group.id, { endTime: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <Label>Data servei</Label>
+                            <Input
+                              type="date"
+                              value={group.serviceDate}
+                              onChange={(e) => updateGroup(group.id, { serviceDate: e.target.value })}
+                            />
+                          </div>
                         </div>
+
+                        {group.serviceDate !== eventStartDate && (
+                          <div className="mt-3 lg:max-w-md">
+                            <Label>Nota del dia</Label>
+                            <Input
+                              type="text"
+                              placeholder="Muntatge"
+                              value={group.dateLabel}
+                              onChange={(e) => updateGroup(group.id, { dateLabel: e.target.value })}
+                            />
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -261,7 +313,7 @@ export default function ServicePhasePanel({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-slate-900 border-slate-200 bg-white shadow-sm"
+                      className="border-slate-200 bg-white text-slate-900 shadow-sm"
                       onClick={() => toggleEtt(phase.key)}
                     >
                       {phaseEtt?.open ? "Amaga ETT" : "+ ETT"}
@@ -270,9 +322,18 @@ export default function ServicePhasePanel({
 
                   {phaseEtt?.open ? (
                     <div className="space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-3 lg:grid-cols-[160px_170px_170px_130px_130px_minmax(260px,1fr)] lg:items-end">
                         <div>
-                          <Label>Data servei</Label>
+                          <Label>Treballadors ETT</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={phaseEtt.data.workers}
+                            onChange={(e) => updateEtt(phase.key, { workers: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label>Data inici</Label>
                           <Input
                             type="date"
                             value={phaseEtt.data.serviceDate}
@@ -280,14 +341,13 @@ export default function ServicePhasePanel({
                           />
                         </div>
                         <div>
-                          <Label>Meeting point</Label>
+                          <Label>Data fi</Label>
                           <Input
-                            value={phaseEtt.data.meetingPoint}
-                            onChange={(e) => updateEtt(phase.key, { meetingPoint: e.target.value })}
+                            type="date"
+                            value={phaseEtt.data.serviceDate}
+                            onChange={(e) => updateEtt(phase.key, { serviceDate: e.target.value })}
                           />
                         </div>
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
                         <div>
                           <Label>Hora inici</Label>
                           <Input
@@ -304,15 +364,13 @@ export default function ServicePhasePanel({
                             onChange={(e) => updateEtt(phase.key, { endTime: e.target.value })}
                           />
                         </div>
-                      </div>
-                      <div>
-                        <Label>Treballadors ETT</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          value={phaseEtt.data.workers}
-                          onChange={(e) => updateEtt(phase.key, { workers: e.target.value })}
-                        />
+                        <div>
+                          <Label>Lloc</Label>
+                          <Input
+                            value={phaseEtt.data.meetingPoint}
+                            onChange={(e) => updateEtt(phase.key, { meetingPoint: e.target.value })}
+                          />
+                        </div>
                       </div>
                     </div>
                   ) : (

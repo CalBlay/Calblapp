@@ -192,7 +192,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
 
     return {
       id: seed.id || makeGroupId(),
-      meetingPoint: seed.meetingPoint ?? meetingPoint ?? '',
+      meetingPoint: seed.meetingPoint || meetingPoint || 'CENTRAL',
       startTime: seed.startTime ?? startTime ?? '',
       arrivalTime: seed.arrivalTime ?? arrivalTime ?? '',
       endTime: seed.endTime ?? endTime ?? '',
@@ -211,7 +211,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     open: false,
     data: {
       serviceDate: extractDate(event.start),
-      meetingPoint: event.location || event.eventLocation || '',
+      meetingPoint: 'CENTRAL',
       startTime: event.startTime || '',
       endTime: event.endTime || '',
       workers: '',
@@ -294,7 +294,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
       open: false,
       data: {
         serviceDate: extractDate(event.start),
-        meetingPoint: event.location || event.eventLocation || '',
+        meetingPoint: 'CENTRAL',
         startTime: event.startTime || '',
         endTime: event.endTime || '',
         workers: '',
@@ -599,7 +599,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-md w-[95vw] sm:w-full max-h-[85vh] overflow-y-auto rounded-2xl p-4"
+        className="w-[97vw] !max-w-[1700px] h-[96vh] overflow-y-auto rounded-2xl p-4 sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <DialogHeader>
@@ -611,8 +611,8 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
         </DialogHeader>
 
         <div className="space-y-4 mt-4">
-          {!isLogistica && (
-            <div className="grid grid-cols-2 gap-4">
+          {!isLogistica && !isCuina && (
+            <div className={`grid gap-4 ${isServeis ? 'lg:grid-cols-3' : 'grid-cols-2'}`}>
               {!isServeis && (
                 <>
                   <div>
@@ -625,14 +625,14 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                   </div>
                 </>
               )}
-              {!isCuina && (
-                <div className={`${isServeis ? 'col-span-2 sm:col-span-1' : ''}`}>
+              {!isCuina && !isServeis && (
+                <div>
                   <Label>Hora Inici</Label>
                   <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
                 </div>
               )}
-              {!isCuina && (
-                <div className={`${isServeis ? 'col-span-2 sm:col-span-1' : ''}`}>
+              {!isCuina && !isServeis && (
+                <div>
                   <Label>Hora Fi</Label>
                   <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
                 </div>
@@ -640,22 +640,61 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
             </div>
           )}
 
-          {!isLogistica && (
-            <div>
-              <Label>{isCuina ? 'Responsable principal (esdeveniment)' : 'Responsable (manual)'}</Label>
-              <Select value={manualResp} onValueChange={setManualResp}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecciona un responsable…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__auto__">— Automàtic —</SelectItem>
-                  {availableResponsables.map((resp) => (
-                    <SelectItem key={resp.id} value={resp.id}>
-                      {resp.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {!isLogistica && !isServeis && isCuina && (
+            <div className="grid gap-4 xl:grid-cols-[180px_180px_minmax(320px,1fr)] items-end">
+              <div>
+                <Label>Hora Inici</Label>
+                <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora Fi</Label>
+                <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              </div>
+              <div>
+                <Label>Responsable principal (esdeveniment)</Label>
+                <Select value={manualResp} onValueChange={setManualResp}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecciona un responsable…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__auto__">— Automàtic —</SelectItem>
+                    {availableResponsables.map((resp) => (
+                      <SelectItem key={resp.id} value={resp.id}>
+                        {resp.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {isServeis && (
+            <div className="grid gap-4 xl:grid-cols-[180px_180px_minmax(320px,1fr)] items-end">
+              <div>
+                <Label>Hora Inici</Label>
+                <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora Fi</Label>
+                <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              </div>
+              <div>
+                <Label>Responsable (manual)</Label>
+                <Select value={manualResp} onValueChange={setManualResp}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecciona un responsable…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__auto__">— Automàtic —</SelectItem>
+                    {availableResponsables.map((resp) => (
+                      <SelectItem key={resp.id} value={resp.id}>
+                        {resp.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
 
@@ -668,7 +707,10 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               settings={servicePhaseSettings}
               visibility={servicePhaseVisibility}
               ettState={servicePhaseEtt}
+              manualResponsibleId={manualResp}
+              availableResponsables={availableResponsables}
               availableConductors={availableConductors}
+              setManualResponsible={setManualResp}
               toggleSelection={toggleServicePhaseSelection}
               updateSetting={updateServicePhaseSetting}
               toggleVisibility={toggleServicePhaseVisibility}
@@ -695,6 +737,10 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               updatePhaseSetting={updatePhaseSetting}
               updatePhaseResponsible={updatePhaseResponsible}
               updatePhaseVehicleAssignment={updatePhaseVehicleAssignment}
+              ettOpen={ettOpen}
+              ettData={ettData}
+              toggleEtt={() => setEttOpen((prev) => !prev)}
+              updateEtt={(patch) => setEttData((prev) => ({ ...prev, ...patch }))}
             />
           )}
 
@@ -717,85 +763,52 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                         <button type="button" className="text-red-500 hover:underline" onClick={() => removeCuinaGroup(group.id)}>
                           Elimina grup
                         </button>
-                      )}
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <Label>Meeting point</Label>
-                        <Input value={group.meetingPoint} onChange={(e) => updateCuinaGroup(group.id, { meetingPoint: e.target.value })} />
+                        )}
                       </div>
-                      <div>
-                        <Label className="mb-2 block">Opcions grup</Label>
-                        <div className="flex items-center gap-2 text-sm text-slate-700">
-                          <Switch
-                            id={`cuina-needs-responsible-${group.id}`}
-                            checked={group.wantsResponsible}
-                            onCheckedChange={(checked) =>
-                              updateCuinaGroup(group.id, {
-                                wantsResponsible: Boolean(checked),
-                                responsibleId:
-                                  checked && !group.responsibleId && manualResp && manualResp !== '__auto__'
-                                    ? manualResp
-                                    : group.responsibleId,
-                              })
-                            }
-                          />
-                          <Label htmlFor={`cuina-needs-responsible-${group.id}`} className="mb-0">
-                            Necessita responsable?
-                          </Label>
-                        </div>
-                      </div>
-                    </div>
-                    {group.wantsResponsible && (
-                      <div>
-                        <Label>Responsable del grup (opcional)</Label>
-                        <Select
-                          value={group.responsibleId || '__auto__'}
-                          onValueChange={(value) =>
-                            updateCuinaGroup(group.id, { responsibleId: value === '__auto__' ? '' : value })
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Selecciona un responsable…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__auto__">— Sense responsable de grup —</SelectItem>
-                            {availableResponsables.map((resp) => (
-                              <SelectItem key={resp.id} value={resp.id}>
-                                {resp.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <Label>Hora Inici</Label>
-                        <Input type="time" value={group.startTime} onChange={(e) => updateCuinaGroup(group.id, { startTime: e.target.value })} />
-                      </div>
-                      <div>
-                        <Label>Hora Fi</Label>
-                        <Input type="time" value={group.endTime} onChange={(e) => updateCuinaGroup(group.id, { endTime: e.target.value })} />
-                      </div>
-                    </div>
-                    <div>
-                      <Label>Hora arribada (esdeveniment)</Label>
-                      <Input type="time" value={group.arrivalTime} onChange={(e) => updateCuinaGroup(group.id, { arrivalTime: e.target.value })} />
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <Label>Treballadors</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          value={group.workers}
-                          onChange={(e) =>
+                    <div className="grid gap-3 lg:grid-cols-[64px_minmax(220px,1fr)_110px_110px_minmax(220px,1fr)_130px_130px_130px] lg:items-end">
+                      <div className="flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+                        <Switch
+                          id={`cuina-needs-responsible-${group.id}`}
+                          checked={group.wantsResponsible}
+                          onCheckedChange={(checked) =>
                             updateCuinaGroup(group.id, {
-                              workers: Number.isNaN(Number(e.target.value)) ? 0 : Number(e.target.value),
+                              wantsResponsible: Boolean(checked),
+                              responsibleId:
+                                checked && !group.responsibleId && manualResp && manualResp !== '__auto__'
+                                  ? manualResp
+                                  : checked
+                                  ? group.responsibleId
+                                  : '',
                             })
                           }
                         />
+                      </div>
+                      <div>
+                        <Label>Responsable</Label>
+                        {group.wantsResponsible ? (
+                          <Select
+                            value={group.responsibleId || '__auto__'}
+                            onValueChange={(value) =>
+                              updateCuinaGroup(group.id, { responsibleId: value === '__auto__' ? '' : value })
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Responsable del grup…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__auto__">Automàtic</SelectItem>
+                              {availableResponsables.map((resp) => (
+                                <SelectItem key={resp.id} value={resp.id}>
+                                  {resp.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <div className="flex h-10 items-center rounded-md border border-slate-200 px-3 text-sm text-slate-400">
+                            Sense responsable
+                          </div>
+                        )}
                       </div>
                       <div>
                         <Label>Conductors</Label>
@@ -819,10 +832,39 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                           }
                         />
                       </div>
+                      <div>
+                        <Label>Treballadors</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={group.workers}
+                          onChange={(e) =>
+                            updateCuinaGroup(group.id, {
+                              workers: Number.isNaN(Number(e.target.value)) ? 0 : Number(e.target.value),
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label>Meeting point</Label>
+                        <Input value={group.meetingPoint} onChange={(e) => updateCuinaGroup(group.id, { meetingPoint: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label>Hora Inici</Label>
+                        <Input type="time" value={group.startTime} onChange={(e) => updateCuinaGroup(group.id, { startTime: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label>Hora Fi</Label>
+                        <Input type="time" value={group.endTime} onChange={(e) => updateCuinaGroup(group.id, { endTime: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label>Hora arribada</Label>
+                        <Input type="time" value={group.arrivalTime} onChange={(e) => updateCuinaGroup(group.id, { arrivalTime: e.target.value })} />
+                      </div>
                     </div>
                     {Number(group.drivers || 0) > 0 && (
                       <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                        <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_minmax(280px,1fr)] lg:items-end">
                           <div>
                             <Label>Tipus de vehicle</Label>
                             <Select
@@ -846,47 +888,47 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                               </SelectContent>
                             </Select>
                           </div>
-                        </div>
-                        <div>
-                          <Label>Conductor</Label>
-                          <Select
-                            value={group.driverMode || '__auto__'}
-                            onValueChange={(value) =>
-                              updateCuinaGroup(group.id, { driverMode: value })
-                            }
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Selecciona conductor…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__auto__">— Automatic segons disponibilitat —</SelectItem>
-                              {group.wantsResponsible &&
-                                (group.responsibleId || (manualResp && manualResp !== '__auto__')) &&
-                                availableConductors.some((conductor) => {
-                                  const responsibleId =
-                                    group.responsibleId || (manualResp !== '__auto__' ? manualResp : '')
-                                  return (
-                                    conductor.id === responsibleId &&
-                                    canDriverHandleVehicleType(conductor, group.vehicleType || '')
+                          <div>
+                            <Label>Conductor</Label>
+                            <Select
+                              value={group.driverMode || '__auto__'}
+                              onValueChange={(value) =>
+                                updateCuinaGroup(group.id, { driverMode: value })
+                              }
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Selecciona conductor…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__auto__">— Automatic segons disponibilitat —</SelectItem>
+                                {group.wantsResponsible &&
+                                  (group.responsibleId || (manualResp && manualResp !== '__auto__')) &&
+                                  availableConductors.some((conductor) => {
+                                    const responsibleId =
+                                      group.responsibleId || (manualResp !== '__auto__' ? manualResp : '')
+                                    return (
+                                      conductor.id === responsibleId &&
+                                      canDriverHandleVehicleType(conductor, group.vehicleType || '')
+                                    )
+                                  }) && (
+                                    <SelectItem value="__responsable__">
+                                      Responsable
+                                    </SelectItem>
+                                  )}
+                                {availableConductors
+                                  .filter(
+                                    (conductor) =>
+                                      conductor.id === group.driverMode ||
+                                      canDriverHandleVehicleType(conductor, group.vehicleType || '')
                                   )
-                                }) && (
-                                  <SelectItem value="__responsable__">
-                                    Responsable
+                                  .map((conductor) => (
+                                  <SelectItem key={conductor.id} value={conductor.id}>
+                                    {conductor.name}
                                   </SelectItem>
-                                )}
-                              {availableConductors
-                                .filter(
-                                  (conductor) =>
-                                    conductor.id === group.driverMode ||
-                                    canDriverHandleVehicleType(conductor, group.vehicleType || '')
-                                )
-                                .map((conductor) => (
-                                <SelectItem key={conductor.id} value={conductor.id}>
-                                  {conductor.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -911,9 +953,23 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                 </div>
                 {cuinaEtt.open ? (
                   <div className="space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 lg:grid-cols-[160px_170px_170px_130px_130px_minmax(260px,1fr)] lg:items-end">
                       <div>
-                        <Label>Data servei</Label>
+                        <Label>Treballadors ETT</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={cuinaEtt.data.workers}
+                          onChange={(e) =>
+                            setCuinaEtt((prev) => ({
+                              ...prev,
+                              data: { ...prev.data, workers: e.target.value },
+                            }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label>Data inici</Label>
                         <Input
                           type="date"
                           value={cuinaEtt.data.serviceDate}
@@ -926,19 +982,18 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                         />
                       </div>
                       <div>
-                        <Label>Meeting point</Label>
+                        <Label>Data fi</Label>
                         <Input
-                          value={cuinaEtt.data.meetingPoint}
+                          type="date"
+                          value={cuinaEtt.data.serviceDate}
                           onChange={(e) =>
                             setCuinaEtt((prev) => ({
                               ...prev,
-                              data: { ...prev.data, meetingPoint: e.target.value },
+                              data: { ...prev.data, serviceDate: e.target.value },
                             }))
                           }
                         />
                       </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
                       <div>
                         <Label>Hora inici</Label>
                         <Input
@@ -965,20 +1020,18 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                           }
                         />
                       </div>
-                    </div>
-                    <div>
-                      <Label>Treballadors ETT</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={cuinaEtt.data.workers}
-                        onChange={(e) =>
-                          setCuinaEtt((prev) => ({
-                            ...prev,
-                            data: { ...prev.data, workers: e.target.value },
-                          }))
-                        }
-                      />
+                      <div>
+                        <Label>Lloc</Label>
+                        <Input
+                          value={cuinaEtt.data.meetingPoint}
+                          onChange={(e) =>
+                            setCuinaEtt((prev) => ({
+                              ...prev,
+                              data: { ...prev.data, meetingPoint: e.target.value },
+                            }))
+                          }
+                        />
+                      </div>
                     </div>
                   </div>
                 ) : (

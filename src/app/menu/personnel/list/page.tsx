@@ -89,6 +89,7 @@ if (filters.isDriver !== 'all') {
         Rol: p.role || '',
         Departament: p.department || '',
         Conductor: p.driver?.isDriver ? 'Sí' : 'No',
+        Jamonero: p.isJamonero ? 'Sí' : 'No',
         Contacte: p.email || '',
       })),
     [filteredPersonnel]
@@ -106,7 +107,7 @@ if (filters.isDriver !== 'all') {
       .replace(/'/g, '&#39;')
 
   const buildPdfTableHtml = () => {
-    const cols = ['Nom', 'Rol', 'Departament', 'Conductor', 'Contacte']
+    const cols = ['Nom', 'Rol', 'Departament', 'Conductor', 'Jamonero', 'Contacte']
     const header = cols.map((c) => `<th>${escapeHtml(c)}</th>`).join('')
     const body = exportRows
       .map((row) => {

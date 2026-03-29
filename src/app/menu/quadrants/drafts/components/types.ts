@@ -9,6 +9,7 @@ export type Row = {
   isExternal?: boolean
   isCenterExternalExtra?: boolean
   isDriver?: boolean
+  isJamonero?: boolean
   groupId?: string
   startDate: string
   startTime: string

@@ -29,6 +29,7 @@ interface FirestorePersonnelDoc {
     camioGran: boolean
     camioPetit: boolean
   }
+  isJamonero?: boolean
   maxHoursWeek?: number
   createdAt?: number
   [key: string]: unknown
@@ -55,6 +56,7 @@ export interface PersonnelItem {
     camioGran: boolean
     camioPetit: boolean
   }
+  isJamonero?: boolean
   department: string
   departmentLower?: string
   email?: string | null
@@ -188,6 +190,7 @@ export async function GET(request: NextRequest) {
         name: data.name || doc.id,
         role: String(data.role || 'treballador'),
         driver: data.driver || { isDriver: false, camioGran: false, camioPetit: false },
+        isJamonero: data.isJamonero === true,
         department: data.department || '',
         departmentLower: data.departmentLower || normLower(data.department),
         email: data.email ?? null,

@@ -16,7 +16,8 @@ import {
   UserPlus,
   Clock,
   CheckCircle2,
-  XCircle
+  XCircle,
+  UtensilsCrossed
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -200,6 +201,13 @@ export default function PersonnelList({ personnel, mutate, onEdit }: Props) {
                     )}
                   </div>
                   Conductor
+                </Badge>
+              )}
+
+              {p.isJamonero && (
+                <Badge className="gap-1 border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50">
+                  <UtensilsCrossed size={12} />
+                  Tallador de pernil
                 </Badge>
               )}
             </div>

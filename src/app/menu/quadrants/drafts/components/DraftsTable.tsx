@@ -353,6 +353,11 @@ export default function DraftsTable({
   const renderMergedRowDesktop = (item: Extract<DisplayItem, { type: 'merged' }>) => {
     const { roles, primary } = getMergedPresentation(item)
     const isExpanded = expandedMerged.has(item.key)
+    const jamoneroBadge = primary.isJamonero ? (
+      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+        Jamonero
+      </span>
+    ) : null
 
     return (
       <div
@@ -363,8 +368,9 @@ export default function DraftsTable({
             <span key={role}>{roleIconMap[role]}</span>
           ))}
         </div>
-        <div className="hidden sm:block truncate text-[14px] font-medium text-slate-800">
-          {primary.name || <span className="italic text-gray-400">Sense nom</span>}
+        <div className="hidden sm:flex items-center gap-2 truncate text-[14px] font-medium text-slate-800">
+          <span className="truncate">{primary.name || <span className="italic text-gray-400">Sense nom</span>}</span>
+          {jamoneroBadge}
         </div>
         <div className="hidden sm:block w-[5.5rem] tabular-nums text-[14px] text-slate-700">
           {primary.startDate ? primary.startDate.split('-').slice(1).reverse().join('/') : '--/--'}
@@ -407,6 +413,11 @@ export default function DraftsTable({
   const renderMergedRowMobile = (item: Extract<DisplayItem, { type: 'merged' }>) => {
     const { roles, primary } = getMergedPresentation(item)
     const isExpanded = expandedMerged.has(item.key)
+    const jamoneroBadge = primary.isJamonero ? (
+      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+        Jamonero
+      </span>
+    ) : null
 
     return (
       <div className="p-3 text-sm border-b border-slate-200">
@@ -417,7 +428,10 @@ export default function DraftsTable({
             ))}
           </div>
           <div className="flex-1">
-            <div className="font-semibold text-gray-800">{primary.name || '-'}</div>
+            <div className="flex items-center gap-2">
+              <div className="font-semibold text-gray-800">{primary.name || '-'}</div>
+              {jamoneroBadge}
+            </div>
             <div className="text-xs text-gray-600 mt-0.5">
               {primary.startDate ? primary.startDate.split('-').slice(1).reverse().join('/') : '--/--'}
               {' - '}
@@ -602,6 +616,42 @@ export default function DraftsTable({
     ])
   }
 
+  const addJamoneroRow = (groupId?: string) => {
+    if (groupId) {
+      setCollapsedGroups((prev) => {
+        const next = new Set(prev)
+        next.delete(groupId)
+        return next
+      })
+    }
+    const group = hasStructuredGroups
+      ? groupDefs.find((item) => item.id === groupId) || defaultGroup
+      : undefined
+    const groupStart = group?.startTime || defaultGroupStartTime || ''
+    const groupEnd = group?.endTime || defaultGroupEndTime || ''
+    const groupArrival = group?.arrivalTime || defaultGroupArrivalTime || ''
+    const groupMeeting = group?.meetingPoint || defaultGroupMeetingPoint
+
+    setRows([
+      ...rows,
+      {
+        id: '',
+        name: '',
+        isJamonero: true,
+        role: 'treballador',
+        startDate: draft.startDate,
+        endDate: draft.endDate,
+        startTime: groupStart,
+        endTime: groupEnd,
+        meetingPoint: groupMeeting,
+        arrivalTime: groupArrival,
+        plate: '',
+        vehicleType: '',
+        groupId,
+      },
+    ])
+  }
+
   const addGroup = () => {
     const source = groupDefs[groupDefs.length - 1] || defaultGroup
     const nextId = `group-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
@@ -709,6 +759,7 @@ export default function DraftsTable({
       canEditArrivalTime={canEditArrivalTime}
       groupHasDriverController={groupHasDriverController}
       addRowToGroup={addRowToGroup}
+      addJamoneroRow={addJamoneroRow}
       addEttRow={addEttRow}
       addCenterExternalExtra={addCenterExternalExtra}
       isGroupCollapsed={isGroupCollapsed}
@@ -741,6 +792,7 @@ export default function DraftsTable({
       canEditArrivalTime={canEditArrivalTime}
       groupHasDriverController={groupHasDriverController}
       addRowToGroup={addRowToGroup}
+      addJamoneroRow={addJamoneroRow}
       addEttRow={addEttRow}
       addCenterExternalExtra={addCenterExternalExtra}
       isGroupCollapsed={isGroupCollapsed}

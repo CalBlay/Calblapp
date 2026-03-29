@@ -135,7 +135,7 @@ export function useLogisticsPhasesState({
   availableConductors,
 }: UseLogisticsPhasesStateOptions): UseLogisticsPhasesStateResult {
   const requestedPhaseKey = normalizePhaseKey(event.phaseKey || event.phaseType || event.phaseLabel)
-  const baseMeetingPoint = meetingPoint || location || event.eventLocation || ''
+  const baseMeetingPoint = meetingPoint || 'CENTRAL'
   const initialPhaseParams: PhaseFormParams = {
     startDate: extractDate(event.start),
     endDate: extractDate(event.start),

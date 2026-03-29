@@ -55,6 +55,7 @@ interface RowInput {
   name: string
   isExternal?: boolean
   isDriver?: boolean
+  isJamonero?: boolean
   groupId?: string
   meetingPoint?: string
   startDate?: string
@@ -108,6 +109,7 @@ type Line = {
   id: string
   name: string
   meetingPoint: string
+  isJamonero?: boolean
   startDate: string
   startTime: string
   endDate: string
@@ -121,6 +123,7 @@ const toLine = (p: RowInput): Line => ({
   id: p?.id || '',
   name: p?.name || '',
   meetingPoint: p?.meetingPoint || '',
+  isJamonero: p?.isJamonero === true,
   startDate: p?.startDate || '',
   startTime: p?.startTime || '',
   endDate: p?.endDate || '',

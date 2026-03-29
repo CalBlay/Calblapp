@@ -29,6 +29,7 @@ type DraftsTableMobileProps = {
   canEditArrivalTime: (row: Row | null) => boolean
   groupHasDriverController: (groupId?: string) => boolean
   addRowToGroup: (role: Role, groupId?: string) => void
+  addJamoneroRow: (groupId?: string) => void
   addEttRow: (groupId?: string) => void
   addCenterExternalExtra: (groupId?: string) => void
   isGroupCollapsed: (groupId?: string | null) => boolean
@@ -61,6 +62,7 @@ export default function DraftsTableMobile({
   canEditArrivalTime,
   groupHasDriverController,
   addRowToGroup,
+  addJamoneroRow,
   addEttRow,
   addCenterExternalExtra,
   isGroupCollapsed,
@@ -125,6 +127,14 @@ export default function DraftsTableMobile({
                       >
                         + Treballador
                       </button>
+                      {isServeisDept && (
+                        <button
+                          onClick={() => addJamoneroRow(groupId)}
+                          className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200"
+                        >
+                          + Jamonero
+                        </button>
+                      )}
                       <button
                         onClick={() => addEttRow(groupId)}
                         className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700 hover:bg-purple-200"
@@ -184,6 +194,14 @@ export default function DraftsTableMobile({
             >
               + Treballador
             </button>
+            {isServeisDept && (
+              <button
+                onClick={() => addJamoneroRow(defaultGroupId)}
+                className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200"
+              >
+                + Jamonero
+              </button>
+            )}
             <button
               onClick={() => addEttRow(defaultGroupId)}
               className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700 hover:bg-purple-200"

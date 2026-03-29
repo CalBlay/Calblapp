@@ -59,6 +59,11 @@ export default function DraftRow({
     ) : (
       roleIcon[row.role]
     )
+  const jamoneroBadge = row.isJamonero ? (
+    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+      Jamonero
+    </span>
+  ) : null
 
   return (
     <div
@@ -82,7 +87,10 @@ export default function DraftRow({
       <div className="flex items-start gap-2 sm:hidden">
         <div>{leadingIcon}</div>
         <div className="flex-1">
-          <div className="font-medium text-slate-800">{displayName}</div>
+          <div className="flex items-center gap-2">
+            <div className="font-medium text-slate-800">{displayName}</div>
+            {jamoneroBadge}
+          </div>
 
           <div className="text-[11px] text-slate-600 mt-0.5">
             {formatDate(row.startDate)} - {formatTime(row.startTime)} - {formatTime(row.endTime)} - {formatTime(row.arrivalTime)}
@@ -104,8 +112,9 @@ export default function DraftRow({
       {/* DESKTOP LAYOUT */}
       <div className="hidden sm:flex items-center justify-center">{leadingIcon}</div>
 
-      <div className="hidden sm:block truncate text-[14px] font-medium text-slate-800">
-        {displayName || <span className="italic text-gray-400">Sense nom</span>}
+      <div className="hidden sm:flex items-center gap-2 truncate text-[14px] font-medium text-slate-800">
+        <span className="truncate">{displayName || <span className="italic text-gray-400">Sense nom</span>}</span>
+        {jamoneroBadge}
       </div>
 
       <div className="hidden sm:block w-[5.5rem] tabular-nums text-[14px] text-slate-700">{formatDate(row.startDate)}</div>

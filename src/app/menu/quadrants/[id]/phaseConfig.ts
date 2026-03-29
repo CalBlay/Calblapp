@@ -65,6 +65,8 @@ export type ServeiGroup = {
   startTime: string
   endTime: string
   workers: number
+  jamoneros: number
+  wantsResponsible: boolean
   responsibleId: string
   phaseKey: ServicePhaseKey
   needsDriver: boolean

@@ -43,6 +43,7 @@ export type UseServicePhasesStateResult = {
     workers: number
     drivers: number
     responsables: number
+    jamoneros: number
   }
   buildServiceGroupsPayload: (
     manualResponsibleId: string | null,
@@ -55,6 +56,7 @@ export type UseServicePhasesStateResult = {
     startTime: string
     endTime: string
     workers: number
+    jamoneros: number
     drivers: number
     needsDriver: boolean
     driverId: string | null
@@ -121,6 +123,8 @@ export function useServicePhasesState({
     startTime: seed.startTime || startTime || '',
     endTime: seed.endTime || endTime || '',
     workers: seed.workers ?? 0,
+    jamoneros: seed.jamoneros ?? 0,
+    wantsResponsible: seed.wantsResponsible ?? phaseKey === 'event',
     responsibleId: seed.responsibleId || '',
     needsDriver: seed.needsDriver ?? false,
     driverId: seed.driverId || '',
@@ -211,14 +215,16 @@ export function useServicePhasesState({
   )
 
   const serviceTotals = useMemo(() => {
-    const activeEventGroups = activeServiceGroups.filter((group) => group.phaseKey === 'event')
+    const activeResponsiblePhases = new Set(
+      activeServiceGroups
+        .filter((group) => group.wantsResponsible)
+        .map((group) => `${group.phaseKey}:${group.id}`)
+    )
     return {
       workers: activeServiceGroups.reduce((sum, group) => sum + group.workers, 0),
+      jamoneros: activeServiceGroups.reduce((sum, group) => sum + Number(group.jamoneros || 0), 0),
       drivers: activeServiceGroups.filter((group) => group.needsDriver).length,
-      responsables:
-        activeEventGroups.length > 0 && (servicePhaseSettings.event?.needsResponsible ?? true)
-          ? 1
-          : 0,
+      responsables: activeResponsiblePhases.size,
     }
   }, [activeServiceGroups, servicePhaseSettings])
 
@@ -229,13 +235,8 @@ export function useServicePhasesState({
 
   const buildServiceGroupsPayload = useCallback(
     (manualResponsibleId: string | null, manualResponsibleName?: string | null) => {
-      let responsibleAssigned = false
       return selectedServiceGroups.map((group) => {
-        const isEventPhase = group.phaseKey === 'event'
-        const phaseNeedsResponsible =
-          servicePhaseSettings[group.phaseKey]?.needsResponsible ?? isEventPhase
-        const wantsResponsible = isEventPhase && phaseNeedsResponsible && !responsibleAssigned
-        if (wantsResponsible) responsibleAssigned = true
+        const wantsResponsible = group.wantsResponsible === true
         return {
           id: group.id,
           serviceDate: group.serviceDate,
@@ -244,16 +245,21 @@ export function useServicePhasesState({
           startTime: group.startTime,
           endTime: group.endTime,
           workers: group.workers,
+          jamoneros: Math.max(0, Number(group.jamoneros || 0)),
           drivers: group.needsDriver ? 1 : 0,
           needsDriver: group.needsDriver,
           driverId: group.driverId || null,
-          responsibleId: wantsResponsible ? manualResponsibleId : null,
-          responsibleName: wantsResponsible ? manualResponsibleName || null : null,
+          responsibleId: wantsResponsible ? group.responsibleId || manualResponsibleId : null,
+          responsibleName: wantsResponsible && group.responsibleId
+            ? null
+            : wantsResponsible
+            ? manualResponsibleName || null
+            : null,
           wantsResponsible,
         }
       })
     },
-    [selectedServiceGroups, servicePhaseSettings]
+    [selectedServiceGroups]
   )
 
   return {

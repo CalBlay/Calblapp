@@ -14,6 +14,7 @@ export interface Personnel {
     camioGran: boolean 
     camioPetit: boolean
   }
+  isJamonero?: boolean
   maxHoursWeek?: number
 
   department: string
@@ -63,6 +64,7 @@ export function usePersonnel(department?: string) {
             unavailableIndefinite: p.unavailableIndefinite ?? false,
             unavailableNotifiedFor: p.unavailableNotifiedFor ?? null,
             unavailableNotifiedAt: p.unavailableNotifiedAt ?? null,
+            isJamonero: p.isJamonero === true,
           }))
         : []
 

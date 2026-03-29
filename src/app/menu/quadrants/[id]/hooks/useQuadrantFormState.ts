@@ -50,6 +50,7 @@ export type ServiceGroupPayload = {
   startTime: string
   endTime: string
   workers: number
+  jamoneros: number
   drivers: number
   needsDriver: boolean
   driverId: string | null
@@ -135,6 +136,7 @@ export interface QuadrantFormState {
     workers: number
     drivers: number
     responsables: number
+    jamoneros: number
   }
   buildServiceGroupsPayload: (
     manualResponsibleId: string | null,

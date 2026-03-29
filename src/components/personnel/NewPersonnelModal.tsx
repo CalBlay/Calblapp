@@ -22,6 +22,7 @@ type LinkableUser = {
   phone: string
   available: boolean
   isDriver: boolean
+  isJamonero?: boolean
   workerRank: string
 }
 
@@ -99,6 +100,7 @@ export default function NewPersonnelModal({
     role: 'equip',
     department: defaultDepartment,
     driver: { isDriver: false, camioGran: false, camioPetit: false },
+    isJamonero: false,
     available: true,
     unavailableFrom: '',
     unavailableUntil: '',
@@ -113,6 +115,8 @@ export default function NewPersonnelModal({
     isServicesDepartment === 'serveis' ||
     isServicesDepartment === 'servei' ||
     isServicesDepartment === 'manteniment'
+  const isServiceOnlyDepartment =
+    isServicesDepartment === 'serveis' || isServicesDepartment === 'servei'
 
   const [nameError, setNameError] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -131,6 +135,7 @@ export default function NewPersonnelModal({
         role: 'equip',
         department: defaultDepartment,
         driver: { isDriver: false, camioGran: false, camioPetit: false },
+        isJamonero: false,
         available: true,
         unavailableFrom: '',
         unavailableUntil: '',
@@ -234,6 +239,7 @@ export default function NewPersonnelModal({
         camioGran: false,
         camioPetit: false,
       },
+      isJamonero: selectedUser.isJamonero === true,
       available: selectedUser.available ?? true,
       unavailableFrom: '',
       unavailableUntil: '',
@@ -286,6 +292,7 @@ export default function NewPersonnelModal({
       name: form.name.trim(),
       role: normalizeRoleLocal(form.role),
       department: form.department.trim(),
+      isJamonero: form.isJamonero === true,
       email: form.email.trim(),
       phone: form.phone.trim(),
       ...availabilityPayload,
@@ -529,6 +536,20 @@ export default function NewPersonnelModal({
               {availabilityError && (
                 <p className="text-xs text-red-600">{availabilityError}</p>
               )}
+            </div>
+          )}
+
+          {isServiceOnlyDepartment && (
+            <div>
+              <Label>És tallador de pernil?</Label>
+              <select
+                value={form.isJamonero ? 'si' : 'no'}
+                onChange={(e) => handleChange('isJamonero', e.target.value === 'si')}
+                className="border rounded px-2 py-1 w-full"
+              >
+                <option value="si">Sí</option>
+                <option value="no">No</option>
+              </select>
             </div>
           )}
 

@@ -16,6 +16,7 @@ export interface Personnel {
   role: string
   department?: string
   isDriver?: boolean
+  isJamonero?: boolean
   camioPetit?: boolean
   camioGran?: boolean
   available?: boolean
@@ -143,6 +144,7 @@ export async function autoAssign(payload: {
   numDrivers: number
   manualResponsibleId?: string | null
   manualDriverId?: string | null
+  jamoneroCount?: number
   skipResponsible?: boolean
   vehicles?: VehicleRequest[]
 }) {
@@ -154,6 +156,7 @@ export async function autoAssign(payload: {
     totalWorkers, numDrivers,
     manualResponsibleId,
     manualDriverId,
+    jamoneroCount = 0,
     skipResponsible = false,
     vehicles = []
   } = payload
@@ -207,6 +210,7 @@ export async function autoAssign(payload: {
     role: person.role,
     department: person.department,
     isDriver: person.isDriver,
+    isJamonero: person.isJamonero,
     camioPetit: person.camioPetit,
     camioGran: person.camioGran,
     available: person.available,
@@ -464,13 +468,14 @@ export async function autoAssign(payload: {
     chosenResp?.isDriver &&
     Number(numDrivers || 0) > 0
   ) {
+    const chosenRespName = chosenResp.name
     preferredDrivers.push({
-      name: chosenResp.name,
+      name: chosenRespName,
       meetingPoint,
       plate: '',
       vehicleType: '',
     })
-    reservedNames.add(norm(chosenResp.name))
+    reservedNames.add(norm(chosenRespName))
 
     const respCrew =
       dept === 'serveis' && Array.isArray(premises.driverCrews)
@@ -479,7 +484,7 @@ export async function autoAssign(payload: {
               id: crew.driverId,
               name: crew.driverName,
             })
-            return !!candidate && norm(candidate.name) === norm(chosenResp.name)
+            return !!candidate && norm(candidate.name) === norm(chosenRespName)
           })
         : null
 
@@ -553,7 +558,36 @@ export async function autoAssign(payload: {
         })
       : []
 
-  const drivers = [...preferredDrivers, ...driversFallback]
+  const drivers = [...preferredDrivers, ...driversFallback].map((driver) => {
+    const matched = all.find((person) => norm(person.name) === norm(driver.name))
+    return {
+      ...driver,
+      isJamonero: matched?.isJamonero === true,
+    }
+  })
+
+  if (
+    dept === 'serveis' &&
+    !skipResponsible &&
+    !manualResponsibleId
+  ) {
+    const primaryDriver = drivers.find((driver) => driver.name && driver.name !== 'Extra')
+    const matchedResponsibleDriver = primaryDriver
+      ? all.find((person) => {
+          if (norm(person.name) !== norm(primaryDriver.name)) return false
+          return RESPONSABLE_ROLES.has(normRole(person.role))
+        }) || null
+      : null
+
+    if (matchedResponsibleDriver) {
+      chosenResp = matchedResponsibleDriver
+    }
+  }
+
+  const isJamoneroPerson = (name?: string | null) => {
+    const matched = all.find((person) => norm(person.name) === norm(name))
+    return matched?.isJamonero === true
+  }
 
   // 6.2) Càlcul de treballadors reals
   const driversForCalc = drivers.filter((d) => d.name !== 'Extra').map((d) => ({
@@ -575,20 +609,65 @@ export async function autoAssign(payload: {
 
   // 6.3) Selecció de treballadors
   const selectedPreferredStaff = preferredStaff.slice(0, finalNeededWorkers)
-  const staff: Array<{ name: string; meetingPoint: string }> = [...selectedPreferredStaff]
+  const staff: Array<{ name: string; meetingPoint: string; isJamonero?: boolean }> = [
+    ...selectedPreferredStaff.map((member) => ({
+      ...member,
+      isJamonero: isJamoneroPerson(member.name),
+    })),
+  ]
   const taken = new Set<string>(exclude)
+  if (chosenResp?.name) taken.add(norm(chosenResp.name))
   driversForCalc.forEach((d) => taken.add(norm(d.name)))
   selectedPreferredStaff.forEach((member) => taken.add(norm(member.name)))
+
+  const assignedJamoneroDrivers = driversForCalc.filter((driver) => {
+    return isJamoneroPerson(driver.name) && norm(driver.name) !== norm(chosenResp?.name)
+  }).length
+  const assignedJamoneroStaff = staff.filter((member) => member.isJamonero === true).length
+  const remainingJamonerosNeeded = Math.max(
+    Number(jamoneroCount || 0) - assignedJamoneroDrivers - assignedJamoneroStaff,
+    0
+  )
+  if (remainingJamonerosNeeded > 0) {
+    const jamoneroCandidates = staffPool.filter(
+      (candidate) => candidate.p.isJamonero === true && !taken.has(norm(candidate.p.name))
+    )
+
+    const selectedJamoneros = jamoneroCandidates.slice(0, remainingJamonerosNeeded)
+    selectedJamoneros.forEach((candidate) => {
+      if (staff.length < finalNeededWorkers) {
+        staff.push({ name: candidate.p.name, meetingPoint, isJamonero: true })
+      } else {
+        let replaceIdx = staff.findIndex((member) => member.isJamonero !== true)
+        if (replaceIdx < 0) {
+          replaceIdx = staff.findIndex(
+            (member) => !selectedPreferredStaff.some((pref) => norm(pref.name) === norm(member.name))
+          )
+        }
+        if (replaceIdx >= 0) {
+          staff[replaceIdx] = { name: candidate.p.name, meetingPoint, isJamonero: true }
+        }
+      }
+      taken.add(norm(candidate.p.name))
+    })
+
+    if (selectedJamoneros.length < remainingJamonerosNeeded) {
+      violations.push('jamonero_shortage')
+      notes.push(
+        `No hi ha prou talladors de pernil disponibles (${selectedJamoneros.length}/${remainingJamonerosNeeded}).`
+      )
+    }
+  }
 
   for (const cand of staffPool) {
     if (staff.length >= finalNeededWorkers) break
     const nm = norm(cand.p.name)
     if (taken.has(nm)) continue
-    staff.push({ name: cand.p.name, meetingPoint })
+    staff.push({ name: cand.p.name, meetingPoint, isJamonero: cand.p.isJamonero === true })
     taken.add(nm)
   }
   while (staff.length < finalNeededWorkers) {
-    staff.push({ name: 'Extra', meetingPoint })
+    staff.push({ name: 'Extra', meetingPoint, isJamonero: false })
   }
 
   const needsReview = violations.length > 0

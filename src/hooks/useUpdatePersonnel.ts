@@ -11,6 +11,7 @@ export interface UpdatePerson {
     camioGran?: boolean
     camioPetit?: boolean
   }
+  isJamonero?: boolean
   available?: boolean
   unavailableFrom?: string | null
   unavailableUntil?: string | null

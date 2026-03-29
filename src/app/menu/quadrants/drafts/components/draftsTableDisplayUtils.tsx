@@ -55,10 +55,14 @@ export function buildDisplayItems(rows: Row[], groupId?: string): DisplayItem[] 
 export function getMergedPresentation(item: Extract<DisplayItem, { type: 'merged' }>) {
   const roleRows = item.rows.map((r) => r.row)
   const roles = Array.from(new Set(roleRows.map((r) => r.role)))
-  const primary =
+  const primaryBase =
     roleRows.find((r) => r.role === 'conductor') ||
     roleRows.find((r) => r.role === 'responsable') ||
     roleRows[0]
+  const primary = {
+    ...primaryBase,
+    isJamonero: roleRows.some((r) => r.isJamonero === true),
+  }
 
   return { roleRows, roles, primary }
 }

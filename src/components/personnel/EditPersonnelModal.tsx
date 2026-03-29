@@ -65,6 +65,7 @@ export default function EditPersonnelModal({
       camioGran: false,
       camioPetit: false,
     },
+    isJamonero: person.isJamonero === true,
     available: person.available ?? true,
     unavailableFrom: person.unavailableFrom ?? '',
     unavailableUntil: person.unavailableUntil ?? '',
@@ -75,6 +76,8 @@ export default function EditPersonnelModal({
     normalizedDept === 'serveis' ||
     normalizedDept === 'servei' ||
     normalizedDept === 'manteniment'
+  const isServiceOnlyDepartment =
+    normalizedDept === 'serveis' || normalizedDept === 'servei'
 
   // Estat validació nom
   const [nameError, setNameError] = useState(false)
@@ -94,6 +97,7 @@ export default function EditPersonnelModal({
         camioGran: false,
         camioPetit: false,
       },
+      isJamonero: person.isJamonero === true,
       available: person.available ?? true,
       unavailableFrom: person.unavailableFrom ?? '',
       unavailableUntil: person.unavailableUntil ?? '',
@@ -182,6 +186,7 @@ export default function EditPersonnelModal({
       name: form.name?.trim(),
       role: normalizeRoleLocal(form.role),
       department: form.department,
+      isJamonero: form.isJamonero === true,
       available: form.available ?? true,
       isDriver: form.driver?.isDriver ?? false,
       driver: {
@@ -414,6 +419,20 @@ camioPetit: e.target.checked,
                   Camió petit
                 </label>
               </div>
+            </div>
+          )}
+
+          {isServiceOnlyDepartment && (
+            <div>
+              <Label>És tallador de pernil?</Label>
+              <select
+                value={form.isJamonero ? 'si' : 'no'}
+                onChange={(e) => handleChange('isJamonero', e.target.value === 'si')}
+                className="border rounded px-2 py-1 w-full"
+              >
+                <option value="si">Sí</option>
+                <option value="no">No</option>
+              </select>
             </div>
           )}
 

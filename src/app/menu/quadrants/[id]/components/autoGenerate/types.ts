@@ -11,6 +11,7 @@ export type ServeiGroup = {
   startTime: string
   endTime: string
   workers: number
+  jamoneros: number
   drivers: number
   needsDriver: boolean
   driverId: string | null
