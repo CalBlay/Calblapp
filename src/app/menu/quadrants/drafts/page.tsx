@@ -68,8 +68,7 @@ export interface Draft {
     meetingPoint?: string
   }>
 
-  // Brigades
-  brigades?: Array<{
+  legacyBrigades?: Array<{
     id?: string
     name?: string
     workers?: number

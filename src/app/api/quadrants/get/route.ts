@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
 
 const normalize = (s?: string | null): string =>
   (s || '')
@@ -15,6 +16,25 @@ const normalizeEventId = (value?: string | null): string =>
     .trim()
     .split('__')[0]
     .trim()
+
+const expandLegacyExternalWorkers = (entries: any[] = []) =>
+  entries.flatMap((entry) => {
+    const count = Math.max(1, Number(entry?.workers || 0))
+    const baseName = String(entry?.name || 'ETT').trim() || 'ETT'
+    return Array.from({ length: count }, () => ({
+      id: '',
+      name: baseName,
+      meetingPoint: entry?.meetingPoint || '',
+      startDate: entry?.startDate || '',
+      startTime: entry?.startTime || '',
+      endDate: entry?.endDate || '',
+      endTime: entry?.endTime || '',
+      arrivalTime: entry?.arrivalTime || '',
+      plate: '',
+      vehicleType: '',
+      isExternal: true,
+    }))
+  })
 
 async function resolveReadCollectionForDepartment(department: string) {
   const d = normalize(department)
@@ -99,11 +119,18 @@ export async function GET(req: Request) {
     const results = Array.from(combinedDocs.values()).map((doc) => {
       const d = doc.data() as any
 
+      const legacyExternalWorkers = expandLegacyExternalWorkers(
+        readLegacyExternalWorkersFromDoc(d)
+      )
+      const treballadors = [
+        ...(Array.isArray(d.treballadors) ? d.treballadors : []),
+        ...legacyExternalWorkers,
+      ]
+
       const allRows = [
         d.responsable ? d.responsable : null,
         ...(Array.isArray(d.conductors) ? d.conductors : []),
-        ...(Array.isArray(d.treballadors) ? d.treballadors : []),
-        ...(Array.isArray(d.brigades) ? d.brigades : []),
+        ...treballadors,
       ].filter(Boolean)
 
       const startTimes = allRows
@@ -141,8 +168,7 @@ export async function GET(req: Request) {
         endTime: derivedEndTime || d.endTime || '',
         responsables: Array.isArray(d.responsables) ? d.responsables : [],
         conductors: Array.isArray(d.conductors) ? d.conductors : [],
-        treballadors: Array.isArray(d.treballadors) ? d.treballadors : [],
-        brigades: Array.isArray(d.brigades) ? d.brigades : [],
+        treballadors,
         responsableName:
           Array.isArray(d.responsables) && d.responsables.length > 0
             ? d.responsables.map((r: any) => r.name).join(', ')

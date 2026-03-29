@@ -7,8 +7,7 @@ export default function KpiAssignmentsPerEvent({ summary }: Props) {
   const totalAssign =
     (summary?.roles.responsable || 0) +
     (summary?.roles.conductor || 0) +
-    (summary?.roles.treballador || 0) +
-    (summary?.roles.brigada || 0)
+    (summary?.roles.treballador || 0)
 
   const value =
     summary && summary.events > 0 ? (totalAssign / summary.events).toFixed(2) : '—'

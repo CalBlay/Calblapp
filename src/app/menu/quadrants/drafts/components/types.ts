@@ -1,11 +1,13 @@
 // file: src/app/menu/quadrants/drafts/components/types.ts
 
-export type Role = 'responsable' | 'conductor' | 'treballador' | 'brigada'
+export type Role = 'responsable' | 'conductor' | 'treballador'
 
 export type Row = {
   role: Role
   id: string
   name: string
+  isExternal?: boolean
+  isCenterExternalExtra?: boolean
   isDriver?: boolean
   groupId?: string
   startDate: string
@@ -16,10 +18,8 @@ export type Row = {
   arrivalTime?: string
   vehicleType?: string
   plate?: string
-  workers?: number // només per brigades
 }
 
-// ✅ Input que arriba del backend per construir Drafts
 export type DraftInput = {
   id: string
   code?: string
@@ -57,6 +57,10 @@ export type DraftInput = {
   responsable?: Partial<Row> | null
   conductors?: Array<Partial<Row>>
   treballadors?: Array<Partial<Row>>
-  brigades?: Array<Partial<Row>> // afegit per coherència amb DraftsTable
+  legacyBrigades?: Array<
+    Partial<Row> & {
+      workers?: number
+    }
+  >
   timetables?: Array<{ startTime: string; endTime: string }>
 }

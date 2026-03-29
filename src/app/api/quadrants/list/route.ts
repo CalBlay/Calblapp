@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole as normalizeRoleCore } from '@/lib/roles'
+import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
 
 /* ──────────────────────────────────────────────────────────────────────────
    Tipus: documents a Firestore (acceptem diversos noms de camps històrics)
@@ -19,15 +20,6 @@ interface FirestorePerson {
   plate?: string
   vehicleType?: string
   type?: string
-  [key: string]: unknown
-}
-
-interface FirestoreBrigade {
-  id?: string
-  name?: string
-  workers?: number
-  startTime?: string
-  endTime?: string
   [key: string]: unknown
 }
 
@@ -49,7 +41,7 @@ interface FirestoreDraftDoc {
   responsable?: FirestorePerson
   conductors?: FirestorePerson[]
   treballadors?: FirestorePerson[]
-  brigades?: FirestoreBrigade[]
+  legacyExternalWorkers?: Array<Record<string, unknown>>
   updatedAt?: { toDate?: () => Date } | string
   status?: string
   confirmedAt?: { toDate?: () => Date } | string
@@ -122,13 +114,6 @@ type Draft = {
   responsable?: Person | null
   conductors: Person[]
   treballadors: Person[]
-  brigades: {
-    id: string
-    name: string
-    workers: number
-    startTime: string
-    endTime: string
-  }[]
   groups?: Array<{
     meetingPoint?: string
     startTime?: string
@@ -242,6 +227,24 @@ const mapPerson = (p: FirestorePerson, doc?: FirestoreDraftDoc): Person => ({
   vehicleType: p?.vehicleType ?? p?.type ?? '',
 })
 
+const expandLegacyExternalWorkers = (entries: Array<Record<string, unknown>> = []): Person[] =>
+  entries.flatMap((entry) => {
+    const count = Math.max(1, Number(entry?.workers || 0))
+    const name = String(entry?.name || 'ETT').trim() || 'ETT'
+    return Array.from({ length: count }, () => ({
+      id: '',
+      name,
+      meetingPoint: String(entry?.meetingPoint || ''),
+      startDate: String(entry?.startDate || ''),
+      startTime: String(entry?.startTime || ''),
+      endDate: String(entry?.endDate || ''),
+      endTime: String(entry?.endTime || ''),
+      arrivalTime: String(entry?.arrivalTime || ''),
+      plate: '',
+      vehicleType: '',
+    }))
+  })
+
 /* ──────────────────────────────────────────────────────────────────────────
    Query principal (carrega drafts d’un departament)
 ────────────────────────────────────────────────────────────────────────── */
@@ -314,6 +317,9 @@ async function fetchDeptDrafts(
 
     const location = d.location || d.Ubicacio || ''
 
+    const legacyExternalWorkers = expandLegacyExternalWorkers(
+      readLegacyExternalWorkersFromDoc<Record<string, unknown>>(d)
+    )
     return {
       id: doc.id,
       code: d.code || '',
@@ -333,18 +339,12 @@ async function fetchDeptDrafts(
       conductors: Array.isArray(d.conductors)
         ? d.conductors.map((p) => mapPerson(p, d))
         : [],
-      treballadors: Array.isArray(d.treballadors)
-        ? d.treballadors.map((p) => mapPerson(p, d))
-        : [],
-      brigades: Array.isArray(d.brigades)
-        ? d.brigades.map((b) => ({
-            id: b.id || '',
-            name: b.name || '',
-            workers: Number(b.workers || 0),
-            startTime: b.startTime || '',
-            endTime: b.endTime || '',
-          }))
-        : [],
+      treballadors: [
+        ...(Array.isArray(d.treballadors)
+          ? d.treballadors.map((p) => mapPerson(p, d))
+          : []),
+        ...legacyExternalWorkers,
+      ],
       groups: Array.isArray(d.groups)
         ? d.groups.map((g) => ({
             meetingPoint: g.meetingPoint || '',

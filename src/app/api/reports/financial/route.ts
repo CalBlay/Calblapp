@@ -3,10 +3,11 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
 
 const COST_PER_HOUR = 18 // €/h — es pot fer configurable si cal
 
-type RoleKey = 'responsable' | 'conductor' | 'treballador' | 'brigada'
+type RoleKey = 'responsable' | 'conductor' | 'treballador'
 
 const isIndexError = (err: any) =>
   err?.code === 9 || String(err?.message || '').toLowerCase().includes('requires an index')
@@ -29,7 +30,7 @@ function extractLines(d: any) {
   if (Array.isArray(d.responsables)) d.responsables.forEach((r: any) => entries.push({ role: 'responsable', row: r }))
   if (Array.isArray(d.conductors)) d.conductors.forEach((r: any) => entries.push({ role: 'conductor', row: r }))
   if (Array.isArray(d.treballadors)) d.treballadors.forEach((r: any) => entries.push({ role: 'treballador', row: r }))
-  if (Array.isArray(d.brigades)) d.brigades.forEach((r: any) => entries.push({ role: 'brigada', row: r }))
+  readLegacyExternalWorkersFromDoc(d).forEach((r: any) => entries.push({ role: 'treballador', row: r }))
   return entries
 }
 

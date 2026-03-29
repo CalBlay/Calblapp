@@ -96,7 +96,7 @@ export async function assignVehiclesAndDrivers({
     }
 
     // --- Cas 1: ni tipus ni matrícula ---
-    if (!chosenVehicle && !requested.vehicleType) {
+    if (!chosenVehicle && !requested.vehicleType && !requested.conductorId) {
       const pick = driverPool.shift()
       drivers.push({
         name: pick ? pick.p.name : 'Extra',
@@ -110,11 +110,27 @@ export async function assignVehiclesAndDrivers({
     // --- Assignació de conductor ---
     let assigned: string | null = null
 
-    if (chosenVehicle?.conductorId) {
-      const fixed = driverPool.find(d => d.p.id === chosenVehicle!.conductorId)
+    if (requested.conductorId) {
+      const manualIdx = driverPool.findIndex((d) => d.p.id === requested.conductorId)
+      const manual = manualIdx >= 0 ? driverPool[manualIdx] : null
+      if (manual) {
+        const elig = isEligibleByName(manual.p.name, startISO, endISO, baseCtx)
+        if (elig.eligible) {
+          assigned = manual.p.name
+          driverPool.splice(manualIdx, 1)
+        }
+      }
+    }
+
+    if (!assigned && chosenVehicle?.conductorId) {
+      const fixedIdx = driverPool.findIndex(d => d.p.id === chosenVehicle!.conductorId)
+      const fixed = fixedIdx >= 0 ? driverPool[fixedIdx] : null
       if (fixed) {
         const elig = isEligibleByName(fixed.p.name, startISO, endISO, baseCtx)
-        if (elig.eligible) assigned = fixed.p.name
+        if (elig.eligible) {
+          assigned = fixed.p.name
+          driverPool.splice(fixedIdx, 1)
+        }
       }
     }
 

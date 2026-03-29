@@ -22,6 +22,7 @@ import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import { useQuadrantFormState } from '../hooks/useQuadrantFormState'
 import LogisticsPhasePanel from './LogisticsPhasePanel'
 import ServicePhasePanel from './ServicePhasePanel'
+import { TRANSPORT_TYPE_LABELS, normalizeTransportType } from '@/lib/transportTypes'
 
 const extractDate = (iso = '') => iso.split('T')[0] || ''
 
@@ -58,6 +59,14 @@ const collectTimetable = (entry: { startTime?: string; endTime?: string }) => {
 
 const makeGroupId = () => `group-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
+const CUINA_VEHICLE_TYPE_OPTIONS = [
+  'camioPPlataforma',
+  'furgonetaPetita',
+  'furgonetaMitjana',
+  'furgonetaGran',
+  'camioPPlataformaFred',
+] as const
+
 type QuadrantModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -75,11 +84,24 @@ type CuinaGroup = {
   needsDriver: boolean
   wantsResponsible: boolean
   responsibleId: string
+  driverMode: string
+  vehicleType: string
 }
 
 type TimetableEntry = {
   startTime?: string
   endTime?: string
+}
+
+type CuinaEttState = {
+  open: boolean
+  data: {
+    serviceDate: string
+    meetingPoint: string
+    startTime: string
+    endTime: string
+    workers: string
+  }
 }
 
 export default function QuadrantModal({ open, onOpenChange, event }: QuadrantModalProps) {
@@ -176,10 +198,22 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
       needsDriver,
       wantsResponsible: seed.wantsResponsible ?? true,
       responsibleId: seed.responsibleId ?? '',
+      driverMode: seed.driverMode ?? '__auto__',
+      vehicleType: seed.vehicleType ?? '',
     }
   }
 
   const [cuinaGroups, setCuinaGroups] = useState<CuinaGroup[]>(() => [createCuinaGroup()])
+  const [cuinaEtt, setCuinaEtt] = useState<CuinaEttState>(() => ({
+    open: false,
+    data: {
+      serviceDate: extractDate(event.start),
+      meetingPoint: event.location || event.eventLocation || '',
+      startTime: event.startTime || '',
+      endTime: event.endTime || '',
+      workers: '',
+    },
+  }))
   const cuinaTotalsRef = useRef({ workers: Number(totalWorkers) || 0, drivers: Number(numDrivers) || 0 })
 
   const cuinaTotals = useMemo(
@@ -195,6 +229,34 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     if (!manualResp || manualResp === '__auto__') return false
     return availableConductors.some((conductor) => conductor.id === manualResp)
   }, [availableConductors, manualResp])
+
+  const cuinaVehiclesPayload = useMemo(
+    () =>
+      cuinaGroups
+        .filter((group) => Number(group.drivers || 0) > 0)
+        .map((group) => {
+          let conductorId: string | null = null
+          if (group.driverMode === '__responsable__') {
+            conductorId =
+              group.responsibleId ||
+              (manualResp && manualResp !== '__auto__' ? manualResp : null)
+          } else if (group.driverMode && group.driverMode !== '__auto__') {
+            conductorId = group.driverMode
+          }
+
+          return {
+            id: '',
+            plate: '',
+            vehicleType: group.vehicleType || '',
+            conductorId,
+            arrivalTime: group.arrivalTime || '',
+          }
+        })
+        .filter(
+          (vehicle) => Boolean(vehicle.id || vehicle.vehicleType || vehicle.conductorId)
+        ),
+    [cuinaGroups, manualResp]
+  )
 
   useEffect(() => {
     if (!isCuina) return
@@ -222,6 +284,20 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     arrivalTime,
     endTime,
   ])
+
+  useEffect(() => {
+    if (!isCuina) return
+    setCuinaEtt({
+      open: false,
+      data: {
+        serviceDate: extractDate(event.start),
+        meetingPoint: event.location || event.eventLocation || '',
+        startTime: event.startTime || '',
+        endTime: event.endTime || '',
+        workers: '',
+      },
+    })
+  }, [isCuina, open, event.id, event.start, event.startTime, event.endTime, event.location, event.eventLocation])
 
   useEffect(() => {
     if (!isCuina) return
@@ -334,6 +410,20 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               ? (group.responsibleId || manualResponsibleIdValue || '')
               : ''
           const selected = availableResponsables.find((r) => r.id === selectedRespId)
+          const selectedDriverId =
+            group.driverMode === '__responsable__'
+              ? selectedRespId || manualResponsibleIdValue || ''
+              : group.driverMode !== '__auto__'
+              ? group.driverMode
+              : ''
+          const selectedDriver =
+            selectedDriverId && selectedDriverId !== '__auto__'
+              ? availableConductors.find((conductor) => conductor.id === selectedDriverId) || null
+              : null
+          const responsibleActsAsDriver =
+            group.driverMode === '__responsable__' &&
+            Number(group.drivers || 0) > 0 &&
+            isManualResponsibleConductor
           return {
             meetingPoint: group.meetingPoint || meetingPoint || '',
             startTime: group.startTime,
@@ -347,9 +437,10 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               selectedRespId && selectedRespId !== '__auto__' ? selectedRespId : null,
             responsibleName: group.wantsResponsible ? selected?.name || null : null,
             driverName:
-              singleGroup && Number(group.drivers || 0) > 0 && isManualResponsibleConductor
-                ? manualResponsibleNameValue || null
-                : null,
+              selectedDriver?.name ||
+              (singleGroup && responsibleActsAsDriver ? manualResponsibleNameValue || null : null),
+            driverId:
+              selectedDriverId && selectedDriverId !== '__auto__' ? selectedDriverId : null,
           }
         })
 
@@ -357,6 +448,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
         payload.totalWorkers = cuinaTotals.workers
         payload.numDrivers = cuinaTotals.drivers
         payload.cuinaGroupCount = cuinaGroups.length
+        payload.vehicles = cuinaVehiclesPayload
         groupsPayload.forEach((group) => addTimetable(group))
       } else if (isServeis) {
         const groupsPayload = buildServiceGroupsPayload(
@@ -384,11 +476,21 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
         }
 
         if (ettEntry) {
-          const brigades = [
-            ...(Array.isArray(baseLogisticaPayload.brigades) ? (baseLogisticaPayload.brigades as any[]) : []),
-            ettEntry,
+          const externalWorkers = [
+            ...(Array.isArray(baseLogisticaPayload.externalWorkers)
+              ? (baseLogisticaPayload.externalWorkers as any[])
+              : []),
+            ...Array.from({ length: Number(ettEntry.workers || 0) }, () => ({
+              name: 'ETT',
+              isExternal: true,
+              meetingPoint: ettEntry.meetingPoint,
+              startDate: ettEntry.startDate,
+              endDate: ettEntry.endDate,
+              startTime: ettEntry.startTime,
+              endTime: ettEntry.endTime,
+            })),
           ]
-          baseLogisticaPayload.brigades = brigades
+          baseLogisticaPayload.externalWorkers = externalWorkers
           addTimetable(ettEntry)
         }
 
@@ -417,33 +519,52 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
 
       const ettEntries: Array<{
         name: string
-        workers: number
+        isExternal: boolean
+        meetingPoint: string
         startDate: string
         endDate: string
         startTime: string
         endTime: string
-        meetingPoint: string
       }> = []
 
       if (isServeis) {
         Object.values(servicePhaseEtt).forEach((ettState) => {
           const workers = Number(ettState.data.workers || 0)
           if (!workers) return
-          ettEntries.push({
-            name: 'ETT',
-            workers,
-            startDate: ettState.data.serviceDate || startDate,
-            endDate: ettState.data.serviceDate || endDate,
-            startTime: ettState.data.startTime || startTime,
-            endTime: ettState.data.endTime || endTime,
-            meetingPoint: ettState.data.meetingPoint || meetingPoint,
-          })
+          ettEntries.push(
+            ...Array.from({ length: workers }, () => ({
+              name: 'ETT',
+              isExternal: true,
+              meetingPoint: ettState.data.meetingPoint || meetingPoint,
+              startDate: ettState.data.serviceDate || startDate,
+              endDate: ettState.data.serviceDate || endDate,
+              startTime: ettState.data.startTime || startTime,
+              endTime: ettState.data.endTime || endTime,
+            }))
+          )
         })
+      } else if (isCuina) {
+        const workers = Number(cuinaEtt.data.workers || 0)
+        if (workers) {
+          ettEntries.push(
+            ...Array.from({ length: workers }, () => ({
+              name: 'ETT',
+              isExternal: true,
+              meetingPoint: cuinaEtt.data.meetingPoint || meetingPoint,
+              startDate: cuinaEtt.data.serviceDate || startDate,
+              endDate: cuinaEtt.data.serviceDate || endDate,
+              startTime: cuinaEtt.data.startTime || startTime,
+              endTime: cuinaEtt.data.endTime || endTime,
+            }))
+          )
+        }
       }
 
       if (ettEntries.length) {
-        const existingBrigades = Array.isArray(payload.brigades) ? (payload.brigades as any[]) : []
-        payload.brigades = [...existingBrigades, ...ettEntries]
+        const existingExternalWorkers = Array.isArray(payload.externalWorkers)
+          ? (payload.externalWorkers as any[])
+          : []
+        payload.externalWorkers = [...existingExternalWorkers, ...ettEntries]
         ettEntries.forEach((entry) => addTimetable({ startTime: entry.startTime, endTime: entry.endTime }))
       }
 
@@ -681,18 +802,174 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                                 ? 0
                                 : Math.max(0, Number(e.target.value)),
                               needsDriver: Number(e.target.value) > 0,
+                              ...(Number(e.target.value) > 0
+                                ? {}
+                                : {
+                                    driverMode: '__auto__',
+                                    vehicleType: '',
+                                  }),
                             })
                           }
                         />
                       </div>
                     </div>
+                    {Number(group.drivers || 0) > 0 && (
+                      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <Label>Tipus de vehicle</Label>
+                            <Select
+                              value={group.vehicleType || '__none__'}
+                              onValueChange={(value) =>
+                                updateCuinaGroup(group.id, {
+                                  vehicleType: value === '__none__' ? '' : value,
+                                })
+                              }
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Selecciona tipus de vehicle…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">— Sense tipus concret —</SelectItem>
+                                {CUINA_VEHICLE_TYPE_OPTIONS.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {TRANSPORT_TYPE_LABELS[option] || option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div>
+                          <Label>Conductor</Label>
+                          <Select
+                            value={group.driverMode || '__auto__'}
+                            onValueChange={(value) =>
+                              updateCuinaGroup(group.id, { driverMode: value })
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Selecciona conductor…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__auto__">— Automatic segons disponibilitat —</SelectItem>
+                              {group.wantsResponsible &&
+                                (group.responsibleId || (manualResp && manualResp !== '__auto__')) &&
+                                availableConductors.some(
+                                  (conductor) =>
+                                    conductor.id ===
+                                    (group.responsibleId || (manualResp !== '__auto__' ? manualResp : ''))
+                                ) && (
+                                  <SelectItem value="__responsable__">
+                                    Responsable
+                                  </SelectItem>
+                                )}
+                              {availableConductors.map((conductor) => (
+                                <SelectItem key={conductor.id} value={conductor.id}>
+                                  {conductor.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 <div className="flex justify-end">
-                  <Button variant="outline" size="sm" onClick={addCuinaGroup}>
-                    + Grup
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-slate-900 border-slate-200 bg-white shadow-sm"
+                      onClick={() =>
+                        setCuinaEtt((prev) => ({ ...prev, open: !prev.open }))
+                      }
+                    >
+                      {cuinaEtt.open ? 'Amaga ETT' : '+ ETT'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={addCuinaGroup}>
+                      + Grup
+                    </Button>
+                  </div>
                 </div>
+                {cuinaEtt.open ? (
+                  <div className="space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <Label>Data servei</Label>
+                        <Input
+                          type="date"
+                          value={cuinaEtt.data.serviceDate}
+                          onChange={(e) =>
+                            setCuinaEtt((prev) => ({
+                              ...prev,
+                              data: { ...prev.data, serviceDate: e.target.value },
+                            }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label>Meeting point</Label>
+                        <Input
+                          value={cuinaEtt.data.meetingPoint}
+                          onChange={(e) =>
+                            setCuinaEtt((prev) => ({
+                              ...prev,
+                              data: { ...prev.data, meetingPoint: e.target.value },
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <Label>Hora inici</Label>
+                        <Input
+                          type="time"
+                          value={cuinaEtt.data.startTime}
+                          onChange={(e) =>
+                            setCuinaEtt((prev) => ({
+                              ...prev,
+                              data: { ...prev.data, startTime: e.target.value },
+                            }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label>Hora fi</Label>
+                        <Input
+                          type="time"
+                          value={cuinaEtt.data.endTime}
+                          onChange={(e) =>
+                            setCuinaEtt((prev) => ({
+                              ...prev,
+                              data: { ...prev.data, endTime: e.target.value },
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Treballadors ETT</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={cuinaEtt.data.workers}
+                        onChange={(e) =>
+                          setCuinaEtt((prev) => ({
+                            ...prev,
+                            data: { ...prev.data, workers: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    ETT · {cuinaEtt.data.workers || '0'} treballadors
+                  </p>
+                )}
               </div>
             </div>
           )}

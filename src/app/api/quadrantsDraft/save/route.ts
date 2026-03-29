@@ -47,13 +47,13 @@ async function resolveDeptCollection(dept: string): Promise<string> {
   return canonicalCollectionFor(dept)
 }
 
-// ✅ Ara incloem també 'brigada'
-type Role = 'responsable' | 'conductor' | 'treballador' | 'brigada'
+type Role = 'responsable' | 'conductor' | 'treballador'
 
 interface RowInput {
   role: Role
   id: string
   name: string
+  isExternal?: boolean
   isDriver?: boolean
   groupId?: string
   meetingPoint?: string
@@ -64,7 +64,6 @@ interface RowInput {
   vehicleType?: string
   plate?: string
   arrivalTime?: string
-  workers?: number // només per brigades
 }
 
 const normalizePersonKey = (value?: string | null) =>
@@ -118,10 +117,6 @@ type Line = {
   plate: string
 }
 
-type BrigadeLine = Line & {
-  workers: number
-}
-
 const toLine = (p: RowInput): Line => ({
   id: p?.id || '',
   name: p?.name || '',
@@ -133,11 +128,6 @@ const toLine = (p: RowInput): Line => ({
   arrivalTime: p?.arrivalTime || '',
   vehicleType: p?.vehicleType || '',
   plate: p?.plate || '',
-})
-
-const toBrigadeLine = (p: RowInput): BrigadeLine => ({
-  ...toLine(p),
-  workers: typeof p?.workers === 'number' ? p.workers : 0,
 })
 
 async function calcDistanceKm(destination: string): Promise<number | null> {
@@ -192,15 +182,25 @@ export async function POST(req: NextRequest) {
     const isCuina = norm(department) === 'cuina'
     const isServeis = norm(department) === 'serveis'
     const isLogistica = norm(department) === 'logistica'
+    const normalizeExternalWorkerName = (row: RowInput) => {
+      const raw = String(row.name || '').trim()
+      if (!raw || norm(raw) === 'extra' || norm(raw) === 'ett') return 'ETT'
+      if (/^ett\s*-\s*/i.test(raw)) return raw
+      return `ETT - ${raw}`
+    }
+    const normalizedRows = rows.map((row) => {
+      if (!isCuina || row.role !== 'treballador' || !row.isExternal) return row
+      return {
+        ...row,
+        id: '',
+        name: normalizeExternalWorkerName(row),
+      }
+    })
 
     // 🧩 Separa per rols
-    const responsables = rows.filter((r) => r.role === 'responsable')
-    const conductors = rows.filter((r) => r.role === 'conductor')
-    const treballadors = rows.filter((r) => r.role === 'treballador')
-    const brigades = rows.filter((r) => r.role === 'brigada')
-    const totalExtraWorkers =
-      treballadors.filter((r) => r.name === 'Extra').length +
-      brigades.reduce((sum, row) => sum + Number(row.workers || 0), 0)
+    const responsables = normalizedRows.filter((r) => r.role === 'responsable')
+    const conductors = normalizedRows.filter((r) => r.role === 'conductor')
+    const treballadors = normalizedRows.filter((r) => r.role === 'treballador')
     const normalizedTreballadors = isLogistica
       ? uniquePeople([...responsables, ...conductors, ...treballadors])
       : treballadors
@@ -218,10 +218,9 @@ export async function POST(req: NextRequest) {
       // ⭐ Resta de rols
       conductors: conductors.map(toLine),
       treballadors: normalizedTreballadors.map(toLine),
-      brigades: brigades.map(toBrigadeLine),
 
       numDrivers: conductors.length,
-      totalWorkers: normalizedTreballadors.length + totalExtraWorkers,
+      totalWorkers: normalizedTreballadors.length,
 
       // 🔙 Camps antics de compatibilitat (els segueix llegint quadrants/get)
       responsable: mainResponsable ? toLine(mainResponsable) : null,
@@ -248,7 +247,7 @@ export async function POST(req: NextRequest) {
       createdAt,
     }
 
-    if (isServeis && Array.isArray(groups) && groups.length > 0 && rows.some((r) => r.groupId)) {
+    if (isServeis && Array.isArray(groups) && groups.length > 0 && normalizedRows.some((r) => r.groupId)) {
       const eventDocsSnap = await db.collection(coll).where('eventId', '==', canonicalEventId).get()
       const existingDocs = eventDocsSnap.docs
       const baseDoc = existingDocs[0]?.data() || existing || {}
@@ -264,7 +263,7 @@ export async function POST(req: NextRequest) {
       })
 
       const groupedRows = new Map<string, RowInput[]>()
-      rows.forEach((row) => {
+      normalizedRows.forEach((row) => {
         if (!row.groupId) return
         const list = groupedRows.get(row.groupId) || []
         list.push(row)
@@ -286,7 +285,6 @@ export async function POST(req: NextRequest) {
         const responsables = byRole('responsable')
         const conductorsRows = byRole('conductor')
         const treballadorsRows = byRole('treballador')
-        const brigadesRows = byRole('brigada')
         const mainResponsable = responsables[0] ?? null
         const responsibleActsAsDriver = !!mainResponsable?.isDriver
         const conductorsForSave = [
@@ -300,9 +298,7 @@ export async function POST(req: NextRequest) {
           names.add(row.name.toLowerCase().trim())
         })
 
-        const extraCount =
-          treballadorsRows.filter((row) => row.name === 'Extra').length +
-          brigadesRows.reduce((sum, row) => sum + Number(row.workers || 0), 0)
+        const extraCount = treballadorsRows.filter((row) => row.name === 'Extra').length
 
         const baseGroupDoc = existingByGroup.get(groupId)
         const previous = (baseGroupDoc?.data() as any) || baseDoc
@@ -343,7 +339,6 @@ export async function POST(req: NextRequest) {
             responsables: responsables.map(toLine),
             conductors: conductorsForSave.map(toLine),
             treballadors: treballadorsRows.map(toLine),
-            brigades: brigadesRows.map(toBrigadeLine),
             numDrivers,
             totalWorkers,
             responsable: mainResponsable ? toLine(mainResponsable) : null,
@@ -390,10 +385,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    if (isCuina && Array.isArray(existing?.groups) && rows.some((r) => r.groupId)) {
+    if (isCuina && Array.isArray(existing?.groups) && normalizedRows.some((r) => r.groupId)) {
       const groups = existing.groups.map((g: any) => ({ ...g }))
       const grouped = new Map<string, RowInput[]>()
-      rows.forEach((r) => {
+      normalizedRows.forEach((r) => {
         if (!r.groupId) return
         const list = grouped.get(r.groupId) || []
         list.push(r)

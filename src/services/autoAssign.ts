@@ -223,10 +223,11 @@ export async function autoAssign(payload: {
 
   const baseCtx = buildEligibilityCtx(premises, dept, ledger.busyAssignments)
 
+  if (!skipResponsible && manualResponsibleId) {
+    chosenResp = all.find(p => p.id === manualResponsibleId) || null
+  }
+
   if (!isCuina && !skipResponsible) {
-    if (manualResponsibleId) {
-      chosenResp = all.find(p => p.id === manualResponsibleId) || null
-    }
     const locationCandidates = [location, meetingPoint]
       .map((value) => String(value || '').trim())
       .filter(Boolean)

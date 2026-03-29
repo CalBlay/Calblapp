@@ -5,7 +5,6 @@ import React, { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { Row, Role } from './types'
-import brigades from '@/data/brigades.json'
 import {
   TRANSPORT_TYPE_LABELS,
   TRANSPORT_TYPE_OPTIONS,
@@ -37,6 +36,7 @@ type RowEditorProps = {
   row: Row
   available: AvailableData
   isServeisDept?: boolean
+  allowExternalWorkerName?: boolean
   canEditMeetingPoint?: boolean
   groupHasDriverController?: boolean
   canEditArrivalTime?: boolean
@@ -86,6 +86,7 @@ function EditorHeader({
   isLocked: boolean
   compact?: boolean
 }) {
+  const displayName = row.isCenterExternalExtra ? 'Extra C.Extern' : row.name || '-'
   return (
     <div
       className={`mb-3 flex items-center justify-between ${
@@ -93,7 +94,7 @@ function EditorHeader({
       }`}
     >
       <h3 className="text-sm font-semibold text-gray-700">
-        Editant {row.role}: {row.name || '-'}
+        Editant {row.role}: {displayName}
       </h3>
       <div className="flex gap-2">
         {onRevert && (
@@ -118,6 +119,7 @@ function EditorFields({
   row,
   available,
   isServeisDept = false,
+  allowExternalWorkerName = false,
   canEditMeetingPoint = true,
   groupHasDriverController = false,
   canEditArrivalTime = true,
@@ -127,6 +129,7 @@ function EditorFields({
   row: Row
   available: AvailableData
   isServeisDept?: boolean
+  allowExternalWorkerName?: boolean
   canEditMeetingPoint?: boolean
   groupHasDriverController?: boolean
   canEditArrivalTime?: boolean
@@ -136,6 +139,12 @@ function EditorFields({
   const normalize = (value?: string) =>
     (value || '').toString().trim().toLowerCase()
   const isServiceCompanion = isServeisDept && row.role === 'treballador'
+  const isCenterExternalExtra = row.isCenterExternalExtra === true
+  const canEditRole = !isCenterExternalExtra
+  const showNameAsFixed = isCenterExternalExtra
+  const fixedDisplayName = isCenterExternalExtra ? 'Extra C.Extern' : row.name || ''
+  const canEditMeetingPointField = canEditMeetingPoint && !isCenterExternalExtra
+  const canEditArrivalField = canEditArrivalTime && !isCenterExternalExtra
 
   const mergeUniquePeople = (...groups: Array<AvailablePerson[] | undefined>) => {
     const map = new Map<string, AvailablePerson>()
@@ -183,6 +192,10 @@ function EditorFields({
     row.role === 'conductor' ||
       isCurrentInConductors
   )
+  const isEditableExternalWorker =
+    allowExternalWorkerName &&
+    row.role === 'treballador' &&
+    row.isExternal
 
   const list: AvailablePerson[] =
     row.role === 'responsable'
@@ -191,80 +204,22 @@ function EditorFields({
       ? available?.conductors || []
       : available?.treballadors || []
 
-  // --- BRIGADA ---
-  if (row.role === 'brigada') {
-    return (
-      <div className="space-y-3">
-        {/* SelecciÃ³ brigada */}
-        <div>
-          <label className="text-xs font-medium">ETT</label>
-          <select
-            value={row.id || ''}
-            onChange={(e) => {
-              const sel = brigades.find((b) => b.id === e.target.value)
-              onPatch({
-                id: sel?.id || '',
-                name: sel?.name || '',
-              })
-            }}
-            className="w-full rounded border px-2 py-1 text-sm"
-            disabled={isLocked}
-          >
-            <option value="">- Selecciona ETT -</option>
-            {brigades.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* NÂº treballadors */}
-        <div>
-          <label className="text-xs font-medium">N. treballadors</label>
-          <Input
-            type="number"
-            value={row.workers || 0}
-            onChange={(e) => onPatch({ workers: Number(e.target.value) })}
-            disabled={isLocked}
-          />
-        </div>
-
-        {/* Hores */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label className="text-xs">Hora inici ETT</label>
-            <Input
-              type="time"
-              value={row.startTime || ''}
-              onChange={(e) => onPatch({ startTime: e.target.value })}
-              disabled={isLocked}
-            />
-          </div>
-          <div>
-            <label className="text-xs">Hora fi ETT</label>
-            <Input
-              type="time"
-              value={row.endTime || ''}
-              onChange={(e) => onPatch({ endTime: e.target.value })}
-              disabled={isLocked}
-            />
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   // --- RESPONSABLE / CONDUCTOR / TREBALLADOR ---
   return (
     <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        {(row.role === 'conductor' || row.role === 'treballador' || row.role === 'responsable') && (
+        {canEditRole && (row.role === 'conductor' || row.role === 'treballador' || row.role === 'responsable') && (
           <div>
             <label className="text-xs font-medium">Rol</label>
             <select
               value={row.role}
-              onChange={(e) => onPatch({ role: e.target.value as Role })}
+              onChange={(e) =>
+                onPatch({
+                  role: e.target.value as Role,
+                  ...(e.target.value !== 'treballador' ? { isExternal: false } : {}),
+                })
+              }
               className="w-full rounded border px-2 py-1 text-sm"
               disabled={isLocked}
             >
@@ -276,29 +231,45 @@ function EditorFields({
         )}
 
         <div>
-          <label className="text-xs font-medium">Nom</label>
-          <select
-            value={row.id || ''}
-            onChange={(e) => {
-              const sel = list.find((p) => p.id === e.target.value)
-              const displayName = sel?.name || sel?.alias || sel?.id || ''
-              onPatch({ id: sel?.id || '', name: displayName })
-              const rowControlsMeetingPoint =
-                row.role === 'conductor' || (row.role === 'responsable' && row.isDriver)
-              const shouldSyncMeetingPoint = !isServeisDept || rowControlsMeetingPoint
-              if (shouldSyncMeetingPoint && sel?.meetingPoint)
-                onPatch({ meetingPoint: sel.meetingPoint })
-            }}
-            className="w-full rounded border px-2 py-1 text-sm"
-            disabled={isLocked}
-          >
-            <option value="">Selecciona {row.role}</option>
-            {list.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name || p.alias || p.id}
-              </option>
-            ))}
-          </select>
+          <label className="text-xs font-medium">{isEditableExternalWorker ? 'Nom ETT' : 'Nom'}</label>
+          {showNameAsFixed ? (
+            <Input
+              value={fixedDisplayName}
+              className="w-full text-sm"
+              disabled
+            />
+          ) : isEditableExternalWorker ? (
+            <Input
+              value={row.name || ''}
+              onChange={(e) => onPatch({ id: '', name: e.target.value })}
+              placeholder="ETT o nom de la persona"
+              className="w-full text-sm"
+              disabled={isLocked}
+            />
+          ) : (
+            <select
+              value={row.id || ''}
+              onChange={(e) => {
+                const sel = list.find((p) => p.id === e.target.value)
+                const displayName = sel?.name || sel?.alias || sel?.id || ''
+                onPatch({ id: sel?.id || '', name: displayName, isExternal: false })
+                const rowControlsMeetingPoint =
+                  row.role === 'conductor' || (row.role === 'responsable' && row.isDriver)
+                const shouldSyncMeetingPoint = !isServeisDept || rowControlsMeetingPoint
+                if (shouldSyncMeetingPoint && sel?.meetingPoint)
+                  onPatch({ meetingPoint: sel.meetingPoint })
+              }}
+              className="w-full rounded border px-2 py-1 text-sm"
+              disabled={isLocked}
+            >
+              <option value="">Selecciona {row.role}</option>
+              {list.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name || p.alias || p.id}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div>
@@ -308,7 +279,7 @@ function EditorFields({
             onChange={(e) => onPatch({ meetingPoint: e.target.value })}
             placeholder="Lloc..."
             className="w-full text-sm"
-            disabled={isLocked || !canEditMeetingPoint}
+            disabled={isLocked || !canEditMeetingPointField}
           />
         </div>
       </div>
@@ -369,20 +340,26 @@ function EditorFields({
               value={row.arrivalTime || ''}
               onChange={(e) => onPatch({ arrivalTime: e.target.value })}
               className="w-full text-sm"
-              disabled={isLocked || !canEditArrivalTime}
+              disabled={isLocked || !canEditArrivalField}
             />
           </div>
         </div>
       )}
 
       {/* Dates i hores */}
-      <div className="mt-3 flex flex-col gap-3 md:grid md:grid-cols-5">
+      <div className={`mt-3 flex flex-col gap-3 md:grid ${isCenterExternalExtra ? 'md:grid-cols-3' : 'md:grid-cols-5'}`}>
         <div>
           <label className="text-xs">Data inici</label>
           <Input
             type="date"
             value={row.startDate}
-            onChange={(e) => onPatch({ startDate: e.target.value })}
+            onChange={(e) =>
+              onPatch(
+                isCenterExternalExtra
+                  ? { startDate: e.target.value, endDate: e.target.value }
+                  : { startDate: e.target.value }
+              )
+            }
             className="w-full text-sm"
             disabled={isLocked}
           />
@@ -397,6 +374,7 @@ function EditorFields({
             disabled={isLocked || isServiceCompanion}
           />
         </div>
+        {!isCenterExternalExtra && (
         <div>
           <label className="text-xs">Data fi</label>
           <Input
@@ -407,6 +385,7 @@ function EditorFields({
             disabled={isLocked}
           />
         </div>
+        )}
         <div>
           <label className="text-xs">Hora fi</label>
           <Input
@@ -417,6 +396,7 @@ function EditorFields({
             disabled={isLocked}
           />
         </div>
+        {!isCenterExternalExtra && (
         <div>
           <label className="text-xs">Hora arribada</label>
           <Input
@@ -424,9 +404,10 @@ function EditorFields({
             value={row.arrivalTime || ''}
             onChange={(e) => onPatch({ arrivalTime: e.target.value })}
             className="w-full text-sm"
-            disabled={isLocked || isServiceCompanion || !canEditArrivalTime}
+            disabled={isLocked || isServiceCompanion || !canEditArrivalField}
           />
         </div>
+        )}
       </div>
     </>
   )
@@ -440,6 +421,7 @@ export default function RowEditor(props: RowEditorProps) {
     row,
     available,
     isServeisDept = false,
+    allowExternalWorkerName = false,
     canEditMeetingPoint = true,
     groupHasDriverController = false,
     canEditArrivalTime = true,
@@ -463,6 +445,7 @@ export default function RowEditor(props: RowEditorProps) {
         row={row}
         available={available}
         isServeisDept={isServeisDept}
+        allowExternalWorkerName={allowExternalWorkerName}
         canEditMeetingPoint={canEditMeetingPoint}
         groupHasDriverController={groupHasDriverController}
         canEditArrivalTime={canEditArrivalTime}

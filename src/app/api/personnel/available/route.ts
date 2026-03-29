@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import type { NextRequest } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
 import {
   loadMinRestHours,
   listQuadrantCollections,
@@ -181,7 +182,8 @@ export async function GET(request: NextRequest) {
           if (Array.isArray(q.responsables)) q.responsables.forEach((line) => addRangesFromRef(occupancyIndex, line, q))
           if (Array.isArray(q.conductors)) q.conductors.forEach((line) => addRangesFromRef(occupancyIndex, line, q))
           if (Array.isArray(q.treballadors)) q.treballadors.forEach((line) => addRangesFromRef(occupancyIndex, line, q))
-          if (Array.isArray(q.brigades)) q.brigades.forEach((line) => addRangesFromRef(occupancyIndex, line, q))
+          const legacyExternalWorkers = readLegacyExternalWorkersFromDoc(q)
+          legacyExternalWorkers.forEach((line) => addRangesFromRef(occupancyIndex, line, q))
           if (Array.isArray(q.groups)) {
             q.groups.forEach((group) => {
               addRangesFromRef(

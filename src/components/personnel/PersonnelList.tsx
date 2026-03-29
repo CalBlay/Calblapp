@@ -8,7 +8,6 @@ import {
   GraduationCap,
   Truck,
   User,
-  Users,
   Car,
   Phone,
   AtSign,
@@ -26,7 +25,6 @@ const roleIcon: Record<string, React.ReactNode> = {
   responsable: <GraduationCap className="text-blue-700" size={18} />,
   driver: <Truck className="text-orange-500" size={18} />,
   treballador: <User className="text-green-600" size={18} />,
-  brigada: <Users className="text-purple-600" size={18} />
 }
 
 /* 🎨 Icona vehicle */

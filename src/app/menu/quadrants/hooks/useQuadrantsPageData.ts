@@ -177,7 +177,6 @@ const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
       endTime: endTime || base.draft?.endTime || '',
       conductors: mergePeople(drafts.map((draft: any) => (Array.isArray(draft?.conductors) ? draft.conductors : []))),
       treballadors: mergePeople(drafts.map((draft: any) => (Array.isArray(draft?.treballadors) ? draft.treballadors : []))),
-      brigades: drafts.flatMap((draft: any) => (Array.isArray(draft?.brigades) ? draft.brigades : [])),
       groups: mergedGroups,
       totalWorkers: drafts.reduce((sum: number, draft: any) => sum + Number(draft?.totalWorkers || 0), 0),
       numDrivers: drafts.reduce((sum: number, draft: any) => sum + Number(draft?.numDrivers || 0), 0),
@@ -235,13 +234,6 @@ const buildWorkersSummary = (q: any) => {
         seen.add(key)
         names.push(name)
       })
-  }
-  if (Array.isArray(q?.brigades)) {
-    q.brigades.forEach((b: any) => {
-      const name = (b?.name || 'ETT').toString().trim() || 'ETT'
-      const workers = Number(b?.workers || 0)
-      names.push(workers > 0 ? `${name} (${workers})` : name)
-    })
   }
   return names.join(', ')
 }

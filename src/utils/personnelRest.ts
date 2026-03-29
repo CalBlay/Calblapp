@@ -2,6 +2,7 @@
 import fs from 'fs'
 import path from 'path'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
 
 
 
@@ -34,7 +35,6 @@ export interface QuadrantDoc {
   responsables?: Array<WorkerRef & { startDate?: string; startTime?: string; endDate?: string; endTime?: string }>
   conductors?: Array<WorkerRef & { startDate?: string; startTime?: string; endDate?: string; endTime?: string }>
   treballadors?: Array<WorkerRef & { startDate?: string; startTime?: string; endDate?: string; endTime?: string }>
-  brigades?: Array<WorkerRef & { startDate?: string; startTime?: string; endDate?: string; endTime?: string }>
   groups?: Array<{
     responsibleId?: string | null
     responsibleName?: string | null
@@ -43,6 +43,16 @@ export interface QuadrantDoc {
     endDate?: string
     endTime?: string
   }>
+  [key: string]: unknown
+}
+
+function readLegacyExternalWorkers(q: QuadrantDoc) {
+  return readLegacyExternalWorkersFromDoc<WorkerRef & {
+    startDate?: string
+    startTime?: string
+    endDate?: string
+    endTime?: string
+  }>(q)
 }
 
 export async function listQuadrantCollections(): Promise<string[]> {
@@ -266,9 +276,9 @@ export async function getBusyPersonnelIds(
       q.treballadors.forEach(t => addIfOverlap('treballador', t, t?.id || t?.name))
     }
 
-    if (Array.isArray(q.brigades)) {
-      q.brigades.forEach(b => addIfOverlap('brigada', b, b?.id || b?.name))
-    }
+    readLegacyExternalWorkers(q).forEach((line) =>
+      addIfOverlap('treballador', line, line?.id || line?.name)
+    )
 
     if (Array.isArray(q.groups)) {
       q.groups.forEach(g => {
@@ -339,9 +349,9 @@ export async function getBusyPersonnelIdsAnyDepartment(
           q.treballadors.forEach(t => addIfOverlap('treballador', t, t?.id || t?.name))
         }
 
-        if (Array.isArray(q.brigades)) {
-          q.brigades.forEach(b => addIfOverlap('brigada', b, b?.id || b?.name))
-        }
+        readLegacyExternalWorkers(q).forEach((line) =>
+          addIfOverlap('treballador', line, line?.id || line?.name)
+        )
 
         if (Array.isArray(q.groups)) {
           q.groups.forEach(g => {

@@ -61,14 +61,6 @@ async function resolveWriteCollectionForDepartment(department: string) {
 
 
 /* ================= Tipus ================= */
-interface Brigade {
-  id?: string
-  name?: string
-  workers?: number
-  startTime?: string
-  endTime?: string
-}
-
 interface CuinaGroup {
   meetingPoint: string
   startTime: string
@@ -101,12 +93,21 @@ interface QuadrantSave {
   responsableName: string | null
   responsable: { name: string; meetingPoint: string } | null
   conductors: Array<{ name: string; meetingPoint: string; plate: string; vehicleType: string }>
-  treballadors: Array<{ name: string; meetingPoint: string }>
+  treballadors: Array<{
+    name: string
+    meetingPoint: string
+    startDate?: string
+    endDate?: string
+    startTime?: string
+    endTime?: string
+    arrivalTime?: string | null
+    isExternal?: boolean
+  }>
   needsReview: boolean
   violations: string[]
   attentionNotes: string[]
   updatedAt: string
-  brigades?: Brigade[]
+  legacyBrigades?: Array<Record<string, unknown>>
   groups?: Array<{
     meetingPoint: string
     startTime: string
@@ -216,6 +217,9 @@ export async function POST(req: NextRequest) {
         .filter((entry): entry is { startTime: string; endTime: string } => Boolean(entry))
 
       const staffRaw = (assignmentForSave.staff || []).filter((s) => s?.name)
+      const externalWorkersRaw = Array.isArray(bodyForSave.externalWorkers)
+        ? bodyForSave.externalWorkers.filter((s: any) => s?.name)
+        : []
       let extraCount = staffRaw.filter((s) => s.name === 'Extra').length
       let staffClean = staffRaw.filter((s) => s.name !== 'Extra')
 
@@ -252,10 +256,22 @@ export async function POST(req: NextRequest) {
           vehicleType: d.vehicleType || '',
         })),
 
-        treballadors: staffClean.map((s) => ({
-          name: s.name,
-          meetingPoint: s.meetingPoint || bodyForSave.meetingPoint || '',
-        })),
+        treballadors: [
+          ...staffClean.map((s) => ({
+            name: s.name,
+            meetingPoint: s.meetingPoint || bodyForSave.meetingPoint || '',
+          })),
+          ...externalWorkersRaw.map((worker: any) => ({
+            name: worker.name,
+            meetingPoint: worker.meetingPoint || bodyForSave.meetingPoint || '',
+            startDate: worker.startDate || bodyForSave.startDate,
+            endDate: worker.endDate || bodyForSave.endDate,
+            startTime: worker.startTime || bodyForSave.startTime || '00:00',
+            endTime: worker.endTime || bodyForSave.endTime || '00:00',
+            arrivalTime: worker.arrivalTime || bodyForSave.arrivalTime || null,
+            isExternal: worker.isExternal === true,
+          })),
+        ],
 
         needsReview: !!metaForSave.needsReview,
         violations: metaForSave.violations || [],
@@ -270,6 +286,7 @@ export async function POST(req: NextRequest) {
             ...(assignmentForSave.responsible ? [assignmentForSave.responsible] : []),
             ...(assignmentForSave.drivers || []),
             ...staffClean,
+            ...externalWorkersRaw,
           ],
           bodyForSave.meetingPoint || ''
         )
@@ -391,7 +408,11 @@ export async function POST(req: NextRequest) {
             const fallbackName =
               firstGroupResponsible?.responsibleName ||
               [...toSave.conductors, ...toSave.treballadors].find(
-                (person) => person?.name && person.name !== 'Extra'
+                (person) =>
+                  person?.name &&
+                  person.name !== 'Extra' &&
+                  person.isExternal !== true &&
+                  !String(person.name).toLowerCase().startsWith('ett')
               )?.name ||
               null
 
@@ -442,6 +463,17 @@ export async function POST(req: NextRequest) {
               })
             })
 
+            const externalWorkerLines = externalWorkersRaw.map((worker: any) => ({
+              name: worker.name,
+              meetingPoint: worker.meetingPoint || bodyForSave.meetingPoint || '',
+              startDate: worker.startDate || bodyForSave.startDate,
+              endDate: worker.endDate || bodyForSave.endDate,
+              startTime: worker.startTime || bodyForSave.startTime || '00:00',
+              endTime: worker.endTime || bodyForSave.endTime || '00:00',
+              arrivalTime: worker.arrivalTime || bodyForSave.arrivalTime || null,
+              isExternal: worker.isExternal === true,
+            }))
+
             const targetWorkers = Math.max(
               Number(bodyForSave.totalWorkers || 0) -
                 Number(bodyForSave.numDrivers || 0) -
@@ -456,7 +488,7 @@ export async function POST(req: NextRequest) {
               })
             }
 
-            toSave.treballadors = uniqueWorkers
+            toSave.treballadors = [...uniqueWorkers, ...externalWorkerLines]
             extraCount = uniqueWorkers.filter((worker) => worker.name === 'Extra').length
           }
         }
@@ -466,28 +498,8 @@ export async function POST(req: NextRequest) {
         toSave.cuinaGroupCount = Number(bodyForSave.cuinaGroupCount)
       }
 
-      const baseBrigades = Array.isArray(bodyForSave.brigades) ? (bodyForSave.brigades as Brigade[]) : []
-      if (extraCount > 0) {
-        const ettLine: Brigade = {
-          name: 'ETT',
-          workers: extraCount,
-          startTime: bodyForSave.startTime || '00:00',
-          endTime: bodyForSave.endTime || '00:00',
-        }
-        const existingIdx = baseBrigades.findIndex(
-          (b) => (b?.name || '').toString().trim().toLowerCase() === 'ett'
-        )
-        if (existingIdx >= 0) {
-          const prev = baseBrigades[existingIdx]
-          const prevWorkers = typeof prev?.workers === 'number' ? prev.workers : 0
-          baseBrigades[existingIdx] = { ...prev, workers: prevWorkers + extraCount }
-        } else {
-          baseBrigades.push(ettLine)
-        }
-      }
-      if (baseBrigades.length) {
-        toSave.brigades = baseBrigades
-      }
+      toSave.totalWorkers =
+        Math.max(Number(toSave.totalWorkers || 0), 0) + Number(externalWorkersRaw.length || 0)
 
       return { toSave }
     }

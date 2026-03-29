@@ -3,6 +3,7 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
 
 const norm = (s?: string | null) =>
   (s || '')
@@ -11,7 +12,7 @@ const norm = (s?: string | null) =>
     .toLowerCase()
     .trim()
 
-type RoleKey = 'responsable' | 'conductor' | 'treballador' | 'brigada'
+type RoleKey = 'responsable' | 'conductor' | 'treballador'
 
 const isIndexError = (err: any) =>
   err?.code === 9 || String(err?.message || '').toLowerCase().includes('requires an index')
@@ -56,7 +57,7 @@ function extractLines(d: any) {
   if (Array.isArray(d.responsables)) d.responsables.forEach((r: any) => entries.push({ role: 'responsable', row: r }))
   if (Array.isArray(d.conductors)) d.conductors.forEach((r: any) => entries.push({ role: 'conductor', row: r }))
   if (Array.isArray(d.treballadors)) d.treballadors.forEach((r: any) => entries.push({ role: 'treballador', row: r }))
-  if (Array.isArray(d.brigades)) d.brigades.forEach((r: any) => entries.push({ role: 'brigada', row: r }))
+  readLegacyExternalWorkersFromDoc(d).forEach((r: any) => entries.push({ role: 'treballador', row: r }))
   return entries
 }
 
@@ -176,7 +177,7 @@ export async function GET(req: Request) {
             id: pid,
             name,
             department,
-            roles: { responsable: 0, conductor: 0, treballador: 0, brigada: 0 },
+            roles: { responsable: 0, conductor: 0, treballador: 0 },
             events: new Set<string>(),
             minutes: 0,
           }
@@ -203,12 +204,12 @@ export async function GET(req: Request) {
 
     const roleTotals = data.reduce(
       (acc, p) => {
-        ;(['responsable', 'conductor', 'treballador', 'brigada'] as RoleKey[]).forEach(r => {
+        ;(['responsable', 'conductor', 'treballador'] as RoleKey[]).forEach(r => {
           acc[r] += p.roles[r]
         })
         return acc
       },
-      { responsable: 0, conductor: 0, treballador: 0, brigada: 0 }
+      { responsable: 0, conductor: 0, treballador: 0 }
     )
 
     return NextResponse.json({

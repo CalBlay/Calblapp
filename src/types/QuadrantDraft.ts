@@ -16,7 +16,7 @@ export interface QuadrantDraft {
   responsableName?: string;
   treballadors?: Array<string | { id?: string; name?: string }>;
   conductors?: Array<string | { id?: string; name?: string }>;
-  brigades?: Array<Record<string, unknown>>;
+  legacyBrigades?: Array<Record<string, unknown>>;
   groups?: Array<Record<string, unknown>>;
   timetables?: Array<{ startTime: string; endTime: string }>;
   status: 'draft' | 'confirmed' | 'canceled';
