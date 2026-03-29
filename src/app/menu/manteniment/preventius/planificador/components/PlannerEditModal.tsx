@@ -1,12 +1,10 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, format } from 'date-fns'
-import { ca } from 'date-fns/locale'
-import { CalendarDays, Trash2 } from 'lucide-react'
-import { Calendar } from '@/components/ui/calendar'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Button } from '@/components/ui/button'
+import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import { typography } from '@/lib/typography'
+import { formatDateOnly, formatDateTimeValue } from '@/lib/date-format'
 import type { PlannerDraft, ScheduledItem } from '../types'
 
 type Props = {
@@ -14,6 +12,7 @@ type Props = {
   days: Date[]
   dayCount: number
   machines: Array<{ code: string; name: string; label: string }>
+  users: Array<{ id: string; name: string; department?: string }>
   getWorkerConflicts: (
     dayIndex: number,
     start: string,
@@ -40,11 +39,56 @@ type Props = {
   onUnplanTicket: (ticketId: string, scheduledId?: string) => Promise<boolean>
 }
 
+function summaryCard(label: string, value: string, accent = false) {
+  return (
+    <div
+      className={`rounded-2xl border px-4 py-3 ${
+        accent ? 'border-emerald-200 bg-emerald-50/70' : 'border-slate-200 bg-slate-50/70'
+      }`}
+    >
+      <div className={typography('eyebrow')}>{label}</div>
+      <div className="mt-1 text-base font-medium text-slate-900">{value || '-'}</div>
+    </div>
+  )
+}
+
+type PreventiuHistoryRecord = {
+  id: string
+  status?: string
+  completedAt?: string | number | null
+  updatedAt?: string | number | null
+  updatedByName?: string
+  createdByName?: string
+  notes?: string
+}
+
+const normalizePreventiuStatus = (value?: string) => {
+  const v = String(value || '').trim().toLowerCase()
+  if (v === 'assignat' || v === 'pendent') return 'assignat'
+  if (v === 'en_curs' || v === 'en curs') return 'en_curs'
+  if (v === 'espera') return 'espera'
+  if (v === 'fet') return 'fet'
+  if (v === 'validat' || v === 'resolut') return 'validat'
+  if (v === 'no_fet' || v === 'no fet') return 'no_fet'
+  return 'assignat'
+}
+
+const statusLabel = (value?: string) => {
+  const status = normalizePreventiuStatus(value)
+  if (status === 'en_curs') return 'En curs'
+  if (status === 'espera') return 'Espera'
+  if (status === 'fet') return 'Fet'
+  if (status === 'validat') return 'Validat'
+  if (status === 'no_fet') return 'No fet'
+  return 'Assignat'
+}
+
 export default function PlannerEditModal({
   draft,
   days,
   dayCount,
   machines,
+  users,
   getWorkerConflicts,
   availableWorkers,
   minutesFromTime,
@@ -59,110 +103,148 @@ export default function PlannerEditModal({
   onUnplanPreventiu,
   onUnplanTicket,
 }: Props) {
-  const [dateOpen, setDateOpen] = useState(false)
-  const [externalizeBusy, setExternalizeBusy] = useState(false)
-  const [supplierName, setSupplierName] = useState('')
-  const [supplierEmail, setSupplierEmail] = useState('')
-  const [externalReference, setExternalReference] = useState('')
-  const [supplierSubject, setSupplierSubject] = useState('')
-  const [supplierMessage, setSupplierMessage] = useState('')
-  const [isValidatedTicket, setIsValidatedTicket] = useState(false)
-  const [latestExternalSummary, setLatestExternalSummary] = useState<{
-    supplierName?: string
-    supplierEmail?: string
-    at?: number | string | null
-    reference?: string | null
-  } | null>(null)
-  const conflicts = getWorkerConflicts(draft.dayIndex, draft.start, draft.end, draft.workers, draft.id)
+  const [availabilityLoading, setAvailabilityLoading] = useState(false)
+  const [availableIds, setAvailableIds] = useState<string[]>([])
+  const [infoOpen, setInfoOpen] = useState(true)
+  const [jobDetailsOpen, setJobDetailsOpen] = useState(true)
+  const [planningOpen, setPlanningOpen] = useState(true)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyRecords, setHistoryRecords] = useState<PreventiuHistoryRecord[]>([])
+  const availabilityCacheRef = useRef<Map<string, string[]>>(new Map())
+
   const selectedDay = addDays(weekStart, draft.dayIndex)
   const createdAtLabel =
     draft.createdAt != null && !Number.isNaN(new Date(draft.createdAt).getTime())
-      ? format(new Date(draft.createdAt), 'dd/MM')
+      ? formatDateOnly(draft.createdAt, '-')
       : '-'
+  const planningLabel = [format(selectedDay, 'dd/MM/yyyy'), draft.start, draft.end].filter(Boolean).join(' - ')
+  const conflicts = getWorkerConflicts(draft.dayIndex, draft.start, draft.end, draft.workers, draft.id)
+  const isAssignedStage = Boolean(draft.id || draft.workers.length > 0)
+  const currentStatus = normalizePreventiuStatus(draft.status)
+  const isReadOnlyStage = ['en_curs', 'espera', 'fet', 'validat'].includes(currentStatus)
+  const showPlanningAction = !isReadOnlyStage
+  const planningSectionTitle = showPlanningAction ? 'Planificar i assignar' : 'Planificacio'
+  const progressLabel =
+    typeof draft.progress === 'number' && Number.isFinite(draft.progress) ? `${draft.progress}%` : ''
+
+  const operatorPool = useMemo(() => {
+    const maintenanceUsers = users
+      .filter((user) => String(user.department || '').toLowerCase().includes('manten'))
+      .map((user) => ({ id: String(user.id), name: String(user.name || '').trim() }))
+      .filter((user) => user.id && user.name)
+    const list =
+      maintenanceUsers.length > 0
+        ? maintenanceUsers
+        : users
+            .map((user) => ({ id: String(user.id), name: String(user.name || '').trim() }))
+            .filter((user) => user.id && user.name)
+    return list.sort((a, b) => a.name.localeCompare(b.name))
+  }, [users])
+
+  const machineOptions = useMemo(
+    () =>
+      Array.from(new Set(machines.map((machine) => String(machine.label || '').trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b)
+      ),
+    [machines]
+  )
+
+  const locallyAvailableIds = useMemo(
+    () =>
+      new Set(
+        availableWorkers(draft.dayIndex, draft.start, draft.end, draft.id).map((worker) => String(worker.id))
+      ),
+    [availableWorkers, draft.dayIndex, draft.end, draft.id, draft.start]
+  )
+
+  const remotelyAvailableIds = useMemo(() => new Set(availableIds.map(String)), [availableIds])
+
+  const selectableOperators = useMemo(
+    () =>
+      operatorPool.map((operator) => {
+        const checked = draft.workers.includes(operator.name)
+        const availableLocal = locallyAvailableIds.has(operator.id)
+        const availableRemote = remotelyAvailableIds.has(operator.id)
+        const available = checked || (availableLocal && availableRemote)
+        return { ...operator, checked, available }
+      }),
+    [draft.workers, locallyAvailableIds, operatorPool, remotelyAvailableIds]
+  )
+
+  const loadAvailability = async () => {
+    const dateStr = format(selectedDay, 'yyyy-MM-dd')
+    const availabilityKey = [dateStr, draft.start, draft.end, draft.id || 'new'].join('|')
+    const cached = availabilityCacheRef.current.get(availabilityKey)
+    if (cached) {
+      setAvailableIds(cached)
+      return cached
+    }
+
+    try {
+      setAvailabilityLoading(true)
+      const params = new URLSearchParams({
+        department: 'manteniment',
+        startDate: dateStr,
+        endDate: dateStr,
+        startTime: draft.start,
+        endTime: draft.end,
+      })
+      if (draft.id) params.set('excludeMaintenancePlannedId', draft.id)
+      const res = await fetch(`/api/personnel/available?${params.toString()}`, { cache: 'no-store' })
+      if (!res.ok) {
+        setAvailableIds([])
+        return []
+      }
+      const json = await res.json()
+      const list = Array.isArray(json?.treballadors) ? json.treballadors : []
+      const nextIds = list.map((person: { id?: string }) => String(person?.id || '')).filter(Boolean)
+      availabilityCacheRef.current.set(availabilityKey, nextIds)
+      setAvailableIds(nextIds)
+      return nextIds
+    } finally {
+      setAvailabilityLoading(false)
+    }
+  }
 
   useEffect(() => {
-    if (draft.kind !== 'ticket' || !draft.ticketId) {
-      setSupplierName('')
-      setSupplierEmail('')
-      setExternalReference('')
-      setSupplierSubject('')
-      setSupplierMessage('')
-      setIsValidatedTicket(false)
-      setLatestExternalSummary(null)
-      return
-    }
+    const timer = window.setTimeout(() => {
+      void loadAvailability()
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [draft.dayIndex, draft.end, draft.id, draft.start, selectedDay])
 
+  useEffect(() => {
     let cancelled = false
-    const loadTicket = async () => {
-      try {
-        const res = await fetch(`/api/maintenance/tickets/${encodeURIComponent(draft.ticketId || '')}`, {
-          cache: 'no-store',
-        })
-        if (!res.ok) return
-        const json = await res.json()
-        const ticket = json?.ticket
-        if (!ticket || cancelled) return
-        const code = String(ticket.ticketCode || ticket.incidentNumber || draft.ticketId || 'TIC').trim()
-        const location = String(ticket.location || draft.location || '').trim()
-        const description = String(ticket.description || '').trim()
-        const machine = String(ticket.machine || draft.machine || '').trim()
-        const history = Array.isArray(ticket.externalizationHistory)
-          ? [...ticket.externalizationHistory].sort((a, b) => Number(a?.at || 0) - Number(b?.at || 0))
-          : []
-        const latest = history.length > 0 ? history[history.length - 1] : null
-
-        setSupplierName(String(ticket.supplierName || '').trim())
-        setSupplierEmail(String(ticket.supplierEmail || '').trim())
-        setExternalReference(String(ticket.externalReference || '').trim())
-        setSupplierSubject(
-          location ? `Ticket manteniment ${code} - ${location}` : `Ticket manteniment ${code}`
-        )
-        setSupplierMessage(
-          [
-            'Bon dia,',
-            '',
-            'Us fem arribar aquesta incidencia per a la seva revisio.',
-            '',
-            `Ticket: ${code}`,
-            location ? `Ubicacio: ${location}` : '',
-            machine ? `Maquinaria: ${machine}` : '',
-            description ? `Descripcio: ${description}` : '',
-            '',
-            'Si us plau, confirmeu recepcio i disponibilitat.',
-            '',
-            'Gracies.',
-          ]
-            .filter(Boolean)
-            .join('\n')
-        )
-        setIsValidatedTicket(['validat', 'resolut'].includes(String(ticket.status || '').trim().toLowerCase()))
-        setLatestExternalSummary(
-          latest
-            ? {
-                supplierName: latest.supplierName || ticket.supplierName || '',
-                supplierEmail: latest.supplierEmail || ticket.supplierEmail || '',
-                at: latest.at || ticket.externalSentAt || null,
-                reference: latest.reference || ticket.externalReference || null,
-              }
-            : ticket.externalized
-              ? {
-                  supplierName: ticket.supplierName || '',
-                  supplierEmail: ticket.supplierEmail || '',
-                  at: ticket.externalSentAt || null,
-                  reference: ticket.externalReference || null,
-                }
-              : null
-        )
-      } catch {
+    const loadHistory = async () => {
+      if (!draft.templateId) {
+        setHistoryRecords([])
         return
       }
+      try {
+        setHistoryLoading(true)
+        const res = await fetch(
+          `/api/maintenance/preventius/completed?templateId=${encodeURIComponent(draft.templateId)}`,
+          { cache: 'no-store' }
+        )
+        if (!res.ok) {
+          if (!cancelled) setHistoryRecords([])
+          return
+        }
+        const json = await res.json()
+        const records = Array.isArray(json?.records) ? json.records : []
+        if (!cancelled) {
+          setHistoryRecords(records.slice(0, 8))
+        }
+      } finally {
+        if (!cancelled) setHistoryLoading(false)
+      }
     }
-
-    void loadTicket()
+    void loadHistory()
     return () => {
       cancelled = true
     }
-  }, [draft.kind, draft.ticketId, draft.location, draft.machine])
+  }, [draft.templateId])
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:p-4">
@@ -171,17 +253,18 @@ export default function PlannerEditModal({
           <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-slate-200 md:hidden" />
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-lg font-semibold text-slate-900">{draft.title || 'Nova tasca'}</div>
+              <div className={typography('pageTitle')}>{draft.title || 'Nou preventiu'}</div>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
+                <span className="rounded-full bg-slate-100 px-3 py-1">Preventiu</span>
                 <span className="rounded-full bg-slate-100 px-3 py-1">Creat: {createdAtLabel}</span>
                 {draft.location ? (
-                  <span className="rounded-full bg-slate-100 px-3 py-1">Ubicació: {draft.location}</span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1">Ubicacio: {draft.location}</span>
                 ) : null}
               </div>
             </div>
             <button
               type="button"
-              className="min-h-[44px] rounded-full border border-slate-200 px-4 text-sm text-gray-500"
+              className="min-h-[44px] rounded-full border border-slate-200 px-4 text-sm text-slate-600"
               onClick={() => setIsModalOpen(false)}
             >
               Tancar
@@ -190,336 +273,329 @@ export default function PlannerEditModal({
         </div>
 
         <div className="max-h-[75vh] overflow-y-auto px-5 py-5 md:px-6">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-            <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Planificació
-            </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-600">Data</span>
-                <Popover open={dateOpen} onOpenChange={setDateOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-12 w-full justify-between rounded-2xl px-4 text-base font-normal"
-                    >
-                      <span className="truncate">{format(selectedDay, 'd MMM yyyy', { locale: ca })}</span>
-                      <CalendarDays className="h-4 w-4 text-gray-500" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-3">
-                    <Calendar
-                      mode="single"
-                      selected={selectedDay}
-                      onSelect={(date) => {
-                        if (!date) return
-                        const nextIndex = Math.round((date.getTime() - weekStart.getTime()) / 86400000)
-                        if (nextIndex < 0 || nextIndex >= dayCount) return
-                        setDraft((current) =>
-                          current
-                            ? {
-                                ...current,
-                                dayIndex: nextIndex,
-                              }
-                            : current
-                        )
-                        setDateOpen(false)
-                      }}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </label>
+          <section className="space-y-4 rounded-2xl border p-4">
+            <button
+              type="button"
+              onClick={() => setInfoOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+            >
+              <div className={typography('sectionTitle')}>Informacio del preventiu</div>
+              {infoOpen ? <ChevronUp className="h-5 w-5 text-slate-500" /> : <ChevronDown className="h-5 w-5 text-slate-500" />}
+            </button>
 
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-600">Hora inici</span>
-                <input
-                  type="time"
-                  className="h-12 rounded-2xl border px-4 text-base"
-                  value={draft.start}
-                  onChange={(e) => {
-                    const start = e.target.value
-                    const end = timeFromMinutes(minutesFromTime(start) + draft.duration)
-                    setDraft((current) => (current ? { ...current, start, end } : current))
-                  }}
-                />
-              </label>
-
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-600">Durada (min)</span>
-                <input
-                  type="number"
-                  className="h-12 rounded-2xl border px-4 text-base"
-                  value={draft.duration}
-                  onChange={(e) => {
-                    const duration = Math.max(15, Number(e.target.value) || 0)
-                    const end = timeFromMinutes(minutesFromTime(draft.start) + duration)
-                    setDraft((current) => (current ? { ...current, duration, end } : current))
-                  }}
-                />
-              </label>
-
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-600">Hora fi</span>
-                <input
-                  type="time"
-                  className="h-12 rounded-2xl border px-4 text-base"
-                  value={draft.end}
-                  onChange={(e) => {
-                    const end = e.target.value
-                    const duration = minutesFromTime(end) - minutesFromTime(draft.start)
-                    setDraft((current) =>
-                      current ? { ...current, end, duration: Math.max(15, duration) } : current
-                    )
-                  }}
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Assignació
+            {infoOpen ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {summaryCard('Planificacio', planningLabel, true)}
+                {summaryCard('Operaris', draft.workers.length ? draft.workers.join(', ') : 'Sense assignar')}
+                {summaryCard(
+                  'Estat',
+                  [statusLabel(currentStatus), progressLabel].filter(Boolean).join(' · ') || statusLabel(currentStatus)
+                )}
               </div>
-              <div className="flex flex-wrap gap-3">
-                {availableWorkers(draft.dayIndex, draft.start, draft.end, draft.id).map((op) => {
-                  const checked = draft.workers.includes(op.name)
-                  return (
-                    <label
-                      key={op.id}
-                      className="flex min-h-[44px] items-center gap-3 rounded-full border px-4 py-2 text-sm"
-                    >
+            ) : null}
+          </section>
+
+          <section className="mt-4 space-y-4 rounded-2xl border p-4">
+            <button
+              type="button"
+              onClick={() => setJobDetailsOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+            >
+              <div className={typography('sectionTitle')}>Dades de la feina</div>
+              {jobDetailsOpen ? <ChevronUp className="h-5 w-5 text-slate-500" /> : <ChevronDown className="h-5 w-5 text-slate-500" />}
+            </button>
+
+            {jobDetailsOpen ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {summaryCard('Ubicacio', draft.location || 'Sense ubicacio')}
+                {summaryCard('Maquinaria', draft.machine || 'Sense maquinaria')}
+                {summaryCard('Tipus', 'Preventiu')}
+              </div>
+            ) : null}
+          </section>
+
+          <section className="mt-4 space-y-4 rounded-2xl border p-4">
+            <button
+              type="button"
+              onClick={() => setPlanningOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+            >
+              <div className="min-w-0">
+                <div className={typography('sectionTitle')}>{planningSectionTitle}</div>
+              </div>
+              {planningOpen ? <ChevronUp className="h-5 w-5 text-slate-500" /> : <ChevronDown className="h-5 w-5 text-slate-500" />}
+            </button>
+
+            {planningOpen ? (
+              <>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                    {format(selectedDay, 'dd/MM/yyyy')}
+                  </span>
+                  {availabilityLoading ? (
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                      Comprovant disponibilitat...
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                      Nomes disponibles
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+                  <section className="rounded-2xl bg-slate-50/70 p-3">
+                    <div className={typography('eyebrow')}>Franja de treball</div>
+                    <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[1.2fr_0.9fr_0.9fr]">
+                      <label className="text-sm text-slate-700">
+                        <div className={typography('eyebrow')}>Data</div>
+                        <input
+                          type="date"
+                          className="mt-1.5 h-11 w-full rounded-2xl border bg-white px-4 text-base"
+                          value={format(selectedDay, 'yyyy-MM-dd')}
+                          disabled={isReadOnlyStage}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            if (!value) return
+                            const date = new Date(`${value}T00:00:00`)
+                            if (Number.isNaN(date.getTime())) return
+                            const nextIndex = Math.round((date.getTime() - weekStart.getTime()) / 86400000)
+                            if (nextIndex < 0 || nextIndex >= dayCount) return
+                            setDraft((current) => (current ? { ...current, dayIndex: nextIndex } : current))
+                          }}
+                        />
+                      </label>
+
+                      <label className="text-sm text-slate-700">
+                        <div className={typography('eyebrow')}>Hora</div>
+                        <input
+                          type="time"
+                          className="mt-1.5 h-11 w-full rounded-2xl border bg-white px-4 text-base"
+                          value={draft.start}
+                          disabled={isReadOnlyStage}
+                          onChange={(e) => {
+                            const start = e.target.value
+                            const end = timeFromMinutes(minutesFromTime(start) + draft.duration)
+                            setDraft((current) => (current ? { ...current, start, end } : current))
+                          }}
+                        />
+                      </label>
+
+                      <label className="text-sm text-slate-700">
+                        <div className={typography('eyebrow')}>Hora fi</div>
+                        <input
+                          type="time"
+                          className="mt-1.5 h-11 w-full rounded-2xl border bg-white px-4 text-base"
+                          value={draft.end}
+                          disabled={isReadOnlyStage}
+                          onChange={(e) => {
+                            const end = e.target.value
+                            const duration = minutesFromTime(end) - minutesFromTime(draft.start)
+                            setDraft((current) =>
+                              current ? { ...current, end, duration: Math.max(15, duration) } : current
+                            )
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl bg-slate-50/70 p-3">
+                    <div className={typography('eyebrow')}>Dades de la feina</div>
+                    <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-[0.8fr_1.2fr]">
+                      <label className="text-sm text-slate-700">
+                        <div className={typography('eyebrow')}>Urgencia</div>
+                        <select
+                          className="mt-1.5 h-11 w-full rounded-2xl border bg-white px-4 text-base"
+                          value={draft.priority}
+                          disabled={isReadOnlyStage}
+                          onChange={(e) =>
+                            setDraft((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    priority: e.target.value as 'urgent' | 'alta' | 'normal' | 'baixa',
+                                  }
+                                : current
+                            )
+                          }
+                        >
+                          <option value="urgent">Urgent</option>
+                          <option value="alta">Alta</option>
+                          <option value="normal">Normal</option>
+                          <option value="baixa">Baixa</option>
+                        </select>
+                      </label>
+
+                      {machineOptions.length > 0 ? (
+                        <label className="text-sm text-slate-700">
+                          <div className={typography('eyebrow')}>Maquinaria</div>
+                          <select
+                            className="mt-1.5 h-11 w-full rounded-2xl border bg-white px-4 text-base"
+                            value={draft.machine}
+                            disabled={isReadOnlyStage}
+                            onChange={(e) =>
+                              setDraft((current) => (current ? { ...current, machine: e.target.value } : current))
+                            }
+                          >
+                            <option value="">Sense maquinaria</option>
+                            {machineOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <div />
+                      )}
+                    </div>
+                  </section>
+                </div>
+
+                <section className="mt-4 rounded-2xl border-t border-slate-200 pt-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[auto_auto_auto_1fr] md:items-center">
+                    <div className="flex items-center gap-3">
+                      <div className={typography('eyebrow')}>Operaris disponibles</div>
+                      <div className="text-xs text-slate-500">
+                        Seleccionats {draft.workers.length}/{Math.max(1, draft.workersCount)}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 md:justify-self-start">
+                      <span className="text-xs text-slate-500">Treballadors</span>
                       <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          setDraft((current) => {
-                            if (!current) return current
-                            if (checked) {
-                              const nextWorkers = current.workers.filter((worker) => worker !== op.name)
+                        type="number"
+                        min={1}
+                        max={10}
+                        className="h-8 w-14 rounded-xl border bg-white px-2.5 text-center text-sm text-slate-700"
+                        value={draft.workersCount}
+                        disabled={isReadOnlyStage}
+                        onChange={(e) =>
+                          setDraft((current) =>
+                            current ? { ...current, workersCount: Math.max(1, Number(e.target.value || 1)) } : current
+                          )
+                        }
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 md:justify-self-start">
+                      <span className="text-xs text-slate-500">Durada</span>
+                      <input
+                        type="time"
+                        step={60}
+                        className="h-8 w-24 rounded-xl border bg-white px-2.5 text-center text-sm text-slate-700"
+                        value={timeFromMinutes(draft.duration)}
+                        disabled={isReadOnlyStage}
+                        onChange={(e) => {
+                          const duration = Math.max(15, minutesFromTime(e.target.value || '00:15'))
+                          const end = timeFromMinutes(minutesFromTime(draft.start) + duration)
+                          setDraft((current) => (current ? { ...current, duration, end } : current))
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <div />
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2.5">
+                    {selectableOperators.map((operator) => (
+                      <label
+                        key={operator.id}
+                        className={`flex min-h-[40px] items-center gap-2.5 rounded-full border px-3.5 py-2 text-sm ${
+                          operator.checked
+                            ? 'border-emerald-200 bg-emerald-100 text-emerald-900'
+                            : operator.available
+                              ? 'border-slate-200 bg-slate-50 text-slate-800'
+                              : 'border-slate-200 bg-slate-100 text-slate-400'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={operator.checked}
+                          disabled={isReadOnlyStage || (!operator.available && !operator.checked)}
+                          onChange={() => {
+                            setDraft((current) => {
+                              if (!current) return current
+                              if (operator.checked) {
+                                const nextWorkers = current.workers.filter((worker) => worker !== operator.name)
+                                return {
+                                  ...current,
+                                  workers: nextWorkers,
+                                  workersCount: Math.max(1, current.workersCount),
+                                }
+                              }
+
+                              const nextWorkers = [...current.workers]
+                              if (nextWorkers.length >= Math.max(1, current.workersCount)) {
+                                if (current.workersCount === 1) {
+                                  nextWorkers.splice(0, nextWorkers.length)
+                                } else {
+                                  return current
+                                }
+                              }
+                              nextWorkers.push(operator.name)
                               return {
                                 ...current,
                                 workers: nextWorkers,
-                                workersCount: Math.max(1, nextWorkers.length),
+                                workersCount: Math.max(1, current.workersCount),
                               }
-                            }
-                            const nextWorkers = [...current.workers, op.name]
-                            return {
-                              ...current,
-                              workers: nextWorkers,
-                              workersCount: Math.max(1, nextWorkers.length),
-                            }
-                          })
-                        }}
-                      />
-                      {op.name}
-                    </label>
-                  )
-                })}
-              </div>
-            </div>
+                            })
+                          }}
+                        />
+                        <span>{operator.name}</span>
+                        {!operator.available && !operator.checked ? (
+                          <span className="text-[11px] text-slate-400">Ocupat</span>
+                        ) : null}
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              </>
+            ) : null}
+          </section>
 
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Classificació
-              </div>
-              <div className="grid grid-cols-1 gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-600">Urgència</span>
-                  <select
-                    className="h-12 rounded-2xl border px-4 text-base"
-                    value={draft.priority}
-                    onChange={(e) =>
-                      setDraft((current) =>
-                        current
-                          ? {
-                              ...current,
-                              priority: e.target.value as 'urgent' | 'alta' | 'normal' | 'baixa',
-                            }
-                          : current
-                      )
-                    }
-                  >
-                    <option value="urgent">Urgent</option>
-                    <option value="alta">Alta</option>
-                    <option value="normal">Normal</option>
-                    <option value="baixa">Baixa</option>
-                  </select>
-                </label>
+          <section className="mt-4 space-y-4 rounded-2xl border p-4">
+            <button
+              type="button"
+              onClick={() => setHistoryOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+            >
+              <div className={typography('sectionTitle')}>Historial</div>
+              {historyOpen ? <ChevronUp className="h-5 w-5 text-slate-500" /> : <ChevronDown className="h-5 w-5 text-slate-500" />}
+            </button>
 
-                {draft.kind === 'ticket' && (
-                  <label className="flex flex-col gap-1">
-                    <span className="text-xs text-gray-600">Maquinària</span>
-                    <select
-                      className="h-12 rounded-2xl border px-4 text-base"
-                      value={draft.machine}
-                      onChange={(e) =>
-                        setDraft((current) => (current ? { ...current, machine: e.target.value } : current))
-                      }
-                    >
-                      <option value="">Selecciona maquinària</option>
-                      {machines.map((machine) => (
-                        <option key={`${machine.code}-${machine.name}`} value={machine.label}>
-                          {machine.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+            {historyOpen ? (
+              <div className="space-y-2 rounded-2xl border p-4">
+                {draft.createdAt ? (
+                  <div className="text-sm text-slate-600">
+                    Planificat - {formatDateTimeValue(draft.createdAt)}{draft.location ? ` - ${draft.location}` : ''}
+                  </div>
+                ) : null}
+
+                {historyLoading ? (
+                  <div className="text-sm text-slate-500">Carregant historial...</div>
+                ) : historyRecords.length > 0 ? (
+                  historyRecords.map((record) => (
+                    <div key={record.id} className="text-sm text-slate-600">
+                      {String(record.status || 'Assignat')} -{' '}
+                      {formatDateTimeValue(record.completedAt || record.updatedAt)} -{' '}
+                      {record.updatedByName || record.createdByName || ''}
+                      {record.notes ? ` - ${record.notes}` : ''}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-slate-400">Sense historial.</div>
                 )}
               </div>
-            </div>
-          </div>
-
-          {draft.kind === 'ticket' && (
-            <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/40 px-4 py-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Proveidor
-                  </div>
-                  <div className="mt-1 text-sm text-slate-600">
-                    Envia aquest ticket per correu i el deixa en espera.
-                  </div>
-                </div>
-                {isValidatedTicket && (
-                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-                    Reobrir abans d externalitzar
-                  </span>
-                )}
-              </div>
-
-              {latestExternalSummary && (
-                <div className="mt-4 rounded-2xl border border-blue-100 bg-white px-4 py-3 text-sm text-slate-600">
-                  <div className="font-semibold text-slate-800">
-                    Ultim enviament: {latestExternalSummary.supplierName || 'Proveidor'}
-                  </div>
-                  <div className="mt-1">
-                    {latestExternalSummary.supplierEmail || 'Sense email'}
-                    {latestExternalSummary.at ? ` · ${createdAtLabel === '-' ? '' : ''}` : ''}
-                    {latestExternalSummary.at ? format(new Date(latestExternalSummary.at), 'dd/MM/yyyy HH:mm') : ''}
-                  </div>
-                  {latestExternalSummary.reference ? (
-                    <div className="mt-1">Referencia: {latestExternalSummary.reference}</div>
-                  ) : null}
-                </div>
-              )}
-
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-600">Nom proveidor</span>
-                  <input
-                    type="text"
-                    className="h-12 rounded-2xl border px-4 text-base"
-                    value={supplierName}
-                    disabled={externalizeBusy || isValidatedTicket}
-                    onChange={(e) => setSupplierName(e.target.value)}
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-600">Email proveidor</span>
-                  <input
-                    type="email"
-                    className="h-12 rounded-2xl border px-4 text-base"
-                    value={supplierEmail}
-                    disabled={externalizeBusy || isValidatedTicket}
-                    onChange={(e) => setSupplierEmail(e.target.value)}
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-600">Referencia externa</span>
-                  <input
-                    type="text"
-                    className="h-12 rounded-2xl border px-4 text-base"
-                    value={externalReference}
-                    disabled={externalizeBusy || isValidatedTicket}
-                    onChange={(e) => setExternalReference(e.target.value)}
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-600">Assumpte</span>
-                  <input
-                    type="text"
-                    className="h-12 rounded-2xl border px-4 text-base"
-                    value={supplierSubject}
-                    disabled={externalizeBusy || isValidatedTicket}
-                    onChange={(e) => setSupplierSubject(e.target.value)}
-                  />
-                </label>
-              </div>
-
-              <label className="mt-3 flex flex-col gap-1">
-                <span className="text-xs text-gray-600">Missatge</span>
-                <textarea
-                  className="min-h-[140px] rounded-2xl border px-4 py-3 text-base"
-                  value={supplierMessage}
-                  disabled={externalizeBusy || isValidatedTicket}
-                  onChange={(e) => setSupplierMessage(e.target.value)}
-                />
-              </label>
-
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  className="min-h-[44px] rounded-full bg-slate-900 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={externalizeBusy || isValidatedTicket || !draft.ticketId}
-                  onClick={async () => {
-                    if (!draft.ticketId) return
-                    try {
-                      setExternalizeBusy(true)
-                      const res = await fetch(
-                        `/api/maintenance/tickets/${encodeURIComponent(draft.ticketId)}/externalize`,
-                        {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            supplierName: supplierName.trim(),
-                            supplierEmail: supplierEmail.trim(),
-                            subject: supplierSubject.trim(),
-                            message: supplierMessage.trim(),
-                            externalReference: externalReference.trim() || null,
-                          }),
-                        }
-                      )
-                      const json = await res.json().catch(() => ({}))
-                      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
-                      if (json?.ticket) {
-                        const nextTicket = json.ticket
-                        setLatestExternalSummary({
-                          supplierName: nextTicket.supplierName || supplierName.trim(),
-                          supplierEmail: nextTicket.supplierEmail || supplierEmail.trim(),
-                          at: nextTicket.externalSentAt || Date.now(),
-                          reference: nextTicket.externalReference || externalReference.trim() || null,
-                        })
-                      }
-                      await loadWeekSchedule()
-                    } catch (err) {
-                      const message = err instanceof Error ? err.message : 'No s ha pogut enviar'
-                      alert(message)
-                    } finally {
-                      setExternalizeBusy(false)
-                    }
-                  }}
-                >
-                  {externalizeBusy
-                    ? 'Enviant...'
-                    : latestExternalSummary
-                      ? 'Reenviar a proveidor'
-                      : 'Enviar a proveidor'}
-                </button>
-              </div>
-            </div>
-          )}
+            ) : null}
+          </section>
         </div>
 
-        {conflicts.length > 0 && (
+        {conflicts.length > 0 ? (
           <div className="mx-5 mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800 md:mx-6">
-            Atenció: aquests operaris ja tenen una tasca en aquesta franja: {conflicts.join(', ')}
+            Aquests operaris ja tenen una altra tasca en aquesta franja: {conflicts.join(', ')}
           </div>
-        )}
+        ) : null}
 
         <div className="sticky bottom-0 mt-4 flex items-center justify-between rounded-b-3xl border-t border-slate-100 bg-white px-5 py-4 md:px-6">
           {draft.id ? (
@@ -530,26 +606,9 @@ export default function PlannerEditModal({
               className="rounded-full border border-red-300 p-3 text-red-600 hover:bg-red-50"
               onClick={async () => {
                 if (!draft.id) return
-                if (draft.kind === 'preventiu') {
-                  setScheduledItems((prev) => prev.filter((item) => item.id !== draft.id))
-                  setIsModalOpen(false)
-                  await onUnplanPreventiu(draft.id, draft.templateId)
-                  return
-                }
-
-                const ticketId = draft.ticketId || draft.id
-                if (!ticketId) return
-                try {
-                  setScheduledItems((prev) => prev.filter((item) => item.id !== draft.id))
-                  const ok = await onUnplanTicket(ticketId, draft.id)
-                  if (!ok) {
-                    await loadWeekSchedule()
-                    return
-                  }
-                } catch {
-                  await loadWeekSchedule()
-                }
+                setScheduledItems((prev) => prev.filter((item) => item.id !== draft.id))
                 setIsModalOpen(false)
+                await onUnplanPreventiu(draft.id, draft.templateId)
               }}
             >
               <Trash2 className="h-4 w-4" />
@@ -557,52 +616,21 @@ export default function PlannerEditModal({
           ) : (
             <div />
           )}
+
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="min-h-[48px] rounded-full border px-5 text-sm text-gray-600"
-              onClick={() => setIsModalOpen(false)}
-            >
-              Cancel·lar
-            </button>
-            <button
-              type="button"
-              className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white"
-              onClick={async () => {
+            {showPlanningAction ? (
+              <button
+                type="button"
+                className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white"
+                onClick={async () => {
                 if (!draft.start || !draft.end) return
-                if (draft.kind === 'ticket') {
-                  const ticketId = draft.ticketId || draft.id
-                  if (!ticketId) {
-                    alert('Arrossega un ticket des de la columna lateral.')
-                    return
-                  }
-                  const nextItem: ScheduledItem = {
-                    id: ticketId,
-                    kind: 'ticket',
-                    ticketId,
-                    title: draft.title,
-                    createdAt: draft.createdAt || null,
-                    workers: draft.workers,
-                    workersCount: Math.max(1, draft.workers.length || 1),
-                    dayIndex: draft.dayIndex,
-                    start: draft.start,
-                    end: draft.end,
-                    minutes: draft.duration,
-                    priority: draft.priority,
-                    location: draft.location,
-                    machine: draft.machine,
-                    templateId: null,
-                  }
-                  setScheduledItems((prev) => {
-                    const next = prev.filter((item) => item.id !== ticketId)
-                    return [...next, nextItem]
-                  })
-                  await persistTicketPlanning(nextItem)
-                  setIsModalOpen(false)
-                  await loadWeekSchedule()
+                const latestAvailableIds = await loadAvailability()
+                const selectedIds = resolveWorkerIds(draft.workers)
+                const unavailableSelected = selectedIds.filter((id) => !latestAvailableIds.includes(id))
+                if (unavailableSelected.length > 0) {
+                  alert('Hi ha operaris seleccionats que ja no estan disponibles en aquesta franja.')
                   return
                 }
-
                 if (!draft.title) {
                   alert('Omple el títol del preventiu.')
                   return
@@ -656,22 +684,25 @@ export default function PlannerEditModal({
                           minutes: draft.duration,
                           priority: draft.priority,
                           location: payload.location,
+                          machine: draft.machine,
                         } as ScheduledItem,
                       ])
                     }
                   }
                 } catch {
-                  alert('No s’ha pogut guardar el preventiu.')
+                  alert('No s ha pogut guardar el preventiu.')
                 }
                 setIsModalOpen(false)
                 await loadWeekSchedule()
               }}
-            >
-              Guardar
-            </button>
+              >
+                {isAssignedStage ? 'Reassignar' : 'Assignar'}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
     </div>
   )
 }
+

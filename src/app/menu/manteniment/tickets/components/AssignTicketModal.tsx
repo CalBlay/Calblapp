@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { formatDateOnly, formatDateTimeValue, formatTimeValue } from '@/lib/date-format'
 import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
 import { typography } from '@/lib/typography'
@@ -99,6 +99,7 @@ type Props = {
       }>
     }
   ) => Promise<void>
+  onDeletePlanned?: (() => void | Promise<void>) | null
   onClose: () => void
 }
 
@@ -144,6 +145,7 @@ export default function AssignTicketModal({
   onAssignVehicle,
   onReopen,
   onExternalize,
+  onDeletePlanned,
   onClose,
 }: Props) {
   const isDeco = ticket.ticketType === 'deco'
@@ -463,12 +465,7 @@ export default function AssignTicketModal({
           headerTitle={headerTitle}
           headerMeta={headerMeta}
           eventMeta={eventMeta}
-          assignBusy={assignBusy}
-          isAssignedStage={isAssignedStage}
-          isValidated={isValidated}
-          canReopen={canReopen}
-          onAssign={() => onAssign(ticket, ticket.assignedToIds || [], ticket.assignedToNames || [])}
-          onReopen={() => onReopen(ticket)}
+          onClose={() => void handleCloseModal()}
         />
 
         <div className="max-h-[75vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
@@ -1032,14 +1029,40 @@ export default function AssignTicketModal({
           </section>
         </div>
 
-        <div className="sticky bottom-0 flex justify-end rounded-b-3xl border-t border-slate-100 bg-white px-5 py-4 md:px-6">
-          <button
-            type="button"
-            onClick={() => void handleCloseModal()}
-            className="min-h-[48px] rounded-full border px-5 text-sm font-medium"
-          >
-            Tancar
-          </button>
+        <div className="sticky bottom-0 flex items-center justify-between rounded-b-3xl border-t border-slate-100 bg-white px-5 py-4 md:px-6">
+          {onDeletePlanned ? (
+            <button
+              type="button"
+              title="Eliminar"
+              aria-label="Eliminar"
+              className="rounded-full border border-red-300 p-3 text-red-600 hover:bg-red-50"
+              onClick={() => void onDeletePlanned()}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          ) : (
+            <div />
+          )}
+          <div className="flex items-center gap-2">
+            {isValidated && canReopen ? (
+              <button
+                type="button"
+                onClick={() => onReopen(ticket)}
+                className="min-h-[48px] rounded-full border border-amber-300 px-5 text-sm font-semibold text-amber-700"
+              >
+                Reobrir
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onAssign(ticket, ticket.assignedToIds || [], ticket.assignedToNames || [])}
+                disabled={assignBusy || isValidated}
+                className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {assignBusy ? 'Guardant...' : isAssignedStage ? 'Reassignar' : 'Assignar'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

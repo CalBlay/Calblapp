@@ -198,8 +198,12 @@ export default function AssignTicketPlanningSection({
                 <label
                   key={u.id}
                   className={`flex min-h-[40px] items-center gap-2.5 rounded-full border px-3.5 py-2 text-sm ${
-                    checked ? 'border-emerald-200 bg-emerald-100 text-emerald-900' : 'bg-slate-50'
-                  } ${!isAvailable ? 'opacity-40' : ''}`}
+                    checked
+                      ? 'border-emerald-200 bg-emerald-100 text-emerald-900'
+                      : isAvailable
+                        ? 'border-slate-200 bg-slate-50 text-slate-800'
+                        : 'border-slate-200 bg-slate-100 text-slate-400'
+                  }`}
                 >
                   <input
                     type="checkbox"
@@ -235,6 +239,9 @@ export default function AssignTicketPlanningSection({
                     }}
                   />
                   <span>{u.name}</span>
+                  {!isAvailable && !checked ? (
+                    <span className="text-[11px] text-slate-400">Ocupat</span>
+                  ) : null}
                 </label>
                 )
               })}

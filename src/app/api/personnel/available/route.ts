@@ -148,6 +148,8 @@ export async function GET(request: NextRequest) {
   const ed = searchParams.get('endDate')
   const et = searchParams.get('endTime')
   const excludeEventId = searchParams.get('excludeEventId')
+  const excludeMaintenancePlannedId = searchParams.get('excludeMaintenancePlannedId')
+  const excludeMaintenanceTicketId = searchParams.get('excludeMaintenanceTicketId')
 
   if (!deptParam || !sd || !ed) {
     return NextResponse.json(
@@ -205,6 +207,7 @@ export async function GET(request: NextRequest) {
     try {
       const plannedSnap = await db.collection('maintenancePreventiusPlanned').get()
       plannedSnap.docs.forEach((doc) => {
+        if (excludeMaintenancePlannedId && doc.id === excludeMaintenancePlannedId) return
         const data = doc.data() as MaintenancePlannedDoc
         const date = String(data.date || '').trim()
         const startTime = String(data.startTime || '').trim()
@@ -227,6 +230,7 @@ export async function GET(request: NextRequest) {
     try {
       const ticketsSnap = await db.collection('maintenanceTickets').get()
       ticketsSnap.docs.forEach((doc) => {
+        if (excludeMaintenanceTicketId && doc.id === excludeMaintenanceTicketId) return
         const data = doc.data() as MaintenanceTicketDoc
         if (!data.plannedStart || !data.plannedEnd) return
         const start = new Date(Number(data.plannedStart))

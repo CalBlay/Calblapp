@@ -44,6 +44,8 @@ export type ScheduledItem = {
   createdAt?: string | number | null
   templateId?: string | null
   ticketId?: string | null
+  status?: string
+  progress?: number
 }
 
 export type PlannerDraft = {
@@ -62,4 +64,6 @@ export type PlannerDraft = {
   priority: 'urgent' | 'alta' | 'normal' | 'baixa'
   location: string
   machine: string
+  status?: string
+  progress?: number
 }

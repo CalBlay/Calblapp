@@ -24,6 +24,7 @@ type Props = {
   locations: string[]
   machines: MachineItem[]
   users: UserItem[]
+  onDeletePlanned?: (() => void | Promise<void>) | null
   onClose: () => void
   onRefresh: () => Promise<void>
 }
@@ -60,6 +61,7 @@ export default function PlannerTicketModal({
   locations,
   machines,
   users,
+  onDeletePlanned,
   onClose,
   onRefresh,
 }: Props) {
@@ -414,6 +416,7 @@ export default function PlannerTicketModal({
       onAssignVehicle={handleAssignVehicle}
       onReopen={handleReopen}
       onExternalize={handleExternalize}
+      onDeletePlanned={onDeletePlanned}
       onClose={onClose}
     />
   )

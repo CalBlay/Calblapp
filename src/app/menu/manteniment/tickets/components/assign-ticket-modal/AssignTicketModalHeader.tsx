@@ -4,24 +4,14 @@ type Props = {
   headerTitle: string
   headerMeta: string
   eventMeta: string
-  assignBusy: boolean
-  isAssignedStage: boolean
-  isValidated: boolean
-  canReopen: boolean
-  onAssign: () => void
-  onReopen: () => void
+  onClose: () => void
 }
 
 export default function AssignTicketModalHeader({
   headerTitle,
   headerMeta,
   eventMeta,
-  assignBusy,
-  isAssignedStage,
-  isValidated,
-  canReopen,
-  onAssign,
-  onReopen,
+  onClose,
 }: Props) {
   return (
     <div className="sticky top-0 rounded-t-3xl border-b border-slate-100 bg-white px-5 pb-4 pt-3 md:px-6">
@@ -32,25 +22,13 @@ export default function AssignTicketModalHeader({
           <div className={`mt-1 ${typography('bodySm')}`}>{headerMeta}</div>
           {eventMeta ? <div className={`mt-1 ${typography('bodySm')}`}>{eventMeta}</div> : null}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onAssign}
-            disabled={assignBusy || isValidated}
-            className="min-h-[44px] rounded-full bg-emerald-600 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {assignBusy ? 'Guardant...' : isAssignedStage ? 'Reassignar' : 'Assignar'}
-          </button>
-          {isValidated && canReopen ? (
-            <button
-              type="button"
-              onClick={onReopen}
-              className="min-h-[44px] rounded-full border border-amber-300 px-5 text-sm font-semibold text-amber-700"
-            >
-              Reobrir
-            </button>
-          ) : null}
-        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="min-h-[44px] rounded-full border border-slate-200 px-5 text-sm text-slate-600"
+        >
+          Tancar
+        </button>
       </div>
     </div>
   )

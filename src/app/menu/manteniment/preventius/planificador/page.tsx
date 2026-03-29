@@ -353,6 +353,8 @@ export default function PreventiusPlanificadorPage() {
       priority: item.priority || 'normal',
       location: item.location || '',
       machine: item.machine || '',
+      status: item.status,
+      progress: item.progress,
     })
   }
 
@@ -417,6 +419,7 @@ export default function PreventiusPlanificadorPage() {
       priority: item.priority || 'normal',
       location: item.location || '',
       machine: item.kind === 'ticket' ? item.machine || '' : '',
+      status: item.kind === 'preventiu' ? 'assignat' : undefined,
     })
   }
 
@@ -1003,6 +1006,14 @@ export default function PreventiusPlanificadorPage() {
             locations={locations}
             machines={machines}
             users={users}
+            onDeletePlanned={async () => {
+              const ticketId = draft.ticketId || draft.id
+              if (!ticketId) return
+              const ok = await unplanTicket(ticketId, draft.id)
+              if (!ok) return
+              setIsModalOpen(false)
+              setDraft(null)
+            }}
             onClose={() => {
               setIsModalOpen(false)
               setDraft(null)
@@ -1017,6 +1028,7 @@ export default function PreventiusPlanificadorPage() {
             days={days}
             dayCount={DAY_COUNT}
             machines={machines}
+            users={users}
             getWorkerConflicts={getWorkerConflicts}
             availableWorkers={availableWorkers}
             minutesFromTime={minutesFromTime}

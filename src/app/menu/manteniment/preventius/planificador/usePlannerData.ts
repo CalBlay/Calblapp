@@ -338,6 +338,13 @@ export default function usePlannerData({
             location: String(p.location || ''),
             templateId: p.templateId || null,
             ticketId: null,
+            status: String(p.lastStatus || 'assignat'),
+            progress:
+              typeof p.lastProgress === 'number'
+                ? p.lastProgress
+                : Number.isFinite(Number(p.lastProgress))
+                  ? Number(p.lastProgress)
+                  : undefined,
           }
         })
         .filter(Boolean) as ScheduledItem[]
@@ -382,6 +389,7 @@ export default function usePlannerData({
           end: preferredSlot.end,
           workers: desiredWorkers,
           workersCount: desiredWorkers.length || 1,
+          status: item.status || 'assignat',
         }
 
         try {
@@ -456,6 +464,7 @@ export default function usePlannerData({
             location: template.location || '',
             templateId: template.id,
             ticketId: null,
+            status: 'assignat',
           }
           workingPreventius.push(nextItem)
           workingAgenda.push(nextItem)
