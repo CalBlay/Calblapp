@@ -108,6 +108,7 @@ interface GroupInput {
 type Line = {
   id: string
   name: string
+  groupId?: string
   meetingPoint: string
   isJamonero?: boolean
   startDate: string
@@ -122,6 +123,7 @@ type Line = {
 const toLine = (p: RowInput): Line => ({
   id: p?.id || '',
   name: p?.name || '',
+  groupId: p?.groupId || '',
   meetingPoint: p?.meetingPoint || '',
   isJamonero: p?.isJamonero === true,
   startDate: p?.startDate || '',
@@ -285,10 +287,14 @@ export async function POST(req: NextRequest) {
         const groupId = String(group.id || `group-${index + 1}`)
         const groupRows = groupedRows.get(groupId) || []
         const byRole = (role: Role) => groupRows.filter((row) => row.role === role)
-        const responsables = byRole('responsable')
+        const explicitResponsables = byRole('responsable')
         const conductorsRows = byRole('conductor')
         const treballadorsRows = byRole('treballador')
-        const mainResponsable = responsables[0] ?? null
+        const fallbackResponsible =
+          explicitResponsables[0] ??
+          ((group as any).wantsResponsible !== false ? conductorsRows[0] ?? null : null)
+        const responsables = fallbackResponsible ? [fallbackResponsible] : []
+        const mainResponsable = fallbackResponsible
         const responsibleActsAsDriver = !!mainResponsable?.isDriver
         const conductorsForSave = [
           ...(responsibleActsAsDriver && mainResponsable ? [mainResponsable] : []),

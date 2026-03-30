@@ -17,6 +17,7 @@ import {
   ServicePhaseKey,
   ServicePhaseSetting,
   ServeiGroup,
+  ServiceJamoneroAssignment,
   ServicePhaseEtt,
   ServicePhaseEttData,
 } from "../phaseConfig"
@@ -40,6 +41,10 @@ type Props = {
   manualResponsibleId: string
   availableResponsables: Array<{ id: string; name: string }>
   availableConductors: Array<{ id: string; name: string }>
+  availableJamoneros: Array<{ id: string; name: string }>
+  jamoneroAssignments: ServiceJamoneroAssignment[]
+  setJamoneroCount: (count: number) => void
+  updateJamoneroAssignment: (id: string, patch: Partial<ServiceJamoneroAssignment>) => void
   setManualResponsible: (value: string) => void
   toggleSelection: (key: ServicePhaseKey) => void
   updateSetting: (key: ServicePhaseKey, patch: Partial<ServicePhaseSetting>) => void
@@ -62,6 +67,10 @@ export default function ServicePhasePanel({
   manualResponsibleId,
   availableResponsables,
   availableConductors,
+  availableJamoneros,
+  jamoneroAssignments,
+  setJamoneroCount,
+  updateJamoneroAssignment,
   setManualResponsible,
   toggleSelection,
   updateSetting,
@@ -73,6 +82,12 @@ export default function ServicePhasePanel({
   updateEtt,
 }: Props) {
   const normalize = (value?: string) => String(value || "").trim().toLowerCase()
+  const selectedManualJamoneroIds = new Set(
+    jamoneroAssignments
+      .filter((assignment) => assignment.mode === "manual")
+      .map((assignment) => normalize(assignment.personnelId))
+      .filter(Boolean)
+  )
 
   void meetingPoint
   void manualResponsibleId
@@ -89,6 +104,63 @@ export default function ServicePhasePanel({
           </p>
           {totals.jamoneros > 0 && (
             <p className="text-xs text-amber-700">Jamoneros {totals.jamoneros}</p>
+          )}
+        </div>
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+        <div className="grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)] lg:items-start">
+          <div>
+            <Label>Jamoneros event</Label>
+            <Input
+              type="number"
+              min={0}
+              value={jamoneroAssignments.length}
+              onChange={(e) =>
+                setJamoneroCount(
+                  Number.isNaN(Number(e.target.value)) ? 0 : Math.max(0, Number(e.target.value))
+                )
+              }
+            />
+          </div>
+          {jamoneroAssignments.length > 0 && (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {jamoneroAssignments.map((assignment, index) => (
+                <div key={assignment.id}>
+                  <Label>Jamonero {index + 1}</Label>
+                  <Select
+                    value={
+                      assignment.mode === "manual" && assignment.personnelId
+                        ? assignment.personnelId
+                        : "__auto__"
+                    }
+                    onValueChange={(value) =>
+                      updateJamoneroAssignment(assignment.id, {
+                        mode: value === "__auto__" ? "auto" : "manual",
+                        personnelId: value === "__auto__" ? "" : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Automàtic" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__auto__">Automàtic</SelectItem>
+                      {availableJamoneros
+                        .filter(
+                          (person) =>
+                            normalize(person.id) === normalize(assignment.personnelId) ||
+                            !selectedManualJamoneroIds.has(normalize(person.id))
+                        )
+                        .map((person) => (
+                        <SelectItem key={person.id} value={person.id}>
+                          {person.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -143,7 +215,7 @@ export default function ServicePhasePanel({
                           )}
                         </div>
 
-                        <div className="grid gap-3 lg:grid-cols-[64px_minmax(220px,1fr)_64px_minmax(220px,1fr)_120px_120px_minmax(220px,1fr)_130px_130px_170px] lg:items-end">
+                        <div className="grid gap-3 lg:grid-cols-[64px_minmax(220px,1fr)_64px_minmax(220px,1fr)_120px_minmax(220px,1fr)_130px_130px_170px] lg:items-end">
                           <div className="flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
                             <Switch
                               id={`needs-responsible-${group.id}`}
@@ -233,27 +305,13 @@ export default function ServicePhasePanel({
                             <Input
                               type="number"
                               min={0}
+                              max={4}
                               value={group.workers}
                               onChange={(e) =>
                                 updateGroup(group.id, {
                                   workers: Number.isNaN(Number(e.target.value))
                                     ? 0
-                                    : Number(e.target.value),
-                                })
-                              }
-                            />
-                          </div>
-                          <div>
-                            <Label>Jamoneros</Label>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={group.jamoneros}
-                              onChange={(e) =>
-                                updateGroup(group.id, {
-                                  jamoneros: Number.isNaN(Number(e.target.value))
-                                    ? 0
-                                    : Math.max(0, Number(e.target.value)),
+                                    : Math.min(4, Number(e.target.value)),
                                 })
                               }
                             />

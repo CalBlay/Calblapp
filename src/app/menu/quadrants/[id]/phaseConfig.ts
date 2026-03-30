@@ -73,6 +73,12 @@ export type ServeiGroup = {
   driverId: string
 }
 
+export type ServiceJamoneroAssignment = {
+  id: string
+  mode: 'auto' | 'manual'
+  personnelId: string
+}
+
 export type ServicePhaseEttData = {
   serviceDate: string
   meetingPoint: string

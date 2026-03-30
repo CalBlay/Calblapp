@@ -9,6 +9,7 @@ export interface PersonnelOption {
   status: 'available' | 'conflict' | 'notfound'
   reason?: string
   isDriver?: boolean
+  isJamonero?: boolean
   camioPetit?: boolean
   camioGran?: boolean
 }
@@ -76,6 +77,7 @@ const cleanList = (
       status: (person.status as PersonnelOption['status']) || 'notfound',
       reason: person.reason,
       isDriver: person.isDriver === true,
+      isJamonero: person.isJamonero === true,
       camioPetit: person.camioPetit === true,
       camioGran: person.camioGran === true,
     }))

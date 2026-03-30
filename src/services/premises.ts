@@ -65,6 +65,7 @@ export type DepartmentPersonnelRef = {
   role: string
   isDriver?: boolean
   isJamonero?: boolean
+  isResponsible?: boolean
   camioPetit?: boolean
   camioGran?: boolean
   available?: boolean
@@ -89,6 +90,7 @@ export async function loadDepartmentPersonnel(
           data?.driver?.camioGran === true ||
           data?.driver?.camioPetit === true,
         isJamonero: data?.isJamonero === true,
+        isResponsible: data?.isResponsible === true,
         camioPetit: data?.driver?.camioPetit === true,
         camioGran: data?.driver?.camioGran === true,
         available: data?.available !== false,

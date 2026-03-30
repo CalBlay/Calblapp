@@ -193,6 +193,8 @@ export default function DraftsTable({
       rows: rowsOverride ?? rows,
       groups: groupDefs,
       onSaved: (cleanedRows) => {
+        setRows(cleanedRows)
+        setEditIdx(null)
         initialRef.current = JSON.stringify({ rows: cleanedRows, groups: groupDefs })
       },
     })

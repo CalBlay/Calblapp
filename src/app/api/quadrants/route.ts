@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { autoAssign } from '@/services/autoAssign'
+import { loadDepartmentPersonnel, loadPremises, type DriverCrewPremise } from '@/services/premises'
 
 export const runtime = 'nodejs'
 const ORIGIN = 'MolÃ­ Vinyals, 11, 08776 Sant Pere de Riudebitlles, Barcelona'
@@ -268,6 +269,7 @@ export async function POST(req: NextRequest) {
       if (Array.isArray(bodyForSave.groups)) {
         if (deptNorm === 'serveis') {
           toSave.groups = bodyForSave.groups.map((g: any) => ({
+            wantsResponsible: g.wantsResponsible !== false,
             id: g.id || null,
             serviceDate: g.serviceDate || null,
             dateLabel: g.dateLabel || null,
@@ -275,7 +277,7 @@ export async function POST(req: NextRequest) {
             startTime: g.startTime || '',
             endTime: g.endTime || '',
             workers: Number(g.workers || 0),
-            jamoneros: Number(g.jamoneros || 0),
+            jamoneros: Number(g.jamoneros || bodyForSave.jamoneroCount || 0),
             drivers: Number(g.drivers || 0),
             needsDriver: !!g.needsDriver,
             driverId: g.driverId || null,
@@ -285,12 +287,17 @@ export async function POST(req: NextRequest) {
                 idx < Math.max(1, Number(g.drivers || 0))
               )?.name ||
               null,
-            responsibleId: g.responsibleId || bodyForSave.manualResponsibleId || null,
+            responsibleId: g.responsibleId || null,
             responsibleName:
-              g.responsibleName ||
-              bodyForSave.manualResponsibleName ||
-              assignmentForSave.responsible?.name ||
-              null,
+              (g.wantsResponsible !== false
+                ? g.responsibleName ||
+                  assignmentForSave.responsible?.name ||
+                  g.driverName ||
+                  assignmentForSave.drivers?.find((driver, idx) =>
+                    idx < Math.max(1, Number(g.drivers || 0))
+                  )?.name ||
+                  null
+                : null),
           }))
         } else {
           const normalizePerson = (value?: string | null) =>
@@ -375,7 +382,7 @@ export async function POST(req: NextRequest) {
                 (person) =>
                   person?.name &&
                   person.name !== 'Extra' &&
-                  person.isExternal !== true &&
+                  ((person as any).isExternal !== true) &&
                   !String(person.name).toLowerCase().startsWith('ett')
               )?.name ||
               null
@@ -493,7 +500,62 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const phaseRequests: Array<any> = []
+    const normalizePerson = (value?: string | null) =>
+      (value || '').toString().trim().toLowerCase()
+
+    let phaseRequests: Array<any> = []
+    let remainingServiceJamoneroAssignments = Array.isArray(body.serviceJamoneroAssignments)
+      ? body.serviceJamoneroAssignments.map((assignment: any, index: number) => ({
+          id: String(assignment?.id || `jamonero-${index + 1}`),
+          mode: assignment?.mode === 'manual' ? 'manual' : 'auto',
+          personnelId: assignment?.personnelId ? String(assignment.personnelId) : null,
+          personnelName: assignment?.personnelName ? String(assignment.personnelName) : null,
+        }))
+      : []
+    let remainingServiceEventGroups = 0
+
+    const consumeServiceJamoneros = (
+      assignment: {
+        responsible?: { name: string } | null
+        drivers?: Array<{ name?: string; isJamonero?: boolean }>
+        staff?: Array<{ name?: string; isJamonero?: boolean }>
+      }
+    ) => {
+      if (!remainingServiceJamoneroAssignments.length) return
+
+      const usedNames = [
+        ...(assignment.drivers || [])
+          .filter((person) => person?.isJamonero === true && person.name && person.name !== assignment.responsible?.name)
+          .map((person) => String(person.name)),
+        ...(assignment.staff || [])
+          .filter((person) => person?.isJamonero === true && person.name)
+          .map((person) => String(person.name)),
+      ]
+
+      if (!usedNames.length) return
+
+      const normalizedUsed = usedNames.map((name) => normalizePerson(name))
+      const matchedManualIds = new Set<string>()
+      normalizedUsed.forEach((usedName) => {
+        const manual = remainingServiceJamoneroAssignments.find(
+          (assignment) =>
+            assignment.mode === 'manual' &&
+            assignment.personnelName &&
+            normalizePerson(assignment.personnelName) === usedName
+        )
+        if (manual) matchedManualIds.add(manual.id)
+      })
+
+      let remainingAutoToConsume = Math.max(normalizedUsed.length - matchedManualIds.size, 0)
+      remainingServiceJamoneroAssignments = remainingServiceJamoneroAssignments.filter((assignment) => {
+        if (matchedManualIds.has(assignment.id)) return false
+        if (assignment.mode === 'auto' && remainingAutoToConsume > 0) {
+          remainingAutoToConsume -= 1
+          return false
+        }
+        return true
+      })
+    }
 
     if (deptNorm === 'logistica' && logisticaPhasesIn.length > 0) {
       let phaseIndex = 0
@@ -519,7 +581,93 @@ export async function POST(req: NextRequest) {
       }
     } else if (deptNorm === 'serveis' && Array.isArray(body.groups) && body.groups.length > 0) {
       const eventDate = body.startDate
-      body.groups.forEach((g: any) => {
+      const serviceAssignments = Array.isArray(body.serviceJamoneroAssignments)
+        ? body.serviceJamoneroAssignments
+        : []
+      const manualServiceJamonero = serviceAssignments.find(
+        (assignment: any) => assignment?.mode === 'manual' && (assignment?.personnelId || assignment?.personnelName)
+      )
+      const hasAutoServiceJamonero = serviceAssignments.some(
+        (assignment: any) => assignment?.mode !== 'manual'
+      )
+      const departmentPeople =
+        manualServiceJamonero || hasAutoServiceJamonero
+          ? await loadDepartmentPersonnel(deptNorm)
+          : []
+      const premisesData =
+        manualServiceJamonero || hasAutoServiceJamonero
+          ? await loadPremises(deptNorm, departmentPeople)
+          : { premises: { driverCrews: [] as DriverCrewPremise[] } }
+      const driverCrews = Array.isArray(premisesData?.premises?.driverCrews)
+        ? premisesData.premises.driverCrews
+        : []
+      const findPerson = (ref?: { id?: string | null; name?: string | null }) =>
+        departmentPeople.find((person) => {
+          if (ref?.id && person.id === ref.id) return true
+          if (ref?.name && norm(person.name) === norm(ref.name)) return true
+          return false
+        }) || null
+      const findCrewByDriver = (ref?: { id?: string | null; name?: string | null }) =>
+        driverCrews.find((crew) => {
+          const driver = findPerson({ id: crew.driverId, name: crew.driverName })
+          if (!driver) return false
+          if (ref?.id && driver.id === ref.id) return true
+          if (ref?.name && norm(driver.name) === norm(ref.name)) return true
+          return false
+        }) || null
+      const findCrewByCompanion = (ref?: { id?: string | null; name?: string | null }) =>
+        driverCrews.find((crew) =>
+          crew.companions.some((companion) => {
+            const companionPerson = findPerson({ id: companion.id, name: companion.name })
+            if (!companionPerson) return false
+            if (ref?.id && companionPerson.id === ref.id) return true
+            if (ref?.name && norm(companionPerson.name) === norm(ref.name)) return true
+            return false
+          })
+        ) || null
+      const crewContainsPerson = (crew: DriverCrewPremise | null, person: { id?: string | null; name?: string | null } | null) => {
+        if (!crew || !person) return false
+        const driver = findPerson({ id: crew.driverId, name: crew.driverName })
+        if (driver) {
+          if (person.id && driver.id === person.id) return true
+          if (person.name && norm(driver.name) === norm(person.name)) return true
+        }
+        return crew.companions.some((companion) => {
+          const companionPerson = findPerson({ id: companion.id, name: companion.name })
+          if (!companionPerson) return false
+          if (person.id && companionPerson.id === person.id) return true
+          if (person.name && norm(companionPerson.name) === norm(person.name)) return true
+          return false
+        })
+      }
+      const existingGroupMatchesCrew = (
+        groups: any[],
+        currentIndex: number,
+        driverId?: string | null,
+        serviceDate?: string
+      ) =>
+        groups.some((candidate, candidateIndex) => {
+          if (candidateIndex === currentIndex) return false
+          const candidateDate = candidate?.serviceDate || body.startDate
+          if (serviceDate && candidateDate !== serviceDate) return false
+          const candidateLabel =
+            (candidate?.dateLabel || '').toString().trim() ||
+            (candidateDate === eventDate ? 'Event' : 'Muntatge')
+          if (norm(candidateLabel) !== 'event') return false
+          return Boolean(driverId) && String(candidate?.driverId || '').trim() === String(driverId || '').trim()
+        })
+      const existingEventGroupsCount = body.groups.filter((candidate: any) => {
+        const candidateDate = candidate?.serviceDate || body.startDate
+        if (candidateDate !== eventDate) return false
+        const candidateLabel =
+          (candidate?.dateLabel || '').toString().trim() ||
+          (candidateDate === eventDate ? 'Event' : 'Muntatge')
+        return norm(candidateLabel) === 'event'
+      }).length
+      const canAutoCreateExtraEventGroup =
+        existingEventGroupsCount <= 1 && Array.isArray(body.groups) && body.groups.length === 1
+
+      body.groups.forEach((g: any, groupIndex: number) => {
         const serviceDate = g.serviceDate || body.startDate
         const label =
           (g.dateLabel || '').toString().trim() ||
@@ -530,10 +678,172 @@ export async function POST(req: NextRequest) {
             : body.skipResponsible
             ? false
             : true
+        const isPrimaryResponsibleEventGroup =
+          groupIndex === 0 &&
+          serviceDate === eventDate &&
+          Boolean(body.manualResponsibleId)
         const responsableId =
-          wantsResp && (g.responsibleId || body.manualResponsibleId)
-            ? g.responsibleId || body.manualResponsibleId
+          wantsResp && (g.responsibleId || (isPrimaryResponsibleEventGroup ? body.manualResponsibleId : null))
+            ? g.responsibleId || (isPrimaryResponsibleEventGroup ? body.manualResponsibleId : null)
             : null
+
+        const responsiblePerson =
+          isPrimaryResponsibleEventGroup
+            ? findPerson({ id: body.manualResponsibleId })
+            : null
+        const jamoneroPerson =
+          groupIndex === 0 && serviceDate === eventDate && manualServiceJamonero
+            ? findPerson({
+                id: manualServiceJamonero.personnelId || null,
+                name: manualServiceJamonero.personnelName || null,
+              })
+            : null
+        const responsibleCrew = responsiblePerson
+          ? responsiblePerson.isDriver
+            ? findCrewByDriver({ id: responsiblePerson.id, name: responsiblePerson.name })
+            : findCrewByCompanion({ id: responsiblePerson.id, name: responsiblePerson.name })
+          : null
+        const jamoneroCrew = jamoneroPerson
+          ? jamoneroPerson.isDriver
+            ? findCrewByDriver({ id: jamoneroPerson.id, name: jamoneroPerson.name })
+            : findCrewByCompanion({ id: jamoneroPerson.id, name: jamoneroPerson.name })
+          : null
+        const autoJamoneroPerson =
+          !jamoneroPerson &&
+          groupIndex === 0 &&
+          serviceDate === eventDate &&
+          responsibleCrew &&
+          hasAutoServiceJamonero
+            ? departmentPeople.find((person) => {
+                if (person.isJamonero !== true) return false
+                if (body.manualResponsibleId && person.id === body.manualResponsibleId) return false
+                const personCrew = person.isDriver
+                  ? findCrewByDriver({ id: person.id, name: person.name })
+                  : findCrewByCompanion({ id: person.id, name: person.name })
+                if (!personCrew) return false
+                if (personCrew.id === responsibleCrew.id) return false
+                if (crewContainsPerson(responsibleCrew, { id: person.id, name: person.name })) return false
+                return true
+              }) || null
+            : null
+        const autoJamoneroCrew = autoJamoneroPerson
+          ? autoJamoneroPerson.isDriver
+            ? findCrewByDriver({ id: autoJamoneroPerson.id, name: autoJamoneroPerson.name })
+            : findCrewByCompanion({ id: autoJamoneroPerson.id, name: autoJamoneroPerson.name })
+          : null
+        const splitForManualJamonero =
+          label.toLowerCase() === 'event' &&
+          canAutoCreateExtraEventGroup &&
+          groupIndex === 0 &&
+          jamoneroPerson &&
+          responsibleCrew &&
+          jamoneroCrew &&
+          jamoneroCrew.id !== responsibleCrew.id &&
+          !existingGroupMatchesCrew(body.groups, groupIndex, jamoneroCrew.driverId, serviceDate)
+        const splitForAutoJamonero =
+          label.toLowerCase() === 'event' &&
+          canAutoCreateExtraEventGroup &&
+          groupIndex === 0 &&
+          !manualServiceJamonero &&
+          autoJamoneroPerson &&
+          responsibleCrew &&
+          autoJamoneroCrew &&
+          autoJamoneroCrew.id !== responsibleCrew.id &&
+          !existingGroupMatchesCrew(body.groups, groupIndex, autoJamoneroCrew.driverId, serviceDate)
+
+        if (splitForManualJamonero || splitForAutoJamonero) {
+          const selectedJamoneroPerson = jamoneroPerson || autoJamoneroPerson
+          const selectedJamoneroCrew = jamoneroCrew || autoJamoneroCrew
+          const selectedJamoneroAssignment = jamoneroPerson
+            ? manualServiceJamonero
+            : autoJamoneroPerson
+            ? {
+                id: `auto-jamonero-${autoJamoneroPerson.id}`,
+                mode: 'manual',
+                personnelId: autoJamoneroPerson.id,
+                personnelName: autoJamoneroPerson.name,
+              }
+            : null
+
+          if (!selectedJamoneroPerson || !selectedJamoneroCrew || !selectedJamoneroAssignment) {
+            return
+          }
+
+          const secondGroupWorkers = selectedJamoneroPerson.isDriver ? 1 : 2
+          const firstGroupWorkers = Math.max(Number(g.workers || 0) - secondGroupWorkers, 0)
+          const secondGroupDriver = selectedJamoneroPerson.isDriver
+            ? selectedJamoneroPerson
+            : findPerson({ id: selectedJamoneroCrew?.driverId, name: selectedJamoneroCrew?.driverName })
+
+          phaseRequests.push({
+            groupId: `${g.id || 'group'}__g1`,
+            label,
+            phaseType: norm(label),
+            date: serviceDate,
+            endDate: serviceDate,
+            startTime: g.startTime || body.startTime,
+            endTime: g.endTime || body.endTime,
+            totalWorkers: firstGroupWorkers,
+            jamoneroCount: 0,
+            numDrivers: 1,
+            wantsResp: true,
+            responsableId: body.manualResponsibleId,
+            manualDriverId:
+              responsiblePerson?.isDriver
+                ? responsiblePerson.id
+                : responsibleCrew?.driverId || null,
+            meetingPoint: g.meetingPoint || body.meetingPoint || '',
+            groupsOverride: [
+              {
+                ...g,
+                id: `${g.id || 'group'}__g1`,
+                workers: firstGroupWorkers,
+                drivers: 1,
+                needsDriver: true,
+                wantsResponsible: true,
+                responsibleId: body.manualResponsibleId,
+                driverId:
+                  responsiblePerson?.isDriver
+                    ? responsiblePerson.id
+                    : responsibleCrew?.driverId || '',
+              },
+            ],
+            serviceJamoneroAssignmentsOverride: [],
+          })
+
+          phaseRequests.push({
+            groupId: `${g.id || 'group'}__g2`,
+            label,
+            phaseType: norm(label),
+            date: serviceDate,
+            endDate: serviceDate,
+            startTime: g.startTime || body.startTime,
+            endTime: g.endTime || body.endTime,
+            totalWorkers: secondGroupWorkers,
+            jamoneroCount: 1,
+            numDrivers: 1,
+            wantsResp: false,
+            responsableId: null,
+            manualDriverId: secondGroupDriver?.id || null,
+            meetingPoint: g.meetingPoint || body.meetingPoint || '',
+            groupsOverride: [
+              {
+                ...g,
+                id: `${g.id || 'group'}__g2`,
+                workers: secondGroupWorkers,
+                drivers: 1,
+                needsDriver: true,
+                wantsResponsible: false,
+                responsibleId: '',
+                driverId: secondGroupDriver?.id || '',
+              },
+            ],
+            serviceJamoneroAssignmentsOverride: [selectedJamoneroAssignment],
+          })
+          remainingServiceEventGroups += 2
+          return
+        }
+
         phaseRequests.push({
           groupId: g.id || null,
           label,
@@ -543,7 +853,7 @@ export async function POST(req: NextRequest) {
           startTime: g.startTime || body.startTime,
           endTime: g.endTime || body.endTime,
           totalWorkers: Number(g.workers || 0),
-          jamoneroCount: Number(g.jamoneros || 0),
+          jamoneroCount: 0,
           numDrivers: Number(g.drivers || 0),
           wantsResp,
           responsableId,
@@ -551,10 +861,281 @@ export async function POST(req: NextRequest) {
           meetingPoint: g.meetingPoint || body.meetingPoint || '',
           groupsOverride: [g],
         })
+        if (norm(label) === 'event') remainingServiceEventGroups += 1
       })
+
+      if (existingEventGroupsCount > 1 && serviceAssignments.length > 0) {
+        let remainingManualAssignments = serviceAssignments.filter(
+          (assignment: any) => assignment?.mode === 'manual' && (assignment?.personnelId || assignment?.personnelName)
+        )
+        let remainingAutoAssignments = serviceAssignments.filter(
+          (assignment: any) => assignment?.mode !== 'manual'
+        )
+
+        const crewForPhase = (phase: any) => {
+          const group = Array.isArray(phase.groupsOverride) ? phase.groupsOverride[0] : null
+          if (!group) return null
+          const driverId = String(group.driverId || phase.manualDriverId || '').trim()
+          if (driverId) return findCrewByDriver({ id: driverId })
+          if (
+            phase.phaseType === 'event' &&
+            body.manualResponsibleId &&
+            (!phase.responsableId || String(phase.responsableId).trim() === '') &&
+            group?.id === body.groups?.[0]?.id
+          ) {
+            const topResponsible = findPerson({ id: body.manualResponsibleId })
+            if (!topResponsible) return null
+            return topResponsible.isDriver
+              ? findCrewByDriver({ id: topResponsible.id, name: topResponsible.name })
+              : findCrewByCompanion({ id: topResponsible.id, name: topResponsible.name })
+          }
+          if (phase.responsableId) {
+            const responsible = findPerson({ id: phase.responsableId })
+            if (!responsible) return null
+            return responsible.isDriver
+              ? findCrewByDriver({ id: responsible.id, name: responsible.name })
+              : findCrewByCompanion({ id: responsible.id, name: responsible.name })
+          }
+          return null
+        }
+
+        const assignmentMatchesCrew = (assignment: any, crew: DriverCrewPremise | null) => {
+          if (!assignment || !crew) return false
+          const person = findPerson({
+            id: assignment.personnelId || null,
+            name: assignment.personnelName || null,
+          })
+          if (!person) return false
+          if (person.isDriver) return false
+          return crewContainsPerson(crew, { id: person.id, name: person.name })
+        }
+
+        const phaseAlreadyRepresentsPerson = (assignment: any) => {
+          const person = findPerson({
+            id: assignment?.personnelId || null,
+            name: assignment?.personnelName || null,
+          })
+          if (!person) return false
+
+          return phaseRequests.some((phase) => {
+            if (phase.phaseType !== 'event') return false
+            const group = Array.isArray(phase.groupsOverride) ? phase.groupsOverride[0] : null
+            const driverId = String(group?.driverId || phase.manualDriverId || '').trim()
+            if (driverId && person.id && driverId === String(person.id)) return true
+            const crew = crewForPhase(phase)
+            return crewContainsPerson(crew, { id: person.id, name: person.name })
+          })
+        }
+
+        const createExtraDriverPhase = (assignment: any) => {
+          const person = findPerson({
+            id: assignment?.personnelId || null,
+            name: assignment?.personnelName || null,
+          })
+          if (!person?.isDriver) return false
+
+          const donorCandidates = phaseRequests
+            .map((phase, index) => ({ phase, index }))
+            .filter(({ phase }) => phase.phaseType === 'event')
+            .filter(({ phase }) => Number(phase.totalWorkers || 0) > 1)
+            .sort((a, b) => {
+              const aIsResponsibleGroup = Boolean(String(a.phase.responsableId || '').trim())
+              const bIsResponsibleGroup = Boolean(String(b.phase.responsableId || '').trim())
+              if (aIsResponsibleGroup !== bIsResponsibleGroup) return aIsResponsibleGroup ? 1 : -1
+              return Number(b.phase.totalWorkers || 0) - Number(a.phase.totalWorkers || 0)
+            })
+
+          const donor = donorCandidates[0]
+          if (!donor) return false
+
+          const donorGroup = Array.isArray(donor.phase.groupsOverride) ? donor.phase.groupsOverride[0] : null
+          if (!donorGroup) return false
+
+          const nextWorkers = Math.max(Number(donor.phase.totalWorkers || 0) - 1, 1)
+          phaseRequests[donor.index] = {
+            ...donor.phase,
+            totalWorkers: nextWorkers,
+            groupsOverride: [
+              {
+                ...donorGroup,
+                workers: nextWorkers,
+              },
+            ],
+          }
+
+          const baseId = String(donor.phase.groupId || donorGroup.id || 'group')
+          phaseRequests.push({
+            groupId: `${baseId}__extra_${String(person.id || 'driver')}`,
+            label: donor.phase.label,
+            phaseType: donor.phase.phaseType,
+            date: donor.phase.date,
+            endDate: donor.phase.endDate,
+            startTime: donor.phase.startTime,
+            endTime: donor.phase.endTime,
+            totalWorkers: 1,
+            jamoneroCount: 1,
+            numDrivers: 1,
+            wantsResp: false,
+            responsableId: null,
+            manualDriverId: person.id,
+            meetingPoint: donor.phase.meetingPoint || body.meetingPoint || '',
+            groupsOverride: [
+              {
+                ...donorGroup,
+                id: `${baseId}__extra_${String(person.id || 'driver')}`,
+                workers: 1,
+                drivers: 1,
+                needsDriver: true,
+                wantsResponsible: false,
+                responsibleId: '',
+                driverId: person.id,
+              },
+            ],
+            serviceJamoneroAssignmentsOverride: [assignment],
+          })
+          remainingServiceEventGroups += 1
+          return true
+        }
+
+        const driverManualAssignments = remainingManualAssignments.filter((assignment) =>
+          Boolean(
+              findPerson({
+                id: assignment?.personnelId || null,
+                name: assignment?.personnelName || null,
+              })?.isDriver
+            )
+          ).filter((assignment) => !phaseAlreadyRepresentsPerson(assignment))
+        driverManualAssignments.forEach((assignment) => {
+          if (createExtraDriverPhase(assignment)) {
+            remainingManualAssignments = remainingManualAssignments.filter((candidate) => candidate !== assignment)
+          }
+        })
+
+        phaseRequests = phaseRequests.map((phase) => {
+          if (phase.phaseType !== 'event') return phase
+          const crew = crewForPhase(phase)
+          const currentOverrides = Array.isArray(phase.serviceJamoneroAssignmentsOverride)
+            ? phase.serviceJamoneroAssignmentsOverride
+            : []
+
+          const matchedManual = remainingManualAssignments.find((assignment) =>
+            assignmentMatchesCrew(assignment, crew)
+          )
+          if (matchedManual) {
+            remainingManualAssignments = remainingManualAssignments.filter(
+              (assignment) => assignment !== matchedManual
+            )
+            return {
+              ...phase,
+              serviceJamoneroAssignmentsOverride: [...currentOverrides, matchedManual],
+            }
+          }
+
+          return {
+            ...phase,
+            serviceJamoneroAssignmentsOverride: currentOverrides,
+          }
+        })
+
+        if (remainingManualAssignments.length > 0) {
+          const eventPhaseIndexes = phaseRequests
+            .map((phase, index) => ({ phase, index }))
+            .filter(({ phase }) => phase.phaseType === 'event')
+            .sort((a, b) => {
+              const aHasDriver = Boolean(String(a.phase.manualDriverId || a.phase.groupsOverride?.[0]?.driverId || '').trim())
+              const bHasDriver = Boolean(String(b.phase.manualDriverId || b.phase.groupsOverride?.[0]?.driverId || '').trim())
+              if (aHasDriver !== bHasDriver) return aHasDriver ? -1 : 1
+              const aOverrides = Array.isArray(a.phase.serviceJamoneroAssignmentsOverride)
+                ? a.phase.serviceJamoneroAssignmentsOverride.length
+                : 0
+              const bOverrides = Array.isArray(b.phase.serviceJamoneroAssignmentsOverride)
+                ? b.phase.serviceJamoneroAssignmentsOverride.length
+                : 0
+              return aOverrides - bOverrides
+            })
+
+          remainingManualAssignments.forEach((assignment, idx) => {
+            const target = eventPhaseIndexes[idx % Math.max(eventPhaseIndexes.length, 1)]
+            if (!target) return
+            const current = Array.isArray(phaseRequests[target.index].serviceJamoneroAssignmentsOverride)
+              ? phaseRequests[target.index].serviceJamoneroAssignmentsOverride
+              : []
+            phaseRequests[target.index] = {
+              ...phaseRequests[target.index],
+              serviceJamoneroAssignmentsOverride: [...current, assignment],
+            }
+          })
+          remainingManualAssignments = []
+        }
+
+        if (remainingAutoAssignments.length > 0) {
+          const eventPhaseIndexes = phaseRequests
+            .map((phase, index) => ({ phase, index }))
+            .filter(({ phase }) => phase.phaseType === 'event')
+            .sort((a, b) => {
+              const aOverrides = Array.isArray(a.phase.serviceJamoneroAssignmentsOverride)
+                ? a.phase.serviceJamoneroAssignmentsOverride.length
+                : 0
+              const bOverrides = Array.isArray(b.phase.serviceJamoneroAssignmentsOverride)
+                ? b.phase.serviceJamoneroAssignmentsOverride.length
+                : 0
+              if (aOverrides !== bOverrides) return aOverrides - bOverrides
+              return Number(b.phase.totalWorkers || 0) - Number(a.phase.totalWorkers || 0)
+            })
+
+          remainingAutoAssignments.forEach((assignment, idx) => {
+            const target = eventPhaseIndexes[idx % Math.max(eventPhaseIndexes.length, 1)]
+            if (!target) return
+            const current = Array.isArray(phaseRequests[target.index].serviceJamoneroAssignmentsOverride)
+              ? phaseRequests[target.index].serviceJamoneroAssignmentsOverride
+              : []
+            phaseRequests[target.index] = {
+              ...phaseRequests[target.index],
+              serviceJamoneroAssignmentsOverride: [...current, assignment],
+            }
+          })
+          remainingAutoAssignments = []
+        }
+      }
     }
 
-    const writePhaseDoc = async (phase: any) => {
+    const writePhaseDoc = async (phase: any, blockedNames: string[] = []) => {
+      const isPrimaryResponsibleEventGroup =
+        deptNorm === 'serveis' &&
+        phase.phaseType === 'event' &&
+        Boolean(body.manualResponsibleId) &&
+        String(phase.groupId || phase.groupsOverride?.[0]?.id || '') ===
+          String(body.groups?.[0]?.id || '')
+      const phaseServiceJamoneros =
+        deptNorm === 'serveis' && phase.phaseType === 'event'
+          ? Array.isArray(phase.serviceJamoneroAssignmentsOverride)
+            ? phase.serviceJamoneroAssignmentsOverride
+            : remainingServiceJamoneroAssignments.slice(
+                0,
+                Math.max(
+                  remainingServiceJamoneroAssignments.length - Math.max(remainingServiceEventGroups - 1, 0),
+                  remainingServiceJamoneroAssignments.length > 0 ? 1 : 0
+                )
+              )
+          : []
+      const phaseNumDrivers =
+        deptNorm === 'serveis' && phase.phaseType === 'event' && phaseServiceJamoneros.length > 0
+          ? Math.max(Number(phase.numDrivers || 0), 1)
+          : Number(phase.numDrivers || 0)
+      const phaseGroupsOverride =
+        deptNorm === 'serveis' && Array.isArray(phase.groupsOverride)
+          ? phase.groupsOverride.map((group: any) => ({
+              ...group,
+              drivers:
+                phase.phaseType === 'event' && phaseServiceJamoneros.length > 0
+                  ? Math.max(Number(group.drivers || 0), 1)
+                  : Number(group.drivers || 0),
+              needsDriver:
+                phase.phaseType === 'event' && phaseServiceJamoneros.length > 0
+                  ? true
+                  : !!group.needsDriver,
+            }))
+          : phase.groupsOverride
       const phaseTimetables = Array.isArray(phase.timetables)
         ? phase.timetables
         : body.timetables
@@ -566,17 +1147,26 @@ export async function POST(req: NextRequest) {
         endTime: phase.endTime || body.endTime,
         meetingPoint: phase.meetingPoint || body.meetingPoint || '',
         totalWorkers: Number(phase.totalWorkers || 0),
-        jamoneroCount: Number(phase.jamoneroCount || 0),
-        numDrivers: Number(phase.numDrivers || 0),
-        manualResponsibleId: phase.wantsResp ? phase.responsableId || null : null,
+        jamoneroCount:
+          deptNorm === 'serveis' && phase.phaseType === 'event'
+            ? phaseServiceJamoneros.length
+            : Number(phase.jamoneroCount || 0),
+        numDrivers: phaseNumDrivers,
+        manualResponsibleId: isPrimaryResponsibleEventGroup
+          ? body.manualResponsibleId
+          : phase.wantsResp
+          ? phase.responsableId || null
+          : null,
         manualDriverId: phase.manualDriverId || null,
-        skipResponsible: phase.wantsResp === false,
+        skipResponsible: isPrimaryResponsibleEventGroup ? false : phase.wantsResp === false,
         vehicles: Array.isArray(phase.vehicles) ? phase.vehicles : [],
-        groups: phase.groupsOverride || body.groups,
+        blockedNames,
+        groups: phaseGroupsOverride || body.groups,
         phaseType: phase.phaseType || null,
         phaseLabel: phase.label || null,
         phaseDate: phase.date || null,
         timetables: phaseTimetables,
+        serviceJamoneroAssignments: phaseServiceJamoneros,
       }
       const res = (await autoAssign(phaseBody)) as {
         assignment: {
@@ -590,6 +1180,10 @@ export async function POST(req: NextRequest) {
           notes?: string[]
         }
       }
+      if (deptNorm === 'serveis' && phase.phaseType === 'event') {
+        consumeServiceJamoneros(res.assignment)
+        remainingServiceEventGroups = Math.max(remainingServiceEventGroups - 1, 0)
+      }
       const { toSave } = buildToSave(phaseBody, res.assignment, res.meta)
       await applyStageData(toSave)
       const phaseKey = norm(phase.label || phase.phaseType || 'fase')
@@ -599,11 +1193,52 @@ export async function POST(req: NextRequest) {
         .replace(/[^a-zA-Z0-9_-]/g, '')
       const docId = `${canonicalEventId}__${phaseKey}__${phaseDate}__${groupKey || 'group'}`
       await db.collection(collectionName).doc(docId).set(toSave, { merge: true })
+      return res
     }
 
     if (phaseRequests.length > 0) {
-      for (const phase of phaseRequests) {
-        await writePhaseDoc(phase)
+      const blockedNamesInBatch = new Set<string>()
+      const orderedPhaseRequests =
+        deptNorm === 'serveis'
+          ? [
+              ...phaseRequests
+                .filter((phase) => phase.phaseType === 'event')
+                .sort((a, b) => {
+                  const aIsResponsibleGroup =
+                    Boolean(String(a.responsableId || '').trim()) ||
+                    (Boolean(body.manualResponsibleId) &&
+                      String(a.groupId || a.groupsOverride?.[0]?.id || '') ===
+                        String(body.groups?.[0]?.id || ''))
+                  const bIsResponsibleGroup =
+                    Boolean(String(b.responsableId || '').trim()) ||
+                    (Boolean(body.manualResponsibleId) &&
+                      String(b.groupId || b.groupsOverride?.[0]?.id || '') ===
+                        String(body.groups?.[0]?.id || ''))
+                  if (aIsResponsibleGroup !== bIsResponsibleGroup) return aIsResponsibleGroup ? -1 : 1
+
+                  const aHasManualDriver = Boolean(String(a.manualDriverId || '').trim())
+                  const bHasManualDriver = Boolean(String(b.manualDriverId || '').trim())
+                  if (aHasManualDriver !== bHasManualDriver) return aHasManualDriver ? -1 : 1
+                  return 0
+                }),
+              ...phaseRequests.filter((phase) => phase.phaseType !== 'event'),
+            ]
+          : phaseRequests
+
+      for (const phase of orderedPhaseRequests) {
+        const result = await writePhaseDoc(phase, Array.from(blockedNamesInBatch))
+        const assignedNames = [
+          result?.assignment?.responsible?.name || null,
+          ...(Array.isArray(result?.assignment?.drivers)
+            ? result.assignment.drivers.map((driver: any) => driver?.name || null)
+            : []),
+          ...(Array.isArray(result?.assignment?.staff)
+            ? result.assignment.staff.map((person: any) => person?.name || null)
+            : []),
+        ]
+        assignedNames
+          .filter((name): name is string => Boolean(name) && String(name).trim() !== '' && String(name) !== 'Extra')
+          .forEach((name) => blockedNamesInBatch.add(String(name)))
       }
       return NextResponse.json({
         success: true,

@@ -12,6 +12,7 @@ import {
   ServicePhaseEtt,
   ServicePhaseEttData,
   ServeiGroup,
+  ServiceJamoneroAssignment,
   VehicleAssignment,
   AvailableVehicle,
   AvailableConductor,
@@ -81,6 +82,12 @@ export type LogisticPhasePayload = {
   timetables: Array<{ startTime: string; endTime: string }>
 }
 
+export type ServiceJamoneroPayload = {
+  id: string
+  mode: 'auto' | 'manual'
+  personnelId: string | null
+}
+
 
 export interface QuadrantFormState {
   startDate: string
@@ -132,6 +139,7 @@ export interface QuadrantFormState {
   setEttData: (value: ServicePhaseEttData) => void
   availableResponsables: Array<{ id: string; name: string }>
   availableConductors: AvailableConductor[]
+  availableJamoneros: Array<{ id: string; name: string }>
   serviceTotals: {
     workers: number
     drivers: number
@@ -142,6 +150,9 @@ export interface QuadrantFormState {
     manualResponsibleId: string | null,
     manualResponsibleName?: string | null
   ) => ServiceGroupPayload[]
+  serviceJamoneroAssignments: ServiceJamoneroAssignment[]
+  setServiceJamoneroCount: (count: number) => void
+  updateServiceJamoneroAssignment: (id: string, patch: Partial<ServiceJamoneroAssignment>) => void
   vehiclesPayload: LogisticPhasePayload['vehicles']
   buildVehiclesPayloadForPhase: (phaseKey: LogisticPhaseKey) => LogisticPhasePayload['vehicles']
   buildLogisticaPhases: () => LogisticPhasePayload[]
@@ -191,7 +202,7 @@ export function useQuadrantFormState({
   const totalWorkersNumber = Number(totalWorkers) || 0
   const numDriversNumber = Number(numDrivers) || 0
 
-  const { responsables, conductors } = useAvailablePersonnel({
+  const { responsables, conductors, treballadors } = useAvailablePersonnel({
     departament: department,
     startDate,
     endDate,
@@ -206,6 +217,17 @@ export function useQuadrantFormState({
   const availableConductors = useMemo<AvailableConductor[]>(
     () => conductors.filter((c) => Boolean(c.id?.trim())),
     [conductors]
+  )
+  const availableJamoneros = useMemo(
+    () =>
+      [...responsables, ...conductors, ...treballadors]
+        .filter((person) => person.isJamonero === true && Boolean(person.id?.trim()))
+        .filter(
+          (person, index, arr) =>
+            arr.findIndex((candidate) => candidate.id === person.id) === index
+        )
+        .map((person) => ({ id: person.id, name: person.name })),
+    [conductors, responsables, treballadors]
   )
 
   const logistics = useLogisticsPhasesState({
@@ -269,6 +291,9 @@ export function useQuadrantFormState({
     toggleServicePhaseEtt,
     updateServicePhaseEtt,
     serviceTotals,
+    serviceJamoneroAssignments,
+    setServiceJamoneroCount,
+    updateServiceJamoneroAssignment,
     buildServiceGroupsPayload,
   } = services
 
@@ -444,6 +469,9 @@ export function useQuadrantFormState({
     ettData,
     setEttData,
     serviceTotals,
+    serviceJamoneroAssignments,
+    setServiceJamoneroCount,
+    updateServiceJamoneroAssignment,
     buildServiceGroupsPayload,
     vehiclesPayload,
     buildVehiclesPayloadForPhase,
@@ -451,5 +479,6 @@ export function useQuadrantFormState({
     ettEntry,
     availableResponsables,
     availableConductors,
+    availableJamoneros,
   }
 }

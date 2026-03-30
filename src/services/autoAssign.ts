@@ -17,6 +17,7 @@ export interface Personnel {
   department?: string
   isDriver?: boolean
   isJamonero?: boolean
+  isResponsible?: boolean
   camioPetit?: boolean
   camioGran?: boolean
   available?: boolean
@@ -43,6 +44,13 @@ interface VehicleRequest {
   vehicleType?: VehicleType
   type?: VehicleType
   conductorId?: string | null
+}
+
+interface ServiceJamoneroAssignment {
+  id?: string
+  mode?: 'auto' | 'manual'
+  personnelId?: string | null
+  personnelName?: string | null
 }
 
 interface PremiseCondition {
@@ -87,6 +95,9 @@ const normRole = (s?: string | null) => {
   const raw = norm(s)
   return raw === 'soldat' ? 'equip' : raw
 }
+
+const isResponsiblePerson = (person?: Personnel | null) =>
+  !!person && (person.isResponsible === true || RESPONSABLE_ROLES.has(normRole(person.role)))
 
 const findBestNameMatch = (pool: Personnel[], rawName?: string | null) => {
   const target = norm(rawName)
@@ -145,8 +156,10 @@ export async function autoAssign(payload: {
   manualResponsibleId?: string | null
   manualDriverId?: string | null
   jamoneroCount?: number
+  serviceJamoneroAssignments?: ServiceJamoneroAssignment[]
   skipResponsible?: boolean
   vehicles?: VehicleRequest[]
+  blockedNames?: string[]
 }) {
   const {
     department, eventId, location,
@@ -157,8 +170,10 @@ export async function autoAssign(payload: {
     manualResponsibleId,
     manualDriverId,
     jamoneroCount = 0,
+    serviceJamoneroAssignments = [],
     skipResponsible = false,
-    vehicles = []
+    vehicles = [],
+    blockedNames = [],
   } = payload
 
   const startISO = `${startDate}T${startTime}:00`
@@ -211,10 +226,44 @@ export async function autoAssign(payload: {
     department: person.department,
     isDriver: person.isDriver,
     isJamonero: person.isJamonero,
+    isResponsible: (person as any).isResponsible === true,
     camioPetit: person.camioPetit,
     camioGran: person.camioGran,
     available: person.available,
   })) as Personnel[]
+
+  const normalizedJamoneroAssignments =
+    Array.isArray(serviceJamoneroAssignments) && serviceJamoneroAssignments.length > 0
+      ? serviceJamoneroAssignments.map((assignment, index) => ({
+          id: String(assignment?.id || `jamonero-${index + 1}`),
+          mode: assignment?.mode === 'manual' ? 'manual' as const : 'auto' as const,
+          personnelId: assignment?.personnelId ? String(assignment.personnelId) : null,
+          personnelName: assignment?.personnelName ? String(assignment.personnelName) : null,
+        }))
+      : Array.from({ length: Math.max(0, Number(jamoneroCount || 0)) }, (_, index) => ({
+          id: `jamonero-${index + 1}`,
+          mode: 'auto' as const,
+          personnelId: null,
+          personnelName: null,
+        }))
+
+  const shouldTrackJamoneros = normalizedJamoneroAssignments.length > 0
+
+  const manualJamoneroIds = new Set(
+    normalizedJamoneroAssignments
+      .filter((assignment) => assignment.mode === 'manual' && assignment.personnelId)
+      .map((assignment) => String(assignment.personnelId))
+  )
+  const manualJamoneroNames = new Set(
+    normalizedJamoneroAssignments
+      .filter((assignment) => assignment.mode === 'manual' && assignment.personnelName)
+      .map((assignment) => norm(assignment.personnelName))
+  )
+  const isBlockedAsResponsible = (person: Personnel | null) => {
+    if (!person) return false
+    if (manualJamoneroIds.has(person.id)) return true
+    return manualJamoneroNames.has(norm(person.name))
+  }
 
   const isDeptHead = (p: Personnel) => {
     const r = normRole(p.role)
@@ -256,7 +305,7 @@ export async function autoAssign(payload: {
           (hit.responsibleId
             ? all.find((person) => person.id === hit.responsibleId) || null
             : null) || findBestNameMatch(all, hit.responsible)
-        if (candidate) {
+        if (candidate && !isBlockedAsResponsible(candidate)) {
           const elig = getEligibility(candidate.name, startISO, endISO, baseCtx)
           if (!elig.eligible) {
             forcedByPremise = true
@@ -268,7 +317,11 @@ export async function autoAssign(payload: {
     }
     if (!chosenResp) {
       const pool = all.filter(
-        p => RESPONSABLE_ROLES.has(normRole(p.role)) && (p.available !== false) && !isDeptHead(p)
+        p =>
+          isResponsiblePerson(p) &&
+          (p.available !== false) &&
+          !isDeptHead(p) &&
+          !isBlockedAsResponsible(p)
       )
       const ranked = pool
         .map(p => ({
@@ -291,7 +344,7 @@ export async function autoAssign(payload: {
     }
     if (!chosenResp && dept === 'serveis') {
       const fallbackPool = all
-        .filter((p) => p.available !== false && !isDeptHead(p))
+        .filter((p) => p.available !== false && !isDeptHead(p) && !isBlockedAsResponsible(p))
         .map((p) => ({
           p,
           weekAssigns: ledger.assignmentsCountByUser.get(p.name) || 0,
@@ -338,8 +391,41 @@ export async function autoAssign(payload: {
     )
   }
 
+  const resolveJamoneroPerson = (assignment: {
+    personnelId?: string | null
+    personnelName?: string | null
+  }) => {
+    if (assignment.personnelId) {
+      const byId = all.find((person) => person.id === assignment.personnelId) || null
+      if (byId) return byId
+    }
+    if (assignment.personnelName) {
+      return findBestNameMatch(all, assignment.personnelName)
+    }
+    return null
+  }
+
+  const requestedManualJamoneros = normalizedJamoneroAssignments
+    .filter((assignment) => assignment.mode === 'manual')
+    .map((assignment) => ({
+      assignment,
+      person: resolveJamoneroPerson(assignment),
+    }))
+    .filter(
+      (entry): entry is { assignment: (typeof normalizedJamoneroAssignments)[number]; person: Personnel } =>
+        Boolean(entry.person)
+    )
+
   // 6) Pools de conductors i staff
+  const blockedNormNames = new Set(
+    Array.isArray(blockedNames)
+      ? blockedNames
+          .map((name) => norm(name))
+          .filter(Boolean)
+      : []
+  )
   const exclude = new Set<string>(chosenResp ? [norm(chosenResp.name)] : [])
+  blockedNormNames.forEach((name) => exclude.add(name))
 
   const rank = (p: Personnel): RankedPersonnel => ({
     p,
@@ -374,8 +460,7 @@ export async function autoAssign(payload: {
 
   const isEquipRole = (candidate: RankedPersonnel) =>
     EQUIP_ROLES.has(normRole(candidate.p.role))
-  const isResponsableRole = (candidate: RankedPersonnel) =>
-    RESPONSABLE_ROLES.has(normRole(candidate.p.role))
+  const isResponsableRole = (candidate: RankedPersonnel) => isResponsiblePerson(candidate.p)
   const isDriverRole = (candidate: RankedPersonnel) => !!candidate.p.isDriver
 
   const staffPool = [
@@ -396,9 +481,44 @@ export async function autoAssign(payload: {
       return false
     }) || null
 
+  const findCrewByDriver = (driver: { id?: string | null; name?: string | null }) =>
+    Array.isArray(premises.driverCrews)
+      ? premises.driverCrews.find((crew) => {
+          const candidate = findPersonnelByCrewRef({
+            id: crew.driverId,
+            name: crew.driverName,
+          })
+          if (!candidate) return false
+          if (driver.id && candidate.id === driver.id) return true
+          if (driver.name && norm(candidate.name) === norm(driver.name)) return true
+          return false
+        }) || null
+      : null
+
+  const findCrewByCompanion = (person: Personnel | null) =>
+    person && Array.isArray(premises.driverCrews)
+      ? premises.driverCrews.find((crew) =>
+          crew.companions.some((companion) => {
+            const candidate = findPersonnelByCrewRef(companion)
+            return !!candidate && norm(candidate.name) === norm(person.name)
+          })
+        ) || null
+      : null
+
   const appendCrewCompanions = (crew?: DriverCrewPremise | null) => {
     if (!crew) return
-    crew.companions.forEach((companion, index) => {
+    const orderedCompanions = [...crew.companions]
+      .map((companion, index) => ({ companion, index }))
+      .sort((a, b) => {
+        const aPerson = findPersonnelByCrewRef(a.companion)
+        const bPerson = findPersonnelByCrewRef(b.companion)
+        const aIsJamonero = aPerson?.isJamonero === true ? 1 : 0
+        const bIsJamonero = bPerson?.isJamonero === true ? 1 : 0
+        if (aIsJamonero !== bIsJamonero) return bIsJamonero - aIsJamonero
+        return a.index - b.index
+      })
+
+    orderedCompanions.forEach(({ companion, index }) => {
       const person = findPersonnelByCrewRef(companion)
       if (!person) {
         violations.push('driver_companion_missing')
@@ -496,6 +616,141 @@ export async function autoAssign(payload: {
     !manualDriverId &&
     preferredDrivers.length === 0 &&
     dept === 'serveis' &&
+    chosenResp &&
+    !chosenResp.isDriver &&
+    Number(numDrivers || 0) > 0 &&
+    Array.isArray(premises.driverCrews)
+  ) {
+    const responsibleCrew = premises.driverCrews.find((crew) => {
+      const companionHit = crew.companions.some((companion) => {
+        const candidate = findPersonnelByCrewRef(companion)
+        return !!candidate && norm(candidate.name) === norm(chosenResp?.name)
+      })
+      if (!companionHit) return false
+      const driverCandidate = findPersonnelByCrewRef({
+        id: crew.driverId,
+        name: crew.driverName,
+      })
+      if (!driverCandidate || !driverCandidate.isDriver) return false
+      if (reservedNames.has(norm(driverCandidate.name))) return false
+      return getEligibility(driverCandidate.name, startISO, endISO, baseCtx).eligible
+    })
+
+    if (responsibleCrew) {
+      const crewDriver = findPersonnelByCrewRef({
+        id: responsibleCrew.driverId,
+        name: responsibleCrew.driverName,
+      })
+      if (crewDriver && crewDriver.isDriver) {
+        preferredDrivers.push({
+          name: crewDriver.name,
+          meetingPoint,
+          plate: '',
+          vehicleType: '',
+        })
+        reservedNames.add(norm(crewDriver.name))
+        appendCrewCompanions(responsibleCrew)
+      }
+    }
+  }
+
+  if (
+    vehicles.length === 0 &&
+    !manualDriverId &&
+    preferredDrivers.length === 0 &&
+    dept === 'serveis' &&
+    Number(numDrivers || 0) > 0
+  ) {
+    const preferredManualJamoneroCrewDriver = requestedManualJamoneros.find(({ person }) => {
+      if (person.isDriver) return false
+      if (chosenResp && norm(person.name) === norm(chosenResp.name)) return false
+      const crew = findCrewByCompanion(person)
+      if (!crew) return false
+      const driverCandidate = findPersonnelByCrewRef({
+        id: crew.driverId,
+        name: crew.driverName,
+      })
+      if (!driverCandidate || !driverCandidate.isDriver) return false
+      if (reservedNames.has(norm(driverCandidate.name))) return false
+      return getEligibility(driverCandidate.name, startISO, endISO, baseCtx).eligible
+    })
+
+    if (preferredManualJamoneroCrewDriver) {
+      const crew = findCrewByCompanion(preferredManualJamoneroCrewDriver.person)
+      const driverCandidate = crew
+        ? findPersonnelByCrewRef({
+            id: crew.driverId,
+            name: crew.driverName,
+          })
+        : null
+
+      if (driverCandidate && driverCandidate.isDriver) {
+        preferredDrivers.push({
+          name: driverCandidate.name,
+          meetingPoint,
+          plate: '',
+          vehicleType: '',
+        })
+        reservedNames.add(norm(driverCandidate.name))
+        appendCrewCompanions(crew)
+      }
+    }
+  }
+
+  if (
+    vehicles.length === 0 &&
+    !manualDriverId &&
+    preferredDrivers.length === 0 &&
+    dept === 'serveis' &&
+    Number(numDrivers || 0) > 0
+  ) {
+    const preferredManualJamoneroDriver = requestedManualJamoneros.find(({ person }) => {
+      if (!person.isDriver) return false
+      if (chosenResp && norm(person.name) === norm(chosenResp.name)) return false
+      if (reservedNames.has(norm(person.name))) return false
+      return getEligibility(person.name, startISO, endISO, baseCtx).eligible
+    })?.person
+
+    const preferredAutoJamoneroDriver =
+      preferredManualJamoneroDriver
+        ? null
+        : driverPool.find(
+            (candidate) =>
+              candidate.p.isJamonero === true &&
+              !reservedNames.has(norm(candidate.p.name))
+          )?.p || null
+
+    const jamoneroDriver = preferredManualJamoneroDriver || preferredAutoJamoneroDriver
+
+    if (jamoneroDriver) {
+      preferredDrivers.push({
+        name: jamoneroDriver.name,
+        meetingPoint,
+        plate: '',
+        vehicleType: '',
+      })
+      reservedNames.add(norm(jamoneroDriver.name))
+
+      const jamoneroCrew =
+        Array.isArray(premises.driverCrews)
+          ? premises.driverCrews.find((crew) => {
+              const candidate = findPersonnelByCrewRef({
+                id: crew.driverId,
+                name: crew.driverName,
+              })
+              return !!candidate && norm(candidate.name) === norm(jamoneroDriver.name)
+            })
+          : null
+
+      appendCrewCompanions(jamoneroCrew)
+    }
+  }
+
+  if (
+    vehicles.length === 0 &&
+    !manualDriverId &&
+    preferredDrivers.length === 0 &&
+    dept === 'serveis' &&
     Number(numDrivers || 0) > 0 &&
     Array.isArray(premises.driverCrews)
   ) {
@@ -562,7 +817,7 @@ export async function autoAssign(payload: {
     const matched = all.find((person) => norm(person.name) === norm(driver.name))
     return {
       ...driver,
-      isJamonero: matched?.isJamonero === true,
+      isJamonero: shouldTrackJamoneros && matched?.isJamonero === true,
     }
   })
 
@@ -575,7 +830,7 @@ export async function autoAssign(payload: {
     const matchedResponsibleDriver = primaryDriver
       ? all.find((person) => {
           if (norm(person.name) !== norm(primaryDriver.name)) return false
-          return RESPONSABLE_ROLES.has(normRole(person.role))
+          return isResponsiblePerson(person)
         }) || null
       : null
 
@@ -612,7 +867,7 @@ export async function autoAssign(payload: {
   const staff: Array<{ name: string; meetingPoint: string; isJamonero?: boolean }> = [
     ...selectedPreferredStaff.map((member) => ({
       ...member,
-      isJamonero: isJamoneroPerson(member.name),
+      isJamonero: shouldTrackJamoneros && isJamoneroPerson(member.name),
     })),
   ]
   const taken = new Set<string>(exclude)
@@ -620,17 +875,83 @@ export async function autoAssign(payload: {
   driversForCalc.forEach((d) => taken.add(norm(d.name)))
   selectedPreferredStaff.forEach((member) => taken.add(norm(member.name)))
 
+  const satisfyJamoneroFromExisting = (personName?: string | null) => {
+    const normalizedName = norm(personName)
+    if (!normalizedName || (chosenResp?.name && normalizedName === norm(chosenResp.name))) return false
+    if (!isJamoneroPerson(personName)) return false
+    return true
+  }
+
+  let satisfiedManualJamoneros = 0
+  const unresolvedManualJamoneros = requestedManualJamoneros.filter(({ person }) => {
+    const matchedExisting =
+      driversForCalc.some((driver) => norm(driver.name) === norm(person.name)) ||
+      staff.some((member) => norm(member.name) === norm(person.name))
+    if (matchedExisting && satisfyJamoneroFromExisting(person.name)) {
+      satisfiedManualJamoneros += 1
+      return false
+    }
+    if (chosenResp?.name && norm(person.name) === norm(chosenResp.name)) {
+      notes.push(`El jamonero ${person.name} no pot coincidir amb el responsable.`)
+      return true
+    }
+    return true
+  })
+
+  unresolvedManualJamoneros.forEach(({ person }) => {
+    const personNorm = norm(person.name)
+    const currentDriverCrews = driversForCalc
+      .map((driver) => findCrewByDriver({ name: driver.name }))
+      .filter((crew): crew is DriverCrewPremise => Boolean(crew))
+    const belongsToCurrentCrew =
+      currentDriverCrews.length === 0 ||
+      currentDriverCrews.some((crew) =>
+        crew.companions.some((companion) => {
+          const candidate = findPersonnelByCrewRef(companion)
+          return !!candidate && norm(candidate.name) === personNorm
+        })
+      ) ||
+      driversForCalc.some((driver) => person.isDriver && norm(driver.name) === personNorm)
+
+    if (taken.has(personNorm)) return
+    if (!getEligibility(person.name, startISO, endISO, baseCtx).eligible) return
+
+    if (staff.length < finalNeededWorkers) {
+      staff.push({ name: person.name, meetingPoint, isJamonero: true })
+      taken.add(personNorm)
+      satisfiedManualJamoneros += 1
+      return
+    }
+
+    const replaceIdx = staff.findIndex((member) => {
+      if (member.isJamonero === true) return false
+      if (belongsToCurrentCrew) return true
+      return true
+    })
+    if (replaceIdx >= 0) {
+      taken.delete(norm(staff[replaceIdx]?.name))
+      staff[replaceIdx] = { name: person.name, meetingPoint, isJamonero: true }
+      taken.add(personNorm)
+      satisfiedManualJamoneros += 1
+    }
+  })
+
   const assignedJamoneroDrivers = driversForCalc.filter((driver) => {
     return isJamoneroPerson(driver.name) && norm(driver.name) !== norm(chosenResp?.name)
   }).length
   const assignedJamoneroStaff = staff.filter((member) => member.isJamonero === true).length
-  const remainingJamonerosNeeded = Math.max(
-    Number(jamoneroCount || 0) - assignedJamoneroDrivers - assignedJamoneroStaff,
-    0
+  const totalRequestedJamoneros = normalizedJamoneroAssignments.length
+  const coveredJamoneros = Math.max(
+    assignedJamoneroDrivers + assignedJamoneroStaff,
+    satisfiedManualJamoneros
   )
+  const remainingJamonerosNeeded = Math.max(totalRequestedJamoneros - coveredJamoneros, 0)
   if (remainingJamonerosNeeded > 0) {
     const jamoneroCandidates = staffPool.filter(
-      (candidate) => candidate.p.isJamonero === true && !taken.has(norm(candidate.p.name))
+      (candidate) =>
+        candidate.p.isJamonero === true &&
+        !taken.has(norm(candidate.p.name)) &&
+        (!chosenResp || norm(candidate.p.name) !== norm(chosenResp.name))
     )
 
     const selectedJamoneros = jamoneroCandidates.slice(0, remainingJamonerosNeeded)
@@ -645,6 +966,7 @@ export async function autoAssign(payload: {
           )
         }
         if (replaceIdx >= 0) {
+          taken.delete(norm(staff[replaceIdx]?.name))
           staff[replaceIdx] = { name: candidate.p.name, meetingPoint, isJamonero: true }
         }
       }
@@ -663,7 +985,11 @@ export async function autoAssign(payload: {
     if (staff.length >= finalNeededWorkers) break
     const nm = norm(cand.p.name)
     if (taken.has(nm)) continue
-    staff.push({ name: cand.p.name, meetingPoint, isJamonero: cand.p.isJamonero === true })
+    staff.push({
+      name: cand.p.name,
+      meetingPoint,
+      isJamonero: shouldTrackJamoneros && cand.p.isJamonero === true,
+    })
     taken.add(nm)
   }
   while (staff.length < finalNeededWorkers) {

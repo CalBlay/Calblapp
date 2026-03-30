@@ -17,6 +17,8 @@ type AvailEntry = {
   status: 'available' | 'conflict'
   reason: string
   isDriver?: boolean
+  isJamonero?: boolean
+  isResponsible?: boolean
   camioPetit?: boolean
   camioGran?: boolean
 }
@@ -307,11 +309,13 @@ export async function GET(request: NextRequest) {
         status: isAvailable ? 'available' : 'conflict',
         reason,
         isDriver,
+        isJamonero: data.isJamonero === true,
+        isResponsible: data.isResponsible === true,
         camioPetit: data.driver?.camioPetit === true,
         camioGran: data.driver?.camioGran === true,
       }
 
-      if (RESPONSABLE_ROLES.has(roleNorm)) {
+      if (RESPONSABLE_ROLES.has(roleNorm) || data.isResponsible === true) {
         responsables.push(entry)
         workers.push(entry)
       }

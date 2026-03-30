@@ -16,6 +16,8 @@ type AvailablePerson = {
   name: string
   alias?: string
   meetingPoint?: string
+  isDriver?: boolean
+  isJamonero?: boolean
 }
 
 type AvailableVehicle = {
@@ -164,6 +166,11 @@ function EditorFields({
     available?.treballadors
   )
 
+  const jamoneroCandidates = mergeUniquePeople(
+    available?.conductors,
+    available?.treballadors
+  ).filter((person) => person.isJamonero === true)
+
   const rowPerson =
     allPeople.find((p) => row.id && p.id === row.id) ||
     allPeople.find((p) => row.name && normalize(p.name || p.alias || p.id) === normalize(row.name)) ||
@@ -190,7 +197,9 @@ function EditorFields({
   )
   const canSelectConductor = Boolean(
     row.role === 'conductor' ||
-      isCurrentInConductors
+      isCurrentInConductors ||
+      (row.isJamonero === true &&
+        ((rowPerson?.isDriver === true) || jamoneroCandidates.some((person) => person.isDriver === true)))
   )
   const isEditableExternalWorker =
     allowExternalWorkerName &&
@@ -198,7 +207,11 @@ function EditorFields({
     row.isExternal
 
   const list: AvailablePerson[] =
-    row.role === 'responsable'
+    row.isJamonero === true
+      ? row.role === 'conductor'
+        ? jamoneroCandidates.filter((person) => person.isDriver === true)
+        : jamoneroCandidates
+      : row.role === 'responsable'
       ? responsibleCandidates
       : row.role === 'conductor'
       ? available?.conductors || []
@@ -214,16 +227,25 @@ function EditorFields({
             <label className="text-xs font-medium">Rol</label>
             <select
               value={row.role}
-              onChange={(e) =>
+              onChange={(e) => {
+                const nextRole = e.target.value as Role
+                const selectedPerson = list.find((person) => person.id === row.id)
+                const clearInvalidSelection =
+                  nextRole === 'conductor' &&
+                  row.isJamonero === true &&
+                  selectedPerson &&
+                  selectedPerson.isDriver !== true
+
                 onPatch({
-                  role: e.target.value as Role,
-                  ...(e.target.value !== 'treballador' ? { isExternal: false } : {}),
+                  role: nextRole,
+                  ...(nextRole !== 'treballador' ? { isExternal: false } : {}),
+                  ...(clearInvalidSelection ? { id: '', name: '' } : {}),
                 })
-              }
+              }}
               className="w-full rounded border px-2 py-1 text-sm"
               disabled={isLocked}
             >
-              {canSelectResponsible && <option value="responsable">Responsable</option>}
+              {canSelectResponsible && row.isJamonero !== true && <option value="responsable">Responsable</option>}
               {canSelectConductor && <option value="conductor">Conductor</option>}
               <option value="treballador">Treballador</option>
             </select>

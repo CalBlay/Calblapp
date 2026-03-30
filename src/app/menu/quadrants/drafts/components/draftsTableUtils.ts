@@ -164,6 +164,15 @@ export const buildGroupedRows = ({
     return null
   }
 
+  const takePreferredServiceWorker = (groupId: string) => {
+    const preferredIdx = workersPool.findIndex((worker) => String((worker as any)?.groupId || '') === groupId)
+    if (preferredIdx >= 0) {
+      const [preferred] = workersPool.splice(preferredIdx, 1)
+      return preferred || null
+    }
+    return workersPool.shift() || null
+  }
+
   groupDefs.forEach((group, idx) => {
     const groupId = group.id || `group-${idx + 1}`
     const groupDate = (group as any).serviceDate || draft.startDate
@@ -300,13 +309,13 @@ export const buildGroupedRows = ({
     const assignedWorkers: Array<{ name?: string }> = []
 
     for (let i = 0; i < workersNeeded; i += 1) {
-      let worker = workersPool.shift()
+      let worker = isServeisDept ? takePreferredServiceWorker(groupId) : workersPool.shift()
       while (
         worker?.name &&
         shouldDeduplicateName(worker.name) &&
         usedNames.has(normalizeDraftText(worker.name))
       ) {
-        worker = workersPool.shift()
+        worker = isServeisDept ? takePreferredServiceWorker(groupId) : workersPool.shift()
       }
       const workerName = worker?.name || ''
       if (!workerName) {

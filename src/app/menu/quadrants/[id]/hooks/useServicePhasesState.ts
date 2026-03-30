@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import {
   ServeiGroup,
+  ServiceJamoneroAssignment,
   ServicePhaseEtt,
   ServicePhaseEttData,
   ServicePhaseKey,
@@ -14,6 +15,7 @@ import {
 const extractDate = (iso = '') => iso.split('T')[0] || ''
 
 const makeGroupId = () => `group-${Date.now()}-${Math.random().toString(16).slice(2)}`
+const makeJamoneroId = () => `jamonero-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
 type UseServicePhasesStateOptions = {
   event: QuadrantEvent
@@ -45,6 +47,9 @@ export type UseServicePhasesStateResult = {
     responsables: number
     jamoneros: number
   }
+  serviceJamoneroAssignments: ServiceJamoneroAssignment[]
+  setServiceJamoneroCount: (count: number) => void
+  updateServiceJamoneroAssignment: (id: string, patch: Partial<ServiceJamoneroAssignment>) => void
   buildServiceGroupsPayload: (
     manualResponsibleId: string | null,
     manualResponsibleName?: string | null
@@ -134,6 +139,7 @@ export function useServicePhasesState({
     servicePhaseOptions.map((phase, idx) => createServiceGroup(phase.key, overrides[idx] || {}))
 
   const [servicePhaseGroups, setServicePhaseGroups] = useState<ServeiGroup[]>(() => [createServiceGroup('event')])
+  const [serviceJamoneroAssignments, setServiceJamoneroAssignments] = useState<ServiceJamoneroAssignment[]>([])
   const [servicePhaseVisibility, setServicePhaseVisibility] = useState(createServicePhaseVisibility)
   const [servicePhaseSettings, setServicePhaseSettings] = useState(createServicePhaseSettings)
   const [servicePhaseEtt, setServicePhaseEtt] = useState<Record<ServicePhaseKey, ServicePhaseEtt>>(() =>
@@ -155,6 +161,7 @@ export function useServicePhasesState({
       workers: totalWorkers,
     }))
     setServicePhaseGroups(createServicePhaseGroups(overrides))
+    setServiceJamoneroAssignments([])
     setServicePhaseVisibility(createServicePhaseVisibility())
     setServicePhaseSettings(createServicePhaseSettings())
     setServicePhaseEtt(
@@ -172,7 +179,14 @@ export function useServicePhasesState({
   }
 
   const updateServiceGroup = (id: string, patch: Partial<ServeiGroup>) => {
-    setServicePhaseGroups((prev) => prev.map((group) => (group.id === id ? { ...group, ...patch } : group)))
+    setServicePhaseGroups((prev) =>
+      prev.map((group) => {
+        if (group.id !== id) return group
+        const nextWorkers =
+          typeof patch.workers === 'number' ? Math.min(4, Math.max(0, patch.workers)) : group.workers
+        return { ...group, ...patch, workers: nextWorkers }
+      })
+    )
   }
 
   const removeServiceGroup = (id: string, phaseKey: ServicePhaseKey) => {
@@ -222,11 +236,36 @@ export function useServicePhasesState({
     )
     return {
       workers: activeServiceGroups.reduce((sum, group) => sum + group.workers, 0),
-      jamoneros: activeServiceGroups.reduce((sum, group) => sum + Number(group.jamoneros || 0), 0),
+      jamoneros: serviceJamoneroAssignments.length,
       drivers: activeServiceGroups.filter((group) => group.needsDriver).length,
       responsables: activeResponsiblePhases.size,
     }
-  }, [activeServiceGroups, servicePhaseSettings])
+  }, [activeServiceGroups, servicePhaseSettings, serviceJamoneroAssignments])
+
+  const setServiceJamoneroCount = useCallback((count: number) => {
+    const safeCount = Math.max(0, Number.isNaN(Number(count)) ? 0 : Number(count))
+    setServiceJamoneroAssignments((prev) => {
+      if (safeCount === prev.length) return prev
+      if (safeCount < prev.length) return prev.slice(0, safeCount)
+      return [
+        ...prev,
+        ...Array.from({ length: safeCount - prev.length }, () => ({
+          id: makeJamoneroId(),
+          mode: 'auto' as const,
+          personnelId: '',
+        })),
+      ]
+    })
+  }, [])
+
+  const updateServiceJamoneroAssignment = useCallback(
+    (id: string, patch: Partial<ServiceJamoneroAssignment>) => {
+      setServiceJamoneroAssignments((prev) =>
+        prev.map((assignment) => (assignment.id === id ? { ...assignment, ...patch } : assignment))
+      )
+    },
+    []
+  )
 
   const selectedServiceGroups = useMemo(() => {
     if (activeServiceGroups.length) return activeServiceGroups
@@ -235,8 +274,13 @@ export function useServicePhasesState({
 
   const buildServiceGroupsPayload = useCallback(
     (manualResponsibleId: string | null, manualResponsibleName?: string | null) => {
-      return selectedServiceGroups.map((group) => {
+      return selectedServiceGroups.map((group, index) => {
         const wantsResponsible = group.wantsResponsible === true
+        const inheritsTopResponsible =
+          wantsResponsible &&
+          index === 0 &&
+          group.phaseKey === 'event' &&
+          Boolean(manualResponsibleId)
         return {
           id: group.id,
           serviceDate: group.serviceDate,
@@ -245,14 +289,14 @@ export function useServicePhasesState({
           startTime: group.startTime,
           endTime: group.endTime,
           workers: group.workers,
-          jamoneros: Math.max(0, Number(group.jamoneros || 0)),
+          jamoneros: 0,
           drivers: group.needsDriver ? 1 : 0,
           needsDriver: group.needsDriver,
           driverId: group.driverId || null,
-          responsibleId: wantsResponsible ? group.responsibleId || manualResponsibleId : null,
+          responsibleId: wantsResponsible ? group.responsibleId || (inheritsTopResponsible ? manualResponsibleId : null) : null,
           responsibleName: wantsResponsible && group.responsibleId
             ? null
-            : wantsResponsible
+            : inheritsTopResponsible
             ? manualResponsibleName || null
             : null,
           wantsResponsible,
@@ -276,6 +320,9 @@ export function useServicePhasesState({
     toggleServicePhaseEtt,
     updateServicePhaseEtt,
     serviceTotals,
+    serviceJamoneroAssignments,
+    setServiceJamoneroCount,
+    updateServiceJamoneroAssignment,
     buildServiceGroupsPayload,
   }
 }

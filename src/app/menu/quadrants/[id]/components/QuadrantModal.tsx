@@ -170,12 +170,16 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     ettData,
     setEttData,
     serviceTotals,
+    serviceJamoneroAssignments,
+    setServiceJamoneroCount,
+    updateServiceJamoneroAssignment,
     buildServiceGroupsPayload,
     vehiclesPayload,
     buildLogisticaPhases,
     ettEntry,
     availableResponsables,
     availableConductors,
+    availableJamoneros,
   } = useQuadrantFormState({ event, department, modalOpen: open })
 
   const rawTitle = event.summary || event.title || ''
@@ -466,6 +470,19 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
         payload.groups = groupsPayload
         payload.totalWorkers = serviceTotals.workers
         payload.numDrivers = serviceTotals.drivers
+        payload.jamoneroCount = serviceJamoneroAssignments.length
+        payload.serviceJamoneroAssignments = serviceJamoneroAssignments.map((assignment) => ({
+          id: assignment.id,
+          mode: assignment.mode,
+          personnelId:
+            assignment.mode === 'manual' && assignment.personnelId
+              ? assignment.personnelId
+              : null,
+          personnelName:
+            assignment.mode === 'manual' && assignment.personnelId
+              ? availableJamoneros.find((person) => person.id === assignment.personnelId)?.name || null
+              : null,
+        }))
         groupsPayload.forEach((group) => addTimetable(group))
       } else {
         const logisticaPhases = buildLogisticaPhases()
@@ -599,10 +616,10 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[97vw] !max-w-[1700px] h-[96vh] overflow-y-auto rounded-2xl p-4 sm:p-6"
+        className="w-[97vw] !max-w-[1700px] max-h-[92vh] overflow-y-auto rounded-2xl p-3 sm:p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <DialogHeader>
+        <DialogHeader className="gap-1">
           <DialogTitle className="text-lg font-bold">{eventName}</DialogTitle>
           <DialogDescription>
             Servei {event.service || '—'} · PAX {event.numPax ?? '—'} · Hora inici {event.startTime || startTime || '—:—'}
@@ -610,7 +627,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 mt-4">
+        <div className="mt-2 space-y-3">
           {!isLogistica && !isCuina && (
             <div className={`grid gap-4 ${isServeis ? 'lg:grid-cols-3' : 'grid-cols-2'}`}>
               {!isServeis && (
@@ -710,6 +727,10 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               manualResponsibleId={manualResp}
               availableResponsables={availableResponsables}
               availableConductors={availableConductors}
+              availableJamoneros={availableJamoneros}
+              jamoneroAssignments={serviceJamoneroAssignments}
+              setJamoneroCount={setServiceJamoneroCount}
+              updateJamoneroAssignment={updateServiceJamoneroAssignment}
               setManualResponsible={setManualResp}
               toggleSelection={toggleServicePhaseSelection}
               updateSetting={updateServicePhaseSetting}
@@ -739,8 +760,8 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               updatePhaseVehicleAssignment={updatePhaseVehicleAssignment}
               ettOpen={ettOpen}
               ettData={ettData}
-              toggleEtt={() => setEttOpen((prev) => !prev)}
-              updateEtt={(patch) => setEttData((prev) => ({ ...prev, ...patch }))}
+              toggleEtt={() => setEttOpen(!ettOpen)}
+              updateEtt={(patch) => setEttData({ ...ettData, ...patch })}
             />
           )}
 
@@ -1057,7 +1078,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           </AnimatePresence>
         </div>
 
-        <DialogFooter className="mt-6 flex justify-end gap-2">
+        <DialogFooter className="mt-3 flex justify-end gap-2">
           <Button
             className="bg-blue-600 text-white gap-2"
             onClick={handleAutoGenAndSave}
