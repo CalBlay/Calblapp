@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import React, { useMemo, useState } from 'react'
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
@@ -429,6 +429,16 @@ export default function PreventiusPlanificadorPage() {
       if (payload.type !== 'scheduled' || !payload.id) return
       const target = scheduledItems.find((item) => item.id === payload.id)
       if (!target) return
+
+      if (target.kind === 'preventiu') {
+        const status = normalizePlannerTicketStatus(target.status)
+        if (!['nou', 'assignat', 'no_fet'].includes(status)) {
+          window.alert('Només pots tornar a pendents preventius en estat Nou, Assignat o No fet.')
+          await loadWeekSchedule()
+          return
+        }
+      }
+
       setScheduledItems((prev) => prev.filter((item) => item.id !== target.id))
 
       if (target.kind === 'preventiu') {

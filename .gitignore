@@ -50,3 +50,4 @@ serviceAccountKey.json
 src/data/service-account*.json
 
 .vercel
+.env*.local

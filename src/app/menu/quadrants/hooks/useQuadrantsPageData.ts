@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { format, parseISO } from 'date-fns'
+import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import type { QuadrantStatus, UnifiedEvent } from '@/app/menu/quadrants/types'
@@ -113,11 +113,16 @@ const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
       normalizeNameKey(item.phaseKey || item.phaseType || item.phaseLabel || 'event') === 'event'
 
     if (!isServiceDraft) {
-      grouped.set(`single:${item.id}`, [item])
+      // IMPORTANT:
+      // Si expandim events per dia (multi-day), poden compartir el mateix `id`.
+      // Cal evitar que el Map els col·lapsi i així perdre dies intermedis.
+      const dateKey = item.phaseDate || (item.start ? String(item.start).slice(0, 10) : '')
+      grouped.set(`single:${item.id}:${dateKey}`, [item])
       return
     }
 
-    const key = `service:${String(item.eventId || item.code || item.id)}`
+    const dateKey = item.phaseDate || (item.start ? String(item.start).slice(0, 10) : '')
+    const key = `service:${String(item.eventId || item.code || item.id)}:${dateKey}`
     const list = grouped.get(key) || []
     list.push(item)
     grouped.set(key, list)
@@ -348,19 +353,27 @@ export function useQuadrantsPageData({
       const eventId = String(ev.id || ev.eventId || ev.code || '').trim()
       if (!eventId) return
       const existing = quadrantsByEvent.get(eventId) || []
+      const desiredDay = ev?.start ? String(ev.start).slice(0, 10) : ''
       const hasEventDoc = existing.some((q) => {
         const p = (q.phaseType || q.phaseLabel || '')
           .toString()
           .trim()
           .toLowerCase()
-        if (p === 'event') return true
         const dept = (q.department || '').toString().trim().toLowerCase()
+
+        const candidateDate = String(q.phaseDate || q.startDate || '').slice(0, 10)
+        if (desiredDay && candidateDate && candidateDate !== desiredDay) return false
+
+        // Event phase (normal).
+        if (p === 'event') return true
+
         // Cuina treballa amb una sola fase (event) i pot tenir docs antics sense phaseType.
         if (dept === 'cuina' && !p) return true
+
         // Serveis pot tenir fases/grups sense document "event" pur.
-        // Si ja existeix qualsevol doc del quadrant, evitem afegir una fila pendent
-        // artificial que amaga el flux d'edició/reobertura.
-        if (normalizeDepartment(dept) === 'serveis') return true
+        // Ara NO bloquegem per tots els dies: només si no hi ha phaseKey (p buit) i coincideix el dia.
+        if (normalizeDepartment(dept) === 'serveis' && !p) return true
+
         return false
       })
       if (hasEventDoc) return
@@ -403,7 +416,63 @@ export function useQuadrantsPageData({
       })
     })
 
-    return mergeServiceEntries(out)
+    const merged = mergeServiceEntries(out)
+
+    const expanded: UnifiedEvent[] = []
+
+    merged.forEach((ev) => {
+      const phaseKey = (ev.phaseKey || ev.phaseType || ev.phaseLabel || '').toString().toLowerCase()
+      const isEventPhase = phaseKey === 'event'
+
+      if (!isEventPhase) {
+        expanded.push(ev)
+        return
+      }
+
+      const startIso = ev.start ? String(ev.start).slice(0, 10) : ''
+      const endIso = ev.end ? String(ev.end).slice(0, 10) : startIso
+
+      if (!startIso || !endIso) {
+        expanded.push(ev)
+        return
+      }
+
+      let startDate: Date
+      let endDate: Date
+
+      try {
+        startDate = parseISO(startIso)
+        endDate = parseISO(endIso)
+      } catch {
+        expanded.push(ev)
+        return
+      }
+
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        expanded.push(ev)
+        return
+      }
+
+      const daySpan = differenceInCalendarDays(endDate, startDate)
+
+      if (daySpan <= 0) {
+        expanded.push(ev)
+        return
+      }
+
+      for (let i = 0; i <= daySpan; i += 1) {
+        const current = addDays(startDate, i)
+        const iso = format(current, 'yyyy-MM-dd')
+        expanded.push({
+          ...ev,
+          start: `${iso}T${ev.displayStartTime || '00:00'}:00`,
+          end: `${iso}T${ev.displayEndTime || '00:00'}:00`,
+          phaseDate: iso,
+        })
+      }
+    })
+
+    return expanded
   }, [events, quadrants])
 
   const phasesByEventId = useMemo(() => {

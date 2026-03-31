@@ -155,7 +155,10 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
           pathname.startsWith('/menu/quadrants') ||
           pathname.startsWith('/menu/modifications') ||
           pathname.startsWith('/menu/incidents') ||
-          pathname.startsWith('/menu/projects')
+          pathname.startsWith('/menu/projects') ||
+          pathname.startsWith('/menu/manteniment/preventius/planificador') ||
+          pathname.startsWith('/menu/manteniment/seguiment') ||
+          pathname.startsWith('/menu/manteniment/tickets')
             ? 'h-auto w-full max-w-none overflow-visible px-2 pb-6 sm:px-4'
             : 'mx-auto h-auto max-w-7xl overflow-visible px-2 pb-6 sm:px-4'
         }

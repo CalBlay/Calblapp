@@ -1,5 +1,6 @@
 // file: src/app/api/events/quadrants/route.ts
 import { NextRequest, NextResponse } from 'next/server'
+import { addDays, differenceInCalendarDays, parseISO } from 'date-fns'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
@@ -19,17 +20,19 @@ export async function GET(req: NextRequest) {
     const snap = await db.collection('stage_verd').get()
 
     const events = (snap.docs || [])
-      .map((doc) => {
+      .flatMap((doc) => {
         const d = doc.data() as Record<string, any>
 
         console.log(
           `[events/quadrants] CODE → ${d?.code || d?.C_digo || '(sense codi)'} | NomEvent: ${d?.NomEvent}`
         )
 
-        // 📅 Dates
-        const startISO = d?.DataInici ? `${d.DataInici}T00:00:00.000Z` : null
-        const endISO = d?.DataFi ? `${d.DataFi}T00:00:00.000Z` : startISO
-        const day = startISO ? startISO.slice(0, 10) : ''
+        // 📅 Dates d'inici/fi (YYYY-MM-DD)
+        const startDateRaw = typeof d?.DataInici === 'string' ? d.DataInici.slice(0, 10) : ''
+        const endDateRaw =
+          typeof d?.DataFi === 'string' && d.DataFi.trim()
+            ? d.DataFi.slice(0, 10)
+            : startDateRaw
 
         // 📍 Ubicació neta
         const rawLocation = d?.Ubicacio || ''
@@ -49,12 +52,33 @@ export async function GET(req: NextRequest) {
         const horaInici =
           typeof rawHora === 'string' ? rawHora.trim().slice(0, 5) : ''
 
-        return {
+        if (!startDateRaw) return []
+
+        let startDate: Date
+        let endDate: Date
+
+        try {
+          startDate = parseISO(startDateRaw)
+          endDate = parseISO(endDateRaw || startDateRaw)
+        } catch {
+          return []
+        }
+
+        if (
+          Number.isNaN(startDate.getTime()) ||
+          Number.isNaN(endDate.getTime())
+        ) {
+          return []
+        }
+
+        const daySpan = Math.max(
+          0,
+          differenceInCalendarDays(endDate, startDate)
+        )
+
+        const base = {
           id: doc.id,
           summary,
-          start: startISO,
-          end: endISO,
-          day,
           location,
           lnKey: (d?.LN || 'Altres').toLowerCase(),
           lnLabel: d?.LN || 'Altres',
@@ -62,14 +86,29 @@ export async function GET(req: NextRequest) {
           commercial: d?.Comercial || '',
           numPax: d?.NumPax || '',
           code: d?.code || d?.C_digo || '',
-
           horaInici,
+          // estat simplificat
           status: d?.StageGroup?.toLowerCase().includes('confirmat')
             ? 'confirmed'
             : d?.StageGroup?.toLowerCase().includes('proposta')
             ? 'draft'
             : 'pending',
         }
+
+        // 🔁 Generem una entrada per cada dia que dura l'esdeveniment
+        return Array.from({ length: daySpan + 1 }, (_, i) => {
+          const current = addDays(startDate, i)
+          const dayIso = current.toISOString().slice(0, 10)
+          const startISO = `${dayIso}T00:00:00.000Z`
+          const endISO = `${dayIso}T00:00:00.000Z`
+
+          return {
+            ...base,
+            start: startISO,
+            end: endISO,
+            day: dayIso,
+          }
+        })
       })
       .filter((ev) => {
         // 🎯 Ha de tenir codi
