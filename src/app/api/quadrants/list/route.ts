@@ -347,6 +347,9 @@ async function fetchDeptDrafts(
       ],
       groups: Array.isArray(d.groups)
         ? d.groups.map((g) => ({
+            id: g.id || null,
+            serviceDate: g.serviceDate || null,
+            dateLabel: g.dateLabel || null,
             meetingPoint: g.meetingPoint || '',
             startTime: g.startTime || '',
             arrivalTime: g.arrivalTime ?? null,

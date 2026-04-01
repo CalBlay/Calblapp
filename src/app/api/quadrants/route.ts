@@ -1198,6 +1198,18 @@ export async function POST(req: NextRequest) {
 
     if (phaseRequests.length > 0) {
       const blockedNamesInBatch = new Set<string>()
+      let preferredResult: {
+        assignment?: {
+          responsible?: { name: string } | null
+          drivers?: Array<{ name: string; meetingPoint?: string; plate?: string; vehicleType?: string }>
+          staff?: Array<{ name: string; meetingPoint?: string }>
+        }
+        meta?: {
+          needsReview?: boolean
+          violations?: string[]
+          notes?: string[]
+        }
+      } | null = null
       const orderedPhaseRequests =
         deptNorm === 'serveis'
           ? [
@@ -1223,10 +1235,21 @@ export async function POST(req: NextRequest) {
                 }),
               ...phaseRequests.filter((phase) => phase.phaseType !== 'event'),
             ]
+          : deptNorm === 'logistica'
+          ? [
+              ...phaseRequests.filter((phase) => phase.phaseType === 'event'),
+              ...phaseRequests.filter((phase) => phase.phaseType !== 'event'),
+            ]
           : phaseRequests
 
       for (const phase of orderedPhaseRequests) {
         const result = await writePhaseDoc(phase, Array.from(blockedNamesInBatch))
+        if (!preferredResult && phase.phaseType === 'event') {
+          preferredResult = result
+        }
+        if (!preferredResult) {
+          preferredResult = result
+        }
         const assignedNames = [
           result?.assignment?.responsible?.name || null,
           ...(Array.isArray(result?.assignment?.drivers)
@@ -1242,8 +1265,12 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({
         success: true,
-        proposal: { responsible: null, drivers: [], staff: [] },
-        meta: { needsReview: false, violations: [], notes: [] },
+        proposal: {
+          responsible: preferredResult?.assignment?.responsible || null,
+          drivers: preferredResult?.assignment?.drivers || [],
+          staff: preferredResult?.assignment?.staff || [],
+        },
+        meta: preferredResult?.meta || { needsReview: false, violations: [], notes: [] },
       })
     }
 
@@ -1267,7 +1294,13 @@ export async function POST(req: NextRequest) {
       typeof toSave.eventId === 'string' && toSave.eventId.trim()
         ? normalizeEventId(toSave.eventId)
         : canonicalEventId
-    const docIdForSingleFlow = normalizedEventId
+    const singleFlowPhaseDate = String(body.phaseDate || toSave.phaseDate || toSave.startDate || '').trim()
+    const shouldPersistSingleFlowPerDay =
+      String(body.generationScope || '').trim().toLowerCase() === 'event' &&
+      Boolean(singleFlowPhaseDate)
+    const docIdForSingleFlow = shouldPersistSingleFlowPerDay
+      ? `${normalizedEventId}__event__${singleFlowPhaseDate}__event`
+      : normalizedEventId
 
     await db.collection(collectionName).doc(docIdForSingleFlow).set(toSave, { merge: true })
 

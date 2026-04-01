@@ -1,4 +1,4 @@
-﻿// file: src/app/menu/quadrants/drafts/components/DraftsTable.tsx
+// file: src/app/menu/quadrants/drafts/components/DraftsTable.tsx
 'use client'
 
 import React, { useMemo, useRef, useState } from 'react'
@@ -11,14 +11,15 @@ import DraftRow from './DraftRow'
 import DraftActions from './DraftActions'
 import DraftsTableDesktop from './DraftsTableDesktop'
 import DraftsTableMobile from './DraftsTableMobile'
+import RowEditor from './RowEditor'
 
 import type { Role } from './types'
 import type { DraftInput, Row } from './types'
 import {
-  buildInitialRowsBase,
-  buildStructuredGroups,
   normalizeDraftText,
-} from './draftsTableUtils'
+  pruneEditorGroups,
+} from '@/lib/quadrantsDraftEditor'
+import { mapDraftToEditorModel } from '@/lib/quadrantsDraftAdapters'
 import {
   confirmDraftTable,
   deleteDraftTable,
@@ -64,40 +65,52 @@ export default function DraftsTable({
       (session?.user && 'department' in session.user ? session.user.department : '') ||
       ''
     ).toLowerCase()
-  const isCuinaDept = department === 'cuina'
-
-  const defaultMeetingPoint = draft.meetingPoint || ''
   const eventLocationText = normalizeDraftLocation(draft.location)
-  const structuredGroups = useMemo(() => buildStructuredGroups(draft.groups), [draft.groups])
-  const isServeisDept = department === 'serveis'
+  const editorModel = useMemo(() => mapDraftToEditorModel({ ...draft, department }), [draft, department])
+  const { groups: structuredGroups, rows: initialRows, isServeisDept, defaultMeetingPoint } = editorModel
   const [groupDefs, setGroupDefs] = useState(structuredGroups)
   const hasStructuredGroups = groupDefs.length > 0
 
   const norm = normalizeDraftText
-  const initialRowsBase: Row[] = buildInitialRowsBase({
-    draft,
-    hasStructuredGroups,
-    groupDefs,
-    defaultMeetingPoint,
-    department,
-    isCuinaDept,
-    isServeisDept,
-  })
-  const initialRows: Row[] = initialRowsBase
 
   const [rows, setRows] = useState<Row[]>(initialRows)
+  const rowsRef = useRef<Row[]>(initialRows)
+  const groupDefsRef = useRef(groupDefs)
   const [editIdx, setEditIdx] = useState<number | null>(null)
   const initialRef = useRef(JSON.stringify({ rows: initialRows, groups: structuredGroups }))
   const dirty = JSON.stringify({ rows, groups: groupDefs }) !== initialRef.current
   const [expandedMerged, setExpandedMerged] = useState<Set<string>>(new Set())
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
+  const setRowsState = (next: React.SetStateAction<Row[]>) => {
+    setRows((prev) => {
+      const resolved = typeof next === 'function' ? (next as (value: Row[]) => Row[])(prev) : next
+      rowsRef.current = resolved
+      return resolved
+    })
+  }
+
+  const setGroupDefsState = (
+    next: React.SetStateAction<typeof groupDefs>
+  ) => {
+    setGroupDefs((prev) => {
+      const resolved =
+        typeof next === 'function'
+          ? (next as (value: typeof groupDefs) => typeof groupDefs)(prev)
+          : next
+      groupDefsRef.current = resolved
+      return resolved
+    })
+  }
+
   React.useEffect(() => {
+    rowsRef.current = initialRows
+    groupDefsRef.current = structuredGroups
     setGroupDefs(structuredGroups)
     setRows(initialRows)
     initialRef.current = JSON.stringify({ rows: initialRows, groups: structuredGroups })
     setCollapsedGroups(new Set())
-  }, [structuredGroups, draft.id])
+  }, [initialRows, structuredGroups, draft.id, draft.updatedAt, draft.status])
 
   // --- Estat de confirmaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³
   const [confirmed, setConfirmed] = useState<boolean>(
@@ -188,14 +201,25 @@ export default function DraftsTable({
 
   // --- Callbacks (API routes)
   const handleSaveAll = async (rowsOverride?: Row[]) => {
+    const rowsToSave = (rowsOverride ?? rowsRef.current).filter(
+      (row) => row.name?.trim() !== '' || row.id?.trim() !== ''
+    )
+    const groupsToSave = pruneEditorGroups({
+      department,
+      rows: rowsToSave,
+      groups: groupDefsRef.current,
+    })
     await saveDraftTable({
       draft,
-      rows: rowsOverride ?? rows,
-      groups: groupDefs,
+      rows: rowsToSave,
+      groups: groupsToSave,
       onSaved: (cleanedRows) => {
+        rowsRef.current = cleanedRows
+        groupDefsRef.current = groupsToSave
         setRows(cleanedRows)
+        setGroupDefs(groupsToSave)
         setEditIdx(null)
-        initialRef.current = JSON.stringify({ rows: cleanedRows, groups: groupDefs })
+        initialRef.current = JSON.stringify({ rows: cleanedRows, groups: groupsToSave })
       },
     })
   }
@@ -215,7 +239,7 @@ export default function DraftsTable({
   }
 
   const handleDeleteQuadrant = async () => {
-    await deleteDraftTable({ draft, rows })
+    await deleteDraftTable({ draft, rows: rowsRef.current })
   }
 
   const startEdit = (i: number) => {
@@ -234,27 +258,32 @@ export default function DraftsTable({
     if (editIdx === null) return
     const currentRow = rows[editIdx]
     if (!currentRow) return
+    const currentGroupId = currentRow.groupId
 
-    const nextRow = { ...currentRow, ...patch } as Row
-
-    setRows((rs) =>
+    setRowsState((rs) =>
       rs.map((row, idx) => {
-        if (idx === editIdx) return nextRow
+        if (idx === editIdx) {
+          return { ...row, ...patch } as Row
+        }
+
+        const latestCurrentRow = rs[editIdx]
+        if (!latestCurrentRow) return row
+        const nextRow = { ...latestCurrentRow, ...patch } as Row
 
         const sameGroup =
           isServeisDept &&
-          currentRow.groupId &&
-          row.groupId === currentRow.groupId
+          latestCurrentRow.groupId &&
+          row.groupId === latestCurrentRow.groupId
         const groupControlledByDriver = Boolean(
-          isServeisDept && currentRow.groupId && groupHasDriverController(currentRow.groupId)
+          isServeisDept && latestCurrentRow.groupId && groupHasDriverController(latestCurrentRow.groupId)
         )
         const freeGroupMeetingPoint = Boolean(
-          isServeisDept && currentRow.groupId && !groupControlledByDriver
+          isServeisDept && latestCurrentRow.groupId && !groupControlledByDriver
         )
 
         const conductorEdited =
-          currentRow.role === 'conductor' ||
-          (currentRow.role === 'responsable' && currentRow.isDriver)
+          latestCurrentRow.role === 'conductor' ||
+          (latestCurrentRow.role === 'responsable' && latestCurrentRow.isDriver)
 
         const isCompanion =
           row.role === 'treballador' ||
@@ -288,7 +317,7 @@ export default function DraftsTable({
       })
     )
 
-    if (isServeisDept && currentRow.groupId) {
+    if (isServeisDept && currentGroupId) {
       const relevantGroupPatch: Record<string, unknown> = {}
       if (patch.startDate !== undefined) relevantGroupPatch.serviceDate = patch.startDate
       if (patch.startTime !== undefined) relevantGroupPatch.startTime = patch.startTime
@@ -297,9 +326,9 @@ export default function DraftsTable({
       if (patch.meetingPoint !== undefined) relevantGroupPatch.meetingPoint = patch.meetingPoint
 
       if (Object.keys(relevantGroupPatch).length > 0) {
-        setGroupDefs((prev) =>
+        setGroupDefsState((prev) =>
           prev.map((group) =>
-            group.id === currentRow.groupId ? { ...group, ...relevantGroupPatch } : group
+            group.id === currentGroupId ? { ...group, ...relevantGroupPatch } : group
           )
         )
       }
@@ -310,11 +339,11 @@ export default function DraftsTable({
     if (editIdx === null) return
     const original = initialRows[editIdx]
     if (!original) {
-      setRows((rs) => rs.filter((_, idx) => idx !== editIdx))
+      setRowsState((rs) => rs.filter((_, idx) => idx !== editIdx))
       setEditIdx(null)
       return
     }
-    setRows((rs) => {
+    setRowsState((rs) => {
       const copy = [...rs]
       copy[editIdx] = original // torna a lÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢estat inicial
       return copy
@@ -324,6 +353,7 @@ export default function DraftsTable({
 
   const deleteRow = async (index: number) => {
     const next = rows.filter((_, idx) => idx !== index)
+    rowsRef.current = next
     setRows(next)
     setEditIdx(null)
     await handleSaveAll(next)
@@ -494,16 +524,41 @@ export default function DraftsTable({
       )
     )
 
-  const renderRow = (r: Row, i: number) => (
-    <DraftRow
-      key={`${r.role}-${r.id || 'noid'}-${i}`}
-      row={r}
-      isLocked={isLocked}
-      isActive={editIdx === i}
-      onEdit={() => startEdit(i)}
-      onDelete={() => deleteRow(i)}
-    />
-  )
+  const renderRow = (r: Row, i: number) => {
+    const isActive = editIdx === i
+    return (
+      <React.Fragment key={`${r.role}-${r.id || 'noid'}-${i}`}>
+        <div className={isActive ? 'lg:grid lg:grid-cols-[minmax(0,64%)_minmax(360px,36%)] lg:items-start lg:gap-3' : ''}>
+          <div className="min-w-0">
+            <DraftRow
+              row={r}
+              isLocked={isLocked}
+              isActive={isActive}
+              onEdit={() => startEdit(i)}
+              onDelete={() => deleteRow(i)}
+            />
+          </div>
+          {isActive && (
+            <div className="hidden lg:block rounded-lg bg-blue-50/40 p-3">
+              <RowEditor
+                row={r}
+                available={availableForEditor}
+                isServeisDept={isServeisDept}
+                allowExternalWorkerName={Boolean(r.isExternal)}
+                canEditMeetingPoint={canEditMeetingPoint(r)}
+                groupHasDriverController={groupHasDriverController(r.groupId)}
+                canEditArrivalTime={canEditArrivalTime(r)}
+                onPatch={patchRow}
+                onClose={endEdit}
+                onRevert={revertRow}
+                isLocked={isLocked}
+              />
+            </div>
+          )}
+        </div>
+      </React.Fragment>
+    )
+  }
 
   const defaultGroup = hasStructuredGroups ? groupDefs[0] : undefined
   const defaultGroupId = hasStructuredGroups ? groupDefs[0]?.id : undefined
@@ -511,8 +566,7 @@ export default function DraftsTable({
   const defaultGroupEndTime = defaultGroup?.endTime || draft.endTime
   const defaultGroupArrivalTime = defaultGroup?.arrivalTime || draft.arrivalTime
   const defaultGroupMeetingPoint = defaultGroup?.meetingPoint || draft.meetingPoint || ''
-  const showConductorButtons = !isServeisDept
-  const canManageGroups = isServeisDept || isCuinaDept
+  const canManageGroups = true
   const currentEditingRow = editIdx !== null ? rows[editIdx] || null : null
   const hasInlineEditor = Boolean(currentEditingRow && editIdx !== null)
   const isGroupCollapsed = (groupId?: string | null) =>
@@ -562,15 +616,16 @@ export default function DraftsTable({
     const groupEnd = group?.endTime || defaultGroupEndTime || ''
     const groupArrival = group?.arrivalTime || defaultGroupArrivalTime || ''
     const groupMeeting = group?.meetingPoint || defaultGroupMeetingPoint
+    const groupDate = (group as any)?.serviceDate || draft.startDate
 
-    setRows([
+    setRowsState([
       ...rows,
       {
         id: '',
         name: '',
         role,
-        startDate: draft.startDate,
-        endDate: draft.endDate,
+        startDate: groupDate,
+        endDate: draft.endDate || groupDate,
         startTime: groupStart,
         endTime: groupEnd,
         meetingPoint: groupMeeting,
@@ -597,52 +652,18 @@ export default function DraftsTable({
     const groupEnd = group?.endTime || defaultGroupEndTime || ''
     const groupArrival = group?.arrivalTime || defaultGroupArrivalTime || ''
     const groupMeeting = group?.meetingPoint || defaultGroupMeetingPoint
+    const groupDate = (group as any)?.serviceDate || draft.startDate
 
-    setRows([
+    setRowsState([
       ...rows,
       {
         id: '',
         name: 'ETT',
         isExternal: true,
+        externalType: 'ett',
         role: 'treballador',
-        startDate: draft.startDate,
-        endDate: draft.endDate,
-        startTime: groupStart,
-        endTime: groupEnd,
-        meetingPoint: groupMeeting,
-        arrivalTime: groupArrival,
-        plate: '',
-        vehicleType: '',
-        groupId,
-      },
-    ])
-  }
-
-  const addJamoneroRow = (groupId?: string) => {
-    if (groupId) {
-      setCollapsedGroups((prev) => {
-        const next = new Set(prev)
-        next.delete(groupId)
-        return next
-      })
-    }
-    const group = hasStructuredGroups
-      ? groupDefs.find((item) => item.id === groupId) || defaultGroup
-      : undefined
-    const groupStart = group?.startTime || defaultGroupStartTime || ''
-    const groupEnd = group?.endTime || defaultGroupEndTime || ''
-    const groupArrival = group?.arrivalTime || defaultGroupArrivalTime || ''
-    const groupMeeting = group?.meetingPoint || defaultGroupMeetingPoint
-
-    setRows([
-      ...rows,
-      {
-        id: '',
-        name: '',
-        isJamonero: true,
-        role: 'treballador',
-        startDate: draft.startDate,
-        endDate: draft.endDate,
+        startDate: groupDate,
+        endDate: draft.endDate || groupDate,
         startTime: groupStart,
         endTime: groupEnd,
         meetingPoint: groupMeeting,
@@ -657,7 +678,7 @@ export default function DraftsTable({
   const addGroup = () => {
     const source = groupDefs[groupDefs.length - 1] || defaultGroup
     const nextId = `group-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
-    setGroupDefs((prev) => [
+    setGroupDefsState((prev) => [
       ...prev,
       {
         id: nextId,
@@ -693,16 +714,19 @@ export default function DraftsTable({
     const groupEnd = group?.endTime || defaultGroupEndTime || ''
     const groupArrival = group?.arrivalTime || defaultGroupArrivalTime || ''
     const groupMeeting = eventLocationText || group?.meetingPoint || defaultGroupMeetingPoint
+    const groupDate = (group as any)?.serviceDate || draft.startDate
 
-    setRows([
+    setRowsState([
       ...rows,
       {
         id: '',
         name: 'Extra',
+        isExternal: true,
+        externalType: 'centerExternalExtra',
         isCenterExternalExtra: true,
         role: 'treballador',
-        startDate: draft.startDate,
-        endDate: draft.endDate,
+        startDate: groupDate,
+        endDate: draft.endDate || groupDate,
         startTime: groupStart,
         endTime: groupEnd,
         meetingPoint: groupMeeting,
@@ -715,8 +739,8 @@ export default function DraftsTable({
   }
 
   const removeGroup = (groupId: string) => {
-    setGroupDefs((prev) => prev.filter((group) => group.id !== groupId))
-    setRows((prev) => prev.filter((row) => row.groupId !== groupId))
+    setGroupDefsState((prev) => prev.filter((group) => group.id !== groupId))
+    setRowsState((prev) => prev.filter((row) => row.groupId !== groupId))
     setEditIdx((current) => {
       if (current === null) return null
       const currentRow = rows[current]
@@ -749,10 +773,8 @@ export default function DraftsTable({
       groupDefs={groupDefs}
       isLocked={isLocked}
       isServeisDept={isServeisDept}
-      isCuinaDept={isCuinaDept}
       canManageGroups={canManageGroups}
       showStructuredGroups={showStructuredGroups}
-      showConductorButtons={showConductorButtons}
       rows={rows}
       renderRow={renderRow}
       availableForEditor={availableForEditor}
@@ -761,7 +783,6 @@ export default function DraftsTable({
       canEditArrivalTime={canEditArrivalTime}
       groupHasDriverController={groupHasDriverController}
       addRowToGroup={addRowToGroup}
-      addJamoneroRow={addJamoneroRow}
       addEttRow={addEttRow}
       addCenterExternalExtra={addCenterExternalExtra}
       isGroupCollapsed={isGroupCollapsed}
@@ -782,10 +803,8 @@ export default function DraftsTable({
       groupDefs={groupDefs}
       isLocked={isLocked}
       isServeisDept={isServeisDept}
-      isCuinaDept={isCuinaDept}
       canManageGroups={canManageGroups}
       showStructuredGroups={showStructuredGroups}
-      showConductorButtons={showConductorButtons}
       rows={rows}
       defaultGroupId={defaultGroupId}
       availableForEditor={availableForEditor}
@@ -794,7 +813,6 @@ export default function DraftsTable({
       canEditArrivalTime={canEditArrivalTime}
       groupHasDriverController={groupHasDriverController}
       addRowToGroup={addRowToGroup}
-      addJamoneroRow={addJamoneroRow}
       addEttRow={addEttRow}
       addCenterExternalExtra={addCenterExternalExtra}
       isGroupCollapsed={isGroupCollapsed}

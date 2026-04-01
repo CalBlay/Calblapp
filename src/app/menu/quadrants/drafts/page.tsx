@@ -1,7 +1,7 @@
 // file: src/app/menu/quadrants/drafts/page.tsx
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -80,6 +80,9 @@ export interface Draft {
 
   // Grups cuina
   groups?: Array<{
+    id?: string | null
+    serviceDate?: string | null
+    dateLabel?: string | null
     meetingPoint?: string
     startTime?: string
     arrivalTime?: string | null
@@ -201,8 +204,22 @@ export default function DraftsPage() {
     return `/api/quadrants/list?${params.toString()}`
   }, [dateRange, department, status])
 
-  const { data, isLoading, error } = useSWR(apiUrl, fetcher)
+  const { data, isLoading, error, mutate } = useSWR(apiUrl, fetcher)
   const drafts: Draft[] = useMemo(() => data?.drafts || [], [data])
+
+  useEffect(() => {
+    const refreshDrafts = () => {
+      void mutate()
+    }
+
+    window.addEventListener('quadrant:updated', refreshDrafts)
+    window.addEventListener('quadrant:created', refreshDrafts)
+
+    return () => {
+      window.removeEventListener('quadrant:updated', refreshDrafts)
+      window.removeEventListener('quadrant:created', refreshDrafts)
+    }
+  }, [mutate])
 
   /* ──────────────────────────────
      Agrupacions i opcions

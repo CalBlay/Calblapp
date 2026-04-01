@@ -10,6 +10,7 @@ import {
   TRANSPORT_TYPE_OPTIONS,
   normalizeTransportType,
 } from '@/lib/transportTypes'
+import { getExternalWorkerBaseLabel } from '@/lib/quadrantExternalWorkers'
 
 type AvailablePerson = {
   id: string
@@ -88,7 +89,13 @@ function EditorHeader({
   isLocked: boolean
   compact?: boolean
 }) {
-  const displayName = row.isCenterExternalExtra ? 'Extra C.Extern' : row.name || '-'
+  const externalLabel = row.isExternal
+    ? getExternalWorkerBaseLabel(row.externalType)
+    : null
+  const displayName =
+    externalLabel && !row.name
+      ? externalLabel
+      : row.name || (externalLabel ?? '-')
   return (
     <div
       className={`mb-3 flex items-center justify-between ${
@@ -138,13 +145,21 @@ function EditorFields({
   onPatch: (patch: Partial<Row>) => void
   isLocked: boolean
 }) {
+  type RoleSelectValue = Role | 'jamonero'
   const normalize = (value?: string) =>
     (value || '').toString().trim().toLowerCase()
   const isServiceCompanion = isServeisDept && row.role === 'treballador'
-  const isCenterExternalExtra = row.isCenterExternalExtra === true
+  const isCenterExternalExtra =
+    row.externalType === 'centerExternalExtra' || row.isCenterExternalExtra === true
   const canEditRole = !isCenterExternalExtra
-  const showNameAsFixed = isCenterExternalExtra
-  const fixedDisplayName = isCenterExternalExtra ? 'Extra C.Extern' : row.name || ''
+  const isEditableExternalWorker =
+    allowExternalWorkerName &&
+    row.role === 'treballador' &&
+    (row.isExternal || isCenterExternalExtra)
+  const showNameAsFixed = isCenterExternalExtra && !isEditableExternalWorker
+  const fixedDisplayName = isCenterExternalExtra
+    ? row.name || getExternalWorkerBaseLabel(row.externalType)
+    : row.name || ''
   const canEditMeetingPointField = canEditMeetingPoint && !isCenterExternalExtra
   const canEditArrivalField = canEditArrivalTime && !isCenterExternalExtra
 
@@ -166,11 +181,6 @@ function EditorFields({
     available?.treballadors
   )
 
-  const jamoneroCandidates = mergeUniquePeople(
-    available?.conductors,
-    available?.treballadors
-  ).filter((person) => person.isJamonero === true)
-
   const rowPerson =
     allPeople.find((p) => row.id && p.id === row.id) ||
     allPeople.find((p) => row.name && normalize(p.name || p.alias || p.id) === normalize(row.name)) ||
@@ -179,6 +189,13 @@ function EditorFields({
   const responsibleCandidates = mergeUniquePeople(
     available?.responsables,
     rowPerson ? [rowPerson] : []
+  )
+  const workerCandidates = mergeUniquePeople(
+    available?.treballadors,
+    rowPerson ? [rowPerson] : []
+  )
+  const jamoneroWorkerCandidates = workerCandidates.filter(
+    (person) => person.isJamonero === true
   )
   const isCurrentInResponsables = (available?.responsables || []).some(
     (p) =>
@@ -191,31 +208,27 @@ function EditorFields({
       (row.name && normalize(p.name || p.alias || p.id) === normalize(row.name))
   )
 
+  const isEmptyDraftRow = !row.id && !row.name
   const canSelectResponsible = Boolean(
-    row.role === 'responsable' ||
+    isEmptyDraftRow ||
+      row.role === 'responsable' ||
       isCurrentInResponsables
   )
   const canSelectConductor = Boolean(
-    row.role === 'conductor' ||
-      isCurrentInConductors ||
-      (row.isJamonero === true &&
-        ((rowPerson?.isDriver === true) || jamoneroCandidates.some((person) => person.isDriver === true)))
+    isEmptyDraftRow ||
+      row.role === 'conductor' ||
+      isCurrentInConductors
   )
-  const isEditableExternalWorker =
-    allowExternalWorkerName &&
-    row.role === 'treballador' &&
-    row.isExternal
-
+  const selectedRoleValue: RoleSelectValue =
+    row.role === 'treballador' && row.isJamonero ? 'jamonero' : row.role
   const list: AvailablePerson[] =
     row.isJamonero === true
-      ? row.role === 'conductor'
-        ? jamoneroCandidates.filter((person) => person.isDriver === true)
-        : jamoneroCandidates
+      ? jamoneroWorkerCandidates
       : row.role === 'responsable'
       ? responsibleCandidates
       : row.role === 'conductor'
       ? available?.conductors || []
-      : available?.treballadors || []
+      : workerCandidates
 
 
   // --- RESPONSABLE / CONDUCTOR / TREBALLADOR ---
@@ -226,34 +239,46 @@ function EditorFields({
           <div>
             <label className="text-xs font-medium">Rol</label>
             <select
-              value={row.role}
+              value={selectedRoleValue}
               onChange={(e) => {
-                const nextRole = e.target.value as Role
+                const nextRoleValue = e.target.value as RoleSelectValue
+                const nextRole = nextRoleValue === 'jamonero' ? 'treballador' : nextRoleValue
+                const nextIsJamonero = nextRoleValue === 'jamonero'
                 const selectedPerson = list.find((person) => person.id === row.id)
                 const clearInvalidSelection =
                   nextRole === 'conductor' &&
-                  row.isJamonero === true &&
+                  nextIsJamonero &&
                   selectedPerson &&
                   selectedPerson.isDriver !== true
+                const clearNonJamoneroSelection =
+                  nextIsJamonero &&
+                  selectedPerson &&
+                  selectedPerson.isJamonero !== true
 
                 onPatch({
                   role: nextRole,
+                  isJamonero: nextIsJamonero,
                   ...(nextRole !== 'treballador' ? { isExternal: false } : {}),
-                  ...(clearInvalidSelection ? { id: '', name: '' } : {}),
+                  ...((clearInvalidSelection || clearNonJamoneroSelection) ? { id: '', name: '' } : {}),
                 })
               }}
               className="w-full rounded border px-2 py-1 text-sm"
               disabled={isLocked}
             >
-              {canSelectResponsible && row.isJamonero !== true && <option value="responsable">Responsable</option>}
+              {canSelectResponsible && <option value="responsable">Responsable</option>}
               {canSelectConductor && <option value="conductor">Conductor</option>}
               <option value="treballador">Treballador</option>
+              <option value="jamonero">Jamonero</option>
             </select>
           </div>
         )}
 
         <div>
-          <label className="text-xs font-medium">{isEditableExternalWorker ? 'Nom ETT' : 'Nom'}</label>
+          <label className="text-xs font-medium">
+            {isEditableExternalWorker
+              ? `Nom ${getExternalWorkerBaseLabel(row.externalType)}`
+              : 'Nom'}
+          </label>
           {showNameAsFixed ? (
             <Input
               value={fixedDisplayName}
@@ -264,7 +289,7 @@ function EditorFields({
             <Input
               value={row.name || ''}
               onChange={(e) => onPatch({ id: '', name: e.target.value })}
-              placeholder="ETT o nom de la persona"
+              placeholder={`${getExternalWorkerBaseLabel(row.externalType)} o nom de la persona`}
               className="w-full text-sm"
               disabled={isLocked}
             />
@@ -274,17 +299,29 @@ function EditorFields({
               onChange={(e) => {
                 const sel = list.find((p) => p.id === e.target.value)
                 const displayName = sel?.name || sel?.alias || sel?.id || ''
-                onPatch({ id: sel?.id || '', name: displayName, isExternal: false })
                 const rowControlsMeetingPoint =
                   row.role === 'conductor' || (row.role === 'responsable' && row.isDriver)
                 const shouldSyncMeetingPoint = !isServeisDept || rowControlsMeetingPoint
-                if (shouldSyncMeetingPoint && sel?.meetingPoint)
-                  onPatch({ meetingPoint: sel.meetingPoint })
+
+                onPatch({
+                  id: sel?.id || '',
+                  name: displayName,
+                  isExternal: false,
+                  externalType: undefined,
+                  isCenterExternalExtra: false,
+                  ...(shouldSyncMeetingPoint && sel?.meetingPoint
+                    ? { meetingPoint: sel.meetingPoint }
+                    : {}),
+                })
               }}
               className="w-full rounded border px-2 py-1 text-sm"
               disabled={isLocked}
             >
-              <option value="">Selecciona {row.role}</option>
+              <option value="">
+                {selectedRoleValue === 'jamonero'
+                  ? 'Selecciona jamonero'
+                  : `Selecciona ${selectedRoleValue}`}
+              </option>
               {list.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name || p.alias || p.id}

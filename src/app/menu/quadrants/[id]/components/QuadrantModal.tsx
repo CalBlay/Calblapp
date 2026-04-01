@@ -1,5 +1,6 @@
-﻿'use client'
+'use client'
 
+import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { useMemo, useState, useEffect, useRef } from 'react'
 import {
   Dialog,
@@ -93,6 +94,116 @@ type CuinaGroup = {
 type TimetableEntry = {
   startTime?: string
   endTime?: string
+}
+
+type GenerationScope = 'day' | 'event'
+
+const getDateRange = (startIso?: string, endIso?: string) => {
+  const safeStart = extractDate(startIso || '')
+  if (!safeStart) return []
+
+  try {
+    const start = parseISO(startIso || safeStart)
+    const end = parseISO(endIso || startIso || safeStart)
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return [safeStart]
+    }
+
+    const totalDays = Math.max(differenceInCalendarDays(end, start), 0)
+    return Array.from({ length: totalDays + 1 }, (_, index) =>
+      format(addDays(start, index), 'yyyy-MM-dd')
+    )
+  } catch {
+    return [safeStart]
+  }
+}
+
+const clonePayloadForDate = (
+  payload: Record<string, unknown>,
+  department: string,
+  date: string
+): Record<string, unknown> => {
+  const nextPayload: Record<string, unknown> = {
+    ...payload,
+    startDate: date,
+    endDate: date,
+    phaseDate: date,
+    phaseType: (payload.phaseType as string) || 'event',
+    phaseLabel: (payload.phaseLabel as string) || 'Event',
+    generationScope: 'event',
+  }
+
+  if (Array.isArray(payload.groups)) {
+    nextPayload.groups = payload.groups.map((group: any) => ({
+      ...group,
+      serviceDate: department === 'serveis' ? date : group?.serviceDate ?? date,
+    }))
+  }
+
+  if (Array.isArray(payload.externalWorkers)) {
+    nextPayload.externalWorkers = payload.externalWorkers.map((worker: any) => ({
+      ...worker,
+      startDate: date,
+      endDate: date,
+    }))
+  }
+
+  if (Array.isArray(payload.logisticaPhases)) {
+    nextPayload.logisticaPhases = payload.logisticaPhases.map((phase: any) => ({
+      ...phase,
+      date,
+      endDate: date,
+    }))
+  }
+
+  return nextPayload
+}
+
+const buildPreferredAssignments = (proposal?: {
+  responsible?: { name?: string | null } | null
+  drivers?: Array<{ name?: string | null }>
+  staff?: Array<{ name?: string | null }>
+} | null) => {
+  if (!proposal) return null
+
+  const preferredResponsibleName = String(proposal.responsible?.name || '').trim()
+  const preferredDriverNames = Array.isArray(proposal.drivers)
+    ? proposal.drivers.map((driver) => String(driver?.name || '').trim()).filter(Boolean)
+    : []
+  const preferredStaffNames = Array.isArray(proposal.staff)
+    ? proposal.staff
+        .map((member) => String(member?.name || '').trim())
+        .filter((name) => Boolean(name) && name !== 'Extra')
+    : []
+
+  return {
+    preferredResponsibleName: preferredResponsibleName || null,
+    preferredDriverNames,
+    preferredStaffNames,
+  }
+}
+
+const submitQuadrantPayload = async (payload: Record<string, unknown>) => {
+  const res = await fetch('/api/quadrants', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const text = await res.text()
+  const data = JSON.parse(text)
+
+  if (!res.ok || (data as any)?.ok === false || (data as any)?.success === false) {
+    throw new Error((data as any)?.error || 'Error desant el quadrant')
+  }
+
+  return data as {
+    proposal?: {
+      responsible?: { name?: string | null } | null
+      drivers?: Array<{ name?: string | null }>
+      staff?: Array<{ name?: string | null }>
+    }
+  }
 }
 
 type CuinaEttState = {
@@ -189,6 +300,49 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [generationScope, setGenerationScope] = useState<GenerationScope>('day')
+  const visibleDate = extractDate(event.start)
+  const eventRangeStart = extractDate(event.originalStart || event.start)
+  const eventRangeEnd = extractDate(event.originalEnd || event.end || event.start)
+  const multiDayDates = useMemo(
+    () => getDateRange(event.originalStart || event.start, event.originalEnd || event.end || event.start),
+    [event.end, event.originalEnd, event.originalStart, event.start]
+  )
+  const isMultiDayEvent = multiDayDates.length > 1
+  const generationScopeToggle = isMultiDayEvent ? (
+    <div className="flex items-center justify-end">
+      <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100/80 p-1 shadow-sm">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          aria-pressed={generationScope === 'day'}
+          className={
+            generationScope === 'day'
+              ? 'h-7 rounded-md bg-blue-600 px-2.5 text-xs font-medium text-white hover:bg-blue-600'
+              : 'h-7 rounded-md px-2.5 text-xs font-medium text-slate-500 hover:bg-white hover:text-slate-700'
+          }
+          onClick={() => setGenerationScope('day')}
+        >
+          1 dia
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          aria-pressed={generationScope === 'event'}
+          className={
+            generationScope === 'event'
+              ? 'h-7 rounded-md bg-blue-600 px-2.5 text-xs font-medium text-white hover:bg-blue-600'
+              : 'h-7 rounded-md px-2.5 text-xs font-medium text-slate-500 hover:bg-white hover:text-slate-700'
+          }
+          onClick={() => setGenerationScope('event')}
+        >
+          Multi dia
+        </Button>
+      </div>
+    </div>
+  ) : null
 
   const createCuinaGroup = (seed: Partial<CuinaGroup> = {}): CuinaGroup => {
     const seedDrivers = Math.max(0, (seed.drivers ?? Number(numDrivers)) || 0)
@@ -305,6 +459,11 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
       },
     })
   }, [isCuina, open, event.id, event.start, event.startTime, event.endTime, event.location, event.eventLocation])
+
+  useEffect(() => {
+    if (!open) return
+    setGenerationScope('day')
+  }, [open, event.id, visibleDate])
 
   useEffect(() => {
     if (!isCuina) return
@@ -514,20 +673,26 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           addTimetable(ettEntry)
         }
 
-        const res = await fetch('/api/quadrants', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(baseLogisticaPayload),
-        })
-        const text = await res.text()
-        const data = JSON.parse(text)
+        const payloads =
+          isMultiDayEvent && generationScope === 'event'
+            ? multiDayDates.map((date) => clonePayloadForDate(baseLogisticaPayload, department, date))
+            : [baseLogisticaPayload]
 
-        if (!res.ok || (data as any)?.ok === false) {
-          throw new Error((data as any)?.error || 'Error desant el quadrant')
+        let preferredAssignments: ReturnType<typeof buildPreferredAssignments> = null
+        for (const payloadToSend of payloads) {
+          const response = await submitQuadrantPayload({
+            ...payloadToSend,
+            ...(preferredAssignments || {}),
+          })
+          preferredAssignments = buildPreferredAssignments(response?.proposal)
         }
 
         setSuccess(true)
-        toast.success('Borrador creat correctament!')
+        toast.success(
+          isMultiDayEvent && generationScope === 'event'
+            ? 'Borradors creats per tots els dies de l’esdeveniment!'
+            : 'Borrador creat correctament!'
+        )
         window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'draft' } }))
         onOpenChange(false)
         return
@@ -588,20 +753,26 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
         ettEntries.forEach((entry) => addTimetable({ startTime: entry.startTime, endTime: entry.endTime }))
       }
 
-      const res = await fetch('/api/quadrants', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const text = await res.text()
-      const data = JSON.parse(text)
+      const payloads =
+        isMultiDayEvent && generationScope === 'event'
+          ? multiDayDates.map((date) => clonePayloadForDate(payload, department, date))
+          : [payload]
 
-      if (!res.ok || (data as any)?.ok === false) {
-        throw new Error((data as any)?.error || 'Error desant el quadrant')
+      let preferredAssignments: ReturnType<typeof buildPreferredAssignments> = null
+      for (const payloadToSend of payloads) {
+        const response = await submitQuadrantPayload({
+          ...payloadToSend,
+          ...(preferredAssignments || {}),
+        })
+        preferredAssignments = buildPreferredAssignments(response?.proposal)
       }
 
       setSuccess(true)
-      toast.success('Borrador creat correctament!')
+      toast.success(
+        isMultiDayEvent && generationScope === 'event'
+          ? 'Borradors creats per tots els dies de l’esdeveniment!'
+          : 'Borrador creat correctament!'
+      )
       window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'draft' } }))
       onOpenChange(false)
     } catch (err: unknown) {
@@ -658,7 +829,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           )}
 
           {!isLogistica && !isServeis && isCuina && (
-            <div className="grid gap-4 xl:grid-cols-[180px_180px_minmax(320px,1fr)] items-end">
+            <div className="grid gap-4 xl:grid-cols-[180px_180px_minmax(320px,1fr)_auto] items-end">
               <div>
                 <Label>Hora Inici</Label>
                 <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
@@ -683,11 +854,12 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                   </SelectContent>
                 </Select>
               </div>
+              {generationScopeToggle}
             </div>
           )}
 
           {isServeis && (
-            <div className="grid gap-4 xl:grid-cols-[180px_180px_minmax(320px,1fr)] items-end">
+            <div className="grid gap-4 xl:grid-cols-[180px_180px_minmax(320px,1fr)_auto] items-end">
               <div>
                 <Label>Hora Inici</Label>
                 <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
@@ -712,6 +884,21 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                   </SelectContent>
                 </Select>
               </div>
+              {generationScopeToggle}
+            </div>
+          )}
+
+          {isLogistica && (
+            <div className="grid gap-4 xl:grid-cols-[180px_180px_auto] items-end">
+              <div>
+                <Label>Hora Inici</Label>
+                <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+              </div>
+              <div>
+                <Label>Hora Fi</Label>
+                <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              </div>
+              {generationScopeToggle}
             </div>
           )}
 

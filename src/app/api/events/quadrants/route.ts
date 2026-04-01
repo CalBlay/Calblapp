@@ -106,6 +106,8 @@ export async function GET(req: NextRequest) {
             ...base,
             start: startISO,
             end: endISO,
+            originalStart: startDateRaw,
+            originalEnd: endDateRaw || startDateRaw,
             day: dayIso,
           }
         })

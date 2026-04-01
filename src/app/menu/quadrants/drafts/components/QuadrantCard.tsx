@@ -19,6 +19,7 @@ export default function QuadrantCard({
 }: Props) {
   // Mantingut per compatibilitat amb props existents.
   void autoExpand
+  const draftRenderKey = `${quadrant.id}-${quadrant.updatedAt || 'nou'}-${quadrant.status || 'draft'}`
 
   return (
     <div className="space-y-3">
@@ -47,7 +48,7 @@ export default function QuadrantCard({
           </div>
         )}
 
-      <DraftsTable draft={quadrant} />
+      <DraftsTable key={draftRenderKey} draft={quadrant} />
     </div>
   )
 }

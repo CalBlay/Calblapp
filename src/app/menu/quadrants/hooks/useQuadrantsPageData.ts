@@ -324,6 +324,8 @@ export function useQuadrantsPageData({
         id: q.id || q.eventId || q.code || '',
         eventId: String(q.eventId || ev?.id || ev?.eventId || q.code || ''),
         summary: ev?.summary || ev?.name || q.eventName || '-',
+        originalStart: ev?.originalStart || ev?.start || undefined,
+        originalEnd: ev?.originalEnd || ev?.end || undefined,
         start: `${displayDate}T${q.startTime || '00:00'}:00`,
         end: `${(q.endDate || displayDate)}T${q.endTime || '00:00'}:00`,
         code: q.code || q.eventCode || '',
@@ -391,6 +393,8 @@ export function useQuadrantsPageData({
         id: String(ev.id || ev.eventId || ev.code || ''),
         eventId: String(ev.id || ev.eventId || ev.code || ''),
         summary: ev.summary || ev.name || '-',
+        originalStart: ev.originalStart || ev.start || undefined,
+        originalEnd: ev.originalEnd || ev.end || undefined,
         start: ev.start || '',
         end: ev.end || '',
         code: ev.code || '',
@@ -465,6 +469,8 @@ export function useQuadrantsPageData({
         const iso = format(current, 'yyyy-MM-dd')
         expanded.push({
           ...ev,
+          originalStart: ev.originalStart || ev.start,
+          originalEnd: ev.originalEnd || ev.end,
           start: `${iso}T${ev.displayStartTime || '00:00'}:00`,
           end: `${iso}T${ev.displayEndTime || '00:00'}:00`,
           phaseDate: iso,

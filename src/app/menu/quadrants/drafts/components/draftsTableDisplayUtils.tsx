@@ -1,7 +1,7 @@
 import React from 'react'
 import { ChevronDown, ChevronUp, GraduationCap, Truck, User } from 'lucide-react'
 import type { Role, Row } from './types'
-import { normalizeDraftText } from './draftsTableUtils'
+import { normalizeDraftText } from '@/lib/quadrantsDraftEditor'
 
 export type DisplayItem =
   | { type: 'single'; row: Row; index: number }

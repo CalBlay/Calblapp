@@ -127,6 +127,30 @@ export default function QuadrantsPage() {
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
   }, [visibleFilteredEvents])
 
+  const buildSelectedEvent = (ev: UnifiedEvent, phaseKey?: string): UnifiedEvent => {
+    const targetEventId = String(ev.eventId || ev.id || '').trim()
+    const relatedEvents = visibleFilteredEvents.filter(
+      (candidate) => String(candidate.eventId || candidate.id || '').trim() === targetEventId
+    )
+    const relatedDays = relatedEvents
+      .map((candidate) => String(candidate.phaseDate || candidate.start || '').slice(0, 10))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b))
+
+    return {
+      ...ev,
+      phaseKey: phaseKey ?? ev.phaseKey,
+      startTime: ev.displayStartTime || ev.startTime,
+      endTime: ev.displayEndTime || ev.endTime,
+      originalStart: ev.originalStart || (relatedDays[0] ? `${relatedDays[0]}T00:00:00.000Z` : ev.start),
+      originalEnd:
+        ev.originalEnd ||
+        (relatedDays.length > 0
+          ? `${relatedDays[relatedDays.length - 1]}T00:00:00.000Z`
+          : ev.end),
+    }
+  }
+
   const visibleCounts = useMemo(() => {
     let pending = 0
     let draft = 0
@@ -206,6 +230,18 @@ export default function QuadrantsPage() {
     if (status === 'draft') return 'Esborrany'
     if (status === 'pending') return 'Pendent'
     return ''
+  }
+
+  const getMultiDayRangeLabel = (ev: UnifiedEvent) => {
+    const originalStart = String(ev.originalStart || ev.start || '').slice(0, 10)
+    const originalEnd = String(ev.originalEnd || ev.end || '').slice(0, 10)
+    if (!originalStart || !originalEnd || originalStart === originalEnd) return null
+
+    try {
+      return `${format(parseISO(originalStart), 'dd/MM')}-${format(parseISO(originalEnd), 'dd/MM')}`
+    } catch {
+      return null
+    }
   }
 
   const exportRows = useMemo(
@@ -473,6 +509,7 @@ export default function QuadrantsPage() {
                       hasPhaseLabel && showEventDate && ev.eventDateLabel
                         ? `${phaseLabel} (${ev.eventDateLabel})`
                         : phaseLabel
+                    const multiDayRangeLabel = getMultiDayRangeLabel(ev)
                     const eventId = String(ev.eventId || ev.eventCode || ev.code || ev.id || "")
                       .trim()
                     const existingPhases = eventId ? phasesByEventId[eventId] : undefined
@@ -504,11 +541,7 @@ export default function QuadrantsPage() {
                           }`}
                           onClick={() => {
                             if (ev.quadrantStatus === 'pending') {
-                              setSelected({
-                                ...ev,
-                                startTime: ev.displayStartTime || ev.startTime,
-                                endTime: ev.displayEndTime || ev.endTime,
-                              })
+                              setSelected(buildSelectedEvent(ev))
                             } else if (draft && draft.id) {
                               setExpandedId((prev) =>
                                 prev === draft.id ? null : draft.id
@@ -528,7 +561,20 @@ export default function QuadrantsPage() {
                               ''
                             )}
                           </td>
-                          <td className="px-3 py-2.5 text-[16px] font-semibold tracking-tight text-slate-900">{ev.summary}</td>
+                          <td className="px-3 py-2.5 text-[16px] font-semibold tracking-tight text-slate-900">
+                            <div className="flex items-center gap-2">
+                              <span>{ev.summary}</span>
+                              {multiDayRangeLabel && (
+                                <span
+                                  className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"
+                                  title={`Esdeveniment multi-dia: ${multiDayRangeLabel}`}
+                                >
+                                  <CalendarDays className="mr-1 h-3 w-3" />
+                                  {multiDayRangeLabel}
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-3 py-2.5 text-[14px] text-slate-700">{ev.ln || '-'}</td>
                           <td className="px-3 py-2.5 text-[14px] font-semibold text-slate-800">{ev.numPax ?? '-'}</td>
                           <td className="px-3 py-2.5 text-[14px] text-slate-700">
@@ -569,12 +615,7 @@ export default function QuadrantsPage() {
                                  autoExpand
                                  pendingPhases={pendingPhases}
                                  onCreatePhase={(phaseKey) => {
-                                   setSelected({
-                                     ...ev,
-                                     phaseKey,
-                                     startTime: ev.displayStartTime || ev.startTime,
-                                     endTime: ev.displayEndTime || ev.endTime,
-                                   })
+                                   setSelected(buildSelectedEvent(ev, phaseKey))
                                  }}
                                />
 

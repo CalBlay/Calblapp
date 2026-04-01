@@ -1,4 +1,4 @@
-﻿// file: src/app/menu/quadrants/drafts/components/DraftRow.tsx
+// file: src/app/menu/quadrants/drafts/components/DraftRow.tsx
 'use client'
 
 import React from 'react'
@@ -6,6 +6,7 @@ import RowActions from './RowActions'
 import { GraduationCap, Truck, User, Car } from 'lucide-react'
 import type { Row } from './types'
 import { normalizeTransportType } from '@/lib/transportTypes'
+import { getExternalWorkerBaseLabel } from '@/lib/quadrantExternalWorkers'
 
 const roleIcon: Record<'responsable'|'conductor'|'treballador', React.ReactNode> = {
   responsable: <GraduationCap className="text-blue-700" size={20} />,
@@ -49,7 +50,9 @@ export default function DraftRow({
 }) {
   const formatDate = (d: string) => (d ? d.split('-').slice(1).reverse().join('/') : '--/--')
   const formatTime = (t?: string) => (t ? t.substring(0, 5) : '--:--')
-  const displayName = row.isCenterExternalExtra ? 'Extra C.Extern' : row.name
+  const displayName = row.isExternal
+    ? row.name || getExternalWorkerBaseLabel(row.externalType)
+    : row.name
   const leadingIcon =
     row.role === 'responsable' && row.isDriver ? (
       <div className="flex items-center gap-1">

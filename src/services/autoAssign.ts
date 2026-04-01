@@ -1,4 +1,4 @@
-﻿// file: src/services/autoAssign.ts
+// file: src/services/autoAssign.ts
 import {
   loadDepartmentPersonnel,
   loadPremises,
@@ -160,6 +160,9 @@ export async function autoAssign(payload: {
   skipResponsible?: boolean
   vehicles?: VehicleRequest[]
   blockedNames?: string[]
+  preferredResponsibleName?: string | null
+  preferredDriverNames?: string[]
+  preferredStaffNames?: string[]
 }) {
   const {
     department, eventId, location,
@@ -174,6 +177,9 @@ export async function autoAssign(payload: {
     skipResponsible = false,
     vehicles = [],
     blockedNames = [],
+    preferredResponsibleName = null,
+    preferredDriverNames = [],
+    preferredStaffNames = [],
   } = payload
 
   const startISO = `${startDate}T${startTime}:00`
@@ -274,6 +280,7 @@ export async function autoAssign(payload: {
   let forcedByPremise = false
   let usedGeneralResponsibleFallback = false
   let chosenResp: Personnel | null = null
+  let preferredResponsibleApplied = false
   let locationResponsibleConflict = false
   let locationResponsibleMatched = false
   let locationResponsibleName: string | null = null
@@ -282,6 +289,20 @@ export async function autoAssign(payload: {
 
   if (!skipResponsible && manualResponsibleId) {
     chosenResp = all.find(p => p.id === manualResponsibleId) || null
+  }
+
+  if (!skipResponsible && !chosenResp && preferredResponsibleName) {
+    const preferredResponsible = findBestNameMatch(
+      all.filter((person) => isResponsiblePerson(person) || person.isDriver),
+      preferredResponsibleName
+    )
+    if (preferredResponsible && !isBlockedAsResponsible(preferredResponsible)) {
+      const elig = getEligibility(preferredResponsible.name, startISO, endISO, baseCtx)
+      if (elig.eligible) {
+        chosenResp = preferredResponsible
+        preferredResponsibleApplied = true
+      }
+    }
   }
 
   if (!isCuina && !skipResponsible) {
@@ -473,6 +494,33 @@ export async function autoAssign(payload: {
   const preferredDrivers: Array<{ name: string; meetingPoint: string; plate: string; vehicleType: string }> = []
   const preferredStaff: Array<{ name: string; meetingPoint: string }> = []
   const reservedNames = new Set<string>(exclude)
+
+  preferredDriverNames
+    .map((name) => findBestNameMatch(all.filter((person) => person.isDriver), name))
+    .filter((person): person is Personnel => Boolean(person))
+    .forEach((person) => {
+      const personNorm = norm(person.name)
+      if (reservedNames.has(personNorm)) return
+      if (!getEligibility(person.name, startISO, endISO, baseCtx).eligible) return
+      preferredDrivers.push({
+        name: person.name,
+        meetingPoint,
+        plate: '',
+        vehicleType: '',
+      })
+      reservedNames.add(personNorm)
+    })
+
+  preferredStaffNames
+    .map((name) => findBestNameMatch(all, name))
+    .filter((person): person is Personnel => Boolean(person))
+    .forEach((person) => {
+      const personNorm = norm(person.name)
+      if (reservedNames.has(personNorm)) return
+      if (!getEligibility(person.name, startISO, endISO, baseCtx).eligible) return
+      preferredStaff.push({ name: person.name, meetingPoint })
+      reservedNames.add(personNorm)
+    })
 
   const findPersonnelByCrewRef = (ref: { id?: string; name?: string }) =>
     all.find((person) => {
@@ -824,7 +872,8 @@ export async function autoAssign(payload: {
   if (
     dept === 'serveis' &&
     !skipResponsible &&
-    !manualResponsibleId
+    !manualResponsibleId &&
+    !preferredResponsibleApplied
   ) {
     const primaryDriver = drivers.find((driver) => driver.name && driver.name !== 'Extra')
     const matchedResponsibleDriver = primaryDriver
