@@ -1,7 +1,8 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
 
 export const runtime = 'nodejs'
 
@@ -24,9 +25,28 @@ const normalizeDay = (value?: string | null) => {
   if (!value) return null
   const cleaned = String(value).trim()
   const parsed = new Date(cleaned)
-  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10)
+  if (!Number.isNaN(parsed.getTime())) return format(parsed, 'yyyy-MM-dd')
   const match = cleaned.match(/\d{4}-\d{2}-\d{2}/)
   return match ? match[0] : null
+}
+
+const getDayRange = (startDay?: string | null, endDay?: string | null) => {
+  const normalizedStart = normalizeDay(startDay)
+  const normalizedEnd = normalizeDay(endDay) || normalizedStart
+  if (!normalizedStart || !normalizedEnd) return []
+
+  try {
+    const start = parseISO(normalizedStart)
+    const end = parseISO(normalizedEnd)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return [normalizedStart]
+
+    const totalDays = Math.max(differenceInCalendarDays(end, start), 0)
+    return Array.from({ length: totalDays + 1 }, (_, index) =>
+      format(addDays(start, index), 'yyyy-MM-dd')
+    )
+  } catch {
+    return [normalizedStart]
+  }
 }
 
 async function authContext(req: NextRequest) {
@@ -141,10 +161,13 @@ export async function GET(req: NextRequest) {
 
       const rawStart =
         d.startDate || d.date || d.start || d.DataInici || d.dataInici || d.DataInicio || d.start_time || null
+      const rawEnd =
+        d.endDate || d.DataFi || d.dataFi || d.DataFinal || d.end || d.end_time || rawStart
 
       const startDate = normalizeDay(rawStart)
       if (!startDate) continue
-      if (startDate < start || startDate > end) continue
+      const dayRange = getDayRange(rawStart, rawEnd).filter((day) => day >= start && day <= end)
+      if (dayRange.length === 0) continue
 
       let responsableName: string | undefined
       let phaseLabel: string | undefined
@@ -168,20 +191,22 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      events.push({
-        id: doc.id,
-        code,
-        LN: d.LN || d.ln || d.lineaNegoci || '',
-        eventName: d.eventName || d.NomEvent || d.title || '',
-        startDate,
-        startTime: d.startTime || d.HoraInici || '',
-        location: d.location || d.Ubicacio || '',
-        pax: Number(d.pax || d.NumPax || 0),
-        servei: d.servei || d.Servei || '',
-        comercial: d.comercial || d.Comercial || '',
-        responsableName,
-        phaseLabel,
-        phaseDate,
+      dayRange.forEach((day) => {
+        events.push({
+          id: `${doc.id}__${day}`,
+          code,
+          LN: d.LN || d.ln || d.lineaNegoci || '',
+          eventName: d.eventName || d.NomEvent || d.title || '',
+          startDate: day,
+          startTime: d.startTime || d.HoraInici || '',
+          location: d.location || d.Ubicacio || '',
+          pax: Number(d.pax || d.NumPax || 0),
+          servei: d.servei || d.Servei || '',
+          comercial: d.comercial || d.Comercial || '',
+          responsableName,
+          phaseLabel,
+          phaseDate,
+        })
       })
     }
 

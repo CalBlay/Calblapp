@@ -9,7 +9,7 @@ import { normalizeRole } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { DriverCrewPremise, Premises } from '@/services/premises'
+import type { DriverCrewPremise, Premises, SurveyGroupPremise } from '@/services/premises'
 
 type MetaState = {
   source: 'firestore' | 'fallback'
@@ -33,6 +33,12 @@ type EditableDriverCrew = {
   id: string
   driverId: string
   companionIds: string[]
+}
+
+type EditableSurveyGroup = {
+  id: string
+  name: string
+  workerIds: string[]
 }
 
 type FincaOption = {
@@ -59,12 +65,14 @@ const buildSnapshot = ({
   defaultCharacteristicsText,
   conditions,
   driverCrews,
+  surveyGroups,
 }: {
   department: string
   premises: Premises
   defaultCharacteristicsText: string
   conditions: EditableCondition[]
   driverCrews: EditableDriverCrew[]
+  surveyGroups: EditableSurveyGroup[]
 }) =>
   JSON.stringify({
     department,
@@ -83,6 +91,11 @@ const buildSnapshot = ({
       id: crew.id,
       driverId: crew.driverId,
       companionIds: crew.companionIds,
+    })),
+    surveyGroups: surveyGroups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      workerIds: group.workerIds,
     })),
   })
 
@@ -125,6 +138,13 @@ const toEditableDriverCrews = (
   }))
 }
 
+const toEditableSurveyGroups = (premises: Premises): EditableSurveyGroup[] =>
+  (premises.surveyGroups || []).map((group, index) => ({
+    id: group.id || `survey-group-${index + 1}`,
+    name: group.name || '',
+    workerIds: Array.isArray(group.workerIds) ? group.workerIds : [],
+  }))
+
 export default function QuadrantPremisesPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
@@ -141,8 +161,10 @@ export default function QuadrantPremisesPage() {
   const [people, setPeople] = useState<PersonnelOption[]>([])
   const [finques, setFinques] = useState<FincaOption[]>([])
   const [driverCrews, setDriverCrews] = useState<EditableDriverCrew[]>([])
+  const [surveyGroups, setSurveyGroups] = useState<EditableSurveyGroup[]>([])
   const [expandedDriverCrews, setExpandedDriverCrews] = useState<Record<string, boolean>>({})
   const [expandedConditions, setExpandedConditions] = useState<Record<string, boolean>>({})
+  const [expandedSurveyGroups, setExpandedSurveyGroups] = useState<Record<string, boolean>>({})
   const [defaultCharacteristicsText, setDefaultCharacteristicsText] = useState(
     'Treballador, Responsable, Conductor'
   )
@@ -184,9 +206,11 @@ export default function QuadrantPremisesPage() {
         const nextConditions = toEditableConditions(nextPremises)
         const nextDefaultCharacteristicsText = (nextPremises.defaultCharacteristics || []).join(', ')
         const nextDriverCrews = toEditableDriverCrews(nextPremises, people)
+        const nextSurveyGroups = toEditableSurveyGroups(nextPremises)
         setPremises(nextPremises)
         setConditions(nextConditions)
         setDriverCrews(nextDriverCrews)
+        setSurveyGroups(nextSurveyGroups)
         setDefaultCharacteristicsText(nextDefaultCharacteristicsText)
         setMeta(json?.meta || null)
         lastSavedSnapshotRef.current = buildSnapshot({
@@ -195,6 +219,7 @@ export default function QuadrantPremisesPage() {
           defaultCharacteristicsText: nextDefaultCharacteristicsText,
           conditions: nextConditions,
           driverCrews: nextDriverCrews,
+          surveyGroups: nextSurveyGroups,
         })
       } catch (err) {
         if (cancelled) return
@@ -259,6 +284,7 @@ export default function QuadrantPremisesPage() {
             defaultCharacteristicsText,
             conditions,
             driverCrews: nextDriverCrews,
+            surveyGroups,
           })
           hydratingDepartmentRef.current = false
         }
@@ -312,8 +338,9 @@ export default function QuadrantPremisesPage() {
         defaultCharacteristicsText,
         conditions,
         driverCrews,
+        surveyGroups,
       }),
-    [conditions, defaultCharacteristicsText, department, driverCrews, premises]
+    [conditions, defaultCharacteristicsText, department, driverCrews, premises, surveyGroups]
   )
 
   const dirty = !loading && currentSnapshot !== lastSavedSnapshotRef.current
@@ -467,6 +494,58 @@ export default function QuadrantPremisesPage() {
     })
   }
 
+  const updateSurveyGroup = (id: string, patch: Partial<EditableSurveyGroup>) => {
+    setSurveyGroups((prev) => prev.map((group) => (group.id === id ? { ...group, ...patch } : group)))
+  }
+
+  const addSurveyGroup = () => {
+    const id = `survey-group-${Date.now()}`
+    setSurveyGroups((prev) => [...prev, { id, name: '', workerIds: [] }])
+    setExpandedSurveyGroups((prev) => ({ ...prev, [id]: false }))
+  }
+
+  const removeSurveyGroup = (id: string) => {
+    setSurveyGroups((prev) => prev.filter((group) => group.id !== id))
+    setExpandedSurveyGroups((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+  }
+
+  const toggleSurveyGroup = (id: string) => {
+    setExpandedSurveyGroups((prev) => ({
+      ...prev,
+      [id]: !(prev[id] ?? false),
+    }))
+  }
+
+  const addWorkerToSurveyGroup = (groupId: string) => {
+    const group = surveyGroups.find((item) => item.id === groupId)
+    if (!group) return
+    const next = people.find((person) => !group.workerIds.includes(person.id))
+    if (!next) return
+    updateSurveyGroup(groupId, {
+      workerIds: [...group.workerIds, next.id],
+    })
+  }
+
+  const updateSurveyGroupWorker = (groupId: string, index: number, personId: string) => {
+    const group = surveyGroups.find((item) => item.id === groupId)
+    if (!group) return
+    const nextWorkerIds = [...group.workerIds]
+    nextWorkerIds[index] = personId
+    updateSurveyGroup(groupId, { workerIds: nextWorkerIds.filter(Boolean) })
+  }
+
+  const removeSurveyGroupWorker = (groupId: string, index: number) => {
+    const group = surveyGroups.find((item) => item.id === groupId)
+    if (!group) return
+    updateSurveyGroup(groupId, {
+      workerIds: group.workerIds.filter((_, itemIndex) => itemIndex !== index),
+    })
+  }
+
   useEffect(() => {
     if (!dirty) return
 
@@ -525,6 +604,17 @@ export default function QuadrantPremisesPage() {
             }
           })
           .filter((item): item is DriverCrewPremise => Boolean(item)),
+        surveyGroups: surveyGroups
+          .map((group): SurveyGroupPremise | null => {
+            const workerIds = group.workerIds.filter((id) => Boolean(peopleById[id]))
+            if (!group.name.trim() && workerIds.length === 0) return null
+            return {
+              id: group.id,
+              name: group.name.trim(),
+              workerIds,
+            }
+          })
+          .filter((item): item is SurveyGroupPremise => Boolean(item)),
       }
 
       const res = await fetch('/api/quadrants/premises', {
@@ -538,6 +628,7 @@ export default function QuadrantPremisesPage() {
       setPremises(json.premises as Premises)
       setConditions(toEditableConditions(json.premises as Premises))
       setDriverCrews(toEditableDriverCrews(json.premises as Premises, people))
+      setSurveyGroups(toEditableSurveyGroups(json.premises as Premises))
       setDefaultCharacteristicsText(
         ((json.premises as Premises).defaultCharacteristics || []).join(', ')
       )
@@ -548,6 +639,7 @@ export default function QuadrantPremisesPage() {
         defaultCharacteristicsText: ((json.premises as Premises).defaultCharacteristics || []).join(', '),
         conditions: toEditableConditions(json.premises as Premises),
         driverCrews: toEditableDriverCrews(json.premises as Premises, people),
+        surveyGroups: toEditableSurveyGroups(json.premises as Premises),
       })
       setSuccess('Premisses desades correctament.')
       return true
@@ -932,6 +1024,148 @@ export default function QuadrantPremisesPage() {
                                         <button
                                           type="button"
                                           onClick={() => removeCompanion(crew.id, companionIndex)}
+                                          className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      Grups de sondeig
+                    </h3>
+                    <p className="text-sm text-slate-600">
+                      Grups reutilitzables per enviar sondeigs de disponibilitat.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addSurveyGroup}
+                    disabled={loading || people.length === 0}
+                    className="rounded-full"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Afegir grup
+                  </Button>
+                </div>
+
+                {loading ? (
+                  <div className="py-3 text-sm text-slate-500">Carregant grups...</div>
+                ) : surveyGroups.length === 0 ? (
+                  <div className="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                    Encara no hi ha grups de sondeig definits.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {surveyGroups.map((group, index) => {
+                      const isExpanded = expandedSurveyGroups[group.id] ?? false
+                      return (
+                        <div key={group.id} className="rounded-2xl border border-slate-200 bg-slate-50">
+                          <div className="flex items-center gap-3 px-4 py-3">
+                            <button
+                              type="button"
+                              onClick={() => toggleSurveyGroup(group.id)}
+                              className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500">
+                                  Grup {index + 1}
+                                </div>
+                                <div className="truncate text-sm font-semibold text-slate-900">
+                                  {group.name || 'Sense nom'}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-slate-500">
+                                <span>{group.workerIds.length} persones</span>
+                                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeSurveyGroup(group.id)}
+                              className="inline-flex items-center gap-2 text-sm font-medium text-rose-600 transition hover:text-rose-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="hidden sm:inline">Eliminar</span>
+                            </button>
+                          </div>
+
+                          {isExpanded ? (
+                            <div className="space-y-4 border-t border-slate-200 px-4 py-4">
+                              <div className="space-y-2">
+                                <Label>Nom del grup</Label>
+                                <Input
+                                  className="border-slate-200 bg-white"
+                                  value={group.name}
+                                  onChange={(event) =>
+                                    updateSurveyGroup(group.id, { name: event.target.value })
+                                  }
+                                  placeholder="Ex. Equip habitual caps de setmana"
+                                />
+                              </div>
+
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <Label>Persones del grup</Label>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="h-auto rounded-full px-0 text-slate-700 hover:text-slate-900"
+                                    onClick={() => addWorkerToSurveyGroup(group.id)}
+                                    disabled={
+                                      people.filter((person) => !group.workerIds.includes(person.id)).length === 0
+                                    }
+                                  >
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Afegir persona
+                                  </Button>
+                                </div>
+
+                                {group.workerIds.length === 0 ? (
+                                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                                    Encara no hi ha cap persona afegida.
+                                  </div>
+                                ) : (
+                                  <div className="space-y-3">
+                                    {group.workerIds.map((workerId, workerIndex) => (
+                                      <div key={`${group.id}-${workerIndex}`} className="flex items-center gap-3">
+                                        <select
+                                          className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm"
+                                          value={workerId}
+                                          onChange={(event) =>
+                                            updateSurveyGroupWorker(group.id, workerIndex, event.target.value)
+                                          }
+                                        >
+                                          <option value="">Selecciona persona</option>
+                                          {people
+                                            .filter(
+                                              (person) =>
+                                                person.id === workerId || !group.workerIds.includes(person.id)
+                                            )
+                                            .map((person) => (
+                                              <option key={person.id} value={person.id}>
+                                                {person.name}
+                                              </option>
+                                            ))}
+                                        </select>
+                                        <button
+                                          type="button"
+                                          onClick={() => removeSurveyGroupWorker(group.id, workerIndex)}
                                           className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
                                         >
                                           <Trash2 className="h-4 w-4" />

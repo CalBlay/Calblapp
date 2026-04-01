@@ -33,6 +33,7 @@ import {
 } from '@/hooks/useAdminNotifications'
 import { useMessagingUnreadCount } from '@/hooks/useMessagingUnread'
 import { useMaintenanceNotificationCount } from '@/hooks/useMaintenanceNotificationCount'
+import { useSurveyNotificationCount } from '@/hooks/useSurveyNotificationCount'
 
 /* ─────────────────────────────────────────────
    TIPUS
@@ -41,6 +42,7 @@ interface SessionUser {
   id: string
   role?: string
   department?: string
+  canRespondSurveys?: boolean
 }
 
 /* ─────────────────────────────────────────────
@@ -171,6 +173,11 @@ const UI_MAP: Record<
     color: 'from-indigo-100 to-blue-50',
     iconColor: 'text-indigo-500',
   },
+  '/menu/sondeigs': {
+    icon: ClipboardList,
+    color: 'from-violet-100 to-fuchsia-50',
+    iconColor: 'text-violet-600',
+  },
   '/menu/incidents': {
     icon: AlertTriangle,
     color: 'from-red-100 to-pink-100',
@@ -253,6 +260,7 @@ function MenuContent({ user }: { user: SessionUser }) {
   const { count: tornCount } = useTornNotificationCount()
   const { count: messagingCount } = useMessagingUnreadCount()
   const { count: maintenanceNotificationCount } = useMaintenanceNotificationCount()
+  const { count: surveyNotificationCount } = useSurveyNotificationCount()
   const maintenanceBadge = maintenanceNotificationCount
 
   // 🔑 ÚNICA FONT DE MÒDULS
@@ -312,6 +320,11 @@ function MenuContent({ user }: { user: SessionUser }) {
                 {mod.path === '/menu/projects' && projectAssignmentCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                     {projectAssignmentCount}
+                  </span>
+                )}
+                {mod.path === '/menu/sondeigs' && surveyNotificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {surveyNotificationCount}
                   </span>
                 )}
                 {!isAdmin && mod.path === '/menu/personnel' && userRequestResultsCount > 0 && (

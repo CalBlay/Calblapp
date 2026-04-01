@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
-import { getAblyClient } from '@/lib/ablyClient'
+import { subscribeToAblyEvent } from '@/lib/ablyClient'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -25,17 +25,15 @@ export function useMaintenanceNotificationCount() {
   useEffect(() => {
     if (!isAuth || !userId) return
 
-    const client = getAblyClient()
-    const channel = client.channels.get(`user:${userId}:notifications`)
     const handler = () => {
       mutate().catch(() => {})
     }
 
-    channel.subscribe('created', handler)
-
-    return () => {
-      channel.unsubscribe('created', handler)
-    }
+    return subscribeToAblyEvent({
+      channelName: `user:${userId}:notifications`,
+      eventName: 'created',
+      handler,
+    })
   }, [isAuth, userId, mutate])
 
   const notifications = Array.isArray(data?.notifications) ? data.notifications : []

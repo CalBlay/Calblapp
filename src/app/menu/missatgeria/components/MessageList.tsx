@@ -15,6 +15,7 @@ type Props = {
   onDelete: (id: string) => void
   onCreateTicket: (message: Message, type: 'maquinaria' | 'deco') => void
   onPickTicketType: (messageId: string | null) => void
+  onRespondSurvey: (surveyId: string, response: 'yes' | 'no' | 'maybe') => void
 }
 
 export default function MessageList({
@@ -26,6 +27,7 @@ export default function MessageList({
   onDelete,
   onCreateTicket,
   onPickTicketType,
+  onRespondSurvey,
 }: Props) {
   return (
     <div className="space-y-3">
@@ -66,6 +68,46 @@ export default function MessageList({
                     : 'bg-gray-100 text-gray-900 dark:bg-slate-800 dark:text-slate-100'
                 }`}
               >
+                {m.surveyType === 'quadrant-availability' && m.surveyId ? (
+                  <div className={`space-y-2 ${isMine ? 'text-white' : ''}`}>
+                    <div className="font-semibold">
+                      Sondeig de disponibilitat
+                    </div>
+                    <div className="text-xs opacity-90">
+                      {m.surveyPayload?.eventName || 'Servei'} · {m.surveyPayload?.serviceDate || '-'}
+                    </div>
+                    <div className="text-xs opacity-90">
+                      {m.surveyPayload?.startTime || '--:--'} - {m.surveyPayload?.endTime || '--:--'}
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {[
+                        ['yes', 'Sí'],
+                        ['no', 'No'],
+                        ['maybe', 'Potser'],
+                      ].map(([value, label]) => {
+                        const active = m.surveyState === value
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => onRespondSurvey(m.surveyId as string, value as 'yes' | 'no' | 'maybe')}
+                            className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                              active
+                                ? isMine
+                                  ? 'border-white bg-white text-emerald-700'
+                                  : 'border-emerald-600 bg-emerald-600 text-white'
+                                : isMine
+                                ? 'border-white/40 text-white hover:bg-white/10'
+                                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
                 {m.body && <div>{m.body}</div>}
                 {m.imageUrl && (
                   <a href={m.imageUrl} target="_blank" rel="noopener noreferrer">

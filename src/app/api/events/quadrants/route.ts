@@ -1,6 +1,6 @@
 // file: src/app/api/events/quadrants/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { addDays, differenceInCalendarDays, parseISO } from 'date-fns'
+import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
@@ -17,15 +17,21 @@ export async function GET(req: NextRequest) {
 
     console.log(`[events/quadrants] 🔍 Llegint Firestore: stage_verd`, { start, end })
 
-    const snap = await db.collection('stage_verd').get()
+    let snap: FirebaseFirestore.QuerySnapshot
+    try {
+      snap = await db
+        .collection('stage_verd')
+        .where('DataInici', '<=', `${end}T23:59:59`)
+        .where('DataFi', '>=', `${start}T00:00:00`)
+        .get()
+    } catch (error) {
+      console.warn('[events/quadrants] Query per rang no disponible, fallback a lectura completa', error)
+      snap = await db.collection('stage_verd').get()
+    }
 
     const events = (snap.docs || [])
       .flatMap((doc) => {
         const d = doc.data() as Record<string, any>
-
-        console.log(
-          `[events/quadrants] CODE → ${d?.code || d?.C_digo || '(sense codi)'} | NomEvent: ${d?.NomEvent}`
-        )
 
         // 📅 Dates d'inici/fi (YYYY-MM-DD)
         const startDateRaw = typeof d?.DataInici === 'string' ? d.DataInici.slice(0, 10) : ''
@@ -53,6 +59,7 @@ export async function GET(req: NextRequest) {
           typeof rawHora === 'string' ? rawHora.trim().slice(0, 5) : ''
 
         if (!startDateRaw) return []
+        if (startDateRaw > end || endDateRaw < start) return []
 
         let startDate: Date
         let endDate: Date
@@ -95,10 +102,12 @@ export async function GET(req: NextRequest) {
             : 'pending',
         }
 
+        if (!base.code || !String(base.code).trim()) return []
+
         // 🔁 Generem una entrada per cada dia que dura l'esdeveniment
         return Array.from({ length: daySpan + 1 }, (_, i) => {
           const current = addDays(startDate, i)
-          const dayIso = current.toISOString().slice(0, 10)
+          const dayIso = format(current, 'yyyy-MM-dd')
           const startISO = `${dayIso}T00:00:00.000Z`
           const endISO = `${dayIso}T00:00:00.000Z`
 
@@ -113,8 +122,6 @@ export async function GET(req: NextRequest) {
         })
       })
       .filter((ev) => {
-        // 🎯 Ha de tenir codi
-        if (!ev.code || !ev.code.trim()) return false
         // 🎯 Ha de tenir data d'inici
         if (!ev.start || !ev.day) return false
 

@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
@@ -496,6 +496,28 @@ export default function MissatgeriaPage() {
     refreshChannels()
   }
 
+  const respondSurvey = async (surveyId: string, response: 'yes' | 'no' | 'maybe') => {
+    const res = await fetch(`/api/quadrants/surveys/${surveyId}/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ response }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data?.error || 'No s ha pogut respondre el sondeig')
+    }
+    syncMessagesLocal((current) =>
+      current.map((message) =>
+        message.surveyId === surveyId
+          ? {
+              ...message,
+              surveyState: response,
+            }
+          : message
+      )
+    )
+  }
+
   const handleTyping = (_value: string) => {
     if (!selectedChannelId || !userId) return
     const now = Date.now()
@@ -827,6 +849,7 @@ export default function MissatgeriaPage() {
                 onDelete={deleteMessage}
                 onCreateTicket={createTicketFromMessage}
                 onPickTicketType={setTicketTypePickerId}
+              onRespondSurvey={respondSurvey}
               />
             </div>
             <Composer

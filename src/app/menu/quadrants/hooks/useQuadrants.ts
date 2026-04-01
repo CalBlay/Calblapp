@@ -34,7 +34,7 @@ export function useQuadrants(department: string, start?: string, end?: string) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<unknown>(null)
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     if (!department || !start || !end) return
 
     setLoading(true)
@@ -49,28 +49,32 @@ export function useQuadrants(department: string, start?: string, end?: string) {
       const url = `/api/quadrants/get?${params.toString()}`
       console.log('[useQuadrants] 🔗 Crida API:', url)
 
-      const res = await fetch(url, { cache: 'no-store' })
+      const res = await fetch(url, { cache: 'no-store', signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
       const json = await res.json()
       const data = json?.quadrants || json?.events || []
 
       console.log(`[useQuadrants] ✅ Rebuts ${data.length} quadrants`)
-      setQuadrants(data)
+      if (!signal?.aborted) setQuadrants(data)
     } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return
       console.error('[useQuadrants] ❌ Error carregant dades:', err)
-      if (err instanceof Error) alert(`Error: ${err.message}`)
       setError(err)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [department, start, end])
 
   // 🔁 Ara es recarrega cada cop que canvia el departament o el rang
   useEffect(() => {
     if (!department || !start || !end) return
-    fetchData()
-  }, [department, start, end])
+    const controller = new AbortController()
+    fetchData(controller.signal)
+    return () => {
+      controller.abort()
+    }
+  }, [department, start, end, fetchData])
 
   return { quadrants, loading, error, reload: fetchData }
 }

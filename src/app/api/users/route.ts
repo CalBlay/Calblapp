@@ -36,6 +36,7 @@ interface UserPayload {
   opsEventsEnabled?: boolean
   opsProjectsConfigurable?: boolean
   opsChannelsConfigurable?: string[]
+  canRespondSurveys?: boolean
   available?: boolean
   isDriver?: boolean
   workerRank?: string
@@ -90,6 +91,7 @@ export async function POST(req: Request) {
       opsEventsEnabled?: boolean
       opsProjectsConfigurable?: boolean
       opsChannelsConfigurable?: string[]
+      canRespondSurveys?: boolean
       available?: boolean
       isDriver?: boolean
       workerRank?: string
@@ -108,6 +110,7 @@ export async function POST(req: Request) {
       opsEventsEnabled = false,
       opsProjectsConfigurable = true,
       opsChannelsConfigurable = [],
+      canRespondSurveys = false,
       available,
       isDriver,
       workerRank,
@@ -137,6 +140,7 @@ export async function POST(req: Request) {
       opsChannelsConfigurable: Array.isArray(opsChannelsConfigurable)
         ? opsChannelsConfigurable.map(String).filter(Boolean)
         : [],
+      canRespondSurveys: Boolean(canRespondSurveys),
       available: isTreballador(role) || isCapDepartament(role) ? (available ?? true) : undefined,
       isDriver: isTreballador(role) || isCapDepartament(role) ? (isDriver ?? false) : undefined,
       workerRank:

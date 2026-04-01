@@ -43,6 +43,20 @@ export type Message = {
   ticketCode?: string | null
   ticketStatus?: string | null
   ticketType?: 'maquinaria' | 'deco' | null
+  surveyId?: string | null
+  surveyType?: 'quadrant-availability' | null
+  surveyState?: 'pending' | 'yes' | 'no' | 'maybe' | null
+  surveyPayload?: {
+    eventId?: string
+    department?: string
+    serviceDate?: string
+    deadlineAt?: number
+    eventName?: string
+    location?: string
+    service?: string | null
+    startTime?: string
+    endTime?: string
+  } | null
 }
 
 export type Member = { userId: string; userName: string; hidden?: boolean }

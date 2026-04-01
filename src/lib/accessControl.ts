@@ -5,6 +5,7 @@ import { normalizeRole, type Role } from '@/lib/roles'
 export interface AccessUser {
   role?: string
   department?: string
+  canRespondSurveys?: boolean
 }
 
 export interface SubModuleDef {
@@ -132,6 +133,12 @@ export const MODULES: ModuleDef[] = [
   },
 
   {
+    label: 'Sondeigs',
+    path: '/menu/sondeigs',
+    roles: ['admin','direccio','cap','treballador','usuari','comercial','observer'],
+  },
+
+  {
     label: 'Incidències',
     path: '/menu/incidents',
     roles: ['admin','direccio','cap','usuari','comercial'],
@@ -249,6 +256,11 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
         if (role === 'treballador') return true
         if (role === 'cap') return TORNS_CAP_DEPARTMENTS.has(dept)
         return false
+      }
+
+      if (mod.path === '/menu/sondeigs') {
+        if (role === 'admin' || role === 'direccio' || role === 'cap') return true
+        return Boolean(user.canRespondSurveys)
       }
 
       if (!mod.roles.includes(role)) return false

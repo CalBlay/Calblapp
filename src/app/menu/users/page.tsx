@@ -28,6 +28,7 @@ export interface AppUser {
   email?: string
   opsChannelsConfigurable?: string[]
   opsEventsConfigurable?: boolean
+  canRespondSurveys?: boolean
 
   available?: boolean
   isDriver?: boolean
@@ -250,6 +251,7 @@ function UsersPage() {
               typeof (modalUser as any).opsProjectsConfigurable === 'boolean'
                 ? (modalUser as any).opsProjectsConfigurable
                 : true,
+            canRespondSurveys: Boolean((modalUser as any).canRespondSurveys),
           }}
           onSubmit={(data) => {
             if (modalUser.personId) {

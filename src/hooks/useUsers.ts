@@ -18,6 +18,7 @@ export type User = {
   opsChannelsConfigurable?: string[]
   opsEventsConfigurable?: boolean
   opsProjectsConfigurable?: boolean
+  canRespondSurveys?: boolean
 }
 
 export function useUsers() {
@@ -63,6 +64,7 @@ export function useUsers() {
       opsChannelsConfigurable: data.opsChannelsConfigurable,
       opsEventsConfigurable: data.opsEventsConfigurable,
       opsProjectsConfigurable: data.opsProjectsConfigurable,
+      canRespondSurveys: data.canRespondSurveys,
     }
 
     let res: Response

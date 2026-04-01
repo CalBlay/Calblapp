@@ -77,9 +77,10 @@ async function queryWindowedDocs(
   const docs = new Map<string, BusyAssignment>()
 
   try {
-    const [startSnap, phaseSnap] = await Promise.all([
+    const [startSnap, phaseSnap, endSnap] = await Promise.all([
       ref.where('startDate', '>=', startISO).where('startDate', '<=', endISO).get(),
       ref.where('phaseDate', '>=', startISO).where('phaseDate', '<=', endISO).get(),
+      ref.where('endDate', '>=', startISO).where('endDate', '<=', endISO).get(),
     ])
 
     startSnap.docs.forEach((doc) => {
@@ -88,12 +89,13 @@ async function queryWindowedDocs(
     phaseSnap.docs.forEach((doc) => {
       docs.set(doc.id, { id: doc.id, ...(doc.data() as Omit<BusyAssignment, 'id'>) })
     })
+    endSnap.docs.forEach((doc) => {
+      docs.set(doc.id, { id: doc.id, ...(doc.data() as Omit<BusyAssignment, 'id'>) })
+    })
 
-    if (docs.size > 0) {
-      return Array.from(docs.values()).filter((item) =>
-        overlapsDateWindow(item, startISO, endISO)
-      )
-    }
+    return Array.from(docs.values()).filter((item) =>
+      overlapsDateWindow(item, startISO, endISO)
+    )
   } catch (error) {
     console.warn(`[buildLedger] Fallback a lectura completa de ${collectionId}:`, error)
   }

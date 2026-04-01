@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
 import { useSession } from 'next-auth/react'
 import * as XLSX from 'xlsx'
-import { CalendarDays, ChevronDown, ChevronUp } from 'lucide-react'
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
 import ExportMenu from '@/components/export/ExportMenu'
 
 import useFetch from '@/hooks/useFetch'
@@ -64,6 +64,7 @@ export default function QuadrantsPage() {
     filters.start,
     filters.end
   )
+  const [surveyKeys, setSurveyKeys] = useState<string[]>([])
   useEffect(() => {
     const handler = () => reload()
 
@@ -75,6 +76,31 @@ export default function QuadrantsPage() {
       window.removeEventListener('quadrant:updated', handler)
     }
   }, [reload])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const run = async () => {
+      try {
+        const res = await fetch(
+          `/api/quadrants/surveys/summary?start=${encodeURIComponent(filters.start)}&end=${encodeURIComponent(filters.end)}`,
+          { cache: 'no-store' }
+        )
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok || cancelled) return
+        setSurveyKeys(Array.isArray(json?.surveyKeys) ? json.surveyKeys : [])
+      } catch {
+        if (!cancelled) setSurveyKeys([])
+      }
+    }
+
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [filters.end, filters.start])
+
+  const surveyKeySet = useMemo(() => new Set(surveyKeys), [surveyKeys])
 
 
   const [selected, setSelected] = useState<UnifiedEvent | null>(null)
@@ -127,15 +153,26 @@ export default function QuadrantsPage() {
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
   }, [visibleFilteredEvents])
 
+  const visibleEventDaysByEventId = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const candidate of visibleFilteredEvents) {
+      const eventId = String(candidate.eventId || candidate.id || '').trim()
+      if (!eventId) continue
+      const day = String(candidate.phaseDate || candidate.start || '').slice(0, 10)
+      if (!day) continue
+      const list = map.get(eventId) || []
+      list.push(day)
+      map.set(eventId, list)
+    }
+    for (const [eventId, days] of map.entries()) {
+      map.set(eventId, Array.from(new Set(days)).sort((a, b) => a.localeCompare(b)))
+    }
+    return map
+  }, [visibleFilteredEvents])
+
   const buildSelectedEvent = (ev: UnifiedEvent, phaseKey?: string): UnifiedEvent => {
     const targetEventId = String(ev.eventId || ev.id || '').trim()
-    const relatedEvents = visibleFilteredEvents.filter(
-      (candidate) => String(candidate.eventId || candidate.id || '').trim() === targetEventId
-    )
-    const relatedDays = relatedEvents
-      .map((candidate) => String(candidate.phaseDate || candidate.start || '').slice(0, 10))
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b))
+    const relatedDays = visibleEventDaysByEventId.get(targetEventId) || []
 
     return {
       ...ev,
@@ -512,6 +549,10 @@ export default function QuadrantsPage() {
                     const multiDayRangeLabel = getMultiDayRangeLabel(ev)
                     const eventId = String(ev.eventId || ev.eventCode || ev.code || ev.id || "")
                       .trim()
+                    const surveyKey = `${eventId.split('__')[0]}__${String(
+                      ev.phaseDate || ev.start || ''
+                    ).slice(0, 10)}`
+                    const hasSurvey = surveyKeySet.has(surveyKey)
                     const existingPhases = eventId ? phasesByEventId[eventId] : undefined
                     const pendingPhases = eventId
                       ? phaseOptions
@@ -564,6 +605,15 @@ export default function QuadrantsPage() {
                           <td className="px-3 py-2.5 text-[16px] font-semibold tracking-tight text-slate-900">
                             <div className="flex items-center gap-2">
                               <span>{ev.summary}</span>
+                              {hasSurvey && (
+                                <span
+                                  className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
+                                  title="Sondeig enviat"
+                                >
+                                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                                  Sondeig
+                                </span>
+                              )}
                               {multiDayRangeLabel && (
                                 <span
                                   className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"

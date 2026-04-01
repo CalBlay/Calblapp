@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
@@ -8,6 +8,7 @@ export const runtime = 'nodejs'
 const ALLOWED_ROLES = new Set(['admin', 'direccio', 'cap', 'treballador', 'comercial', 'observer', 'usuari'])
 
 type QuadrantDoc = {
+  eventId?: string
   code?: string
   eventName?: string
   phaseLabel?: string
@@ -94,6 +95,13 @@ export async function GET(req: NextRequest) {
         // A la pissarra de logística només mostrem personal de logística.
         // De cuina només volem els conductors (ja entren a "vehicles").
         const isLogisticaSource = norm(colName) === 'quadrantslogistica'
+        const hasVehicleRequest = vehicles.some(
+          (vehicle) =>
+            Boolean(String(vehicle.plate || '').trim()) ||
+            Boolean(String(vehicle.type || '').trim()) ||
+            Boolean(String(vehicle.conductor || '').trim())
+        )
+        if (!isLogisticaSource && !hasVehicleRequest) return
         const workers =
           isLogisticaSource && Array.isArray(d.treballadors)
             ? d.treballadors.map((t) => t?.name || '').filter(Boolean)
@@ -102,9 +110,14 @@ export async function GET(req: NextRequest) {
         const phaseLabelRaw =
           d.phaseLabel || d.phaseType || d.phaseKey || d.phase || d.fase || d.phaseName || d.label || ''
         const phaseLabel = phaseLabelRaw ? String(phaseLabelRaw).trim() : ''
+        const logicalKey = [
+          String(d.eventId || d.code || d.eventName || doc.id).trim(),
+          startDate,
+          phaseLabel || 'event',
+        ].join('__')
 
-        const existing = map.get(doc.id) || {
-          id: doc.id,
+        const existing = map.get(logicalKey) || {
+          id: logicalKey,
           code: d.code || '',
           LN: 'logistica',
           eventName: d.eventName || '',
@@ -126,7 +139,7 @@ export async function GET(req: NextRequest) {
         }
         if (!existing.arrivalTime && d.arrivalTime) existing.arrivalTime = d.arrivalTime
 
-        map.set(doc.id, existing)
+        map.set(logicalKey, existing)
       })
     }
 

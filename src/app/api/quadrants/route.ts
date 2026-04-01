@@ -4,6 +4,8 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { autoAssign } from '@/services/autoAssign'
 import { loadDepartmentPersonnel, loadPremises, type DriverCrewPremise } from '@/services/premises'
+import { getSurveyPreferredCandidates } from '@/lib/quadrantSurveys'
+import { buildLedger } from '@/services/workloadLedger'
 
 export const runtime = 'nodejs'
 const ORIGIN = 'MolÃ­ Vinyals, 11, 08776 Sant Pere de Riudebitlles, Barcelona'
@@ -130,11 +132,79 @@ interface QuadrantSave {
   phaseDate?: string | null
 }
 
+async function enrichWithSurveyPreferences(
+  payload: any,
+  department: string,
+  surveyPreferred?: { yes: string[]; maybe: string[] }
+) {
+  const eventId = normalizeEventId(String(payload?.eventId || ''))
+  const serviceDate = String(payload?.phaseDate || payload?.startDate || '').slice(0, 10)
+  if (!eventId || !serviceDate) return payload
+
+  const resolvedSurveyPreferred =
+    surveyPreferred ||
+    (await getSurveyPreferredCandidates({
+      eventId,
+      department,
+      serviceDate,
+    }))
+
+  const mergedPreferredStaffNames = Array.from(
+    new Set([
+      ...(Array.isArray(payload?.preferredStaffNames) ? payload.preferredStaffNames : []),
+      ...resolvedSurveyPreferred.yes,
+      ...resolvedSurveyPreferred.maybe,
+    ].filter(Boolean))
+  )
+  const mergedPreferredDriverNames = Array.from(
+    new Set([
+      ...(Array.isArray(payload?.preferredDriverNames) ? payload.preferredDriverNames : []),
+      ...resolvedSurveyPreferred.yes,
+      ...resolvedSurveyPreferred.maybe,
+    ].filter(Boolean))
+  )
+  const preferredResponsibleName =
+    payload?.preferredResponsibleName ||
+    resolvedSurveyPreferred.yes[0] ||
+    resolvedSurveyPreferred.maybe[0] ||
+    null
+
+  return {
+    ...payload,
+    preferredStaffNames: mergedPreferredStaffNames,
+    preferredDriverNames: mergedPreferredDriverNames,
+    preferredResponsibleName,
+  }
+}
+
+const getDateWindow = (startISODate: string) => {
+  const d = new Date(`${startISODate}T00:00:00`)
+  const day = d.getDay() === 0 ? 7 : d.getDay()
+  const weekStart = new Date(d)
+  weekStart.setDate(d.getDate() - (day - 1))
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 6)
+  const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
+  const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+  const [ws, we, ms, me] = [weekStart, weekEnd, monthStart, monthEnd].map((x) =>
+    x.toISOString().slice(0, 10)
+  )
+  return { ws, we, ms, me }
+}
+
 /* ================= Handler ================= */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const canonicalEventId = normalizeEventId(String(body?.eventId || ''))
+    let cachedDepartmentPeople:
+      | Awaited<ReturnType<typeof loadDepartmentPersonnel>>
+      | null = null
+    let cachedPremisesData:
+      | Awaited<ReturnType<typeof loadPremises>>
+      | null = null
+    const surveyPreferredCache = new Map<string, Awaited<ReturnType<typeof getSurveyPreferredCandidates>>>()
+    const ledgerCache = new Map<string, Awaited<ReturnType<typeof buildLedger>>>()
 
     const required = ['eventId', 'department', 'startDate', 'endDate']
     for (const k of required) {
@@ -146,6 +216,49 @@ export async function POST(req: NextRequest) {
     const deptNorm = norm(String(body.department || ''))
     const collectionName = await resolveWriteCollectionForDepartment(deptNorm)
     console.log('[quadrants/route] Escriurà a col·lecció:', collectionName)
+
+    const getDepartmentPeople = async () => {
+      if (!cachedDepartmentPeople) {
+        cachedDepartmentPeople = await loadDepartmentPersonnel(deptNorm)
+      }
+      return cachedDepartmentPeople
+    }
+
+    const getPremisesData = async () => {
+      if (!cachedPremisesData) {
+        cachedPremisesData = await loadPremises(deptNorm, await getDepartmentPeople())
+      }
+      return cachedPremisesData
+    }
+
+    const getSurveyPreferred = async (serviceDate: string) => {
+      const key = `${canonicalEventId}__${deptNorm}__${String(serviceDate || '').slice(0, 10)}`
+      if (!surveyPreferredCache.has(key)) {
+        surveyPreferredCache.set(
+          key,
+          await getSurveyPreferredCandidates({
+            eventId: canonicalEventId,
+            department: deptNorm,
+            serviceDate: String(serviceDate || '').slice(0, 10),
+          })
+        )
+      }
+      return surveyPreferredCache.get(key) || { yes: [], maybe: [] }
+    }
+
+    const getLedgerForDate = async (serviceDate: string) => {
+      const { ws, we, ms, me } = getDateWindow(serviceDate)
+      const key = `${deptNorm}__${ws}__${we}__${ms}__${me}`
+      if (!ledgerCache.has(key)) {
+        ledgerCache.set(
+          key,
+          await buildLedger(deptNorm, ws, we, ms, me, {
+            includeAllDepartmentsForBusy: true,
+          })
+        )
+      }
+      return ledgerCache.get(key) as Awaited<ReturnType<typeof buildLedger>>
+    }
 
     const assignBody =
       deptNorm === 'serveis' &&
@@ -592,11 +705,11 @@ export async function POST(req: NextRequest) {
       )
       const departmentPeople =
         manualServiceJamonero || hasAutoServiceJamonero
-          ? await loadDepartmentPersonnel(deptNorm)
+          ? await getDepartmentPeople()
           : []
       const premisesData =
         manualServiceJamonero || hasAutoServiceJamonero
-          ? await loadPremises(deptNorm, departmentPeople)
+          ? await getPremisesData()
           : { premises: { driverCrews: [] as DriverCrewPremise[] } }
       const driverCrews = Array.isArray(premisesData?.premises?.driverCrews)
         ? premisesData.premises.driverCrews
@@ -1168,7 +1281,20 @@ export async function POST(req: NextRequest) {
         timetables: phaseTimetables,
         serviceJamoneroAssignments: phaseServiceJamoneros,
       }
-      const res = (await autoAssign(phaseBody)) as {
+      const phaseSurveyPreferred = await getSurveyPreferred(
+        String(phase.date || body.startDate || '').slice(0, 10)
+      )
+      const phaseAssignBody = await enrichWithSurveyPreferences(phaseBody, deptNorm, phaseSurveyPreferred)
+      const departmentPeople = await getDepartmentPeople()
+      const premisesData = await getPremisesData()
+      const ledger = await getLedgerForDate(String(phase.date || body.startDate || '').slice(0, 10))
+      const res = (await autoAssign({
+        ...phaseAssignBody,
+        departmentPeople,
+        premises: premisesData?.premises,
+        premisesWarnings: premisesData?.warnings || [],
+        ledger,
+      })) as {
         assignment: {
           responsible?: { name: string } | null
           drivers?: Array<{ name: string; meetingPoint?: string; plate?: string; vehicleType?: string }>
@@ -1184,7 +1310,7 @@ export async function POST(req: NextRequest) {
         consumeServiceJamoneros(res.assignment)
         remainingServiceEventGroups = Math.max(remainingServiceEventGroups - 1, 0)
       }
-      const { toSave } = buildToSave(phaseBody, res.assignment, res.meta)
+      const { toSave } = buildToSave(phaseAssignBody, res.assignment, res.meta)
       await applyStageData(toSave)
       const phaseKey = norm(phase.label || phase.phaseType || 'fase')
       const phaseDate = String(phase.date || body.startDate)
@@ -1274,7 +1400,22 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const res = (await autoAssign(assignBody)) as {
+    const finalSurveyPreferred = await getSurveyPreferred(
+      String(assignBody.phaseDate || assignBody.startDate || '').slice(0, 10)
+    )
+    const finalAssignBody = await enrichWithSurveyPreferences(assignBody, deptNorm, finalSurveyPreferred)
+    const departmentPeople = await getDepartmentPeople()
+    const premisesData = await getPremisesData()
+    const ledger = await getLedgerForDate(
+      String(assignBody.phaseDate || assignBody.startDate || '').slice(0, 10)
+    )
+    const res = (await autoAssign({
+      ...finalAssignBody,
+      departmentPeople,
+      premises: premisesData?.premises,
+      premisesWarnings: premisesData?.warnings || [],
+      ledger,
+    })) as {
       assignment: {
         responsible?: { name: string } | null
         drivers?: Array<{ name: string; meetingPoint?: string; plate?: string; vehicleType?: string }>
@@ -1287,7 +1428,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { toSave } = buildToSave(assignBody, res.assignment, res.meta)
+    const { toSave } = buildToSave(finalAssignBody, res.assignment, res.meta)
     await applyStageData(toSave)
 
     const normalizedEventId =

@@ -3,6 +3,7 @@ import {
   loadDepartmentPersonnel,
   loadPremises,
   type DriverCrewPremise,
+  type DepartmentPersonnelRef,
 } from './premises'
 import { buildLedger } from './workloadLedger'
 import { isEligibleByName } from './eligibility'
@@ -163,6 +164,10 @@ export async function autoAssign(payload: {
   preferredResponsibleName?: string | null
   preferredDriverNames?: string[]
   preferredStaffNames?: string[]
+  departmentPeople?: DepartmentPersonnelRef[]
+  premises?: PremisesConfig
+  premisesWarnings?: string[]
+  ledger?: Ledger
 }) {
   const {
     department, eventId, location,
@@ -180,6 +185,10 @@ export async function autoAssign(payload: {
     preferredResponsibleName = null,
     preferredDriverNames = [],
     preferredStaffNames = [],
+    departmentPeople: preloadedDepartmentPeople,
+    premises: preloadedPremises,
+    premisesWarnings: preloadedPremisesWarnings = [],
+    ledger: preloadedLedger,
   } = payload
 
   const startISO = `${startDate}T${startTime}:00`
@@ -199,12 +208,15 @@ export async function autoAssign(payload: {
   })
 
   // 1) Premisses
-  const departmentPeople = await loadDepartmentPersonnel(dept)
+  const departmentPeople = preloadedDepartmentPeople || (await loadDepartmentPersonnel(dept))
 
-  const { premises, warnings } = (await loadPremises(dept, departmentPeople)) as {
-    premises: PremisesConfig
-    warnings?: string[]
-  }
+  const premisesResult = preloadedPremises
+    ? { premises: preloadedPremises, warnings: preloadedPremisesWarnings }
+    : ((await loadPremises(dept, departmentPeople)) as {
+        premises: PremisesConfig
+        warnings?: string[]
+      })
+  const { premises, warnings } = premisesResult
 
   // 2) Rang setmana / mes
   const d = new Date(startISO)
@@ -217,9 +229,9 @@ export async function autoAssign(payload: {
 
   // 3) Ledger
   // 3️⃣ Ledger
-  const ledger = (await buildLedger(dept, ws, we, ms, me, {
+  const ledger = preloadedLedger || ((await buildLedger(dept, ws, we, ms, me, {
     includeAllDepartmentsForBusy: true,
-  })) as any
+  })) as any)
 
 
 

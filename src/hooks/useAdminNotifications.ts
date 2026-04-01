@@ -4,7 +4,7 @@ import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
 import { normalizeRole } from '@/lib/roles'
 import { useEffect } from 'react'
-import { getAblyClient } from '@/lib/ablyClient'
+import { subscribeToAblyEvent } from '@/lib/ablyClient'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -25,17 +25,15 @@ export function useAdminUserRequestCount() {
   useEffect(() => {
     if (!isAuth || !isAdmin) return
 
-    const client = getAblyClient()
-    const channel = client.channels.get('admin:user-requests')
     const handler = () => {
       mutate().catch(() => {})
     }
 
-    channel.subscribe('created', handler)
-
-    return () => {
-      channel.unsubscribe('created', handler)
-    }
+    return subscribeToAblyEvent({
+      channelName: 'admin:user-requests',
+      eventName: 'created',
+      handler,
+    })
   }, [isAuth, isAdmin, mutate])
 
   return {
@@ -71,17 +69,15 @@ export function useUserRequestResultCount() {
   useEffect(() => {
     if (!isAuth || !userId) return
 
-    const client = getAblyClient()
-    const channel = client.channels.get(`user:${userId}:notifications`)
     const handler = () => {
       mutate().catch(() => {})
     }
 
-    channel.subscribe('created', handler)
-
-    return () => {
-      channel.unsubscribe('created', handler)
-    }
+    return subscribeToAblyEvent({
+      channelName: `user:${userId}:notifications`,
+      eventName: 'created',
+      handler,
+    })
   }, [isAuth, userId, mutate])
 
   return {
@@ -105,17 +101,15 @@ export function useTornNotificationCount() {
   useEffect(() => {
     if (!isAuth || !userId) return
 
-    const client = getAblyClient()
-    const channel = client.channels.get(`user:${userId}:notifications`)
     const handler = () => {
       mutate().catch(() => {})
     }
 
-    channel.subscribe('created', handler)
-
-    return () => {
-      channel.unsubscribe('created', handler)
-    }
+    return subscribeToAblyEvent({
+      channelName: `user:${userId}:notifications`,
+      eventName: 'created',
+      handler,
+    })
   }, [isAuth, userId, mutate])
 
   return {
@@ -146,17 +140,15 @@ export function useProjectAssignmentCount() {
   useEffect(() => {
     if (!isAuth || !userId) return
 
-    const client = getAblyClient()
-    const channel = client.channels.get(`user:${userId}:notifications`)
     const handler = () => {
       mutate().catch(() => {})
     }
 
-    channel.subscribe('created', handler)
-
-    return () => {
-      channel.unsubscribe('created', handler)
-    }
+    return subscribeToAblyEvent({
+      channelName: `user:${userId}:notifications`,
+      eventName: 'created',
+      handler,
+    })
   }, [isAuth, userId, mutate])
 
   return {

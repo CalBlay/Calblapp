@@ -24,8 +24,15 @@ import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import { useQuadrantFormState } from '../hooks/useQuadrantFormState'
 import LogisticsPhasePanel from './LogisticsPhasePanel'
 import ServicePhasePanel from './ServicePhasePanel'
-import { TRANSPORT_TYPE_LABELS, normalizeTransportType } from '@/lib/transportTypes'
-import { canDriverHandleVehicleType } from '@/lib/driverCapabilities'
+import { normalizeTransportType } from '@/lib/transportTypes'
+import { normalizeRole } from '@/lib/roles'
+import GenerationScopeToggle from './GenerationScopeToggle'
+import SurveyLaunchPanel from './SurveyLaunchPanel'
+import CuinaSection from './CuinaSection'
+
+const surveyPremisesCache = new Map<string, Array<{ id: string; name: string; workerIds: string[] }>>()
+const surveyPeopleCache = new Map<string, Array<{ id: string; name: string }>>()
+const surveyPeoplePromiseCache = new Map<string, Promise<Array<{ id: string; name: string }>>>()
 
 const extractDate = (iso = '') => iso.split('T')[0] || ''
 
@@ -61,14 +68,6 @@ const collectTimetable = (entry: { startTime?: string; endTime?: string }) => {
 }
 
 const makeGroupId = () => `group-${Date.now()}-${Math.random().toString(16).slice(2)}`
-
-const CUINA_VEHICLE_TYPE_OPTIONS = [
-  'camioPPlataforma',
-  'furgonetaPetita',
-  'furgonetaMitjana',
-  'furgonetaGran',
-  'camioPPlataformaFred',
-] as const
 
 type QuadrantModalProps = {
   open: boolean
@@ -219,6 +218,7 @@ type CuinaEttState = {
 
 export default function QuadrantModal({ open, onOpenChange, event }: QuadrantModalProps) {
   const { data: session } = useSession()
+  const userRole = normalizeRole(String((session?.user as any)?.role || ''))
   const department = (
     session?.user?.department ||
     (session as any)?.department ||
@@ -301,7 +301,53 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [generationScope, setGenerationScope] = useState<GenerationScope>('day')
+  const [surveyGroupsLoading, setSurveyGroupsLoading] = useState(false)
+  const [surveyPeopleLoading, setSurveyPeopleLoading] = useState(false)
+  const [surveyLoading, setSurveyLoading] = useState(false)
+  const [surveySubmitting, setSurveySubmitting] = useState(false)
+  const [surveyGroups, setSurveyGroups] = useState<Array<{ id: string; name: string; workerIds: string[] }>>([])
+  const [surveyPeople, setSurveyPeople] = useState<Array<{ id: string; name: string }>>([])
+  const [selectedSurveyGroupIds, setSelectedSurveyGroupIds] = useState<string[]>([])
+  const [selectedSurveyWorkerIds, setSelectedSurveyWorkerIds] = useState<string[]>([])
+  const [surveyDeadlineTime, setSurveyDeadlineTime] = useState('18:00')
+  const [surveys, setSurveys] = useState<
+    Array<{
+      id: string
+      serviceDate: string
+      status: string
+      createdByName?: string
+      deadlineAt?: number
+      targetGroupNames?: string[]
+      targetWorkerNames?: string[]
+      resolvedTargets?: Array<{ name: string }>
+      counts?: { yes: number; no: number; maybe: number; pending: number }
+      responses?: Array<{ workerName: string; response: 'yes' | 'no' | 'maybe'; respondedAt: number }>
+      responseGroups?: {
+        yes: Array<{ workerName: string; respondedAt: number }>
+        maybe: Array<{ workerName: string; respondedAt: number }>
+        no: Array<{ workerName: string; respondedAt: number }>
+        pending: Array<{ workerName: string }>
+      }
+    }>
+  >([])
   const visibleDate = extractDate(event.start)
+  const surveyEventStartAt = useMemo(() => {
+    const baseDate = visibleDate || extractDate(event.originalStart || event.start)
+    const baseTime = startTime || event.startTime || '00:00'
+    const parsed = new Date(`${baseDate}T${baseTime}:00`)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }, [event.originalStart, event.start, event.startTime, startTime, visibleDate])
+  const latestAllowedSurveyDeadlineAt = useMemo(() => {
+    if (!surveyEventStartAt) return null
+    return new Date(surveyEventStartAt.getTime() - 48 * 60 * 60 * 1000)
+  }, [surveyEventStartAt])
+  const latestAllowedSurveyDeadlineDate = latestAllowedSurveyDeadlineAt
+    ? format(latestAllowedSurveyDeadlineAt, 'yyyy-MM-dd')
+    : ''
+  const latestAllowedSurveyDeadlineTime = latestAllowedSurveyDeadlineAt
+    ? format(latestAllowedSurveyDeadlineAt, 'HH:mm')
+    : ''
+  const [surveyDeadlineDate, setSurveyDeadlineDate] = useState('')
   const eventRangeStart = extractDate(event.originalStart || event.start)
   const eventRangeEnd = extractDate(event.originalEnd || event.end || event.start)
   const multiDayDates = useMemo(
@@ -309,41 +355,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     [event.end, event.originalEnd, event.originalStart, event.start]
   )
   const isMultiDayEvent = multiDayDates.length > 1
-  const generationScopeToggle = isMultiDayEvent ? (
-    <div className="flex items-center justify-end">
-      <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100/80 p-1 shadow-sm">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          aria-pressed={generationScope === 'day'}
-          className={
-            generationScope === 'day'
-              ? 'h-7 rounded-md bg-blue-600 px-2.5 text-xs font-medium text-white hover:bg-blue-600'
-              : 'h-7 rounded-md px-2.5 text-xs font-medium text-slate-500 hover:bg-white hover:text-slate-700'
-          }
-          onClick={() => setGenerationScope('day')}
-        >
-          1 dia
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          aria-pressed={generationScope === 'event'}
-          className={
-            generationScope === 'event'
-              ? 'h-7 rounded-md bg-blue-600 px-2.5 text-xs font-medium text-white hover:bg-blue-600'
-              : 'h-7 rounded-md px-2.5 text-xs font-medium text-slate-500 hover:bg-white hover:text-slate-700'
-          }
-          onClick={() => setGenerationScope('event')}
-        >
-          Multi dia
-        </Button>
-      </div>
-    </div>
-  ) : null
-
+  const canLaunchSurvey = userRole === 'admin' || userRole === 'direccio' || userRole === 'cap'
   const createCuinaGroup = (seed: Partial<CuinaGroup> = {}): CuinaGroup => {
     const seedDrivers = Math.max(0, (seed.drivers ?? Number(numDrivers)) || 0)
     const needsDriver = seed.needsDriver ?? seedDrivers > 0
@@ -463,7 +475,102 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
   useEffect(() => {
     if (!open) return
     setGenerationScope('day')
-  }, [open, event.id, visibleDate])
+    setSurveyDeadlineDate(latestAllowedSurveyDeadlineDate || visibleDate)
+    setSurveyDeadlineTime(latestAllowedSurveyDeadlineTime || '18:00')
+  }, [
+    open,
+    event.id,
+    visibleDate,
+    latestAllowedSurveyDeadlineDate,
+    latestAllowedSurveyDeadlineTime,
+  ])
+
+  useEffect(() => {
+    if (!open || !canLaunchSurvey) return
+    let cancelled = false
+
+    const run = async () => {
+      try {
+        setSurveyLoading(true)
+        const cachedGroups = surveyPremisesCache.get(department)
+        const cachedPeople = surveyPeopleCache.get(department)
+        const surveysPromise = fetch(
+          `/api/quadrants/surveys?eventId=${encodeURIComponent(event.id)}&department=${encodeURIComponent(
+            department
+          )}&serviceDate=${encodeURIComponent(visibleDate)}`,
+          { cache: 'no-store' }
+        ).then((res) => res.json().catch(() => ({})))
+
+        if (cachedGroups) {
+          setSurveyGroups(cachedGroups)
+        } else {
+          setSurveyGroupsLoading(true)
+          fetch(`/api/quadrants/premises?department=${encodeURIComponent(department)}`, { cache: 'no-store' })
+            .then((res) => res.json().catch(() => ({})))
+            .then((premisesJson) => {
+              if (cancelled) return
+              const groups = Array.isArray(premisesJson?.premises?.surveyGroups)
+                ? premisesJson.premises.surveyGroups
+                : []
+              surveyPremisesCache.set(department, groups)
+              setSurveyGroups(groups)
+            })
+            .finally(() => {
+              if (!cancelled) setSurveyGroupsLoading(false)
+            })
+        }
+
+        if (cachedPeople) {
+          setSurveyPeople(cachedPeople)
+        }
+
+        const surveysJson = await surveysPromise
+        if (cancelled) return
+        setSurveys(Array.isArray(surveysJson?.surveys) ? surveysJson.surveys : [])
+      } finally {
+        if (!cancelled) setSurveyLoading(false)
+      }
+    }
+
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [open, canLaunchSurvey, department, event.id, visibleDate])
+
+  const ensureSurveyPeopleLoaded = async () => {
+    const cachedPeople = surveyPeopleCache.get(department)
+    if (cachedPeople) {
+      setSurveyPeople(cachedPeople)
+      return
+    }
+
+    try {
+      setSurveyPeopleLoading(true)
+      let request = surveyPeoplePromiseCache.get(department)
+      if (!request) {
+        request = fetch(`/api/quadrants/premises/personnel?department=${encodeURIComponent(department)}`, {
+          cache: 'no-store',
+        })
+          .then((res) => res.json().catch(() => ({})))
+          .then((peopleJson) =>
+            Array.isArray(peopleJson?.people)
+              ? peopleJson.people.map((person: any) => ({
+                  id: String(person?.id || ''),
+                  name: String(person?.name || ''),
+                }))
+              : []
+          )
+        surveyPeoplePromiseCache.set(department, request)
+      }
+
+      const people = await request
+      surveyPeopleCache.set(department, people)
+      setSurveyPeople(people)
+    } finally {
+      setSurveyPeopleLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!isCuina) return
@@ -530,6 +637,75 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
   }
 
   const canAutoGen = Boolean(startDate && endDate && startTime && endTime)
+  const surveySelectedIds = useMemo(
+    () => Array.from(new Set([...selectedSurveyWorkerIds, ...surveyGroups
+      .filter((group) => selectedSurveyGroupIds.includes(group.id))
+      .flatMap((group) => group.workerIds)])),
+    [selectedSurveyGroupIds, selectedSurveyWorkerIds, surveyGroups]
+  )
+
+  const handleLaunchSurvey = async () => {
+    if (!canLaunchSurvey) return
+    if (!visibleDate) {
+      toast.error('Falta la data del servei')
+      return
+    }
+    if (surveySelectedIds.length === 0) {
+      toast.error('Selecciona almenys una persona o grup')
+      return
+    }
+
+    const deadlineBaseDate = surveyDeadlineDate || visibleDate
+    const deadlineAt = new Date(`${deadlineBaseDate}T${surveyDeadlineTime || '18:00'}:00`).getTime()
+    if (Number.isNaN(deadlineAt)) {
+      toast.error('Data o hora límit no vàlida')
+      return
+    }
+    if (
+      latestAllowedSurveyDeadlineAt &&
+      deadlineAt > latestAllowedSurveyDeadlineAt.getTime()
+    ) {
+      toast.error('La data límit ha de ser com a màxim 48h abans de l’esdeveniment')
+      return
+    }
+
+    try {
+      setSurveySubmitting(true)
+      const res = await fetch('/api/quadrants/surveys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: event.id,
+          department,
+          serviceDate: visibleDate,
+          deadlineAt,
+          targetGroupIds: selectedSurveyGroupIds,
+          targetWorkerIds: selectedSurveyWorkerIds,
+          snapshot: {
+            eventName,
+            location,
+            service: event.service || null,
+            startTime: startTime || event.startTime || '',
+            endTime: endTime || event.endTime || '',
+            totalWorkers: Number(totalWorkers) || 0,
+            totalDrivers: Number(numDrivers) || 0,
+          },
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json?.error || 'No s ha pogut crear el sondeig')
+      }
+
+      setSurveys((prev) => [json.survey, ...prev])
+      toast.success('Sondeig enviat a Ops')
+    } catch (surveyError) {
+      const message = surveyError instanceof Error ? surveyError.message : 'Error enviant el sondeig'
+      toast.error(message)
+    } finally {
+      setSurveySubmitting(false)
+    }
+  }
 
   const handleAutoGenAndSave = async () => {
     if (!canAutoGen) return
@@ -854,7 +1030,11 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                   </SelectContent>
                 </Select>
               </div>
-              {generationScopeToggle}
+              <GenerationScopeToggle
+                isMultiDayEvent={isMultiDayEvent}
+                generationScope={generationScope}
+                setGenerationScope={setGenerationScope}
+              />
             </div>
           )}
 
@@ -884,7 +1064,11 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                   </SelectContent>
                 </Select>
               </div>
-              {generationScopeToggle}
+              <GenerationScopeToggle
+                isMultiDayEvent={isMultiDayEvent}
+                generationScope={generationScope}
+                setGenerationScope={setGenerationScope}
+              />
             </div>
           )}
 
@@ -898,9 +1082,36 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                 <Label>Hora Fi</Label>
                 <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
               </div>
-              {generationScopeToggle}
+              <GenerationScopeToggle
+                isMultiDayEvent={isMultiDayEvent}
+                generationScope={generationScope}
+                setGenerationScope={setGenerationScope}
+              />
             </div>
           )}
+
+          <SurveyLaunchPanel
+            canLaunchSurvey={canLaunchSurvey}
+            visibleDate={visibleDate}
+            latestAllowedDeadlineDate={latestAllowedSurveyDeadlineDate}
+            latestAllowedDeadlineTime={latestAllowedSurveyDeadlineTime}
+            surveys={surveys}
+            surveyGroupsLoading={surveyGroupsLoading}
+            surveyPeopleLoading={surveyPeopleLoading}
+            surveyGroups={surveyGroups}
+            surveyPeople={surveyPeople}
+            selectedSurveyGroupIds={selectedSurveyGroupIds}
+            setSelectedSurveyGroupIds={setSelectedSurveyGroupIds}
+            selectedSurveyWorkerIds={selectedSurveyWorkerIds}
+            setSelectedSurveyWorkerIds={setSelectedSurveyWorkerIds}
+            surveyDeadlineDate={surveyDeadlineDate}
+            setSurveyDeadlineDate={setSurveyDeadlineDate}
+            surveyDeadlineTime={surveyDeadlineTime}
+            setSurveyDeadlineTime={setSurveyDeadlineTime}
+            handleLaunchSurvey={handleLaunchSurvey}
+            ensureSurveyPeopleLoaded={ensureSurveyPeopleLoaded}
+            surveySubmitting={surveySubmitting}
+          />
 
           {isServeis && (
             <ServicePhasePanel
@@ -953,302 +1164,18 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           )}
 
           {isCuina && (
-            <div className="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-slate-700">Fase cuina</p>
-                  <p className="text-xs text-slate-500">
-                    Treballadors {cuinaTotals.workers} · Conductors {cuinaTotals.drivers} · Grups {cuinaTotals.responsables}
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {cuinaGroups.map((group, idx) => (
-                  <div key={group.id} className="border border-slate-200 rounded-xl bg-white p-3 space-y-3">
-                    <div className="flex items-center justify-between text-xs text-slate-500">
-                      <span>Grup {idx + 1}</span>
-                      {cuinaGroups.length > 1 && (
-                        <button type="button" className="text-red-500 hover:underline" onClick={() => removeCuinaGroup(group.id)}>
-                          Elimina grup
-                        </button>
-                        )}
-                      </div>
-                    <div className="grid gap-3 lg:grid-cols-[64px_minmax(220px,1fr)_110px_110px_minmax(220px,1fr)_130px_130px_130px] lg:items-end">
-                      <div className="flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
-                        <Switch
-                          id={`cuina-needs-responsible-${group.id}`}
-                          checked={group.wantsResponsible}
-                          onCheckedChange={(checked) =>
-                            updateCuinaGroup(group.id, {
-                              wantsResponsible: Boolean(checked),
-                              responsibleId:
-                                checked && !group.responsibleId && manualResp && manualResp !== '__auto__'
-                                  ? manualResp
-                                  : checked
-                                  ? group.responsibleId
-                                  : '',
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label>Responsable</Label>
-                        {group.wantsResponsible ? (
-                          <Select
-                            value={group.responsibleId || '__auto__'}
-                            onValueChange={(value) =>
-                              updateCuinaGroup(group.id, { responsibleId: value === '__auto__' ? '' : value })
-                            }
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Responsable del grup…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__auto__">Automàtic</SelectItem>
-                              {availableResponsables.map((resp) => (
-                                <SelectItem key={resp.id} value={resp.id}>
-                                  {resp.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <div className="flex h-10 items-center rounded-md border border-slate-200 px-3 text-sm text-slate-400">
-                            Sense responsable
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <Label>Conductors</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          value={group.drivers}
-                          onChange={(e) =>
-                            updateCuinaGroup(group.id, {
-                              drivers: Number.isNaN(Number(e.target.value))
-                                ? 0
-                                : Math.max(0, Number(e.target.value)),
-                              needsDriver: Number(e.target.value) > 0,
-                              ...(Number(e.target.value) > 0
-                                ? {}
-                                : {
-                                    driverMode: '__auto__',
-                                    vehicleType: '',
-                                  }),
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label>Treballadors</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          value={group.workers}
-                          onChange={(e) =>
-                            updateCuinaGroup(group.id, {
-                              workers: Number.isNaN(Number(e.target.value)) ? 0 : Number(e.target.value),
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label>Meeting point</Label>
-                        <Input value={group.meetingPoint} onChange={(e) => updateCuinaGroup(group.id, { meetingPoint: e.target.value })} />
-                      </div>
-                      <div>
-                        <Label>Hora Inici</Label>
-                        <Input type="time" value={group.startTime} onChange={(e) => updateCuinaGroup(group.id, { startTime: e.target.value })} />
-                      </div>
-                      <div>
-                        <Label>Hora Fi</Label>
-                        <Input type="time" value={group.endTime} onChange={(e) => updateCuinaGroup(group.id, { endTime: e.target.value })} />
-                      </div>
-                      <div>
-                        <Label>Hora arribada</Label>
-                        <Input type="time" value={group.arrivalTime} onChange={(e) => updateCuinaGroup(group.id, { arrivalTime: e.target.value })} />
-                      </div>
-                    </div>
-                    {Number(group.drivers || 0) > 0 && (
-                      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                        <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_minmax(280px,1fr)] lg:items-end">
-                          <div>
-                            <Label>Tipus de vehicle</Label>
-                            <Select
-                              value={group.vehicleType || '__none__'}
-                              onValueChange={(value) =>
-                                updateCuinaGroup(group.id, {
-                                  vehicleType: value === '__none__' ? '' : value,
-                                })
-                              }
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Selecciona tipus de vehicle…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__none__">— Sense tipus concret —</SelectItem>
-                                {CUINA_VEHICLE_TYPE_OPTIONS.map((option) => (
-                                  <SelectItem key={option} value={option}>
-                                    {TRANSPORT_TYPE_LABELS[option] || option}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label>Conductor</Label>
-                            <Select
-                              value={group.driverMode || '__auto__'}
-                              onValueChange={(value) =>
-                                updateCuinaGroup(group.id, { driverMode: value })
-                              }
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Selecciona conductor…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__auto__">— Automatic segons disponibilitat —</SelectItem>
-                                {group.wantsResponsible &&
-                                  (group.responsibleId || (manualResp && manualResp !== '__auto__')) &&
-                                  availableConductors.some((conductor) => {
-                                    const responsibleId =
-                                      group.responsibleId || (manualResp !== '__auto__' ? manualResp : '')
-                                    return (
-                                      conductor.id === responsibleId &&
-                                      canDriverHandleVehicleType(conductor, group.vehicleType || '')
-                                    )
-                                  }) && (
-                                    <SelectItem value="__responsable__">
-                                      Responsable
-                                    </SelectItem>
-                                  )}
-                                {availableConductors
-                                  .filter(
-                                    (conductor) =>
-                                      conductor.id === group.driverMode ||
-                                      canDriverHandleVehicleType(conductor, group.vehicleType || '')
-                                  )
-                                  .map((conductor) => (
-                                  <SelectItem key={conductor.id} value={conductor.id}>
-                                    {conductor.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                <div className="flex justify-end">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-slate-900 border-slate-200 bg-white shadow-sm"
-                      onClick={() =>
-                        setCuinaEtt((prev) => ({ ...prev, open: !prev.open }))
-                      }
-                    >
-                      {cuinaEtt.open ? 'Amaga ETT' : '+ ETT'}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={addCuinaGroup}>
-                      + Grup
-                    </Button>
-                  </div>
-                </div>
-                {cuinaEtt.open ? (
-                  <div className="space-y-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3">
-                    <div className="grid gap-3 lg:grid-cols-[160px_170px_170px_130px_130px_minmax(260px,1fr)] lg:items-end">
-                      <div>
-                        <Label>Treballadors ETT</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          value={cuinaEtt.data.workers}
-                          onChange={(e) =>
-                            setCuinaEtt((prev) => ({
-                              ...prev,
-                              data: { ...prev.data, workers: e.target.value },
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label>Data inici</Label>
-                        <Input
-                          type="date"
-                          value={cuinaEtt.data.serviceDate}
-                          onChange={(e) =>
-                            setCuinaEtt((prev) => ({
-                              ...prev,
-                              data: { ...prev.data, serviceDate: e.target.value },
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label>Data fi</Label>
-                        <Input
-                          type="date"
-                          value={cuinaEtt.data.serviceDate}
-                          onChange={(e) =>
-                            setCuinaEtt((prev) => ({
-                              ...prev,
-                              data: { ...prev.data, serviceDate: e.target.value },
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label>Hora inici</Label>
-                        <Input
-                          type="time"
-                          value={cuinaEtt.data.startTime}
-                          onChange={(e) =>
-                            setCuinaEtt((prev) => ({
-                              ...prev,
-                              data: { ...prev.data, startTime: e.target.value },
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label>Hora fi</Label>
-                        <Input
-                          type="time"
-                          value={cuinaEtt.data.endTime}
-                          onChange={(e) =>
-                            setCuinaEtt((prev) => ({
-                              ...prev,
-                              data: { ...prev.data, endTime: e.target.value },
-                            }))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label>Lloc</Label>
-                        <Input
-                          value={cuinaEtt.data.meetingPoint}
-                          onChange={(e) =>
-                            setCuinaEtt((prev) => ({
-                              ...prev,
-                              data: { ...prev.data, meetingPoint: e.target.value },
-                            }))
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500">
-                    ETT · {cuinaEtt.data.workers || '0'} treballadors
-                  </p>
-                )}
-              </div>
-            </div>
+            <CuinaSection
+              cuinaTotals={cuinaTotals}
+              cuinaGroups={cuinaGroups}
+              removeCuinaGroup={removeCuinaGroup}
+              updateCuinaGroup={updateCuinaGroup}
+              manualResp={manualResp}
+              availableResponsables={availableResponsables}
+              availableConductors={availableConductors}
+              addCuinaGroup={addCuinaGroup}
+              cuinaEtt={cuinaEtt}
+              setCuinaEtt={setCuinaEtt}
+            />
           )}
 
           <AnimatePresence>

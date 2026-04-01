@@ -20,6 +20,7 @@ interface FirestoreUser {
   role?: string
   isAdmin?: boolean
   department?: string
+  canRespondSurveys?: boolean
 }
 
 // Extend JWT
@@ -29,6 +30,7 @@ declare module 'next-auth/jwt' {
     isAdmin?: boolean
     department?: string
     deptLower?: string
+    canRespondSurveys?: boolean
   }
 }
 
@@ -41,6 +43,7 @@ declare module 'next-auth' {
       isAdmin?: boolean
       department?: string
       deptLower?: string
+      canRespondSurveys?: boolean
     } & User
   }
 }
@@ -125,6 +128,7 @@ export const authOptions = {
                 isAdmin,
                 department,
                 deptLower: normLower(department),
+                canRespondSurveys: Boolean(data.canRespondSurveys),
               }
             } else {
               console.log('[AUTH] Password incorrecte. Input:', passInput, 'Doc:', passDoc)
@@ -148,6 +152,7 @@ export const authOptions = {
           role?: string
           isAdmin?: boolean
           department?: string
+          canRespondSurveys?: boolean
         }
 
         token.sub = u.id
@@ -155,6 +160,7 @@ export const authOptions = {
         token.role = token.isAdmin ? 'admin' : normalizeRole(u.role)
         token.department = u.department || ''
         token.deptLower = normLower(token.department)
+        token.canRespondSurveys = Boolean(u.canRespondSurveys)
       }
 
       token.isAdmin = Boolean(token.isAdmin || normalizeRole(String(token.role || '')) === 'admin')
@@ -178,6 +184,7 @@ export const authOptions = {
           isAdmin: token.isAdmin,
           department: token.department,
           deptLower: token.deptLower,
+          canRespondSurveys: Boolean(token.canRespondSurveys),
         },
         accessToken: token,
       }

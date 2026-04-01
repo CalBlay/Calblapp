@@ -69,8 +69,35 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const snap = await db.collection('personnel').get()
-    const personnel = snap.docs
+    const byId = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
+
+    try {
+      const lowerSnap = await db
+        .collection('personnel')
+        .where('departmentLower', '==', requestedDept)
+        .get()
+      lowerSnap.docs.forEach((doc) => byId.set(doc.id, doc))
+    } catch {}
+
+    try {
+      const exactSnap = await db
+        .collection('personnel')
+        .where('department', '==', requestedDept)
+        .get()
+      exactSnap.docs.forEach((doc) => byId.set(doc.id, doc))
+    } catch {}
+
+    if (byId.size === 0) {
+      const fallbackSnap = await db.collection('personnel').get()
+      fallbackSnap.docs.forEach((doc) => {
+        const data = doc.data() as any
+        if (norm(data?.department || data?.departmentLower || '') === requestedDept) {
+          byId.set(doc.id, doc)
+        }
+      })
+    }
+
+    const personnel = Array.from(byId.values())
       .map((doc) => {
         const data = doc.data() as any
         const isDriver =
@@ -82,7 +109,7 @@ export async function GET(req: NextRequest) {
         return {
           id: doc.id,
           name: String(data?.name || '').trim(),
-          department: norm(data?.department || ''),
+          department: norm(data?.department || data?.departmentLower || ''),
           isDriver,
         }
       })

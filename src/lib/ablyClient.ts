@@ -14,3 +14,27 @@ export function getAblyClient() {
 
   return client
 }
+
+export function subscribeToAblyEvent(params: {
+  channelName: string
+  eventName: string
+  handler: (...args: any[]) => void
+}) {
+  const realtime = getAblyClient()
+  const channel = realtime.channels.get(params.channelName)
+
+  try {
+    channel.subscribe(params.eventName, params.handler)
+  } catch (error) {
+    console.warn(`[ably] subscribe failed for ${params.channelName}:${params.eventName}`, error)
+    return () => {}
+  }
+
+  return () => {
+    try {
+      channel.unsubscribe(params.eventName, params.handler)
+    } catch (error) {
+      console.warn(`[ably] unsubscribe failed for ${params.channelName}:${params.eventName}`, error)
+    }
+  }
+}

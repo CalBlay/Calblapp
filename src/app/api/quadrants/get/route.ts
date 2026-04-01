@@ -17,6 +17,8 @@ const normalizeEventId = (value?: string | null): string =>
     .split('__')[0]
     .trim()
 
+const readCollectionCache = new Map<string, string>()
+
 const expandLegacyExternalWorkers = (entries: any[] = []) =>
   entries.flatMap((entry) => {
     const count = Math.max(1, Number(entry?.workers || 0))
@@ -38,6 +40,9 @@ const expandLegacyExternalWorkers = (entries: any[] = []) =>
 
 async function resolveReadCollectionForDepartment(department: string) {
   const d = normalize(department)
+  if (readCollectionCache.has(d)) {
+    return readCollectionCache.get(d) as string
+  }
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
   const singular = `quadrant${cap(d)}`
@@ -51,9 +56,16 @@ async function resolveReadCollectionForDepartment(department: string) {
     return acc
   }, {} as Record<string, string>)
 
-  if (map[normalize(singular)]) return map[normalize(singular)]
-  if (map[normalize(plural)]) return map[normalize(plural)]
+  if (map[normalize(singular)]) {
+    readCollectionCache.set(d, map[normalize(singular)])
+    return map[normalize(singular)]
+  }
+  if (map[normalize(plural)]) {
+    readCollectionCache.set(d, map[normalize(plural)])
+    return map[normalize(plural)]
+  }
 
+  readCollectionCache.set(d, plural)
   return plural
 }
 
@@ -80,39 +92,42 @@ export async function GET(req: Request) {
       department,
     })
 
-    let snapshot: FirebaseFirestore.QuerySnapshot
-    let phaseSnapshot: FirebaseFirestore.QuerySnapshot
+    let snapshotDocs: FirebaseFirestore.QueryDocumentSnapshot[] = []
+    let phaseSnapshotDocs: FirebaseFirestore.QueryDocumentSnapshot[] = []
+    let needFullFallback = false
 
     try {
-      snapshot = await collectionRef
+      const snapshot = await collectionRef
         .where('startDate', '<=', end)
         .where('endDate', '>=', start)
         .get()
+      snapshotDocs = snapshot.docs
+    } catch (queryError) {
+      console.warn('[quadrants/get] Query start/end fallida:', queryError)
+      needFullFallback = true
+    }
 
-      if (snapshot.empty) {
-        console.log('[quadrants/get] Provant Timestamp')
-        const startDate = new Date(start)
-        const endDate = new Date(end)
-        snapshot = await collectionRef
-          .where('startDate', '<=', endDate)
-          .where('endDate', '>=', startDate)
-          .get()
-      }
-
-      phaseSnapshot = await collectionRef
+    try {
+      const phaseSnapshot = await collectionRef
         .where('phaseDate', '>=', start)
         .where('phaseDate', '<=', end)
         .get()
+      phaseSnapshotDocs = phaseSnapshot.docs
     } catch (queryError) {
-      console.warn('[quadrants/get] Fallback a lectura completa:', queryError)
+      console.warn('[quadrants/get] Query phaseDate fallida:', queryError)
+      needFullFallback = true
+    }
+
+    if (needFullFallback && snapshotDocs.length === 0 && phaseSnapshotDocs.length === 0) {
+      console.warn('[quadrants/get] Fallback a lectura completa')
       const fullSnapshot = await collectionRef.get()
-      snapshot = fullSnapshot
-      phaseSnapshot = fullSnapshot
+      snapshotDocs = fullSnapshot.docs
+      phaseSnapshotDocs = fullSnapshot.docs
     }
 
     const combinedDocs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
-    snapshot.docs.forEach((doc) => combinedDocs.set(doc.id, doc))
-    phaseSnapshot.docs.forEach((doc) => combinedDocs.set(doc.id, doc))
+    snapshotDocs.forEach((doc) => combinedDocs.set(doc.id, doc))
+    phaseSnapshotDocs.forEach((doc) => combinedDocs.set(doc.id, doc))
 
     console.log('[quadrants/get] Documents trobats:', combinedDocs.size)
 

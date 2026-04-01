@@ -33,6 +33,7 @@ interface UserUpdate {
   opsEventsEnabled?: boolean
   opsProjectsConfigurable?: boolean
   opsChannelsConfigurable?: string[]
+  canRespondSurveys?: boolean
   available?: boolean
   isDriver?: boolean
   workerRank?: string

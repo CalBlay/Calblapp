@@ -31,6 +31,7 @@ export interface User {
   opsChannelsConfigurable?: string[]
   opsEventsConfigurable?: boolean
   opsProjectsConfigurable?: boolean
+  canRespondSurveys?: boolean
 }
 
 export interface NewUserPayload {
@@ -42,6 +43,7 @@ export interface NewUserPayload {
   opsChannelsConfigurable?: string[]
   opsEventsConfigurable?: boolean
   opsProjectsConfigurable?: boolean
+  canRespondSurveys?: boolean
   available?: boolean
   isDriver?: boolean
   workerRank?: string
@@ -87,6 +89,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const [opsChannelsConfigurable, setOpsChannelsConfigurable] = React.useState<string[]>([])
   const [opsEventsConfigurable, setOpsEventsConfigurable] = React.useState(false)
   const [opsProjectsConfigurable, setOpsProjectsConfigurable] = React.useState(true)
+  const [canRespondSurveys, setCanRespondSurveys] = React.useState(false)
 
   const { data: channelsData } = useSWR('/api/messaging/channels?scope=all', (url: string) =>
     fetch(url).then((r) => r.json())
@@ -156,6 +159,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     setOpsProjectsConfigurable(
       typeof user.opsProjectsConfigurable === 'boolean' ? user.opsProjectsConfigurable : true
     )
+    setCanRespondSurveys(Boolean(user.canRespondSurveys))
     if (user.role?.toLowerCase() === 'treballador') {
       setAvailable(user.available ?? true)
       setIsDriver(user.driver?.isDriver ?? false)
@@ -205,6 +209,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         opsChannelsConfigurable,
         opsEventsConfigurable,
         opsProjectsConfigurable,
+        canRespondSurveys,
       }
       if (password.trim()) payload.password = password.trim()
       onSubmit(payload)
@@ -222,6 +227,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       opsChannelsConfigurable,
       opsEventsConfigurable,
       opsProjectsConfigurable,
+      canRespondSurveys,
     }
     if (isWorker) {
       payload.available = available
@@ -451,6 +457,20 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                         onChange={(e) => setOpsEventsConfigurable(e.target.checked)}
                       />
                       <span>Permetre xats d'events</span>
+                    </label>
+                  </div>
+                </details>
+
+                <details className="border rounded-lg px-3 py-2">
+                  <summary className="cursor-pointer text-sm font-medium">Sondeigs</summary>
+                  <div className="mt-2 space-y-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={canRespondSurveys}
+                        onChange={(e) => setCanRespondSurveys(e.target.checked)}
+                      />
+                      <span>Permetre respondre sondeigs</span>
                     </label>
                   </div>
                 </details>

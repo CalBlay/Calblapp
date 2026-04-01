@@ -19,6 +19,12 @@ export type DriverCrewPremise = {
   companions: DriverCrewCompanion[]
 }
 
+export type SurveyGroupPremise = {
+  id: string
+  name: string
+  workerIds: string[]
+}
+
 export type Premises = {
   department: string
   defaultCharacteristics?: string[]
@@ -28,6 +34,7 @@ export type Premises = {
   requireResponsible?: boolean
   conditions?: PremiseCondition[]
   driverCrews?: DriverCrewPremise[]
+  surveyGroups?: SurveyGroupPremise[]
 }
 
 type PremisesDoc = Premises & {
@@ -45,6 +52,7 @@ const DEFAULTS: Premises = {
   requireResponsible: true,
   conditions: [],
   driverCrews: [],
+  surveyGroups: [],
 }
 
 const norm = (s?: string | null) =>
@@ -75,8 +83,31 @@ export async function loadDepartmentPersonnel(
   department: string
 ): Promise<DepartmentPersonnelRef[]> {
   const dept = norm(department)
-  const snap = await db.collection('personnel').get()
-  return snap.docs
+  if (!dept) return []
+
+  const byId = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
+
+  try {
+    const lowerSnap = await db.collection('personnel').where('departmentLower', '==', dept).get()
+    lowerSnap.docs.forEach((doc) => byId.set(doc.id, doc))
+  } catch {}
+
+  try {
+    const exactSnap = await db.collection('personnel').where('department', '==', department).get()
+    exactSnap.docs.forEach((doc) => byId.set(doc.id, doc))
+  } catch {}
+
+  if (byId.size === 0) {
+    const fallbackSnap = await db.collection('personnel').get()
+    fallbackSnap.docs.forEach((doc) => {
+      const data = doc.data() as any
+      if (norm(data?.department || data?.departmentLower || '') === dept) {
+        byId.set(doc.id, doc)
+      }
+    })
+  }
+
+  return Array.from(byId.values())
     .map((doc) => {
       const data = doc.data() as any
       return {
@@ -178,6 +209,11 @@ export function normalizePremises(
         name?: unknown
       }>
     }>
+      surveyGroups?: Array<{
+        id?: string
+        name?: unknown
+        workerIds?: unknown[]
+      }>
   }
 ): Premises {
   const conditions = Array.isArray(raw?.conditions)
@@ -233,6 +269,23 @@ export function normalizePremises(
         .filter((item): item is DriverCrewPremise => Boolean(item))
     : []
 
+  const surveyGroups = Array.isArray(raw?.surveyGroups)
+    ? raw.surveyGroups
+        .map((group, index) => {
+          const name = String(group?.name || '').trim()
+          const workerIds = Array.isArray(group?.workerIds)
+            ? group.workerIds.map((item) => String(item || '').trim()).filter(Boolean)
+            : []
+          if (!name && workerIds.length === 0) return null
+          return {
+            id: String(group?.id || `survey-group-${index + 1}`),
+            name,
+            workerIds: Array.from(new Set(workerIds)),
+          }
+        })
+        .filter((item): item is SurveyGroupPremise => Boolean(item))
+    : []
+
   return {
     ...DEFAULTS,
     ...raw,
@@ -254,6 +307,7 @@ export function normalizePremises(
         : DEFAULTS.requireResponsible,
     conditions,
     driverCrews,
+    surveyGroups,
   }
 }
 
