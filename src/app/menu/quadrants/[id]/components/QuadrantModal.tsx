@@ -320,13 +320,14 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
       targetGroupNames?: string[]
       targetWorkerNames?: string[]
       resolvedTargets?: Array<{ name: string }>
-      counts?: { yes: number; no: number; maybe: number; pending: number }
+      counts?: { yes: number; no: number; maybe: number; pending: number; withoutAnswer?: number }
       responses?: Array<{ workerName: string; response: 'yes' | 'no' | 'maybe'; respondedAt: number }>
       responseGroups?: {
         yes: Array<{ workerName: string; respondedAt: number }>
         maybe: Array<{ workerName: string; respondedAt: number }>
         no: Array<{ workerName: string; respondedAt: number }>
         pending: Array<{ workerName: string }>
+        withoutAnswer?: Array<{ workerName: string }>
       }
     }>
   >([])

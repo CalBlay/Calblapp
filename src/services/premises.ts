@@ -25,6 +25,9 @@ export type SurveyGroupPremise = {
   workerIds: string[]
 }
 
+/** Passat el limit del sondeig, comptar sense resposta com a si o com a no (per departament). */
+export type SurveyNoResponseDefault = 'yes' | 'no'
+
 export type Premises = {
   department: string
   defaultCharacteristics?: string[]
@@ -35,6 +38,7 @@ export type Premises = {
   conditions?: PremiseCondition[]
   driverCrews?: DriverCrewPremise[]
   surveyGroups?: SurveyGroupPremise[]
+  surveyNoResponseDefault?: SurveyNoResponseDefault
 }
 
 type PremisesDoc = Premises & {
@@ -53,6 +57,7 @@ const DEFAULTS: Premises = {
   conditions: [],
   driverCrews: [],
   surveyGroups: [],
+  surveyNoResponseDefault: 'no',
 }
 
 const norm = (s?: string | null) =>
@@ -286,10 +291,17 @@ export function normalizePremises(
         .filter((item): item is SurveyGroupPremise => Boolean(item))
     : []
 
+  const surveyNoResponseRaw = String(raw?.surveyNoResponseDefault || '')
+    .toLowerCase()
+    .trim()
+  const surveyNoResponseDefault: SurveyNoResponseDefault =
+    surveyNoResponseRaw === 'yes' ? 'yes' : 'no'
+
   return {
     ...DEFAULTS,
     ...raw,
     department: norm(department),
+    surveyNoResponseDefault,
     defaultCharacteristics: Array.isArray(raw?.defaultCharacteristics)
       ? raw.defaultCharacteristics.map((item) => String(item || '').trim()).filter(Boolean)
       : DEFAULTS.defaultCharacteristics,

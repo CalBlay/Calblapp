@@ -19,60 +19,63 @@ export async function POST(req: Request) {
       )
     }
 
+    const uid = String(userId)
+    const userRef = db.collection('users').doc(uid)
+    const userSnap = await userRef.get()
+    const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : null
+    if (userData?.pushEnabled === false) {
+      return NextResponse.json({ success: true, sent: 0, skipped: 'push_disabled' })
+    }
+
     const VAPID_PUBLIC = process.env.VAPID_PUBLIC
     const VAPID_PRIVATE = process.env.VAPID_PRIVATE
     const VAPID_MAILTO = process.env.VAPID_MAILTO || 'mailto:it@calblay.com'
 
-    if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
-      return NextResponse.json(
-        { error: 'Missing VAPID keys' },
-        { status: 500 }
-      )
-    }
+    const [subsSnap, fcmSnap] = await Promise.all([
+      userRef.collection('pushSubscriptions').get(),
+      userRef.collection('fcmTokens').get(),
+    ])
 
-    webpush.setVapidDetails(VAPID_MAILTO, VAPID_PUBLIC, VAPID_PRIVATE)
-
-    const subsSnap = await db
-      .collection('users')
-      .doc(String(userId))
-      .collection('pushSubscriptions')
-      .get()
-
-    if (subsSnap.empty) {
+    if (subsSnap.empty && fcmSnap.empty) {
       return NextResponse.json({ success: true, sent: 0 })
     }
 
-    const payload = JSON.stringify({
-      title,
-      body,
-      url,
-      icon: '/icons/cb.svg',
-      badge: '/icons/cb.svg',
-    })
     let sent = 0
 
-    const sendTasks = subsSnap.docs.map(async (doc) => {
-      const sub = doc.data().subscription
-      try {
-        await webpush.sendNotification(sub, payload, {
-          TTL: 60 * 60,
-          urgency: 'high',
-        })
-        sent++
-      } catch (err: any) {
-        if (err?.statusCode === 404 || err?.statusCode === 410) {
-          await doc.ref.delete()
-        }
+    if (!subsSnap.empty) {
+      if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+        return NextResponse.json(
+          { error: 'Missing VAPID keys' },
+          { status: 500 }
+        )
       }
-    })
+      webpush.setVapidDetails(VAPID_MAILTO, VAPID_PUBLIC, VAPID_PRIVATE)
 
-    await Promise.all(sendTasks)
+      const payload = JSON.stringify({
+        title,
+        body,
+        url,
+        icon: '/icons/cb.svg',
+        badge: '/icons/cb.svg',
+      })
 
-    const fcmSnap = await db
-      .collection('users')
-      .doc(String(userId))
-      .collection('fcmTokens')
-      .get()
+      await Promise.all(
+        subsSnap.docs.map(async (doc) => {
+          const sub = doc.data().subscription
+          try {
+            await webpush.sendNotification(sub, payload, {
+              TTL: 60 * 60,
+              urgency: 'high',
+            })
+            sent++
+          } catch (err: any) {
+            if (err?.statusCode === 404 || err?.statusCode === 410) {
+              await doc.ref.delete()
+            }
+          }
+        })
+      )
+    }
 
     if (!fcmSnap.empty) {
       const tokens = fcmSnap.docs
@@ -93,13 +96,15 @@ export async function POST(req: Request) {
           },
         })
 
+        sent += res.successCount
+
         res.responses.forEach((r, idx) => {
           if (r.success) return
           const code = (r.error as any)?.code
           if (code === 'messaging/registration-token-not-registered') {
             const token = tokens[idx]
             const doc = fcmSnap.docs.find((d) => d.data().token === token)
-            if (doc) doc.ref.delete()
+            if (doc) void doc.ref.delete()
           }
         })
       }

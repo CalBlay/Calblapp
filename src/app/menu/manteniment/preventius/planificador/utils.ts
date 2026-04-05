@@ -1,6 +1,30 @@
 import { format, parseISO } from 'date-fns'
 import { formatDayMonthValue } from '@/lib/date-format'
-import type { TicketCard } from './types'
+import type { ScheduledItem, TicketCard } from './types'
+
+/** Preventiu ja planificat aquesta setmana (templateId o, si falta a BD, mateix nom que el títol al calendari). */
+export function isPreventiuScheduledInWeek(
+  templateId: string,
+  templateName: string,
+  scheduled: ScheduledItem[]
+): boolean {
+  return scheduled.some((s) => {
+    if (s.kind !== 'preventiu') return false
+    if (s.templateId && s.templateId === templateId) return true
+    if (!s.templateId && templateName && s.title) {
+      return normalizeName(s.title) === normalizeName(templateName)
+    }
+    return false
+  })
+}
+
+export function isTicketScheduledInWeek(ticketId: string, scheduled: ScheduledItem[]): boolean {
+  return scheduled.some((s) => {
+    if (s.kind !== 'ticket') return false
+    const sid = String(s.ticketId || s.id || '')
+    return sid === String(ticketId)
+  })
+}
 
 export const WORKER_BADGE_CLASSES = [
   'bg-blue-100 text-blue-800',

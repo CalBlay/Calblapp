@@ -32,6 +32,7 @@ type SurveySummary = {
     no: number
     maybe: number
     pending: number
+    withoutAnswer?: number
   }
   responses?: Array<{
     workerName: string
@@ -43,6 +44,7 @@ type SurveySummary = {
     maybe: Array<{ workerName: string; respondedAt: number }>
     no: Array<{ workerName: string; respondedAt: number }>
     pending: Array<{ workerName: string }>
+    withoutAnswer?: Array<{ workerName: string }>
   }
 }
 
@@ -96,7 +98,7 @@ export default function SurveyLaunchPanel({
   const [manualPeopleOpen, setManualPeopleOpen] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
   const [responsesOpen, setResponsesOpen] = useState(false)
-  const [responseTab, setResponseTab] = useState<'yes' | 'maybe' | 'no' | 'pending'>('yes')
+  const [responseTab, setResponseTab] = useState<'yes' | 'maybe' | 'no' | 'withoutAnswer'>('yes')
   const selectedManualPeople = useMemo(
     () => surveyPeople.filter((person) => selectedSurveyWorkerIds.includes(person.id)),
     [surveyPeople, selectedSurveyWorkerIds]
@@ -176,7 +178,9 @@ export default function SurveyLaunchPanel({
           {latestSurvey?.counts ? (
             <div className="space-y-1 text-right text-xs text-slate-600">
               <div>
-                Sí {latestSurvey.counts.yes} · Potser {latestSurvey.counts.maybe} · No {latestSurvey.counts.no} · Pendents {latestSurvey.counts.pending}
+                Sí {latestSurvey.counts.yes} · Potser {latestSurvey.counts.maybe} · No {latestSurvey.counts.no} · Sense
+                resposta{' '}
+                {latestSurvey.counts.withoutAnswer ?? latestSurvey.responseGroups?.withoutAnswer?.length ?? 0}
               </div>
               {latestSurvey.deadlineAt ? (
                 <div className="text-[11px] text-slate-500">
@@ -327,14 +331,17 @@ export default function SurveyLaunchPanel({
                 ['yes', `Sí (${latestSurvey?.responseGroups?.yes.length || 0})`],
                 ['maybe', `Potser (${latestSurvey?.responseGroups?.maybe.length || 0})`],
                 ['no', `No (${latestSurvey?.responseGroups?.no.length || 0})`],
-                ['pending', `Pendents (${latestSurvey?.responseGroups?.pending.length || 0})`],
+                [
+                  'withoutAnswer',
+                  `Sense resposta (${latestSurvey?.responseGroups?.withoutAnswer?.length ?? 0})`,
+                ],
               ].map(([value, label]) => (
                 <Button
                   key={value}
                   type="button"
                   variant={responseTab === value ? 'default' : 'outline'}
                   className={responseTab === value ? 'bg-violet-600 hover:bg-violet-700' : ''}
-                  onClick={() => setResponseTab(value as 'yes' | 'maybe' | 'no' | 'pending')}
+                  onClick={() => setResponseTab(value as 'yes' | 'maybe' | 'no' | 'withoutAnswer')}
                 >
                   {label}
                 </Button>
@@ -347,14 +354,15 @@ export default function SurveyLaunchPanel({
                 if (!groups) {
                   return <div className="text-sm text-slate-500">Encara no hi ha respostes.</div>
                 }
+                const without = groups.withoutAnswer ?? []
                 const items =
                   responseTab === 'yes'
                     ? groups.yes
                     : responseTab === 'maybe'
-                    ? groups.maybe
-                    : responseTab === 'no'
-                    ? groups.no
-                    : groups.pending
+                      ? groups.maybe
+                      : responseTab === 'no'
+                        ? groups.no
+                        : without
 
                 if (!items.length) {
                   return <div className="text-sm text-slate-500">Sense persones en aquest estat.</div>
@@ -362,6 +370,11 @@ export default function SurveyLaunchPanel({
 
                 return (
                   <div className="space-y-2">
+                    {responseTab === 'withoutAnswer' ? (
+                      <p className="text-xs text-slate-500">
+                        Persones sense cap resposta registrada al sondeig.
+                      </p>
+                    ) : null}
                     {items.map((item, index) => (
                       <div
                         key={`${item.workerName}-${index}`}
@@ -377,6 +390,8 @@ export default function SurveyLaunchPanel({
                               minute: '2-digit',
                             }).format(new Date(item.respondedAt))}
                           </span>
+                        ) : responseTab === 'withoutAnswer' ? (
+                          <span className="text-xs text-slate-400">Sense resposta</span>
                         ) : null}
                       </div>
                     ))}

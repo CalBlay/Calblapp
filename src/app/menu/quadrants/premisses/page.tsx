@@ -9,7 +9,12 @@ import { normalizeRole } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { DriverCrewPremise, Premises, SurveyGroupPremise } from '@/services/premises'
+import type {
+  DriverCrewPremise,
+  Premises,
+  SurveyGroupPremise,
+  SurveyNoResponseDefault,
+} from '@/services/premises'
 
 type MetaState = {
   source: 'firestore' | 'fallback'
@@ -97,6 +102,7 @@ const buildSnapshot = ({
       name: group.name,
       workerIds: group.workerIds,
     })),
+    surveyNoResponseDefault: premises.surveyNoResponseDefault ?? 'no',
   })
 
 const emptyPremises = (department: string): Premises => ({
@@ -107,6 +113,7 @@ const emptyPremises = (department: string): Premises => ({
   maxFirstEventDurationHours: 24,
   requireResponsible: true,
   conditions: [],
+  surveyNoResponseDefault: 'no',
 })
 
 const toEditableConditions = (premises: Premises): EditableCondition[] =>
@@ -862,6 +869,43 @@ export default function QuadrantPremisesPage() {
                         </span>
                       </span>
                     </label>
+                  </div>
+
+                  <div className="space-y-3 border-t border-slate-200 pt-4">
+                    <Label id="survey-no-response-label">Sondeig: sense resposta passat el limit</Label>
+                    <p className="text-xs text-slate-500">
+                      Fins al limit de resposta es compten com a pendents. Passat el limit, qui no hagi
+                      contestat es comptara com a Si o com a No segons el que triis aqui (per aquest
+                      departament).
+                    </p>
+                    <div
+                      role="group"
+                      aria-labelledby="survey-no-response-label"
+                      className="flex flex-col gap-2 sm:flex-row"
+                    >
+                      <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                        <input
+                          type="radio"
+                          name="survey-no-response"
+                          checked={(premises.surveyNoResponseDefault ?? 'no') === 'yes'}
+                          onChange={() =>
+                            setPremises((prev) => ({ ...prev, surveyNoResponseDefault: 'yes' }))
+                          }
+                        />
+                        Comptar com a «Si»
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                        <input
+                          type="radio"
+                          name="survey-no-response"
+                          checked={(premises.surveyNoResponseDefault ?? 'no') === 'no'}
+                          onChange={() =>
+                            setPremises((prev) => ({ ...prev, surveyNoResponseDefault: 'no' }))
+                          }
+                        />
+                        Comptar com a «No»
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}

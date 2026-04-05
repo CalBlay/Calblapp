@@ -17,14 +17,16 @@ export async function POST(req: Request) {
       )
     }
 
-    await db
-      .collection('users')
-      .doc(String(userId))
-      .collection('pushSubscriptions')
-      .add({
-        subscription,
-        createdAt: Date.now(),
-      })
+    const uid = String(userId)
+    await db.collection('users').doc(uid).collection('pushSubscriptions').add({
+      subscription,
+      createdAt: Date.now(),
+    })
+
+    await db.collection('users').doc(uid).set(
+      { pushEnabled: true, updatedAt: Date.now() },
+      { merge: true }
+    )
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -14,6 +14,8 @@ import {
   calculateNextDue,
   getAgeBucket,
   getAgeDays,
+  isPreventiuScheduledInWeek,
+  isTicketScheduledInWeek,
   minutesFromTime,
   normalizeName,
   parseStoredDate,
@@ -207,9 +209,13 @@ export default function usePlannerData({
   }, [realTickets, ticketsAgeFilter])
 
   const visibleItems = useMemo(() => {
-    if (tab === 'preventius') return filteredDueTemplates
-    return filteredRealTickets
-  }, [tab, filteredDueTemplates, filteredRealTickets])
+    if (tab === 'preventius') {
+      return filteredDueTemplates.filter(
+        (item) => !isPreventiuScheduledInWeek(item.id, item.name, scheduledItems)
+      )
+    }
+    return filteredRealTickets.filter((item) => !isTicketScheduledInWeek(item.id, scheduledItems))
+  }, [tab, filteredDueTemplates, filteredRealTickets, scheduledItems])
 
   const timeSlots = useMemo(() => {
     const slots: string[] = []

@@ -14,6 +14,7 @@ import {
   getInitials,
   getPriorityTone,
   getWorkerBadgeClass,
+  isPreventiuScheduledInWeek,
   minutesFromTime,
   normalizeName,
   timeFromMinutes,
@@ -58,6 +59,7 @@ export default function PreventiusPlanificadorPage() {
     'all' | 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus'
   >('all')
   const [showLegend, setShowLegend] = useState(false)
+  const [showScheduledInSidebar, setShowScheduledInSidebar] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [draft, setDraft] = useState<PlannerDraft | null>(null)
 
@@ -270,10 +272,7 @@ export default function PreventiusPlanificadorPage() {
         )
         if (alreadyPlanned) return
       } else {
-        const alreadyPlanned = scheduledItems.some(
-          (i) => i.kind === 'preventiu' && i.templateId === payload.templateId
-        )
-        if (alreadyPlanned) return
+        if (isPreventiuScheduledInWeek(payload.templateId, payload.title, scheduledItems)) return
       }
 
       const nextItem = {
@@ -348,6 +347,7 @@ export default function PreventiusPlanificadorPage() {
       ticketId: item.ticketId || (item.kind === 'ticket' ? item.id : null),
       title: item.title,
       createdAt: item.createdAt || null,
+      planDate: format(addDays(weekStart, item.dayIndex), 'yyyy-MM-dd'),
       dayIndex: item.dayIndex,
       start: item.start,
       duration,
@@ -368,6 +368,7 @@ export default function PreventiusPlanificadorPage() {
       kind: 'preventiu',
       templateId: null,
       title: '',
+      planDate: format(addDays(weekStart, dayIndex), 'yyyy-MM-dd'),
       dayIndex,
       start: startTime,
       duration: 60,
@@ -414,6 +415,7 @@ export default function PreventiusPlanificadorPage() {
       ticketId: item.kind === 'ticket' ? item.id : null,
       title: item.title,
       createdAt: item.kind === 'ticket' ? item.createdAt || null : null,
+      planDate: format(days[defaultDayIndex], 'yyyy-MM-dd'),
       dayIndex: defaultDayIndex,
       start: '08:00',
       duration: item.minutes,
@@ -573,6 +575,8 @@ export default function PreventiusPlanificadorPage() {
             visibleItems={visibleItems}
             scheduledItems={scheduledItems}
             dayLabels={daySidebarLabels}
+            showScheduledInSidebar={showScheduledInSidebar}
+            onShowScheduledInSidebarChange={setShowScheduledInSidebar}
             onOpenPendingItem={openPendingItem}
           />
 
@@ -855,12 +859,14 @@ export default function PreventiusPlanificadorPage() {
                 visibleItems={visibleItems}
                 scheduledItems={scheduledItems}
                 dayLabels={daySidebarLabels}
+                showScheduledInSidebar={showScheduledInSidebar}
+                onShowScheduledInSidebarChange={setShowScheduledInSidebar}
                 desktop
-              onOpenPendingItem={openPendingItem}
-              onReturnToPending={(data) => {
-                void handleReturnToPending(data)
-              }}
-            />
+                onOpenPendingItem={openPendingItem}
+                onReturnToPending={(data) => {
+                  void handleReturnToPending(data)
+                }}
+              />
 
             <div className="flex h-full min-h-0 flex-col rounded-2xl border bg-white p-3">
               <div className="relative min-h-0 flex-1 overflow-auto">
@@ -1015,7 +1021,7 @@ export default function PreventiusPlanificadorPage() {
         {isModalOpen && draft && draft.kind === 'ticket' && draft.ticketId && (
           <PlannerTicketModal
             ticketId={draft.ticketId}
-            initialDate={format(addDays(weekStart, draft.dayIndex), 'yyyy-MM-dd')}
+            initialDate={draft.planDate || format(addDays(weekStart, draft.dayIndex), 'yyyy-MM-dd')}
             initialStartTime={draft.start}
             initialDurationMinutes={draft.duration}
             initialTicket={ticketById[draft.ticketId] || null}

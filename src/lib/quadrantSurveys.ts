@@ -1,5 +1,6 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
+import type { SurveyNoResponseDefault } from '@/services/premises'
 
 const SURVEYS_COLLECTION = 'quadrantSurveys'
 const RESPONSES_COLLECTION = 'quadrantSurveyResponses'
@@ -56,6 +57,8 @@ export type QuadrantSurvey = {
     no: number
     maybe: number
     pending: number
+    /** Destinataris sense cap resposta desada encara (llista completa al detall). */
+    withoutAnswer: number
   }
   responses?: Array<{
     workerName: string
@@ -67,6 +70,8 @@ export type QuadrantSurvey = {
     maybe: Array<{ workerName: string; respondedAt: number }>
     no: Array<{ workerName: string; respondedAt: number }>
     pending: Array<{ workerName: string }>
+    /** Tots els que no han contestat el sondeig (sense document de resposta). */
+    withoutAnswer: Array<{ workerName: string }>
   }
 }
 
@@ -91,11 +96,24 @@ type SurveyNotificationPayload = {
   serviceDate: string
 }
 
+function parseSurveyNoResponseDefault(value: unknown): SurveyNoResponseDefault {
+  const v = String(value ?? '')
+    .toLowerCase()
+    .trim()
+  return v === 'yes' ? 'yes' : 'no'
+}
+
 export async function loadDepartmentSurveyGroups(department: string) {
   const snap = await db.collection('quadrantPremises').doc(norm(department)).get()
   if (!snap.exists) return []
   const data = snap.data() as any
   return Array.isArray(data?.surveyGroups) ? data.surveyGroups : []
+}
+
+export async function loadSurveyNoResponseDefault(department: string): Promise<SurveyNoResponseDefault> {
+  const snap = await db.collection('quadrantPremises').doc(norm(department)).get()
+  if (!snap.exists) return 'no'
+  return parseSurveyNoResponseDefault((snap.data() as any)?.surveyNoResponseDefault)
 }
 
 async function lookupUserIdByPersonnelId(personnelId: string) {
@@ -457,16 +475,31 @@ export async function listQuadrantSurveys(params: {
     .catch(() => null)
   const responses = responseSnap ? responseSnap.docs.map((doc) => doc.data() as any) : []
 
-  const groupsByDepartment = new Map<string, any[]>()
+  const premisesMetaByDept = new Map<
+    string,
+    { groups: any[]; noResponseDefault: SurveyNoResponseDefault }
+  >()
+
+  async function getPremisesMeta(dept: string) {
+    const key = norm(dept)
+    const hit = premisesMetaByDept.get(key)
+    if (hit) return hit
+    const snap = await db.collection('quadrantPremises').doc(key).get()
+    const data = snap.exists ? (snap.data() as any) : null
+    const meta = {
+      groups: Array.isArray(data?.surveyGroups) ? data.surveyGroups : [],
+      noResponseDefault: parseSurveyNoResponseDefault(data?.surveyNoResponseDefault),
+    }
+    premisesMetaByDept.set(key, meta)
+    return meta
+  }
 
   return (
     await Promise.all(
       surveys.map(async (survey) => {
         const surveyDepartment = norm(survey.department)
-        if (!groupsByDepartment.has(surveyDepartment)) {
-          groupsByDepartment.set(surveyDepartment, await loadDepartmentSurveyGroups(surveyDepartment))
-        }
-        const availableGroups = groupsByDepartment.get(surveyDepartment) || []
+        const { groups: availableGroups, noResponseDefault: noResponsePolicy } =
+          await getPremisesMeta(surveyDepartment)
         const targetGroupNames = availableGroups
           .filter((group: any) => Array.isArray(survey.targetGroupIds) && survey.targetGroupIds.includes(String(group?.id || '')))
           .map((group: any) => String(group?.name || '').trim())
@@ -481,12 +514,14 @@ export async function listQuadrantSurveys(params: {
           .filter(Boolean)
 
       const surveyResponses = responses.filter((response) => response.surveyId === survey.id)
+      const deadlineMs = Number(survey.deadlineAt || 0)
+      const deadlinePassed = deadlineMs > 0 && Date.now() >= deadlineMs
+
       const yes = surveyResponses.filter((response) => response.response === 'yes').length
       const no = surveyResponses.filter((response) => response.response === 'no').length
       const maybe = surveyResponses.filter((response) => response.response === 'maybe').length
-      const pending = Math.max((survey.resolvedTargets || []).length - yes - no - maybe, 0)
-      const respondedNames = new Set(
-        surveyResponses.map((response) => String(response.workerName || '').trim()).filter(Boolean)
+      const respondedWorkerIds = new Set(
+        surveyResponses.map((response) => String(response.workerId || '').trim()).filter(Boolean)
       )
       const yesResponses = surveyResponses
         .filter((response) => response.response === 'yes')
@@ -509,14 +544,79 @@ export async function listQuadrantSurveys(params: {
           respondedAt: Number(response.respondedAt || 0),
         }))
         .filter((response) => response.workerName)
-      const pendingResponses = (Array.isArray(survey.resolvedTargets) ? survey.resolvedTargets : [])
-        .map((target) => ({ workerName: String(target?.name || '').trim() }))
-        .filter((target) => target.workerName && !respondedNames.has(target.workerName))
+
+      const unresolvedTargets = (Array.isArray(survey.resolvedTargets) ? survey.resolvedTargets : []).filter(
+        (target) => {
+          const pid = String(target?.personnelId || '').trim()
+          return Boolean(pid) && !respondedWorkerIds.has(pid)
+        }
+      )
+      const toNameRow = (target: SurveyTargetWorker) => ({
+        workerName: String(target?.name || '').trim(),
+      })
+      const pendingBeforeDeadline = deadlinePassed
+        ? []
+        : unresolvedTargets.map(toNameRow).filter((row) => row.workerName)
+      const impliedAfterDeadline = deadlinePassed ? unresolvedTargets : []
+      /** Només abans del límit: després els no-respondents passen a Sí/No implícit (no són «sense resposta» a la UI). */
+      const withoutAnswerList = deadlinePassed
+        ? []
+        : unresolvedTargets.map(toNameRow).filter((row) => row.workerName)
+
+      let counts = {
+        yes,
+        no,
+        maybe,
+        pending: pendingBeforeDeadline.length,
+        withoutAnswer: withoutAnswerList.length,
+      }
+      let responseGroups = {
+        yes: yesResponses,
+        maybe: maybeResponses,
+        no: noResponses,
+        pending: pendingBeforeDeadline,
+        withoutAnswer: withoutAnswerList,
+      }
+
+      if (impliedAfterDeadline.length > 0) {
+        const impliedRows = impliedAfterDeadline
+          .map((p) => ({
+            workerName: String(p.name || '').trim(),
+            respondedAt: 0,
+          }))
+          .filter((row) => row.workerName)
+        if (noResponsePolicy === 'yes') {
+          counts = {
+            yes: yes + impliedAfterDeadline.length,
+            no,
+            maybe,
+            pending: pendingBeforeDeadline.length,
+            withoutAnswer: withoutAnswerList.length,
+          }
+          responseGroups = {
+            ...responseGroups,
+            yes: [...yesResponses, ...impliedRows],
+          }
+        } else {
+          counts = {
+            yes,
+            no: no + impliedAfterDeadline.length,
+            maybe,
+            pending: pendingBeforeDeadline.length,
+            withoutAnswer: withoutAnswerList.length,
+          }
+          responseGroups = {
+            ...responseGroups,
+            no: [...noResponses, ...impliedRows],
+          }
+        }
+      }
+
         return {
           ...survey,
           targetGroupNames,
           targetWorkerNames,
-          counts: { yes, no, maybe, pending },
+          counts,
           responses: surveyResponses
             .map((response) => ({
               workerName: String(response.workerName || '').trim(),
@@ -525,12 +625,7 @@ export async function listQuadrantSurveys(params: {
             }))
             .filter((response) => response.workerName)
             .sort((a, b) => a.respondedAt - b.respondedAt),
-          responseGroups: {
-            yes: yesResponses,
-            maybe: maybeResponses,
-            no: noResponses,
-            pending: pendingResponses,
-          },
+          responseGroups,
         }
       })
     )
@@ -594,6 +689,7 @@ export async function getSurveyPreferredCandidates(params: {
   department: string
   serviceDate: string
 }) {
+  const noResponsePolicy = await loadSurveyNoResponseDefault(params.department)
   const surveys = await listQuadrantSurveys(params)
   const activeSurvey = surveys.find((survey) => survey.status === 'sent') || surveys[0]
   if (!activeSurvey) {
@@ -604,7 +700,35 @@ export async function getSurveyPreferredCandidates(params: {
     .collection(RESPONSES_COLLECTION)
     .where('surveyId', '==', activeSurvey.id)
     .get()
-  const responses = responseSnap.docs.map((doc) => doc.data() as any)
+  let responses = responseSnap.docs.map((doc) => doc.data() as any)
+
+  const respondedWorkerIds = new Set(
+    responses.map((item) => String(item?.workerId || '').trim()).filter(Boolean)
+  )
+
+  const deadlineMs = Number((activeSurvey as any).deadlineAt || 0)
+  const deadlinePassed = deadlineMs > 0 && Date.now() >= deadlineMs
+
+  if (
+    noResponsePolicy === 'yes' &&
+    deadlinePassed &&
+    Array.isArray((activeSurvey as any).resolvedTargets)
+  ) {
+    const synthetic = (activeSurvey as any).resolvedTargets
+      .filter((t: any) => {
+        const pid = String(t?.personnelId || '').trim()
+        return pid && !respondedWorkerIds.has(pid)
+      })
+      .map((t: any) => ({
+        workerId: String(t.personnelId || ''),
+        workerName: String(t.name || '').trim(),
+        response: 'yes',
+        respondedAt: 0,
+      }))
+      .filter((r: { workerId: string; workerName: string }) => r.workerId && r.workerName)
+    responses = [...responses, ...synthetic]
+  }
+
   const personnelIds = Array.from(
     new Set(
       responses

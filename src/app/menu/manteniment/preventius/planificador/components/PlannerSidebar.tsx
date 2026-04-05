@@ -16,6 +16,8 @@ type Props = {
   scheduledItems: ScheduledItem[]
   /** Etiquetes de columna del calendari (`dl. 06/04`, …), mateix ordre que `dayIndex`. */
   dayLabels?: string[]
+  showScheduledInSidebar: boolean
+  onShowScheduledInSidebarChange: (value: boolean) => void
   desktop?: boolean
   onOpenPendingItem: (
     item:
@@ -46,25 +48,21 @@ export default function PlannerSidebar({
   visibleItems,
   scheduledItems,
   dayLabels,
+  showScheduledInSidebar,
+  onShowScheduledInSidebarChange,
   desktop = false,
   onOpenPendingItem,
   onReturnToPending,
 }: Props) {
   const pendingPreventius = useMemo(() => {
     if (tab !== 'preventius') return []
-    return (visibleItems as DueTemplate[]).filter(
-      (item) =>
-        !scheduledItems.some((s) => s.kind === 'preventiu' && s.templateId === item.id)
-    )
-  }, [tab, visibleItems, scheduledItems])
+    return visibleItems as DueTemplate[]
+  }, [tab, visibleItems])
 
   const pendingTickets = useMemo(() => {
     if (tab !== 'tickets') return []
-    return (visibleItems as TicketCard[]).filter(
-      (item) =>
-        !scheduledItems.some((s) => s.kind === 'ticket' && (s.ticketId || s.id) === item.id)
-    )
-  }, [tab, visibleItems, scheduledItems])
+    return visibleItems as TicketCard[]
+  }, [tab, visibleItems])
 
   const scheduledPreventiusOnCalendar = useMemo(() => {
     if (tab !== 'preventius') return []
@@ -83,6 +81,9 @@ export default function PlannerSidebar({
         a.dayIndex !== b.dayIndex ? a.dayIndex - b.dayIndex : a.start.localeCompare(b.start)
       )
   }, [tab, scheduledItems])
+
+  const scheduledCountForTab =
+    tab === 'preventius' ? scheduledPreventiusOnCalendar.length : scheduledTicketsOnCalendar.length
 
   const wrapperClass = desktop
     ? 'flex h-full min-h-0 flex-col rounded-2xl border bg-white p-3'
@@ -113,11 +114,28 @@ export default function PlannerSidebar({
       <div className={titleClass}>
         {tab === 'preventius' ? 'Preventius pendents' : 'Tickets pendents'}
       </div>
+      {scheduledCountForTab > 0 ? (
+        <button
+          type="button"
+          onClick={() => onShowScheduledInSidebarChange(!showScheduledInSidebar)}
+          className={
+            desktop
+              ? 'mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100'
+              : 'mt-2 w-full min-h-[40px] rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-100'
+          }
+        >
+          {showScheduledInSidebar
+            ? `Amagar planificats (${scheduledCountForTab})`
+            : `Mostrar planificats (${scheduledCountForTab})`}
+        </button>
+      ) : null}
       <div className={[listClass, desktop ? 'min-h-0 flex-1 overflow-y-auto pr-1' : ''].join(' ')}>
         {tab === 'preventius' && pendingPreventius.length === 0 ? (
           <p className="py-4 text-center text-xs leading-relaxed text-gray-500">
             {scheduledPreventiusOnCalendar.length > 0
-              ? 'Cap preventiu pendent per afegir; els que tens planificats (auto o manual) son a la llista de sota.'
+              ? showScheduledInSidebar
+                ? 'Cap preventiu pendent per afegir; els que tens planificats (auto o manual) son a la llista de sota.'
+                : 'Cap preventiu pendent per afegir. Els planificats son al calendari; prem «Mostrar planificats» per veure la llista.'
               : 'No hi ha preventius pendents de planificar en aquesta setmana (o ja estan al calendari).'}
           </p>
         ) : null}
@@ -125,7 +143,9 @@ export default function PlannerSidebar({
         {tab === 'tickets' && pendingTickets.length === 0 ? (
           <p className="py-4 text-center text-xs leading-relaxed text-gray-500">
             {scheduledTicketsOnCalendar.length > 0
-              ? 'Cap ticket pendent per afegir; els planificats son a la llista de sota.'
+              ? showScheduledInSidebar
+                ? 'Cap ticket pendent per afegir; els planificats son a la llista de sota.'
+                : 'Cap ticket pendent per afegir. Els planificats son al calendari; prem «Mostrar planificats» per veure la llista.'
               : 'No hi ha tickets pendents de planificar (o ja estan al calendari).'}
           </p>
         ) : null}
@@ -322,7 +342,7 @@ export default function PlannerSidebar({
             )
           })}
 
-        {tab === 'preventius' && scheduledPreventiusOnCalendar.length > 0 ? (
+        {tab === 'preventius' && showScheduledInSidebar && scheduledPreventiusOnCalendar.length > 0 ? (
           <div className={desktop ? 'mt-3 border-t border-slate-200 pt-3' : 'mt-6 border-t border-slate-200 pt-4'}>
             <div
               className={
@@ -355,7 +375,7 @@ export default function PlannerSidebar({
           </div>
         ) : null}
 
-        {tab === 'tickets' && scheduledTicketsOnCalendar.length > 0 ? (
+        {tab === 'tickets' && showScheduledInSidebar && scheduledTicketsOnCalendar.length > 0 ? (
           <div className={desktop ? 'mt-3 border-t border-slate-200 pt-3' : 'mt-6 border-t border-slate-200 pt-4'}>
             <div
               className={

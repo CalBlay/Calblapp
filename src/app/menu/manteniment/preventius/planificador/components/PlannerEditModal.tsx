@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { addDays, format } from 'date-fns'
+import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import { typography } from '@/lib/typography'
 import { formatDateOnly, formatDateTimeValue } from '@/lib/date-format'
@@ -116,17 +116,34 @@ export default function PlannerEditModal({
   const [historyRecords, setHistoryRecords] = useState<PreventiuHistoryRecord[]>([])
   const availabilityCacheRef = useRef<Map<string, { ids: string[]; nameNorms: string[] }>>(new Map())
 
-  const selectedDay = addDays(weekStart, draft.dayIndex)
-  const planningDateKey = useMemo(
-    () => format(addDays(weekStart, draft.dayIndex), 'yyyy-MM-dd'),
-    [weekStart, draft.dayIndex]
-  )
+  const planningDateKey = useMemo(() => {
+    const p = draft.planDate?.trim()
+    if (p && /^\d{4}-\d{2}-\d{2}$/.test(p)) return p
+    return format(addDays(weekStart, draft.dayIndex), 'yyyy-MM-dd')
+  }, [draft.planDate, weekStart, draft.dayIndex])
+
+  const selectedDay = useMemo(() => {
+    const d = parseISO(planningDateKey)
+    return Number.isNaN(d.getTime()) ? addDays(weekStart, draft.dayIndex) : d
+  }, [planningDateKey, weekStart, draft.dayIndex])
+
+  const localAgendaDayIndex = useMemo(() => {
+    const idx = differenceInCalendarDays(selectedDay, weekStart)
+    if (idx >= 0 && idx < dayCount) return idx
+    return -1
+  }, [selectedDay, weekStart, dayCount])
   const createdAtLabel =
     draft.createdAt != null && !Number.isNaN(new Date(draft.createdAt).getTime())
       ? formatDateOnly(draft.createdAt, '-')
       : '-'
   const planningLabel = [format(selectedDay, 'dd/MM/yyyy'), draft.start, draft.end].filter(Boolean).join(' - ')
-  const conflicts = getWorkerConflicts(draft.dayIndex, draft.start, draft.end, draft.workers, draft.id)
+  const conflicts = getWorkerConflicts(
+    localAgendaDayIndex,
+    draft.start,
+    draft.end,
+    draft.workers,
+    draft.id
+  )
   const isAssignedStage = Boolean(draft.id || draft.workers.length > 0)
   const currentStatus = normalizePreventiuStatus(draft.status)
   const isReadOnlyStage = ['en_curs', 'espera', 'fet', 'validat'].includes(currentStatus)
@@ -160,9 +177,11 @@ export default function PlannerEditModal({
   const locallyAvailableIds = useMemo(
     () =>
       new Set(
-        availableWorkers(draft.dayIndex, draft.start, draft.end, draft.id).map((worker) => String(worker.id))
+        availableWorkers(localAgendaDayIndex, draft.start, draft.end, draft.id).map((worker) =>
+          String(worker.id)
+        )
       ),
-    [availableWorkers, draft.dayIndex, draft.end, draft.id, draft.start]
+    [availableWorkers, localAgendaDayIndex, draft.end, draft.id, draft.start]
   )
 
   const remotelyAvailableIds = useMemo(() => new Set(availableIds.map(String)), [availableIds])
@@ -389,16 +408,24 @@ export default function PlannerEditModal({
                         <input
                           type="date"
                           className="mt-1.5 h-11 w-full rounded-2xl border bg-white px-4 text-base"
-                          value={format(selectedDay, 'yyyy-MM-dd')}
+                          value={planningDateKey}
                           disabled={isReadOnlyStage}
                           onChange={(e) => {
                             const value = e.target.value
                             if (!value) return
-                            const date = new Date(`${value}T00:00:00`)
-                            if (Number.isNaN(date.getTime())) return
-                            const nextIndex = Math.round((date.getTime() - weekStart.getTime()) / 86400000)
-                            if (nextIndex < 0 || nextIndex >= dayCount) return
-                            setDraft((current) => (current ? { ...current, dayIndex: nextIndex } : current))
+                            const picked = parseISO(value)
+                            if (Number.isNaN(picked.getTime())) return
+                            const nextIndex = differenceInCalendarDays(picked, weekStart)
+                            const inWeek = nextIndex >= 0 && nextIndex < dayCount
+                            setDraft((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    planDate: value,
+                                    dayIndex: inWeek ? nextIndex : current.dayIndex,
+                                  }
+                                : current
+                            )
                           }}
                         />
                       </label>
@@ -673,7 +700,11 @@ export default function PlannerEditModal({
                   return
                 }
 
-                const dateStr = format(addDays(weekStart, draft.dayIndex), 'yyyy-MM-dd')
+                const rawPlan = draft.planDate?.trim()
+                const dateStr =
+                  rawPlan && /^\d{4}-\d{2}-\d{2}$/.test(rawPlan)
+                    ? rawPlan
+                    : format(addDays(weekStart, draft.dayIndex), 'yyyy-MM-dd')
                 const workerNames = draft.workers || []
                 const workerIds = resolveWorkerIds(workerNames)
                 const payload = {
@@ -705,25 +736,33 @@ export default function PlannerEditModal({
                     const json = await res.json().catch(() => null)
                     const newId = json?.id ? String(json.id) : null
                     if (newId) {
-                      setScheduledItems((prev) => [
-                        ...prev,
-                        {
-                          id: newId,
-                          kind: 'preventiu',
-                          templateId: payload.templateId,
-                          ticketId: null,
-                          title: payload.title,
-                          workers: workerNames,
-                          workersCount: Math.max(1, workerNames.length || 1),
-                          dayIndex: draft.dayIndex,
-                          start: payload.startTime,
-                          end: payload.endTime,
-                          minutes: draft.duration,
-                          priority: draft.priority,
-                          location: payload.location,
-                          machine: draft.machine,
-                        } as ScheduledItem,
-                      ])
+                      const savedDay = parseISO(dateStr)
+                      const dayOffset = Number.isNaN(savedDay.getTime())
+                        ? null
+                        : differenceInCalendarDays(savedDay, weekStart)
+                      const gridIdx =
+                        dayOffset != null && dayOffset >= 0 && dayOffset < dayCount ? dayOffset : null
+                      if (gridIdx != null) {
+                        setScheduledItems((prev) => [
+                          ...prev,
+                          {
+                            id: newId,
+                            kind: 'preventiu',
+                            templateId: payload.templateId,
+                            ticketId: null,
+                            title: payload.title,
+                            workers: workerNames,
+                            workersCount: Math.max(1, workerNames.length || 1),
+                            dayIndex: gridIdx,
+                            start: payload.startTime,
+                            end: payload.endTime,
+                            minutes: draft.duration,
+                            priority: draft.priority,
+                            location: payload.location,
+                            machine: draft.machine,
+                          } as ScheduledItem,
+                        ])
+                      }
                     }
                   }
                 } catch {

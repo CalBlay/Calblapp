@@ -55,6 +55,7 @@ export type PlannerDraft = {
   ticketId?: string | null
   title: string
   createdAt?: string | number | null
+  planDate?: string
   dayIndex: number
   start: string
   duration: number
