@@ -105,6 +105,7 @@ export async function POST(req: Request) {
     if (!name) return NextResponse.json({ error: 'Falten camps obligatoris' }, { status: 400 })
 
     const now = Date.now()
+    const sections = normalizeSections(body.sections)
     const doc = await db.collection('maintenancePreventiusTemplates').add({
       name,
       periodicity: body.periodicity || null,
@@ -116,7 +117,7 @@ export async function POST(req: Request) {
       autoPlanExcludedWeeks: Array.isArray(body.autoPlanExcludedWeeks)
         ? body.autoPlanExcludedWeeks.map((v) => String(v))
         : [],
-      sections: Array.isArray(body.sections) ? body.sections : [],
+      sections,
       createdAt: now,
       createdById: user.id,
       createdByName: user.name || '',

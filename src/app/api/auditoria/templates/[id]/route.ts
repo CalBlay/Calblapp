@@ -57,12 +57,13 @@ function sanitizeBlocks(input: unknown) {
           const weightRaw = Number(i.weight ?? 0)
           const itemWeight =
             Number.isFinite(weightRaw) && weightRaw >= 0 ? Math.min(100, weightRaw) : 0
-          return {
+          const baseItem = {
             id: String(i.id || `i-${blockIdx + 1}-${itemIdx + 1}`),
             label,
             type: normalizeItemType(String(i.type || 'checklist')),
-            weight: itemWeightMode === 'manual' ? itemWeight : undefined,
           }
+          // Firestore rejects undefined; only persist item weight in manual mode
+          return itemWeightMode === 'manual' ? { ...baseItem, weight: itemWeight } : baseItem
         })
         .filter(Boolean)
 

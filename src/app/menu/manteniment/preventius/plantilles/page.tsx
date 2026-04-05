@@ -254,6 +254,7 @@ export function PreventiusTemplatesContent({
       }
 
       let ok = 0
+      const failures: string[] = []
       for (const candidate of targets) {
         const res = await fetch('/api/maintenance/templates', {
           method: 'POST',
@@ -264,10 +265,18 @@ export function PreventiusTemplatesContent({
             sections: candidate.sections,
           }),
         })
-        if (res.ok) ok += 1
+        if (res.ok) {
+          ok += 1
+        } else {
+          const errJson = await res.json().catch(() => ({}))
+          const msg = String((errJson as { error?: string })?.error || res.statusText || 'Error')
+          failures.push(`${candidate.name || 'Sense nom'}: ${msg}`)
+        }
       }
       await loadTemplates()
-      alert(`Importacio finalitzada: ${ok}/${targets.length} plantilles creades.`)
+      const failText =
+        failures.length > 0 ? `\n\nErrors:\n${failures.slice(0, 5).join('\n')}${failures.length > 5 ? '\n...' : ''}` : ''
+      alert(`Importacio finalitzada: ${ok}/${targets.length} plantilles creades.${failText}`)
       setPreview(null)
       setModelBAvailablePeriods([])
       setModelBSelectedPeriods([])

@@ -8,11 +8,21 @@ import { normalizeRole } from '@/lib/roles'
 
 type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 
+function round2(n: number) {
+  return Math.round(n * 100) / 100
+}
+
 type SummaryRow = {
   department: Department
   responsible: string
   fetes: number
   validades: number
+  /** Suma de compliancePct de les auditories validades (per mitjana ponderada al client) */
+  complianceSum: number
+  /** Nombre d’auditories validades incloses a complianceSum */
+  complianceCount: number
+  /** Mitjana de compliment 0–100 entre auditories validades; 0 si no n’hi ha cap */
+  avgCompliancePct: number
 }
 
 const DEPARTMENTS: Department[] = ['comercial', 'serveis', 'cuina', 'logistica', 'deco']
@@ -71,11 +81,13 @@ export async function GET(req: Request) {
     const mapRows = (snap: FirebaseFirestore.QuerySnapshot) =>
       snap.docs.map((docSnap) => {
         const data = docSnap.data() as Record<string, unknown>
+        const rawPct = Number(data.compliancePct)
         return {
           department: normalizeDept(String(data.department || '')),
           responsible: String(data.completedByName || '').trim() || 'Sense nom',
           status: String(data.status || '').toLowerCase(),
           completedAt: Number(data.completedAt || 0),
+          compliancePct: Number.isFinite(rawPct) ? rawPct : 0,
         }
       })
 
@@ -84,6 +96,7 @@ export async function GET(req: Request) {
       responsible: string
       status: string
       completedAt: number
+      compliancePct: number
     }> = []
 
     try {
@@ -101,7 +114,7 @@ export async function GET(req: Request) {
       })
     }
 
-    const grouped = new Map<string, SummaryRow>()
+    const grouped = new Map<string, Omit<SummaryRow, 'avgCompliancePct'>>()
     rawRows.forEach((row) => {
       if (!row.department || !DEPARTMENTS.includes(row.department)) return
       const key = `${row.department}__${row.responsible}`
@@ -110,13 +123,25 @@ export async function GET(req: Request) {
         responsible: row.responsible,
         fetes: 0,
         validades: 0,
+        complianceSum: 0,
+        complianceCount: 0,
       }
       current.fetes += 1
-      if (row.status === 'validated') current.validades += 1
+      if (row.status === 'validated') {
+        current.validades += 1
+        current.complianceSum += row.compliancePct
+        current.complianceCount += 1
+      }
       grouped.set(key, current)
     })
 
-    const rows = Array.from(grouped.values()).sort((a, b) => {
+    const rows: SummaryRow[] = Array.from(grouped.values()).map((r) => ({
+      ...r,
+      avgCompliancePct:
+        r.complianceCount > 0 ? round2(r.complianceSum / r.complianceCount) : 0,
+    }))
+
+    rows.sort((a, b) => {
       if (b.validades !== a.validades) return b.validades - a.validades
       if (b.fetes !== a.fetes) return b.fetes - a.fetes
       return a.responsible.localeCompare(b.responsible)

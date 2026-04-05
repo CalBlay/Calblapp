@@ -227,8 +227,8 @@ export function normalizePremises(
           condition?.responsible || condition?.worker || ''
         ).trim()
         const responsibleIdValue = String(condition?.responsibleId || '').trim()
-        const responsibleId = responsibleIdValue || undefined
-        if (!locations.length && !responsible && !responsibleId) return acc
+        // Firestore rejects undefined; use empty string when no id is set
+        if (!locations.length && !responsible && !responsibleIdValue) return acc
         acc.push({
           id: String(condition?.id || makeConditionId({
             locations,
@@ -236,7 +236,7 @@ export function normalizePremises(
             index,
           })),
           locations,
-          responsibleId,
+          responsibleId: responsibleIdValue,
           responsible,
         })
         return acc

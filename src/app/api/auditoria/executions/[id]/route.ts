@@ -300,8 +300,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ error: 'Cal validar tots els blocs (si o no)' }, { status: 400 })
     }
 
-    const allValid = usesItemChecks ? itemChecks.every((i) => i.isValid) : blockChecks.every((b) => b.isValid)
-    const status = allValid ? 'validated' : 'rejected'
+    // Estat "validated" = valoració completa (tots els ítems/blocs amb sí o no).
+    // El % de compliment (compliancePct) només pondera els checks positius (isValid === true).
+    const status = 'validated'
     const compliancePct = usesItemChecks
       ? complianceFromItemChecks(templateBlocks, itemChecks)
       : complianceFromChecks(templateBlocks, blockChecks)

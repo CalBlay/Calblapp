@@ -99,6 +99,24 @@ const normalizeRange = (start: Date, end: Date) =>
 const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) =>
   aStart < bEnd && bStart < aEnd
 
+/** Non-overlapping ranges with gap strictly below minRestMs (before/after the busy block). */
+function violatesAdjacentMinRest(
+  reqStart: Date,
+  reqEnd: Date,
+  busyStart: Date,
+  busyEnd: Date,
+  minRestMs: number
+): boolean {
+  if (overlaps(reqStart, reqEnd, busyStart, busyEnd)) return false
+  if (reqEnd.getTime() <= busyStart.getTime()) {
+    return busyStart.getTime() - reqEnd.getTime() < minRestMs
+  }
+  if (reqStart.getTime() >= busyEnd.getTime()) {
+    return reqStart.getTime() - busyEnd.getTime() < minRestMs
+  }
+  return false
+}
+
 const pushIndexedRange = (
   index: Map<string, OccupiedRange[]>,
   key: string | undefined,
@@ -274,18 +292,15 @@ export async function GET(request: NextRequest) {
 
       let hasOverlap = false
       let hasRestViolation = false
+      const minRestMs = minRest * REST_MS_PER_HOUR
 
       for (const range of personRanges) {
         if (overlaps(reqRange.start, reqRange.end, range.start, range.end)) {
           hasOverlap = true
-          break
-        }
-
-        const gapBefore = reqRange.start.getTime() - range.end.getTime()
-        const gapAfter = range.start.getTime() - reqRange.end.getTime()
-        if (gapBefore < minRest * REST_MS_PER_HOUR && gapAfter < minRest * REST_MS_PER_HOUR) {
+        } else if (
+          violatesAdjacentMinRest(reqRange.start, reqRange.end, range.start, range.end, minRestMs)
+        ) {
           hasRestViolation = true
-          break
         }
       }
 

@@ -14,6 +14,7 @@ import type {
   TransportItem,
   UserItem,
 } from '@/app/menu/manteniment/tickets/types'
+import { normalizeName } from '../utils'
 
 type Props = {
   ticketId: string
@@ -91,6 +92,7 @@ export default function PlannerTicketModal({
   })
   const [workerCount, setWorkerCount] = useState(1)
   const [availableIds, setAvailableIds] = useState<string[]>([])
+  const [availableNameNorms, setAvailableNameNorms] = useState<string[]>([])
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [detailsLocation, setDetailsLocation] = useState('')
@@ -99,7 +101,7 @@ export default function PlannerTicketModal({
   const [detailsDescription, setDetailsDescription] = useState('')
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
   const { data: transports } = useTransports()
-  const availabilityCacheRef = useRef<Map<string, string[]>>(new Map())
+  const availabilityCacheRef = useRef<Map<string, { ids: string[]; nameNorms: string[] }>>(new Map())
 
   const maintenanceUsers = useMemo(
     () =>
@@ -172,6 +174,7 @@ export default function PlannerTicketModal({
     const { plannedStart, plannedEnd } = computePlanning()
     if (!plannedStart || !plannedEnd) {
       setAvailableIds([])
+      setAvailableNameNorms([])
       return
     }
     const startDate = new Date(plannedStart)
@@ -184,40 +187,56 @@ export default function PlannerTicketModal({
     ).padStart(2, '0')}`
     const st = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`
     const et = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`
-    const availabilityKey = `${sd}|${ed}|${st}|${et}`
+    const availabilityKey = `${ticketId}|${sd}|${ed}|${st}|${et}`
 
     const cached = availabilityCacheRef.current.get(availabilityKey)
     if (cached) {
-      setAvailableIds(cached)
+      setAvailableIds(cached.ids)
+      setAvailableNameNorms(cached.nameNorms)
       return
     }
 
     try {
       setAvailabilityLoading(true)
-      const res = await fetch(
-        `/api/personnel/available?department=manteniment&startDate=${sd}&endDate=${ed}&startTime=${st}&endTime=${et}`,
-        { cache: 'no-store' }
-      )
+      const params = new URLSearchParams({
+        department: 'manteniment',
+        startDate: sd,
+        endDate: ed,
+        startTime: st,
+        endTime: et,
+        excludeMaintenanceTicketId: ticketId,
+      })
+      const res = await fetch(`/api/personnel/available?${params.toString()}`, { cache: 'no-store' })
       if (!res.ok) {
         setAvailableIds([])
+        setAvailableNameNorms([])
         return
       }
       const json = await res.json()
       const list = Array.isArray(json?.treballadors) ? json.treballadors : []
-      const nextIds = list.map((p: any) => p.id)
-      availabilityCacheRef.current.set(availabilityKey, nextIds)
+      const nextIds = list.map((p: { id?: string }) => String(p?.id || '')).filter(Boolean)
+      const nameNorms = list
+        .map((p: { name?: string }) => normalizeName(String(p?.name || '')))
+        .filter(Boolean)
+      availabilityCacheRef.current.set(availabilityKey, { ids: nextIds, nameNorms })
       setAvailableIds(nextIds)
+      setAvailableNameNorms(nameNorms)
     } finally {
       setAvailabilityLoading(false)
     }
   }
 
   useEffect(() => {
+    setAvailableIds([])
+    setAvailableNameNorms([])
+  }, [assignDate, assignStartTime, assignDuration, ticketId])
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadAvailability()
     }, 300)
     return () => window.clearTimeout(timer)
-  }, [assignDate, assignStartTime, assignDuration])
+  }, [assignDate, assignStartTime, assignDuration, ticketId])
 
   const handleAssign = async (ticket: Ticket, assignedIds: string[], assignedNames: string[]) => {
     try {
@@ -388,6 +407,7 @@ export default function PlannerTicketModal({
       setWorkerCount={setWorkerCount}
       maintenanceUsers={maintenanceUsers}
       availableIds={availableIds}
+      availableNameNorms={availableNameNorms}
       availabilityLoading={availabilityLoading}
       furgonetes={furgonetes}
       locations={locations}

@@ -7,6 +7,7 @@ import type { Ticket, TicketPriority, TicketStatus } from './types'
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import { useMaintenanceTicketCatalog } from './useMaintenanceTicketCatalog'
 import { useMaintenanceTicketComposer } from './useMaintenanceTicketComposer'
+import { normalizeName } from '@/app/menu/manteniment/preventius/planificador/utils'
 
 type SessionUser = {
   id?: string
@@ -20,6 +21,7 @@ type ErrorWithMessage = {
 
 type AvailabilityItem = {
   id: string
+  name?: string
 }
 
 const normalizeDept = (raw?: string) =>
@@ -79,6 +81,7 @@ export function useMaintenanceTickets() {
   const [assignDuration, setAssignDuration] = useState('01:00')
   const [workerCount, setWorkerCount] = useState(1)
   const [availableIds, setAvailableIds] = useState<string[]>([])
+  const [availableNameNorms, setAvailableNameNorms] = useState<string[]>([])
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [detailsLocation, setDetailsLocation] = useState('')
@@ -184,6 +187,7 @@ export function useMaintenanceTickets() {
     setAssignDuration('01:00')
     setWorkerCount(1)
     setAvailableIds([])
+    setAvailableNameNorms([])
     setShowHistory(false)
     setDetailsLocation(selected.location || '')
     setDetailsWorkLocation(selected.workLocation || '')
@@ -460,6 +464,7 @@ export function useMaintenanceTickets() {
     const { plannedStart, plannedEnd } = computePlanning()
     if (!plannedStart || !plannedEnd) {
       setAvailableIds([])
+      setAvailableNameNorms([])
       return
     }
 
@@ -476,21 +481,30 @@ export function useMaintenanceTickets() {
 
     try {
       setAvailabilityLoading(true)
-      const res = await fetch(
-        `/api/personnel/available?department=manteniment&startDate=${sd}&endDate=${ed}&startTime=${st}&endTime=${et}`,
-        { cache: 'no-store' }
-      )
+      const params = new URLSearchParams({
+        department: 'manteniment',
+        startDate: sd,
+        endDate: ed,
+        startTime: st,
+        endTime: et,
+      })
+      if (selected?.id) params.set('excludeMaintenanceTicketId', String(selected.id))
+      const res = await fetch(`/api/personnel/available?${params.toString()}`, { cache: 'no-store' })
       if (!res.ok) {
         setAvailableIds([])
+        setAvailableNameNorms([])
         return
       }
       const json = await res.json()
       const list: AvailabilityItem[] = Array.isArray(json?.treballadors) ? json.treballadors : []
-      setAvailableIds(list.map((person) => person.id))
+      setAvailableIds(list.map((person) => String(person.id || '')).filter(Boolean))
+      setAvailableNameNorms(
+        list.map((person) => normalizeName(String(person.name || ''))).filter(Boolean)
+      )
     } finally {
       setAvailabilityLoading(false)
     }
-  }, [computePlanning])
+  }, [computePlanning, selected?.id])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -673,6 +687,7 @@ export function useMaintenanceTickets() {
     workerCount,
     setWorkerCount,
     availableIds,
+    availableNameNorms,
     availabilityLoading,
     showHistory,
     setShowHistory,

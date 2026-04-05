@@ -48,6 +48,8 @@ type Props = {
   setWorkerCount: (value: number) => void
   maintenanceUsers: UserItem[]
   availableIds: string[]
+  /** Normalized names returned by `/api/personnel/available` (IDs may differ from `UserItem.id`). */
+  availableNameNorms?: string[]
   availabilityLoading: boolean
   furgonetes: TransportItem[]
   locations: string[]
@@ -117,6 +119,7 @@ export default function AssignTicketModal({
   setWorkerCount,
   maintenanceUsers,
   availableIds,
+  availableNameNorms = [],
   availabilityLoading,
   furgonetes,
   locations,
@@ -688,6 +691,7 @@ export default function AssignTicketModal({
                 hasAvailabilityContext={Boolean(assignDate && assignStartTime && assignDuration)}
                 maintenanceUsers={maintenanceUsers}
                 availableIds={availableIds}
+                availableNameNorms={availableNameNorms}
                 ticket={ticket}
                 setSelected={setSelected}
                 selectedVehicleType={selectedVehicleType}

@@ -71,6 +71,10 @@ export default function PreventiusPlanificadorPage() {
     () => Array.from({ length: DAY_COUNT }, (_, i) => addDays(weekStart, i)),
     [weekStart]
   )
+  const daySidebarLabels = useMemo(
+    () => days.map((d) => format(d, 'EEE dd/MM', { locale: ca })),
+    [days]
+  )
   const {
     locations,
     machines,
@@ -568,6 +572,7 @@ export default function PreventiusPlanificadorPage() {
             tab={tab}
             visibleItems={visibleItems}
             scheduledItems={scheduledItems}
+            dayLabels={daySidebarLabels}
             onOpenPendingItem={openPendingItem}
           />
 
@@ -849,6 +854,7 @@ export default function PreventiusPlanificadorPage() {
                 tab={tab}
                 visibleItems={visibleItems}
                 scheduledItems={scheduledItems}
+                dayLabels={daySidebarLabels}
                 desktop
               onOpenPendingItem={openPendingItem}
               onReturnToPending={(data) => {

@@ -1,13 +1,21 @@
 'use client'
 
-import React from 'react'
+import React, { useMemo } from 'react'
 import type { DueTemplate, ScheduledItem, TicketCard } from '../types'
 import { formatTicketCreatedAt, getAgeBadgeClass, getAgeLabel } from '../utils'
+
+function dayLabelForItem(dayIndex: number, dayLabels?: string[]) {
+  const label = dayLabels?.[dayIndex]
+  if (label != null && label !== '') return label
+  return `Dia ${dayIndex + 1}`
+}
 
 type Props = {
   tab: 'preventius' | 'tickets'
   visibleItems: DueTemplate[] | TicketCard[]
   scheduledItems: ScheduledItem[]
+  /** Etiquetes de columna del calendari (`dl. 06/04`, …), mateix ordre que `dayIndex`. */
+  dayLabels?: string[]
   desktop?: boolean
   onOpenPendingItem: (
     item:
@@ -37,10 +45,45 @@ export default function PlannerSidebar({
   tab,
   visibleItems,
   scheduledItems,
+  dayLabels,
   desktop = false,
   onOpenPendingItem,
   onReturnToPending,
 }: Props) {
+  const pendingPreventius = useMemo(() => {
+    if (tab !== 'preventius') return []
+    return (visibleItems as DueTemplate[]).filter(
+      (item) =>
+        !scheduledItems.some((s) => s.kind === 'preventiu' && s.templateId === item.id)
+    )
+  }, [tab, visibleItems, scheduledItems])
+
+  const pendingTickets = useMemo(() => {
+    if (tab !== 'tickets') return []
+    return (visibleItems as TicketCard[]).filter(
+      (item) =>
+        !scheduledItems.some((s) => s.kind === 'ticket' && (s.ticketId || s.id) === item.id)
+    )
+  }, [tab, visibleItems, scheduledItems])
+
+  const scheduledPreventiusOnCalendar = useMemo(() => {
+    if (tab !== 'preventius') return []
+    return [...scheduledItems]
+      .filter((s) => s.kind === 'preventiu')
+      .sort((a, b) =>
+        a.dayIndex !== b.dayIndex ? a.dayIndex - b.dayIndex : a.start.localeCompare(b.start)
+      )
+  }, [tab, scheduledItems])
+
+  const scheduledTicketsOnCalendar = useMemo(() => {
+    if (tab !== 'tickets') return []
+    return [...scheduledItems]
+      .filter((s) => s.kind === 'ticket')
+      .sort((a, b) =>
+        a.dayIndex !== b.dayIndex ? a.dayIndex - b.dayIndex : a.start.localeCompare(b.start)
+      )
+  }, [tab, scheduledItems])
+
   const wrapperClass = desktop
     ? 'flex h-full min-h-0 flex-col rounded-2xl border bg-white p-3'
     : 'rounded-2xl border bg-white p-4'
@@ -71,24 +114,32 @@ export default function PlannerSidebar({
         {tab === 'preventius' ? 'Preventius pendents' : 'Tickets pendents'}
       </div>
       <div className={[listClass, desktop ? 'min-h-0 flex-1 overflow-y-auto pr-1' : ''].join(' ')}>
-        {tab === 'preventius' &&
-          (visibleItems as DueTemplate[]).map((item) => {
-            const alreadyPlanned = scheduledItems.some(
-              (scheduled) => scheduled.kind === 'preventiu' && scheduled.templateId === item.id
-            )
+        {tab === 'preventius' && pendingPreventius.length === 0 ? (
+          <p className="py-4 text-center text-xs leading-relaxed text-gray-500">
+            {scheduledPreventiusOnCalendar.length > 0
+              ? 'Cap preventiu pendent per afegir; els que tens planificats (auto o manual) son a la llista de sota.'
+              : 'No hi ha preventius pendents de planificar en aquesta setmana (o ja estan al calendari).'}
+          </p>
+        ) : null}
 
+        {tab === 'tickets' && pendingTickets.length === 0 ? (
+          <p className="py-4 text-center text-xs leading-relaxed text-gray-500">
+            {scheduledTicketsOnCalendar.length > 0
+              ? 'Cap ticket pendent per afegir; els planificats son a la llista de sota.'
+              : 'No hi ha tickets pendents de planificar (o ja estan al calendari).'}
+          </p>
+        ) : null}
+
+        {tab === 'preventius' &&
+          pendingPreventius.map((item) => {
             if (desktop) {
               return (
                 <div
                   key={item.id}
-                  className={[
-                    'rounded-lg border px-2 py-2 text-[11px] bg-white',
-                    alreadyPlanned ? 'opacity-40 cursor-not-allowed' : 'cursor-grab hover:bg-slate-50',
-                  ].join(' ')}
-                  draggable={!alreadyPlanned}
-                  title={alreadyPlanned ? 'Ja planificat' : 'Arrossega al calendari'}
+                  className="cursor-grab rounded-lg border bg-white px-2 py-2 text-[11px] hover:bg-slate-50"
+                  draggable
+                  title="Arrossega al calendari"
                   onClick={() => {
-                    if (alreadyPlanned) return
                     onOpenPendingItem({
                       kind: 'preventiu',
                       id: item.id,
@@ -99,7 +150,6 @@ export default function PlannerSidebar({
                     })
                   }}
                   onDragStart={(e) => {
-                    if (alreadyPlanned) return
                     e.dataTransfer.setData(
                       'text/plain',
                       JSON.stringify({
@@ -131,10 +181,7 @@ export default function PlannerSidebar({
             }
 
             return (
-              <div
-                key={item.id}
-                className={`rounded-2xl border px-4 py-3 ${alreadyPlanned ? 'opacity-50' : ''}`}
-              >
+              <div key={item.id} className="rounded-2xl border px-4 py-3">
                 <div className="text-sm font-semibold text-gray-900">{item.name}</div>
                 {item.location && <div className="mt-1 text-sm text-gray-500">{item.location}</div>}
                 <div className="mt-3 flex items-center justify-between gap-2">
@@ -149,7 +196,6 @@ export default function PlannerSidebar({
                   </span>
                   <button
                     type="button"
-                    disabled={alreadyPlanned}
                     onClick={() =>
                       onOpenPendingItem({
                         kind: 'preventiu',
@@ -160,9 +206,9 @@ export default function PlannerSidebar({
                         priority: item.dueState === 'overdue' ? 'alta' : 'normal',
                       })
                     }
-                    className="min-h-[44px] rounded-full border px-4 text-sm font-medium disabled:cursor-not-allowed"
+                    className="min-h-[44px] rounded-full border px-4 text-sm font-medium"
                   >
-                    {alreadyPlanned ? 'Ja planificat' : 'Planificar'}
+                    Planificar
                   </button>
                 </div>
               </div>
@@ -170,23 +216,15 @@ export default function PlannerSidebar({
           })}
 
         {tab === 'tickets' &&
-          (visibleItems as TicketCard[]).map((item) => {
-            const alreadyPlanned = scheduledItems.some(
-              (scheduled) => scheduled.kind === 'ticket' && (scheduled.ticketId || scheduled.id) === item.id
-            )
-
+          pendingTickets.map((item) => {
             if (desktop) {
               return (
                 <div
                   key={item.id}
-                  className={[
-                    'rounded-lg border px-2 py-2 text-[11px] bg-white',
-                    alreadyPlanned ? 'opacity-40 cursor-not-allowed' : 'cursor-grab hover:bg-slate-50',
-                  ].join(' ')}
-                  draggable={!alreadyPlanned}
-                  title={alreadyPlanned ? 'Ja planificat' : 'Arrossega al calendari'}
+                  className="cursor-grab rounded-lg border bg-white px-2 py-2 text-[11px] hover:bg-slate-50"
+                  draggable
+                  title="Arrossega al calendari"
                   onClick={() => {
-                    if (alreadyPlanned) return
                     onOpenPendingItem({
                       kind: 'ticket',
                       id: item.id,
@@ -199,7 +237,6 @@ export default function PlannerSidebar({
                     })
                   }}
                   onDragStart={(e) => {
-                    if (alreadyPlanned) return
                     e.dataTransfer.setData(
                       'text/plain',
                       JSON.stringify({
@@ -240,10 +277,7 @@ export default function PlannerSidebar({
             }
 
             return (
-              <div
-                key={item.id}
-                className={`rounded-2xl border px-4 py-3 ${alreadyPlanned ? 'opacity-50' : ''}`}
-              >
+              <div key={item.id} className="rounded-2xl border px-4 py-3">
                 <div className="text-sm font-semibold text-gray-900">
                   {item.code} · {item.title}
                 </div>
@@ -267,27 +301,92 @@ export default function PlannerSidebar({
                   </div>
                   <button
                     type="button"
-                    disabled={alreadyPlanned}
                     onClick={() =>
                       onOpenPendingItem({
-                      kind: 'ticket',
-                      id: item.id,
-                      title: `${item.code} - ${item.title}`.trim(),
-                      minutes: item.minutes,
-                      priority: item.priority,
-                      location: item.location || '',
-                      machine: item.machine || '',
-                      createdAt: item.createdAt || null,
-                    })
-                  }
-                    className="min-h-[44px] rounded-full border px-4 text-sm font-medium disabled:cursor-not-allowed"
+                        kind: 'ticket',
+                        id: item.id,
+                        title: `${item.code} - ${item.title}`.trim(),
+                        minutes: item.minutes,
+                        priority: item.priority,
+                        location: item.location || '',
+                        machine: item.machine || '',
+                        createdAt: item.createdAt || null,
+                      })
+                    }
+                    className="min-h-[44px] rounded-full border px-4 text-sm font-medium"
                   >
-                    {alreadyPlanned ? 'Ja planificat' : 'Planificar'}
+                    Planificar
                   </button>
                 </div>
               </div>
             )
           })}
+
+        {tab === 'preventius' && scheduledPreventiusOnCalendar.length > 0 ? (
+          <div className={desktop ? 'mt-3 border-t border-slate-200 pt-3' : 'mt-6 border-t border-slate-200 pt-4'}>
+            <div
+              className={
+                desktop ? 'text-[11px] font-semibold text-slate-700' : 'text-xs font-semibold text-slate-700'
+              }
+            >
+              Al calendari (aquesta setmana)
+            </div>
+            <p
+              className={`mt-1 text-slate-500 ${desktop ? 'text-[10px] leading-snug' : 'text-[11px] leading-snug'}`}
+            >
+              Inclou planificacio automatica i manual. Per desplanificar, arrossega la fitxa del calendari cap aqui.
+            </p>
+            <div className={desktop ? 'mt-2 space-y-1.5' : 'mt-3 space-y-2'}>
+              {scheduledPreventiusOnCalendar.map((s) => (
+                <div
+                  key={s.id}
+                  className={`rounded-lg border border-emerald-100 bg-emerald-50/70 text-slate-800 ${
+                    desktop ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'
+                  }`}
+                >
+                  <div className="font-semibold leading-snug">{s.title}</div>
+                  <div className="mt-0.5 text-slate-600">
+                    {dayLabelForItem(s.dayIndex, dayLabels)} · {s.start}–{s.end}
+                    {s.location ? ` · ${s.location}` : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {tab === 'tickets' && scheduledTicketsOnCalendar.length > 0 ? (
+          <div className={desktop ? 'mt-3 border-t border-slate-200 pt-3' : 'mt-6 border-t border-slate-200 pt-4'}>
+            <div
+              className={
+                desktop ? 'text-[11px] font-semibold text-slate-700' : 'text-xs font-semibold text-slate-700'
+              }
+            >
+              Al calendari (aquesta setmana)
+            </div>
+            <p
+              className={`mt-1 text-slate-500 ${desktop ? 'text-[10px] leading-snug' : 'text-[11px] leading-snug'}`}
+            >
+              Per desplanificar, arrossega la fitxa del calendari cap aqui.
+            </p>
+            <div className={desktop ? 'mt-2 space-y-1.5' : 'mt-3 space-y-2'}>
+              {scheduledTicketsOnCalendar.map((s) => (
+                <div
+                  key={s.id}
+                  className={`rounded-lg border border-sky-100 bg-sky-50/70 text-slate-800 ${
+                    desktop ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'
+                  }`}
+                >
+                  <div className="font-semibold leading-snug">{s.title}</div>
+                  <div className="mt-0.5 text-slate-600">
+                    {dayLabelForItem(s.dayIndex, dayLabels)} · {s.start}–{s.end}
+                    {s.location ? ` · ${s.location}` : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
       {desktop && (
         <div className="mt-3 shrink-0 text-[11px] text-gray-500">

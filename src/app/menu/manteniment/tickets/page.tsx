@@ -172,6 +172,7 @@ export default function MaintenanceTicketsPage() {
     workerCount,
     setWorkerCount,
     availableIds,
+    availableNameNorms,
     availabilityLoading,
     showHistory,
     setShowHistory,
@@ -584,6 +585,7 @@ export default function MaintenanceTicketsPage() {
             setWorkerCount={setWorkerCount}
             maintenanceUsers={maintenanceUsers}
             availableIds={availableIds}
+            availableNameNorms={availableNameNorms}
             availabilityLoading={availabilityLoading}
             furgonetes={furgonetes}
             locations={locations}

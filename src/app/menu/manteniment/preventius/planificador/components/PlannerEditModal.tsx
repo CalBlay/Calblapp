@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import { typography } from '@/lib/typography'
 import { formatDateOnly, formatDateTimeValue } from '@/lib/date-format'
 import type { PlannerDraft, ScheduledItem } from '../types'
+import { normalizeName } from '../utils'
 
 type Props = {
   draft: PlannerDraft
@@ -104,16 +105,22 @@ export default function PlannerEditModal({
   onUnplanTicket,
 }: Props) {
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
+  const [availabilityFetchOk, setAvailabilityFetchOk] = useState(false)
   const [availableIds, setAvailableIds] = useState<string[]>([])
+  const [availableRemoteNameNorms, setAvailableRemoteNameNorms] = useState<string[]>([])
   const [infoOpen, setInfoOpen] = useState(true)
   const [jobDetailsOpen, setJobDetailsOpen] = useState(true)
   const [planningOpen, setPlanningOpen] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyRecords, setHistoryRecords] = useState<PreventiuHistoryRecord[]>([])
-  const availabilityCacheRef = useRef<Map<string, string[]>>(new Map())
+  const availabilityCacheRef = useRef<Map<string, { ids: string[]; nameNorms: string[] }>>(new Map())
 
   const selectedDay = addDays(weekStart, draft.dayIndex)
+  const planningDateKey = useMemo(
+    () => format(addDays(weekStart, draft.dayIndex), 'yyyy-MM-dd'),
+    [weekStart, draft.dayIndex]
+  )
   const createdAtLabel =
     draft.createdAt != null && !Number.isNaN(new Date(draft.createdAt).getTime())
       ? formatDateOnly(draft.createdAt, '-')
@@ -159,26 +166,43 @@ export default function PlannerEditModal({
   )
 
   const remotelyAvailableIds = useMemo(() => new Set(availableIds.map(String)), [availableIds])
+  const remotelyAvailableNameNorms = useMemo(
+    () => new Set(availableRemoteNameNorms),
+    [availableRemoteNameNorms]
+  )
 
   const selectableOperators = useMemo(
     () =>
       operatorPool.map((operator) => {
         const checked = draft.workers.includes(operator.name)
         const availableLocal = locallyAvailableIds.has(operator.id)
-        const availableRemote = remotelyAvailableIds.has(operator.id)
-        const available = checked || (availableLocal && availableRemote)
+        const nameNorm = normalizeName(operator.name)
+        const availableRemote =
+          remotelyAvailableIds.has(operator.id) ||
+          (nameNorm.length > 0 && remotelyAvailableNameNorms.has(nameNorm))
+        const available =
+          checked || (availabilityFetchOk ? availableRemote : availableLocal)
         return { ...operator, checked, available }
       }),
-    [draft.workers, locallyAvailableIds, operatorPool, remotelyAvailableIds]
+    [
+      availabilityFetchOk,
+      draft.workers,
+      locallyAvailableIds,
+      operatorPool,
+      remotelyAvailableIds,
+      remotelyAvailableNameNorms,
+    ]
   )
 
   const loadAvailability = async () => {
-    const dateStr = format(selectedDay, 'yyyy-MM-dd')
+    const dateStr = planningDateKey
     const availabilityKey = [dateStr, draft.start, draft.end, draft.id || 'new'].join('|')
     const cached = availabilityCacheRef.current.get(availabilityKey)
     if (cached) {
-      setAvailableIds(cached)
-      return cached
+      setAvailableIds(cached.ids)
+      setAvailableRemoteNameNorms(cached.nameNorms)
+      setAvailabilityFetchOk(true)
+      return cached.ids
     }
 
     try {
@@ -194,13 +218,20 @@ export default function PlannerEditModal({
       const res = await fetch(`/api/personnel/available?${params.toString()}`, { cache: 'no-store' })
       if (!res.ok) {
         setAvailableIds([])
+        setAvailableRemoteNameNorms([])
+        setAvailabilityFetchOk(false)
         return []
       }
       const json = await res.json()
       const list = Array.isArray(json?.treballadors) ? json.treballadors : []
       const nextIds = list.map((person: { id?: string }) => String(person?.id || '')).filter(Boolean)
-      availabilityCacheRef.current.set(availabilityKey, nextIds)
+      const nameNorms = list
+        .map((person: { name?: string }) => normalizeName(String(person?.name || '')))
+        .filter(Boolean)
+      availabilityCacheRef.current.set(availabilityKey, { ids: nextIds, nameNorms })
       setAvailableIds(nextIds)
+      setAvailableRemoteNameNorms(nameNorms)
+      setAvailabilityFetchOk(true)
       return nextIds
     } finally {
       setAvailabilityLoading(false)
@@ -208,11 +239,17 @@ export default function PlannerEditModal({
   }
 
   useEffect(() => {
+    setAvailabilityFetchOk(false)
+    setAvailableIds([])
+    setAvailableRemoteNameNorms([])
+  }, [planningDateKey, draft.end, draft.id, draft.start])
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadAvailability()
     }, 250)
     return () => window.clearTimeout(timer)
-  }, [draft.dayIndex, draft.end, draft.id, draft.start, selectedDay])
+  }, [planningDateKey, draft.end, draft.id, draft.start])
 
   useEffect(() => {
     let cancelled = false

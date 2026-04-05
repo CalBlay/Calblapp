@@ -45,6 +45,9 @@ type ValuationSummaryRow = {
   responsible: string
   fetes: number
   validades: number
+  complianceSum: number
+  complianceCount: number
+  avgCompliancePct: number
 }
 
 type ValuationRow = {
@@ -52,7 +55,8 @@ type ValuationRow = {
   responsible: string
   fetes: number
   validades: number
-  percentValidacio: number
+  /** 0–1 mitjana de compliment (compliancePct) sobre auditories validades */
+  percentCompliment: number
   factorMinim: number
   maxBonusEur: number
   bonusEur: number
@@ -424,15 +428,34 @@ export default function AuditoriaValoracioPage() {
   }
 
   const valuationRows = useMemo<ValuationRow[]>(() => {
-    const grouped = new Map<string, { department: Department; responsible: string; fetes: number; validades: number }>()
+    const grouped = new Map<
+      string,
+      {
+        department: Department
+        responsible: string
+        fetes: number
+        validades: number
+        complianceSum: number
+        complianceCount: number
+      }
+    >()
     valuationSummaryRows.forEach((row) => {
       const department = String(row.department || '').trim() as Department
       if (!DEPARTMENTS.some((d) => d.id === department)) return
       const responsible = String(row.responsible || '').trim() || 'Sense nom'
       const key = valuationDepartment === 'all' ? `${department}__${responsible}` : responsible
-      const base = grouped.get(key) || { department, responsible, fetes: 0, validades: 0 }
+      const base = grouped.get(key) || {
+        department,
+        responsible,
+        fetes: 0,
+        validades: 0,
+        complianceSum: 0,
+        complianceCount: 0,
+      }
       base.fetes += Number(row.fetes || 0)
       base.validades += Number(row.validades || 0)
+      base.complianceSum += Number(row.complianceSum || 0)
+      base.complianceCount += Number(row.complianceCount || 0)
       grouped.set(key, base)
     })
 
@@ -443,16 +466,24 @@ export default function AuditoriaValoracioPage() {
       }
       const min = Math.max(0, Number(cfg.minAuditoriesMes || 0))
       const max = Math.max(0, Number(cfg.maxBonusMensualEur || 0))
-      const percent = v.fetes > 0 ? v.validades / v.fetes : 0
+      const avgCompliancePct =
+        v.complianceCount > 0 ? v.complianceSum / v.complianceCount : 0
+      const complianceRate = Math.max(0, Math.min(1, avgCompliancePct / 100))
+      const validationRate = v.fetes > 0 ? v.validades / v.fetes : 0
       const factorMinim = min > 0 ? (v.fetes >= min ? 1 : 0) : 1
       const bonusBase = cfg.bonusMode === 'per_event' ? max * v.fetes : max
-      const bonus = bonusBase * percent * factorMinim
+      let bonus: number
+      if (cfg.bonusMode === 'per_event') {
+        bonus = max * v.validades * complianceRate * factorMinim
+      } else {
+        bonus = bonusBase * validationRate * complianceRate * factorMinim
+      }
       return {
         department: v.department,
         responsible: v.responsible,
         fetes: v.fetes,
         validades: v.validades,
-        percentValidacio: percent,
+        percentCompliment: complianceRate,
         factorMinim,
         maxBonusEur: bonusBase,
         bonusEur: Math.round(bonus * 100) / 100,
@@ -812,7 +843,7 @@ export default function AuditoriaValoracioPage() {
                     <div>Responsable</div>
                     <div className="text-right">Auditories</div>
                     <div className="text-right">Validades</div>
-                    <div className="text-right">% validacio</div>
+                    <div className="text-right">% compliment</div>
                     <div className="text-right">Factor minim</div>
                     <div className="text-right">Bonus EUR</div>
                   </div>
@@ -835,7 +866,7 @@ export default function AuditoriaValoracioPage() {
                         <div className="truncate text-gray-900">{row.responsible}</div>
                         <div className="text-right text-gray-700">{row.fetes}</div>
                         <div className="text-right text-gray-700">{row.validades}</div>
-                        <div className="text-right text-gray-700">{formatPct(row.percentValidacio)}</div>
+                        <div className="text-right text-gray-700">{formatPct(row.percentCompliment)}</div>
                         <div className="text-right text-gray-700">{formatPct(row.factorMinim)}</div>
                         <div className="text-right font-semibold text-gray-900">{formatEur(row.bonusEur)}</div>
                       </div>

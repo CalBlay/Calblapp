@@ -313,7 +313,7 @@ export default function AuditoriaValoracioDetailPage() {
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="text-lg font-semibold text-gray-900">{block.title || `Bloc ${bIdx + 1}`}</h3>
                       <div className="text-xs rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-                        {checkedCount}/{items.length} items validats
+                        {checkedCount}/{items.length} amb check positiu
                       </div>
                     </div>
 

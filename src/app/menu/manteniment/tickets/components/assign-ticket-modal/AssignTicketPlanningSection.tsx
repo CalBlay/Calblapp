@@ -1,6 +1,7 @@
-import type { Dispatch, SetStateAction } from 'react'
+import { useMemo, type Dispatch, type SetStateAction } from 'react'
 import { formatDateOnly } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
+import { normalizeName } from '@/app/menu/manteniment/preventius/planificador/utils'
 import type { Ticket, TransportItem, UserItem } from '../../types'
 
 type VehicleTypeOption = { value: string; label: string }
@@ -20,6 +21,7 @@ type Props = {
   hasAvailabilityContext: boolean
   maintenanceUsers: UserItem[]
   availableIds: string[]
+  availableNameNorms?: string[]
   ticket: Ticket
   setSelected: Dispatch<SetStateAction<Ticket | null>>
   selectedVehicleType: string
@@ -50,6 +52,7 @@ export default function AssignTicketPlanningSection({
   hasAvailabilityContext,
   maintenanceUsers,
   availableIds,
+  availableNameNorms = [],
   ticket,
   setSelected,
   selectedVehicleType,
@@ -59,6 +62,8 @@ export default function AssignTicketPlanningSection({
   onAssignVehicle,
   formatDateTime,
 }: Props) {
+  const remoteNameNormSet = useMemo(() => new Set(availableNameNorms), [availableNameNorms])
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -193,7 +198,13 @@ export default function AssignTicketPlanningSection({
         <div className="mt-3 flex flex-wrap gap-2.5">
             {maintenanceUsers.map((u) => {
               const checked = ticket.assignedToIds?.includes(u.id)
-              const isAvailable = !hasAvailabilityContext || availableIds.includes(u.id)
+              const nameNorm = normalizeName(u.name || '')
+              const inRemoteByName = nameNorm.length > 0 && remoteNameNormSet.has(nameNorm)
+              const isAvailable =
+                checked ||
+                !hasAvailabilityContext ||
+                availableIds.includes(u.id) ||
+                inRemoteByName
               return (
                 <label
                   key={u.id}

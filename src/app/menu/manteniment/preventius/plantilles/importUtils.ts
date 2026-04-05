@@ -92,6 +92,48 @@ const isPeriodLabel = (value: string) => {
   )
 }
 
+/** Segona columna de capçalera matriu (Excel pot usar variants de fletxa o símbols) */
+const isMatrixArrowOrHeaderCell = (normalized: string) => {
+  if (!normalized) return false
+  if (normalized === '↓') return true
+  return (
+    normalized.includes('↓') ||
+    normalized.includes('⬇') ||
+    normalized.includes('▼') ||
+    normalized.includes('˅')
+  )
+}
+
+const rowSomeCellIncludes = (row: string[] | undefined, needle: string) => {
+  if (!Array.isArray(row)) return false
+  return row.some((cell) => normalize(String(cell || '')).includes(needle))
+}
+
+/**
+ * Full tipus llista de manteniment: files amb MENSUAL / TRIMESTRAL / SEMESTRAL / ANUAL
+ * i tasques a sota, sense paraules clau FEINES+ FET ni PERIODE+ TREBALLS.
+ */
+const looksLikePeriodSectionChecklist = (rows: string[][]) => {
+  let periodBlocks = 0
+  let taskLikeRows = 0
+  for (const row of rows) {
+    if (!Array.isArray(row)) continue
+    const c0 = cleanText(row[0] || '')
+    const c1 = cleanText(row[1] || '')
+    const n0 = normalize(c0)
+    if (isPeriodLabel(c0)) {
+      periodBlocks += 1
+      continue
+    }
+    if (n0.includes('OBSERVACIONS')) continue
+    if (n0.startsWith('TECNIC') || n0 === 'DATA' || n0.startsWith('DATA ')) continue
+    const task = c1 || c0
+    if (task.length < 8 || task.length > 120) continue
+    taskLikeRows += 1
+  }
+  return periodBlocks >= 1 && taskLikeRows >= 2
+}
+
 export const periodFromLabel = (value: string): Template['periodicity'] => {
   const normalized = normalize(value)
   if (normalized.startsWith('DIARI')) return 'daily'
@@ -107,12 +149,14 @@ const detectModel = (sheetNames: string[], rows: string[][]): ImportModel => {
   if (hasPeriodicSheets) return 'C'
 
   const hasMatrixMarkers = rows.some((row) => {
-    const first = normalize(row[0] || '')
-    const second = normalize(row[1] || '')
-    return (
-      first.includes('PERIODE') &&
-      (second === '↓' || second.includes('A COMPROVAR') || second.includes('ELEMENTS'))
+    if (!Array.isArray(row) || row.length < 2) return false
+    const cells = row.map((c) => normalize(String(c || '')))
+    const hasPeriode = cells.some((c) => c.includes('PERIODE'))
+    const hasSecondLike = cells.slice(1).some(
+      (c) =>
+        isMatrixArrowOrHeaderCell(c) || c.includes('A COMPROVAR') || c.includes('ELEMENTS')
     )
+    return hasPeriode && hasSecondLike
   })
   if (hasMatrixMarkers) return 'D'
 
@@ -122,6 +166,7 @@ const detectModel = (sheetNames: string[], rows: string[][]): ImportModel => {
   }
   if (joined.includes('PERIODE') && joined.includes('TREBALLS')) return 'B'
   if (joined.includes('FEINES') && (joined.includes('FET') || joined.includes('PENDENT'))) return 'B'
+  if (looksLikePeriodSectionChecklist(rows)) return 'B'
   return 'UNKNOWN'
 }
 
@@ -239,14 +284,27 @@ const firstMeaningful = (rows: string[][]) => {
 }
 
 const rowsToSectionsMatrix = (rows: string[][]) => {
-  const headerTopIdx = rows.findIndex((row) => normalize(row[0] || '').includes('ANY'))
-  const headerBottomIdx = rows.findIndex((row) => normalize(row[0] || '').includes('PERIODE'))
-  const startDataIdx = headerBottomIdx >= 0 ? headerBottomIdx + 1 : Math.max(3, headerTopIdx + 1)
+  const headerTopIdx = rows.findIndex((row) => rowSomeCellIncludes(row, 'ANY'))
+  const headerBottomIdx = rows.findIndex((row) => rowSomeCellIncludes(row, 'PERIODE'))
+  const startDataIdx =
+    headerBottomIdx >= 0
+      ? headerBottomIdx + 1
+      : headerTopIdx >= 0
+        ? headerTopIdx + 2
+        : 3
+
+  let maxCol = 24
+  rows.forEach((row) => {
+    if (Array.isArray(row)) maxCol = Math.max(maxCol, row.length)
+  })
+  maxCol = Math.min(maxCol + 2, 96)
 
   const columnNames: string[] = []
-  for (let column = 2; column < 20; column += 1) {
-    const top = cleanText(rows[headerTopIdx]?.[column] || '')
-    const bottom = cleanText(rows[headerBottomIdx]?.[column] || '')
+  const safeTop = headerTopIdx >= 0 ? rows[headerTopIdx] : undefined
+  const safeBottom = headerBottomIdx >= 0 ? rows[headerBottomIdx] : undefined
+  for (let column = 2; column < maxCol; column += 1) {
+    const top = cleanText(safeTop?.[column] || '')
+    const bottom = cleanText(safeBottom?.[column] || '')
     const name = [top, bottom].filter(Boolean).join(' - ').trim()
     if (!name) continue
     columnNames[column] = name
@@ -265,7 +323,7 @@ const rowsToSectionsMatrix = (rows: string[][]) => {
     if (isPeriodLabel(c0) || /^\d/.test(c0)) currentPeriod = c0 || currentPeriod
 
     const baseTask = c1
-    if (!baseTask || n1 === '↓') return
+    if (!baseTask || isMatrixArrowOrHeaderCell(n1)) return
 
     let hasExplicitMarks = false
     for (let column = 2; column < row.length; column += 1) {
