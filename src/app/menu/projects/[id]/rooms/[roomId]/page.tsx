@@ -34,6 +34,7 @@ import {
   type ProjectData,
 } from '../../../components/project-shared'
 import { priorityBadgeClass, taskStatusBadgeClass } from '../../../components/project-workspace-helpers'
+import { compressRasterImageForUpload } from '@/lib/file-optimization'
 
 type ProjectResponse = ProjectData
 
@@ -448,8 +449,21 @@ export default function ProjectRoomDetailPage() {
     if (!pendingDocument || !params?.id || !params?.roomId) return
     setSaving(true)
     try {
+      let fileToSend = pendingDocument
+      if (pendingDocument.type.startsWith('image/')) {
+        try {
+          fileToSend = await compressRasterImageForUpload(pendingDocument)
+        } catch {
+          toast({
+            title: 'Error amb la imatge',
+            description: 'No s ha pogut comprimir la imatge.',
+            variant: 'destructive',
+          })
+          return
+        }
+      }
       const form = new FormData()
-      form.set('file', pendingDocument)
+      form.set('file', fileToSend)
 
       const res = await fetch(`/api/projects/${params.id}/rooms/${params.roomId}`, {
         method: 'POST',
@@ -485,8 +499,21 @@ export default function ProjectRoomDetailPage() {
     if (!pendingDocument || !params?.id || !project) return
     setSaving(true)
     try {
+      let fileToSend = pendingDocument
+      if (pendingDocument.type.startsWith('image/')) {
+        try {
+          fileToSend = await compressRasterImageForUpload(pendingDocument)
+        } catch {
+          toast({
+            title: 'Error amb la imatge',
+            description: 'No s ha pogut comprimir la imatge.',
+            variant: 'destructive',
+          })
+          return
+        }
+      }
       const form = buildProjectForm(project)
-      form.set('file', pendingDocument)
+      form.set('file', fileToSend)
       form.set('fileCategory', 'initial')
       form.set('fileLabel', pendingDocument.name)
 

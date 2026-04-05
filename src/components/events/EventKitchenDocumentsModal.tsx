@@ -9,8 +9,17 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { ExternalLink, FileText, FileSpreadsheet, Presentation, File, Image as ImgIcon } from 'lucide-react'
+import {
+  ExternalLink,
+  FileText,
+  FileSpreadsheet,
+  Presentation,
+  File,
+  Image as ImgIcon,
+  X,
+} from 'lucide-react'
 import AttachFileButton from '@/components/calendar/AttachFileButton'
+import { Button } from '@/components/ui/button'
 import useEventDocuments, { EventDoc } from '@/hooks/events/useEventDocuments'
 
 const FIELD_PREFIX = 'cuinaFile'
@@ -55,14 +64,28 @@ export default function EventKitchenDocumentsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[90vw] max-w-md rounded-2xl p-4">
-        <DialogHeader>
-          <DialogTitle className="text-base font-semibold text-slate-900">
-            Documents cuina
-          </DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">
-            Adjunta documents de cuina per a aquest esdeveniment.
-          </DialogDescription>
+      <DialogContent className="w-[90vw] max-w-md rounded-2xl p-4" lockDismissOnOutside>
+        <DialogHeader className="space-y-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-2 text-left">
+              <DialogTitle className="text-base font-semibold text-slate-900">
+                Documents cuina
+              </DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground">
+                Adjunta documents de cuina per a aquest esdeveniment.
+              </DialogDescription>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="shrink-0 h-9 w-9 rounded-full"
+              onClick={() => onOpenChange(false)}
+              aria-label="Tancar"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </DialogHeader>
 
         <div className="mt-3 space-y-3">

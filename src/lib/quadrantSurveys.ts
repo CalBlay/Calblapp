@@ -191,12 +191,25 @@ async function ensureChannelMembership(channelId: string, targets: SurveyTargetW
   const existingUserIds = new Set(
     existingSnap.docs.map((doc) => String((doc.data() as any)?.userId || '').trim()).filter(Boolean)
   )
-  const usersSnap = await db.collection('users').get()
+  const needUserIds = Array.from(
+    new Set(
+      targets
+        .map((t) => String(t.userId || '').trim())
+        .filter((uid) => uid && !existingUserIds.has(uid))
+    )
+  )
   const userNameMap = new Map<string, string>()
-  usersSnap.forEach((doc) => {
-    const data = doc.data() as any
-    if (data?.name) userNameMap.set(doc.id, String(data.name))
-  })
+  const chunkSize = 10
+  for (let i = 0; i < needUserIds.length; i += chunkSize) {
+    const chunk = needUserIds.slice(i, i + chunkSize)
+    const refs = chunk.map((uid) => db.collection('users').doc(uid))
+    const snaps = await db.getAll(...refs)
+    snaps.forEach((doc) => {
+      if (!doc.exists) return
+      const data = doc.data() as any
+      if (data?.name) userNameMap.set(doc.id, String(data.name))
+    })
+  }
 
   const batch = db.batch()
   const now = Date.now()

@@ -3,13 +3,30 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
 
-export async function GET() {
+const DEFAULT_LIMIT_PER_COLLECTION = 400
+const MAX_LIMIT_PER_COLLECTION = 1500
+
+/**
+ * Lectura acotada de stage_taronja / stage_verd (evita .get() sense límit).
+ * Query: limitPerCol (default 400, max 1500 per col·lecció).
+ */
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url)
+    const raw = Number(searchParams.get('limitPerCol') || searchParams.get('limit') || '')
+    const limitPerCol = Math.min(
+      MAX_LIMIT_PER_COLLECTION,
+      Math.max(
+        1,
+        Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_LIMIT_PER_COLLECTION
+      )
+    )
+
     const collections = ['stage_taronja', 'stage_verd'] as const
     const results: Array<Record<string, unknown>> = []
 
     for (const name of collections) {
-      const snapshot = await firestoreAdmin.collection(name).get()
+      const snapshot = await firestoreAdmin.collection(name).limit(limitPerCol).get()
 
       snapshot.forEach((doc) => {
         const data = doc.data() as Record<string, unknown>
@@ -48,7 +65,12 @@ export async function GET() {
       })
     }
 
-    return NextResponse.json({ data: results, total: results.length })
+    return NextResponse.json({
+      data: results,
+      total: results.length,
+      limitPerCol,
+      capped: true,
+    })
   } catch (error) {
     console.error('Error llegint esdeveniments de Firestore:', error)
     return NextResponse.json(

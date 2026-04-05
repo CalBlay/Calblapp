@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/use-toast'
 import { normalizeRole } from '@/lib/roles'
+import { compressRasterImageForUpload } from '@/lib/file-optimization'
 import ProjectKickoffTab from './ProjectKickoffTab'
 import ProjectOverviewTab from './ProjectOverviewTab'
 import {
@@ -653,7 +654,28 @@ export default function ProjectEditor() {
                   id={compactFileInputId}
                   type="file"
                   className="hidden"
-                  onChange={(event) => setPendingFile(event.target.files?.[0] || null)}
+                  onChange={async (event) => {
+                    const raw = event.target.files?.[0] || null
+                    event.target.value = ''
+                    if (!raw) {
+                      setPendingFile(null)
+                      return
+                    }
+                    if (raw.type.startsWith('image/')) {
+                      try {
+                        setPendingFile(await compressRasterImageForUpload(raw))
+                      } catch {
+                        toast({
+                          title: 'Imatge',
+                          description: 'No s ha pogut comprimir la imatge.',
+                          variant: 'destructive',
+                        })
+                        setPendingFile(null)
+                      }
+                      return
+                    }
+                    setPendingFile(raw)
+                  }}
                 />
                 <Button
                   type="button"

@@ -1,124 +1,106 @@
 'use client'
 
-type OptimizeImageOptions = {
-  maxBytes: number
-  maxDimension?: number
-  initialQuality?: number
-  minQuality?: number
+/** Objectiu per defecte igual que incidències / auditoria (API 1MB). */
+export const DEFAULT_MAX_IMAGE_UPLOAD_BYTES = 1024 * 1024
+
+const SKIP_REENCODE_TYPES = new Set(['image/svg+xml', 'image/gif'])
+
+function isRasterImageFile(file: File) {
+  const type = String(file.type || '').toLowerCase()
+  if (!type.startsWith('image/')) return false
+  if (SKIP_REENCODE_TYPES.has(type)) return false
+  return true
 }
 
-const RASTER_IMAGE_TYPES = new Set([
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
-])
-
-const loadImage = (file: File) =>
-  new Promise<HTMLImageElement>((resolve, reject) => {
-    const url = URL.createObjectURL(file)
-    const image = new Image()
-    image.onload = () => {
-      URL.revokeObjectURL(url)
-      resolve(image)
-    }
-    image.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('No s ha pogut llegir la imatge'))
-    }
-    image.src = url
-  })
-
-const canvasToBlob = (canvas: HTMLCanvasElement, quality: number) =>
-  new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) {
-          reject(new Error('No s ha pogut convertir la imatge'))
-          return
-        }
-        resolve(blob)
-      },
-      'image/jpeg',
-      quality
-    )
-  })
-
-const buildOptimizedName = (name: string) =>
-  name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_') + '.jpg'
-
-export async function optimizeImageFile(
+/**
+ * Redueix imatges raster (JPEG/PNG/WebP/…) a ~maxSizeBytes com a JPEG,
+ * redimensionant i baixant qualitat (mateix algorisme que auditoria/incidències).
+ * Fitxers no imatge o SVG/GIF es retornen sense canviar.
+ */
+export async function compressRasterImageWithMeta(
   file: File,
-  {
-    maxBytes,
-    maxDimension = 1600,
-    initialQuality = 0.82,
-    minQuality = 0.5,
-  }: OptimizeImageOptions
-): Promise<File> {
-  if (!RASTER_IMAGE_TYPES.has(String(file.type || '').toLowerCase())) {
-    return file
+  maxSizeBytes: number = DEFAULT_MAX_IMAGE_UPLOAD_BYTES
+): Promise<{ file: File; width: number; height: number }> {
+  if (!isRasterImageFile(file)) {
+    return { file, width: 0, height: 0 }
   }
 
-  if (file.size <= maxBytes * 0.85) {
-    return file
-  }
+  const img = new Image()
+  const tempUrl = URL.createObjectURL(file)
+  img.src = tempUrl
 
-  const image = await loadImage(file)
-  let width = image.naturalWidth || image.width
-  let height = image.naturalHeight || image.height
-  const maxSide = Math.max(width, height)
-  if (maxSide > maxDimension) {
-    const ratio = maxDimension / maxSide
-    width = Math.max(1, Math.round(width * ratio))
-    height = Math.max(1, Math.round(height * ratio))
-  }
-
-  let canvas = document.createElement('canvas')
-  let context = canvas.getContext('2d')
-  if (!context) return file
-
-  let quality = initialQuality
-  let currentWidth = width
-  let currentHeight = height
-  let bestFile = file
-
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    canvas.width = currentWidth
-    canvas.height = currentHeight
-    context.clearRect(0, 0, currentWidth, currentHeight)
-    context.drawImage(image, 0, 0, currentWidth, currentHeight)
-
-    let blob = await canvasToBlob(canvas, quality)
-    let optimized = new File([blob], buildOptimizedName(file.name), {
-      type: 'image/jpeg',
-      lastModified: Date.now(),
+  try {
+    await new Promise((resolve, reject) => {
+      img.onload = resolve
+      img.onerror = () => reject(new Error('No s ha pogut llegir la imatge'))
     })
+  } finally {
+    URL.revokeObjectURL(tempUrl)
+  }
 
-    if (optimized.size < bestFile.size) {
-      bestFile = optimized
+  let maxDim = 1600
+  let width = img.naturalWidth || img.width
+  let height = img.naturalHeight || img.height
+
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    return { file, width, height }
+  }
+
+  let quality = 0.86
+  let blob: Blob | null = null
+
+  while (true) {
+    if (width > maxDim || height > maxDim) {
+      const ratio = Math.min(maxDim / width, maxDim / height)
+      width = Math.round(width * ratio)
+      height = Math.round(height * ratio)
     }
 
-    if (optimized.size <= maxBytes) {
-      return optimized
+    canvas.width = width
+    canvas.height = height
+    ctx.clearRect(0, 0, width, height)
+    ctx.drawImage(img, 0, 0, width, height)
+    blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', quality)
+    )
+    if (blob && blob.size <= maxSizeBytes) {
+      break
     }
-
-    if (quality > minQuality) {
-      quality = Math.max(minQuality, quality - 0.1)
+    if (quality > 0.38) {
+      quality -= 0.08
       continue
     }
-
-    currentWidth = Math.max(1, Math.round(currentWidth * 0.82))
-    currentHeight = Math.max(1, Math.round(currentHeight * 0.82))
-    quality = initialQuality
+    if (maxDim <= 900) {
+      break
+    }
+    maxDim = Math.max(900, Math.round(maxDim * 0.82))
+    quality = 0.74
   }
 
-  return bestFile
+  if (!blob) {
+    throw new Error('No s ha pogut comprimir la imatge')
+  }
+
+  const baseName = file.name.replace(/\.[^.]+$/, '') || 'image'
+  const out = new File([blob], `${baseName}.jpg`, {
+    type: 'image/jpeg',
+    lastModified: Date.now(),
+  })
+
+  return { file: out, width, height }
 }
 
+export async function compressRasterImageForUpload(
+  file: File,
+  maxSizeBytes: number = DEFAULT_MAX_IMAGE_UPLOAD_BYTES
+): Promise<File> {
+  const { file: out } = await compressRasterImageWithMeta(file, maxSizeBytes)
+  return out
+}
+
+/** Imatges es comprimeixen cap a maxBytes; la resta de tipus es retornen igual. */
 export async function optimizeUploadFile(file: File, maxBytes: number): Promise<File> {
-  if (String(file.type || '').toLowerCase().startsWith('image/')) {
-    return optimizeImageFile(file, { maxBytes })
-  }
-  return file
+  return compressRasterImageForUpload(file, maxBytes)
 }

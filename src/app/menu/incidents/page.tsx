@@ -29,7 +29,10 @@ export default function IncidentsPage() {
     categoryLabel: 'all' as string,
   })
 
-  const { incidents, loading, error, updateIncident } = useIncidents(filters)
+  const { incidents, loading, error, updateIncident } = useIncidents({
+    ...filters,
+    limit: 800,
+  })
 
   const departmentOptions = useMemo(() => {
     const set = new Set<string>()

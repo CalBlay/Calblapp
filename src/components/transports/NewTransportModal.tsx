@@ -18,6 +18,7 @@ import {
   TRANSPORT_TYPE_OPTIONS,
   type TransportType,
 } from '@/lib/transportTypes'
+import { compressRasterImageForUpload, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 
 const isTransportType = (value: string): value is TransportType =>
@@ -119,34 +120,48 @@ export default function NewTransportModal({
     const now = new Date().toISOString()
 
     for (const file of Array.from(files)) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert(`El fitxer ${file.name} supera els 5MB.`)
-        continue
-      }
-
       const validTypes = [
         'application/pdf',
         'image/jpeg',
         'image/png',
         'image/jpg',
+        'image/webp',
       ]
       if (!validTypes.includes(file.type)) {
         alert(`Tipus de fitxer no permes: ${file.name}`)
         continue
       }
 
+      let fileToUpload = file
+      if (file.type.startsWith('image/')) {
+        try {
+          fileToUpload = await compressRasterImageForUpload(file, DEFAULT_MAX_IMAGE_UPLOAD_BYTES)
+        } catch {
+          alert(`No s ha pogut optimitzar la imatge ${file.name}.`)
+          continue
+        }
+        if (fileToUpload.size > DEFAULT_MAX_IMAGE_UPLOAD_BYTES) {
+          alert(`La imatge ${file.name} encara supera 1MB despres de comprimir.`)
+          continue
+        }
+      } else if (file.size > 5 * 1024 * 1024) {
+        alert(`El fitxer ${file.name} supera els 5MB.`)
+        continue
+      }
+
       try {
         const safePlate = plate || defaultValues?.plate || 'sense-matricula'
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        const storagePath = `transports/${safePlate}/${id}-${file.name}`
+        const storageName = fileToUpload.name || file.name
+        const storagePath = `transports/${safePlate}/${id}-${storageName}`
         const fileRef = ref(storage, storagePath)
 
-        await uploadBytes(fileRef, file)
+        await uploadBytes(fileRef, fileToUpload)
         const url = await getDownloadURL(fileRef)
 
         setDocuments((prev) => [
           ...prev,
-          { id, name: file.name, url, uploadedAt: now },
+          { id, name: storageName, url, uploadedAt: now },
         ])
       } catch (err) {
         console.error('Error pujant document:', err)
@@ -198,7 +213,7 @@ export default function NewTransportModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" lockDismissOnOutside>
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">
             {isEditMode ? 'Editar transport' : 'Nou transport'}

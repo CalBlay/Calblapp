@@ -7,6 +7,7 @@ import { useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { canEditFinca } from '@/lib/accessControl'
+import { compressRasterImageForUpload } from '@/lib/file-optimization'
 import { Trash2 } from 'lucide-react'
 
 
@@ -163,8 +164,17 @@ async function uploadImage(file: File) {
     setError("Desa l'espai abans de pujar imatges.")
     return
   }
+  let uploadFile = file
+  if (file.type.startsWith('image/')) {
+    try {
+      uploadFile = await compressRasterImageForUpload(file)
+    } catch {
+      setError('No s ha pogut comprimir la imatge.')
+      return
+    }
+  }
   const form = new FormData()
-  form.append('file', file)
+  form.append('file', uploadFile)
   form.append('fincaId', espai.id)
 
   const res = await fetch('/api/spaces/upload', {

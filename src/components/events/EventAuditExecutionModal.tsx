@@ -1,7 +1,16 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Camera, CheckCircle2, ClipboardCheck, Paperclip, RotateCcw, Save } from 'lucide-react'
+import {
+  AlertTriangle,
+  Camera,
+  CheckCircle2,
+  ClipboardCheck,
+  Paperclip,
+  RotateCcw,
+  Save,
+  X,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -13,6 +22,7 @@ import {
 import { useIncidents } from '@/hooks/useIncidents'
 import CreateIncidentModal from '@/components/incidents/CreateIncidentModal'
 import { Switch } from '@/components/ui/switch'
+import { compressRasterImageForUpload } from '@/lib/file-optimization'
 
 type Outcome = 'none' | 'reported'
 
@@ -71,56 +81,6 @@ function normalizeDepartment(raw?: string): string {
 
 const MAX_AUDIT_IMAGE_SIZE = 1024 * 1024
 const MAX_AUDIT_PHOTOS_TOTAL = 10
-
-async function compressImage(file: File, maxSizeBytes = MAX_AUDIT_IMAGE_SIZE) {
-  const img = new Image()
-  const tempUrl = URL.createObjectURL(file)
-  img.src = tempUrl
-
-  await new Promise((resolve, reject) => {
-    img.onload = resolve
-    img.onerror = reject
-  })
-
-  let maxDim = 1600
-  let { width, height } = img
-
-  const canvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('No s ha pogut preparar la imatge')
-
-  let quality = 0.86
-  let blob: Blob | null = null
-
-  while (true) {
-    if (width > maxDim || height > maxDim) {
-      const ratio = Math.min(maxDim / width, maxDim / height)
-      width = Math.round(width * ratio)
-      height = Math.round(height * ratio)
-    }
-
-    canvas.width = width
-    canvas.height = height
-    ctx.clearRect(0, 0, width, height)
-    ctx.drawImage(img, 0, 0, width, height)
-    blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
-    if (blob && blob.size <= maxSizeBytes) break
-    if (quality > 0.38) {
-      quality -= 0.08
-      continue
-    }
-    if (maxDim <= 900) break
-    maxDim = Math.max(900, Math.round(maxDim * 0.82))
-    quality = 0.74
-  }
-
-  URL.revokeObjectURL(tempUrl)
-  if (!blob) throw new Error('No s ha pogut comprimir la imatge')
-
-  return new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'audit-photo'}.jpg`, {
-    type: 'image/jpeg',
-  })
-}
 
 export default function EventAuditExecutionModal({ open, onClose, event, user }: Props) {
   const [hasIncidents, setHasIncidents] = useState(true)
@@ -309,7 +269,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       if (!file.type.startsWith('image/')) {
         throw new Error('Nomes es permeten imatges')
       }
-      const optimizedFile = await compressImage(file)
+      const optimizedFile = await compressRasterImageForUpload(file, MAX_AUDIT_IMAGE_SIZE)
       if (optimizedFile.size > MAX_AUDIT_IMAGE_SIZE) {
         throw new Error('La imatge encara pesa massa despres de comprimir-se')
       }
@@ -348,12 +308,26 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="w-[96vw] max-w-lg rounded-2xl p-0 overflow-hidden">
-          <DialogHeader className="px-4 pt-4 pb-2">
-            <DialogTitle>Tancament operatiu</DialogTitle>
-            <DialogDescription>
-              Auditoria + incidencies - {event.summary.replace(/#.*$/, '').trim()}
-            </DialogDescription>
+        <DialogContent className="w-[96vw] max-w-lg rounded-2xl p-0 overflow-hidden" lockDismissOnOutside>
+          <DialogHeader className="px-4 pt-4 pb-2 space-y-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-2 text-left">
+                <DialogTitle>Tancament operatiu</DialogTitle>
+                <DialogDescription>
+                  Auditoria + incidencies - {event.summary.replace(/#.*$/, '').trim()}
+                </DialogDescription>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="shrink-0 h-9 w-9 rounded-full"
+                onClick={onClose}
+                aria-label="Tancar"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
           </DialogHeader>
 
           {loadingExecution ? (

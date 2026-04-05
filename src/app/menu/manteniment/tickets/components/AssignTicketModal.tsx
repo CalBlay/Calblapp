@@ -4,7 +4,7 @@ import { formatDateOnly, formatDateTimeValue, formatTimeValue } from '@/lib/date
 import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
 import { typography } from '@/lib/typography'
 import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
-import { optimizeUploadFile } from '@/lib/file-optimization'
+import { DEFAULT_MAX_IMAGE_UPLOAD_BYTES, optimizeUploadFile } from '@/lib/file-optimization'
 import type {
   MachineItem,
   Ticket,
@@ -370,7 +370,10 @@ export default function AssignTicketModal({
 
   const addEmailAttachment = async (file: File | null) => {
     if (!file) return
-    const optimizedFile = await optimizeUploadFile(file, 5 * 1024 * 1024)
+    const maxBytes = file.type.startsWith('image/')
+      ? DEFAULT_MAX_IMAGE_UPLOAD_BYTES
+      : 5 * 1024 * 1024
+    const optimizedFile = await optimizeUploadFile(file, maxBytes)
     if (optimizedFile.size > 5 * 1024 * 1024) {
       setEmailAttachmentError('Cada adjunt ha de pesar com a maxim 5MB.')
       return

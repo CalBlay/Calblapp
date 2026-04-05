@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { optimizeUploadFile } from '@/lib/file-optimization'
+import { DEFAULT_MAX_IMAGE_UPLOAD_BYTES, optimizeUploadFile } from '@/lib/file-optimization'
 import type { TicketPriority } from './types'
 
 type Params = {
@@ -51,11 +51,11 @@ export function useMaintenanceTicketComposer({ refreshTickets }: Params) {
       setImageError(null)
       return
     }
-    const optimizedFile = await optimizeUploadFile(file, 2 * 1024 * 1024)
-    if (optimizedFile.size > 2 * 1024 * 1024) {
+    const optimizedFile = await optimizeUploadFile(file, DEFAULT_MAX_IMAGE_UPLOAD_BYTES)
+    if (optimizedFile.size > DEFAULT_MAX_IMAGE_UPLOAD_BYTES) {
       setCreateImageFile(null)
       setCreateImagePreview(null)
-      setImageError("La imatge supera 2MB. Fes-la mes petita.")
+      setImageError('La imatge supera 1MB despres de comprimir. Prova una altra foto.')
       return
     }
     setImageError(null)

@@ -57,6 +57,8 @@ export function useIncidents(_filters: {
   importance?: string
   categoryLabel?: string
   refreshKey?: number
+  /** Màxim documents (API cap 1000; per defecte 300 si s'omet) */
+  limit?: number
 }) {
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [loading, setLoading] = useState(true)
@@ -72,6 +74,7 @@ export function useIncidents(_filters: {
       importance: _filters.importance,
       categoryLabel: _filters.categoryLabel,
       refreshKey: _filters.refreshKey ?? 0,
+      limit: _filters.limit,
     }),
     [
       _filters.eventId,
@@ -81,6 +84,7 @@ export function useIncidents(_filters: {
       _filters.importance,
       _filters.categoryLabel,
       _filters.refreshKey,
+      _filters.limit,
     ]
   )
 
@@ -104,6 +108,9 @@ export function useIncidents(_filters: {
           qs.set('importance', filters.importance)
         if (filters.categoryLabel && filters.categoryLabel !== 'all')
           qs.set('categoryId', filters.categoryLabel)
+        if (typeof filters.limit === 'number' && filters.limit > 0) {
+          qs.set('limit', String(Math.min(1000, Math.floor(filters.limit))))
+        }
 
         const res = await fetch(`/api/incidents?${qs.toString()}`, {
           cache: 'no-store',
@@ -157,6 +164,7 @@ export function useIncidents(_filters: {
     filters.importance,
     filters.categoryLabel,
     filters.refreshKey,
+    filters.limit,
   ])
 
   const updateIncident = async (id: string, data: Partial<Incident>) => {

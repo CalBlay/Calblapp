@@ -5,6 +5,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { dialogContentPropsMobileCameraSafe } from "@/lib/dialogMobileCameraSafe";
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -35,11 +36,20 @@ function DialogOverlay({ className, ...props }: React.ComponentProps<typeof Dial
   )
 }
 
+type DialogContentProps = React.ComponentProps<typeof DialogPrimitive.Content> & {
+  /**
+   * Recomanat si hi ha `<input type="file">` (foto, galeria o fitxer): evita tancaments espuris al mòbil.
+   * El fons deixa de tancar el modal; cal botó Tancar/Cancel·lar o Esc.
+   */
+  lockDismissOnOutside?: boolean
+}
+
 function DialogContent({
   className,
   children,
+  lockDismissOnOutside = false,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+}: DialogContentProps) {
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -51,6 +61,7 @@ function DialogContent({
           className
         )}
         {...props}
+        {...(lockDismissOnOutside ? dialogContentPropsMobileCameraSafe : {})}
       >
         {children}
       </DialogPrimitive.Content>

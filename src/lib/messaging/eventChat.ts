@@ -232,6 +232,12 @@ async function collectQuadrantAssigned(eventId: string, eventCode: string, dateK
 }
 
 async function collectProductionUids() {
+  try {
+    const snap = await db.collection('users').where('departmentLower', '==', 'produccio').get()
+    if (!snap.empty) return snap.docs.map((d) => d.id)
+  } catch {
+    // Falta índex o camp legacy: fallback lectura completa
+  }
   const snap = await db.collection('users').get()
   const out: string[] = []
   snap.forEach((doc) => {
@@ -243,21 +249,54 @@ async function collectProductionUids() {
 }
 
 async function collectAdminUids() {
+  const ids = new Set<string>()
+  const merge = (snap: FirebaseFirestore.QuerySnapshot) => {
+    snap.forEach((d) => ids.add(d.id))
+  }
+  try {
+    merge(await db.collection('users').where('isAdmin', '==', true).get())
+  } catch {
+    /* ignore */
+  }
+  try {
+    merge(
+      await db
+        .collection('users')
+        .where('role', 'in', ['admin', 'direccio', 'Admin', 'Direcció', 'direcció', 'Direccio'])
+        .get()
+    )
+  } catch {
+    /* ignore */
+  }
+  if (ids.size > 0) return [...ids]
+
   const snap = await db.collection('users').get()
-  const out: string[] = []
   snap.forEach((doc) => {
     const data = doc.data() as any
     const role = normalizeRole(
-      data?.role ||
-        data?.rol ||
-        data?.nivell ||
-        data?.nivel ||
-        data?.level ||
-        ''
+      data?.role || data?.rol || data?.nivell || data?.nivel || data?.level || ''
     )
-    if (role === 'admin' || role === 'direccio') out.push(doc.id)
+    if (role === 'admin' || role === 'direccio') ids.add(doc.id)
   })
-  return out
+  return [...ids]
+}
+
+async function fetchUserDisplayNames(uids: string[]) {
+  const map = new Map<string, string>()
+  const unique = [...new Set(uids.filter(Boolean))]
+  const chunkSize = 10
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize)
+    const refs = chunk.map((uid) => db.collection('users').doc(uid))
+    const snaps = await db.getAll(...refs)
+    snaps.forEach((doc) => {
+      if (!doc.exists) return
+      const data = doc.data() as any
+      const name = String(data?.name || '').trim()
+      if (name) map.set(doc.id, name)
+    })
+  }
+  return map
 }
 
 async function filterEnabledEventUids(uids: string[], adminUids: string[]) {
@@ -359,12 +398,7 @@ export async function ensureEventChatChannel(eventId: string) {
       .filter(([uid]) => uid)
   )
 
-  const usersSnap = await db.collection('users').get()
-  const userNameMap = new Map<string, string>()
-  usersSnap.forEach((doc) => {
-    const data = doc.data() as any
-    if (data?.name) userNameMap.set(doc.id, String(data.name))
-  })
+  const userNameMap = await fetchUserDisplayNames([...allUids])
 
   const batch = db.batch()
   const now = Date.now()

@@ -237,6 +237,11 @@ export async function GET(req: Request) {
     const department = searchParams.get("department");
     const categoryLabel = searchParams.get("categoryLabel");
     const categoryId = searchParams.get("categoryId"); // compat: nom antic
+    const limitRaw = Number(searchParams.get("limit") || "");
+    const limitN = Math.min(
+      1000,
+      Math.max(1, Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 300)
+    );
 
     let ref = firestoreAdmin
       .collection("incidents")
@@ -270,6 +275,8 @@ export async function GET(req: Request) {
 
     if (categoryFilter)
       ref = ref.where("category.label", "==", categoryFilter);
+
+    ref = ref.limit(limitN);
 
     // 1️⃣ Llegir incidències crues
     const snap = await ref.get();

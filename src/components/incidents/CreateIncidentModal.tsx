@@ -11,6 +11,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import categories from '../../data/incident-categories.json'
+import { compressRasterImageForUpload } from '@/lib/file-optimization'
 
 interface CreateIncidentModalProps {
   open: boolean
@@ -93,54 +94,6 @@ export default function CreateIncidentModal({
     return list
   }, [normalizedUserDepartment])
 
-  const compressImage = async (file: File, maxSizeBytes = MAX_SIZE) => {
-    const img = new Image()
-    const tempUrl = URL.createObjectURL(file)
-    img.src = tempUrl
-    await new Promise((resolve, reject) => {
-      img.onload = resolve
-      img.onerror = reject
-    })
-
-    let maxDim = 1600
-    let { width, height } = img
-
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('No s ha pogut preparar la imatge')
-
-    let quality = 0.86
-    let blob: Blob | null = null
-
-    while (true) {
-      if (width > maxDim || height > maxDim) {
-        const ratio = Math.min(maxDim / width, maxDim / height)
-        width = Math.round(width * ratio)
-        height = Math.round(height * ratio)
-      }
-
-      canvas.width = width
-      canvas.height = height
-      ctx.clearRect(0, 0, width, height)
-      ctx.drawImage(img, 0, 0, width, height)
-      blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
-      if (blob && blob.size <= maxSizeBytes) break
-      if (quality > 0.38) {
-        quality -= 0.08
-        continue
-      }
-      if (maxDim <= 900) break
-      maxDim = Math.max(900, Math.round(maxDim * 0.82))
-      quality = 0.74
-    }
-
-    URL.revokeObjectURL(tempUrl)
-    if (!blob) throw new Error('No s ha pogut comprimir la imatge')
-    return new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'incident-image'}.jpg`, {
-      type: 'image/jpeg',
-    })
-  }
-
   const handleImageChange = async (fileList: FileList | null) => {
     const selected = fileList ? Array.from(fileList) : []
     if (!selected.length) return
@@ -159,7 +112,7 @@ export default function CreateIncidentModal({
           if (!file.type.startsWith('image/')) {
             throw new Error('Nomes es permeten imatges.')
           }
-          const optimized = await compressImage(file)
+          const optimized = await compressRasterImageForUpload(file, MAX_SIZE)
           if (optimized.size > MAX_SIZE) {
             throw new Error('Una imatge encara supera 1MB despres de comprimir-se.')
           }
@@ -254,7 +207,7 @@ export default function CreateIncidentModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="w-[92vw] max-w-sm rounded-2xl">
+      <DialogContent className="w-[92vw] max-w-sm rounded-2xl" lockDismissOnOutside>
         <DialogHeader>
           <DialogTitle>Nova incidencia</DialogTitle>
           <DialogDescription>
@@ -385,9 +338,14 @@ export default function CreateIncidentModal({
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
-          <Button type="submit" className="w-full" variant="primary" disabled={loading}>
-            {loading ? 'Creant...' : 'Crear incidencia'}
-          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" variant="outline" className="w-full" disabled={loading} onClick={onClose}>
+              Cancel·lar
+            </Button>
+            <Button type="submit" className="w-full" variant="primary" disabled={loading}>
+              {loading ? 'Creant...' : 'Crear incidencia'}
+            </Button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

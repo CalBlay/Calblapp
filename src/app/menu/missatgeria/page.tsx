@@ -15,6 +15,7 @@ import MessageList from './components/MessageList'
 import Composer from './components/Composer'
 import type { Channel, Member, Message, PendingImage } from './types'
 import { eventDateLabel, initials } from './utils'
+import { compressRasterImageWithMeta, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -546,47 +547,6 @@ export default function MissatgeriaPage() {
     return () => clearTimeout(timer)
   }, [typingUsers])
 
-  const compressImage = async (file: File, maxSizeBytes = 1024 * 1024) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-    img.src = url
-    await new Promise((resolve, reject) => {
-      img.onload = resolve
-      img.onerror = reject
-    })
-
-    const maxDim = 1600
-    let { width, height } = img
-    if (width > maxDim || height > maxDim) {
-      const ratio = Math.min(maxDim / width, maxDim / height)
-      width = Math.round(width * ratio)
-      height = Math.round(height * ratio)
-    }
-
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('No canvas')
-    ctx.drawImage(img, 0, 0, width, height)
-
-    let quality = 0.9
-    let blob: Blob | null = await new Promise((resolve) =>
-      canvas.toBlob(resolve, 'image/jpeg', quality)
-    )
-
-    while (blob && blob.size > maxSizeBytes && quality > 0.5) {
-      quality -= 0.1
-      blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, 'image/jpeg', quality)
-      )
-    }
-
-    URL.revokeObjectURL(url)
-    if (!blob) throw new Error('Compress error')
-    return { blob, width, height, type: blob.type, size: blob.size }
-  }
-
   const handleAttachmentPick = async (file: File | null) => {
     if (!file || !selectedChannelId || !userId) return
     setImageError(null)
@@ -602,12 +562,15 @@ export default function MissatgeriaPage() {
     try {
       setImageUploading(true)
       setPendingFile(null)
-      const { blob, width, height, type, size } = await compressImage(file)
-      if (size > 1024 * 1024) {
+      const { file: compressed, width, height } = await compressRasterImageWithMeta(
+        file,
+        DEFAULT_MAX_IMAGE_UPLOAD_BYTES
+      )
+      if (compressed.size > DEFAULT_MAX_IMAGE_UPLOAD_BYTES) {
         throw new Error('La imatge encara pesa massa')
       }
       const form = new FormData()
-      form.append('file', blob, 'image.jpg')
+      form.append('file', compressed, 'image.jpg')
       form.append('channelId', selectedChannelId)
 
       const res = await fetch('/api/messaging/upload-image', {
@@ -621,7 +584,12 @@ export default function MissatgeriaPage() {
       setPendingImage({
         url: data.url,
         path: data.path,
-        meta: { width, height, size, type },
+        meta: {
+          width,
+          height,
+          size: compressed.size,
+          type: compressed.type,
+        },
       })
     } catch (err) {
       setImageError(err instanceof Error ? err.message : 'Error pujant la imatge')
