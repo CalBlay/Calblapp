@@ -102,6 +102,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const { incidents, loading: incidentsLoading } = useIncidents({
     eventId,
     refreshKey: incidentsRefresh,
+    light: true,
   })
 
   const incidentIds = useMemo(() => incidents.map((i) => i.id).filter(Boolean), [incidents])

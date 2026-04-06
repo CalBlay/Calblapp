@@ -53,6 +53,24 @@ function normalizePriority(value?: string) {
   return "normal";
 }
 
+/** Resposta més lleugera per llistats (tauler, quadre): sense payloads d’imatges. */
+function projectIncidentLight(inc: Record<string, unknown>): Record<string, unknown> {
+  const {
+    images: _images,
+    imageUrl: _u,
+    imagePath: _p,
+    imageMeta: _m,
+    ...rest
+  } = inc;
+  return {
+    ...rest,
+    images: [],
+    imageUrl: null,
+    imagePath: null,
+    imageMeta: null,
+  };
+}
+
 /* -------------------------------------------------------
  * 🔵 HELPER: Generar número INCxxxxx
  * ----------------------------------------------------- */
@@ -260,6 +278,8 @@ export async function GET(req: Request) {
       1000,
       Math.max(1, Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 300)
     );
+    const lightList =
+      searchParams.get("light") === "1" || searchParams.get("light") === "true";
 
     // Amb rang de dates: filtre i ordre per **data de l'esdeveniment** (reunió setmanal).
     // Sense rang: ordre per creació (tauler general).
@@ -353,7 +373,11 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json({ incidents }, { status: 200 });
+    const payload = lightList
+      ? incidents.map((row) => projectIncidentLight(row as Record<string, unknown>))
+      : incidents;
+
+    return NextResponse.json({ incidents: payload }, { status: 200 });
   } catch (err) {
     console.error("[incidents] GET error:", err);
     return NextResponse.json({ error: "Internal Error" }, { status: 500 });

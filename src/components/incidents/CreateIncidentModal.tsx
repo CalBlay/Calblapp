@@ -11,6 +11,9 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
+import { typography } from '@/lib/typography'
+import { cn } from '@/lib/utils'
+import { INCIDENT_ORIGIN_DEPARTMENTS } from '@/lib/incidentOriginDepartments'
 
 interface CreateIncidentModalProps {
   open: boolean
@@ -24,7 +27,6 @@ interface CreateIncidentModalProps {
   onCreated: () => void
 }
 
-const DEPARTAMENTS = ['Logistica', 'Sala', 'Cuina', 'Comercial']
 const IMPORTANCIES = ['Urgent', 'Alta', 'Normal', 'Baixa']
 const MAX_IMAGES = 3
 const MAX_SIZE = 1024 * 1024
@@ -43,7 +45,7 @@ export default function CreateIncidentModal({
   const { data: session } = useSession()
   const userName = session?.user?.name ?? session?.user?.email ?? 'Desconegut'
   const userDepartmentRaw = session?.user?.department ?? ''
-  const normalizedUserDepartment = userDepartmentRaw.trim() || DEPARTAMENTS[0]
+  const normalizedUserDepartment = userDepartmentRaw.trim() || INCIDENT_ORIGIN_DEPARTMENTS[0]
   const normalizedUserRole = (session?.user?.role ?? '').toLowerCase().trim()
   const canPickDepartment = ['admin', 'direccio'].includes(normalizedUserRole)
 
@@ -122,7 +124,7 @@ export default function CreateIncidentModal({
   }, [])
 
   const departmentOptions = React.useMemo(() => {
-    const list = [...DEPARTAMENTS]
+    const list = [...INCIDENT_ORIGIN_DEPARTMENTS]
     if (!list.includes(normalizedUserDepartment)) {
       list.unshift(normalizedUserDepartment)
     }
@@ -254,9 +256,9 @@ export default function CreateIncidentModal({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className={cn('space-y-4', typography('bodySm'))}>
           <div>
-            <label className="mb-1 block font-medium">Departament *</label>
+            <label className={cn('mb-1 block', typography('label'))}>Departament *</label>
             <select
               className="w-full rounded border p-2"
               value={department}
@@ -275,7 +277,7 @@ export default function CreateIncidentModal({
           </div>
 
           <div>
-            <label className="mb-1 block font-medium">Categoria *</label>
+            <label className={cn('mb-1 block', typography('label'))}>Categoria *</label>
             <select
               className="w-full rounded border p-2"
               value={category?.id || ''}
@@ -301,7 +303,7 @@ export default function CreateIncidentModal({
           </div>
 
           <div>
-            <label className="mb-1 block font-medium">Importancia *</label>
+            <label className={cn('mb-1 block', typography('label'))}>Importancia *</label>
             <select
               className="w-full rounded border p-2"
               value={importance}
@@ -317,7 +319,7 @@ export default function CreateIncidentModal({
           </div>
 
           <div>
-            <label className="mb-1 block font-medium">Descripcio *</label>
+            <label className={cn('mb-1 block', typography('label'))}>Descripcio *</label>
             <textarea
               className="w-full rounded border p-2"
               rows={3}
@@ -329,8 +331,13 @@ export default function CreateIncidentModal({
 
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <label className="text-sm text-gray-500">Adjuntar fins a 3 fotos</label>
-              <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
+              <label className={typography('bodyXs')}>Adjuntar fins a 3 fotos</label>
+              <label
+                className={cn(
+                  'min-h-[44px] cursor-pointer rounded-full border px-4 py-2',
+                  typography('bodySm')
+                )}
+              >
                 Fitxer
                 <input
                   type="file"
@@ -343,7 +350,12 @@ export default function CreateIncidentModal({
                   }}
                 />
               </label>
-              <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
+              <label
+                className={cn(
+                  'min-h-[44px] cursor-pointer rounded-full border px-4 py-2',
+                  typography('bodySm')
+                )}
+              >
                 Foto
                 <input
                   type="file"
@@ -356,8 +368,10 @@ export default function CreateIncidentModal({
                   }}
                 />
               </label>
-              <span className="text-xs text-gray-500">{images.length}/{MAX_IMAGES}</span>
-              {imageError && <span className="text-sm text-red-600">{imageError}</span>}
+              <span className={typography('bodyXs')}>
+                {images.length}/{MAX_IMAGES}
+              </span>
+              {imageError && <span className={cn(typography('bodySm'), 'text-red-600')}>{imageError}</span>}
             </div>
 
             {images.length > 0 && (
@@ -372,7 +386,10 @@ export default function CreateIncidentModal({
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
-                      className="absolute right-1 top-1 rounded-full bg-black/60 px-2 py-1 text-xs text-white"
+                      className={cn(
+                        'absolute right-1 top-1 rounded-full bg-black/60 px-2 py-1 text-white',
+                        typography('bodyXs')
+                      )}
                     >
                       X
                     </button>
@@ -382,7 +399,7 @@ export default function CreateIncidentModal({
             )}
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className={cn(typography('bodySm'), 'text-red-600')}>{error}</p>}
 
           <div className="grid grid-cols-2 gap-2">
             <Button type="button" variant="outline" className="w-full" disabled={loading} onClick={onClose}>

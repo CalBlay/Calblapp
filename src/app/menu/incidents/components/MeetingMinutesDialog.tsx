@@ -19,6 +19,7 @@ import {
   type MeetingMinutesFilters,
 } from '@/lib/incidentsMeetingMinutes'
 import { typography } from '@/lib/typography'
+import { cn } from '@/lib/utils'
 
 type Props = {
   open: boolean
@@ -65,11 +66,11 @@ export default function MeetingMinutesDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg md:max-w-xl" lockDismissOnOutside>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className={cn('flex items-center gap-2', typography('cardTitle'))}>
             <FileText className="h-5 w-5 text-slate-600 shrink-0" aria-hidden />
             Acta de reunió
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className={typography('bodySm')}>
             Es genera a partir de la vista actual (període i filtres del tauler). Opcionalment pots afegir notes
             que surtin al document abans del detall per dia i esdeveniment.
           </DialogDescription>
@@ -97,7 +98,7 @@ export default function MeetingMinutesDialog({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={5}
-              className="min-h-[120px] text-sm"
+              className={cn('min-h-[120px]', typography('bodySm'))}
             />
           </div>
         </div>

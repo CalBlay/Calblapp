@@ -28,6 +28,7 @@ import {
   normalizeIncidentStatus,
 } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
+import { cn } from '@/lib/utils'
 
 function incidentStatusDisplayLabel(raw?: string | null) {
   const w = normalizeIncidentStatus(raw)
@@ -55,28 +56,29 @@ export default function IncidentsPage() {
     status: 'all' as 'all' | 'obert' | 'en_curs' | 'resolt' | 'tancat',
   })
 
-  const { incidents, loading, error, updateIncident } = useIncidents({
+  const { incidents, rawIncidents, loading, isRefreshing, error, updateIncident } = useIncidents({
     ...filters,
     limit: 800,
+    light: true,
   })
 
   const departmentOptions = useMemo(() => {
     const set = new Set<string>()
-    incidents.forEach((i) => {
+    rawIncidents.forEach((i) => {
       const dep = i.department?.trim()
       if (dep) set.add(dep)
     })
     return Array.from(set).sort((a, b) => a.localeCompare(b))
-  }, [incidents])
+  }, [rawIncidents])
 
   const categoryOptions = useMemo(() => {
     const set = new Set<string>()
-    incidents.forEach((i) => {
+    rawIncidents.forEach((i) => {
       const label = i.category?.label?.trim()
       if (label) set.add(label)
     })
     return Array.from(set).map((l) => ({ id: l, label: l }))
-  }, [incidents])
+  }, [rawIncidents])
 
   const totalIncidencies = incidents.length
 
@@ -98,7 +100,7 @@ export default function IncidentsPage() {
     setContent(
       <div className="p-4 space-y-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Departament</label>
+          <label className={typography('label')}>Departament</label>
           <Select
             value={filters.department || 'all'}
             onValueChange={(v) =>
@@ -120,7 +122,7 @@ export default function IncidentsPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Importància</label>
+          <label className={typography('label')}>Importància</label>
           <Select
             value={filters.importance || 'all'}
             onValueChange={(v) =>
@@ -141,7 +143,7 @@ export default function IncidentsPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Categoria</label>
+          <label className={typography('label')}>Categoria</label>
           <Select
             value={filters.categoryLabel || 'all'}
             onValueChange={(v) =>
@@ -163,7 +165,7 @@ export default function IncidentsPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700">Estat</label>
+          <label className={typography('label')}>Estat</label>
           <Select
             value={filters.status}
             onValueChange={(v) =>
@@ -321,10 +323,16 @@ export default function IncidentsPage() {
         subtitle="Tauler de treball setmanal"
         actions={
           <div className="flex flex-wrap items-center gap-2 justify-end">
+            <Link
+              href="/menu/incidents/quadre"
+              className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
+            >
+              Quadre de comandament
+            </Link>
             {canEditTipologies ? (
               <Link
                 href="/menu/incidents/tipologies"
-                className="text-sm font-medium text-gray-800 hover:underline whitespace-nowrap"
+                className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
               >
                 Tipologies
               </Link>
@@ -354,8 +362,11 @@ export default function IncidentsPage() {
       />
 
       {/* Total incidències de la setmana */}
-      <div className={`px-1 ${typography('bodyMd')}`}>
-        Total incidències: {totalIncidencies}
+      <div className={`px-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${typography('bodyMd')}`}>
+        <span>Total incidències: {totalIncidencies}</span>
+        {isRefreshing ? (
+          <span className={typography('bodyXs')}>Actualitzant dades…</span>
+        ) : null}
       </div>
 
       {/* Barra compacta: només dates + botó filtres */}
@@ -378,8 +389,12 @@ export default function IncidentsPage() {
       </div>
 
       {/* Contingut */}
-      {loading && <p className="text-center py-10">Carregant…</p>}
-      {error && <p className="text-center py-10 text-red-500">{error}</p>}
+      {loading && (
+        <p className={cn('text-center py-10', typography('bodySm'))}>Carregant…</p>
+      )}
+      {error && (
+        <p className={cn('text-center py-10', typography('bodySm'), 'text-red-600')}>{error}</p>
+      )}
 
       {!loading && !error && (
         <div id="incidencies-print-root" className="w-full">

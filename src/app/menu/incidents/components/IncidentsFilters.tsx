@@ -11,6 +11,7 @@ import {
   SelectItem,
   SelectValue,
 } from '@/components/ui/select'
+import { typography } from '@/lib/typography'
 
 interface Props {
   from: string
@@ -35,7 +36,7 @@ export default function IncidentsFilters({
     <div className="flex flex-wrap gap-3 p-2 items-end">
       {/* 🔹 Dates */}
       <div className="flex flex-col">
-        <label className="text-sm text-gray-600">Des de</label>
+        <label className={typography('label')}>Des de</label>
         <Input
           type="date"
           value={from}
@@ -44,7 +45,7 @@ export default function IncidentsFilters({
         />
       </div>
       <div className="flex flex-col">
-        <label className="text-sm text-gray-600">Fins a</label>
+        <label className={typography('label')}>Fins a</label>
         <Input
           type="date"
           value={to}
@@ -55,7 +56,7 @@ export default function IncidentsFilters({
 
       {/* 🔹 Filtre importància */}
       <div className="flex flex-col">
-        <label className="text-sm text-gray-600">Importància</label>
+        <label className={typography('label')}>Importància</label>
         <Select
           value={importance || 'all'}
           onValueChange={(val) => setImportance(val === 'all' ? undefined : val)}

@@ -5,6 +5,7 @@ import React from 'react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { colorByLN } from '@/lib/colors'
+import { typography } from '@/lib/typography'
 
 interface Props {
   title: string
@@ -44,17 +45,14 @@ export default function IncidentsEventHeader({
         
         {/* TITLES */}
         <div className="flex flex-wrap items-center gap-3">
-          <span className="font-semibold text-sm text-slate-900">
-            {formatEventTitle(title)}
-          </span>
+          <span className={typography('cardTitle')}>{formatEventTitle(title)}</span>
 
-          <span className="text-xs text-slate-600">
-            Codi: {code || '-'}
-          </span>
+          <span className={typography('bodySm')}>Codi: {code || '-'}</span>
 
           <span
             className={cn(
-              'text-xs px-2 py-[2px] rounded-md',
+              typography('bodyXs'),
+              'px-2 py-[2px] rounded-md',
               colorByLN(ln)
             )}
           >
@@ -63,9 +61,9 @@ export default function IncidentsEventHeader({
         </div>
 
         {/* INFO */}
-        <div className="flex gap-4 text-xs text-slate-600 flex-wrap">
+        <div className={cn('flex gap-4 flex-wrap', typography('bodySm'))}>
           <span
-            className="underline cursor-pointer text-blue-600"
+            className={cn(typography('bodySm'), 'underline cursor-pointer text-blue-600')}
             onClick={onLocationClick}
           >
             Ubicació: {location || '-'}
@@ -78,7 +76,7 @@ export default function IncidentsEventHeader({
 
       </div>
 
-      <Badge className="bg-blue-100 text-blue-700 text-xs px-2 py-1">
+      <Badge className={cn('bg-blue-100 text-blue-700 px-2 py-1', typography('bodyXs'))}>
         {count} incidències
       </Badge>
     </div>

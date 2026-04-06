@@ -3,6 +3,8 @@
 
 import React, { useState } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { typography } from '@/lib/typography'
+import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 
 export interface Incident {
@@ -42,7 +44,9 @@ export default function IncidentsFilter({ incidents }: Props) {
       {/* --- FILTRES --- */}
       <div className="flex gap-4">
         <div className="flex items-center gap-2">
-          <label htmlFor="dept-filter" className="font-medium">Departament:</label>
+          <label htmlFor="dept-filter" className={typography('label')}>
+            Departament:
+          </label>
           <select
             id="dept-filter"
             className="border p-2 rounded"
@@ -54,7 +58,9 @@ export default function IncidentsFilter({ incidents }: Props) {
           </select>
         </div>
         <div className="flex items-center gap-2">
-          <label htmlFor="imp-filter" className="font-medium">Importància:</label>
+          <label htmlFor="imp-filter" className={typography('label')}>
+            Importància:
+          </label>
           <select
             id="imp-filter"
             className="border p-2 rounded"
@@ -69,7 +75,7 @@ export default function IncidentsFilter({ incidents }: Props) {
 
       {/* --- LLISTA D'INCIDÈNCIES --- */}
       {filtered.length === 0 ? (
-        <p className="text-gray-600">No hi ha incidències per mostrar.</p>
+        <p className={typography('bodySm')}>No hi ha incidències per mostrar.</p>
       ) : (
         <div className="space-y-4">
           {filtered.map(inc => {
@@ -84,16 +90,23 @@ export default function IncidentsFilter({ incidents }: Props) {
                 className={`border-l-4 ${borderColor[inc.importance] || 'border-gray-300'} bg-white rounded-lg shadow`}
               >
                 <CardHeader>
-                  <CardTitle className="flex justify-between items-center">
+                  <CardTitle
+                    className={cn('flex justify-between items-center', typography('bodySm'))}
+                  >
                     <span>{timeStr}</span>
-                    <span className="text-sm font-medium px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                    <span
+                      className={cn(
+                        'font-medium px-2 py-1 bg-blue-100 text-blue-800 rounded',
+                        typography('bodySm')
+                      )}
+                    >
                       {inc.department}
                     </span>
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  <p className="text-gray-800 font-medium">{inc.description}</p>
-                  <p className="text-sm text-gray-600">
+                <CardContent className={cn('space-y-2', typography('bodySm'))}>
+                  <p className={cn('font-medium', typography('bodyMd'))}>{inc.description}</p>
+                  <p className={typography('bodySm')}>
                     Importància: <strong>{inc.importance}</strong> — Reportat per: {inc.createdBy}
                   </p>
                 </CardContent>

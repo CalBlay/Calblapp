@@ -11,12 +11,16 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Incident } from '@/hooks/useIncidents'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
+import { typography } from '@/lib/typography'
 import { ListChecks } from 'lucide-react'
 
 interface Props {
   inc: Incident
   isEditing: boolean
-  onStartEdit: () => void
+  /** Referències estables (per `React.memo`): la fila passa `inc` a la crida. */
+  beginEdit: (row: Incident) => void
+  applyPatch: (id: string, d: Partial<Incident>) => void | Promise<unknown>
+  openOps: (row: Incident) => void
   editValues: {
     description?: string
     originDepartment?: string
@@ -27,18 +31,16 @@ interface Props {
       prev: { description?: string; originDepartment?: string; priority?: string }
     ) => { description?: string; originDepartment?: string; priority?: string }
   ) => void
-  onUpdate: (d: Partial<Incident>) => void | Promise<unknown>
-  onOpenOperations: () => void
 }
 
-export default function IncidentsRow({
+function IncidentsRow({
   inc,
   isEditing,
-  onStartEdit,
+  beginEdit,
+  applyPatch,
+  openOps,
   editValues,
   setEditValues,
-  onUpdate,
-  onOpenOperations,
 }: Props) {
   const normalizedImportance = (() => {
     const value = (inc.importance || '').toLowerCase().trim()
@@ -58,6 +60,9 @@ export default function IncidentsRow({
       ? 'Baixa'
       : 'Normal'
 
+  const cell = cn(typography('bodySm'), 'p-2')
+  const cellTrunc = cn(cell, 'truncate')
+
   const workflow = normalizeIncidentStatus(inc.status)
   const statusLabel =
     workflow === 'en_curs'
@@ -71,7 +76,7 @@ export default function IncidentsRow({
   return (
     <tr
       className="border-b last:border-0 hover:bg-slate-50"
-      onClick={() => !isEditing && onStartEdit()}
+      onClick={() => !isEditing && beginEdit(inc)}
     >
       <td className="p-1 align-middle">
         <Button
@@ -83,15 +88,15 @@ export default function IncidentsRow({
           aria-label="Seguiment i accions"
           onClick={(e) => {
             e.stopPropagation()
-            onOpenOperations()
+            openOps(inc)
           }}
         >
           <ListChecks className="h-4 w-4" />
         </Button>
       </td>
       {/* Nº */}
-      <td className="p-2">
-  <span className="text-[11px] font-mono tracking-tight block max-w-[80px] truncate">
+      <td className={cell}>
+  <span className={cn(typography('bodyXs'), 'font-mono tracking-tight block max-w-[80px] truncate')}>
     {inc.incidentNumber || '—'}
   </span>
 </td>
@@ -99,7 +104,7 @@ export default function IncidentsRow({
 
      {/* Autor */}
 <td
-  className="p-2 truncate text-blue-700 font-medium cursor-pointer hover:underline"
+  className={cn(cellTrunc, 'text-blue-700 font-medium cursor-pointer hover:underline')}
   onClick={(e) => {
     e.stopPropagation()
     if (inc.eventCode) {
@@ -115,13 +120,14 @@ export default function IncidentsRow({
 
 
       {/* Dept */}
-      <td className="p-2 truncate">{inc.department || '—'}</td>
+      <td className={cellTrunc}>{inc.department || '—'}</td>
 
       {/* Importància */}
-      <td className="p-2">
+      <td className={cell}>
         <Badge
           className={cn(
-            'text-[10px] px-2 py-0.5',
+            typography('bodyXs'),
+            'px-2 py-0.5',
             normalizedImportance === 'urgent' && 'bg-red-100 text-red-700',
             normalizedImportance === 'alta' && 'bg-orange-100 text-orange-700',
             normalizedImportance === 'normal' && 'bg-slate-100 text-slate-700',
@@ -133,10 +139,11 @@ export default function IncidentsRow({
       </td>
 
       {/* Estat */}
-      <td className="p-2" onClick={(e) => e.stopPropagation()}>
+      <td className={cell} onClick={(e) => e.stopPropagation()}>
         <Badge
           className={cn(
-            'text-[10px] px-2 py-0.5',
+            typography('bodyXs'),
+            'px-2 py-0.5',
             workflow === 'obert' && 'bg-amber-100 text-amber-800',
             workflow === 'en_curs' && 'bg-blue-100 text-blue-800',
             workflow === 'resolt' && 'bg-emerald-100 text-emerald-800',
@@ -148,7 +155,7 @@ export default function IncidentsRow({
       </td>
 
       {/* Incidència (editable) */}
-      <td className="p-2 truncate">
+      <td className={cellTrunc}>
         {isEditing ? (
           <Input
             value={editValues.description}
@@ -156,12 +163,12 @@ export default function IncidentsRow({
             onChange={(e) => setEditValues((v) => ({ ...v, description: e.target.value }))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                onUpdate({ description: e.currentTarget.value })
+                void applyPatch(inc.id, { description: e.currentTarget.value })
               }
             }}
             onBlur={(e) => {
               if (e.currentTarget.value !== inc.description) {
-                onUpdate({ description: e.currentTarget.value })
+                void applyPatch(inc.id, { description: e.currentTarget.value })
               }
             }}
           />
@@ -171,13 +178,13 @@ export default function IncidentsRow({
       </td>
 
       {/* Origen */}
-      <td className="p-2 truncate">
+      <td className={cellTrunc}>
         {isEditing ? (
           <Select
             value={editValues.originDepartment}
             onValueChange={(val) => {
               setEditValues((v) => ({ ...v, originDepartment: val }))
-              onUpdate({ originDepartment: val })
+              void applyPatch(inc.id, { originDepartment: val })
             }}
           >
             <SelectTrigger onClick={(e) => e.stopPropagation()}><SelectValue placeholder="Dept." /></SelectTrigger>
@@ -195,13 +202,13 @@ export default function IncidentsRow({
       </td>
 
       {/* Prioritat */}
-      <td className="p-2 truncate">
+      <td className={cellTrunc}>
         {isEditing ? (
           <Select
             value={editValues.priority}
             onValueChange={(val) => {
               setEditValues((v) => ({ ...v, priority: val }))
-              onUpdate({ priority: val })
+              void applyPatch(inc.id, { priority: val })
             }}
           >
             <SelectTrigger onClick={(e) => e.stopPropagation()}><SelectValue placeholder="Prioritat" /></SelectTrigger>
@@ -219,3 +226,5 @@ export default function IncidentsRow({
     </tr>
   )
 }
+
+export default React.memo(IncidentsRow)

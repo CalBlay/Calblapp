@@ -1,12 +1,14 @@
 // file: src/app/menu/incidents/components/IncidentsEventGroup.tsx
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import IncidentsRow from './IncidentsRow'
 import IncidentsEventHeader from './IncidentsEventHeader'
 import { Incident } from '@/hooks/useIncidents'
 import FincaModal from '@/components/spaces/FincaModal'
 import UserEventInfoModal from '@/components/incidents/UserEventInfoModal'
+import { typography } from '@/lib/typography'
+import { cn } from '@/lib/utils'
 
 interface Props {
   event: any
@@ -33,8 +35,33 @@ export default function IncidentsEventGroup({ event, onUpdate, onOpenOperations 
     }
   }, [])
 
+  const beginEdit = useCallback((row: Incident) => {
+    setEditingId(row.id)
+    setEditValues({
+      description: row.description,
+      originDepartment: row.originDepartment || '',
+      priority: row.priority || row.importance || '',
+    })
+  }, [])
+
+  const applyPatch = useCallback(
+    async (id: string, data: Partial<Incident>) => {
+      await onUpdate(id, data)
+      setEditingId(null)
+    },
+    [onUpdate]
+  )
+
   return (
-    <div className="border-b last:border-0 px-4 py-3">
+    <div
+      className="border-b last:border-0 px-4 py-3"
+      style={
+        {
+          contentVisibility: 'auto',
+          containIntrinsicSize: 'auto 360px',
+        } as React.CSSProperties
+      }
+    >
 
       <IncidentsEventHeader
         title={event.eventTitle}
@@ -62,18 +89,18 @@ export default function IncidentsEventGroup({ event, onUpdate, onOpenOperations 
         eventCode={selectedEventCode}
       />
 
-      <table className="w-full table-fixed text-base mt-3">
+      <table className={cn('w-full table-fixed mt-3', typography('bodySm'))}>
         <thead>
-          <tr className="text-sm text-slate-600 bg-slate-50">
-            <th className="w-12 p-2 text-left">Seg.</th>
-            <th className="w-20 p-2 text-left">Nº</th>
-            <th className="w-28 p-2 text-left">Autor</th>
-            <th className="w-32 p-2 text-left">Dept</th>
-            <th className="w-28 p-2 text-left">Importància</th>
-            <th className="w-28 p-2 text-left">Estat</th>
-            <th className="w-auto p-2 text-left">Incidència</th>
-            <th className="w-32 p-2 text-left">Origen</th>
-            <th className="w-28 p-2 text-left">Prioritat</th>
+          <tr className="bg-slate-50 text-slate-600">
+            <th className={cn('w-12 p-2 text-left font-semibold', typography('bodySm'))}>Seg.</th>
+            <th className={cn('w-20 p-2 text-left font-semibold', typography('bodySm'))}>Nº</th>
+            <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Autor</th>
+            <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Dept</th>
+            <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Importància</th>
+            <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Estat</th>
+            <th className={cn('w-auto p-2 text-left font-semibold', typography('bodySm'))}>Incidència</th>
+            <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Origen</th>
+            <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Prioritat</th>
           </tr>
         </thead>
 
@@ -83,21 +110,11 @@ export default function IncidentsEventGroup({ event, onUpdate, onOpenOperations 
               key={inc.id}
               inc={inc}
               isEditing={editingId === inc.id}
-              onStartEdit={() => {
-                setEditingId(inc.id)
-                setEditValues({
-                  description: inc.description,
-                  originDepartment: inc.originDepartment || '',
-                  priority: inc.priority || inc.importance || '',
-                })
-              }}
+              beginEdit={beginEdit}
+              applyPatch={applyPatch}
+              openOps={onOpenOperations}
               editValues={editValues}
               setEditValues={setEditValues}
-              onUpdate={async (data) => {
-                await onUpdate(inc.id, data)
-                setEditingId(null)
-              }}
-              onOpenOperations={() => onOpenOperations(inc)}
             />
           ))}
         </tbody>

@@ -77,6 +77,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     fulls: 'Full de Treball',
     seguiment: 'Seguiment',
     historial: 'Historial',
+    quadre: 'Quadre de comandament',
     tipologies: 'Tipologies',
   }
 

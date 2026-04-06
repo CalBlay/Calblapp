@@ -12,6 +12,8 @@ import {
 import { Loader2, Users, X } from 'lucide-react'
 
 import { db } from '@/lib/firebaseClient'
+import { typography } from '@/lib/typography'
+import { cn } from '@/lib/utils'
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore'
 
 interface Props {
@@ -83,7 +85,7 @@ export default function EventResponsablesModal({ open, onOpenChange, eventCode }
         </DialogClose>
 
         <DialogHeader>
-          <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+          <DialogTitle className={cn('flex items-center gap-2', typography('cardTitle'))}>
             <Users className="w-5 h-5 text-blue-700" />
             Informació assignada a l'esdeveniment
           </DialogTitle>
@@ -91,26 +93,32 @@ export default function EventResponsablesModal({ open, onOpenChange, eventCode }
 
         {loading ? (
           <div className="flex items-center justify-center py-10">
-            <Loader2 className="animate-spin w-6 h-6 text-gray-500" />
+            <Loader2 className={cn('animate-spin w-6 h-6', typography('bodySm'))} />
           </div>
         ) : (
-          <div className="flex flex-col gap-6 text-sm mt-2">
+          <div className={cn('flex flex-col gap-6 mt-2', typography('bodySm'))}>
 
             {/* Comercial */}
             <section>
-              <h3 className="font-semibold text-blue-700 mb-1">Comercial</h3>
-              <p className="text-gray-700">{comercial || '—'}</p>
+              <h3 className={cn(typography('sectionTitle'), 'text-blue-700 mb-1')}>Comercial</h3>
+              <p className={typography('bodyMd')}>{comercial || '—'}</p>
             </section>
 
             {/* Responsables departamentals */}
             <section>
-              <h3 className="font-semibold text-green-700 mb-1">
+              <h3 className={cn(typography('sectionTitle'), 'text-green-700 mb-1')}>
                 Responsables departamentals
               </h3>
 
-              <p><b>Serveis:</b> {responsables.serveis || '—'}</p>
-              <p><b>Logística:</b> {responsables.logistica || '—'}</p>
-              <p><b>Cuina:</b> {responsables.cuina || '—'}</p>
+              <p className={typography('bodyMd')}>
+                <span className="font-semibold">Serveis:</span> {responsables.serveis || '—'}
+              </p>
+              <p className={typography('bodyMd')}>
+                <span className="font-semibold">Logística:</span> {responsables.logistica || '—'}
+              </p>
+              <p className={typography('bodyMd')}>
+                <span className="font-semibold">Cuina:</span> {responsables.cuina || '—'}
+              </p>
             </section>
 
           </div>

@@ -8,6 +8,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useIncidents } from '@/hooks/useIncidents'
+import { typography } from '@/lib/typography'
+import { cn } from '@/lib/utils'
 
 interface Props {
   open: boolean
@@ -44,25 +46,25 @@ function parseEventTitle(summary: string) {
 }
 
 export default function EventIncidentsModal({ open, onClose, eventId, eventSummary = '' }: Props) {
-  const { incidents, loading, error } = useIncidents({ eventId })
+  const { incidents, loading, error } = useIncidents({ eventId, light: false })
   const { name, ln, code } = parseEventTitle(eventSummary)
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg rounded-2xl">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold">
+          <DialogTitle className={typography('cardTitle')}>
             {name} - {ln}
           </DialogTitle>
-          <div className="text-sm text-gray-600">Llistat d'incidencies</div>
-          {code && <div className="text-xs text-gray-400">Codi: {code}</div>}
+          <div className={typography('bodySm')}>Llistat d'incidencies</div>
+          {code && <div className={typography('bodyXs')}>Codi: {code}</div>}
         </DialogHeader>
 
-        {loading && <p className="text-sm text-gray-500">Carregant incidencies...</p>}
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {loading && <p className={typography('bodySm')}>Carregant incidencies...</p>}
+        {error && <p className={cn(typography('bodySm'), 'text-red-600')}>{error}</p>}
 
         {!loading && !error && incidents.length === 0 && (
-          <p className="text-sm text-gray-500">No hi ha incidencies per aquest esdeveniment.</p>
+          <p className={typography('bodySm')}>No hi ha incidencies per aquest esdeveniment.</p>
         )}
 
         {!loading && incidents.length > 0 && (
@@ -72,7 +74,7 @@ export default function EventIncidentsModal({ open, onClose, eventId, eventSumma
                 key={incident.id}
                 className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
               >
-                <div className="mb-1 text-sm font-medium text-gray-900">{incident.description}</div>
+                <div className={cn('mb-1 font-medium', typography('bodyMd'))}>{incident.description}</div>
 
                 {Array.isArray(incident.images) && incident.images.length > 0 && (
                   <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -97,12 +99,12 @@ export default function EventIncidentsModal({ open, onClose, eventId, eventSumma
                 )}
 
                 {incident.createdBy && (
-                  <div className="mb-2 text-xs text-gray-600">
+                  <div className={cn('mb-2', typography('bodyXs'), 'text-slate-600')}>
                     Usuari: <span className="font-semibold">{incident.createdBy}</span>
                   </div>
                 )}
 
-                <div className="mb-2 flex flex-wrap gap-2 text-xs">
+                <div className={cn('mb-2 flex flex-wrap gap-2', typography('bodyXs'))}>
                   {incident.department && (
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700">
                       {incident.department}
@@ -122,7 +124,7 @@ export default function EventIncidentsModal({ open, onClose, eventId, eventSumma
                   )}
                 </div>
 
-                <div className="text-xs text-gray-400">
+                <div className={typography('bodyXs')}>
                   {new Date(incident.createdAt).toLocaleString('ca-ES')}
                 </div>
               </div>

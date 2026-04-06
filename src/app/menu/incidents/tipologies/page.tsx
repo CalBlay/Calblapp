@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { canManageIncidentCategories } from '@/lib/incidentPolicy'
 import { familyLabelForCategoryId, mergeFamilyLabels } from '@/lib/incidentTypology'
 import { typography } from '@/lib/typography'
+import { cn } from '@/lib/utils'
 
 type CategoryRow = {
   id: string
@@ -337,7 +338,7 @@ export default function IncidentTipologiesPage() {
         <p className={typography('bodySm')}>Carregant categories…</p>
       ) : (
         <div className="rounded-xl border border-gray-200 bg-white overflow-x-auto shadow-sm">
-          <table className="w-full text-sm min-w-[640px]">
+          <table className={cn('w-full min-w-[640px]', typography('bodySm'))}>
             <thead>
               <tr className="bg-slate-50 text-left">
                 <th className={`p-2 w-20 ${typography('label')}`}>Id</th>

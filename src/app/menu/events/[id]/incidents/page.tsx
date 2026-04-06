@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import IncidentsFilter, { Incident } from './IncidentsFilter'
+import { typography } from '@/lib/typography'
+import { cn } from '@/lib/utils'
 
 interface PageProps {
   params: { id: string }
@@ -30,13 +32,16 @@ export default async function EventIncidentsPage({ params }: PageProps) {
     return (
       <div className="max-w-4xl mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Incidències</h1>
-          <Link href="/menu/events" className="text-blue-600 hover:underline">
+          <h1 className={typography('pageTitle')}>Incidències</h1>
+          <Link
+            href="/menu/events"
+            className={cn(typography('bodySm'), 'text-blue-600 hover:underline')}
+          >
             ← Esdeveniments
           </Link>
         </div>
 
-        <p className="mt-6 text-red-600">
+        <p className={cn('mt-6', typography('bodySm'), 'text-red-600')}>
           No s&apos;ha trobat l&apos;esdeveniment a la col·lecció
           {' '}
           <code>stage_verd</code>.
@@ -104,8 +109,11 @@ export default async function EventIncidentsPage({ params }: PageProps) {
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       {/* Títol + tornar */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Incidències</h1>
-        <Link href="/menu/events" className="text-blue-600 hover:underline">
+        <h1 className={typography('pageTitle')}>Incidències</h1>
+        <Link
+          href="/menu/events"
+          className={cn(typography('bodySm'), 'text-blue-600 hover:underline')}
+        >
           ← Esdeveniments
         </Link>
       </div>
@@ -113,11 +121,11 @@ export default async function EventIncidentsPage({ params }: PageProps) {
       {/* Info Esdeveniment (coherent amb events/list) */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between py-4 border-b gap-3">
         <div className="space-y-1">
-          <h2 className="text-2xl font-semibold text-gray-800">
-            {nameStr}
-          </h2>
+          <h2 className={cn(typography('cardTitle'), 'text-slate-800')}>{nameStr}</h2>
 
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+          <div
+            className={cn('flex flex-wrap items-center gap-2', typography('bodySm'), 'text-slate-700')}
+          >
             {ln && (
               <span className="bg-slate-100 text-slate-800 px-3 py-1 rounded-lg">
                 LN: {ln}
@@ -141,14 +149,22 @@ export default async function EventIncidentsPage({ params }: PageProps) {
 
         <div className="mt-1 md:mt-0 flex flex-wrap items-center gap-2">
           {code && (
-            <span className="bg-indigo-50 text-indigo-800 px-3 py-1 rounded-lg text-sm font-medium">
+            <span
+              className={cn(
+                'bg-indigo-50 text-indigo-800 px-3 py-1 rounded-lg font-medium',
+                typography('bodySm')
+              )}
+            >
               {code}
             </span>
           )}
 
           <time
             dateTime={rawDate}
-            className="bg-indigo-50 text-indigo-800 px-3 py-1 rounded-lg text-sm font-medium"
+            className={cn(
+              'bg-indigo-50 text-indigo-800 px-3 py-1 rounded-lg font-medium',
+              typography('bodySm')
+            )}
           >
             {formattedDate}
           </time>

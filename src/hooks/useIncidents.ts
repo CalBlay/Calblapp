@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 
 export interface Incident {
@@ -51,6 +51,25 @@ const normalizeImportance = (value?: string): string => {
   return v || 'normal'
 }
 
+function normalizeIncidentRow(inc: any): Incident {
+  return {
+    ...inc,
+    importance: normalizeImportance(inc.importance),
+    images:
+      Array.isArray(inc.images) && inc.images.length > 0
+        ? inc.images
+        : inc.imageUrl || inc.imagePath
+          ? [
+              {
+                url: inc.imageUrl || null,
+                path: inc.imagePath || null,
+                meta: inc.imageMeta || null,
+              },
+            ]
+          : [],
+  } as Incident
+}
+
 export function useIncidents(_filters: {
   eventId?: string
   from?: string
@@ -63,12 +82,22 @@ export function useIncidents(_filters: {
   refreshKey?: number
   /** Màxim documents (API cap 1000; per defecte 300 si s'omet) */
   limit?: number
+  /**
+   * `true`: `GET` amb `light=1` (sense dades d’imatges al JSON; menys pes de xarxa).
+   * `false`: resposta completa (p. ex. modal amb fotos).
+   */
+  light?: boolean
 }) {
-  const [incidents, setIncidents] = useState<Incident[]>([])
+  /** Dades de l’API (sense filtre client d’estat). */
+  const [rawIncidents, setRawIncidents] = useState<Incident[]>([])
   const [loading, setLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // 🧠 IMPORTANT — Filtre memoitzat
+  /** Per no bloquejar la UI amb “Carregant…” quan ja hi ha dades (canvi de setmana/filtres). */
+  const hadDataRef = useRef(false)
+
+  // 🧠 IMPORTANT — Filtre memoitzat (abans del derive d’incidents)
   const filters = useMemo(
     () => ({
       eventId: _filters.eventId,
@@ -80,6 +109,7 @@ export function useIncidents(_filters: {
       status: _filters.status ?? 'all',
       refreshKey: _filters.refreshKey ?? 0,
       limit: _filters.limit,
+      light: _filters.light ?? false,
     }),
     [
       _filters.eventId,
@@ -91,20 +121,34 @@ export function useIncidents(_filters: {
       _filters.status,
       _filters.refreshKey,
       _filters.limit,
+      _filters.light,
     ]
   )
+
+  const incidents = useMemo(() => {
+    if (!filters.status || filters.status === 'all') return rawIncidents
+    return rawIncidents.filter(
+      (inc) => normalizeIncidentStatus(inc.status) === filters.status
+    )
+  }, [rawIncidents, filters.status])
 
   useEffect(() => {
     let cancel = false
 
     async function load() {
-      try {
+      const blocking = !hadDataRef.current
+      if (blocking) {
         setLoading(true)
-        setError(null)
+        setIsRefreshing(false)
+      } else {
+        setIsRefreshing(true)
+        setLoading(false)
+      }
+      setError(null)
 
+      try {
         const qs = new URLSearchParams()
 
-        // 🔑 FILTRE CLAU PER ESDEVENIMENT
         if (filters.eventId) qs.set('eventId', filters.eventId)
 
         if (filters.from) qs.set('from', filters.from)
@@ -117,6 +161,7 @@ export function useIncidents(_filters: {
         if (typeof filters.limit === 'number' && filters.limit > 0) {
           qs.set('limit', String(Math.min(1000, Math.floor(filters.limit))))
         }
+        if (filters.light) qs.set('light', '1')
 
         const res = await fetch(`/api/incidents?${qs.toString()}`, {
           cache: 'no-store',
@@ -129,43 +174,25 @@ export function useIncidents(_filters: {
         const raw = Array.isArray(data.incidents)
           ? data.incidents
           : Array.isArray(data)
-          ? data
-          : []
+            ? data
+            : []
 
         if (!cancel) {
-          let normalized = raw.map((inc: any) => ({
-            ...inc,
-            importance: normalizeImportance(inc.importance),
-            images:
-              Array.isArray(inc.images) && inc.images.length > 0
-                ? inc.images
-                : inc.imageUrl || inc.imagePath
-                ? [
-                    {
-                      url: inc.imageUrl || null,
-                      path: inc.imagePath || null,
-                      meta: inc.imageMeta || null,
-                    },
-                  ]
-                : [],
-          })) as Incident[]
-
-          if (filters.status && filters.status !== 'all') {
-            normalized = normalized.filter(
-              (inc) => normalizeIncidentStatus(inc.status) === filters.status
-            )
-          }
-
-          setIncidents(normalized)
+          const normalized = raw.map((inc: any) => normalizeIncidentRow(inc)) as Incident[]
+          setRawIncidents(normalized)
+          hadDataRef.current = normalized.length > 0
         }
       } catch (err: any) {
         if (!cancel) setError(err.message || 'Error carregant incidències')
       } finally {
-        if (!cancel) setLoading(false)
+        if (!cancel) {
+          setLoading(false)
+          setIsRefreshing(false)
+        }
       }
     }
 
-    load()
+    void load()
     return () => {
       cancel = true
     }
@@ -176,12 +203,12 @@ export function useIncidents(_filters: {
     filters.department,
     filters.importance,
     filters.categoryLabel,
-    filters.status,
     filters.refreshKey,
     filters.limit,
+    filters.light,
   ])
 
-  const updateIncident = async (id: string, data: Partial<Incident>) => {
+  const updateIncident = useCallback(async (id: string, data: Partial<Incident>) => {
     try {
       setError(null)
 
@@ -201,32 +228,23 @@ export function useIncidents(_filters: {
           }
         : null
 
-      const applyStatusFilter = (list: Incident[]) => {
-        if (!filters.status || filters.status === 'all') return list
-        return list.filter(
-          (inc) => normalizeIncidentStatus(inc.status) === filters.status
-        )
-      }
-
       if (updated) {
-        setIncidents((prev) =>
-          applyStatusFilter(
-            prev.map((inc) =>
-              inc.id === id
-                ? {
-                    ...inc,
-                    ...updated,
-                    importance: normalizeImportance((updated as Incident).importance),
-                    createdAt: normalizeTimestamp((updated as Incident).createdAt),
-                  }
-                : inc
-            )
-          )
+        setRawIncidents((prev) =>
+          prev.map((inc) => {
+            if (inc.id !== id) return inc
+            const merged = {
+              ...inc,
+              ...updated,
+              importance: normalizeImportance((updated as Incident).importance),
+              createdAt: normalizeTimestamp((updated as Incident).createdAt),
+            }
+            return normalizeIncidentRow(merged)
+          })
         )
       } else {
-        setIncidents((prev) =>
-          applyStatusFilter(
-            prev.map((inc) => (inc.id === id ? { ...inc, ...data } : inc))
+        setRawIncidents((prev) =>
+          prev.map((inc) =>
+            inc.id === id ? normalizeIncidentRow({ ...inc, ...data }) : inc
           )
         )
       }
@@ -237,7 +255,7 @@ export function useIncidents(_filters: {
       setError(msg)
       return null
     }
-  }
+  }, [])
 
-  return { incidents, loading, error, updateIncident }
+  return { incidents, rawIncidents, loading, isRefreshing, error, updateIncident }
 }
