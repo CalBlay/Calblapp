@@ -155,7 +155,11 @@ export default function AuditoriaValoracioPage() {
   const userRole = normalizeRole((session?.user as any)?.role || '')
   const isAdmin = userRole === 'admin'
   const isGlobalViewer = userRole === 'admin' || userRole === 'direccio'
-  const canSeeValoracio = isGlobalViewer || userDepartment === 'cuina' || userDepartment === 'logistica'
+  const canSeeValoracio =
+    isGlobalViewer ||
+    userDepartment === 'serveis' ||
+    userDepartment === 'cuina' ||
+    userDepartment === 'logistica'
 
   const [valuationMonthAnchor, setValuationMonthAnchor] = useState(() => startOfMonth(new Date()))
   const [valuationDepartment, setValuationDepartment] = useState<Department | 'all'>('serveis')
@@ -521,7 +525,7 @@ export default function AuditoriaValoracioPage() {
 
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
-      <div className="w-full max-w-6xl mx-auto p-3 sm:p-4 space-y-4">
+      <div className="w-full max-w-7xl 2xl:max-w-[1600px] mx-auto p-3 sm:p-4 space-y-4">
         <div className="w-full bg-gradient-to-r from-cyan-100 to-teal-100 border-b border-gray-200 px-4 py-3">
           <div className="text-sm font-semibold text-gray-800">
             <a href="/menu/auditoria" className="hover:underline">Auditoria</a>
