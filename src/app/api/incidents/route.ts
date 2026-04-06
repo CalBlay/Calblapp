@@ -1,11 +1,15 @@
 // File: src/app/api/incidents/route.ts
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { firestoreAdmin } from "@/lib/firebaseAdmin";
 import admin from "firebase-admin";
+import type { Query } from "firebase-admin/firestore";
 import {
   buildTicketBody,
   notifyMaintenanceManagers,
 } from '@/lib/maintenanceNotifications'
+import { canAccessIncidentsModule, canPostIncident } from '@/lib/incidentPolicy'
 
 interface IncidentDoc {
   id?: string;
@@ -71,6 +75,13 @@ async function generateIncidentNumber(): Promise<string> {
  * ----------------------------------------------------- */
 export async function POST(req: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    const user = session?.user as { id?: string; role?: string; department?: string } | undefined;
+    if (!user?.id) return NextResponse.json({ error: "No autenticat" }, { status: 401 });
+    if (!canPostIncident(user)) {
+      return NextResponse.json({ error: "Sense permisos" }, { status: 403 });
+    }
+
     const bodyText = await req.text();
     let payload: Record<string, any>;
 
@@ -229,6 +240,13 @@ export async function POST(req: Request) {
  * ----------------------------------------------------- */
 export async function GET(req: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    const user = session?.user as { id?: string; role?: string; department?: string } | undefined;
+    if (!user?.id) return NextResponse.json({ error: "No autenticat" }, { status: 401 });
+    if (!canAccessIncidentsModule(user)) {
+      return NextResponse.json({ error: "Sense permisos" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
@@ -243,15 +261,17 @@ export async function GET(req: Request) {
       Math.max(1, Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 300)
     );
 
-    let ref = firestoreAdmin
-      .collection("incidents")
-      .orderBy("createdAt", "desc");
-
-  if (from && to) {
-  ref = ref
-    .where("eventDate", ">=", from)
-    .where("eventDate", "<=", to);
-}
+    // Amb rang de dates: filtre i ordre per **data de l'esdeveniment** (reunió setmanal).
+    // Sense rang: ordre per creació (tauler general).
+    let ref: Query = firestoreAdmin.collection("incidents");
+    if (from && to) {
+      ref = ref
+        .where("eventDate", ">=", from)
+        .where("eventDate", "<=", to)
+        .orderBy("eventDate", "desc");
+    } else {
+      ref = ref.orderBy("createdAt", "desc");
+    }
 
 
     if (eventId) ref = ref.where("eventId", "==", eventId);

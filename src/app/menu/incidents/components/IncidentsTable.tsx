@@ -1,68 +1,34 @@
 // file: src/app/menu/incidents/components/IncidentsTable.tsx
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import IncidentsEventGroup from './IncidentsEventGroup'
+import IncidentOperationsDialog from './IncidentOperationsDialog'
 import { Incident } from '@/hooks/useIncidents'
 import { formatDateString } from '@/lib/formatDate'
+import { groupIncidentsByDayAndEvent } from '@/lib/incidentsMeetingMinutes'
 
 interface Props {
   incidents: Incident[]
-  onUpdate: (id: string, data: Partial<Incident>) => void
-}
-
-type GroupedIncidentEvent = {
-  eventTitle?: string
-  eventCode?: string
-  ln?: string
-  location?: string
-  serviceType?: string
-  pax?: number
-  fincaId?: string
-  commercial: string
-  rows: Incident[]
+  onUpdate: (id: string, data: Partial<Incident>) => Promise<unknown>
 }
 
 const formatDayCountLabel = (count: number) =>
   count === 1 ? '1 incid.' : `${count} inc.`
 
 export default function IncidentsTable({ incidents, onUpdate }: Props) {
-  const days = incidents.reduce<Record<string, Record<string, GroupedIncidentEvent>>>((acc, inc) => {
-    const day = (inc.eventDate || '').slice(0, 10)
-    if (!acc[day]) acc[day] = {}
-    const key = inc.eventId || 'no-event'
+  const [opsIncident, setOpsIncident] = useState<Incident | null>(null)
 
-    if (!acc[day][key]) {
-      acc[day][key] = {
-        eventTitle: inc.eventTitle,
-        eventCode: inc.eventCode,
-        ln: inc.ln,
-        location: inc.eventLocation,
-        serviceType: inc.serviceType,
-        pax: inc.pax,
-        fincaId: inc.fincaId,
-        commercial: inc.eventCommercial || '',
-        rows: [],
-      }
-    }
-
-    acc[day][key].rows.push(inc)
-    return acc
-  }, {})
-
-  const sortedDays = Object.keys(days).sort()
-  const dayEntries = sortedDays.map((day) => {
-    const events = Object.values(days[day] || {})
-    const totalCount = events.reduce(
-      (sum: number, event) => sum + event.rows.length,
-      0
-    )
-
-    return { day, events, totalCount }
-  })
+  const dayEntries = groupIncidentsByDayAndEvent(incidents)
 
   return (
     <div className="w-full rounded-2xl border bg-white shadow-sm overflow-hidden">
+      <IncidentOperationsDialog
+        incident={opsIncident}
+        open={Boolean(opsIncident)}
+        onClose={() => setOpsIncident(null)}
+        onIncidentPatch={onUpdate}
+      />
       {dayEntries.map(({ day, events, totalCount }) => (
         <div key={day}>
           <div className="px-4 py-3 bg-slate-200 border-b border-slate-300 text-base font-semibold text-slate-800 flex items-center justify-between gap-3">
@@ -73,7 +39,12 @@ export default function IncidentsTable({ incidents, onUpdate }: Props) {
           </div>
 
           {events.map((event, i: number) => (
-            <IncidentsEventGroup key={i} event={event} onUpdate={onUpdate} />
+            <IncidentsEventGroup
+              key={i}
+              event={event}
+              onUpdate={onUpdate}
+              onOpenOperations={setOpsIncident}
+            />
           ))}
         </div>
       ))}

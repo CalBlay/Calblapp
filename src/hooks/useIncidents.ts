@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 
 export interface Incident {
   id: string
@@ -24,6 +25,7 @@ export interface Incident {
   pax?: number
   serviceType?: string
   fincaId?: string
+  resolutionNote?: string
   imageUrl?: string | null
   imagePath?: string | null
   imageMeta?: { size?: number; type?: string } | null
@@ -56,6 +58,8 @@ export function useIncidents(_filters: {
   department?: string
   importance?: string
   categoryLabel?: string
+  /** Filtra per estat de resolució (client, sobre el resultat de l’API) */
+  status?: 'all' | 'obert' | 'en_curs' | 'resolt' | 'tancat'
   refreshKey?: number
   /** Màxim documents (API cap 1000; per defecte 300 si s'omet) */
   limit?: number
@@ -73,6 +77,7 @@ export function useIncidents(_filters: {
       department: _filters.department,
       importance: _filters.importance,
       categoryLabel: _filters.categoryLabel,
+      status: _filters.status ?? 'all',
       refreshKey: _filters.refreshKey ?? 0,
       limit: _filters.limit,
     }),
@@ -83,6 +88,7 @@ export function useIncidents(_filters: {
       _filters.department,
       _filters.importance,
       _filters.categoryLabel,
+      _filters.status,
       _filters.refreshKey,
       _filters.limit,
     ]
@@ -107,7 +113,7 @@ export function useIncidents(_filters: {
         if (filters.importance && filters.importance !== 'all')
           qs.set('importance', filters.importance)
         if (filters.categoryLabel && filters.categoryLabel !== 'all')
-          qs.set('categoryId', filters.categoryLabel)
+          qs.set('categoryLabel', filters.categoryLabel)
         if (typeof filters.limit === 'number' && filters.limit > 0) {
           qs.set('limit', String(Math.min(1000, Math.floor(filters.limit))))
         }
@@ -127,7 +133,7 @@ export function useIncidents(_filters: {
           : []
 
         if (!cancel) {
-          const normalized = raw.map((inc: any) => ({
+          let normalized = raw.map((inc: any) => ({
             ...inc,
             importance: normalizeImportance(inc.importance),
             images:
@@ -142,8 +148,15 @@ export function useIncidents(_filters: {
                     },
                   ]
                 : [],
-          }))
-          setIncidents(normalized as Incident[])
+          })) as Incident[]
+
+          if (filters.status && filters.status !== 'all') {
+            normalized = normalized.filter(
+              (inc) => normalizeIncidentStatus(inc.status) === filters.status
+            )
+          }
+
+          setIncidents(normalized)
         }
       } catch (err: any) {
         if (!cancel) setError(err.message || 'Error carregant incidències')
@@ -163,6 +176,7 @@ export function useIncidents(_filters: {
     filters.department,
     filters.importance,
     filters.categoryLabel,
+    filters.status,
     filters.refreshKey,
     filters.limit,
   ])
@@ -187,13 +201,33 @@ export function useIncidents(_filters: {
           }
         : null
 
+      const applyStatusFilter = (list: Incident[]) => {
+        if (!filters.status || filters.status === 'all') return list
+        return list.filter(
+          (inc) => normalizeIncidentStatus(inc.status) === filters.status
+        )
+      }
+
       if (updated) {
         setIncidents((prev) =>
-          prev.map((inc) => (inc.id === id ? { ...inc, ...updated } : inc))
+          applyStatusFilter(
+            prev.map((inc) =>
+              inc.id === id
+                ? {
+                    ...inc,
+                    ...updated,
+                    importance: normalizeImportance((updated as Incident).importance),
+                    createdAt: normalizeTimestamp((updated as Incident).createdAt),
+                  }
+                : inc
+            )
+          )
         )
       } else {
         setIncidents((prev) =>
-          prev.map((inc) => (inc.id === id ? { ...inc, ...data } : inc))
+          applyStatusFilter(
+            prev.map((inc) => (inc.id === id ? { ...inc, ...data } : inc))
+          )
         )
       }
 

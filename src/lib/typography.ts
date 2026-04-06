@@ -1,5 +1,7 @@
-// Base typography tokens for gradual UI standardization.
-// We can migrate modules to these shared classes progressively.
+/**
+ * Tipografia de l’app (mides de text, pes, tracking, color): ús compartit amb `typography('token')`.
+ * No confondre amb tipologies d’incidència / categories — això és només estil de lletra (vegeu `incidentTypology.ts` + `data/incident-categories.json`).
+ */
 
 export const TYPOGRAPHY = {
   eyebrow: 'text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500',

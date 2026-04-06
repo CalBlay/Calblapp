@@ -10,7 +10,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import categories from '../../data/incident-categories.json'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
 
 interface CreateIncidentModalProps {
@@ -51,7 +50,9 @@ export default function CreateIncidentModal({
   const [department, setDepartment] = useState(normalizedUserDepartment)
   const [importance, setImportance] = useState('Normal')
   const [description, setDescription] = useState('')
-  const [category, setCategory] = useState(categories[0])
+  const [category, setCategory] = useState<{ id: string; label: string } | null>(null)
+  const [categories, setCategories] = useState<{ id: string; label: string }[]>([])
+  const [categoriesLoading, setCategoriesLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [images, setImages] = useState<PendingImage[]>([])
@@ -66,13 +67,47 @@ export default function CreateIncidentModal({
     if (!open) {
       setImportance('Normal')
       setDescription('')
-      setCategory(categories[0])
+      setCategory(null)
       setImages((current) => {
         current.forEach((item) => URL.revokeObjectURL(item.preview))
         return []
       })
       setImageError('')
       setError('')
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    let cancel = false
+    async function loadCategories() {
+      setCategoriesLoading(true)
+      try {
+        const res = await fetch('/api/incidents/categories', { cache: 'no-store' })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(String(json?.error || 'Error categories'))
+        const raw = Array.isArray(json.categories) ? json.categories : []
+        const active = raw
+          .filter((c: { active?: boolean }) => c.active !== false)
+          .map((c: { id: string; label: string }) => ({ id: String(c.id), label: String(c.label) }))
+        if (cancel) return
+        setCategories(active)
+        setCategory((prev) => {
+          if (prev && active.some((x) => x.id === prev.id)) return prev
+          return active[0] || null
+        })
+      } catch {
+        if (!cancel) {
+          setCategories([])
+          setCategory(null)
+        }
+      } finally {
+        if (!cancel) setCategoriesLoading(false)
+      }
+    }
+    void loadCategories()
+    return () => {
+      cancel = true
     }
   }, [open])
 
@@ -170,6 +205,10 @@ export default function CreateIncidentModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!category) {
+      setError('Selecciona una categoria')
+      return
+    }
     setLoading(true)
     setError('')
 
@@ -239,18 +278,25 @@ export default function CreateIncidentModal({
             <label className="mb-1 block font-medium">Categoria *</label>
             <select
               className="w-full rounded border p-2"
-              value={category.id}
+              value={category?.id || ''}
               onChange={(e) => {
                 const selected = categories.find((c) => c.id === e.target.value)
                 if (selected) setCategory(selected)
               }}
               required
+              disabled={categoriesLoading || categories.length === 0}
             >
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.id} - {c.label}
-                </option>
-              ))}
+              {categoriesLoading ? (
+                <option value="">Carregant…</option>
+              ) : categories.length === 0 ? (
+                <option value="">No hi ha categories actives</option>
+              ) : (
+                categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.id} - {c.label}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -342,7 +388,12 @@ export default function CreateIncidentModal({
             <Button type="button" variant="outline" className="w-full" disabled={loading} onClick={onClose}>
               Cancel·lar
             </Button>
-            <Button type="submit" className="w-full" variant="primary" disabled={loading}>
+            <Button
+              type="submit"
+              className="w-full"
+              variant="primary"
+              disabled={loading || !category || categoriesLoading}
+            >
               {loading ? 'Creant...' : 'Crear incidencia'}
             </Button>
           </div>

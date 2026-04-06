@@ -2,7 +2,9 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import Link from 'next/link'
+import { useSession } from 'next-auth/react'
+import { AlertTriangle, FileText } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import {
   Select,
@@ -19,14 +21,38 @@ import IncidentsTable from './components/IncidentsTable'
 import FilterButton from '@/components/ui/filter-button'
 import { useFilters } from '@/context/FiltersContext'
 import ExportMenu from '@/components/export/ExportMenu'
+import { Button } from '@/components/ui/button'
+import MeetingMinutesDialog from './components/MeetingMinutesDialog'
+import {
+  canManageIncidentCategories,
+  normalizeIncidentStatus,
+} from '@/lib/incidentPolicy'
+import { typography } from '@/lib/typography'
+
+function incidentStatusDisplayLabel(raw?: string | null) {
+  const w = normalizeIncidentStatus(raw)
+  if (w === 'en_curs') return 'En curs'
+  if (w === 'resolt') return 'Resolt'
+  if (w === 'tancat') return 'Tancat'
+  return 'Obert'
+}
 
 export default function IncidentsPage() {
+  const { data: session } = useSession()
+  const sessionUser = session?.user as { name?: string; email?: string } | undefined
+  const actaAuthorLabel = sessionUser?.name?.trim() || sessionUser?.email?.trim()
+  const canEditTipologies = canManageIncidentCategories(
+    (session?.user as { role?: string; department?: string }) || {}
+  )
+  const [meetingMinutesOpen, setMeetingMinutesOpen] = useState(false)
+
   const [filters, setFilters] = useState({
     from: undefined as string | undefined,
     to: undefined as string | undefined,
     department: undefined as string | undefined,
     importance: 'all' as string,
     categoryLabel: 'all' as string,
+    status: 'all' as 'all' | 'obert' | 'en_curs' | 'resolt' | 'tancat',
   })
 
   const { incidents, loading, error, updateIncident } = useIncidents({
@@ -135,6 +161,30 @@ export default function IncidentsPage() {
             </SelectContent>
           </Select>
         </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Estat</label>
+          <Select
+            value={filters.status}
+            onValueChange={(v) =>
+              setFilters((prev) => ({
+                ...prev,
+                status: v as typeof prev.status,
+              }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Tots" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tots</SelectItem>
+              <SelectItem value="obert">Obert</SelectItem>
+              <SelectItem value="en_curs">En curs</SelectItem>
+              <SelectItem value="resolt">Resolt</SelectItem>
+              <SelectItem value="tancat">Tancat</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     )
     setOpen(true)
@@ -152,7 +202,7 @@ export default function IncidentsPage() {
         Departament: i.department || '',
         Importancia: i.importance || '',
         Categoria: i.category?.label || '',
-        Estat: i.status || '',
+        Estat: incidentStatusDisplayLabel(i.status),
         Descripcio: i.description || '',
         Creada: (i.createdAt || '').slice(0, 19),
         Creador: i.createdBy || '',
@@ -269,11 +319,42 @@ export default function IncidentsPage() {
         icon={<AlertTriangle className="w-7 h-7 text-yellow-600" />}
         title="Incidències"
         subtitle="Tauler de treball setmanal"
-        actions={<ExportMenu items={exportItems} />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2 justify-end">
+            {canEditTipologies ? (
+              <Link
+                href="/menu/incidents/tipologies"
+                className="text-sm font-medium text-gray-800 hover:underline whitespace-nowrap"
+              >
+                Tipologies
+              </Link>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="whitespace-nowrap gap-1.5"
+              disabled={loading}
+              onClick={() => setMeetingMinutesOpen(true)}
+            >
+              <FileText className="h-4 w-4 shrink-0" aria-hidden />
+              Acta reunió
+            </Button>
+            <ExportMenu items={exportItems} />
+          </div>
+        }
+      />
+
+      <MeetingMinutesDialog
+        open={meetingMinutesOpen}
+        onOpenChange={setMeetingMinutesOpen}
+        incidents={incidents}
+        filters={filters}
+        generatedByLabel={actaAuthorLabel}
       />
 
       {/* Total incidències de la setmana */}
-      <div className="text-sm font-medium px-1">
+      <div className={`px-1 ${typography('bodyMd')}`}>
         Total incidències: {totalIncidencies}
       </div>
 

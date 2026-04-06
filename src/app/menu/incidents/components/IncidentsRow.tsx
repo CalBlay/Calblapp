@@ -7,8 +7,11 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Incident } from '@/hooks/useIncidents'
+import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
+import { ListChecks } from 'lucide-react'
 
 interface Props {
   inc: Incident
@@ -24,7 +27,8 @@ interface Props {
       prev: { description?: string; originDepartment?: string; priority?: string }
     ) => { description?: string; originDepartment?: string; priority?: string }
   ) => void
-  onUpdate: (d: Partial<Incident>) => void
+  onUpdate: (d: Partial<Incident>) => void | Promise<unknown>
+  onOpenOperations: () => void
 }
 
 export default function IncidentsRow({
@@ -33,7 +37,8 @@ export default function IncidentsRow({
   onStartEdit,
   editValues,
   setEditValues,
-  onUpdate
+  onUpdate,
+  onOpenOperations,
 }: Props) {
   const normalizedImportance = (() => {
     const value = (inc.importance || '').toLowerCase().trim()
@@ -53,11 +58,37 @@ export default function IncidentsRow({
       ? 'Baixa'
       : 'Normal'
 
+  const workflow = normalizeIncidentStatus(inc.status)
+  const statusLabel =
+    workflow === 'en_curs'
+      ? 'En curs'
+      : workflow === 'resolt'
+      ? 'Resolt'
+      : workflow === 'tancat'
+      ? 'Tancat'
+      : 'Obert'
+
   return (
     <tr
       className="border-b last:border-0 hover:bg-slate-50"
       onClick={() => !isEditing && onStartEdit()}
     >
+      <td className="p-1 align-middle">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 text-slate-600"
+          title="Seguiment i accions"
+          aria-label="Seguiment i accions"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenOperations()
+          }}
+        >
+          <ListChecks className="h-4 w-4" />
+        </Button>
+      </td>
       {/* Nº */}
       <td className="p-2">
   <span className="text-[11px] font-mono tracking-tight block max-w-[80px] truncate">
@@ -98,6 +129,21 @@ export default function IncidentsRow({
           )}
         >
           {importanceLabel}
+        </Badge>
+      </td>
+
+      {/* Estat */}
+      <td className="p-2" onClick={(e) => e.stopPropagation()}>
+        <Badge
+          className={cn(
+            'text-[10px] px-2 py-0.5',
+            workflow === 'obert' && 'bg-amber-100 text-amber-800',
+            workflow === 'en_curs' && 'bg-blue-100 text-blue-800',
+            workflow === 'resolt' && 'bg-emerald-100 text-emerald-800',
+            workflow === 'tancat' && 'bg-slate-200 text-slate-700'
+          )}
+        >
+          {statusLabel}
         </Badge>
       </td>
 

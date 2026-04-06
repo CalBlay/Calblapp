@@ -33,6 +33,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     allergens: 'from-amber-100 to-yellow-50',
     manteniment: 'from-emerald-50 to-green-100',
     deco: 'from-rose-50 to-pink-100',
+    incidents: 'from-red-100 to-pink-100',
   }
 
   const color = colorMap[module] ?? 'from-gray-50 to-gray-100'
@@ -49,6 +50,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     allergens: 'Al·lèrgens',
     manteniment: 'Manteniment',
     deco: 'Deco',
+    incidents: 'Incidències',
   }
 
   const mainLabel = title || moduleLabels[module] || module
@@ -75,6 +77,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     fulls: 'Full de Treball',
     seguiment: 'Seguiment',
     historial: 'Historial',
+    tipologies: 'Tipologies',
   }
 
   const subKey = subLabels[subsubmodule] ? subsubmodule : submodule
