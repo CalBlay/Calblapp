@@ -108,14 +108,23 @@ function mergeGroup(arr: TornCardItem[]): TornCardItem {
 
   const noteSet = new Set<string>()
   const phaseSet = new Set<string>()
+  const vestimentSet = new Set<string>()
   arr.forEach((t) => {
     if (t.dayNote) noteSet.add(t.dayNote)
     if ((t as any).phaseLabel) phaseSet.add((t as any).phaseLabel)
+    const vm = String((t as any).vestimentModel || '').trim()
+    if (vm) vestimentSet.add(vm)
   })
   const dayNote =
     noteSet.size > 0 ? Array.from(noteSet).slice(0, 3).join(' · ') : undefined
   const phaseLabel =
     phaseSet.size > 0 ? Array.from(phaseSet).slice(0, 3).join(' · ') : undefined
+  const vestimentModel =
+    vestimentSet.size === 1
+      ? Array.from(vestimentSet)[0]
+      : vestimentSet.size > 1
+        ? Array.from(vestimentSet).slice(0, 3).join(' · ')
+        : undefined
 
   return {
     ...base,
@@ -123,6 +132,7 @@ function mergeGroup(arr: TornCardItem[]): TornCardItem {
     time: aggTime,
     dayNote,
     phaseLabel,
+    vestimentModel,
     workerName: workers.length === 1 ? workers[0].name : undefined,
     workerRole: workers.length === 1 ? workers[0].role : null,
     __rawWorkers: workers,

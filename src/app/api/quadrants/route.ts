@@ -20,6 +20,23 @@ const normalizeEventId = (value?: string | null) =>
     .trim()
     .split('__')[0]
     .trim()
+
+/** Reparteix M elements en `phaseCount` trossos contigus (cap solapament); suma dels trossos = M. */
+function partitionAssignmentsAcrossPhases<T>(items: T[], phaseCount: number): T[][] {
+  if (phaseCount <= 0) return []
+  const n = items.length
+  const result: T[][] = []
+  const base = Math.floor(n / phaseCount)
+  let extra = n % phaseCount
+  let offset = 0
+  for (let i = 0; i < phaseCount; i++) {
+    const size = base + (extra > 0 ? 1 : 0)
+    if (extra > 0) extra -= 1
+    result.push(items.slice(offset, offset + size))
+    offset += size
+  }
+  return result
+}
 const calcDistanceKm = async (destination: string): Promise<number | null> => {
   if (!GOOGLE_KEY || !destination) return null
   try {
@@ -130,6 +147,8 @@ interface QuadrantSave {
   phaseType?: string | null
   phaseLabel?: string | null
   phaseDate?: string | null
+  /** Model de vestimenta triat en crear el quadrant (Serveis). */
+  vestimentModel?: string | null
 }
 
 async function enrichWithSurveyPreferences(
@@ -369,6 +388,12 @@ export async function POST(req: NextRequest) {
         attentionNotes: metaForSave.notes || [],
         updatedAt: new Date().toISOString(),
         timetables: normalizedTimetables,
+        vestimentModel:
+          deptNorm === 'serveis'
+            ? (typeof bodyForSave.vestimentModel === 'string'
+                ? bodyForSave.vestimentModel.trim() || null
+                : null)
+            : null,
       }
 
       if (!toSave.responsableName && bodyForSave.manualResponsibleName) {
@@ -821,30 +846,61 @@ export async function POST(req: NextRequest) {
             ? findCrewByDriver({ id: jamoneroPerson.id, name: jamoneroPerson.name })
             : findCrewByCompanion({ id: jamoneroPerson.id, name: jamoneroPerson.name })
           : null
-        const autoJamoneroPerson =
+        // 1) Preferir jamonero dins del mateix equip que el responsable/conductor (mateix cotxe).
+        // 2) Si no n’hi ha, cercar jamonero d’un altre equip (només es parteix en 2 fases si no és «compacte»).
+        let autoJamoneroPerson: (typeof departmentPeople)[number] | null = null
+        if (
           !jamoneroPerson &&
           groupIndex === 0 &&
           serviceDate === eventDate &&
           responsibleCrew &&
           hasAutoServiceJamonero
-            ? departmentPeople.find((person) => {
-                if (person.isJamonero !== true) return false
-                if (body.manualResponsibleId && person.id === body.manualResponsibleId) return false
-                const personCrew = person.isDriver
-                  ? findCrewByDriver({ id: person.id, name: person.name })
-                  : findCrewByCompanion({ id: person.id, name: person.name })
-                if (!personCrew) return false
-                if (personCrew.id === responsibleCrew.id) return false
-                if (crewContainsPerson(responsibleCrew, { id: person.id, name: person.name })) return false
-                return true
-              }) || null
-            : null
+        ) {
+          const inResponsibleCrew = departmentPeople.find((person) => {
+            if (person.isJamonero !== true) return false
+            if (body.manualResponsibleId && person.id === body.manualResponsibleId) return false
+            if (!crewContainsPerson(responsibleCrew, { id: person.id, name: person.name })) return false
+            const crewDriver = findPerson({
+              id: responsibleCrew.driverId,
+              name: responsibleCrew.driverName,
+            })
+            if (
+              crewDriver &&
+              responsiblePerson &&
+              person.isDriver &&
+              person.id === responsiblePerson.id
+            ) {
+              return false
+            }
+            return true
+          })
+          const fromOtherCrew =
+            !inResponsibleCrew &&
+            departmentPeople.find((person) => {
+              if (person.isJamonero !== true) return false
+              if (body.manualResponsibleId && person.id === body.manualResponsibleId) return false
+              const personCrew = person.isDriver
+                ? findCrewByDriver({ id: person.id, name: person.name })
+                : findCrewByCompanion({ id: person.id, name: person.name })
+              if (!personCrew) return false
+              if (personCrew.id === responsibleCrew.id) return false
+              if (crewContainsPerson(responsibleCrew, { id: person.id, name: person.name })) return false
+              return true
+            })
+          autoJamoneroPerson = inResponsibleCrew || fromOtherCrew || null
+        }
         const autoJamoneroCrew = autoJamoneroPerson
           ? autoJamoneroPerson.isDriver
             ? findCrewByDriver({ id: autoJamoneroPerson.id, name: autoJamoneroPerson.name })
             : findCrewByCompanion({ id: autoJamoneroPerson.id, name: autoJamoneroPerson.name })
           : null
+        // Esdeveniments petits (treballadors + conductors demanats < 5): un sol vehicle amb el conductor principal.
+        const serveisCompactHeadcount =
+          Number(g.workers || 0) + Number(g.drivers || 0)
+        const compactServeisSingleVehicle = serveisCompactHeadcount < 5
+
         const splitForManualJamonero =
+          !compactServeisSingleVehicle &&
           label.toLowerCase() === 'event' &&
           canAutoCreateExtraEventGroup &&
           groupIndex === 0 &&
@@ -854,6 +910,7 @@ export async function POST(req: NextRequest) {
           jamoneroCrew.id !== responsibleCrew.id &&
           !existingGroupMatchesCrew(body.groups, groupIndex, jamoneroCrew.driverId, serviceDate)
         const splitForAutoJamonero =
+          !compactServeisSingleVehicle &&
           label.toLowerCase() === 'event' &&
           canAutoCreateExtraEventGroup &&
           groupIndex === 0 &&
@@ -1223,13 +1280,16 @@ export async function POST(req: NextRequest) {
         deptNorm === 'serveis' && phase.phaseType === 'event'
           ? Array.isArray(phase.serviceJamoneroAssignmentsOverride)
             ? phase.serviceJamoneroAssignmentsOverride
-            : remainingServiceJamoneroAssignments.slice(
-                0,
-                Math.max(
-                  remainingServiceJamoneroAssignments.length - Math.max(remainingServiceEventGroups - 1, 0),
-                  remainingServiceJamoneroAssignments.length > 0 ? 1 : 0
+            : Array.isArray(phase.partitionedServiceJamoneros)
+              ? phase.partitionedServiceJamoneros
+              : remainingServiceJamoneroAssignments.slice(
+                  0,
+                  Math.max(
+                    remainingServiceJamoneroAssignments.length -
+                      Math.max(remainingServiceEventGroups - 1, 0),
+                    remainingServiceJamoneroAssignments.length > 0 ? 1 : 0
+                  )
                 )
-              )
           : []
       const phaseNumDrivers =
         deptNorm === 'serveis' && phase.phaseType === 'event' && phaseServiceJamoneros.length > 0
@@ -1367,6 +1427,31 @@ export async function POST(req: NextRequest) {
               ...phaseRequests.filter((phase) => phase.phaseType !== 'event'),
             ]
           : phaseRequests
+
+      if (deptNorm === 'serveis' && orderedPhaseRequests.length > 0) {
+        const serveisEventPhasesInOrder = orderedPhaseRequests.filter((p) => p.phaseType === 'event')
+        if (
+          serveisEventPhasesInOrder.length > 0 &&
+          Array.isArray(body.serviceJamoneroAssignments) &&
+          body.serviceJamoneroAssignments.length > 0
+        ) {
+          const normalizedServeisJamoneros = body.serviceJamoneroAssignments.map(
+            (assignment: any, index: number) => ({
+              id: String(assignment?.id || `jamonero-${index + 1}`),
+              mode: assignment?.mode === 'manual' ? ('manual' as const) : ('auto' as const),
+              personnelId: assignment?.personnelId ? String(assignment.personnelId) : null,
+              personnelName: assignment?.personnelName ? String(assignment.personnelName) : null,
+            })
+          )
+          const jamoneroChunks = partitionAssignmentsAcrossPhases(
+            normalizedServeisJamoneros,
+            serveisEventPhasesInOrder.length
+          )
+          serveisEventPhasesInOrder.forEach((phase, idx) => {
+            phase.partitionedServiceJamoneros = jamoneroChunks[idx] || []
+          })
+        }
+      }
 
       for (const phase of orderedPhaseRequests) {
         const result = await writePhaseDoc(phase, Array.from(blockedNamesInBatch))

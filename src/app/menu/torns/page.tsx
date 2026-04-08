@@ -33,6 +33,7 @@ type ApiTorn = {
   workerRole?: 'responsable' | 'conductor' | 'treballador' | null
   workerName?: string
   workerPlate?: string
+  vestimentModel?: string
   __rawWorkers?: (ApiWorker & {
     role?: 'responsable' | 'conductor' | 'treballador'
     startTime?: string

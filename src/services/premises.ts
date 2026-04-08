@@ -31,6 +31,8 @@ export type SurveyNoResponseDefault = 'yes' | 'no'
 export type Premises = {
   department: string
   defaultCharacteristics?: string[]
+  /** Models de vestimenta configurables (Serveis); un valor per entrada. */
+  vestimentModels?: string[]
   restHours: number
   allowMultipleEventsSameDay: boolean
   maxFirstEventDurationHours?: number
@@ -58,6 +60,7 @@ const DEFAULTS: Premises = {
   driverCrews: [],
   surveyGroups: [],
   surveyNoResponseDefault: 'no',
+  vestimentModels: [],
 }
 
 const norm = (s?: string | null) =>
@@ -320,6 +323,9 @@ export function normalizePremises(
     conditions,
     driverCrews,
     surveyGroups,
+    vestimentModels: Array.isArray(raw?.vestimentModels)
+      ? raw.vestimentModels.map((item) => String(item || '').trim()).filter(Boolean)
+      : DEFAULTS.vestimentModels,
   }
 }
 

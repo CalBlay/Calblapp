@@ -235,6 +235,7 @@ export function useServicePhasesState({
         .map((group) => `${group.phaseKey}:${group.id}`)
     )
     return {
+      // Suma per fase activa: cada grup és el **total de persones** (resp + conductor + equip en un sol número; el jamonero compta dins).
       workers: activeServiceGroups.reduce((sum, group) => sum + group.workers, 0),
       jamoneros: serviceJamoneroAssignments.length,
       drivers: activeServiceGroups.filter((group) => group.needsDriver).length,

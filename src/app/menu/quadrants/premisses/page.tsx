@@ -9,6 +9,7 @@ import { normalizeRole } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import type {
   DriverCrewPremise,
   Premises,
@@ -68,6 +69,7 @@ const buildSnapshot = ({
   department,
   premises,
   defaultCharacteristicsText,
+  vestimentModelsText,
   conditions,
   driverCrews,
   surveyGroups,
@@ -75,6 +77,7 @@ const buildSnapshot = ({
   department: string
   premises: Premises
   defaultCharacteristicsText: string
+  vestimentModelsText: string
   conditions: EditableCondition[]
   driverCrews: EditableDriverCrew[]
   surveyGroups: EditableSurveyGroup[]
@@ -86,6 +89,7 @@ const buildSnapshot = ({
     maxFirstEventDurationHours: premises.maxFirstEventDurationHours || 0,
     requireResponsible: Boolean(premises.requireResponsible),
     defaultCharacteristicsText,
+    vestimentModelsText,
     conditions: conditions.map((condition) => ({
       id: condition.id,
       locations: condition.locations,
@@ -108,6 +112,7 @@ const buildSnapshot = ({
 const emptyPremises = (department: string): Premises => ({
   department,
   defaultCharacteristics: ['Treballador', 'Responsable', 'Conductor'],
+  vestimentModels: [],
   restHours: 8,
   allowMultipleEventsSameDay: true,
   maxFirstEventDurationHours: 24,
@@ -175,6 +180,7 @@ export default function QuadrantPremisesPage() {
   const [defaultCharacteristicsText, setDefaultCharacteristicsText] = useState(
     'Treballador, Responsable, Conductor'
   )
+  const [vestimentModelsText, setVestimentModelsText] = useState('')
   const [meta, setMeta] = useState<MetaState | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -212,6 +218,7 @@ export default function QuadrantPremisesPage() {
         const nextPremises = (json?.premises || emptyPremises(department)) as Premises
         const nextConditions = toEditableConditions(nextPremises)
         const nextDefaultCharacteristicsText = (nextPremises.defaultCharacteristics || []).join(', ')
+        const nextVestimentModelsText = (nextPremises.vestimentModels || []).join('\n')
         const nextDriverCrews = toEditableDriverCrews(nextPremises, people)
         const nextSurveyGroups = toEditableSurveyGroups(nextPremises)
         setPremises(nextPremises)
@@ -219,11 +226,13 @@ export default function QuadrantPremisesPage() {
         setDriverCrews(nextDriverCrews)
         setSurveyGroups(nextSurveyGroups)
         setDefaultCharacteristicsText(nextDefaultCharacteristicsText)
+        setVestimentModelsText(nextVestimentModelsText)
         setMeta(json?.meta || null)
         lastSavedSnapshotRef.current = buildSnapshot({
           department,
           premises: nextPremises,
           defaultCharacteristicsText: nextDefaultCharacteristicsText,
+          vestimentModelsText: nextVestimentModelsText,
           conditions: nextConditions,
           driverCrews: nextDriverCrews,
           surveyGroups: nextSurveyGroups,
@@ -289,6 +298,7 @@ export default function QuadrantPremisesPage() {
             department,
             premises,
             defaultCharacteristicsText,
+            vestimentModelsText,
             conditions,
             driverCrews: nextDriverCrews,
             surveyGroups,
@@ -343,11 +353,20 @@ export default function QuadrantPremisesPage() {
         department,
         premises,
         defaultCharacteristicsText,
+        vestimentModelsText,
         conditions,
         driverCrews,
         surveyGroups,
       }),
-    [conditions, defaultCharacteristicsText, department, driverCrews, premises, surveyGroups]
+    [
+      conditions,
+      defaultCharacteristicsText,
+      department,
+      driverCrews,
+      premises,
+      surveyGroups,
+      vestimentModelsText,
+    ]
   )
 
   const dirty = !loading && currentSnapshot !== lastSavedSnapshotRef.current
@@ -622,6 +641,13 @@ export default function QuadrantPremisesPage() {
             }
           })
           .filter((item): item is SurveyGroupPremise => Boolean(item)),
+        vestimentModels:
+          department === 'serveis'
+            ? vestimentModelsText
+                .split('\n')
+                .map((item) => item.trim())
+                .filter(Boolean)
+            : premises.vestimentModels || [],
       }
 
       const res = await fetch('/api/quadrants/premises', {
@@ -632,21 +658,23 @@ export default function QuadrantPremisesPage() {
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || 'No s’han pogut desar les premisses')
 
-      setPremises(json.premises as Premises)
-      setConditions(toEditableConditions(json.premises as Premises))
-      setDriverCrews(toEditableDriverCrews(json.premises as Premises, people))
-      setSurveyGroups(toEditableSurveyGroups(json.premises as Premises))
-      setDefaultCharacteristicsText(
-        ((json.premises as Premises).defaultCharacteristics || []).join(', ')
-      )
+      const savedPremises = json.premises as Premises
+      const savedVestimentText = (savedPremises.vestimentModels || []).join('\n')
+      setPremises(savedPremises)
+      setConditions(toEditableConditions(savedPremises))
+      setDriverCrews(toEditableDriverCrews(savedPremises, people))
+      setSurveyGroups(toEditableSurveyGroups(savedPremises))
+      setDefaultCharacteristicsText((savedPremises.defaultCharacteristics || []).join(', '))
+      setVestimentModelsText(savedVestimentText)
       setMeta({ source: 'firestore', warnings: [] })
       lastSavedSnapshotRef.current = buildSnapshot({
         department,
-        premises: json.premises as Premises,
-        defaultCharacteristicsText: ((json.premises as Premises).defaultCharacteristics || []).join(', '),
-        conditions: toEditableConditions(json.premises as Premises),
-        driverCrews: toEditableDriverCrews(json.premises as Premises, people),
-        surveyGroups: toEditableSurveyGroups(json.premises as Premises),
+        premises: savedPremises,
+        defaultCharacteristicsText: (savedPremises.defaultCharacteristics || []).join(', '),
+        vestimentModelsText: savedVestimentText,
+        conditions: toEditableConditions(savedPremises),
+        driverCrews: toEditableDriverCrews(savedPremises, people),
+        surveyGroups: toEditableSurveyGroups(savedPremises),
       })
       setSuccess('Premisses desades correctament.')
       return true
@@ -824,6 +852,23 @@ export default function QuadrantPremisesPage() {
                       placeholder="Treballador, Responsable, Conductor"
                     />
                   </div>
+
+                  {department === 'serveis' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="vestiment-models">Models de vestimenta</Label>
+                      <p className="text-xs text-slate-500">
+                        Un model per línia. Es faran servir al crear quadrants de Serveis per triar la
+                        vestimenta del servei.
+                      </p>
+                      <Textarea
+                        id="vestiment-models"
+                        className="min-h-[100px] border-slate-200 bg-slate-50/40"
+                        value={vestimentModelsText}
+                        onChange={(event) => setVestimentModelsText(event.target.value)}
+                        placeholder="Ex.: etiqueta negres, camisa blanca…"
+                      />
+                    </div>
+                  )}
 
                   <div className="grid gap-3 border-t border-slate-200 pt-4 lg:grid-cols-2">
                     <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">

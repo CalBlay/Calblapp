@@ -23,6 +23,7 @@ export type Torn = {
   // Camps que omplim quan filtrem per treballador
   workerName?: string
   workerRole?: string | null
+  vestimentModel?: string
 }
 
 // Tipus genèric per documents de Firestore
@@ -158,6 +159,7 @@ type TornDoc = {
   confirmedAt?: unknown
   confirmada?: unknown
   confirmed?: unknown
+  vestimentModel?: string
 }
 
 function isConfirmed(data: FirestoreData): boolean {
@@ -199,6 +201,8 @@ function mapDocToTorn(
     ? norm(fallbackDept)
     : 'sense departament'
   const location = doc?.location ? String(doc.location) : undefined
+  const vestimentModelRaw = String((doc as any)?.vestimentModel ?? '').trim()
+  const vestimentModel = vestimentModelRaw || undefined
 
   const arrTreballadors = Array.isArray(doc?.treballadors) ? doc.treballadors : []
   const arrConductors = Array.isArray(doc?.conductors) ? doc.conductors : []
@@ -262,6 +266,7 @@ function mapDocToTorn(
     location,
     department,
     phaseLabel,
+    vestimentModel,
     __rawWorkers: unified,
   }
 }

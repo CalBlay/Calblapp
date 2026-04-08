@@ -35,6 +35,7 @@ export type TornCardItem = {
   __rawWorkers?: WorkerLite[]
   startTime?: string
   endTime?: string
+  vestimentModel?: string
 }
 
 function shortLocation(s?: string) {
@@ -144,6 +145,15 @@ function PhasePill({ label }: { label?: string }) {
   )
 }
 
+function VestimentPill({ label }: { label?: string }) {
+  if (!label) return null
+  return (
+    <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-violet-100 text-violet-800 border-violet-200">
+      {label}
+    </span>
+  )
+}
+
 function normalizeLabel(value?: string) {
   return String(value ?? '')
     .normalize('NFD')
@@ -203,6 +213,7 @@ export default function TornCard({ item, onClick, onEventClick, onAvisosClick, o
           {effectiveRole && <RolePill role={effectiveRole} />}
           <LnBadge ln={ln} />
           <PhasePill label={item.phaseLabel} />
+          <VestimentPill label={item.vestimentModel} />
           {shouldShowDayNote(item.dayNote, item.phaseLabel) && (
             <NotePill note={item.dayNote} />
           )}

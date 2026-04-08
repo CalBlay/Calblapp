@@ -25,6 +25,7 @@ export interface TornDetailModalProps {
     id: string
     eventName: string
     code?: string
+    vestimentModel?: string
     __rawWorkers?: Worker[]
   } | null
   role?: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
@@ -99,6 +100,12 @@ const grouped = groupByDepartment(workers)
             {torn.code && (
               <div className="text-xs text-gray-400">{torn.code}</div>
             )}
+            {(torn.vestimentModel || '').trim() ? (
+              <div className="mt-2 text-sm text-violet-800">
+                <span className="font-medium text-violet-950">Vestimenta: </span>
+                {torn.vestimentModel}
+              </div>
+            ) : null}
           </div>
 
           {/* ── Llistat ── */}

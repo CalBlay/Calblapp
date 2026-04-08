@@ -349,6 +349,8 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     ? format(latestAllowedSurveyDeadlineAt, 'HH:mm')
     : ''
   const [surveyDeadlineDate, setSurveyDeadlineDate] = useState('')
+  const [serveisVestimentModels, setServeisVestimentModels] = useState<string[]>([])
+  const [vestimentModelChoice, setVestimentModelChoice] = useState<string>('__none__')
   const eventRangeStart = extractDate(event.originalStart || event.start)
   const eventRangeEnd = extractDate(event.originalEnd || event.end || event.start)
   const multiDayDates = useMemo(
@@ -485,6 +487,30 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     latestAllowedSurveyDeadlineDate,
     latestAllowedSurveyDeadlineTime,
   ])
+
+  useEffect(() => {
+    if (!open || !isServeis) return
+    setVestimentModelChoice('__none__')
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/quadrants/premises?department=serveis', {
+          cache: 'no-store',
+        })
+        const json = await res.json()
+        if (cancelled || !res.ok) return
+        const models = Array.isArray(json?.premises?.vestimentModels)
+          ? (json.premises.vestimentModels as string[]).map((m) => String(m || '').trim()).filter(Boolean)
+          : []
+        setServeisVestimentModels(models)
+      } catch {
+        if (!cancelled) setServeisVestimentModels([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, isServeis])
 
   useEffect(() => {
     if (!open || !canLaunchSurvey) return
@@ -820,6 +846,8 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               : null,
         }))
         groupsPayload.forEach((group) => addTimetable(group))
+        payload.vestimentModel =
+          vestimentModelChoice !== '__none__' ? vestimentModelChoice.trim() : null
       } else {
         const logisticaPhases = buildLogisticaPhases()
         logisticaPhases.forEach((phase) => phase.timetables?.forEach((tt) => addTimetable(tt)))
@@ -1040,36 +1068,61 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           )}
 
           {isServeis && (
-            <div className="grid gap-4 xl:grid-cols-[180px_180px_minmax(320px,1fr)_auto] items-end">
-              <div>
-                <Label>Hora Inici</Label>
-                <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+            <div className="space-y-2">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,140px)_minmax(0,140px)_minmax(0,1.25fr)_minmax(0,1fr)_auto] xl:items-end">
+                <div className="min-w-0">
+                  <Label>Hora Inici</Label>
+                  <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                </div>
+                <div className="min-w-0">
+                  <Label>Hora Fi</Label>
+                  <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                </div>
+                <div className="min-w-0 sm:col-span-2 xl:col-span-1">
+                  <Label>Responsable (manual)</Label>
+                  <Select value={manualResp} onValueChange={setManualResp}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Selecciona un responsable…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__auto__">— Automàtic —</SelectItem>
+                      {availableResponsables.map((resp) => (
+                        <SelectItem key={resp.id} value={resp.id}>
+                          {resp.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="min-w-0 sm:col-span-2 xl:col-span-1">
+                  <Label>Model de vestimenta</Label>
+                  <Select value={vestimentModelChoice} onValueChange={setVestimentModelChoice}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Selecciona…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— Cap —</SelectItem>
+                      {serveisVestimentModels.map((model) => (
+                        <SelectItem key={model} value={model}>
+                          {model}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end sm:col-span-2 xl:col-span-1 xl:justify-end">
+                  <GenerationScopeToggle
+                    isMultiDayEvent={isMultiDayEvent}
+                    generationScope={generationScope}
+                    setGenerationScope={setGenerationScope}
+                  />
+                </div>
               </div>
-              <div>
-                <Label>Hora Fi</Label>
-                <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-              </div>
-              <div>
-                <Label>Responsable (manual)</Label>
-                <Select value={manualResp} onValueChange={setManualResp}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Selecciona un responsable…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__auto__">— Automàtic —</SelectItem>
-                    {availableResponsables.map((resp) => (
-                      <SelectItem key={resp.id} value={resp.id}>
-                        {resp.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <GenerationScopeToggle
-                isMultiDayEvent={isMultiDayEvent}
-                generationScope={generationScope}
-                setGenerationScope={setGenerationScope}
-              />
+              {serveisVestimentModels.length === 0 && (
+                <p className="text-xs text-amber-700">
+                  No hi ha models definits. Defineix-los a Premisses (Serveis).
+                </p>
+              )}
             </div>
           )}
 

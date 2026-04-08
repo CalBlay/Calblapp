@@ -62,6 +62,7 @@ type ApiTorn = {
   workerPlate?: string
   startTime?: string
   endTime?: string
+  vestimentModel?: string
   __rawWorkers?: NormalizedWorker[]
 }
 
@@ -280,6 +281,7 @@ export async function GET(req: NextRequest) {
       workerPlate: (t as any).workerPlate,
       startTime: (t as any).startTime,
       endTime: (t as any).endTime,
+      vestimentModel: (t as any).vestimentModel,
       __rawWorkers: t.__rawWorkers as NormalizedWorker[] | undefined,
     }))
 
