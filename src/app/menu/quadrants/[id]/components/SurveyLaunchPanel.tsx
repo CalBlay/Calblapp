@@ -93,8 +93,6 @@ export default function SurveyLaunchPanel({
   ensureSurveyPeopleLoaded,
   surveySubmitting,
 }: Props) {
-  if (!canLaunchSurvey) return null
-
   const [manualPeopleOpen, setManualPeopleOpen] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
   const [responsesOpen, setResponsesOpen] = useState(false)
@@ -140,6 +138,8 @@ export default function SurveyLaunchPanel({
     const totalTargets = Array.isArray(latestSurvey.resolvedTargets) ? latestSurvey.resolvedTargets.length : 0
     return { groupNames, manualNames, totalTargets }
   }, [latestSurvey])
+
+  if (!canLaunchSurvey) return null
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
@@ -381,14 +381,14 @@ export default function SurveyLaunchPanel({
                         className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2 text-sm"
                       >
                         <span className="font-medium text-slate-800">{item.workerName}</span>
-                        {'respondedAt' in item && item.respondedAt ? (
+                        {'respondedAt' in item && item.respondedAt != null ? (
                           <span className="text-xs text-slate-500">
                             {new Intl.DateTimeFormat('ca-ES', {
                               day: '2-digit',
                               month: '2-digit',
                               hour: '2-digit',
                               minute: '2-digit',
-                            }).format(new Date(item.respondedAt))}
+                            }).format(new Date(Number(item.respondedAt)))}
                           </span>
                         ) : responseTab === 'withoutAnswer' ? (
                           <span className="text-xs text-slate-400">Sense resposta</span>

@@ -95,6 +95,17 @@ function deduceLnKeyFromSummary(summary: string): LnKey {
   return 'altres'
 }
 
+function firstFiniteNumber(obj: Record<string, unknown> | null | undefined, keys: string[]): number {
+  if (!obj) return 0
+  for (const k of keys) {
+    const v = obj[k]
+    if (v == null || v === '') continue
+    const n = Number(v)
+    if (Number.isFinite(n)) return n
+  }
+  return 0
+}
+
 type Tone = 'warning' | 'info' | 'success' | 'neutral' | 'purple'
 
 function toneIconClass(tone: Tone) {
@@ -260,12 +271,9 @@ const treballadorsPersons =
     return () => clearTimeout(t)
   }, [event?.id, user.department])
 
-
-  if (!event || !event.id) return null
-
   const roleN = norm(user?.role)
   const deptN = norm(user?.department)
-  const lnKey: LnKey = event.lnKey ?? deduceLnKeyFromSummary(event.summary)
+  const lnKey: LnKey = event?.lnKey ?? deduceLnKeyFromSummary(event?.summary ?? '')
   const isAdmin = roleN === 'admin'
   const isDireccio = roleN === 'direccio'
   const isCapDept = roleN === 'cap' || (roleN.includes('cap') && roleN.includes('depart'))
@@ -317,10 +325,10 @@ const treballadorsPersons =
     router.push(path)
   }
 
-  const dateStr = useMemo(() => event.start?.substring(0, 10) || '-', [event.start])
-  const budgetPax = Number((event as any).pax ?? (event as any).NumPax ?? (event as any).numPax ?? 0) || 0
-  const budgetAmount =
-    Number((event as any).importAmount ?? (event as any).Import ?? (event as any).import ?? 0) || 0
+  const dateStr = useMemo(() => event?.start?.substring(0, 10) || '-', [event?.start])
+  const eventRecord = (event ?? {}) as Record<string, unknown>
+  const budgetPax = firstFiniteNumber(eventRecord, ['pax', 'NumPax', 'numPax'])
+  const budgetAmount = firstFiniteNumber(eventRecord, ['importAmount', 'Import', 'import'])
   const budgetTicket = budgetPax > 0 ? budgetAmount / budgetPax : 0
   const hasBudgetAmount = budgetAmount > 0
   const hasBudgetPax = budgetPax > 0
@@ -431,7 +439,7 @@ const recursos = useMemo(
       icon: Home,
       tone: 'neutral' as const,
    onClick: () => {
-  const fincaRef = (event.fincaId || event.fincaCode || '').trim()
+  const fincaRef = (event?.fincaId || event?.fincaCode || '').trim()
   if (!fincaRef) {
     window.alert('Aquest esdeveniment no té finca assignada.')
     return
@@ -473,7 +481,6 @@ const recursos = useMemo(
   [event, navigateTo, canSeeKitchenDocs]
 )
 
-
   const economic = useMemo(
     () =>
       [
@@ -484,7 +491,11 @@ const recursos = useMemo(
               badge: 'Econòmic',
               icon: FileSignature,
               tone: 'success' as const,
-              onClick: () => navigateTo(`/menu/events/${event.id}/contract`),
+              onClick: () => {
+                const id = event?.id
+                if (id == null || id === '') return
+                navigateTo(`/menu/events/${id}/contract`)
+              },
             }
           : null,
         canSeeBudgetContract
@@ -498,8 +509,10 @@ const recursos = useMemo(
             }
           : null,
       ].filter(Boolean) as any[],
-    [canSeeBudgetContract, event.id]
+    [canSeeBudgetContract, event?.id, navigateTo, event]
   )
+
+  if (!event || !event.id) return null
 
   return (
     <>

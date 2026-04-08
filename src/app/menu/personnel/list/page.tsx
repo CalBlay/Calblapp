@@ -14,7 +14,7 @@ import { useFilters } from '@/context/FiltersContext'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import ExportMenu from '@/components/export/ExportMenu'
 import { Users } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 import UserRequestResultsList from '@/components/users/UserRequestResultsList'
 import { RoleGuard } from '@/lib/withRoleGuard'
 
@@ -141,7 +141,8 @@ if (filters.isDriver !== 'all') {
 </html>`
   }
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
     const ws = XLSX.utils.json_to_sheet(exportRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Personal')

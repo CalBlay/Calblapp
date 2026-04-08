@@ -1,19 +1,14 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { resolveMaintenanceTemplateName } from '@/lib/maintenanceTemplateDisplay'
-import { normalizeRole } from '@/lib/roles'
+import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import {
+  ROLES_MAINTENANCE_TEMPLATES_READ,
+  ROLES_MAINTENANCE_TEMPLATES_WRITE,
+} from '@/lib/server/maintenanceTemplatesAccess'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-
-type SessionUser = {
-  id: string
-  name?: string
-  role?: string
-  department?: string
-}
 
 type TemplateDocument = TemplatePayload & {
   createdAt?: number
@@ -45,16 +40,10 @@ const normalizeSections = (sections: unknown): TemplateSection[] =>
     : []
 
 export async function GET() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
-  if (role !== 'admin' && role !== 'direccio' && role !== 'cap' && role !== 'treballador') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+  const denied = requireRoles(auth, ROLES_MAINTENANCE_TEMPLATES_READ)
+  if (denied) return denied.res
 
   try {
     const snap = await db.collection('maintenancePreventiusTemplates').get()
@@ -91,16 +80,12 @@ type TemplatePayload = {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+  const denied = requireRoles(auth, ROLES_MAINTENANCE_TEMPLATES_WRITE)
+  if (denied) return denied.res
 
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
-  if (role !== 'admin' && role !== 'direccio' && role !== 'cap') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const { user } = auth
 
   try {
     const body = (await req.json()) as TemplatePayload

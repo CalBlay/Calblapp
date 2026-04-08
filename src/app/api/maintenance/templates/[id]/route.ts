@@ -1,17 +1,13 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { normalizeRole } from '@/lib/roles'
+import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import {
+  ROLES_MAINTENANCE_TEMPLATES_READ,
+  ROLES_MAINTENANCE_TEMPLATES_WRITE,
+} from '@/lib/server/maintenanceTemplatesAccess'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-
-type SessionUser = {
-  id: string
-  name?: string
-  role?: string
-}
 
 type TemplateSection = { location: string; items: { label: string }[] }
 type TemplatePatch = {
@@ -36,14 +32,10 @@ type TemplateDocument = TemplatePatch & {
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
-  if (role !== 'admin' && role !== 'direccio' && role !== 'cap' && role !== 'treballador') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+  const denied = requireRoles(auth, ROLES_MAINTENANCE_TEMPLATES_READ)
+  if (denied) return denied.res
 
   const { id } = await ctx.params
   try {
@@ -58,14 +50,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+  const denied = requireRoles(auth, ROLES_MAINTENANCE_TEMPLATES_WRITE)
+  if (denied) return denied.res
 
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
-  if (role !== 'admin' && role !== 'direccio' && role !== 'cap') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const { user } = auth
 
   const { id } = await ctx.params
   try {
@@ -100,14 +90,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 }
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
-  if (role !== 'admin' && role !== 'direccio' && role !== 'cap') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+  const denied = requireRoles(auth, ROLES_MAINTENANCE_TEMPLATES_WRITE)
+  if (denied) return denied.res
 
   const { id } = await ctx.params
   try {

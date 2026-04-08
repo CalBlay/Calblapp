@@ -54,7 +54,7 @@ type ExistingExecution = {
     blockId?: string | null
     type?: string
     value?: any
-    photos?: Array<{ url?: string; path?: string }>
+    photos?: Array<{ url?: string; path?: string; size?: number; type?: string }>
   }>
 }
 
@@ -86,7 +86,12 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const [visibleTemplate, setVisibleTemplate] = useState<VisibleTemplate>(null)
   const [showCreateIncident, setShowCreateIncident] = useState(false)
   const [incidentsRefresh, setIncidentsRefresh] = useState(0)
-  const [answers, setAnswers] = useState<Record<string, { blockId: string; type: string; value: any; photos: Array<{ url: string; path: string }> }>>({})
+  const [answers, setAnswers] = useState<
+    Record<
+      string,
+      { blockId: string; type: string; value: any; photos: Array<{ url: string; path: string; size?: number; type?: string }> }
+    >
+  >({})
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null)
   const [executionStatus, setExecutionStatus] = useState<'draft' | 'completed' | 'validated' | 'rejected'>('draft')
 
@@ -153,7 +158,10 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     setNotes(String(execution?.notes || ''))
     setVisibleTemplate((data.visibleTemplate || null) as VisibleTemplate)
     const existingAnswers = Array.isArray(execution?.auditAnswers) ? execution?.auditAnswers : []
-    const mapped: Record<string, { blockId: string; type: string; value: any; photos: Array<{ url: string; path: string }> }> = {}
+    const mapped: Record<
+      string,
+      { blockId: string; type: string; value: any; photos: Array<{ url: string; path: string; size?: number; type?: string }> }
+    > = {}
     existingAnswers.forEach((a) => {
       const itemId = String(a?.itemId || '').trim()
       if (!itemId) return
@@ -163,7 +171,18 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
         value: a?.value ?? null,
         photos: Array.isArray(a?.photos)
           ? a.photos
-              .map((p) => ({ url: String(p?.url || ''), path: String(p?.path || '') }))
+              .map((p) => {
+                const url = String(p?.url || '')
+                const path = String(p?.path || '')
+                const size = typeof p?.size === 'number' && p.size > 0 ? p.size : undefined
+                const mime = String(p?.type || '').trim()
+                return {
+                  url,
+                  path,
+                  ...(size != null ? { size } : {}),
+                  ...(mime ? { type: mime } : {}),
+                }
+              })
               .filter((p) => p.url)
           : [],
       }
@@ -252,7 +271,15 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     }
   }
 
-  const setAnswer = (itemId: string, patch: Partial<{ blockId: string; type: string; value: any; photos: Array<{ url: string; path: string }> }>) => {
+  const setAnswer = (
+    itemId: string,
+    patch: Partial<{
+      blockId: string
+      type: string
+      value: any
+      photos: Array<{ url: string; path: string; size?: number; type?: string }>
+    }>
+  ) => {
     setAnswers((prev) => ({
       ...prev,
       [itemId]: {
@@ -294,15 +321,32 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       const path = String(json?.path || '')
       if (!url) throw new Error('No s ha retornat URL de la imatge')
 
+      const meta = json?.meta as { size?: number; type?: string } | undefined
+      const size = typeof meta?.size === 'number' && meta.size > 0 ? meta.size : undefined
+      const mime = String(meta?.type || '').trim()
+
       setAnswers((prev) => {
-        const current = prev[itemId] || { blockId, type: 'photo', value: null, photos: [] as Array<{ url: string; path: string }> }
+        const current = prev[itemId] || {
+          blockId,
+          type: 'photo',
+          value: null,
+          photos: [] as Array<{ url: string; path: string; size?: number; type?: string }>,
+        }
         return {
           ...prev,
           [itemId]: {
             ...current,
             blockId,
             type: 'photo',
-            photos: [...(current.photos || []), { url, path }],
+            photos: [
+              ...(current.photos || []),
+              {
+                url,
+                path,
+                ...(size != null ? { size } : {}),
+                ...(mime ? { type: mime } : {}),
+              },
+            ],
           },
         }
       })

@@ -49,6 +49,9 @@ interface FirestoreDraftDoc {
   confirmed?: boolean
   meetingPoint?: string
   groups?: Array<{
+    id?: string | null
+    serviceDate?: string | null
+    dateLabel?: string | null
     meetingPoint?: string
     startTime?: string
     arrivalTime?: string | null
@@ -115,6 +118,9 @@ type Draft = {
   conductors: Person[]
   treballadors: Person[]
   groups?: Array<{
+    id?: string | null
+    serviceDate?: string | null
+    dateLabel?: string | null
     meetingPoint?: string
     startTime?: string
     arrivalTime?: string | null

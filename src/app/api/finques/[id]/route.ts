@@ -1,6 +1,7 @@
 // file: src/app/api/finques/[id]/route.ts
 import { NextResponse } from "next/server"
 import { firestoreAdmin } from "@/lib/firebaseAdmin"
+import { registerFinquesProduccioImagesInIndex } from "@/lib/media/storageMediaIndex"
 
 export const runtime = "nodejs"
 
@@ -70,6 +71,19 @@ export async function PATCH(
 
     // Desar a Firestore
     await ref.set(data, { merge: true })
+
+    const mergedProduccio = data.produccio as Record<string, unknown> | undefined
+    if (mergedProduccio && Array.isArray(mergedProduccio.images)) {
+      const imgs = (mergedProduccio.images as unknown[]).map((x) => String(x).trim()).filter(Boolean)
+      if (imgs.length) {
+        void registerFinquesProduccioImagesInIndex(id, {
+          nom: String(incoming.nom ?? actual.nom ?? ""),
+          code: String(incoming.code ?? actual.code ?? ""),
+          images: imgs,
+          createdAt: data.updatedAt as number,
+        })
+      }
+    }
 
     return NextResponse.json({
       ok: true,

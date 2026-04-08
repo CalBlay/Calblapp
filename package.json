@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "seed:users": "node scripts/seedUsers.js",
     "cleanup:notifications": "tsc scripts/cleanupNotifications.ts --outDir dist && node dist/scripts/cleanupNotifications.js",
     "import:maintenance-machines": "node scripts/importMaintenanceMachines.cjs"

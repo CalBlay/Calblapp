@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import ExportMenu from '@/components/export/ExportMenu'
 import { Map } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 import FloatingAddButton from '@/components/ui/floating-add-button'
 
 type Espai = {
@@ -107,7 +107,8 @@ export default function SpacesInfoClient({ espais, lnOptions }: Props) {
 </html>`
   }
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
     const ws = XLSX.utils.json_to_sheet(exportRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Espais')

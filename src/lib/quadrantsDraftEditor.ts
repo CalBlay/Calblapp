@@ -57,6 +57,8 @@ export type EditorDraftInput = {
   arrivalTime?: string | null
   meetingPoint?: string
   groups?: EditorGroup[]
+  /** Firestore / client sync stamp; triggers editor reset when changed */
+  updatedAt?: string | number | { toDate?: () => Date }
   responsablesNeeded?: number
   numDrivers?: number
   totalWorkers?: number
@@ -782,7 +784,7 @@ export const buildGroupedDraftPersistence = ({
   ]
 
   return orderedGroupIds.map((groupId) => {
-    const group = groupMetaById.get(groupId) || {}
+    const group: Partial<EditorGroup> = groupMetaById.get(groupId) || {}
     const groupRows = groupedRows.get(groupId) || []
     const first = groupRows[0]
     const byRole = (role: EditorRole) => groupRows.filter((row) => row.role === role)
@@ -800,7 +802,7 @@ export const buildGroupedDraftPersistence = ({
     const driversTotal = conductorsGroup.length
     const responsibleName = responsables[0]?.name || null
     const responsibleId = responsables[0]?.id || null
-    const base =
+    const base: Partial<EditorGroup> =
       previousGroups.find((candidate) => String(candidate?.id || '') === groupId) || {}
 
     return {

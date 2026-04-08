@@ -8,6 +8,7 @@ import {
   buildTicketBody,
   notifyMaintenanceManagers,
 } from '@/lib/maintenanceNotifications'
+import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -428,6 +429,23 @@ export async function POST(req: Request) {
       },
       excludeIds: [user.id],
     })
+
+    const mediaPath = String(body.imagePath || '').trim()
+    if (mediaPath) {
+      void registerMediaRef({
+        path: mediaPath,
+        source: 'maintenance',
+        firestoreDocId: doc.id,
+        url: body.imageUrl || null,
+        size:
+          typeof body.imageMeta?.size === 'number' && Number.isFinite(body.imageMeta.size)
+            ? body.imageMeta.size
+            : null,
+        contentType: body.imageMeta?.type ? String(body.imageMeta.type) : null,
+        title: [ticketCode, location, description.slice(0, 80)].filter(Boolean).join(' · '),
+        createdAt: now,
+      })
+    }
 
     return NextResponse.json({ id: doc.id }, { status: 201 })
   } catch (err: unknown) {

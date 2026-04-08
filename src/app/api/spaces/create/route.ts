@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { registerFinquesProduccioImagesInIndex } from '@/lib/media/storageMediaIndex'
 
 export const runtime = 'nodejs'
 
@@ -99,6 +100,18 @@ export async function POST(req: Request) {
 
     const docRef = db.collection('finques').doc()
     await docRef.set(payload)
+
+    const imgList = Array.isArray(produccioFormatted.images)
+      ? (produccioFormatted.images as string[]).map((x) => String(x).trim()).filter(Boolean)
+      : []
+    if (imgList.length) {
+      void registerFinquesProduccioImagesInIndex(docRef.id, {
+        nom,
+        code: codeValue,
+        images: imgList,
+        createdAt: payload.createdAt as number,
+      })
+    }
 
     return NextResponse.json({ ok: true, id: docRef.id })
   } catch (err) {

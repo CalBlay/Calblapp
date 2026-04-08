@@ -7,6 +7,7 @@ import {
   buildTicketBody,
   notifyMaintenanceManagers,
 } from '@/lib/maintenanceNotifications'
+import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -442,6 +443,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     await batch.commit()
+
+    if (imagePath) {
+      void registerMediaRef({
+        path: imagePath,
+        source: 'messaging',
+        firestoreDocId: msgRef.id,
+        url: imageUrl || null,
+        size:
+          typeof imageMeta?.size === 'number' && Number.isFinite(imageMeta.size)
+            ? imageMeta.size
+            : null,
+        contentType: imageMeta?.type ? String(imageMeta.type) : null,
+        title: [senderName, text.slice(0, 80)].filter(Boolean).join(' · ') || `Missatge ${msgRef.id}`,
+        createdAt: now,
+      })
+    }
 
     // Realtime publish
     const apiKey = process.env.ABLY_API_KEY

@@ -570,7 +570,7 @@ export default function DraftsTable({
   const currentEditingRow = editIdx !== null ? rows[editIdx] || null : null
   const hasInlineEditor = Boolean(currentEditingRow && editIdx !== null)
   const isGroupCollapsed = (groupId?: string | null) =>
-    Boolean(groupId) && collapsedGroups.has(groupId)
+    groupId != null && groupId !== '' && collapsedGroups.has(groupId)
   const toggleGroupCollapsed = (groupId?: string | null) => {
     if (!groupId) return
     setCollapsedGroups((prev) => {
@@ -806,7 +806,7 @@ export default function DraftsTable({
       canManageGroups={canManageGroups}
       showStructuredGroups={showStructuredGroups}
       rows={rows}
-      defaultGroupId={defaultGroupId}
+      defaultGroupId={defaultGroupId ?? undefined}
       availableForEditor={availableForEditor}
       renderDisplayItemsMobile={renderDisplayItemsMobile}
       canEditMeetingPoint={canEditMeetingPoint}

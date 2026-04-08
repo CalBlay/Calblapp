@@ -2,6 +2,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import {
+  orderedDayRangeFromLocalDates,
+  queryQuadrantCollectionDocsInDateRange,
+} from '@/lib/firestoreQuadrantsRangeQuery'
 
 export const runtime = 'nodejs'
 
@@ -94,13 +98,22 @@ const dayKeyRange = (startISO: string, endISO: string) => {
   return out
 }
 
-async function getQuadrantOccupations(plate: string): Promise<Occupation[]> {
+async function getQuadrantOccupations(
+  plate: string,
+  reqStart: Date,
+  reqEnd: Date
+): Promise<Occupation[]> {
   const out: Occupation[] = []
+  const { start: rangeStart, end: rangeEnd } = orderedDayRangeFromLocalDates(reqStart, reqEnd)
 
   for (const col of quadrantCollections) {
-    const snap = await db.collection(col).get()
+    const { docs } = await queryQuadrantCollectionDocsInDateRange(
+      db.collection(col),
+      rangeStart,
+      rangeEnd
+    )
 
-    snap.docs.forEach(doc => {
+    for (const doc of docs) {
       const q = doc.data() as QuadrantRecord
       const conductors = Array.isArray(q.conductors) ? q.conductors : []
 
@@ -120,7 +133,7 @@ async function getQuadrantOccupations(plate: string): Promise<Occupation[]> {
           status: String(c?.status || q?.status || ''),
         })
       })
-    })
+    }
   }
 
   return out
@@ -164,7 +177,7 @@ async function findConflict(
   opts?: { ignoreId?: string }
 ) {
   const [quadrantOccs, assignmentOccs] = await Promise.all([
-    getQuadrantOccupations(plate),
+    getQuadrantOccupations(plate, reqStart, reqEnd),
     getAssignmentOccupations(plate, { ignoreId: opts?.ignoreId }),
   ])
 

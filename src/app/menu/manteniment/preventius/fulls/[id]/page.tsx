@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { addDays, addMonths } from 'date-fns'
 import { useParams, useSearchParams } from 'next/navigation'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 import { useSession } from 'next-auth/react'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
@@ -426,7 +426,8 @@ export default function PreventiusFullsFitxaPage() {
   const exportWorker = draft?.worker || ''
   const exportNotes = draft?.notes || ''
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
     const metadata = [
       {
         Titol: exportTitle,

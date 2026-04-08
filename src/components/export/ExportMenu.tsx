@@ -12,7 +12,7 @@ import {
 
 export type ExportMenuItem = {
   label: string
-  onClick: () => void
+  onClick: () => void | Promise<void>
   disabled?: boolean
 }
 
@@ -38,7 +38,9 @@ export default function ExportMenu({
         {items.map((item) => (
           <DropdownMenuItem
             key={item.label}
-            onClick={item.onClick}
+            onClick={() => {
+              void Promise.resolve(item.onClick()).catch((err) => console.error(err))
+            }}
             disabled={item.disabled}
           >
             {item.label}

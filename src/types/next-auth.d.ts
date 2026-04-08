@@ -1,6 +1,6 @@
 // file: src/types/next-auth.d.ts
-import NextAuth, { DefaultSession } from "next-auth"
-import { DefaultJWT } from "next-auth/jwt"
+import type { DefaultSession } from "next-auth"
+import type { DefaultJWT } from "next-auth/jwt"
 
 // Extensió del tipus Session
 declare module "next-auth" {

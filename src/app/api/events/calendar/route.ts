@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { unstable_cache } from 'next/cache'
+import { isIsoDateDayParam } from '@/lib/firestoreStageRangeQuery'
+import { computeCalendarEventsInRange } from '@/lib/api/calendarEventsRange'
 
 export const runtime = 'nodejs'
 
-const padHhMm = (raw: unknown): string | null => {
-  if (raw == null || typeof raw !== 'string') return null
-  const s = raw.trim().slice(0, 5)
-  return /^\d{2}:\d{2}$/.test(s) ? s : null
-}
+const RANGE_REVALIDATE_SEC = 90
+
+const getCalendarEventsCached = unstable_cache(
+  async (start: string, end: string) => computeCalendarEventsInRange(start, end),
+  ['api-events-calendar-v1'],
+  { revalidate: RANGE_REVALIDATE_SEC }
+)
 
 export async function GET(req: NextRequest) {
   const startedAt = Date.now()
@@ -19,115 +23,14 @@ export async function GET(req: NextRequest) {
     if (!start || !end) {
       return NextResponse.json({ error: 'Falten start i end' }, { status: 400 })
     }
-
-    const collections = ['stage_verd', 'stage_taronja']
-    const base: Record<string, unknown>[] = []
-    const startMs = new Date(`${start}T00:00:00.000Z`).getTime()
-    const endMs = new Date(`${end}T23:59:59.999Z`).getTime()
-
-    for (const coll of collections) {
-      console.log(`[events/calendar] Llegint Firestore: ${coll}`)
-      const snap = await db.collection(coll).get()
-
-      snap.forEach((doc) => {
-        const d = doc.data() as FirebaseFirestore.DocumentData
-
-        const dateStart =
-          typeof d.DataInici === 'string' ? d.DataInici.slice(0, 10) : null
-        const dateEnd =
-          typeof d.DataFi === 'string' && d.DataFi.trim()
-            ? d.DataFi.slice(0, 10)
-            : dateStart
-
-        if (!dateStart) return
-
-        const tStart =
-          padHhMm(d.HoraInici ?? d.horaInici ?? d.Hora ?? d.hora) || '12:00'
-        const hasExplicitStart = Boolean(
-          padHhMm(d.HoraInici ?? d.horaInici ?? d.Hora ?? d.hora)
-        )
-        const tEnd =
-          padHhMm(d.HoraFi ?? d.horaFi) ||
-          (hasExplicitStart ? '23:59' : '12:00')
-
-        const startISO = `${dateStart}T${tStart}:00`
-        const endISO = `${dateEnd}T${tEnd}:00`
-
-        const eventStartMs = new Date(startISO).getTime()
-        const eventEndMs = new Date(endISO || startISO).getTime()
-        if (Number.isNaN(eventStartMs) || Number.isNaN(eventEndMs)) return
-        if (eventEndMs < startMs || eventStartMs > endMs) return
-
-        const rawSummary =
-          typeof d.NomEvent === 'string' ? d.NomEvent : '(Sense titol)'
-
-        const summary = rawSummary.split('/')[0].trim()
-
-        const location = (d.Ubicacio ?? '')
-          .split('(')[0]
-          .split('/')[0]
-          .replace(/^ZZ\s*/i, '')
-          .trim()
-
-        const lnValue = typeof d.LN === 'string' ? d.LN : 'Altres'
-
-        // Extreure tots els fileN del document
-        const fileFields: Record<string, string> = {}
-        Object.entries(d).forEach(([k, v]) => {
-          if (
-            k.toLowerCase().startsWith('file') &&
-            typeof v === 'string' &&
-            v.length > 0
-          ) {
-            fileFields[k] = v
-          }
-        })
-
-        base.push({
-          id: doc.id,
-          ...fileFields,
-
-          // Camps normalitzats
-          summary,
-          start: startISO,
-          end: endISO,
-          day: dateStart || d.DataInici || '',
-
-          location,
-          lnKey: lnValue.toLowerCase(),
-          lnLabel: lnValue,
-          collection: coll,
-
-          code: d.code || d.Code || d.codi || '',
-          codeConfirmed:
-            typeof d.codeConfirmed === 'boolean' ? d.codeConfirmed : undefined,
-          codeMatchScore:
-            typeof d.codeMatchScore === 'number' ? d.codeMatchScore : undefined,
-
-          comercial: d.Comercial || d.comercial || '',
-          servei: d.Servei || d.servei || '',
-
-          // FIX: Pax robust
-          numPax:
-            d.NumPax ??
-            d.numPax ??
-            d.PAX ??
-            null,
-
-          // FIX: Observacions Zoho
-          ObservacionsZoho:
-            d.ObservacionsZoho ??
-            d.observacionsZoho ??
-            d.Observacions ??
-            d.observacions ??
-            '',
-
-          stageGroup: d.StageGroup || d.stageGroup || '',
-          HoraInici: d.HoraInici || d.horaInici || '',
-          HoraFi: d.HoraFi || d.horaFi || '',
-        })
-      })
+    if (!isIsoDateDayParam(start) || !isIsoDateDayParam(end)) {
+      return NextResponse.json(
+        { error: 'start i end han de ser dates YYYY-MM-DD' },
+        { status: 400 }
+      )
     }
+
+    const { events: base } = await getCalendarEventsCached(start, end)
 
     console.log(`[events/calendar] Total esdeveniments trobats: ${base.length}`)
     console.info('[events/calendar] completed', {
@@ -135,7 +38,7 @@ export async function GET(req: NextRequest) {
       start,
       end,
       returned: base.length,
-      collections: collections.length,
+      collections: 2,
     })
 
     return NextResponse.json({ events: base }, { status: 200 })

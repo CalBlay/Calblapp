@@ -5,7 +5,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
 import { useSession } from 'next-auth/react'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 import { CalendarDays, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
 import ExportMenu from '@/components/export/ExportMenu'
 
@@ -35,10 +35,11 @@ export default function QuadrantsPage() {
   }))
 
   const {
-    data: events = [],
+    data: eventsData = [],
     loading,
     error,
   } = useFetch('/api/events/quadrants', filters.start, filters.end)
+  const events = eventsData as QuadrantEvent[]
 
   const { data: session } = useSession()
   const department =
@@ -322,7 +323,8 @@ export default function QuadrantsPage() {
     [visibleFilteredEvents]
   )
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
     const ws = XLSX.utils.json_to_sheet(exportRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Quadrants')

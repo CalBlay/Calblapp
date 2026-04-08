@@ -53,7 +53,7 @@ export default function VehiclesTable({ item, onChanged, onEditingChange }: Prop
           isNew={false}
           eventDay={item.day}
           eventStartTime={item.eventStartTime}
-          eventEndTime={item.eventEndTime}
+          eventEndTime={item.eventEndTime ?? ''}
           onChanged={onChanged}
           onEditingChange={onEditingChange}
         />
@@ -68,7 +68,7 @@ export default function VehiclesTable({ item, onChanged, onEditingChange }: Prop
           isNew={true}
           eventDay={item.day}
           eventStartTime={item.eventStartTime}
-          eventEndTime={item.eventEndTime}
+          eventEndTime={item.eventEndTime ?? ''}
           onChanged={handleSavedNewRow}
           onEditingChange={onEditingChange}
         />

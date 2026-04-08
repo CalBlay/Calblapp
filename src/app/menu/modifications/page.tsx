@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import ExportMenu from '@/components/export/ExportMenu'
 import { useSession } from 'next-auth/react'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 import {
   Select,
   SelectTrigger,
@@ -237,7 +237,8 @@ export default function ModificationsPage() {
     [modifications]
   )
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
     const ws = XLSX.utils.json_to_sheet(exportRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Modificacions')

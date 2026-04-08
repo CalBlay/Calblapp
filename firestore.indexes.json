@@ -1,0 +1,69 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "stage_verd",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "DataInici", "order": "ASCENDING" },
+        { "fieldPath": "DataFi", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stage_taronja",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "DataInici", "order": "ASCENDING" },
+        { "fieldPath": "DataFi", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "quadrantsServeis",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "quadrantsLogistica",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "quadrantsCuina",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "quadrantsProduccio",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "quadrantsComercial",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "quadrantsEmpresa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

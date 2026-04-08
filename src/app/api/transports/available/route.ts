@@ -2,6 +2,10 @@
 import { NextResponse } from 'next/server'
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import {
+  orderedDayRangeFromISOStrings,
+  queryQuadrantCollectionDocsInDateRange,
+} from '@/lib/firestoreQuadrantsRangeQuery'
 
 export const runtime = 'nodejs'
 
@@ -107,6 +111,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
     }
 
+    const dayRange = orderedDayRangeFromISOStrings(startDate, endDate)
+    if (!dayRange) {
+      return NextResponse.json({ error: 'Invalid startDate or endDate' }, { status: 400 })
+    }
+
     const reqStart = toDateTime(startDate, startTime)
     const reqEnd = toDateTime(endDate, endTime)
 
@@ -146,12 +155,13 @@ export async function POST(req: Request) {
     }
 
     for (const col of quadrantCols) {
-      const snap = await db
-        .collection(col)
-        .where('startDate', '<=', endDate)
-        .get()
+      const { docs } = await queryQuadrantCollectionDocsInDateRange(
+        db.collection(col),
+        dayRange.start,
+        dayRange.end
+      )
 
-      snap.docs.forEach(doc => {
+      for (const doc of docs) {
         const q = doc.data() as QuadrantRecord
         const conductors = Array.isArray(q.conductors) ? q.conductors : []
 
@@ -167,7 +177,7 @@ export async function POST(req: Request) {
             end: range.end,
           })
         })
-      })
+      }
     }
 
     // Assignacions manuals (eviten dobles reserves)

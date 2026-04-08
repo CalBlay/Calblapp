@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { Clock, Filter, MapPin, RefreshCw, Truck } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
@@ -205,7 +205,8 @@ export default function DisponibilitatLogisticaPage() {
     [filteredVehicles, date, startTime, endTime]
   )
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
     const ws = XLSX.utils.json_to_sheet(exportRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Disponibilitat')
@@ -331,7 +332,10 @@ export default function DisponibilitatLogisticaPage() {
       HoraInici: a?.startTime || '',
       HoraFi: a?.endTime || '',
       Matricula: a?.plate || '',
-      Vehicle: TRANSPORT_TYPE_LABELS[a?.vehicleType] || a?.vehicleType || '',
+      Vehicle:
+        (a?.vehicleType != null && a.vehicleType !== ''
+          ? TRANSPORT_TYPE_LABELS[a.vehicleType] ?? a.vehicleType
+          : '') || '',
       Conductor: a?.conductorName || '',
       Destinacio: a?.destination || '',
       Notes: a?.notes || '',
@@ -341,6 +345,7 @@ export default function DisponibilitatLogisticaPage() {
 
   const handleExportAssignmentsExcel = async () => {
     try {
+      const XLSX = await loadXlsx()
       const rows = await loadAssignmentRows()
       const ws = XLSX.utils.json_to_sheet(rows)
       const wb = XLSX.utils.book_new()
@@ -355,8 +360,8 @@ export default function DisponibilitatLogisticaPage() {
   const handleExportAssignmentsPdf = async () => {
     try {
       const rows = await loadAssignmentRows()
-      const cols: Array<keyof AvailabilityExportRow> = [
-      'Data',
+      const cols: Array<keyof AssignmentExportRow> = [
+        'Data',
         'HoraInici',
         'HoraFi',
         'Matricula',

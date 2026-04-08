@@ -145,7 +145,7 @@ export async function GET(req: Request) {
 
         // conductors → files
         if (hasDrivers) {
-          q.conductors.forEach((c) => {
+          ;(q.conductors ?? []).forEach((c) => {
             item.rows.push({
               id: c.id || `${dept}-${Math.random()}`,
               department: dept,

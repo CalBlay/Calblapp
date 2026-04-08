@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { registerAuditAnswersInIndex } from '@/lib/media/storageMediaIndex'
 
 type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 type IncidentOutcome = 'none' | 'reported'
@@ -115,7 +116,7 @@ export async function POST(req: Request) {
         blockId?: string
         type?: AnswerType
         value?: boolean | number | string | null
-        photos?: Array<{ url?: string; path?: string }>
+        photos?: Array<{ url?: string; path?: string; size?: number; type?: string }>
       }>
     }
 
@@ -141,10 +142,21 @@ export async function POST(req: Request) {
               type === 'rating' ? 'rating' : type === 'photo' ? 'photo' : 'checklist'
             const photos = Array.isArray(a?.photos)
               ? a.photos
-                  .map((p) => ({
-                    url: String(p?.url || '').trim(),
-                    path: String(p?.path || '').trim(),
-                  }))
+                  .map((p) => {
+                    const url = String(p?.url || '').trim()
+                    const path = String(p?.path || '').trim()
+                    const size =
+                      typeof p?.size === 'number' && Number.isFinite(p.size) && p.size > 0
+                        ? p.size
+                        : undefined
+                    const mime = String(p?.type || '').trim()
+                    return {
+                      url,
+                      path,
+                      ...(size != null ? { size } : {}),
+                      ...(mime ? { type: mime } : {}),
+                    }
+                  })
                   .filter((p) => p.url)
               : []
 
@@ -254,6 +266,12 @@ export async function POST(req: Request) {
         },
         { merge: true }
       )
+      void registerAuditAnswersInIndex(docId, auditAnswers, {
+        templateName: visibleTemplate?.name || null,
+        eventTitle: eventSummary || null,
+        createdAt: now,
+      })
+
       return NextResponse.json(
         {
           ok: true,
@@ -277,6 +295,12 @@ export async function POST(req: Request) {
       },
       { merge: true }
     )
+
+    void registerAuditAnswersInIndex(docId, auditAnswers, {
+      templateName: visibleTemplate?.name || null,
+      eventTitle: eventSummary || null,
+      createdAt: now,
+    })
 
     return NextResponse.json(
       {

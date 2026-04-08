@@ -94,7 +94,10 @@ function isTemplateComplete(name: string, blocks: SanitizedBlock[]) {
     if (!Array.isArray(b?.items) || b.items.length === 0) return false
     if (!b.items.every((i) => String(i?.label || '').trim().length > 0)) return false
     if (normalizeItemWeightMode(String(b?.itemWeightMode || 'equal')) !== 'manual') return true
-    const total = b.items.reduce((sum: number, i) => sum + (Number(i?.weight) || 0), 0)
+    const total = b.items.reduce((sum: number, i) => {
+      if (!i) return sum
+      return sum + ('weight' in i ? Number(i.weight) : 0)
+    }, 0)
     return Math.round(total * 100) / 100 === 100
   })
 }

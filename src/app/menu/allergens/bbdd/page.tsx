@@ -30,8 +30,7 @@ import {
   updateDoc,
   writeBatch,
 } from 'firebase/firestore'
-import { jsPDF } from 'jspdf'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 
 type AllergenValue = 'SI' | 'NO' | 'T' | ''
 
@@ -951,6 +950,7 @@ export default function AllergensBbddPage() {
         return
       }
 
+      const XLSX = await loadXlsx()
       const wb = XLSX.utils.book_new()
       const ws = XLSX.utils.json_to_sheet(rows)
       XLSX.utils.book_append_sheet(wb, ws, 'Allergens_BBDD')
@@ -976,6 +976,7 @@ export default function AllergensBbddPage() {
         return
       }
 
+      const { jsPDF } = await import('jspdf')
       const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
       const pageWidth = pdf.internal.pageSize.getWidth()
       const pageHeight = pdf.internal.pageSize.getHeight()

@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { startOfWeek, endOfWeek } from 'date-fns'
 import { Loader2 } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 import { normalizeRole } from '@/lib/roles'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import usePissarra from '@/hooks/usePissarra'
@@ -143,7 +143,8 @@ export default function PissarraPage() {
     [filteredFlat, mode]
   )
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
     const ws = XLSX.utils.json_to_sheet(exportRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Pissarra')

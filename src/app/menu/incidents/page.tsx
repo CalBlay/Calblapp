@@ -5,7 +5,7 @@ import React, { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { AlertTriangle, FileText } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 import {
   Select,
   SelectTrigger,
@@ -215,7 +215,8 @@ export default function IncidentsPage() {
     [incidents]
   )
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
     const ws = XLSX.utils.json_to_sheet(exportRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Incidencies')

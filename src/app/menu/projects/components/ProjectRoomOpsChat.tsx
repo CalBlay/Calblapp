@@ -406,6 +406,7 @@ export default function ProjectRoomOpsChat({
           onDelete={deleteMessage}
           onCreateTicket={() => {}}
           onPickTicketType={() => {}}
+          onRespondSurvey={() => {}}
         />
       </div>
 

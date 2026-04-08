@@ -12,6 +12,7 @@ import TemplatesFiltersCard from './components/TemplatesFiltersCard'
 import EmbeddedTemplatesLayout from './components/EmbeddedTemplatesLayout'
 import TemplatesListCard from './components/TemplatesListCard'
 import { displayMaintenanceTemplateName } from '@/lib/maintenanceTemplateDisplay'
+import { loadXlsx } from '@/lib/loadXlsx'
 import {
   buildTemplateRows,
   formatExportDate,
@@ -194,7 +195,7 @@ export function PreventiusTemplatesContent({
     if (!file) return
     try {
       const buffer = await file.arrayBuffer()
-      const xlsx = await import('xlsx')
+      const xlsx = await loadXlsx()
       const workbook = xlsx.read(buffer, { type: 'array' })
       const parsed = parseWorkbook(file.name, workbook, xlsx.utils)
       setPreview(parsed)
@@ -292,7 +293,7 @@ export function PreventiusTemplatesContent({
   const exportTemplateExcel = (template: Template) => {
     try {
       void (async () => {
-        const xlsx = await import('xlsx')
+        const xlsx = await loadXlsx()
         const rows = buildTemplateRows(template)
         const exportDate = formatExportDate()
         const wsRows: Array<Array<string>> = [

@@ -124,9 +124,10 @@ export default function CreateIncidentModal({
   }, [])
 
   const departmentOptions = React.useMemo(() => {
-    const list = [...INCIDENT_ORIGIN_DEPARTMENTS]
-    if (!list.includes(normalizedUserDepartment)) {
-      list.unshift(normalizedUserDepartment)
+    const list: string[] = [...INCIDENT_ORIGIN_DEPARTMENTS]
+    const norm = normalizedUserDepartment.trim()
+    if (norm && !list.includes(norm)) {
+      list.unshift(norm)
     }
     return list
   }, [normalizedUserDepartment])

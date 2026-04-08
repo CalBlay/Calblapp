@@ -3,6 +3,21 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import {
+  aggregateMedia,
+  cleanText,
+  collectAuditRefs,
+  collectIncidentRefs,
+  collectMaintenanceRefs,
+  collectMessagingRefs,
+  collectSpaceRefs,
+  extractOwnedStoragePath,
+} from '@/lib/media/collectMediaRefs'
+import {
+  deleteMediaIndexByPath,
+  isMediaIndexEmpty,
+  loadAllMediaFromIndex,
+} from '@/lib/media/storageMediaIndex'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -12,265 +27,19 @@ type SessionUser = {
   role?: string
 }
 
-type MediaSource = 'incidents' | 'maintenance' | 'messaging' | 'audits' | 'spaces'
-
-type MediaRef = {
-  source: MediaSource
-  docId: string
-  createdAt: number
-  url: string | null
-  path: string
-  size: number | null
-  type: string | null
-  title: string
-}
-
-type AggregatedMediaItem = {
-  id: string
-  path: string
-  url: string | null
-  createdAt: number
-  size: number | null
-  type: string | null
-  sourceKinds: MediaSource[]
-  referenceCount: number
-  title: string
-}
-
-function isNonNull<T>(value: T | null): value is T {
-  return value !== null
-}
-
 function requireAdmin(role?: string) {
   return normalizeRole(role || '') === 'admin'
 }
 
-function toMillis(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string') {
-    const parsed = new Date(value).getTime()
-    return Number.isNaN(parsed) ? 0 : parsed
-  }
-  if (value && typeof value === 'object' && 'toDate' in (value as Record<string, unknown>)) {
-    const candidate = value as { toDate?: () => Date }
-    const date = typeof candidate.toDate === 'function' ? candidate.toDate() : null
-    return date ? date.getTime() : 0
-  }
-  return 0
-}
-
-function cleanText(value: unknown) {
-  return String(value || '').trim()
-}
-
-function extractOwnedStoragePath(url: string, bucketName: string): string | null {
-  const raw = cleanText(url)
-  if (!raw) return null
-
-  try {
-    const parsed = new URL(raw)
-    const pathname = decodeURIComponent(parsed.pathname || '')
-    const prefix = `/${bucketName}/`
-    if (pathname.startsWith(prefix)) {
-      return pathname.slice(prefix.length)
-    }
-  } catch {
-    return null
-  }
-
-  return null
-}
-
-async function collectIncidentRefs(): Promise<MediaRef[]> {
-  const snap = await db.collection('incidents').get()
-  return snap.docs
-    .map((doc) => {
-      const data = doc.data() as Record<string, unknown>
-      const path = cleanText(data.imagePath)
-      if (!path) return null
-      const titleBits = [
-        cleanText(data.incidentNumber),
-        cleanText(data.eventTitle),
-        cleanText(data.description).slice(0, 80),
-      ].filter(Boolean)
-      return {
-        source: 'incidents' as const,
-        docId: doc.id,
-        createdAt: toMillis(data.createdAt),
-        url: cleanText(data.imageUrl) || null,
-        path,
-        size:
-          typeof (data.imageMeta as { size?: unknown } | null)?.size === 'number'
-            ? Number((data.imageMeta as { size?: number }).size)
-            : null,
-        type: cleanText((data.imageMeta as { type?: unknown } | null)?.type) || null,
-        title: titleBits.join(' · ') || `Incidencia ${doc.id}`,
-      }
-    })
-    .filter(isNonNull)
-}
-
-async function collectMaintenanceRefs(): Promise<MediaRef[]> {
-  const snap = await db.collection('maintenanceTickets').get()
-  return snap.docs
-    .map((doc) => {
-      const data = doc.data() as Record<string, unknown>
-      const path = cleanText(data.imagePath)
-      if (!path) return null
-      const titleBits = [
-        cleanText(data.ticketCode),
-        cleanText(data.location),
-        cleanText(data.description).slice(0, 80),
-      ].filter(Boolean)
-      return {
-        source: 'maintenance' as const,
-        docId: doc.id,
-        createdAt: toMillis(data.createdAt),
-        url: cleanText(data.imageUrl) || null,
-        path,
-        size:
-          typeof (data.imageMeta as { size?: unknown } | null)?.size === 'number'
-            ? Number((data.imageMeta as { size?: number }).size)
-            : null,
-        type: cleanText((data.imageMeta as { type?: unknown } | null)?.type) || null,
-        title: titleBits.join(' · ') || `Ticket ${doc.id}`,
-      }
-    })
-    .filter(isNonNull)
-}
-
-async function collectMessagingRefs(): Promise<MediaRef[]> {
-  const snap = await db.collection('messages').get()
-  return snap.docs
-    .map((doc) => {
-      const data = doc.data() as Record<string, unknown>
-      const path = cleanText(data.imagePath)
-      if (!path) return null
-      const titleBits = [
-        cleanText(data.senderName),
-        cleanText(data.body).slice(0, 80),
-      ].filter(Boolean)
-      return {
-        source: 'messaging' as const,
-        docId: doc.id,
-        createdAt: toMillis(data.createdAt),
-        url: cleanText(data.imageUrl) || null,
-        path,
-        size:
-          typeof (data.imageMeta as { size?: unknown } | null)?.size === 'number'
-            ? Number((data.imageMeta as { size?: number }).size)
-            : null,
-        type: cleanText((data.imageMeta as { type?: unknown } | null)?.type) || null,
-        title: titleBits.join(' · ') || `Missatge ${doc.id}`,
-      }
-    })
-    .filter(isNonNull)
-}
-
-async function collectAuditRefs(): Promise<MediaRef[]> {
-  const snap = await db.collection('audit_runs').get()
-  const refs: MediaRef[] = []
-
-  snap.docs.forEach((doc) => {
-    const data = doc.data() as Record<string, unknown>
-    const answers = Array.isArray(data.auditAnswers)
-      ? (data.auditAnswers as Array<Record<string, unknown>>)
-      : []
-
-    answers.forEach((answer) => {
-      const photos = Array.isArray(answer.photos)
-        ? (answer.photos as Array<Record<string, unknown>>)
-        : []
-
-      photos.forEach((photo, index) => {
-        const path = cleanText(photo.path)
-        if (!path) return
-        refs.push({
-          source: 'audits',
-          docId: doc.id,
-          createdAt: toMillis(data.createdAt || data.updatedAt),
-          url: cleanText(photo.url) || null,
-          path,
-          size: null,
-          type: null,
-          title:
-            [cleanText(data.templateName), cleanText(data.eventTitle), `Foto ${index + 1}`]
-              .filter(Boolean)
-              .join(' · ') || `Auditoria ${doc.id}`,
-        })
-      })
-    })
-  })
-
-  return refs
-}
-
-async function collectSpaceRefs(): Promise<MediaRef[]> {
-  const bucketName = storageAdmin.bucket().name
-  const snap = await db.collection('finques').get()
-  const refs: MediaRef[] = []
-
-  snap.docs.forEach((doc) => {
-    const data = doc.data() as Record<string, unknown>
-    const produccio =
-      data.produccio && typeof data.produccio === 'object'
-        ? (data.produccio as Record<string, unknown>)
-        : {}
-    const images = Array.isArray(produccio.images) ? (produccio.images as unknown[]) : []
-
-    images.forEach((imageUrl, index) => {
-      const url = cleanText(imageUrl)
-      const path = extractOwnedStoragePath(url, bucketName)
-      if (!path) return
-      refs.push({
-        source: 'spaces',
-        docId: doc.id,
-        createdAt: toMillis(data.updatedAt || data.createdAt),
-        url,
-        path,
-        size: null,
-        type: null,
-        title:
-          [cleanText(data.nom), cleanText(data.code), `Imatge ${index + 1}`]
-            .filter(Boolean)
-            .join(' · ') || `Espai ${doc.id}`,
-      })
-    })
-  })
-
-  return refs
-}
-
-function aggregateMedia(refs: MediaRef[]): AggregatedMediaItem[] {
-  const byPath = new Map<string, AggregatedMediaItem>()
-
-  refs.forEach((ref) => {
-    const current = byPath.get(ref.path)
-    if (!current) {
-      byPath.set(ref.path, {
-        id: ref.path,
-        path: ref.path,
-        url: ref.url,
-        createdAt: ref.createdAt,
-        size: ref.size,
-        type: ref.type,
-        sourceKinds: [ref.source],
-        referenceCount: 1,
-        title: ref.title,
-      })
-      return
-    }
-
-    current.referenceCount += 1
-    if (!current.sourceKinds.includes(ref.source)) current.sourceKinds.push(ref.source)
-    if (!current.url && ref.url) current.url = ref.url
-    if (!current.size && ref.size) current.size = ref.size
-    if (!current.type && ref.type) current.type = ref.type
-    if (ref.createdAt > current.createdAt) current.createdAt = ref.createdAt
-    if (!current.title && ref.title) current.title = ref.title
-  })
-
-  return Array.from(byPath.values()).sort((a, b) => b.createdAt - a.createdAt)
+async function loadLegacyMediaAggregated() {
+  const [incidents, maintenance, messaging, audits, spaces] = await Promise.all([
+    collectIncidentRefs(),
+    collectMaintenanceRefs(),
+    collectMessagingRefs(),
+    collectAuditRefs(),
+    collectSpaceRefs(),
+  ])
+  return aggregateMedia([...incidents, ...maintenance, ...messaging, ...audits, ...spaces])
 }
 
 async function clearIncidentRefs(path: string) {
@@ -320,8 +89,9 @@ async function clearAuditRefs(path: string) {
           ? (answer.photos as Array<Record<string, unknown>>)
           : []
         const filteredPhotos = photos.filter((photo) => cleanText(photo.path) !== path)
-        if (filteredPhotos.length !== photos.length) changed = true
-        return changed ? { ...answer, photos: filteredPhotos } : answer
+        if (filteredPhotos.length === photos.length) return answer
+        changed = true
+        return { ...answer, photos: filteredPhotos }
       })
 
       if (!changed) return
@@ -360,7 +130,7 @@ async function clearSpaceRefs(path: string) {
   return updated
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   const user = session?.user as SessionUser | undefined
 
@@ -373,23 +143,30 @@ export async function GET() {
   }
 
   try {
-    const [incidents, maintenance, messaging, audits, spaces] = await Promise.all([
-      collectIncidentRefs(),
-      collectMaintenanceRefs(),
-      collectMessagingRefs(),
-      collectAuditRefs(),
-      collectSpaceRefs(),
-    ])
+    const { searchParams } = new URL(req.url)
+    const forceLegacy = searchParams.get('legacy') === '1'
 
-    const media = aggregateMedia([
-      ...incidents,
-      ...maintenance,
-      ...messaging,
-      ...audits,
-      ...spaces,
-    ])
+    if (forceLegacy) {
+      const media = await loadLegacyMediaAggregated()
+      return NextResponse.json({ media, fromIndex: false, indexEmpty: false }, { status: 200 })
+    }
 
-    return NextResponse.json({ media }, { status: 200 })
+    const empty = await isMediaIndexEmpty()
+    if (empty) {
+      const media = await loadLegacyMediaAggregated()
+      return NextResponse.json(
+        {
+          media,
+          fromIndex: false,
+          indexEmpty: true,
+          hint: 'Executa POST /api/media/reindex per crear l index i alleugerir properes carregues.',
+        },
+        { status: 200 }
+      )
+    }
+
+    const media = await loadAllMediaFromIndex()
+    return NextResponse.json({ media, fromIndex: true, indexEmpty: false }, { status: 200 })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -429,6 +206,8 @@ export async function DELETE(req: Request) {
     } catch {
       // ignore missing or already deleted files
     }
+
+    await deleteMediaIndexByPath(path)
 
     return NextResponse.json(
       {

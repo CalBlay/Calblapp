@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
-import { canDriverHandleVehicleType } from '@/lib/driverCapabilities'
+import { canDriverHandleVehicleType, type DriverCapability } from '@/lib/driverCapabilities'
 
 type PersonnelOption = {
   id: string
@@ -228,13 +228,16 @@ export default function CuinaSection({
                           (group.responsibleId || (manualResp && manualResp !== '__auto__')) &&
                           availableConductors.some((conductor) => {
                             const responsibleId = group.responsibleId || (manualResp !== '__auto__' ? manualResp : '')
-                            return conductor.id === responsibleId && canDriverHandleVehicleType(conductor, group.vehicleType || '')
+                            return (
+                              conductor.id === responsibleId &&
+                              canDriverHandleVehicleType(conductor as DriverCapability, group.vehicleType || '')
+                            )
                           }) && <SelectItem value="__responsable__">Responsable</SelectItem>}
                         {availableConductors
                           .filter(
                             (conductor) =>
                               conductor.id === group.driverMode ||
-                              canDriverHandleVehicleType(conductor, group.vehicleType || '')
+                              canDriverHandleVehicleType(conductor as DriverCapability, group.vehicleType || '')
                           )
                           .map((conductor) => (
                             <SelectItem key={conductor.id} value={conductor.id}>

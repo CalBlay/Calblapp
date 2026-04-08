@@ -15,7 +15,7 @@ import TransportFilters, {
   TransportFiltersState,
 } from '@/components/transports/TransportFilters'
 import ExportMenu from '@/components/export/ExportMenu'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 import { Truck } from 'lucide-react'
 import {
   TRANSPORT_TYPE_LABELS,
@@ -114,7 +114,8 @@ export default function LogisticsTransportsPage() {
     }))
   }, [filteredTransports])
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
     const ws = XLSX.utils.json_to_sheet(exportRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Transports')

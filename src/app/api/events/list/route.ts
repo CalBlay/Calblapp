@@ -1,8 +1,15 @@
 ﻿// â file: src/app/api/events/list/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
+import { unstable_cache } from 'next/cache'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { queryQuadrantCollectionDocsInDateRange } from '@/lib/firestoreQuadrantsRangeQuery'
+import {
+  isIsoDateDayParam,
+  queryStageCollectionDocsInDateRange,
+} from '@/lib/firestoreStageRangeQuery'
 
+const EVENTS_LIST_REVALIDATE_SEC = 90
 
 export const runtime = 'nodejs'
 
@@ -98,30 +105,18 @@ async function fetchQuadrantsRange(
   start: string,
   end: string
 ): Promise<QuadrantDoc[]> {
-  const col = db.collection(coll)
-  const s = start.slice(0, 10)
-  const e = end.slice(0, 10)
-
-  const safeGet = async (
-    p: Promise<FirebaseFirestore.QuerySnapshot>
-  ): Promise<FirebaseFirestore.QuerySnapshot | null> => {
-    try { return await p } catch { return null }
+  const { docs, usedFullCollectionScan } = await queryQuadrantCollectionDocsInDateRange(
+    db.collection(coll),
+    start,
+    end
+  )
+  if (usedFullCollectionScan) {
+    console.warn(`[events/list] ${coll}: lectura completa quadrants (índexs)`)
   }
-
-  const [q1, q2, q3] = await Promise.all([
-    safeGet(col.where('startDate', '>=', s).where('startDate', '<=', e).get()),
-    safeGet(col.where('endDate', '>=', s).where('endDate', '<=', e).get()),
-    safeGet(col.where('date', '>=', s).where('date', '<=', e).get()),
-  ])
-
-  const out: QuadrantDoc[] = []
-  for (const snap of [q1, q2, q3]) {
-    if (!snap || snap.empty) continue
-    snap.forEach((doc) => {
-      const data = doc.data() as unknown as Omit<QuadrantDoc, 'id'>
-      out.push({ id: doc.id, ...data })
-    })
-  }
+  const out: QuadrantDoc[] = docs.map((doc) => {
+    const data = doc.data() as unknown as Omit<QuadrantDoc, 'id'>
+    return { id: doc.id, ...data }
+  })
   console.log(`[events/list] ð ${coll} â ${out.length} docs`)
   return out
 }
@@ -190,66 +185,51 @@ function roleFrom(token: TokenLike | null): Role {
   return 'treballador'
 }
 
-/* ================== Handler ================== */
-export async function GET(req: NextRequest) {
-  const startedAt = Date.now()
-  try {
-    const url = new URL(req.url)
-    const start = url.searchParams.get('start')
-    const end = url.searchParams.get('end')
-    const scope = url.searchParams.get('scope') as 'all' | 'mine' | null
-    const qsDeptRaw = url.searchParams.get('department') || ''
-    let qsDept = normalize(qsDeptRaw)
-    if (qsDept === 'unused') qsDept = ''
+type EventsListCachedPayload = {
+  events: Record<string, unknown>[]
+  responsables: string[]
+  responsablesDetailed: Array<{ name: string; department: string }>
+  locations: string[]
+  _log: { baseRows: number; filteredRows: number; quadrantCollections: number }
+}
 
-    if (!start || !end) {
-      return NextResponse.json({ error: 'Falten start i end' }, { status: 400 })
-    }
-
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const role: Role = roleFrom(token)
-    const userName: string =
-      (token as { name?: string; user?: { name?: string } })?.name ||
-      (token as { user?: { name?: string } })?.user?.name || ''
-
-    const sessDept = normalize(
-      (token as {
-        department?: string
-        userDepartment?: string
-        dept?: string
-        departmentName?: string
-      }).department ??
-        (token as { userDepartment?: string }).userDepartment ??
-        (token as { dept?: string }).dept ??
-        (token as { departmentName?: string }).departmentName ??
-        ''
-    )
-
-    console.log('[events/list] ð¢ Token info:', { role, sessDept, qsDept, scope, userName })
-
-    /* ==== Dept policy ==== */
+const getEventsListCached = unstable_cache(
+  async (
+    start: string,
+    end: string,
+    role: Role,
+    userNameNorm: string,
+    qsDept: string,
+    sessDept: string
+  ): Promise<EventsListCachedPayload> => {
     let deptsToUse: string[] = []
     if (role === 'cap') {
       if (!sessDept) {
-        return NextResponse.json({ events: [], responsables: [], locations: [] }, { status: 200 })
+        return {
+          events: [],
+          responsables: [],
+          responsablesDetailed: [],
+          locations: [],
+          _log: { baseRows: 0, filteredRows: 0, quadrantCollections: 0 },
+        }
       }
       deptsToUse = [sessDept]
     } else if (role === 'admin' || role === 'direccio') {
       if (qsDept && qsDept !== 'total') deptsToUse = [qsDept]
-      else deptsToUse = [] // tots els departaments
+      else deptsToUse = []
     }
 
-    /* ==== Firestore (SUBSTITUEIX Google Calendar) ==== */
     const timeMin = `${start}T00:00:00.000Z`
     const timeMaxExclusive = addDaysUTC(end, 1)
 
-    console.log('[events/list] ð Llegint Firestore: stage_verd')
+    const stageDocs = await queryStageCollectionDocsInDateRange(
+      db,
+      'stage_verd',
+      start.slice(0, 10),
+      end.slice(0, 10)
+    )
 
-    const snap = await db.collection('stage_verd').get()
-
-    const base = (snap.docs || []).map((doc) => {
+    const base = stageDocs.map((doc) => {
       const d = doc.data() as StageVerdDoc
 
       const startISO = d?.DataInici ? `${d.DataInici}T00:00:00.000Z` : null
@@ -280,13 +260,9 @@ export async function GET(req: NextRequest) {
       const codeMatchScore =
         typeof d?.codeMatchScore === 'number' ? d.codeMatchScore : null
 
-
-      // ð¢ Nom de lesdeveniment: només fins al primer /
       const rawSummary = d?.NomEvent || '(Sense títol)'
       const summary = rawSummary.split('/')[0].trim()
 
-      // ð¢ Ubicació sense codi (fins al primer parèntesi o barra)
-      // ð¢ Ubicació sense codi ni prefixos ZZ
       const rawLocation = d?.Ubicacio || ''
       const location = rawLocation
         .split('(')[0]
@@ -331,14 +307,12 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // ð Filtre per rang de dates
     const filteredByRange = base.filter((ev) => {
       if (!ev.start) return false
-      const s = new Date(ev.start).toISOString()
+      const s = new Date(ev.start as string).toISOString()
       return s >= timeMin && s < timeMaxExclusive
     })
 
-    /* ==== Quadrants ==== */
     await loadCollectionsMap()
     let collNames: string[] = []
     if (deptsToUse.length > 0) {
@@ -347,7 +321,6 @@ export async function GET(req: NextRequest) {
       collNames = Object.values(COLS_MAP).filter((c) => c.toLowerCase().startsWith('quadrants'))
     }
 
-    /* ==== Responsables i estats ==== */
     const responsablesSet: Set<string> = new Set()
     const responsablesMap: Map<string, Set<string>> = new Map()
     const stateMap: Map<string, 'pending' | 'draft' | 'confirmed'> = new Map()
@@ -377,11 +350,11 @@ export async function GET(req: NextRequest) {
             ...(q?.treballadors || []).map((t) => t.name),
           ].filter(Boolean) as string[]
 
-          if (role === 'treballador' && allNames.some((n) => normalize(n) === normalize(userName))) {
+          if (role === 'treballador' && allNames.some((n) => normalize(n) === userNameNorm)) {
             if (q?.code) myEvents.add(normCode(String(q.code)))
             if (q?.eventId) myEvents.add(String(q.eventId))
 
-            const isResp = normalize(q?.responsable?.name) === normalize(userName)
+            const isResp = normalize(q?.responsable?.name) === userNameNorm
             if (isResp) {
               if (q?.code) myEvents.add(`RESP:${normCode(String(q.code))}`)
               if (q?.eventId) myEvents.add(`RESP:${String(q.eventId)}`)
@@ -395,7 +368,6 @@ export async function GET(req: NextRequest) {
       console.log(`[events/list] ð Responsables trobats a ${coll} (${dept}):`, foundInColl)
     }
 
-    /* ==== Enriquiment ==== */
     const avisoMap = await fetchLatestAvisosByCodes(
       filteredByRange.map((ev) => String(ev.eventCode || '').trim()).filter(Boolean)
     )
@@ -409,20 +381,91 @@ export async function GET(req: NextRequest) {
       return { ...ev, responsableName, state, lastAviso: aviso }
     })
 
-    /* ==== Filtrat final ==== */
     let finalEvents = enriched
     if (role === 'treballador') {
       finalEvents = enriched
-        .filter((ev) => myEvents.has(normCode(ev.eventCode || '')) || myEvents.has(ev.id))
+        .filter((ev) => myEvents.has(normCode(ev.eventCode || '')) || myEvents.has(ev.id as string))
         .map((ev) => {
           const isResp =
             myEvents.has(`RESP:${normCode(ev.eventCode || '')}`) ||
-            myEvents.has(`RESP:${ev.id}`)
+            myEvents.has(`RESP:${ev.id as string}`)
           return { ...ev, isResponsible: isResp }
         })
     } else {
       finalEvents = enriched.map((ev) => ({ ...ev, isResponsible: false }))
     }
+
+    return {
+      events: finalEvents,
+      responsables: Array.from(responsablesSet),
+      responsablesDetailed: Array.from(responsablesDetailedSet).map((r) => JSON.parse(r)),
+      locations: Array.from(new Set(finalEvents.map((e) => e.location).filter(Boolean) as string[])),
+      _log: {
+        baseRows: base.length,
+        filteredRows: filteredByRange.length,
+        quadrantCollections: collNames.length,
+      },
+    }
+  },
+  ['api-events-list-v1'],
+  { revalidate: EVENTS_LIST_REVALIDATE_SEC }
+)
+
+/* ================== Handler ================== */
+export async function GET(req: NextRequest) {
+  const startedAt = Date.now()
+  try {
+    const url = new URL(req.url)
+    const start = url.searchParams.get('start')
+    const end = url.searchParams.get('end')
+    const scope = url.searchParams.get('scope') as 'all' | 'mine' | null
+    const qsDeptRaw = url.searchParams.get('department') || ''
+    let qsDept = normalize(qsDeptRaw)
+    if (qsDept === 'unused') qsDept = ''
+
+    if (!start || !end) {
+      return NextResponse.json({ error: 'Falten start i end' }, { status: 400 })
+    }
+    if (!isIsoDateDayParam(start) || !isIsoDateDayParam(end)) {
+      return NextResponse.json(
+        { error: 'start i end han de ser dates YYYY-MM-DD' },
+        { status: 400 }
+      )
+    }
+
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const role: Role = roleFrom(token)
+    const userName: string =
+      (token as { name?: string; user?: { name?: string } })?.name ||
+      (token as { user?: { name?: string } })?.user?.name || ''
+
+    const sessDept = normalize(
+      (token as {
+        department?: string
+        userDepartment?: string
+        dept?: string
+        departmentName?: string
+      }).department ??
+        (token as { userDepartment?: string }).userDepartment ??
+        (token as { dept?: string }).dept ??
+        (token as { departmentName?: string }).departmentName ??
+        ''
+    )
+
+    console.log('[events/list] ð¢ Token info:', { role, sessDept, qsDept, scope, userName })
+
+    if (role === 'cap' && !sessDept) {
+      return NextResponse.json(
+        { events: [], responsables: [], responsablesDetailed: [], locations: [] },
+        { status: 200 }
+      )
+    }
+
+    const userNameNorm = role === 'treballador' ? normalize(userName) : ''
+    const cached = await getEventsListCached(start, end, role, userNameNorm, qsDept, sessDept)
+    const { _log, ...payload } = cached
 
     console.info('[events/list] completed', {
       durationMs: Date.now() - startedAt,
@@ -431,18 +474,13 @@ export async function GET(req: NextRequest) {
       department: qsDept || sessDept || '',
       start,
       end,
-      returned: finalEvents.length,
-      baseRows: base.length,
-      filteredRows: filteredByRange.length,
-      quadrantCollections: collNames.length,
+      returned: payload.events.length,
+      baseRows: _log.baseRows,
+      filteredRows: _log.filteredRows,
+      quadrantCollections: _log.quadrantCollections,
     })
 
-    return NextResponse.json({
-      events: finalEvents,
-      responsables: Array.from(responsablesSet),
-      responsablesDetailed: Array.from(responsablesDetailedSet).map((r) => JSON.parse(r)),
-      locations: Array.from(new Set(finalEvents.map((e) => e.location).filter(Boolean))),
-    }, { status: 200 })
+    return NextResponse.json(payload, { status: 200 })
   } catch (err: unknown) {
     console.error('[api/events/list] â error', err)
     if (err instanceof Error) {
@@ -451,11 +489,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Internal Error' }, { status: 500 })
   }
 }
-
-
-
-
-
-
-
-

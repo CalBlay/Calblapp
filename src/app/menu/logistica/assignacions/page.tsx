@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { startOfWeek, endOfWeek, format } from 'date-fns'
 import { Truck } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
@@ -133,7 +133,8 @@ export default function TransportAssignacionsPage() {
     return rows
   }, [items])
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
     const ws = XLSX.utils.json_to_sheet(exportRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Assignacions')

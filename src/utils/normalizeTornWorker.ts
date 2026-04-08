@@ -14,6 +14,26 @@ export interface NormalizedWorker {
   plate?: string
 }
 
+/** Fila de treballador des d’API / Firestore (formes històriques diverses). */
+export type TornWorkerInput = {
+  id?: unknown
+  workerId?: unknown
+  uid?: unknown
+  email?: unknown
+  name?: unknown
+  nom?: unknown
+  displayName?: unknown
+  role?: unknown
+  startTime?: unknown
+  endTime?: unknown
+  meetingPoint?: unknown
+  department?: unknown
+  plate?: unknown
+  matricula?: unknown
+  vehiclePlate?: unknown
+  vehicle?: { plate?: unknown } | null
+}
+
 const norm = (s?: string | null): string =>
   String(s ?? '')
     .normalize('NFD')
@@ -44,7 +64,7 @@ function normalizeRole(r?: string): NormalizedRole {
   return 'treballador'
 }
 
-export function normalizeTornWorker(w: any): NormalizedWorker {
+export function normalizeTornWorker(w?: TornWorkerInput | null): NormalizedWorker {
   const id =
     w?.id ||
     w?.workerId ||
@@ -58,13 +78,13 @@ export function normalizeTornWorker(w: any): NormalizedWorker {
     w?.displayName ||
     ''
 
-  const role = normalizeRole(w?.role)
+  const role = normalizeRole(w?.role != null && w.role !== '' ? String(w.role) : undefined)
 
-  const startTime = toHHMM(w?.startTime)
-  const endTime = toHHMM(w?.endTime)
+  const startTime = toHHMM(w?.startTime as string | number | Date | null | undefined)
+  const endTime = toHHMM(w?.endTime as string | number | Date | null | undefined)
 
-  const meetingPoint = String(w?.meetingPoint || '').trim()
-  const dept = norm(w?.department || '')
+  const meetingPoint = String(w?.meetingPoint ?? '').trim()
+  const dept = norm(String(w?.department ?? ''))
   const plateRaw =
     w?.plate ??
     w?.matricula ??

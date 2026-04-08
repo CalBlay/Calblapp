@@ -109,7 +109,7 @@ export default function TornsPage() {
     importAmount?: number
     location?: string
   } | null>(null)
-  const [auditEvent, setAuditEvent] = useState<NonNullable<typeof eventMenuData>>(null)
+  const [auditEvent, setAuditEvent] = useState<NonNullable<typeof eventMenuData> | null>(null)
   const [auditOpen, setAuditOpen] = useState(false)
   const [avisosOpen, setAvisosOpen] = useState(false)
   const [avisosEventCode, setAvisosEventCode] = useState<string | null>(null)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import * as XLSX from 'xlsx'
+import { loadXlsx } from '@/lib/loadXlsx'
 import type { ConceptNode, EventItem, OrderLine, OrderState, ServiceNode } from '../types'
 
 const normalize = (value?: string) =>
@@ -596,8 +596,9 @@ export function useComercialState() {
     return rows
   }, [selectedEvent, currentOrder, groupedLines])
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!exportRows.length || !selectedEvent) return
+    const XLSX = await loadXlsx()
     const ws = XLSX.utils.json_to_sheet(exportRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Comanda')

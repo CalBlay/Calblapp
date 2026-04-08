@@ -10,6 +10,7 @@ import {
   notifyMaintenanceManagers,
 } from '@/lib/maintenanceNotifications'
 import { canAccessIncidentsModule, canPostIncident } from '@/lib/incidentPolicy'
+import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 
 interface IncidentDoc {
   id?: string;
@@ -151,6 +152,7 @@ export async function POST(req: Request) {
     }
 
     // 3️⃣ Crear document incidència
+    const createdAtMs = Date.now();
     const docRef = await firestoreAdmin.collection("incidents").add({
       incidentNumber,
       eventId: String(eventId),
@@ -176,6 +178,23 @@ export async function POST(req: Request) {
       imageMeta: primaryImage.meta || null,
       images: normalizedImages,
     });
+
+    const primaryPath = String(primaryImage.path || "").trim();
+    if (primaryPath) {
+      const meta = primaryImage.meta as { size?: number; type?: string } | null | undefined;
+      void registerMediaRef({
+        path: primaryPath,
+        source: "incidents",
+        firestoreDocId: docRef.id,
+        url: String(primaryImage.url || "").trim() || null,
+        size: typeof meta?.size === "number" ? meta.size : null,
+        contentType: meta?.type ? String(meta.type) : null,
+        title: [incidentNumber, ev.NomEvent, description.slice(0, 80)]
+          .filter(Boolean)
+          .join(" · "),
+        createdAt: createdAtMs,
+      });
+    }
 
     const categoryId = String(category?.id || "").trim();
     const categoryPrefix = categoryId.charAt(0);
@@ -244,6 +263,22 @@ export async function POST(req: Request) {
           source: 'incidencia',
         },
       })
+
+      if (primaryPath) {
+        const meta = primaryImage.meta as { size?: number; type?: string } | null | undefined;
+        void registerMediaRef({
+          path: primaryPath,
+          source: "maintenance",
+          firestoreDocId: ticketRef.id,
+          url: String(primaryImage.url || "").trim() || null,
+          size: typeof meta?.size === "number" ? meta.size : null,
+          contentType: meta?.type ? String(meta.type) : null,
+          title: [incidentNumber, ev.Ubicacio || "", description.slice(0, 80)]
+            .filter(Boolean)
+            .join(" · "),
+          createdAt: now,
+        });
+      }
     }
 
     return NextResponse.json({ id: docRef.id }, { status: 201 });

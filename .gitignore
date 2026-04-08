@@ -29,6 +29,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+build-debug.txt
+build-debug.log
+tsc-current.txt
 
 # env files (can opt-in for committing if needed)
 .env*
