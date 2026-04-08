@@ -1,7 +1,9 @@
 'use client'
 
+import { Trash2 } from 'lucide-react'
 import { typography } from '@/lib/typography'
 import { formatDateOnly } from '@/lib/date-format'
+import { displayMaintenanceTemplateName } from '@/lib/maintenanceTemplateDisplay'
 import { PERIODICITY_OPTIONS, type Template } from '../types'
 
 type Props = {
@@ -11,6 +13,7 @@ type Props = {
   selectedTemplateLastNotes: string
   onSelectTemplate: (id: string) => void
   onOpenTemplate: (id: string) => void
+  onDeleteTemplate: (template: Template) => void
 }
 
 export default function EmbeddedTemplatesLayout({
@@ -20,6 +23,7 @@ export default function EmbeddedTemplatesLayout({
   selectedTemplateLastNotes,
   onSelectTemplate,
   onOpenTemplate,
+  onDeleteTemplate,
 }: Props) {
   const openTemplateHistory = (id: string) => {
     const url = `/menu/manteniment/preventius/plantilles/${id}/historial`
@@ -36,10 +40,6 @@ export default function EmbeddedTemplatesLayout({
           ) : (
             filtered.map((template) => {
               const isSelected = selectedTemplate?.id === template.id
-              const taskCount = (template.sections || []).reduce(
-                (acc, section) => acc + (Array.isArray(section.items) ? section.items.length : 0),
-                0
-              )
               return (
                 <div
                   key={template.id}
@@ -64,19 +64,33 @@ export default function EmbeddedTemplatesLayout({
                           onOpenTemplate(template.id)
                         }}
                       >
-                        {template.name}
+                        {displayMaintenanceTemplateName(template)}
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        openTemplateHistory(template.id)
-                      }}
-                      className="shrink-0 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
-                    >
-                      Historial
-                    </button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          openTemplateHistory(template.id)
+                        }}
+                        className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                      >
+                        Historial
+                      </button>
+                      <button
+                        type="button"
+                        title="Eliminar plantilla"
+                        aria-label="Eliminar plantilla"
+                        className="rounded-full border border-red-300 p-2 text-red-700 transition hover:bg-red-50"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onDeleteTemplate(template)
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
@@ -96,7 +110,7 @@ export default function EmbeddedTemplatesLayout({
                   className={`mt-2 ${typography('pageTitle')} text-left hover:underline`}
                   onClick={() => onOpenTemplate(selectedTemplate.id)}
                 >
-                  {selectedTemplate.name}
+                  {displayMaintenanceTemplateName(selectedTemplate)}
                 </button>
               </div>
 
@@ -161,6 +175,13 @@ export default function EmbeddedTemplatesLayout({
                     </div>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  className="mt-2 w-full rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-50"
+                  onClick={() => onDeleteTemplate(selectedTemplate)}
+                >
+                  Eliminar plantilla
+                </button>
               </div>
             </div>
           ) : (

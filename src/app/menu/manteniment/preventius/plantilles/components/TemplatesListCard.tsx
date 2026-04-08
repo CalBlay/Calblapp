@@ -3,6 +3,7 @@
 import { FileSpreadsheet, Printer, Trash2 } from 'lucide-react'
 import { typography } from '@/lib/typography'
 import { formatDateOnly } from '@/lib/date-format'
+import { displayMaintenanceTemplateName } from '@/lib/maintenanceTemplateDisplay'
 import type { Template } from '../types'
 
 type Props = {
@@ -35,7 +36,7 @@ export default function TemplatesListCard({
                     className={`${typography('cardTitle')} text-left hover:underline`}
                     onClick={() => onOpenTemplate(template.id)}
                   >
-                    {template.name}
+                    {displayMaintenanceTemplateName(template)}
                   </button>
                   <div
                     className={`mt-2 flex flex-wrap gap-3 ${typography('bodyXs').replace('text-slate-500', 'text-gray-600')}`}

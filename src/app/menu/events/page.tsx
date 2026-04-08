@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -12,8 +13,25 @@ import EventsDayGroup from '@/components/events/EventsDayGroup'
 import EventMenuModal from '@/components/events/EventMenuModal'
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
 import EventAvisosReadOnlyModal from '@/components/events/EventAvisosReadOnlyModal'
-import EventAuditExecutionModal from '@/components/events/EventAuditExecutionModal'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+
+const EventAuditExecutionModal = dynamic(
+  () => import('@/components/events/EventAuditExecutionModal'),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/25"
+        aria-busy="true"
+        aria-label="Carregant auditoria"
+      >
+        <span className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-lg">
+          Carregant auditoria…
+        </span>
+      </div>
+    ),
+  }
+)
 import FiltersBar, { FiltersState } from '@/components/layout/FiltersBar'
 
 const normalize = (s?: string | null) =>
@@ -370,7 +388,10 @@ export default function EventsPage() {
       {auditEvent && (
         <EventAuditExecutionModal
           open={isAuditOpen}
-          onClose={() => setAuditOpen(false)}
+          onClose={() => {
+            setAuditOpen(false)
+            setAuditEvent(null)
+          }}
           event={{
             id: auditEvent.id,
             summary: auditEvent.summary,

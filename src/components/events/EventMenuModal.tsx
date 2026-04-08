@@ -36,7 +36,7 @@ import CreateModificationModal from './CreateModificationModal'
 import EventSpacesModal from './EventSpacesModal'
 import EventAvisosModal from './EventAvisosModal'
 import EventClosingModal from './EventClosingModal'
-
+import { normalizeAuditDepartment } from '@/lib/auditDepartment'
 
 /** ───────────────────────── Helpers ───────────────────────── */
 const norm = (s?: string | number | null) =>
@@ -45,21 +45,6 @@ const norm = (s?: string | number | null) =>
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
-
-/** Mateixa lògica que `normalizeDept` a `/api/auditoria/executions` (prefetch vàlid). */
-function auditDepartmentForApi(raw?: string | null): string | null {
-  const value = String(raw ?? '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-  if (value === 'comercial') return 'comercial'
-  if (value === 'serveis' || value === 'sala') return 'serveis'
-  if (value === 'cuina') return 'cuina'
-  if (value === 'logistica') return 'logistica'
-  if (value === 'deco' || value === 'decoracio' || value === 'decoracions') return 'deco'
-  return null
-}
 
 type LnKey = 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
 
@@ -260,7 +245,7 @@ const treballadorsPersons =
       incidentsQs.set('limit', '80')
       void fetch(`/api/incidents?${incidentsQs}`, { cache: 'no-store' }).catch(() => {})
 
-      const dept = auditDepartmentForApi(user.department)
+      const dept = normalizeAuditDepartment(user.department)
       if (dept) {
         const auditQs = new URLSearchParams({ eventId, department: dept })
         void fetch(`/api/auditoria/executions?${auditQs}`, { cache: 'no-store' }).catch(() => {})

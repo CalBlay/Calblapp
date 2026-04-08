@@ -2,18 +2,14 @@
 'use client'
 
 import React from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { SWRConfig } from 'swr'
 import { SessionProvider } from 'next-auth/react'
-
-// Instància única de QueryClient per a tota l'aplicació
-const queryClient = new QueryClient()
+import { defaultSwrConfig } from '@/lib/swr-fetcher'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
+      <SWRConfig value={defaultSwrConfig}>{children}</SWRConfig>
     </SessionProvider>
   )
 }

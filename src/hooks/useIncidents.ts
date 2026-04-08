@@ -87,6 +87,8 @@ export function useIncidents(_filters: {
    * `false`: resposta completa (p. ex. modal amb fotos).
    */
   light?: boolean
+  /** Si és `false`, no es fa cap fetch (p. ex. modal tancat). Per defecte `true`. */
+  enabled?: boolean
 }) {
   /** Dades de l’API (sense filtre client d’estat). */
   const [rawIncidents, setRawIncidents] = useState<Incident[]>([])
@@ -110,6 +112,7 @@ export function useIncidents(_filters: {
       refreshKey: _filters.refreshKey ?? 0,
       limit: _filters.limit,
       light: _filters.light ?? false,
+      enabled: _filters.enabled !== false,
     }),
     [
       _filters.eventId,
@@ -122,6 +125,7 @@ export function useIncidents(_filters: {
       _filters.refreshKey,
       _filters.limit,
       _filters.light,
+      _filters.enabled,
     ]
   )
 
@@ -136,6 +140,16 @@ export function useIncidents(_filters: {
     let cancel = false
 
     async function load() {
+      if (!filters.enabled) {
+        if (!cancel) {
+          setRawIncidents([])
+          setLoading(false)
+          setIsRefreshing(false)
+          hadDataRef.current = false
+        }
+        return
+      }
+
       const blocking = !hadDataRef.current
       if (blocking) {
         setLoading(true)
@@ -206,6 +220,7 @@ export function useIncidents(_filters: {
     filters.refreshKey,
     filters.limit,
     filters.light,
+    filters.enabled,
   ])
 
   const updateIncident = useCallback(async (id: string, data: Partial<Incident>) => {

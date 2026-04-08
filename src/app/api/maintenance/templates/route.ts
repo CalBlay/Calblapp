@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { resolveMaintenanceTemplateName } from '@/lib/maintenanceTemplateDisplay'
 import { normalizeRole } from '@/lib/roles'
 
 export const runtime = 'nodejs'
@@ -60,10 +61,12 @@ export async function GET() {
     const templates = snap.docs
       .map((doc) => {
         const data = doc.data() as TemplateDocument
+        const sections = normalizeSections(data.sections)
         return {
           id: doc.id,
           ...data,
-          sections: normalizeSections(data.sections),
+          name: resolveMaintenanceTemplateName(data as Record<string, unknown>, doc.id, sections),
+          sections,
         }
       })
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))

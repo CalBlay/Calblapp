@@ -11,6 +11,7 @@ import ImportTemplatesCard from './components/ImportTemplatesCard'
 import TemplatesFiltersCard from './components/TemplatesFiltersCard'
 import EmbeddedTemplatesLayout from './components/EmbeddedTemplatesLayout'
 import TemplatesListCard from './components/TemplatesListCard'
+import { displayMaintenanceTemplateName } from '@/lib/maintenanceTemplateDisplay'
 import {
   buildTemplateRows,
   formatExportDate,
@@ -450,7 +451,9 @@ export function PreventiusTemplatesContent({
   }
 
   const deleteTemplate = async (template: Template) => {
-    const ok = window.confirm(`Vols eliminar la plantilla "${template.name}"?`)
+    const ok = window.confirm(
+      `Vols eliminar la plantilla «${displayMaintenanceTemplateName(template)}»?`
+    )
     if (!ok) return
     try {
       const res = await fetch(`/api/maintenance/templates/${encodeURIComponent(template.id)}`, {
@@ -497,6 +500,7 @@ export function PreventiusTemplatesContent({
           selectedTemplateLastNotes={selectedTemplateLastNotes}
           onSelectTemplate={setSelectedTemplateId}
           onOpenTemplate={openTemplate}
+          onDeleteTemplate={(template) => void deleteTemplate(template)}
         />
       ) : (
         <TemplatesListCard

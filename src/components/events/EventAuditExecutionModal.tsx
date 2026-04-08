@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
+import useSWR from 'swr'
 import {
   AlertTriangle,
   Camera,
@@ -23,6 +24,7 @@ import { useIncidents } from '@/hooks/useIncidents'
 import CreateIncidentModal from '@/components/incidents/CreateIncidentModal'
 import { Switch } from '@/components/ui/switch'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
+import { normalizeAuditDepartment } from '@/lib/auditDepartment'
 
 type Outcome = 'none' | 'reported'
 
@@ -67,25 +69,17 @@ type VisibleTemplate = {
   }>
 } | null
 
-function normalizeDepartment(raw?: string): string {
-  const value = (raw || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-  if (value === 'sala') return 'serveis'
-  if (value === 'decoracio' || value === 'decoracions') return 'deco'
-  return value
-}
-
 const MAX_AUDIT_IMAGE_SIZE = 1024 * 1024
 const MAX_AUDIT_PHOTOS_TOTAL = 10
+
+type AuditExecutionPayload = {
+  execution?: ExistingExecution | null
+  visibleTemplate?: VisibleTemplate
+}
 
 export default function EventAuditExecutionModal({ open, onClose, event, user }: Props) {
   const [hasIncidents, setHasIncidents] = useState(true)
   const [notes, setNotes] = useState('')
-  const [loadingExecution, setLoadingExecution] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -96,13 +90,24 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null)
   const [executionStatus, setExecutionStatus] = useState<'draft' | 'completed' | 'validated' | 'rejected'>('draft')
 
-  const department = normalizeDepartment(user.department || '')
+  const department = normalizeAuditDepartment(user.department || '') || ''
   const eventId = String(event.id || '')
 
-  const { incidents, loading: incidentsLoading } = useIncidents({
+  const executionUrl = useMemo(() => {
+    if (!open || !eventId || !department) return null
+    return `/api/auditoria/executions?${new URLSearchParams({ eventId, department }).toString()}`
+  }, [open, eventId, department])
+
+  const { data, error: swrError, isLoading, mutate } = useSWR<AuditExecutionPayload>(executionUrl, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  })
+
+  const { incidents } = useIncidents({
     eventId,
     refreshKey: incidentsRefresh,
     light: true,
+    enabled: open && Boolean(eventId),
   })
 
   const incidentIds = useMemo(() => incidents.map((i) => i.id).filter(Boolean), [incidents])
@@ -117,54 +122,54 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     [answers]
   )
 
+  const loadingExecution = Boolean(executionUrl) && isLoading && data === undefined
+
   useEffect(() => {
-    if (!open || !eventId || !department) return
-    let cancelled = false
-    const run = async () => {
-      setLoadingExecution(true)
-      setError('')
-      setSuccess('')
-      try {
-        const qs = new URLSearchParams({ eventId, department })
-        const res = await fetch(`/api/auditoria/executions?${qs.toString()}`, { cache: 'no-store' })
-        const json = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(String(json?.error || 'No s ha pogut carregar el tancament'))
-        if (cancelled) return
-        const execution = (json.execution || null) as ExistingExecution | null
-        const status = String(execution?.status || '').toLowerCase()
-        if (status === 'completed' || status === 'validated' || status === 'rejected') setExecutionStatus(status)
-        else setExecutionStatus('draft')
-        setHasIncidents((execution?.incidentOutcome || 'reported') === 'reported')
-        setNotes(String(execution?.notes || ''))
-        setVisibleTemplate((json.visibleTemplate || null) as VisibleTemplate)
-        const existingAnswers = Array.isArray(execution?.auditAnswers) ? execution?.auditAnswers : []
-        const mapped: Record<string, { blockId: string; type: string; value: any; photos: Array<{ url: string; path: string }> }> = {}
-        existingAnswers.forEach((a) => {
-          const itemId = String(a?.itemId || '').trim()
-          if (!itemId) return
-          mapped[itemId] = {
-            blockId: String(a?.blockId || ''),
-            type: String(a?.type || ''),
-            value: a?.value ?? null,
-            photos: Array.isArray(a?.photos)
-              ? a.photos
-                  .map((p) => ({ url: String(p?.url || ''), path: String(p?.path || '') }))
-                  .filter((p) => p.url)
-              : [],
-          }
-        })
-        setAnswers(mapped)
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Error carregant dades')
-      } finally {
-        if (!cancelled) setLoadingExecution(false)
+    if (!open) return
+    setSuccess('')
+    if (!department) {
+      setError(
+        'El teu usuari no te un departament amb plantilla d’auditoria (comercial, serveis, cuina, logística o deco).'
+      )
+      return
+    }
+    if (!executionUrl) return
+
+    if (loadingExecution) return
+
+    if (swrError) {
+      setError(swrError instanceof Error ? swrError.message : 'Error carregant dades')
+      return
+    }
+
+    if (data === undefined) return
+
+    setError('')
+    const execution = (data.execution || null) as ExistingExecution | null
+    const status = String(execution?.status || '').toLowerCase()
+    if (status === 'completed' || status === 'validated' || status === 'rejected') setExecutionStatus(status)
+    else setExecutionStatus('draft')
+    setHasIncidents((execution?.incidentOutcome || 'reported') === 'reported')
+    setNotes(String(execution?.notes || ''))
+    setVisibleTemplate((data.visibleTemplate || null) as VisibleTemplate)
+    const existingAnswers = Array.isArray(execution?.auditAnswers) ? execution?.auditAnswers : []
+    const mapped: Record<string, { blockId: string; type: string; value: any; photos: Array<{ url: string; path: string }> }> = {}
+    existingAnswers.forEach((a) => {
+      const itemId = String(a?.itemId || '').trim()
+      if (!itemId) return
+      mapped[itemId] = {
+        blockId: String(a?.blockId || ''),
+        type: String(a?.type || ''),
+        value: a?.value ?? null,
+        photos: Array.isArray(a?.photos)
+          ? a.photos
+              .map((p) => ({ url: String(p?.url || ''), path: String(p?.path || '') }))
+              .filter((p) => p.url)
+          : [],
       }
-    }
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [open, eventId, department])
+    })
+    setAnswers(mapped)
+  }, [open, department, executionUrl, loadingExecution, swrError, data])
 
   const submit = async (mode: 'save' | 'finalize') => {
     setError('')
@@ -213,6 +218,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       if (newStatus === 'completed' || newStatus === 'validated' || newStatus === 'rejected') setExecutionStatus(newStatus)
       else setExecutionStatus('draft')
       setSuccess(mode === 'save' ? 'Auditoria desada com esborrany.' : 'Auditoria finalitzada correctament.')
+      void mutate()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error guardant tancament')
     } finally {
@@ -238,6 +244,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       if (!res.ok) throw new Error(String(json?.error || 'No s ha pogut reobrir'))
       setExecutionStatus('draft')
       setSuccess('Auditoria reoberta. Ja pots modificar i tornar a finalitzar.')
+      void mutate()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error reobrint auditoria')
     } finally {

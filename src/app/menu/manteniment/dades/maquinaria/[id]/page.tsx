@@ -8,6 +8,7 @@ import MachineDetailView from '../../components/MachineDetailView'
 import type { MachineRow, MachineView, MachineViewTab, SupplierRow } from '../../types'
 import { emptyMachine } from '../../types'
 import { buildMachineForm, buildMachineTimeline, getLastMovementAt, getPlannedMinutes, getTrackedMinutes, machineMatchesTicket } from '../../utils'
+import { parseFetchJson } from '@/lib/parseFetchJson'
 
 export default function MachineDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const [machineId, setMachineId] = useState('')
@@ -31,9 +32,9 @@ export default function MachineDetailPage({ params }: { params: Promise<{ id: st
         fetch('/api/maintenance/data/suppliers', { cache: 'no-store' }),
         fetch('/api/maintenance/tickets?ticketType=maquinaria&limit=300', { cache: 'no-store' }),
       ])
-      const machinesJson = machinesRes.ok ? await machinesRes.json() : { machines: [] }
-      const suppliersJson = suppliersRes.ok ? await suppliersRes.json() : { suppliers: [] }
-      const ticketsJson = ticketsRes.ok ? await ticketsRes.json() : { tickets: [] }
+      const machinesJson = await parseFetchJson(machinesRes, { machines: [] as MachineRow[] })
+      const suppliersJson = await parseFetchJson(suppliersRes, { suppliers: [] as SupplierRow[] })
+      const ticketsJson = await parseFetchJson(ticketsRes, { tickets: [] as Ticket[] })
       const nextMachines = Array.isArray(machinesJson?.machines) ? machinesJson.machines : []
       const nextSuppliers = Array.isArray(suppliersJson?.suppliers) ? suppliersJson.suppliers : []
       const nextTickets = Array.isArray(ticketsJson?.tickets) ? ticketsJson.tickets : []

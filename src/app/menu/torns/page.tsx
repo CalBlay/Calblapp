@@ -2,6 +2,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { CalendarDays } from 'lucide-react'
@@ -11,8 +12,25 @@ import TornsList from './components/TornsList'
 import TornDetailModal from './components/TornDetailModal'
 import FilterButton from '@/components/ui/filter-button'
 import EventMenuModal from '@/components/events/EventMenuModal'
-import EventAuditExecutionModal from '@/components/events/EventAuditExecutionModal'
 import EventAvisosReadOnlyModal from '@/components/events/EventAvisosReadOnlyModal'
+
+const EventAuditExecutionModal = dynamic(
+  () => import('@/components/events/EventAuditExecutionModal'),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/25"
+        aria-busy="true"
+        aria-label="Carregant auditoria"
+      >
+        <span className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-lg">
+          Carregant auditoria…
+        </span>
+      </div>
+    ),
+  }
+)
 import { useFilters } from '@/context/FiltersContext'
 import TornFilters from './components/TornFilters'
 import { format, startOfWeek, endOfWeek } from 'date-fns'

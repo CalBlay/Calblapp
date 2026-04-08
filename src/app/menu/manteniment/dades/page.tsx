@@ -18,6 +18,7 @@ import {
   normalizeText,
 } from './utils'
 import { emptyMachine, emptySupplier, type MachineListStats, type MachineRow, type MachineView, type SupplierRow } from './types'
+import { parseFetchJson } from '@/lib/parseFetchJson'
 
 export default function MaintenanceDataPage() {
   const { setContent } = useFilters()
@@ -45,9 +46,9 @@ export default function MaintenanceDataPage() {
         fetch('/api/maintenance/data/suppliers', { cache: 'no-store' }),
         fetch('/api/maintenance/tickets?ticketType=maquinaria&limit=300', { cache: 'no-store' }),
       ])
-      const machinesJson = machinesRes.ok ? await machinesRes.json() : { machines: [] }
-      const suppliersJson = suppliersRes.ok ? await suppliersRes.json() : { suppliers: [] }
-      const ticketsJson = ticketsRes.ok ? await ticketsRes.json() : { tickets: [] }
+      const machinesJson = await parseFetchJson(machinesRes, { machines: [] as MachineRow[] })
+      const suppliersJson = await parseFetchJson(suppliersRes, { suppliers: [] as SupplierRow[] })
+      const ticketsJson = await parseFetchJson(ticketsRes, { tickets: [] as Ticket[] })
       const nextMachines = Array.isArray(machinesJson?.machines) ? machinesJson.machines : []
       const nextSuppliers = Array.isArray(suppliersJson?.suppliers) ? suppliersJson.suppliers : []
       const nextTickets = Array.isArray(ticketsJson?.tickets) ? ticketsJson.tickets : []
@@ -73,7 +74,7 @@ export default function MaintenanceDataPage() {
     try {
       setLoading(true)
       const suppliersRes = await fetch('/api/maintenance/data/suppliers', { cache: 'no-store' })
-      const suppliersJson = suppliersRes.ok ? await suppliersRes.json() : { suppliers: [] }
+      const suppliersJson = await parseFetchJson(suppliersRes, { suppliers: [] as SupplierRow[] })
       const nextSuppliers = Array.isArray(suppliersJson?.suppliers) ? suppliersJson.suppliers : []
       setSuppliers(nextSuppliers)
       setLoadedTabs((current) => ({ ...current, suppliers: true }))
