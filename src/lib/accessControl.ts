@@ -249,20 +249,14 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
   return MODULES
     .filter(mod => {
       if (isMaintenanceWorker) {
-        return (
-          mod.path === '/menu/manteniment' ||
-          mod.path === '/menu/spaces'
-        )
+        return mod.path === '/menu/manteniment'
       }
 
       return true
     })
     .filter(mod => {
       if (isMaintenanceWorker) {
-        return (
-          mod.path === '/menu/manteniment' ||
-          mod.path === '/menu/spaces'
-        )
+        return mod.path === '/menu/manteniment'
       }
 
       if (mod.path === '/menu/torns') {
@@ -316,6 +310,11 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
         submodules: visibleSubmodules,
       }
     })
+}
+
+/** Treballadors de manteniment: sense accés al mòdul Espais (ni menú ni URL directa). */
+export function isMaintenanceWorkerSpacesBlocked(user: AccessUser): boolean {
+  return normalizeRole(user.role) === 'treballador' && normalizeDept(user.department) === 'manteniment'
 }
 
 /** ✏️ PERMISOS D’EDICIÓ DE FINCA */

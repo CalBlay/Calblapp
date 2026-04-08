@@ -4,6 +4,7 @@ import { getToken } from 'next-auth/jwt'
 import { NextRequest } from 'next/server'
 import { fetchAllTorns, type Torn } from '@/services/tornsService'
 import type { NormalizedWorker } from '@/utils/normalizeTornWorker'
+import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -63,7 +64,37 @@ type ApiTorn = {
   startTime?: string
   endTime?: string
   vestimentModel?: string
+  /** Des de `stage_verd` (mateix origen que el llistat d’esdeveniments) */
+  fincaId?: string | null
+  fincaCode?: string | null
   __rawWorkers?: NormalizedWorker[]
+}
+
+type FincaFields = { fincaId: string | null; fincaCode: string | null }
+
+/** Llegeix FincaId / FincaCode dels documents d’agenda confirmada. */
+async function fincaFieldsByStageVerdIds(eventIds: string[]): Promise<Map<string, FincaFields>> {
+  const out = new Map<string, FincaFields>()
+  const unique = [...new Set(eventIds.map((id) => String(id || '').trim()).filter(Boolean))]
+  const CHUNK = 30
+
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const chunk = unique.slice(i, i + CHUNK)
+    const refs = chunk.map((id) => db.collection('stage_verd').doc(id))
+    const snaps = await db.getAll(...refs)
+    for (let j = 0; j < chunk.length; j++) {
+      const id = chunk[j]
+      const snap = snaps[j]
+      if (!snap.exists) continue
+      const d = snap.data() as Record<string, unknown>
+      const rawId = d.FincaId ?? d.fincaId
+      const rawCode = d.FincaCode ?? d.fincaCode
+      const fincaId = rawId != null && String(rawId).trim() !== '' ? String(rawId).trim() : null
+      const fincaCode = rawCode != null && String(rawCode).trim() !== '' ? String(rawCode).trim() : null
+      out.set(id, { fincaId, fincaCode })
+    }
+  }
+  return out
 }
 
 type WorkerExpanded = Torn & {
@@ -285,7 +316,47 @@ export async function GET(req: NextRequest) {
       __rawWorkers: t.__rawWorkers as NormalizedWorker[] | undefined,
     }))
 
-    return Response.json({ ok: true, data: dto, meta }, { status: 200 })
+    const stageIds = dto
+      .map((r) => String(r.eventId || '').trim())
+      .filter((id): id is string => Boolean(id))
+    const fincaMap = await fincaFieldsByStageVerdIds(stageIds)
+
+    let enriched: ApiTorn[] = dto.map((row) => {
+      const key = String(row.eventId || '').trim()
+      const f = key ? fincaMap.get(key) : undefined
+      return {
+        ...row,
+        fincaId: f?.fincaId ?? null,
+        fincaCode: f?.fincaCode ?? null,
+      }
+    })
+
+    const codesForFallback = [
+      ...new Set(
+        enriched.flatMap((r) => {
+          if (r.fincaId || r.fincaCode) return []
+          const code = String(r.code || '').trim()
+          const eid = String(r.eventId || '').trim()
+          if (!code || code === eid) return []
+          return [code]
+        })
+      ),
+    ]
+
+    if (codesForFallback.length) {
+      const extra = await fincaFieldsByStageVerdIds(codesForFallback)
+      enriched = enriched.map((row) => {
+        if (row.fincaId || row.fincaCode) return row
+        const c = String(row.code || '').trim()
+        const eid = String(row.eventId || '').trim()
+        if (!c || c === eid) return row
+        const f = extra.get(c)
+        if (!f?.fincaId && !f?.fincaCode) return row
+        return { ...row, fincaId: f.fincaId, fincaCode: f.fincaCode }
+      })
+    }
+
+    return Response.json({ ok: true, data: enriched, meta }, { status: 200 })
   } catch (err: unknown) {
     console.error('[api/torns/getTorns] error:', err)
     return Response.json({ ok: false, error: 'Internal Server Error' }, { status: 500 })

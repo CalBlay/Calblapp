@@ -7,6 +7,7 @@ export interface Deal {
   DataInici?: string
   DataFi?: string
   Hora?: string
+  HoraFi?: string
   NumPax?: number | null
   Ubicacio?: string
   Color?: string

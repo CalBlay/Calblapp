@@ -73,6 +73,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     DataInici: get(deal, 'DataInici', 'dataInici', 'Data', 'dateStart') || '',
     DataFi: get(deal, 'DataFi', 'dataFi', 'dateEnd') || '',
     HoraInici: get(deal, 'HoraInici', 'horaInici', 'Hora', 'hora') || '',
+    HoraFi: get(deal, 'HoraFi', 'horaFi') || '',
     NumPax: get(deal, 'NumPax', 'numPax', 'pax') ?? '',
     Ubicacio: get(deal, 'Ubicacio', 'ubicacio', 'location') || '',
     Servei: get(deal, 'Servei', 'servei', 'service') || '',
@@ -284,6 +285,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     const DataFi = get(deal, 'DataFi', 'dataFi', 'dateEnd') || ''
     const HoraInici =
       get(deal, 'HoraInici', 'horaInici', 'Hora', 'hora') || ''
+    const HoraFi = get(deal, 'HoraFi', 'horaFi') || ''
 
     console.log('📊 Extracte camps:', {
       NomEvent: deal.NomEvent,
@@ -303,6 +305,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
       DataInici,
       DataFi,
       HoraInici,
+      HoraFi,
       NumPax,
       Ubicacio,
       Servei,
@@ -547,10 +550,10 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
             )}
           </div>
 
-          {/* Hora inici */}
+          {/* Hora inici (manual o Zoho confirmat editable) */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">Hora inici</label>
-            {isManual && !readonly ? (
+            {(isManual || canEditStageVerd) && !readonly ? (
               <Input
                 type="time"
                 value={editData.HoraInici || ''}
@@ -558,6 +561,20 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
               />
             ) : (
               <p>{editData.HoraInici || '—'}</p>
+            )}
+          </div>
+
+          {/* Hora fi */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Hora fi</label>
+            {(isManual || canEditStageVerd) && !readonly ? (
+              <Input
+                type="time"
+                value={editData.HoraFi || ''}
+                onChange={(e) => handleChange('HoraFi', e.target.value)}
+              />
+            ) : (
+              <p>{editData.HoraFi || '—'}</p>
             )}
           </div>
 

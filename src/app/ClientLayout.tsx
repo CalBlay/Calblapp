@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { LogOut, Settings } from 'lucide-react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { normalizeRole } from '@/lib/roles'
-import { getVisibleModules } from '@/lib/accessControl'
+import { getVisibleModules, isMaintenanceWorkerSpacesBlocked } from '@/lib/accessControl'
 import { FiltersProvider } from '@/context/FiltersContext'
 import FilterSlideOver from '@/components/ui/filter-slide-over'
 import PWARegister from '@/components/PWARegister'
@@ -53,6 +53,16 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
       router.replace('/login')
     }
   }, [status, user, pathname, router])
+
+  /* Treballadors manteniment: sense accés a /menu/spaces (abans de qualsevol return per regles dels hooks) */
+  useEffect(() => {
+    if (pathname.startsWith('/login') || status === 'loading' || !user) return
+    const role = normalizeRole(user.role)
+    const department = user.department || ''
+    if (isMaintenanceWorkerSpacesBlocked({ role, department }) && pathname.startsWith('/menu/spaces')) {
+      router.replace('/menu/manteniment')
+    }
+  }, [pathname, status, user, router])
 
   /* 🔓 Pantalla login sense layout */
   if (pathname.startsWith('/login')) {

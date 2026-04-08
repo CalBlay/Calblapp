@@ -506,6 +506,8 @@ export default function usePlannerData({
       const startMin = minutesFromTime(start)
       const endMin = minutesFromTime(end)
       const conflicts = new Set<string>()
+      const moving = new Set(workers.map((w) => normalizeName(w)).filter(Boolean))
+      if (moving.size === 0) return []
       scheduledItems.forEach((item) => {
         if (ignoreId && item.id === ignoreId) return
         if (item.dayIndex !== dayIndex) return
@@ -514,7 +516,8 @@ export default function usePlannerData({
         const overlaps = startMin < e && endMin > s
         if (!overlaps) return
         item.workers.forEach((worker) => {
-          if (workers.includes(worker)) conflicts.add(worker)
+          const key = normalizeName(worker)
+          if (key && moving.has(key)) conflicts.add(worker)
         })
       })
       return Array.from(conflicts)
@@ -529,7 +532,10 @@ export default function usePlannerData({
           .filter((u) => normalizeName(u.department || '').includes('manten'))
           .map((u) => ({ id: u.id, name: u.name })) || []
       const list = operators.length > 0 ? operators : users.map((u) => ({ id: u.id, name: u.name }))
+      const opKey = (name: string) => normalizeName(name)
       return list.filter((op) => {
+        const opNorm = opKey(op.name)
+        if (!opNorm) return true
         const has = scheduledItems.some((item) => {
           if (ignoreId && item.id === ignoreId) return false
           if (item.dayIndex !== dayIndex) return false
@@ -538,7 +544,7 @@ export default function usePlannerData({
           const startMin = minutesFromTime(start)
           const endMin = minutesFromTime(end)
           const overlaps = startMin < e && endMin > s
-          return overlaps && item.workers.includes(op.name)
+          return overlaps && item.workers.some((w) => opKey(w) === opNorm)
         })
         return !has
       })

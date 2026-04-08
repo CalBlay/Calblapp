@@ -68,6 +68,12 @@ const timeToMinutes = (value?: string | null) => {
   return hours * 60 + minutes
 }
 
+const hhMmFromFirestore = (raw?: unknown): string | null => {
+  if (raw == null) return null
+  const s = String(raw).trim().slice(0, 5)
+  return /^\d{2}:\d{2}$/.test(s) ? s : null
+}
+
 const pickEdgeTime = (
   values: Array<string | undefined | null>,
   mode: 'min' | 'max'
@@ -284,7 +290,9 @@ export function useQuadrantsPageData({
       const eventStartDate = eventDateBase || q.startDate
       const eventStartTime =
         ev?.horaInici || (ev?.start ? String(ev.start).slice(11, 16) : null)
-      const eventEndTime = ev?.end ? String(ev.end).slice(11, 16) : null
+      const eventEndTime =
+        hhMmFromFirestore(ev?.horaFi) ||
+        (ev?.end ? String(ev.end).slice(11, 16) : null)
       const displayDate = q.phaseDate || q.startDate || eventStartDate
 
       const s = String(q?.status || '').toLowerCase()
@@ -383,7 +391,9 @@ export function useQuadrantsPageData({
       const eventStartDate = ev?.start ? String(ev.start).slice(0, 10) : ''
       const eventStartTime =
         ev?.horaInici || (ev?.start ? String(ev.start).slice(11, 16) : null)
-      const eventEndTime = ev?.end ? String(ev.end).slice(11, 16) : null
+      const eventEndTime =
+        hhMmFromFirestore(ev?.horaFi) ||
+        (ev?.end ? String(ev.end).slice(11, 16) : null)
       const eventDateLabel = eventStartDate
         ? format(parseISO(eventStartDate), 'dd/MM')
         : ''

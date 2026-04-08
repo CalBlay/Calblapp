@@ -31,7 +31,6 @@ export interface TornDetailModalProps {
   role?: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
 }
 /** ───────────────────────── Helpers ───────────────────────── */
-const log = (...args: unknown[]) => console.log('[TornDetailModal]', ...args)
 
 function cleanEventName(s?: string) {
   if (!s) return ''
@@ -58,14 +57,6 @@ function groupByDepartment(workers: Worker[]) {
     // 👇 Capitalitzem la primera lletra
     const pretty = dep.charAt(0).toUpperCase() + dep.slice(1)
 
-    // 🔎 Log quirúrgic
-    console.log('[groupByDepartment]', {
-      worker: w.name,
-      originalDep: w.department,
-      normalizedDep: dep,
-      prettyDep: pretty,
-    })
-
     if (!map.has(pretty)) map.set(pretty, [])
     map.get(pretty)!.push(w)
   })
@@ -78,15 +69,13 @@ export default function TornDetailModal({ open, onClose, torn, role: _role, }: T
 
   const workers: Worker[] = Array.isArray(torn.__rawWorkers) ? torn.__rawWorkers : []
 
-  log('torn:', torn, 'workers:', workers.length)
-
-// agrupació sempre per departament
+  // agrupació sempre per departament
 const grouped = groupByDepartment(workers)
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg rounded-2xl">
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-lg max-h-[min(90dvh,100svh)] overflow-y-auto rounded-2xl p-4 sm:p-6 gap-3 sm:gap-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold">
+          <DialogTitle className="text-base sm:text-lg font-semibold pr-2">
             Detall del torn
           </DialogTitle>
         </DialogHeader>
@@ -94,14 +83,14 @@ const grouped = groupByDepartment(workers)
         <div className="space-y-4">
           {/* ── Capçalera esdeveniment ── */}
           <div>
-            <div className="font-medium text-gray-900">
+            <div className="font-medium text-gray-900 text-base sm:text-[15px] break-words">
               {cleanEventName(torn.eventName)}
             </div>
             {torn.code && (
-              <div className="text-xs text-gray-400">{torn.code}</div>
+              <div className="text-xs text-gray-500 mt-1 tabular-nums">{torn.code}</div>
             )}
             {(torn.vestimentModel || '').trim() ? (
-              <div className="mt-2 text-sm text-violet-800">
+              <div className="mt-2 text-sm text-violet-800 break-words">
                 <span className="font-medium text-violet-950">Vestimenta: </span>
                 {torn.vestimentModel}
               </div>
@@ -121,7 +110,7 @@ const grouped = groupByDepartment(workers)
                     {dep}
                   </div>
                 )}
-                <ul className="divide-y divide-gray-100 border rounded-lg">
+                <ul className="border rounded-xl overflow-hidden bg-white">
                   {list.map((w, i) => {
                     const icon = roleIcon(w.role)
                     const displayTime = timeRange(w.startTime, w.endTime)
@@ -132,25 +121,27 @@ const grouped = groupByDepartment(workers)
                         : ''
                     return (
                       <li
-                        key={w.id || `${i}-${w.name || 'unknown'}`}
-                        className="flex items-center justify-between py-1.5 px-2 text-xs sm:text-sm"
+                        key={`${dep}-${i}-${w.id ?? ''}-${w.startTime ?? ''}-${w.endTime ?? ''}`}
+                        className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between py-3 sm:py-2 px-3 sm:px-2 text-sm border-b border-gray-100 last:border-0"
                       >
-                        <div className="flex items-center gap-2 min-w-[90px]">
-                          <span>{icon}</span>
-                          <span className="font-medium truncate">
-                            {w.name || '—'}
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="text-lg shrink-0" aria-hidden>
+                            {icon}
                           </span>
+                          <span className="font-medium break-words min-w-0">{w.name || '—'}</span>
                           {plate && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
                               {plate}
                             </span>
                           )}
                         </div>
-                        <div className="text-gray-600 min-w-[80px] text-center">
-                          {displayTime || '—'}
-                        </div>
-                        <div className="text-gray-500 truncate max-w-[120px] text-right">
-                          {displayPoint || '—'}
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-8 sm:pl-0 sm:justify-end sm:text-right">
+                          <div className="text-gray-700 tabular-nums font-medium">
+                            {displayTime || '—'}
+                          </div>
+                          <div className="text-gray-500 break-words min-w-0 sm:max-w-[200px] sm:text-right">
+                            {displayPoint || '—'}
+                          </div>
                         </div>
                       </li>
                     )

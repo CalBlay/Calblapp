@@ -189,26 +189,28 @@ export default function TornsList({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6 pb-2">
       {grouped.map(([dayIso, dayItems]) => {
         const total = dayItems.length
         return (
-          <section key={dayIso} className="mb-6">
-            <header className="flex items-center justify-between mb-3 bg-green-50 p-3 rounded-xl shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                {weekdayLong(dayIso)} {formatDate(dayIso)}
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                  <Calendar className="w-3 h-3" />
+          <section key={dayIso} className="mb-4 sm:mb-6">
+            <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3 bg-green-50 p-3 sm:p-3 rounded-xl shadow-sm">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-800 flex flex-wrap items-center gap-2 min-w-0">
+                <span className="tabular-nums">
+                  {weekdayLong(dayIso)} {formatDate(dayIso)}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                  <Calendar className="w-3.5 h-3.5 shrink-0" />
                   {total} torn{total !== 1 && 's'}
                 </span>
               </h2>
-              <span className="flex items-center gap-1 text-pink-600 font-bold">
-                <Users className="w-4 h-4" />
+              <span className="flex items-center gap-1.5 text-pink-600 font-bold text-sm sm:text-base shrink-0">
+                <Users className="w-4 h-4 shrink-0" />
                 {total}
               </span>
             </header>
 
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:gap-3">
          {dayItems.map((t, index) => {
   const showWorkerView =
     role === 'Treballador' ||
@@ -233,12 +235,6 @@ export default function TornsList({
     >
 {showWorkerView ? (
   <>
-    {console.log('[RENDER] TornCardWorker', {
-      id: t.id,
-      workerName: t.workerName,
-      workerRole: t.workerRole,
-      eventName: t.eventName,
-    })}
     <TornCardWorker
       item={t}
       onEventClick={onEventClick ? () => onEventClick(t) : undefined}
@@ -248,10 +244,6 @@ export default function TornsList({
   </>
 ) : (
   <>
-    {console.log('[RENDER] TornCard', {
-      id: t.id,
-      eventName: t.eventName,
-    })}
     <TornCard
       item={t}
       onEventClick={onEventClick ? () => onEventClick(t) : undefined}

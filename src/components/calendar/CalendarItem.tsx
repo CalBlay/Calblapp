@@ -21,6 +21,7 @@ export default function CalendarItem({ event }: { event: Deal }) {
     Comercial,
     Ubicacio,
     HoraInici,
+    HoraFi,
     StageDot,
     Color,
     LN,
@@ -75,7 +76,9 @@ export default function CalendarItem({ event }: { event: Deal }) {
                     month: 'short',
                     year: 'numeric',
                   })}
-                  {HoraInici ? ` · ${HoraInici}` : ''}
+                  {HoraInici
+                    ? ` · ${HoraInici}${HoraFi ? ` – ${HoraFi}` : ''}`
+                    : ''}
                 </p>
               )}
               {Ubicacio && (

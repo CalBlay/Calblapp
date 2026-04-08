@@ -150,7 +150,10 @@ export async function POST(req: Request) {
         : now
 
     const normalizedStatus = normalizeCompletedStatus(body.status) as MaintenanceStatus
-    const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
+    const canValidate =
+      role === 'admin' ||
+      role === 'direccio' ||
+      (role === 'cap' && isMaintenanceCapDepartment(dept))
     if (normalizedStatus === 'validat') {
       if (!canValidate) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -161,7 +164,10 @@ export async function POST(req: Request) {
     }
 
     if (currentStatus === 'validat') {
-      const canReopen = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
+      const canReopen =
+        role === 'admin' ||
+        role === 'direccio' ||
+        (role === 'cap' && isMaintenanceCapDepartment(dept))
       const onlyReopen =
         normalizedStatus === 'fet' &&
         body.title === undefined &&
@@ -185,9 +191,24 @@ export async function POST(req: Request) {
       }
     }
 
+    const trimId = (v: unknown) => String(v ?? '').trim()
+    let resolvedTemplateId = trimId(body.templateId)
+    if (!resolvedTemplateId && currentRecord) {
+      resolvedTemplateId = trimId(currentRecord.templateId)
+    }
+    const plannedLookupId = trimId(body.plannedId) || trimId(currentRecord?.plannedId)
+    if (!resolvedTemplateId && plannedLookupId) {
+      const planSnap = await db.collection('maintenancePreventiusPlanned').doc(plannedLookupId).get()
+      if (planSnap.exists) {
+        resolvedTemplateId = trimId((planSnap.data() as { templateId?: string })?.templateId)
+      }
+    }
+
+    const resolvedPlannedId = trimId(body.plannedId) || trimId(currentRecord?.plannedId) || null
+
     const payload = {
-      plannedId: body.plannedId || null,
-      templateId: body.templateId || null,
+      plannedId: resolvedPlannedId,
+      templateId: resolvedTemplateId || null,
       title: body.title || '',
       worker: body.worker || null,
       startTime: body.startTime || '',
@@ -224,9 +245,9 @@ export async function POST(req: Request) {
       docId = doc.id
     }
 
-    if (body.plannedId) {
+    if (resolvedPlannedId) {
       const progress = computeProgress(body.checklist)
-      await db.collection('maintenancePreventiusPlanned').doc(body.plannedId).set(
+      await db.collection('maintenancePreventiusPlanned').doc(resolvedPlannedId).set(
         {
           lastRecordId: docId,
           lastStatus: normalizedStatus,
@@ -238,10 +259,10 @@ export async function POST(req: Request) {
       )
     }
 
-    if (body.templateId && normalizedStatus === 'validat') {
+    if (resolvedTemplateId && normalizedStatus === 'validat') {
       const resolvedOn = toIsoDate(completedAt) || toIsoDate(Date.now())
       if (resolvedOn) {
-        await db.collection('maintenancePreventiusTemplates').doc(body.templateId).set(
+        await db.collection('maintenancePreventiusTemplates').doc(resolvedTemplateId).set(
           {
             lastDone: resolvedOn,
             updatedAt: now,

@@ -233,6 +233,20 @@ export default function PreventiusPlanificadorPage() {
           minutes: Math.max(30, duration),
         }
 
+        const workerConflicts = getWorkerConflicts(
+          dayIndex,
+          newStart,
+          newEnd,
+          movedItem.workers || [],
+          target.id
+        )
+        if (workerConflicts.length > 0) {
+          window.alert(
+            `No es pot moure la fitxa aquí: ${workerConflicts.join(', ')} ${workerConflicts.length === 1 ? 'ja té' : 'ja tenen'} una altra feina en aquesta franja horària.`
+          )
+          return
+        }
+
         setScheduledItems((prev) =>
           prev.map((item) => (item.id === target.id ? movedItem : item))
         )
@@ -1012,7 +1026,8 @@ export default function PreventiusPlanificadorPage() {
                 </div>
               </div>
               <div className="mt-2 shrink-0 text-[11px] text-gray-500">
-                Disponibilitat: un operari esta lliure si no te cap tasca solapada en aquella franja.
+                Disponibilitat (només aquesta graella): un operari esta lliure si no te cap altra tasca
+                solapada en la mateixa columna de dia i franja horaria.
               </div>
             </div>
           </div>
@@ -1028,6 +1043,9 @@ export default function PreventiusPlanificadorPage() {
             locations={locations}
             machines={machines}
             users={users}
+            weekStart={weekStart}
+            dayCount={DAY_COUNT}
+            availableWorkers={availableWorkers}
             onDeletePlanned={async () => {
               const ticketId = draft.ticketId || draft.id
               if (!ticketId) return

@@ -3,6 +3,12 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
 
+const padHhMm = (raw: unknown): string | null => {
+  if (raw == null || typeof raw !== 'string') return null
+  const s = raw.trim().slice(0, 5)
+  return /^\d{2}:\d{2}$/.test(s) ? s : null
+}
+
 export async function GET(req: NextRequest) {
   const startedAt = Date.now()
   try {
@@ -26,17 +32,27 @@ export async function GET(req: NextRequest) {
       snap.forEach((doc) => {
         const d = doc.data() as FirebaseFirestore.DocumentData
 
-        const startISO =
-          typeof d.DataInici === 'string'
-            ? `${d.DataInici}T12:00:00`
-            : null
+        const dateStart =
+          typeof d.DataInici === 'string' ? d.DataInici.slice(0, 10) : null
+        const dateEnd =
+          typeof d.DataFi === 'string' && d.DataFi.trim()
+            ? d.DataFi.slice(0, 10)
+            : dateStart
 
-        const endISO =
-          typeof d.DataFi === 'string'
-            ? `${d.DataFi}T12:00:00`
-            : startISO
+        if (!dateStart) return
 
-        if (!startISO) return
+        const tStart =
+          padHhMm(d.HoraInici ?? d.horaInici ?? d.Hora ?? d.hora) || '12:00'
+        const hasExplicitStart = Boolean(
+          padHhMm(d.HoraInici ?? d.horaInici ?? d.Hora ?? d.hora)
+        )
+        const tEnd =
+          padHhMm(d.HoraFi ?? d.horaFi) ||
+          (hasExplicitStart ? '23:59' : '12:00')
+
+        const startISO = `${dateStart}T${tStart}:00`
+        const endISO = `${dateEnd}T${tEnd}:00`
+
         const eventStartMs = new Date(startISO).getTime()
         const eventEndMs = new Date(endISO || startISO).getTime()
         if (Number.isNaN(eventStartMs) || Number.isNaN(eventEndMs)) return
@@ -75,7 +91,7 @@ export async function GET(req: NextRequest) {
           summary,
           start: startISO,
           end: endISO,
-          day: d.DataInici || '',
+          day: dateStart || d.DataInici || '',
 
           location,
           lnKey: lnValue.toLowerCase(),
@@ -108,6 +124,7 @@ export async function GET(req: NextRequest) {
 
           stageGroup: d.StageGroup || d.stageGroup || '',
           HoraInici: d.HoraInici || d.horaInici || '',
+          HoraFi: d.HoraFi || d.horaFi || '',
         })
       })
     }

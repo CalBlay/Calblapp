@@ -46,7 +46,11 @@ function parseEventTitle(summary: string) {
 }
 
 export default function EventIncidentsModal({ open, onClose, eventId, eventSummary = '' }: Props) {
-  const { incidents, loading, error } = useIncidents({ eventId, light: false })
+  const { incidents, loading, error } = useIncidents({
+    eventId,
+    light: false,
+    limit: 80,
+  })
   const { name, ln, code } = parseEventTitle(eventSummary)
 
   return (

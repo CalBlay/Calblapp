@@ -38,6 +38,7 @@ export async function POST(req: Request) {
       DataInici: data.DataInici,
       DataFi: data.DataFi || data.DataInici,
       HoraInici: data.HoraInici || null,
+      HoraFi: data.HoraFi || null,
       Ubicacio: data.Ubicacio || '',
       NumPax: data.NumPax ? Number(data.NumPax) : null,
       code: codeValue,

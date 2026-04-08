@@ -2,13 +2,24 @@
 'use client'
 
 import { useFilters } from '@/context/FiltersContext'
+import { cn } from '@/lib/utils'
 
-export default function FilterButton({ onClick }: { onClick?: () => void }) {
+export default function FilterButton({
+  onClick,
+  className,
+}: {
+  onClick?: () => void
+  className?: string
+}) {
   const { setOpen } = useFilters()
 
   return (
     <button
-      className="h-10 w-10 flex items-center justify-center rounded-xl border border-gray-300 bg-white hover:bg-gray-100"
+      type="button"
+      className={cn(
+        'min-h-11 min-w-11 sm:h-10 sm:w-10 flex items-center justify-center rounded-xl border border-gray-300 bg-white hover:bg-gray-100 active:bg-gray-200 touch-manipulation',
+        className
+      )}
       onClick={() => {
         if (onClick) onClick()
         setOpen(true)

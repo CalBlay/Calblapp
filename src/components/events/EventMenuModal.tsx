@@ -1,7 +1,7 @@
 // file: src/components/events/EventMenuModal.tsx
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   AlertTriangle,
@@ -45,6 +45,21 @@ const norm = (s?: string | number | null) =>
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
+
+/** Mateixa lògica que `normalizeDept` a `/api/auditoria/executions` (prefetch vàlid). */
+function auditDepartmentForApi(raw?: string | null): string | null {
+  const value = String(raw ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+  if (value === 'comercial') return 'comercial'
+  if (value === 'serveis' || value === 'sala') return 'serveis'
+  if (value === 'cuina') return 'cuina'
+  if (value === 'logistica') return 'logistica'
+  if (value === 'deco' || value === 'decoracio' || value === 'decoracions') return 'deco'
+  return null
+}
 
 type LnKey = 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
 
@@ -143,8 +158,8 @@ function ActionRow({
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       className={[
-        'w-full h-12 rounded-xl px-3',
-        'flex items-center justify-between gap-3',
+        'w-full min-h-[3rem] py-2.5 sm:h-12 rounded-xl px-3',
+        'flex items-center justify-between gap-3 touch-manipulation',
         'bg-white border border-slate-200',
         'hover:bg-slate-50 active:scale-[0.99] transition',
         'disabled:cursor-not-allowed disabled:opacity-70',
@@ -235,6 +250,31 @@ const treballadorsPersons =
     time: t.time,
   })) ?? []
 
+  useEffect(() => {
+    const eventId = String(event?.id ?? '').trim()
+    if (!eventId) return
+
+    const warm = () => {
+      const incidentsQs = new URLSearchParams()
+      incidentsQs.set('eventId', eventId)
+      incidentsQs.set('limit', '80')
+      void fetch(`/api/incidents?${incidentsQs}`, { cache: 'no-store' }).catch(() => {})
+
+      const dept = auditDepartmentForApi(user.department)
+      if (dept) {
+        const auditQs = new URLSearchParams({ eventId, department: dept })
+        void fetch(`/api/auditoria/executions?${auditQs}`, { cache: 'no-store' }).catch(() => {})
+      }
+    }
+
+    if (typeof requestIdleCallback !== 'undefined') {
+      const id = requestIdleCallback(warm, { timeout: 1200 })
+      return () => cancelIdleCallback(id)
+    }
+    const t = window.setTimeout(warm, 120)
+    return () => clearTimeout(t)
+  }, [event?.id, user.department])
+
 
   if (!event || !event.id) return null
 
@@ -319,8 +359,9 @@ const operativa = useMemo(
             icon: AlertTriangle,
             tone: 'warning' as const,
             onClick: () => {
-              onClose()
+              // Primer el pare pot capturar l’esdeveniment (p. ex. Torns); després es tanca el menú.
               onOpenAuditExecution?.()
+              onClose()
             },
           }
         : null,
@@ -405,7 +446,8 @@ const recursos = useMemo(
       icon: Home,
       tone: 'neutral' as const,
    onClick: () => {
-  if (!event.fincaId) {
+  const fincaRef = (event.fincaId || event.fincaCode || '').trim()
+  if (!fincaRef) {
     window.alert('Aquest esdeveniment no té finca assignada.')
     return
   }
@@ -478,18 +520,18 @@ const recursos = useMemo(
     <>
       <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
 <DialogContent
-  className="w-[92vw] max-w-md rounded-2xl p-0 overflow-hidden"
+  className="w-[min(100vw-1rem,28rem)] max-w-[calc(100vw-1rem)] sm:max-w-md rounded-2xl p-0 overflow-hidden max-h-[min(88dvh,100svh)] gap-0 pb-[max(0px,env(safe-area-inset-bottom))]"
 >
 
 
           {/* Header */}
-          <div className="px-5 pt-5 pb-3">
+          <div className="px-4 pt-4 pb-3 sm:px-5 sm:pt-5">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <DialogTitle className="text-base font-semibold tracking-tight truncate">
+              <div className="min-w-0 pr-2">
+                <DialogTitle className="text-[15px] sm:text-base font-semibold tracking-tight break-words">
                   {pendingDocsOpen ? 'Documents' : event.summary}
                 </DialogTitle>
-                <DialogDescription className="text-sm text-muted-foreground mt-1">
+                <DialogDescription className="text-sm text-muted-foreground mt-1 break-words">
                   {pendingDocsOpen ? 'Consulta de documents de l esdeveniment' : `Data: ${dateStr}`}
                 </DialogDescription>
               </div>
@@ -522,7 +564,7 @@ const recursos = useMemo(
           </div>
 
           {/* Body */}
-          <div className="px-5 pb-5 max-h-[72vh] overflow-auto">
+          <div className="px-4 pb-4 sm:px-5 sm:pb-5 max-h-[min(72dvh,80svh)] overflow-y-auto overscroll-contain touch-pan-y">
             {pendingDocsOpen ? (
               <EventDocumentsSheet
                 eventId={String(event.id)}
@@ -683,8 +725,10 @@ treballadors={treballadorsPersons}
       <EventSpacesModal
   open={showEspais}
   onClose={() => setShowEspais(false)}
-  fincaId={event.fincaId ?? null}
+  fincaId={(event.fincaId || event.fincaCode || '').trim() || null}
   eventSummary={event.summary}
+  eventId={event.id != null ? String(event.id) : null}
+  eventCode={event.eventCode ?? event.code ?? null}
 />
       <EventClosingModal
         open={showClosing}

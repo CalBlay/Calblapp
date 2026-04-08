@@ -9,6 +9,7 @@ export interface QuadrantEvent {
   originalEnd?: string
   day?: string
   horaInici?: string
+  horaFi?: string
   location?: string | null
   eventLocation?: string | null
   meetingPoint?: string

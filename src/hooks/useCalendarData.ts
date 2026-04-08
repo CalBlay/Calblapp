@@ -16,6 +16,7 @@ export interface Deal {
   Color: string
   StageDot?: string
   HoraInici?: string
+  HoraFi?: string
   origen?: 'zoho' | 'manual' | 'firestore'
   NumPax?: number | string | null
   ObservacionsZoho?: string
@@ -123,6 +124,11 @@ export function useCalendarData(filters?: {
         const horaInici =
           typeof horaRaw === 'string' ? horaRaw.trim().slice(0, 5) : ''
 
+        const horaFiRaw =
+          ev.HoraFi || ev.horaFi || ''
+        const horaFi =
+          typeof horaFiRaw === 'string' ? horaFiRaw.trim().slice(0, 5) : ''
+
         return {
           id: ev.id,
           NomEvent: ev.summary || '(Sense titol)',
@@ -138,6 +144,7 @@ export function useCalendarData(filters?: {
           Color: ev.Color || '',
           StageDot: ev.StageDot || '',
           HoraInici: horaInici,
+          HoraFi: horaFi || undefined,
 
           // FIX: Pax robust
           NumPax:

@@ -108,7 +108,6 @@ export default function EventsPage() {
   const [selectedEvent, setSelectedEvent] = useState<EventMenuData | null>(null)
   const [auditEvent, setAuditEvent] = useState<EventMenuData | null>(null)
   const [isAuditOpen, setAuditOpen] = useState(false)
-  const auditOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [docsEvent, setDocsEvent] = useState<{
     eventId: string
@@ -288,9 +287,6 @@ export default function EventsPage() {
 
   useEffect(() => {
     return () => {
-      if (auditOpenTimerRef.current) {
-        clearTimeout(auditOpenTimerRef.current)
-      }
       if (suppressTimerRef.current) {
         clearTimeout(suppressTimerRef.current)
       }
@@ -301,12 +297,7 @@ export default function EventsPage() {
     if (!selectedEvent) return
     setAuditEvent(selectedEvent)
     setMenuOpen(false)
-    if (auditOpenTimerRef.current) {
-      clearTimeout(auditOpenTimerRef.current)
-    }
-    auditOpenTimerRef.current = setTimeout(() => {
-      setAuditOpen(true)
-    }, 30)
+    queueMicrotask(() => setAuditOpen(true))
   }, [selectedEvent])
 
   return (

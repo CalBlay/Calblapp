@@ -5,6 +5,12 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
 
+const normHhMm = (raw: unknown): string => {
+  if (raw == null || typeof raw !== 'string') return ''
+  const s = raw.trim().slice(0, 5)
+  return /^\d{2}:\d{2}$/.test(s) ? s : ''
+}
+
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url)
@@ -55,8 +61,8 @@ export async function GET(req: NextRequest) {
           : '(Sense titol)'
         const rawHora =
           d?.HoraInici ?? d?.horaInici ?? d?.Hora ?? d?.hora ?? ''
-        const horaInici =
-          typeof rawHora === 'string' ? rawHora.trim().slice(0, 5) : ''
+        const horaInici = normHhMm(rawHora)
+        const horaFi = normHhMm(d?.HoraFi ?? d?.horaFi ?? '')
 
         if (!startDateRaw) return []
         if (startDateRaw > end || endDateRaw < start) return []
@@ -94,6 +100,7 @@ export async function GET(req: NextRequest) {
           numPax: d?.NumPax || '',
           code: d?.code || d?.C_digo || '',
           horaInici,
+          horaFi,
           // estat simplificat
           status: d?.StageGroup?.toLowerCase().includes('confirmat')
             ? 'confirmed'
@@ -108,8 +115,12 @@ export async function GET(req: NextRequest) {
         return Array.from({ length: daySpan + 1 }, (_, i) => {
           const current = addDays(startDate, i)
           const dayIso = format(current, 'yyyy-MM-dd')
-          const startISO = `${dayIso}T00:00:00.000Z`
-          const endISO = `${dayIso}T00:00:00.000Z`
+          const isFirst = i === 0
+          const isLast = i === daySpan
+          const startT = isFirst ? horaInici || '00:00' : '00:00'
+          const endT = isLast && horaFi ? horaFi : '23:59'
+          const startISO = `${dayIso}T${startT}:00`
+          const endISO = `${dayIso}T${endT}:00`
 
           return {
             ...base,

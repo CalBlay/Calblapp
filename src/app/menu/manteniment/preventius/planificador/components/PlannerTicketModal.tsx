@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { differenceInCalendarDays, parseISO } from 'date-fns'
 import { useSession } from 'next-auth/react'
 import { useTransports } from '@/hooks/useTransports'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
@@ -14,7 +15,7 @@ import type {
   TransportItem,
   UserItem,
 } from '@/app/menu/manteniment/tickets/types'
-import { normalizeName } from '../utils'
+import { minutesFromTime, normalizeName, timeFromMinutes } from '../utils'
 
 type Props = {
   ticketId: string
@@ -25,6 +26,15 @@ type Props = {
   locations: string[]
   machines: MachineItem[]
   users: UserItem[]
+  /** Planificador: si es passen, la disponibilitat és només la graella; si no, tots els operaris de manteniment es poden triar */
+  weekStart?: Date
+  dayCount?: number
+  availableWorkers?: (
+    dayIndex: number,
+    start: string,
+    end: string,
+    ignoreId?: string
+  ) => Array<{ id: string; name: string }>
   onDeletePlanned?: (() => void | Promise<void>) | null
   onClose: () => void
   onRefresh: () => Promise<void>
@@ -62,6 +72,9 @@ export default function PlannerTicketModal({
   locations,
   machines,
   users,
+  weekStart: weekStartProp,
+  dayCount: dayCountProp,
+  availableWorkers: availableWorkersProp,
   onDeletePlanned,
   onClose,
   onRefresh,
@@ -93,7 +106,6 @@ export default function PlannerTicketModal({
   const [workerCount, setWorkerCount] = useState(1)
   const [availableIds, setAvailableIds] = useState<string[]>([])
   const [availableNameNorms, setAvailableNameNorms] = useState<string[]>([])
-  const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [detailsLocation, setDetailsLocation] = useState('')
   const [detailsWorkLocation, setDetailsWorkLocation] = useState('')
@@ -101,7 +113,6 @@ export default function PlannerTicketModal({
   const [detailsDescription, setDetailsDescription] = useState('')
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
   const { data: transports } = useTransports()
-  const availabilityCacheRef = useRef<Map<string, { ids: string[]; nameNorms: string[] }>>(new Map())
 
   const maintenanceUsers = useMemo(
     () =>
@@ -170,73 +181,54 @@ export default function PlannerTicketModal({
     return { plannedStart: start.getTime(), plannedEnd: end.getTime(), estimatedMinutes: minutes }
   }
 
-  const loadAvailability = async () => {
-    const { plannedStart, plannedEnd } = computePlanning()
-    if (!plannedStart || !plannedEnd) {
+  const assignEndTime = useMemo(() => {
+    if (!assignStartTime || !assignDuration) return ''
+    const parts = assignDuration.trim().split(':')
+    const addMin = Number(parts[0] || 0) * 60 + Number(parts[1] || 0)
+    if (!Number.isFinite(addMin) || addMin < 1) return ''
+    const sm = minutesFromTime(assignStartTime)
+    return timeFromMinutes(sm + addMin)
+  }, [assignStartTime, assignDuration])
+
+  const plannerDayIndex = useMemo(() => {
+    if (!assignDate || !weekStartProp) return -1
+    const picked = parseISO(assignDate)
+    if (Number.isNaN(picked.getTime())) return -1
+    return differenceInCalendarDays(picked, weekStartProp)
+  }, [assignDate, weekStartProp])
+
+  useEffect(() => {
+    if (!assignDate || !assignStartTime || !assignEndTime) {
       setAvailableIds([])
       setAvailableNameNorms([])
       return
     }
-    const startDate = new Date(plannedStart)
-    const endDate = new Date(plannedEnd)
-    const sd = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(
-      startDate.getDate()
-    ).padStart(2, '0')}`
-    const ed = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(
-      endDate.getDate()
-    ).padStart(2, '0')}`
-    const st = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`
-    const et = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`
-    const availabilityKey = `${ticketId}|${sd}|${ed}|${st}|${et}`
-
-    const cached = availabilityCacheRef.current.get(availabilityKey)
-    if (cached) {
-      setAvailableIds(cached.ids)
-      setAvailableNameNorms(cached.nameNorms)
+    if (!availableWorkersProp || !weekStartProp || dayCountProp == null) {
+      setAvailableIds(maintenanceUsers.map((u) => String(u.id)).filter(Boolean))
+      setAvailableNameNorms(
+        maintenanceUsers.map((u) => normalizeName(String(u.name || ''))).filter(Boolean)
+      )
       return
     }
-
-    try {
-      setAvailabilityLoading(true)
-      const params = new URLSearchParams({
-        department: 'manteniment',
-        startDate: sd,
-        endDate: ed,
-        startTime: st,
-        endTime: et,
-        excludeMaintenanceTicketId: ticketId,
-      })
-      const res = await fetch(`/api/personnel/available?${params.toString()}`, { cache: 'no-store' })
-      if (!res.ok) {
-        setAvailableIds([])
-        setAvailableNameNorms([])
-        return
-      }
-      const json = await res.json()
-      const list = Array.isArray(json?.treballadors) ? json.treballadors : []
-      const nextIds = list.map((p: { id?: string }) => String(p?.id || '')).filter(Boolean)
-      const nameNorms = list
-        .map((p: { name?: string }) => normalizeName(String(p?.name || '')))
-        .filter(Boolean)
-      availabilityCacheRef.current.set(availabilityKey, { ids: nextIds, nameNorms })
-      setAvailableIds(nextIds)
-      setAvailableNameNorms(nameNorms)
-    } finally {
-      setAvailabilityLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    setAvailableIds([])
-    setAvailableNameNorms([])
-  }, [assignDate, assignStartTime, assignDuration, ticketId])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadAvailability()
-    }, 300)
-    return () => window.clearTimeout(timer)
-  }, [assignDate, assignStartTime, assignDuration, ticketId])
+    const inWeek = plannerDayIndex >= 0 && plannerDayIndex < dayCountProp
+    const dayIdx = inWeek ? plannerDayIndex : -1
+    const list = availableWorkersProp(dayIdx, assignStartTime, assignEndTime, ticketId)
+    setAvailableIds(list.map((p) => String(p.id || '')).filter(Boolean))
+    setAvailableNameNorms(
+      list.map((p) => normalizeName(String(p.name || ''))).filter(Boolean)
+    )
+  }, [
+    assignDate,
+    assignStartTime,
+    assignEndTime,
+    assignDuration,
+    availableWorkersProp,
+    dayCountProp,
+    maintenanceUsers,
+    plannerDayIndex,
+    ticketId,
+    weekStartProp,
+  ])
 
   const handleAssign = async (ticket: Ticket, assignedIds: string[], assignedNames: string[]) => {
     try {
@@ -408,7 +400,7 @@ export default function PlannerTicketModal({
       maintenanceUsers={maintenanceUsers}
       availableIds={availableIds}
       availableNameNorms={availableNameNorms}
-      availabilityLoading={availabilityLoading}
+      availabilityLoading={false}
       furgonetes={furgonetes}
       locations={locations}
       machines={machines}

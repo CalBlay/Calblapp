@@ -31,6 +31,7 @@ interface EventFormData {
   DataInici: string
   DataFi?: string
   HoraInici?: string
+  HoraFi?: string
   NumPax: string
   Ubicacio: string | Record<string, unknown>
   Servei: string | Record<string, unknown>
@@ -102,6 +103,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
     DataInici: date || '',
     DataFi: '',
     HoraInici: '',
+    HoraFi: '',
     NumPax: '',
     Ubicacio: '',
     Servei: '',
@@ -276,6 +278,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
         DataInici: formData.DataInici || new Date().toISOString().slice(0, 10),
         DataFi: formData.DataFi || formData.DataInici || null,
         HoraInici: formData.HoraInici || null,
+        HoraFi: formData.HoraFi || null,
         NumPax: formData.NumPax || null,
         Ubicacio: ubicacioValue,
         Servei: serveiValue,
@@ -341,6 +344,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
       DataInici: date || '',
       DataFi: '',
       HoraInici: '',
+      HoraFi: '',
       NumPax: '',
       Ubicacio: '',
       Servei: '',
@@ -464,16 +468,25 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
                 onChange={(e) => handleChange('DataFi', e.target.value)}
               />
             </div>
-          ) : (
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Hora inici</label>
-              <Input
-                type="time"
-                value={formData.HoraInici || ''}
-                onChange={(e) => handleChange('HoraInici', e.target.value)}
-              />
-            </div>
-          )}
+          ) : null}
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Hora inici</label>
+            <Input
+              type="time"
+              value={formData.HoraInici || ''}
+              onChange={(e) => handleChange('HoraInici', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Hora fi</label>
+            <Input
+              type="time"
+              value={formData.HoraFi || ''}
+              onChange={(e) => handleChange('HoraFi', e.target.value)}
+            />
+          </div>
 
           <div>
             <label className="block text-xs text-gray-500 mb-1">Ubicacio</label>

@@ -1,7 +1,7 @@
 // filename: src/app/menu/torns/page.tsx
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { CalendarDays } from 'lucide-react'
@@ -11,6 +11,7 @@ import TornsList from './components/TornsList'
 import TornDetailModal from './components/TornDetailModal'
 import FilterButton from '@/components/ui/filter-button'
 import EventMenuModal from '@/components/events/EventMenuModal'
+import EventAuditExecutionModal from '@/components/events/EventAuditExecutionModal'
 import EventAvisosReadOnlyModal from '@/components/events/EventAvisosReadOnlyModal'
 import { useFilters } from '@/context/FiltersContext'
 import TornFilters from './components/TornFilters'
@@ -34,6 +35,8 @@ type ApiTorn = {
   workerName?: string
   workerPlate?: string
   vestimentModel?: string
+  fincaId?: string | null
+  fincaCode?: string | null
   __rawWorkers?: (ApiWorker & {
     role?: 'responsable' | 'conductor' | 'treballador'
     startTime?: string
@@ -86,7 +89,10 @@ export default function TornsPage() {
     fincaCode?: string | null
     pax?: number
     importAmount?: number
+    location?: string
   } | null>(null)
+  const [auditEvent, setAuditEvent] = useState<NonNullable<typeof eventMenuData>>(null)
+  const [auditOpen, setAuditOpen] = useState(false)
   const [avisosOpen, setAvisosOpen] = useState(false)
   const [avisosEventCode, setAvisosEventCode] = useState<string | null>(null)
 
@@ -244,6 +250,12 @@ export default function TornsPage() {
     setEventMenuData(null)
   }
 
+  const openAuditExecution = useCallback(() => {
+    if (!eventMenuData) return
+    setAuditEvent(eventMenuData)
+    queueMicrotask(() => setAuditOpen(true))
+  }, [eventMenuData])
+
   const openAvisos = (t: ApiTorn) => {
     if (!t.code) return
     setAvisosEventCode(t.code)
@@ -271,6 +283,9 @@ export default function TornsPage() {
       code: t.code,
       department: t.department,
       isResponsible,
+      fincaId: t.fincaId ?? null,
+      fincaCode: t.fincaCode ?? null,
+      location: t.location || '',
     })
     setEventMenuOpen(true)
   }
@@ -302,21 +317,21 @@ export default function TornsPage() {
   // ============================
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'treballador']}>
-      <div className="p-4">
+      <div className="px-3 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-4 sm:pb-4 max-w-full overflow-x-hidden touch-manipulation">
       <ModuleHeader
-        icon={<CalendarDays className="w-7 h-7 text-blue-600" />}
+        icon={<CalendarDays className="w-7 h-7 text-blue-600 shrink-0" />}
         title="Torns Assignats"
         subtitle="Consulta i gestiona els torns assignats"
       />
 
       <TornNotificationsBanner />
 
-      {/* SMART FILTERS */}
-      <div className="w-full px-3 py-2 sm:px-4 sm:py-3 mb-6">
-<div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm flex items-center justify-between">
+      {/* SMART FILTERS — apil·lat al mòbil, fila a escriptori */}
+      <div className="w-full min-w-0 py-2 sm:px-1 sm:py-3 mb-4 sm:mb-6">
+<div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
   
   {/* Bloc esquerra: SmartFilters */}
-  <div className="flex items-center gap-3">
+  <div className="flex items-center gap-3 w-full min-w-0">
     <SmartFilters
       modeDefault="week"
       role={role}
@@ -335,6 +350,7 @@ export default function TornsPage() {
 
   {/* Bloc dreta: Botó filtres avançats */}
   <FilterButton
+  className="shrink-0 self-end sm:self-center"
   onClick={() => {
     setContent(
       <TornFilters
@@ -391,6 +407,27 @@ export default function TornsPage() {
           event={eventMenuData}
           user={userForEventMenu}
           onClose={closeEventMenu}
+          onOpenAuditExecution={openAuditExecution}
+        />
+      )}
+      {auditEvent && (
+        <EventAuditExecutionModal
+          open={auditOpen}
+          onClose={() => {
+            setAuditOpen(false)
+            setAuditEvent(null)
+          }}
+          event={{
+            id: auditEvent.id,
+            summary: auditEvent.summary,
+            start: auditEvent.start,
+            eventCode: auditEvent.eventCode || auditEvent.code || undefined,
+            location: auditEvent.location,
+          }}
+          user={{
+            department: userForEventMenu.department,
+            name: userForEventMenu.name,
+          }}
         />
       )}
       <EventAvisosReadOnlyModal

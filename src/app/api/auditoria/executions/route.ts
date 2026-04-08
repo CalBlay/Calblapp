@@ -80,9 +80,12 @@ export async function GET(req: Request) {
     }
 
     const docId = `${eventId}_${department}`
-    const executionSnap = await firestoreAdmin.collection('audit_runs').doc(docId).get()
+    const runRef = firestoreAdmin.collection('audit_runs').doc(docId)
+    const [executionSnap, visibleTemplate] = await Promise.all([
+      runRef.get(),
+      getVisibleTemplate(department),
+    ])
     const execution = executionSnap.exists ? { id: executionSnap.id, ...executionSnap.data() } : null
-    const visibleTemplate = await getVisibleTemplate(department)
 
     return NextResponse.json({ execution, visibleTemplate }, { status: 200 })
   } catch (error: unknown) {
