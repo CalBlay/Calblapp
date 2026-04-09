@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 
 export const runtime = 'nodejs'
 
@@ -136,6 +137,7 @@ export async function POST(req: NextRequest) {
       await batch.commit()
     }
 
+    revalidateQuadrantsListCache()
     return NextResponse.json({ ok: true })
   } catch (e) {
     console.error('[quadrantsDraft/unconfirm] error', e)

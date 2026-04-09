@@ -6,6 +6,7 @@ import {
   orderedDayRangeFromISOStrings,
   queryQuadrantCollectionDocsInDateRange,
 } from '@/lib/firestoreQuadrantsRangeQuery'
+import { normalizeTransportPlateKey } from '@/lib/transportTypes'
 
 export const runtime = 'nodejs'
 
@@ -57,10 +58,37 @@ type QuadrantConductorRecord = {
   startTime?: string
   endDate?: string
   endTime?: string
+  arrivalTime?: string
 }
 
 type QuadrantRecord = Record<string, unknown> & {
   conductors?: QuadrantConductorRecord[]
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  endTime?: string
+  arrivalTime?: string
+}
+
+const trimStr = (v?: unknown) => (typeof v === 'string' ? v.trim() : '')
+
+/**
+ * Mateixa idea que GET assignacions: sortida / arribada / tornada efectives per fila + quadrant.
+ * El vehicle ha d’estar bloquejat des de la sortida fins la tornada; si falta sortida però hi ha arribada, usem arribada (cas habitual: hora d’event al quadrant sense duplicar sortida).
+ */
+function conductorVehicleWindow(
+  q: QuadrantRecord,
+  c: QuadrantConductorRecord
+): { startTime: string; endTime: string } | null {
+  const sortida =
+    trimStr(c.startTime) ||
+    trimStr(q.startTime) ||
+    trimStr(c.arrivalTime) ||
+    trimStr(q.arrivalTime)
+  const tornada =
+    trimStr(c.endTime) || trimStr(q.endTime) || sortida
+  if (!sortida) return null
+  return { startTime: sortida, endTime: tornada }
 }
 
 type ManualAssignmentRecord = Record<string, unknown> & {
@@ -147,7 +175,7 @@ export async function POST(req: Request) {
     const occupationMap = new Map<string, Occupation[]>()
 
     const pushOccupation = (occupation: Occupation) => {
-      const key = String(occupation.plate || '').trim()
+      const key = normalizeTransportPlateKey(occupation.plate)
       if (!key) return
       const current = occupationMap.get(key) || []
       current.push(occupation)
@@ -164,10 +192,26 @@ export async function POST(req: Request) {
       for (const doc of docs) {
         const q = doc.data() as QuadrantRecord
         const conductors = Array.isArray(q.conductors) ? q.conductors : []
+        const quadrantStartDate =
+          typeof q.startDate === 'string' && q.startDate.trim() ? q.startDate : undefined
 
         conductors.forEach((c) => {
-          if (!c?.plate || !c?.startDate || !c?.startTime) return
-          const range = resolveRange(c.startDate, c.startTime, c.endDate, c.endTime)
+          const fromRowStart =
+            typeof c.startDate === 'string' && c.startDate.trim()
+              ? c.startDate.trim()
+              : ''
+          const rowStartDate = fromRowStart || quadrantStartDate
+          const window = conductorVehicleWindow(q, c)
+          if (!c?.plate || !rowStartDate || !window) return
+          const fromRowEnd =
+            typeof c.endDate === 'string' && c.endDate.trim() ? c.endDate.trim() : ''
+          const rowEndDate = fromRowEnd || rowStartDate
+          const range = resolveRange(
+            rowStartDate,
+            window.startTime,
+            rowEndDate,
+            window.endTime
+          )
           if (!range) return
           if (!overlaps(reqStart, reqEnd, range.start, range.end)) return
 
@@ -229,7 +273,8 @@ export async function POST(req: Request) {
        3) DISPONIBILITAT
     ========================= */
     const result = vehicles.map(v => {
-      const busy = (occupationMap.get(v.plate) || []).some(o =>
+      const plateKey = normalizeTransportPlateKey(v.plate)
+      const busy = (occupationMap.get(plateKey) || []).some(o =>
         overlaps(reqStart, reqEnd, o.start, o.end)
       )
 

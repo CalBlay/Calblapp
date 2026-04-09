@@ -3,6 +3,8 @@ import { getToken } from 'next-auth/jwt'
 import type { NextRequest } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
+import { canDriverHandleVehicleType } from '@/lib/driverCapabilities'
+import { normalizeTransportType } from '@/lib/transportTypes'
 import {
   loadMinRestHours,
   listQuadrantCollections,
@@ -57,6 +59,9 @@ interface PersonnelDoc {
   role?: string
   department?: string
   isDriver?: boolean
+  /** Alguns documents dupliquen flags a l’arrel. */
+  camioPetit?: boolean
+  camioGran?: boolean
   driver?: {
     isDriver?: boolean
     camioGran?: boolean
@@ -174,6 +179,9 @@ export async function GET(request: NextRequest) {
   const excludeEventId = searchParams.get('excludeEventId')
   const excludeMaintenancePlannedId = searchParams.get('excludeMaintenancePlannedId')
   const excludeMaintenanceTicketId = searchParams.get('excludeMaintenanceTicketId')
+  /** Si ve informat, només es llisten conductors aptes per aquest tipus (veure `canDriverHandleVehicleType`). */
+  const vehicleTypeRaw = searchParams.get('vehicleType')?.trim()
+  const vehicleTypeNorm = vehicleTypeRaw ? normalizeTransportType(vehicleTypeRaw) : ''
 
   if (!deptParam || !sd || !ed) {
     return NextResponse.json(
@@ -315,7 +323,9 @@ export async function GET(request: NextRequest) {
         data.isDriver === true ||
         data.driver?.isDriver === true ||
         data.driver?.camioGran === true ||
-        data.driver?.camioPetit === true
+        data.driver?.camioPetit === true ||
+        data.camioGran === true ||
+        data.camioPetit === true
 
       const entry: AvailEntry = {
         id: doc.id,
@@ -326,8 +336,8 @@ export async function GET(request: NextRequest) {
         isDriver,
         isJamonero: data.isJamonero === true,
         isResponsible: data.isResponsible === true,
-        camioPetit: data.driver?.camioPetit === true,
-        camioGran: data.driver?.camioGran === true,
+        camioPetit: data.driver?.camioPetit === true || data.camioPetit === true,
+        camioGran: data.driver?.camioGran === true || data.camioGran === true,
       }
 
       if (RESPONSABLE_ROLES.has(roleNorm) || data.isResponsible === true) {
@@ -339,7 +349,16 @@ export async function GET(request: NextRequest) {
       }
 
       if (isDriver) {
-        conductors.push(entry)
+        const capability = {
+          isDriver: data.isDriver === true || data.driver?.isDriver === true,
+          camioPetit: data.driver?.camioPetit === true || data.camioPetit === true,
+          camioGran: data.driver?.camioGran === true || data.camioGran === true,
+        }
+        const okForVehicleType =
+          !vehicleTypeNorm || canDriverHandleVehicleType(capability, vehicleTypeNorm)
+        if (okForVehicleType) {
+          conductors.push(entry)
+        }
       }
     }
 

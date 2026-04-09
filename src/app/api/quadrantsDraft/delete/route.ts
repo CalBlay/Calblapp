@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 
 export const runtime = 'nodejs'
 
@@ -43,10 +44,12 @@ export async function POST(req: NextRequest) {
           return key !== target
         })
         await directRef.set({ logisticaPhases: next }, { merge: true })
+        revalidateQuadrantsListCache()
         return NextResponse.json({ ok: true, phaseDeleted: true, deletedCount: 1 })
       }
 
       await directRef.delete()
+      revalidateQuadrantsListCache()
       return NextResponse.json({ ok: true, deletedCount: 1 })
     }
 
@@ -73,6 +76,7 @@ export async function POST(req: NextRequest) {
     docsToDelete.forEach((doc) => batch.delete(doc.ref))
     await batch.commit()
 
+    revalidateQuadrantsListCache()
     return NextResponse.json({ ok: true, deletedCount: docsToDelete.length })
   } catch (e) {
     console.error('[quadrantsDraft/delete] error:', e)

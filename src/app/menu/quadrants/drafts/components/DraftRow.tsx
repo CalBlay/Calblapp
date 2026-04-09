@@ -74,7 +74,7 @@ export default function DraftRow({
       border-b border-slate-200 bg-white px-3 py-2.5 hover:bg-slate-50
       grid gap-2
       grid-cols-1
-      sm:grid-cols-[40px_minmax(11rem,1fr)_5rem_4.5rem_4.5rem_4.5rem_minmax(8rem,0.9fr)_4.5rem_3.5rem]
+      sm:grid-cols-[40px_minmax(11rem,1fr)_5rem_4.5rem_4.5rem_4.5rem_minmax(0,1fr)_3.5rem]
       items-center
     "
       style={
@@ -128,19 +128,16 @@ export default function DraftRow({
 
       <div className="hidden sm:block w-[5.5rem] tabular-nums text-[14px] text-slate-700">{formatTime(row.arrivalTime)}</div>
 
-      <div className="hidden sm:block truncate text-[14px] text-slate-700">
-        {row.meetingPoint || <span className="text-gray-400">-</span>}
-      </div>
-
-      <div className="hidden sm:flex items-center gap-2 text-[14px] font-medium text-slate-700">
+      <div className="hidden sm:flex min-w-0 items-center gap-x-2.5 gap-y-1 text-[14px] text-slate-700">
+        <span className="truncate font-medium" title={row.meetingPoint || undefined}>
+          {row.meetingPoint || <span className="text-gray-400">-</span>}
+        </span>
         {row.role === 'conductor' ? (
-          <>
-            <span>{row.plate || '-'}</span>
+          <span className="inline-flex shrink-0 items-center gap-1.5 font-medium text-slate-800">
+            <span className="tabular-nums">{row.plate || '-'}</span>
             <VehicleIcon type={row.vehicleType} />
-          </>
-        ) : (
-          <span className="text-gray-400">-</span>
-        )}
+          </span>
+        ) : null}
       </div>
 
       <div className="hidden sm:block">

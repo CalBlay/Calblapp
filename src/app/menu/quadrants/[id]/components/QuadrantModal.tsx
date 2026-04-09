@@ -202,7 +202,33 @@ const submitQuadrantPayload = async (payload: Record<string, unknown>) => {
       drivers?: Array<{ name?: string | null }>
       staff?: Array<{ name?: string | null }>
     }
+    meta?: {
+      needsReview?: boolean
+      violations?: string[]
+      notes?: string[]
+    }
   }
+}
+
+const toastAutoAssignDoubleBookingWarnings = (data: {
+  meta?: {
+    needsReview?: boolean
+    violations?: string[]
+    notes?: string[]
+  }
+}) => {
+  const meta = data?.meta
+  const notes = Array.isArray(meta?.notes) ? meta!.notes!.filter(Boolean) : []
+  if (notes.length === 0) return
+  const hasDouble =
+    Array.isArray(meta?.violations) && meta!.violations!.includes('person_double_booked')
+  const hasOverlapNote = notes.some((n) => String(n).includes('ja està assignat'))
+  if (!hasDouble && !hasOverlapNote) return
+  const preview = notes.slice(0, 5).join('\n')
+  toast.warning('Atenció: possible solapament de personal', {
+    description: preview,
+    duration: 16_000,
+  })
 }
 
 type CuinaEttState = {
@@ -889,6 +915,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
             ...payloadToSend,
             ...(preferredAssignments || {}),
           })
+          toastAutoAssignDoubleBookingWarnings(response)
           preferredAssignments = buildPreferredAssignments(response?.proposal)
         }
 
@@ -969,6 +996,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           ...payloadToSend,
           ...(preferredAssignments || {}),
         })
+        toastAutoAssignDoubleBookingWarnings(response)
         preferredAssignments = buildPreferredAssignments(response?.proposal)
       }
 

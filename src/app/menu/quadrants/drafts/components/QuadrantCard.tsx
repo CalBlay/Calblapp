@@ -48,6 +48,21 @@ export default function QuadrantCard({
           </div>
         )}
 
+      {Array.isArray((quadrant as any).attentionNotes) &&
+        (quadrant as any).attentionNotes.length > 0 && (
+          <div
+            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950"
+            role="alert"
+          >
+            <div className="font-semibold text-amber-900">Avisos d’assignació</div>
+            <ul className="mt-1 list-inside list-disc space-y-0.5">
+              {(quadrant as any).attentionNotes.map((line: string, i: number) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
       <DraftsTable key={draftRenderKey} draft={quadrant} />
     </div>
   )

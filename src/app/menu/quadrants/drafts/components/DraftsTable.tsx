@@ -393,7 +393,7 @@ export default function DraftsTable({
 
     return (
       <div
-        className="border-b border-slate-200 px-2 py-3 hover:bg-slate-50 grid gap-2 grid-cols-1 sm:grid-cols-[40px_minmax(11rem,1fr)_5rem_4.5rem_4.5rem_4.5rem_minmax(8rem,0.9fr)_4.5rem_3.5rem] items-center"
+        className="border-b border-slate-200 px-2 py-3 hover:bg-slate-50 grid gap-2 grid-cols-1 sm:grid-cols-[40px_minmax(11rem,1fr)_5rem_4.5rem_4.5rem_4.5rem_minmax(0,1fr)_3.5rem] items-center"
       >
         <div className="hidden sm:flex items-center justify-center gap-1">
           {roles.map((role) => (
@@ -416,18 +416,16 @@ export default function DraftsTable({
         <div className="hidden sm:block w-[5.5rem] tabular-nums text-[14px] text-slate-700">
           {primary.arrivalTime ? primary.arrivalTime.substring(0, 5) : '--:--'}
         </div>
-        <div className="hidden sm:block truncate text-[14px] text-slate-700">
-          {primary.meetingPoint || <span className="text-gray-400">-</span>}
-        </div>
-        <div className="hidden sm:flex items-center gap-2 text-[14px] font-medium text-slate-700">
+        <div className="hidden sm:flex min-w-0 items-center gap-x-2.5 gap-y-1 text-[14px] text-slate-700">
+          <span className="truncate font-medium" title={primary.meetingPoint || undefined}>
+            {primary.meetingPoint || <span className="text-gray-400">-</span>}
+          </span>
           {primary.role === 'conductor' ? (
-            <>
-              <span>{primary.plate || '-'}</span>
-              <Truck className="w-5 h-5 text-gray-500" />
-            </>
-          ) : (
-            <span className="text-gray-400">-</span>
-          )}
+            <span className="inline-flex shrink-0 items-center gap-1.5 font-medium text-slate-800">
+              <span className="tabular-nums">{primary.plate || '-'}</span>
+              <Truck className="h-5 w-5 shrink-0 text-gray-500" />
+            </span>
+          ) : null}
         </div>
         <div className="hidden sm:flex justify-center">
           <button

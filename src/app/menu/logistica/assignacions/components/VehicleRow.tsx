@@ -6,6 +6,7 @@ import { Save, Pencil, Trash2, Loader2 } from 'lucide-react'
 import {
   TRANSPORT_TYPE_LABELS,
   TRANSPORT_TYPE_OPTIONS,
+  normalizeTransportPlateKey,
 } from '@/lib/transportTypes'
 import {
   invalidateAvailablePersonnelCache,
@@ -46,11 +47,10 @@ interface Props {
   onEditingChange?: (rowKey: string, isEditing: boolean) => void
 }
 
+/** Alineat amb GET /api/transports/assignacions: només Logística i Cuina tenen aquest flux de conductor. */
 const DEPARTMENTS = [
   { value: 'logistica', label: 'Logistica' },
-  { value: 'serveis', label: 'Serveis' },
   { value: 'cuina', label: 'Cuina' },
-  { value: 'empresa', label: 'Empresa' },
 ] as const
 
 const toTime5 = (t?: string) => (t ? String(t).slice(0, 5) : '')
@@ -109,7 +109,7 @@ export default function VehicleRow({
     setArrivalTime(toTime5(row.arrivalTime ?? ''))
     setEndTime(toTime5(row.endTime ?? ''))
     setVehicleType(row.vehicleType ?? '')
-    setPlate(row.plate ?? '')
+    setPlate(row.plate ?? row.matricula ?? row.vehiclePlate ?? '')
   }, [row])
 
   useEffect(() => {
@@ -123,18 +123,28 @@ export default function VehicleRow({
   }, [onEditingChange, rowKey])
 
   const canLoadVehicles = Boolean(date && startTime)
+  const effectiveVehicleType = (vehicleType || row?.vehicleType || '').toString().trim()
   const { conductors, loading: driversLoading } = useAvailablePersonnel({
     departament: department,
     startDate: date,
     startTime,
     endDate: date,
     endTime: endTime || startTime,
-    enabled: isEditing && Boolean(date && startTime),
+    vehicleType: effectiveVehicleType || undefined,
+    enabled: isEditing && Boolean(date && startTime && effectiveVehicleType),
   })
   const drivers: Driver[] = useMemo(
     () => conductors.map((driver) => ({ id: driver.id, name: driver.name })),
     [conductors]
   )
+
+  useEffect(() => {
+    if (!isEditing || driversLoading || !driverName.trim()) return
+    if (!effectiveVehicleType) return
+    if (drivers.some((d) => d.name === driverName)) return
+    setDriverName('')
+  }, [isEditing, driversLoading, drivers, driverName, effectiveVehicleType])
+
   const { vehicles: availableVehicles, loading: loadingVehicles } = useAvailableVehicles({
     startDate: date,
     startTime,
@@ -143,24 +153,24 @@ export default function VehicleRow({
     enabled: canLoadVehicles,
   })
 
+  useEffect(() => {
+    if (!isEditing || loadingVehicles || !vehicleType || !plate.trim()) return
+    const key = normalizeTransportPlateKey(plate)
+    const rowMatch = availableVehicles.find(
+      (v) => v.type === vehicleType && normalizeTransportPlateKey(v.plate) === key
+    )
+    if (rowMatch && rowMatch.available === false) {
+      setPlate('')
+    }
+  }, [isEditing, loadingVehicles, vehicleType, plate, availableVehicles])
+
   const plateOptions = useMemo(() => {
     if (!vehicleType) return []
 
-    const options: AvailableVehicle[] = availableVehicles.filter(
+    return availableVehicles.filter(
       (v) => v.type === vehicleType && v.available === true
     )
-
-    if (plate && !options.some((v) => v.plate === plate)) {
-      options.unshift({
-        id: `current-${plate}`,
-        plate,
-        type: vehicleType,
-        available: true,
-      })
-    }
-
-    return options
-  }, [availableVehicles, vehicleType, plate])
+  }, [availableVehicles, vehicleType])
 
   const handleSave = async () => {
     try {
@@ -305,6 +315,7 @@ export default function VehicleRow({
             onChange={(e) => {
               setVehicleType(e.target.value)
               setPlate('')
+              setDriverName('')
             }}
             disabled={!isEditing || !canLoadVehicles}
           >
@@ -337,25 +348,33 @@ export default function VehicleRow({
 
         <div>
           <label className="text-xs text-gray-500 lg:sr-only">Conductor</label>
-          <select
-            aria-label="Conductor"
-            className={`mt-1 w-full rounded border px-2 py-1 text-sm disabled:bg-gray-100 ${
-              !driverName && isEditing ? 'border-amber-400 bg-amber-50' : ''
-            } lg:mt-0`}
-            value={driverName}
-            onChange={(e) => setDriverName(e.target.value)}
-            disabled={!isEditing || driversLoading}
-          >
-            <option value="">Selecciona conductor</option>
-            {row?.name && !drivers.find((d) => d.name === row.name) && (
-              <option value={row.name}>{row.name}</option>
-            )}
-            {drivers.map((d) => (
-              <option key={d.id} value={d.name}>
-                {d.name}
+          {isEditing ? (
+            <select
+              aria-label="Conductor"
+              className={`mt-1 w-full rounded border px-2 py-1 text-sm disabled:bg-gray-100 ${
+                !driverName ? 'border-amber-400 bg-amber-50' : ''
+              } lg:mt-0`}
+              value={driverName}
+              onChange={(e) => setDriverName(e.target.value)}
+              disabled={driversLoading || !effectiveVehicleType}
+            >
+              <option value="">
+                {effectiveVehicleType ? 'Selecciona conductor' : 'Primer tria el tipus de vehicle'}
               </option>
-            ))}
-          </select>
+              {drivers.map((d) => (
+                <option key={d.id} value={d.name}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div
+              className="mt-1 w-full rounded border border-transparent px-2 py-1 text-sm text-slate-800 lg:mt-0"
+              aria-label="Conductor"
+            >
+              {driverName.trim() || '—'}
+            </div>
+          )}
         </div>
 
         <div className="flex items-end justify-end gap-2 sm:col-span-2 lg:col-span-1 lg:items-center lg:justify-end">

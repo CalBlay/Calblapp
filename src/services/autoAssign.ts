@@ -12,6 +12,10 @@ import {
   calculateServeisStaffSlots,
 } from '@/utils/calculatePersonalNeeded'
 import { assignVehiclesAndDrivers } from './vehicleAssign'
+import {
+  conflictsToAttentionNotes,
+  findCrossQuadrantConflicts,
+} from '@/lib/quadrantDoubleBooking'
 
 
 export interface Personnel {
@@ -171,6 +175,8 @@ export async function autoAssign(payload: {
   premises?: PremisesConfig
   premisesWarnings?: string[]
   ledger?: Ledger
+  /** IDs de documents de quadrant a ignorar (p. ex. el que s’està sobrescrivint). */
+  ignoreBusyQuadrantDocIds?: string[]
 }) {
   const {
     department, eventId, location,
@@ -192,6 +198,7 @@ export async function autoAssign(payload: {
     premises: preloadedPremises,
     premisesWarnings: preloadedPremisesWarnings = [],
     ledger: preloadedLedger,
+    ignoreBusyQuadrantDocIds = [],
   } = payload
 
   const startISO = `${startDate}T${startTime}:00`
@@ -427,6 +434,25 @@ export async function autoAssign(payload: {
     )
   }
 
+  /**
+   * Logística: si el responsable és conductor i hi ha vehicles sense conductor triat,
+   * el primer slot "automàtic" usa el responsable per defecte (mateixa persona).
+   */
+  let vehiclesEffective = vehicles
+  if (
+    dept === 'logistica' &&
+    chosenResp?.isDriver &&
+    Number(numDrivers || 0) > 0 &&
+    vehicles.length > 0
+  ) {
+    let filledResponsibleAsDriver = false
+    vehiclesEffective = vehicles.map((v) => {
+      if (filledResponsibleAsDriver || String(v.conductorId || '').trim()) return v
+      filledResponsibleAsDriver = true
+      return { ...v, conductorId: chosenResp.id }
+    })
+  }
+
   const resolveJamoneroPerson = (assignment: {
     personnelId?: string | null
     personnelName?: string | null
@@ -510,26 +536,50 @@ export async function autoAssign(payload: {
   const preferredStaff: Array<{ name: string; meetingPoint: string }> = []
   const reservedNames = new Set<string>(exclude)
 
-  preferredDriverNames
-    .map((name) => findBestNameMatch(all.filter((person) => person.isDriver), name))
-    .filter((person): person is Personnel => Boolean(person))
-    .forEach((person) => {
-      const personNorm = norm(person.name)
-      if (reservedNames.has(personNorm)) return
-      if (!getEligibility(person.name, startISO, endISO, baseCtx).eligible) return
+  const vehicleRowsDefineDrivers = vehiclesEffective.length > 0
+  const manualVehicleConductorIds = new Set(
+    vehiclesEffective.map((v) => String(v.conductorId || '').trim()).filter(Boolean)
+  )
+
+  if (!vehicleRowsDefineDrivers) {
+    const maxDriverSlots = Math.max(0, Number(numDrivers || 0))
+    // Conductor automàtic: el responsable amb perfil de conductor ocupa el primer lloc
+    // abans de les preferències d’enquesta / dia anterior (si n’hi ha prou slots).
+    // No exigim elegibilitat aquí: el responsable ja pot estar fixat per premissa tot i
+    // conflicte de disponibilitat (p. ex. altre quadrant); en aquest cas igualment volem
+    // la mateixa persona com a conductor d’aquest quadrant si té isDriver.
+    if (!manualDriverId && maxDriverSlots > 0 && chosenResp?.isDriver) {
       preferredDrivers.push({
-        name: person.name,
+        name: chosenResp.name,
         meetingPoint,
         plate: '',
         vehicleType: '',
       })
-      reservedNames.add(personNorm)
-    })
+    }
+
+    preferredDriverNames
+      .map((name) => findBestNameMatch(all.filter((person) => person.isDriver), name))
+      .filter((person): person is Personnel => Boolean(person))
+      .forEach((person) => {
+        if (preferredDrivers.length >= maxDriverSlots) return
+        const personNorm = norm(person.name)
+        if (reservedNames.has(personNorm)) return
+        if (!getEligibility(person.name, startISO, endISO, baseCtx).eligible) return
+        preferredDrivers.push({
+          name: person.name,
+          meetingPoint,
+          plate: '',
+          vehicleType: '',
+        })
+        reservedNames.add(personNorm)
+      })
+  }
 
   preferredStaffNames
     .map((name) => findBestNameMatch(all, name))
     .filter((person): person is Personnel => Boolean(person))
     .forEach((person) => {
+      if (manualVehicleConductorIds.has(String(person.id || '').trim())) return
       const personNorm = norm(person.name)
       if (reservedNames.has(personNorm)) return
       if (!getEligibility(person.name, startISO, endISO, baseCtx).eligible) return
@@ -639,26 +689,17 @@ export async function autoAssign(payload: {
   }
 
   if (
-    vehicles.length === 0 &&
+    !vehicleRowsDefineDrivers &&
     !manualDriverId &&
-    preferredDrivers.length === 0 &&
     chosenResp?.isDriver &&
-    Number(numDrivers || 0) > 0
+    Number(numDrivers || 0) > 0 &&
+    preferredDrivers.length > 0 &&
+    norm(preferredDrivers[0].name) === norm(chosenResp.name)
   ) {
-    const chosenRespName = chosenResp.name
-    preferredDrivers.push({
-      name: chosenRespName,
-      meetingPoint,
-      plate: '',
-      vehicleType: '',
-    })
-    reservedNames.add(norm(chosenRespName))
-
     const respCrew =
       dept === 'serveis' && Array.isArray(premises.driverCrews)
         ? findCrewByDriver({ id: chosenResp.id, name: chosenResp.name })
         : null
-
     appendCrewCompanions(respCrew)
   }
 
@@ -839,19 +880,32 @@ export async function autoAssign(payload: {
     0
   )
   const driverRequests =
-    vehicles.length === 0 && remainingDriversNeeded > 0
+    vehiclesEffective.length === 0 && remainingDriversNeeded > 0
       ? Array.from({ length: remainingDriversNeeded }, () => ({}))
-      : vehicles
+      : vehiclesEffective
+
+  const manualVehicleConductorNorms = new Set(
+    vehiclesEffective
+      .map((v) => {
+        const id = String(v.conductorId || '').trim()
+        if (!id) return ''
+        const person = all.find((p) => p.id === id)
+        return person ? norm(person.name) : ''
+      })
+      .filter(Boolean)
+  )
 
   const driversFallback =
-    remainingDriversNeeded > 0 || vehicles.length > 0
+    remainingDriversNeeded > 0 || vehiclesEffective.length > 0
       ? await assignVehiclesAndDrivers({
           meetingPoint,
           startISO,
           endISO,
           baseCtx,
           driverPool: driverPool.filter(
-            (candidate) => !reservedNames.has(norm(candidate.p.name))
+            (candidate) =>
+              !reservedNames.has(norm(candidate.p.name)) ||
+              manualVehicleConductorNorms.has(norm(candidate.p.name))
           ),
           vehiclesRequested: driverRequests,
         })
@@ -1097,6 +1151,35 @@ export async function autoAssign(payload: {
 
   if (dept === 'serveis' && finalNeededWorkers >= 0 && staff.length > finalNeededWorkers) {
     staff.splice(finalNeededWorkers)
+  }
+
+  const ignoreBusyDocSet = new Set(
+    (Array.isArray(ignoreBusyQuadrantDocIds) ? ignoreBusyQuadrantDocIds : [])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean)
+  )
+  const assignedNamesForOverlap: string[] = []
+  if (chosenResp?.name) assignedNamesForOverlap.push(chosenResp.name)
+  for (const d of drivers) {
+    if (d?.name && d.name !== 'Extra') assignedNamesForOverlap.push(d.name)
+  }
+  for (const s of staff) {
+    if (s?.name && s.name !== 'Extra') assignedNamesForOverlap.push(s.name)
+  }
+  const crossConflicts = findCrossQuadrantConflicts({
+    startISO,
+    endISO,
+    assignedNames: assignedNamesForOverlap,
+    busyAssignments: ledger.busyAssignments,
+    ignoreDocIds: ignoreBusyDocSet,
+  })
+  if (crossConflicts.length > 0) {
+    if (!violations.includes('person_double_booked')) {
+      violations.push('person_double_booked')
+    }
+    for (const line of conflictsToAttentionNotes(crossConflicts)) {
+      if (!notes.includes(line)) notes.push(line)
+    }
   }
 
   const needsReview = violations.length > 0

@@ -9,6 +9,9 @@ export interface BusyAssignment {
   endDate: string
   startTime?: string
   endTime?: string
+  eventName?: string
+  location?: string
+  phaseLabel?: string | null
   treballadors?: Array<{ name: string }>
   conductors?: Array<{ name: string }>
   responsable?: { name?: string }

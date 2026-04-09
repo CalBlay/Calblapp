@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { getToken } from 'next-auth/jwt'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
+import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 
 export const runtime = 'nodejs'
 const ORIGIN = 'Molí Vinyals, 11, 08776 Sant Pere de Riudebitlles, Barcelona'
@@ -374,6 +375,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    revalidateQuadrantsListCache()
     return NextResponse.json({ ok: true, already })
   } catch (e) {
     console.error('[quadrantsDraft/confirm] error', e)

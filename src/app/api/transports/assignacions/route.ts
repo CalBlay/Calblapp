@@ -1,11 +1,52 @@
 //file: src/app/api/transports/assignacions/route.ts
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import {
+  orderedDayRangeFromISOStrings,
+  queryQuadrantCollectionDocsInDateRange,
+} from '@/lib/firestoreQuadrantsRangeQuery'
 
 export const runtime = 'nodejs'
 
-const DEPTS = ['logistica', 'cuina', 'empresa']
+/**
+ * Només Logística i Cuina: són els departaments que poden requerir conductor de transport
+ * en el model actual (es coincideix amb el que demana el mòdul Assignacions).
+ */
+const DEPTS = ['logistica', 'cuina'] as const
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+const normalizeStageKey = (raw?: string) =>
+  String(raw ?? '')
+    .trim()
+    .split('__')[0]
+    .trim()
+
+/**
+ * Clau per enllaçar quadrant ↔ stage_verd: `code`, si no `eventId` normalitzat, si no id del document.
+ */
+function resolveStageCodeForQuadrant(
+  q: QuadrantRecord,
+  docId: string,
+  map: Map<string, Item>
+): string | null {
+  const tryKey = (k: string) => {
+    const n = normalizeStageKey(k)
+    return n && map.has(n) ? n : null
+  }
+  return (
+    tryKey(String(q?.code ?? '')) ||
+    tryKey(String((q as { eventId?: string }).eventId ?? '')) ||
+    tryKey(docId)
+  )
+}
+
+/** Demanen conductor (flags) o ja tenen files `conductors` (esborrany o confirmat amb vehicle/matrícula). */
+function quadrantNeedsAssignacionsTransport(q: QuadrantRecord): boolean {
+  const conductors = Array.isArray(q.conductors) ? q.conductors : []
+  const hasDemand =
+    Boolean(q.transportRequested) || Number(q.numDrivers || 0) > 0
+  return hasDemand || conductors.length > 0
+}
 
 type Item = {
   eventCode: string
@@ -56,6 +97,7 @@ type QuadrantConductorRecord = {
 
 type QuadrantRecord = Record<string, unknown> & {
   code?: string
+  eventId?: string
   status?: string
   transportRequested?: boolean
   numDrivers?: number | string
@@ -74,6 +116,11 @@ export async function GET(req: Request) {
     const end = searchParams.get('end')
 
     if (!start || !end) {
+      return NextResponse.json({ items: [] })
+    }
+
+    const dayRange = orderedDayRangeFromISOStrings(start, end)
+    if (!dayRange) {
       return NextResponse.json({ items: [] })
     }
 
@@ -113,53 +160,43 @@ export async function GET(req: Request) {
     for (const dept of DEPTS) {
       const col = `quadrants${cap(dept)}`
 
-      const snap = await db
-        .collection(col)
-        .where('startDate', '>=', start)
-        .where('startDate', '<=', end)
-        .get()
+      const { docs } = await queryQuadrantCollectionDocsInDateRange(
+        db.collection(col),
+        dayRange.start,
+        dayRange.end
+      )
 
-      snap.docs.forEach(doc => {
+      docs.forEach(doc => {
         const q = doc.data() as QuadrantRecord
-        const code = String(q?.code || '')
-        if (!map.has(code)) return
+        const stageCode = resolveStageCodeForQuadrant(q, doc.id, map)
+        if (!stageCode) return
 
-        const hasDrivers =
-          Array.isArray(q.conductors) && q.conductors.length > 0
+        if (!quadrantNeedsAssignacionsTransport(q)) return
 
-        const hasDemand =
-          Boolean(q.transportRequested) ||
-          Number(q.numDrivers || 0) > 0
+        visibleEvents.add(stageCode)
 
-        // ❌ NO entra a assignacions
-        if (!hasDrivers && !hasDemand) return
-
-        visibleEvents.add(code)
-
-        const item = map.get(code)!
+        const item = map.get(stageCode)!
 
         // status (draft / confirmed)
         if (q.status === 'confirmed') {
           item.status = 'confirmed'
         }
 
-        // conductors → files
-        if (hasDrivers) {
-          ;(q.conductors ?? []).forEach((c) => {
-            item.rows.push({
-              id: c.id || `${dept}-${Math.random()}`,
-              department: dept,
-              name: c.name || '',
-              plate: c.plate || '',
-              vehicleType: c.vehicleType || '',
-              startDate: c.startDate ?? q.startDate ?? '',
-              endDate: c.endDate ?? q.endDate ?? q.startDate ?? '',
-              startTime: c.startTime ?? q.startTime ?? '',
-              arrivalTime: c.arrivalTime ?? q.arrivalTime ?? '',
-              endTime: c.endTime ?? q.endTime ?? '',
-            })
+        const conductors = Array.isArray(q.conductors) ? q.conductors : []
+        conductors.forEach((c) => {
+          item.rows.push({
+            id: c.id || `${dept}-${Math.random()}`,
+            department: dept,
+            name: c.name || '',
+            plate: c.plate || '',
+            vehicleType: c.vehicleType || '',
+            startDate: c.startDate ?? q.startDate ?? '',
+            endDate: c.endDate ?? q.endDate ?? q.startDate ?? '',
+            startTime: c.startTime ?? q.startTime ?? '',
+            arrivalTime: c.arrivalTime ?? q.arrivalTime ?? '',
+            endTime: c.endTime ?? q.endTime ?? '',
           })
-        }
+        })
       })
     }
 

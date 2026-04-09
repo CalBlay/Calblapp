@@ -34,49 +34,60 @@ export function useQuadrants(department: string, start?: string, end?: string) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<unknown>(null)
 
-  const fetchData = useCallback(async (signal?: AbortSignal) => {
-    if (!department || !start || !end) return
+  const fetchData = useCallback(
+    async (opts?: { signal?: AbortSignal; silent?: boolean }) => {
+      if (!department || !start || !end) return
 
-    setLoading(true)
-    setError(null)
+      const signal = opts?.signal
+      const silent = opts?.silent === true
 
-    try {
-      const params = new URLSearchParams()
-      params.set('department', department)
-      params.set('start', start)
-      params.set('end', end)
+      if (!silent) {
+        setLoading(true)
+        setError(null)
+      }
 
-      const url = `/api/quadrants/get?${params.toString()}`
-      console.log('[useQuadrants] 🔗 Crida API:', url)
+      try {
+        const params = new URLSearchParams()
+        params.set('department', department)
+        params.set('start', start)
+        params.set('end', end)
 
-      const res = await fetch(url, { cache: 'no-store', signal })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const url = `/api/quadrants/get?${params.toString()}`
+        console.log('[useQuadrants] 🔗 Crida API:', url)
 
-      const json = await res.json()
-      const data = json?.quadrants || json?.events || []
+        const res = await fetch(url, { cache: 'no-store', signal })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
-      console.log(`[useQuadrants] ✅ Rebuts ${data.length} quadrants`)
-      if (!signal?.aborted) setQuadrants(data)
-    } catch (err) {
-      if ((err as Error)?.name === 'AbortError') return
-      console.error('[useQuadrants] ❌ Error carregant dades:', err)
-      setError(err)
-    } finally {
-      if (!signal?.aborted) setLoading(false)
-    }
-  }, [department, start, end])
+        const json = await res.json()
+        const data = json?.quadrants || json?.events || []
 
-  // 🔁 Ara es recarrega cada cop que canvia el departament o el rang
+        console.log(`[useQuadrants] ✅ Rebuts ${data.length} quadrants`)
+        if (!signal?.aborted) setQuadrants(data)
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') return
+        console.error('[useQuadrants] ❌ Error carregant dades:', err)
+        if (!silent) setError(err)
+      } finally {
+        if (!signal?.aborted && !silent) setLoading(false)
+      }
+    },
+    [department, start, end]
+  )
+
   useEffect(() => {
     if (!department || !start || !end) return
     const controller = new AbortController()
-    fetchData(controller.signal)
+    void fetchData({ signal: controller.signal, silent: false })
     return () => {
       controller.abort()
     }
   }, [department, start, end, fetchData])
 
-  return { quadrants, loading, error, reload: fetchData }
+  const reload = useCallback(() => {
+    void fetchData({ silent: true })
+  }, [fetchData])
+
+  return { quadrants, loading, error, reload }
 }
 
 export default useQuadrants

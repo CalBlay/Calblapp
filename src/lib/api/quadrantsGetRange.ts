@@ -179,6 +179,9 @@ export async function computeQuadrantsGet(
             }))
           : undefined,
         status: typeof d.status === 'string' ? d.status.toLowerCase() : '',
+        needsReview: d.needsReview === true,
+        attentionNotes: Array.isArray(d.attentionNotes) ? d.attentionNotes : [],
+        violations: Array.isArray(d.violations) ? d.violations : [],
       }
     })
     .filter((item) => {

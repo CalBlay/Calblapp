@@ -131,15 +131,14 @@ export async function assignVehiclesAndDrivers({
     // --- Assignació de conductor ---
     let assigned: string | null = null
 
+    // conductorId explícit al quadrant (p. ex. responsable logística): respectar encara que
+    // isEligibleByName falli per solapament amb un altre borrador (ja es mostra avís al quadrant).
     if (requested.conductorId) {
       const manualIdx = driverPool.findIndex((d) => d.p.id === requested.conductorId)
       const manual = manualIdx >= 0 ? driverPool[manualIdx] : null
       if (manual && canDriverHandleVehicleType(manual.p, requestedVehicleType)) {
-        const elig = isEligibleByName(manual.p.name, startISO, endISO, baseCtx)
-        if (elig.eligible) {
-          assigned = manual.p.name
-          driverPool.splice(manualIdx, 1)
-        }
+        assigned = manual.p.name
+        driverPool.splice(manualIdx, 1)
       }
     }
 

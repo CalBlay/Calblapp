@@ -33,14 +33,17 @@ export default function CalendarView({
     end
   )
 
-  // 🔄 Recarrega quadrants quan el modal crea un borrador
   useEffect(() => {
     const handler = () => {
-      reload() // refresca quadrants immediatament
+      reload()
     }
 
     window.addEventListener('quadrant:created', handler)
-    return () => window.removeEventListener('quadrant:created', handler)
+    window.addEventListener('quadrant:updated', handler)
+    return () => {
+      window.removeEventListener('quadrant:created', handler)
+      window.removeEventListener('quadrant:updated', handler)
+    }
   }, [reload])
 
   // 🟦 Assigna quadrantStatus a cada event

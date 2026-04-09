@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
 import { useSession } from 'next-auth/react'
 import { loadXlsx } from '@/lib/loadXlsx'
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
 import ExportMenu from '@/components/export/ExportMenu'
 
 import useFetch from '@/hooks/useFetch'
@@ -572,6 +572,16 @@ export default function QuadrantsPage() {
                       ev.phaseKey || ev.phaseType || ev.phaseLabel || 'event'
                     }__${ev.phaseDate || ev.start || ''}__${ev.id || 'row'}__${evIdx}`
                     const isExpanded = Boolean(draft && draft.id && expandedId === draft.id)
+                    const draftAttention = draft && Array.isArray((draft as any).attentionNotes)
+                      ? ((draft as any).attentionNotes as string[])
+                      : []
+                    const draftViolations =
+                      draft && Array.isArray((draft as any).violations)
+                        ? ((draft as any).violations as string[])
+                        : []
+                    const hasOverlapWarning =
+                      draftAttention.some((n) => n.includes('ja està assignat')) ||
+                      draftViolations.includes('person_double_booked')
                     return (
                       <React.Fragment key={fragmentKey}>
                         <tr
@@ -646,6 +656,14 @@ export default function QuadrantsPage() {
                           </td>
                           <td className="px-3 py-2 text-center">
                             <div className="inline-flex items-center gap-2">
+                              {hasOverlapWarning && (
+                                <span
+                                  className="text-amber-600"
+                                  title={draftAttention[0] || 'Possible solapament de personal'}
+                                >
+                                  <AlertTriangle className="h-4 w-4" aria-hidden />
+                                </span>
+                              )}
                               {draft && draft.id && (
                                 <span className="text-slate-600">
                                   {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}

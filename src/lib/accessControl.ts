@@ -41,6 +41,18 @@ export const normalizeDept = (raw?: string) => {
 export const isMaintenanceCapDepartment = (raw?: string) =>
   MAINTENANCE_CAP_DEPARTMENTS.has(normalizeDept(raw))
 
+/**
+ * Caps que entren al planificador / tickets de manteniment (MODULES Manteniment) poden
+ * demanar explícitament el llistat de personal de manteniment via API encara que el seu
+ * departament de sessió sigui un altre (p.ex. cap de logística que planifica preventius).
+ */
+export function canRequestMaintenancePersonnelByQuery(user: AccessUser): boolean {
+  const role = normalizeRole(user.role)
+  const dept = normalizeDept(user.department)
+  if (role !== 'cap') return false
+  return dept === 'manteniment' || dept === 'logistica' || dept === 'total'
+}
+
 export const MODULES: ModuleDef[] = [
   { label: 'Torns', path: '/menu/torns', roles: ['admin','direccio','cap','treballador'] },
 

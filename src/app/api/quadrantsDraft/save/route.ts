@@ -8,6 +8,7 @@ import {
   type EditorRow as RowInput,
 } from '@/lib/quadrantsDraftEditor'
 import { saveDraftByDepartment } from '@/lib/quadrantsDraftSaveAdapters'
+import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 
 export const runtime = 'nodejs'
 const ORIGIN = 'Molí Vinyals, 11, 08776 Sant Pere de Riudebitlles, Barcelona'
@@ -116,6 +117,7 @@ export async function POST(req: NextRequest) {
       await ref.set({ distanceKm: km, distanceCalcAt: new Date() }, { merge: true })
     }
 
+    revalidateQuadrantsListCache()
     return NextResponse.json({ ok: true })
   } catch (e) {
     console.error('[quadrantsDraft/save] error:', e)

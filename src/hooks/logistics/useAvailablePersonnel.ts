@@ -23,6 +23,8 @@ export interface UseAvailablePersonnelOptions {
   excludeIds?: string[]
   excludeNames?: string[]
   excludeEventId?: string
+  /** Tipus de transport (valor intern p. ex. `camioPPlataforma`); filtra conductors segons permisos al personal. */
+  vehicleType?: string
   enabled?: boolean
 }
 
@@ -55,6 +57,7 @@ const buildKey = (opts: UseAvailablePersonnelOptions) =>
     opts.startTime || '',
     opts.endTime || '',
     opts.excludeEventId || '',
+    opts.vehicleType || '',
   ].join('|')
 
 const cleanList = (
@@ -82,7 +85,10 @@ const cleanList = (
       camioGran: person.camioGran === true,
     }))
 
-async function fetchPersonnel(opts: Required<Pick<UseAvailablePersonnelOptions, 'departament' | 'startDate' | 'endDate' | 'startTime' | 'endTime'>> & Pick<UseAvailablePersonnelOptions, 'excludeEventId'>) {
+async function fetchPersonnel(
+  opts: Required<Pick<UseAvailablePersonnelOptions, 'departament' | 'startDate' | 'endDate' | 'startTime' | 'endTime'>> &
+    Pick<UseAvailablePersonnelOptions, 'excludeEventId' | 'vehicleType'>
+) {
   const params = new URLSearchParams({
     department: opts.departament,
     startDate: opts.startDate,
@@ -91,6 +97,8 @@ async function fetchPersonnel(opts: Required<Pick<UseAvailablePersonnelOptions, 
     endTime: opts.endTime,
   })
   if (opts.excludeEventId) params.set('excludeEventId', opts.excludeEventId)
+  const vt = String(opts.vehicleType || '').trim()
+  if (vt) params.set('vehicleType', vt)
 
   const res = await fetch(`/api/personnel/available?${params.toString()}`)
   if (!res.ok) {
@@ -112,7 +120,11 @@ function getCachedPayload(key: string) {
   return null
 }
 
-async function loadPersonnel(key: string, opts: Required<Pick<UseAvailablePersonnelOptions, 'departament' | 'startDate' | 'endDate' | 'startTime' | 'endTime'>> & Pick<UseAvailablePersonnelOptions, 'excludeEventId'>) {
+async function loadPersonnel(
+  key: string,
+  opts: Required<Pick<UseAvailablePersonnelOptions, 'departament' | 'startDate' | 'endDate' | 'startTime' | 'endTime'>> &
+    Pick<UseAvailablePersonnelOptions, 'excludeEventId' | 'vehicleType'>
+) {
   const existing = personnelCache.get(key)
   if (existing?.promise) return existing.promise
 
@@ -139,6 +151,7 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
     opts.startTime,
     opts.endTime,
     opts.excludeEventId,
+    opts.vehicleType,
   ])
   const initialPayload = useMemo(
     () => (enabled ? getCachedPayload(key) : null),
@@ -194,6 +207,7 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
         startTime: opts.startTime!,
         endTime: opts.endTime!,
         excludeEventId: opts.excludeEventId,
+        vehicleType: opts.vehicleType,
       })
       setPayload(data)
     } catch (err) {
@@ -202,7 +216,17 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
     } finally {
       setLoading(false)
     }
-  }, [canFetch, key, opts.departament, opts.startDate, opts.endDate, opts.startTime, opts.endTime, opts.excludeEventId])
+  }, [
+    canFetch,
+    key,
+    opts.departament,
+    opts.startDate,
+    opts.endDate,
+    opts.startTime,
+    opts.endTime,
+    opts.excludeEventId,
+    opts.vehicleType,
+  ])
 
   useEffect(() => {
     if (initialPayload) setPayload(initialPayload)

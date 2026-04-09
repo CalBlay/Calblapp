@@ -119,9 +119,6 @@ export default function QuadrantFieldsLogistica({
 
               {assign.vehicleType && (
                 <>
-                  <div className="text-xs text-gray-500">
-                    Matricules disponibles: {filtered.length}
-                  </div>
                   <Select
                     value={assign.vehicleId}
                     onValueChange={(val) => {

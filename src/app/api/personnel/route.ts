@@ -8,6 +8,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 
 
+import { canRequestMaintenancePersonnelByQuery, normalizeDept } from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
 
 interface FirestorePersonnelDoc {
@@ -86,13 +87,20 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const debugMode = ['1', 'true', 'yes'].includes((searchParams.get('debug') || '').toLowerCase())
-  const deptParam = searchParams.get('department') || ''
+  const deptParam = (searchParams.get('department') || '').trim()
   const roleRaw = (session.user as { role?: string })?.role
   const roleNorm = normalizeRole(roleRaw)
   const isPriv = roleNorm === 'admin' || roleNorm === 'direccio'
+  const sessionDept = (session.user as { department?: string })?.department || ''
+  const deptParamNorm = deptParam ? normalizeDept(deptParam) : ''
+  const allowMaintenanceDeptQuery =
+    canRequestMaintenancePersonnelByQuery({ role: roleRaw, department: sessionDept }) &&
+    deptParamNorm === 'manteniment'
   const rawDept = isPriv
     ? deptParam
-    : (session.user as { department?: string })?.department || ''
+    : allowMaintenanceDeptQuery
+      ? deptParam
+      : sessionDept
   const deptLower = normLower(rawDept)
 
   const dbg: DebugInfo = {

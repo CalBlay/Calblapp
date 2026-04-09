@@ -344,11 +344,6 @@ export default function LogisticsPhasePanel({
                                 ))}
                               </SelectContent>
                             </Select>
-                            {assign.vehicleType && (
-                              <div className="pt-1 text-xs text-gray-500">
-                                Matricules disponibles: {filtered.length}
-                              </div>
-                            )}
                           </div>
                           <div>
                             <Label>Conductor</Label>

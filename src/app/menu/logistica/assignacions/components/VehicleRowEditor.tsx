@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Save, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,7 +11,10 @@ import {
   invalidateAvailableVehiclesCache,
   useAvailableVehicles,
 } from '@/hooks/logistics/useAvailableVehicles'
-import { invalidateAvailablePersonnelCache } from '@/hooks/logistics/useAvailablePersonnel'
+import {
+  invalidateAvailablePersonnelCache,
+  useAvailablePersonnel,
+} from '@/hooks/logistics/useAvailablePersonnel'
 
 type DepartmentOption = 'logistica' | 'serveis'
 type Driver = {
@@ -43,28 +46,21 @@ export default function VehicleRowEditor({
   const [date, setDate] = useState(eventDay)
   const [startTime, setStartTime] = useState(eventStartTime)
   const [endTime, setEndTime] = useState(eventEndTime)
-  const [drivers, setDrivers] = useState<Driver[]>([])
 
-  useEffect(() => {
-    async function loadDrivers() {
-      const res = await fetch(`/api/personnel/by-department?dept=${department}`)
-      if (!res.ok) return setDrivers([])
-      const data = await res.json()
-      setDrivers(
-        Array.isArray(data.items)
-          ? data.items
-              .filter(
-                (item: unknown): item is Driver =>
-                  typeof item === 'object' &&
-                  item !== null &&
-                  typeof (item as Driver).id === 'string' &&
-                  typeof (item as Driver).name === 'string'
-              )
-          : []
-      )
-    }
-    loadDrivers()
-  }, [department])
+  const endTimeForPersonnel = endTime || startTime || '23:59'
+  const { conductors, loading: driversLoading } = useAvailablePersonnel({
+    departament: department,
+    startDate: date,
+    endDate: date,
+    startTime,
+    endTime: endTimeForPersonnel,
+    vehicleType: vehicleType || undefined,
+    enabled: Boolean(date && startTime && vehicleType),
+  })
+  const drivers: Driver[] = useMemo(
+    () => conductors.map((c) => ({ id: c.id, name: c.name })),
+    [conductors]
+  )
 
   const { vehicles, loading: loadingVehicles } = useAvailableVehicles({
     startDate: date,
@@ -137,6 +133,7 @@ export default function VehicleRowEditor({
         onChange={(e) => {
           setVehicleType(e.target.value)
           setPlate('')
+          setDriverId('')
         }}
       >
         <option value="">- Vehicle -</option>
@@ -151,8 +148,11 @@ export default function VehicleRowEditor({
         className="rounded border px-2 py-1 text-sm"
         value={driverId}
         onChange={(e) => setDriverId(e.target.value)}
+        disabled={driversLoading || !vehicleType}
       >
-        <option value="">- Nom conductor -</option>
+        <option value="">
+          {!vehicleType ? '- Primer tipus de vehicle -' : driversLoading ? 'Carregant…' : '- Nom conductor -'}
+        </option>
         {drivers.map((d) => (
           <option key={d.id} value={d.id}>
             {d.name}

@@ -2,6 +2,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import { autoAssign } from '@/services/autoAssign'
 import { loadDepartmentPersonnel, loadPremises, type DriverCrewPremise } from '@/services/premises'
 import { getSurveyPreferredCandidates } from '@/lib/quadrantSurveys'
@@ -1348,12 +1349,21 @@ export async function POST(req: NextRequest) {
       const departmentPeople = await getDepartmentPeople()
       const premisesData = await getPremisesData()
       const ledger = await getLedgerForDate(String(phase.date || body.startDate || '').slice(0, 10))
+      const phaseKeyForBusy = norm(phase.label || phase.phaseType || 'fase')
+      const phaseDateForBusy = String(phase.date || body.startDate)
+      const groupKeyForBusy = String(phase.groupId || phase.groupsOverride?.[0]?.id || 'group')
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, '')
+      const phaseDocIdForBusy = `${canonicalEventId}__${phaseKeyForBusy}__${phaseDateForBusy}__${
+        groupKeyForBusy || 'group'
+      }`
       const res = (await autoAssign({
         ...phaseAssignBody,
         departmentPeople,
         premises: premisesData?.premises,
         premisesWarnings: premisesData?.warnings || [],
         ledger,
+        ignoreBusyQuadrantDocIds: [phaseDocIdForBusy],
       })) as {
         assignment: {
           responsible?: { name: string } | null
@@ -1474,6 +1484,7 @@ export async function POST(req: NextRequest) {
           .filter((name): name is string => Boolean(name) && String(name).trim() !== '' && String(name) !== 'Extra')
           .forEach((name) => blockedNamesInBatch.add(String(name)))
       }
+      revalidateQuadrantsListCache()
       return NextResponse.json({
         success: true,
         proposal: {
@@ -1494,12 +1505,26 @@ export async function POST(req: NextRequest) {
     const ledger = await getLedgerForDate(
       String(assignBody.phaseDate || assignBody.startDate || '').slice(0, 10)
     )
+    const normEvIdForBusy =
+      typeof finalAssignBody.eventId === 'string' && String(finalAssignBody.eventId).trim()
+        ? normalizeEventId(String(finalAssignBody.eventId))
+        : canonicalEventId
+    const singleFlowPhaseDateForBusy = String(
+      finalAssignBody.phaseDate || body.phaseDate || finalAssignBody.startDate || ''
+    ).trim()
+    const shouldIgnoreSelfSingleFlow =
+      String(body.generationScope || '').trim().toLowerCase() === 'event' &&
+      Boolean(singleFlowPhaseDateForBusy)
+    const singleFlowDocIdForBusy = shouldIgnoreSelfSingleFlow
+      ? `${normEvIdForBusy}__event__${singleFlowPhaseDateForBusy}__event`
+      : normEvIdForBusy
     const res = (await autoAssign({
       ...finalAssignBody,
       departmentPeople,
       premises: premisesData?.premises,
       premisesWarnings: premisesData?.warnings || [],
       ledger,
+      ignoreBusyQuadrantDocIds: [singleFlowDocIdForBusy],
     })) as {
       assignment: {
         responsible?: { name: string } | null
@@ -1530,6 +1555,7 @@ export async function POST(req: NextRequest) {
 
     await db.collection(collectionName).doc(docIdForSingleFlow).set(toSave, { merge: true })
 
+    revalidateQuadrantsListCache()
     return NextResponse.json({
       success: true,
       proposal: {

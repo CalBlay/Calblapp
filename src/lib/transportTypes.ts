@@ -27,6 +27,13 @@ const normalizeBase = (value?: string) =>
     .trim()
     .replace(/\s+/g, '')
 
+/** Matrícula normalitzada per coincidir catàleg, quadrants i assignacions (ignora guions, espais i caixa). */
+export function normalizeTransportPlateKey(raw?: string | null): string {
+  return String(raw ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+}
+
 const TRANSPORT_TYPE_ALIASES: Record<string, TransportType> = {
   comercial: 'comercial',
   transport: 'transport',

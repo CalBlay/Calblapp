@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { unstable_cache } from 'next/cache'
 import { isIsoDateDayParam } from '@/lib/firestoreStageRangeQuery'
 import { computeQuadrantsGet } from '@/lib/api/quadrantsGetRange'
+import { QUADRANTS_LIST_CACHE_TAG } from '@/lib/quadrantsListCache'
 
 const RANGE_REVALIDATE_SEC = 90
 
@@ -9,7 +10,7 @@ const getQuadrantsCached = unstable_cache(
   async (start: string, end: string, departmentNorm: string) =>
     computeQuadrantsGet(start, end, departmentNorm),
   ['api-quadrants-get-v1'],
-  { revalidate: RANGE_REVALIDATE_SEC }
+  { revalidate: RANGE_REVALIDATE_SEC, tags: [QUADRANTS_LIST_CACHE_TAG] }
 )
 
 const normalize = (s?: string | null): string =>
