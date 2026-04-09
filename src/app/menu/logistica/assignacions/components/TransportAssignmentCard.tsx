@@ -32,7 +32,7 @@ export default function TransportAssignmentCard({
     status: 'draft' | 'confirmed'
     rows?: VehicleRow[]
   }
-  onChanged: () => void
+  onChanged: () => void | Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const [editingRowKeys, setEditingRowKeys] = useState<Record<string, boolean>>({})

@@ -1,7 +1,7 @@
 // file: src/app/menu/quadrants/drafts/components/DraftsTable.tsx
 'use client'
 
-import React, { useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useAvailablePersonnel } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
 import { ChevronDown, ChevronRight, Truck } from 'lucide-react'
@@ -33,6 +33,7 @@ import {
   roleIconMap,
   type DisplayItem,
 } from './draftsTableDisplayUtils'
+import { syncRowsWithDraftAndRoster } from './draftsRowSync'
 
 type Vehicle = {
   id: string
@@ -77,8 +78,10 @@ export default function DraftsTable({
   const rowsRef = useRef<Row[]>(initialRows)
   const groupDefsRef = useRef(groupDefs)
   const [editIdx, setEditIdx] = useState<number | null>(null)
+  /** Baseline del document (sense overlay de roster); permet detectar desalineacions id/nom i activar Desar. */
   const initialRef = useRef(JSON.stringify({ rows: initialRows, groups: structuredGroups }))
   const dirty = JSON.stringify({ rows, groups: groupDefs }) !== initialRef.current
+  const prevDraftHydrationKeyRef = useRef('')
   const [expandedMerged, setExpandedMerged] = useState<Set<string>>(new Set())
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
@@ -102,15 +105,6 @@ export default function DraftsTable({
       return resolved
     })
   }
-
-  React.useEffect(() => {
-    rowsRef.current = initialRows
-    groupDefsRef.current = structuredGroups
-    setGroupDefs(structuredGroups)
-    setRows(initialRows)
-    initialRef.current = JSON.stringify({ rows: initialRows, groups: structuredGroups })
-    setCollapsedGroups(new Set())
-  }, [initialRows, structuredGroups, draft.id, draft.updatedAt, draft.status])
 
   // --- Estat de confirmaciÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³
   const [confirmed, setConfirmed] = useState<boolean>(
@@ -136,6 +130,98 @@ export default function DraftsTable({
       .map((r) => r?.name)
       .filter(Boolean),
   })
+
+  const draftPeopleFp = useMemo(
+    () =>
+      JSON.stringify({
+        c: (Array.isArray(draft.conductors) ? draft.conductors : []).map((x: Record<string, unknown>) => [
+          x?.id,
+          x?.name,
+          x?.plate,
+          x?.vehicleType,
+          x?.arrivalTime,
+        ]),
+        t: (Array.isArray(draft.treballadors) ? draft.treballadors : []).map((x: Record<string, unknown>) => [
+          x?.id,
+          x?.name,
+        ]),
+        rid: (draft as Record<string, unknown>).responsableId,
+        rname: (draft as Record<string, unknown>).responsableName,
+      }),
+    [
+      draft.conductors,
+      draft.treballadors,
+      (draft as Record<string, unknown>).responsableId,
+      (draft as Record<string, unknown>).responsableName,
+    ]
+  )
+
+  const initialRowsFp = useMemo(
+    () =>
+      JSON.stringify(
+        initialRows.map((r) => [
+          r.role,
+          r.id,
+          r.name,
+          r.plate,
+          r.groupId,
+          r.startTime,
+          r.endTime,
+        ])
+      ),
+    [initialRows]
+  )
+
+  const structuredGroupsFp = useMemo(
+    () => JSON.stringify(structuredGroups),
+    [structuredGroups]
+  )
+
+  const hydrationKey = useMemo(
+    () =>
+      `${String(draft.id || '')}|${String(draft.updatedAt || '')}|${String(
+        draft.status || ''
+      )}|${draftPeopleFp}|${initialRowsFp}|${structuredGroupsFp}`,
+    [draft.id, draft.updatedAt, draft.status, draftPeopleFp, initialRowsFp, structuredGroupsFp]
+  )
+
+  const rosterFp = useMemo(
+    () =>
+      JSON.stringify({
+        r: (available.responsables || []).map((p) => [p.id, p.name]),
+        c: (available.conductors || []).map((p) => [p.id, p.name]),
+        t: (available.treballadors || []).map((p) => [p.id, p.name]),
+      }),
+    [available.responsables, available.conductors, available.treballadors]
+  )
+
+  useEffect(() => {
+    const lists = {
+      responsables: available.responsables,
+      conductors: available.conductors,
+      treballadors: available.treballadors,
+    }
+    const fullReset = hydrationKey !== prevDraftHydrationKeyRef.current
+    if (fullReset) {
+      prevDraftHydrationKeyRef.current = hydrationKey
+      groupDefsRef.current = structuredGroups
+      setGroupDefs(structuredGroups)
+      initialRef.current = JSON.stringify({ rows: initialRows, groups: structuredGroups })
+      setCollapsedGroups(new Set())
+      const next = syncRowsWithDraftAndRoster(initialRows, draft, lists)
+      rowsRef.current = next
+      setRows(next)
+      return
+    }
+
+    setRows((prev) => {
+      const next = syncRowsWithDraftAndRoster(prev, draft, lists)
+      rowsRef.current = next
+      return next
+    })
+    // hydrationKey captura canvis del document; rosterFp quan arriba el personal disponible
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- draft/initialRows/structuredGroups/available via clausura del render actual
+  }, [hydrationKey, rosterFp])
 
   // --- Comptadors (ara eliminats del render, perÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â² ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºtils si es necessiten mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©s tard)
   useMemo(

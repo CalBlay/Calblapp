@@ -72,30 +72,62 @@ function useIsDesktop() {
 
 const normalizeType = (t?: string) => normalizeTransportType(t)
 
+const normPerson = (value?: string) => (value || '').toString().trim().toLowerCase()
+
+function mergeUniquePeople(...groups: Array<AvailablePerson[] | undefined>): AvailablePerson[] {
+  const map = new Map<string, AvailablePerson>()
+  groups.forEach((group) => {
+    ;(group || []).forEach((p) => {
+      const key = (p.id || '').trim() || normPerson(p.name || p.alias || '')
+      if (!key) return
+      if (!map.has(key)) map.set(key, p)
+    })
+  })
+  return Array.from(map.values())
+}
+
+/** Títol: `row.name` del document; roster només si la fila encara no té nom (p. ex. fila nova). */
+function rowEditorTitleName(row: Row, available: AvailableData): string {
+  const externalLabel = row.isExternal
+    ? getExternalWorkerBaseLabel(row.externalType)
+    : null
+  if (externalLabel && !row.name) return externalLabel
+
+  const rowName = String(row.name || '').trim()
+  if (rowName) return rowName
+
+  const allPeople = mergeUniquePeople(
+    available?.responsables,
+    available?.conductors,
+    available?.treballadors
+  )
+  if (row.id) {
+    const match = allPeople.find((p) => p.id === row.id)
+    const fromRoster = (match?.name || match?.alias || '').trim()
+    if (fromRoster) return fromRoster
+  }
+  return externalLabel ?? '-'
+}
+
 /* ------------------------------
    Subcomponents comuns
 ------------------------------ */
 
 function EditorHeader({
-  row,
+  displayTitleName,
+  role,
   onClose,
   onRevert,
   isLocked,
   compact,
 }: {
-  row: Row
+  displayTitleName: string
+  role: Role
   onClose: () => void
   onRevert?: () => void
   isLocked: boolean
   compact?: boolean
 }) {
-  const externalLabel = row.isExternal
-    ? getExternalWorkerBaseLabel(row.externalType)
-    : null
-  const displayName =
-    externalLabel && !row.name
-      ? externalLabel
-      : row.name || (externalLabel ?? '-')
   return (
     <div
       className={`mb-3 flex items-center justify-between ${
@@ -103,7 +135,7 @@ function EditorHeader({
       }`}
     >
       <h3 className="text-sm font-semibold text-gray-700">
-        Editant {row.role}: {displayName}
+        Editant {role}: {displayTitleName}
       </h3>
       <div className="flex gap-2">
         {onRevert && (
@@ -162,18 +194,6 @@ function EditorFields({
     : row.name || ''
   const canEditMeetingPointField = canEditMeetingPoint && !isCenterExternalExtra
   const canEditArrivalField = canEditArrivalTime && !isCenterExternalExtra
-
-  const mergeUniquePeople = (...groups: Array<AvailablePerson[] | undefined>) => {
-    const map = new Map<string, AvailablePerson>()
-    groups.forEach((group) => {
-      ;(group || []).forEach((p) => {
-        const key = (p.id || '').trim() || normalize(p.name || p.alias || '')
-        if (!key) return
-        if (!map.has(key)) map.set(key, p)
-      })
-    })
-    return Array.from(map.values())
-  }
 
   const allPeople = mergeUniquePeople(
     available?.responsables,
@@ -490,11 +510,13 @@ export default function RowEditor(props: RowEditorProps) {
     isLocked,
   } = props
   const isDesktop = useIsDesktop()
+  const displayTitleName = rowEditorTitleName(row, available)
 
   const content = (
     <>
       <EditorHeader
-        row={row}
+        displayTitleName={displayTitleName}
+        role={row.role}
         onClose={onClose}
         onRevert={onRevert}
         isLocked={isLocked}

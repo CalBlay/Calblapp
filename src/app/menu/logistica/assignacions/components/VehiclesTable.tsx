@@ -8,7 +8,7 @@ import type { TransportAssignmentItem } from '../hooks/useTransportAssignments'
 
 interface Props {
   item: TransportAssignmentItem
-  onChanged: () => void
+  onChanged: () => void | Promise<void>
   onEditingChange?: (rowKey: string, isEditing: boolean) => void
 }
 
@@ -24,9 +24,9 @@ export default function VehiclesTable({ item, onChanged, onEditingChange }: Prop
     setNewRows((prev) => [...prev, Date.now()])
   }
 
-  const handleSavedNewRow = () => {
+  const handleSavedNewRow = async () => {
     setNewRows([])
-    onChanged()
+    await Promise.resolve(onChanged())
   }
 
   return (

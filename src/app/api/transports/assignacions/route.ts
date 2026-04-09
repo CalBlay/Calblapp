@@ -62,6 +62,10 @@ type Item = {
 
 type TransportAssignmentRow = {
   id: string
+  /** Id del document quadrant a Firestore (per save quan el conductor encara no té id propi). */
+  quadrantDocId: string
+  /** Índex dins de `conductors[]` d’aquest document en el moment de la lectura. */
+  conductorIndex: number
   department: string
   name: string
   plate: string
@@ -183,9 +187,12 @@ export async function GET(req: Request) {
         }
 
         const conductors = Array.isArray(q.conductors) ? q.conductors : []
-        conductors.forEach((c) => {
+        conductors.forEach((c, idx) => {
           item.rows.push({
-            id: c.id || `${dept}-${Math.random()}`,
+            // ID estable per poder substituir la mateixa fila al save (mai Math.random per càrrega).
+            id: c.id || `pending:${doc.id}:${idx}`,
+            quadrantDocId: doc.id,
+            conductorIndex: idx,
             department: dept,
             name: c.name || '',
             plate: c.plate || '',
@@ -211,9 +218,15 @@ export async function GET(req: Request) {
         return a.eventStartTime.localeCompare(b.eventStartTime)
       })
 
-    return NextResponse.json({ items })
+    return NextResponse.json(
+      { items },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    )
   } catch (err) {
     console.error('[transports/assignacions]', err)
-    return NextResponse.json({ items: [] }, { status: 500 })
+    return NextResponse.json(
+      { items: [] },
+      { status: 500, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    )
   }
 }

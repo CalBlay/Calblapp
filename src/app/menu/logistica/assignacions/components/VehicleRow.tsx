@@ -8,6 +8,7 @@ import {
   TRANSPORT_TYPE_OPTIONS,
   normalizeTransportPlateKey,
 } from '@/lib/transportTypes'
+import { parsePendingAssignacionsRowId } from '@/lib/transportAssignacionsRowSlot'
 import {
   invalidateAvailablePersonnelCache,
   useAvailablePersonnel,
@@ -21,6 +22,8 @@ import {
 type Driver = { id: string; name: string }
 type AssignmentVehicleRow = {
   id?: string
+  quadrantDocId?: string
+  conductorIndex?: number
   department?: string
   name?: string
   plate?: string
@@ -41,7 +44,7 @@ interface Props {
   eventDay: string
   eventStartTime: string
   eventEndTime: string
-  onChanged: () => void
+  onChanged: () => void | Promise<void>
   isNew: boolean
   rowKey: string
   onEditingChange?: (rowKey: string, isEditing: boolean) => void
@@ -94,6 +97,21 @@ export default function VehicleRow({
 
   const [plate, setPlate] = useState(normalizedPlate.toString())
   const [driverName, setDriverName] = useState((row?.name || '').toString())
+  /** Id de personal (stage / personnel API); obligatori per no deixar el nom nou amb id antic al Firestore. */
+  const [driverPersonnelId, setDriverPersonnelId] = useState(() => {
+    const rid = row?.id
+    if (rid && !String(rid).startsWith('pending:')) return String(rid)
+    return ''
+  })
+  /** Snapshot al carregar la fila (per substituir al Firestore el mateix conductor, no afegir-ne un altre). */
+  const [priorName, setPriorName] = useState(() =>
+    String(row?.name ?? '').trim()
+  )
+  const [priorPlate, setPriorPlate] = useState(() =>
+    String(
+      row?.plate ?? row?.matricula ?? row?.vehiclePlate ?? ''
+    ).trim()
+  )
 
   const [isEditing, setIsEditing] = useState<boolean>(isNew)
   const [saving, setSaving] = useState(false)
@@ -103,13 +121,21 @@ export default function VehicleRow({
   useEffect(() => {
     if (!row) return
     setDriverName(row.name ?? '')
+    setPriorName(String(row.name ?? '').trim())
     if (row.department) setDepartment(row.department)
     setDate(row.startDate ?? '')
     setStartTime(toTime5(row.startTime ?? ''))
     setArrivalTime(toTime5(row.arrivalTime ?? ''))
     setEndTime(toTime5(row.endTime ?? ''))
     setVehicleType(row.vehicleType ?? '')
-    setPlate(row.plate ?? row.matricula ?? row.vehiclePlate ?? '')
+    const p = String(
+      row.plate ?? row.matricula ?? row.vehiclePlate ?? ''
+    ).trim()
+    setPlate(p)
+    setPriorPlate(p)
+    setDriverPersonnelId(
+      row.id && !String(row.id).startsWith('pending:') ? String(row.id) : ''
+    )
   }, [row])
 
   useEffect(() => {
@@ -124,7 +150,7 @@ export default function VehicleRow({
 
   const canLoadVehicles = Boolean(date && startTime)
   const effectiveVehicleType = (vehicleType || row?.vehicleType || '').toString().trim()
-  const { conductors, loading: driversLoading } = useAvailablePersonnel({
+  const { conductors } = useAvailablePersonnel({
     departament: department,
     startDate: date,
     startTime,
@@ -138,12 +164,31 @@ export default function VehicleRow({
     [conductors]
   )
 
+  /** Conductor assignat actual: sempre opció al desplegable encara que l’API no el retorni (p. ex. canvi només de matrícula / tipus). */
+  const driverSelectOptions = useMemo(() => {
+    const dn = driverName.trim()
+    if (dn && !drivers.some((d) => d.name === dn)) {
+      return [{ id: '__assignacions_current__', name: dn }, ...drivers]
+    }
+    return drivers
+  }, [drivers, driverName])
+
+  /** Si el document té nom nou però id antic, quan carrega el llista de conductors posem l’id correcte. */
   useEffect(() => {
-    if (!isEditing || driversLoading || !driverName.trim()) return
-    if (!effectiveVehicleType) return
-    if (drivers.some((d) => d.name === driverName)) return
-    setDriverName('')
-  }, [isEditing, driversLoading, drivers, driverName, effectiveVehicleType])
+    if (!isEditing) return
+    const name = String(driverName).trim()
+    if (!name) return
+    const match = conductors.find((d) => String(d.name).trim() === name)
+    if (!match) return
+    setDriverPersonnelId((prev) => (prev === match.id ? prev : match.id))
+  }, [isEditing, conductors, driverName])
+
+  const syntheticDriverOption = driverSelectOptions.find((d) => d.id === '__assignacions_current__')
+  const driverSelectValue =
+    driverPersonnelId ||
+    (syntheticDriverOption && syntheticDriverOption.name === driverName.trim()
+      ? '__assignacions_current__'
+      : '')
 
   const { vehicles: availableVehicles, loading: loadingVehicles } = useAvailableVehicles({
     startDate: date,
@@ -172,19 +217,77 @@ export default function VehicleRow({
     )
   }, [availableVehicles, vehicleType])
 
+  /** Matrícula ja assignada: opció vàlida encara que no surti com a “disponible” (mateix conductor, altre vehicle). */
+  const plateSelectOptions = useMemo((): AvailableVehicle[] => {
+    if (!vehicleType) return plateOptions
+    const p = plate.trim()
+    if (!p) return plateOptions
+    const key = normalizeTransportPlateKey(p)
+    const already = plateOptions.some(
+      (v) =>
+        v.type === vehicleType &&
+        normalizeTransportPlateKey(v.plate) === key
+    )
+    if (already) return plateOptions
+    return [
+      {
+        id: `__assignacions_current_plate__`,
+        plate: p,
+        type: vehicleType,
+        available: true,
+      },
+      ...plateOptions,
+    ]
+  }, [plateOptions, plate, vehicleType])
+
   const handleSave = async () => {
     try {
       setSaveError(null)
       setSaving(true)
 
+      if (vehicleType && !driverName.trim()) {
+        setSaveError('Indica el conductor (o conserva l’assignat al desplegable).')
+        return
+      }
+
+      if (vehicleType && !plate.trim()) {
+        setSaveError('Selecciona una matrícula per desar el vehicle.')
+        return
+      }
+
+      let personnelId = String(driverPersonnelId || '').trim()
+      if (
+        vehicleType &&
+        driverName.trim() &&
+        (!personnelId || personnelId === '__assignacions_current__')
+      ) {
+        const m = conductors.find((d) => String(d.name).trim() === driverName.trim())
+        if (m) personnelId = m.id
+      }
+      if (personnelId === '__assignacions_current__') personnelId = ''
+
+      const fromPending = parsePendingAssignacionsRowId(row?.id)
+      const quadrantDocIdPayload = row?.quadrantDocId ?? fromPending?.quadrantDocId
+      const conductorIndexPayload =
+        row?.conductorIndex != null ? row.conductorIndex : fromPending?.conductorIndex
+
+      const savingNewRow = Boolean(isNew || !row?.id)
+
       const payload = {
         eventCode,
         department,
-        isNew: isNew || !row?.id,
+        isNew: savingNewRow,
         rowId: row?.id,
         rowIndex,
+        quadrantDocId: quadrantDocIdPayload,
+        conductorIndex: conductorIndexPayload,
         originalPlate,
+        priorConductor:
+          !savingNewRow && row
+            ? { name: priorName, plate: priorPlate }
+            : undefined,
         data: {
+          ...(personnelId ? { id: personnelId } : {}),
           name: driverName,
           plate,
           vehicleType,
@@ -203,21 +306,34 @@ export default function VehicleRow({
       })
 
       if (!res.ok) {
-        const txt = await res.text()
-        setSaveError(txt || 'Error desant')
+        const text = await res.text()
+        let msg = text || 'Error desant'
+        try {
+          const j = JSON.parse(text) as { error?: string }
+          if (j?.error) msg = j.error
+        } catch {
+          /* cos en text pla */
+        }
+        setSaveError(msg)
         return
       }
 
       invalidateAvailableVehiclesCache()
       invalidateAvailablePersonnelCache()
       setIsEditing(false)
-      onChanged()
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('quadrant:updated'))
+      }
+      await Promise.resolve(onChanged())
     } catch {
       setSaveError('Error inesperat')
     } finally {
       setSaving(false)
     }
   }
+
+  const deleteSlot = parsePendingAssignacionsRowId(row?.id)
+  const deleteQuadrantDocId = row?.quadrantDocId ?? deleteSlot?.quadrantDocId
 
   const handleDelete = async () => {
     if (!row?.id) return
@@ -230,12 +346,18 @@ export default function VehicleRow({
         eventCode,
         department,
         rowId: row.id,
+        quadrantDocId: deleteQuadrantDocId,
+        conductorIndex:
+          row.conductorIndex != null ? row.conductorIndex : deleteSlot?.conductorIndex,
       }),
     })
 
     invalidateAvailableVehiclesCache()
     invalidateAvailablePersonnelCache()
-    onChanged()
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('quadrant:updated'))
+    }
+    await Promise.resolve(onChanged())
   }
 
   return (
@@ -315,7 +437,6 @@ export default function VehicleRow({
             onChange={(e) => {
               setVehicleType(e.target.value)
               setPlate('')
-              setDriverName('')
             }}
             disabled={!isEditing || !canLoadVehicles}
           >
@@ -338,7 +459,7 @@ export default function VehicleRow({
             disabled={!isEditing || !vehicleType || loadingVehicles}
           >
             <option value="">Selecciona matricula</option>
-            {plateOptions.map((v) => (
+            {plateSelectOptions.map((v) => (
               <option key={v.id} value={v.plate}>
                 {v.plate} {v.type ? `- ${TRANSPORT_TYPE_LABELS[v.type] || v.type}` : ''}
               </option>
@@ -354,16 +475,34 @@ export default function VehicleRow({
               className={`mt-1 w-full rounded border px-2 py-1 text-sm disabled:bg-gray-100 ${
                 !driverName ? 'border-amber-400 bg-amber-50' : ''
               } lg:mt-0`}
-              value={driverName}
-              onChange={(e) => setDriverName(e.target.value)}
-              disabled={driversLoading || !effectiveVehicleType}
+              value={driverSelectValue}
+              onChange={(e) => {
+                const v = e.target.value
+                if (!v) {
+                  setDriverPersonnelId('')
+                  setDriverName('')
+                  return
+                }
+                if (v === '__assignacions_current__') {
+                  setDriverPersonnelId('')
+                  setDriverName(syntheticDriverOption?.name ?? '')
+                  return
+                }
+                const opt = driverSelectOptions.find((d) => d.id === v)
+                if (opt) {
+                  setDriverPersonnelId(opt.id)
+                  setDriverName(opt.name)
+                }
+              }}
+              disabled={!effectiveVehicleType}
             >
               <option value="">
                 {effectiveVehicleType ? 'Selecciona conductor' : 'Primer tria el tipus de vehicle'}
               </option>
-              {drivers.map((d) => (
-                <option key={d.id} value={d.name}>
+              {driverSelectOptions.map((d) => (
+                <option key={d.id} value={d.id}>
                   {d.name}
+                  {d.id === '__assignacions_current__' ? ' (assignat)' : ''}
                 </option>
               ))}
             </select>

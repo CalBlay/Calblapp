@@ -1,12 +1,15 @@
 //file:/src/app/menu/logistica/assignacions/hooks/useTransportAssignments.ts
 'use client'
 
+import { useCallback } from 'react'
 import useSWR from 'swr'
 
-const fetcher = (url: string) => fetch(url).then(r => r.json())
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface AssignmentRow {
   id: string
+  quadrantDocId?: string
+  conductorIndex?: number
   department?: string
   name?: string
   plate?: string
@@ -41,6 +44,13 @@ export function useTransportAssignments(start: string, end: string) {
   const key = start && end ? `/api/transports/assignacions?start=${start}&end=${end}` : null
   const { data, error, isLoading, mutate } = useSWR(key, fetcher, { revalidateOnFocus: false })
 
+  const refetch = useCallback(async () => {
+    if (!key) return
+    const res = await fetch(key, { cache: 'no-store' })
+    const json = await res.json()
+    await mutate(json, { revalidate: false })
+  }, [key, mutate])
+
   return {
     items: ((data?.items || []) as TransportAssignmentItemInput[]).map(
       (item, itemIndex): TransportAssignmentItem => ({
@@ -56,6 +66,8 @@ export function useTransportAssignments(start: string, end: string) {
         rows: Array.isArray(item.rows)
           ? item.rows.map((row, rowIndex) => ({
               id: row.id || `${item.eventCode || itemIndex}-${rowIndex}`,
+              quadrantDocId: row.quadrantDocId,
+              conductorIndex: row.conductorIndex,
               department: row.department,
               name: row.name,
               plate: row.plate,
@@ -71,6 +83,6 @@ export function useTransportAssignments(start: string, end: string) {
     ),
     loading: isLoading,
     error,
-    refetch: mutate,
+    refetch,
   }
-} 
+}
