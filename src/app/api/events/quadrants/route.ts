@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 
     const events = (snap.docs || [])
       .flatMap((doc) => {
-        const d = doc.data() as Record<string, any>
+        const d = doc.data() as Record<string, unknown>
 
         // 📅 Dates d'inici/fi (YYYY-MM-DD)
         const startDateRaw = typeof d?.DataInici === 'string' ? d.DataInici.slice(0, 10) : ''
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
             : startDateRaw
 
         // 📍 Ubicació neta
-        const rawLocation = d?.Ubicacio || ''
+        const rawLocation = typeof d?.Ubicacio === 'string' ? d.Ubicacio : String(d?.Ubicacio ?? '')
         const location = rawLocation
           .split('(')[0]
           .split('/')[0]
@@ -89,22 +89,25 @@ export async function GET(req: NextRequest) {
           differenceInCalendarDays(endDate, startDate)
         )
 
+        const lnRaw = d?.LN != null && d.LN !== '' ? String(d.LN) : 'Altres'
+        const stageGroup =
+          typeof d?.StageGroup === 'string' ? d.StageGroup.toLowerCase() : ''
         const base = {
           id: doc.id,
           summary,
           location,
-          lnKey: (d?.LN || 'Altres').toLowerCase(),
-          lnLabel: d?.LN || 'Altres',
-          service: d?.Servei || '',
-          commercial: d?.Comercial || '',
-          numPax: d?.NumPax || '',
-          code: d?.code || d?.C_digo || '',
+          lnKey: lnRaw.toLowerCase(),
+          lnLabel: lnRaw,
+          service: String(d?.Servei ?? ''),
+          commercial: String(d?.Comercial ?? ''),
+          numPax: String(d?.NumPax ?? ''),
+          code: String(d?.code ?? d?.C_digo ?? ''),
           horaInici,
           horaFi,
           // estat simplificat
-          status: d?.StageGroup?.toLowerCase().includes('confirmat')
+          status: stageGroup.includes('confirmat')
             ? 'confirmed'
-            : d?.StageGroup?.toLowerCase().includes('proposta')
+            : stageGroup.includes('proposta')
             ? 'draft'
             : 'pending',
         }

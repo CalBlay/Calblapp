@@ -10,6 +10,14 @@ import { registerAuditAnswersInIndex } from '@/lib/media/storageMediaIndex'
 type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 type IncidentOutcome = 'none' | 'reported'
 type AnswerType = 'checklist' | 'rating' | 'photo'
+
+type SanitizedAuditAnswer = {
+  itemId: string
+  blockId: string | null
+  type: AnswerType
+  value: boolean | number | string | null
+  photos: Array<{ url: string; path: string; size?: number; type?: string }>
+}
 type TemplateBlock = {
   id?: string
   title?: string
@@ -169,7 +177,7 @@ export async function POST(req: Request) {
               photos,
             }
           })
-          .filter(Boolean)
+          .filter((row): row is SanitizedAuditAnswer => row != null)
       : []
 
     if (!eventId || !department) {

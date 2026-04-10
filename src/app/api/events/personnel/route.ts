@@ -1,5 +1,6 @@
 // src/app/api/events/personnel/route.ts
 import { NextRequest, NextResponse } from 'next/server'
+import type { QuerySnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
@@ -79,6 +80,35 @@ type PersonnelDoc = {
   telephone?: string
 }
 
+type QuadrantLinePerson = {
+  name?: string
+  meetingPoint?: string
+  time?: string
+  hour?: string
+  endTime?: string
+  endTimeReal?: string
+  sortidaNotes?: string
+  noShow?: boolean
+  leftEarly?: boolean
+  plate?: string
+  matricula?: string
+  vehiclePlate?: string
+}
+
+type PersonnelListEntry = {
+  name: string
+  role: string
+  department?: string
+  meetingPoint?: string
+  time?: string
+  endTime?: string
+  endTimeReal?: string
+  notes?: string
+  noShow?: boolean
+  leftEarly?: boolean
+  plate?: string
+}
+
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url)
@@ -93,11 +123,11 @@ export async function GET(req: NextRequest) {
     ──────────────────────────────────────────────── */
     const eventCollections = ['stage_verd', 'stage_taronja', 'stage_taronja']
 
-    let eventData: any = null
+    let eventData: Record<string, unknown> | null = null
     for (const coll of eventCollections) {
       const snap = await firestoreAdmin.collection(coll).doc(eventId).get()
       if (snap.exists) {
-        eventData = snap.data()
+        eventData = snap.data() ?? null
         break
       }
     }
@@ -110,9 +140,10 @@ export async function GET(req: NextRequest) {
     }
 
     // Normalitzar camps per evitar NaN o undefined
-    const code = eventData.code || ''
-    const name = eventData.name || eventData.eventName || ''
-    const dateKeyValue = dayKey(eventData.startDate || null)
+    const code = String(eventData.code ?? '')
+    const name = String(eventData.name ?? eventData.eventName ?? '')
+    const startDateRaw = eventData.startDate
+    const dateKeyValue = dayKey(typeof startDateRaw === 'string' ? startDateRaw : null)
     const eventNameNorm = norm(name)
 
     /* ────────────────────────────────────────────────
@@ -141,9 +172,9 @@ export async function GET(req: NextRequest) {
           ? await ref.where('startDate', '==', dateKeyValue).get().catch(() => null)
           : null
 
-      const push = (snap: any) => {
+      const push = (snap: QuerySnapshot | null) => {
         if (snap && !snap.empty) {
-          snap.forEach((d: any) => rows.push(d.data() as QRow))
+          snap.forEach((d) => rows.push(d.data() as QRow))
         }
       }
 
@@ -168,7 +199,7 @@ export async function GET(req: NextRequest) {
     /* ────────────────────────────────────────────────
        4) GENERAR PERSONES (responsables / conductors / treballadors)
     ──────────────────────────────────────────────── */
-    const people: any[] = []
+    const people: PersonnelListEntry[] = []
 
     for (const q of filtered) {
       const dept = q.department
@@ -185,32 +216,14 @@ export async function GET(req: NextRequest) {
         })
       }
 
-      const each = (
-        arr:
-          | Array<{
-              name?: string
-              meetingPoint?: string
-              time?: string
-              hour?: string
-              endTime?: string
-              endTimeReal?: string
-              sortidaNotes?: string
-              noShow?: boolean
-              leftEarly?: boolean
-              plate?: string
-              matricula?: string
-              vehiclePlate?: string
-            }>
-          | undefined,
-        role: string
-      ) => {
+      const each = (arr: QuadrantLinePerson[] | undefined, role: string) => {
         if (!Array.isArray(arr)) return
         for (const p of arr) {
           const name = (p?.name || '').trim()
           if (!name) continue
           const plate =
             role === 'conductor'
-              ? (p as any)?.plate || (p as any)?.matricula || (p as any)?.vehiclePlate || ''
+              ? String(p.plate || p.matricula || p.vehiclePlate || '')
               : ''
           people.push({
             name,
@@ -288,17 +301,15 @@ export async function GET(req: NextRequest) {
         code,
         name,
         date: dateKeyValue,
-        location: eventData.location || '',
+        location: String(eventData.location ?? ''),
       },
       responsables: withPhones.filter((p) => p.role === 'responsable'),
       conductors: withPhones.filter((p) => p.role === 'conductor'),
       treballadors: withPhones.filter((p) => p.role === 'treballador'),
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[api/events/personnel] error', err)
-    return NextResponse.json(
-      { error: err.message || 'Internal error' },
-      { status: 500 }
-    )
+    const message = err instanceof Error ? err.message : 'Internal error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

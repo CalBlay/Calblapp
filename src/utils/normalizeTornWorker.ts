@@ -72,11 +72,7 @@ export function normalizeTornWorker(w?: TornWorkerInput | null): NormalizedWorke
     w?.email ||
     undefined
 
-  const name =
-    w?.name ||
-    w?.nom ||
-    w?.displayName ||
-    ''
+  const name = String(w?.name ?? w?.nom ?? w?.displayName ?? '').trim()
 
   const role = normalizeRole(w?.role != null && w.role !== '' ? String(w.role) : undefined)
 

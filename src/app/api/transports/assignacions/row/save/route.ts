@@ -83,8 +83,8 @@ function normName(s?: string | null) {
 
 function findPriorConductorIndex(
   list: QuadrantConductorRecord[],
-  prior?: { name?: string; plate?: string },
-  plateNorm: (s?: string | null) => string
+  plateNorm: (s?: string | null) => string,
+  prior?: { name?: string; plate?: string }
 ): number | null {
   if (!prior) return null
   const pn = normName(prior.name)
@@ -340,7 +340,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!replaced && priorConductor) {
-      const pi = findPriorConductorIndex(nextConductors, priorConductor, normPlate)
+      const pi = findPriorConductorIndex(nextConductors, normPlate, priorConductor)
       if (pi !== null) {
         nextConductors[pi] = buildMerged(nextConductors[pi] ?? {})
         replaced = true

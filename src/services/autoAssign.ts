@@ -441,15 +441,17 @@ export async function autoAssign(payload: {
   let vehiclesEffective = vehicles
   if (
     dept === 'logistica' &&
-    chosenResp?.isDriver &&
+    chosenResp &&
+    chosenResp.isDriver &&
     Number(numDrivers || 0) > 0 &&
     vehicles.length > 0
   ) {
+    const responsibleId = chosenResp.id
     let filledResponsibleAsDriver = false
     vehiclesEffective = vehicles.map((v) => {
       if (filledResponsibleAsDriver || String(v.conductorId || '').trim()) return v
       filledResponsibleAsDriver = true
-      return { ...v, conductorId: chosenResp.id }
+      return { ...v, conductorId: responsibleId }
     })
   }
 

@@ -66,7 +66,23 @@ type AvisoSummary = {
   createdAt: string
 }
 
-type StageVerdDoc = Record<string, any>
+type StageVerdDoc = Record<string, unknown>
+
+/** Primer valor string (o número convertit) no buit entre claus d’un doc Firestore. */
+function firstDocString(d: StageVerdDoc, keys: string[]): string | null {
+  for (const k of keys) {
+    const v = d[k]
+    if (typeof v === 'string') {
+      const t = v.trim()
+      if (t) return t
+    }
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      const t = String(v).trim()
+      if (t) return t
+    }
+  }
+  return null
+}
 
 /* ================== Collections map ================== */
 const COLS_MAP: Record<string, string> = {}
@@ -236,34 +252,34 @@ const getEventsListCached = unstable_cache(
       const endISO = d?.DataFi ? `${d.DataFi}T00:00:00.000Z` : startISO
       const pax = Number(d?.NumPax ?? 0) || 0
       const importAmount = Number(d?.Import ?? d?.import ?? d?.importAmount ?? 0) || 0
-      const eventCode =
-        d?.code ||
-        d?.Code ||
-        d?.C_digo ||
-        d?.codi ||
-        d?.Codi ||
-        null
-      const commercial =
-        d?.Comercial ||
-        d?.COMERCIAL ||
-        d?.comercial ||
-        d?.comercialNom ||
-        d?.Comercial_nom ||
-        d?.Commercial ||
-        d?.Sales ||
-        d?.ResponsableComercial ||
-        d?.ComercialName ||
-        d?.ComercialNom ||
-        null
+      const eventCode = firstDocString(d, [
+        'code',
+        'Code',
+        'C_digo',
+        'codi',
+        'Codi',
+      ])
+      const commercial = firstDocString(d, [
+        'Comercial',
+        'COMERCIAL',
+        'comercial',
+        'comercialNom',
+        'Comercial_nom',
+        'Commercial',
+        'Sales',
+        'ResponsableComercial',
+        'ComercialName',
+        'ComercialNom',
+      ])
       const codeConfirmed =
         typeof d?.codeConfirmed === 'boolean' ? d.codeConfirmed : undefined
       const codeMatchScore =
         typeof d?.codeMatchScore === 'number' ? d.codeMatchScore : null
 
-      const rawSummary = d?.NomEvent || '(Sense títol)'
+      const rawSummary = String(d?.NomEvent ?? '(Sense títol)')
       const summary = rawSummary.split('/')[0].trim()
 
-      const rawLocation = d?.Ubicacio || ''
+      const rawLocation = typeof d?.Ubicacio === 'string' ? d.Ubicacio : String(d?.Ubicacio ?? '')
       const location = rawLocation
         .split('(')[0]
         .split('/')[0]
@@ -283,7 +299,7 @@ const getEventsListCached = unstable_cache(
           : ''
       const horaInici =
         typeof rawHora === 'string' ? rawHora.trim().slice(0, 5) : ''
-      const lnValue = d?.LN || 'Altres'
+      const lnValue = d?.LN != null && d.LN !== '' ? String(d.LN) : 'Altres'
 
       return {
         id: doc.id,
