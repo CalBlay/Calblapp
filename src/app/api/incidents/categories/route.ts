@@ -7,7 +7,6 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
 import type { DocumentData, QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import {
-  canAccessIncidentsModule,
   canFetchIncidentCategories,
   canManageIncidentCategories,
 } from '@/lib/incidentPolicy'

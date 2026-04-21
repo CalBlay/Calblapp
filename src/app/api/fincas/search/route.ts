@@ -1,7 +1,6 @@
 // ✅ file: src/app/api/fincas/search/route.ts
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { firestoreAdmin } from '@/lib/firebaseAdmin'
 
 
 export const runtime = 'nodejs'
@@ -22,7 +21,7 @@ export async function GET(req: Request) {
   try {
     // ✅ Cal fer servir "db" i no "firestore"
     const snap = await db.collection('finques').get()
-    const all = snap.docs.map((d) => d.data() as any)
+    const all = snap.docs.map((d) => d.data() as Record<string, unknown>)
 
     // 🔤 Normalitza text (elimina accents, passa a minúscules)
     const normalize = (s: string) =>
@@ -36,9 +35,9 @@ export async function GET(req: Request) {
 
     // 🔍 Filtre flexible
     const filtered = all.filter((f) => {
-      const nom = normalize(f.nom)
-      const codi = normalize(f.codi)
-      const searchable = normalize(f.searchable)
+      const nom = normalize(String(f.nom || ''))
+      const codi = normalize(String(f.codi || ''))
+      const searchable = normalize(String(f.searchable || ''))
       return (
         nom.includes(nq) ||
         codi.includes(nq) ||
@@ -57,8 +56,8 @@ export async function GET(req: Request) {
 
     // 🔢 Limita a 10 resultats
     const data = sorted.slice(0, 10).map((f) => ({
-      nom: f.nom || '',
-      codi: f.codi || '',
+      nom: String(f.nom || ''),
+      codi: String(f.codi || ''),
     }))
 
     return NextResponse.json({ data })

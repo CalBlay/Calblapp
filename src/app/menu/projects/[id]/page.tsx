@@ -25,6 +25,7 @@ type ProjectResponse = {
   status?: string
   departments?: string[]
   blocks?: ProjectData['blocks']
+  sprints?: ProjectData['sprints']
   rooms?: ProjectData['rooms']
   document?: ProjectData['document']
   documents?: ProjectData['documents']
@@ -88,6 +89,19 @@ export default function ProjectDetailPage() {
             }),
           status: data.status || '',
           departments: Array.isArray(data.departments) ? data.departments : [],
+          sprints: Array.isArray(data.sprints)
+            ? data.sprints.map((sprint) => ({
+                id: String(sprint.id || `sprint-${Date.now()}`),
+                name: String(sprint.name || ''),
+                goal: String(sprint.goal || ''),
+                startDate: String(sprint.startDate || ''),
+                endDate: String(sprint.endDate || ''),
+                status:
+                  sprint.status === 'active' || sprint.status === 'closed' || sprint.status === 'planned'
+                    ? sprint.status
+                    : 'planned',
+              }))
+            : [],
           blocks: Array.isArray(data.blocks)
             ? data.blocks.map((block) => ({
                 id: block.id || `block-${Date.now()}`,
@@ -113,6 +127,9 @@ export default function ProjectDetailPage() {
                       owner: task.owner || '',
                       deadline: task.deadline || '',
                       dependsOn: task.dependsOn || '',
+                      sprintId: task.sprintId || '',
+                      storyPoints: task.storyPoints || '3',
+                      cost: task.cost || '',
                       priority: task.priority || 'normal',
                       status: task.status || 'pending',
                       documents: Array.isArray(task.documents)

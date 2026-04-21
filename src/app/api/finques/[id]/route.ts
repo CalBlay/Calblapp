@@ -33,7 +33,7 @@ export async function PATCH(
     // Camps arrel que es poden editar
     const allowedRoot = ["code", "nom", "ubicacio", "ln", "tipus", "origen"]
 
-    const data: any = {}
+    const data: Record<string, unknown> = {}
 
     // =======================================================
     // 1) Arrel (camps simples)

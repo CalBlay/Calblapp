@@ -84,22 +84,23 @@ export async function GET(request: Request) {
   // 🔹 2. Construïm els esdeveniments
   const built: BuiltEvent[] = []
   snap.forEach((doc) => {
-    const d = doc.data() as Record<string, any>
-    const dataInici = d.DataInici ? new Date(d.DataInici) : null
+    const d = doc.data() as Record<string, unknown>
+    const dataIniciRaw = String(d.DataInici || '')
+    const dataInici = dataIniciRaw ? new Date(dataIniciRaw) : null
     if (!dataInici) return
 
     // Filtre per rang de dates
     if (dataInici < fromDate || dataInici > toDate) return
 
-    const start = d.DataInici || ''
-    const end = d.DataFi || start
-    const location = d.Ubicacio || ''
+    const start = String(d.DataInici || '')
+    const end = String(d.DataFi || start)
+    const location = String(d.Ubicacio || '')
     const pax = Number(d.NumPax) || 0
-    const eventCode = d.code || d.C_digo || ''
-    const commercial = d.Comercial || ''
-    const servei = d.Servei || d.Servicio || ''
-    const summary = d.NomEvent || ''
-    const name = d.NomEvent || ''
+    const eventCode = String(d.code || d.C_digo || '')
+    const commercial = String(d.Comercial || '')
+    const servei = String(d.Servei || d.Servicio || '')
+    const summary = String(d.NomEvent || '')
+    const name = String(d.NomEvent || '')
     const rawHora =
       typeof d?.HoraInici === 'string'
         ? d.HoraInici

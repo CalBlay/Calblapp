@@ -40,8 +40,15 @@ interface IncidentDoc {
 /* -------------------------------------------------------
  * 🔵 HELPER: format timestamp
  * ----------------------------------------------------- */
-function normalizeTimestamp(ts: any): string {
-  if (ts && typeof ts.toDate === "function") return ts.toDate().toISOString();
+function normalizeTimestamp(ts: unknown): string {
+  if (
+    ts &&
+    typeof ts === "object" &&
+    "toDate" in ts &&
+    typeof (ts as { toDate?: unknown }).toDate === "function"
+  ) {
+    return ((ts as { toDate: () => Date }).toDate()).toISOString();
+  }
   if (typeof ts === "string") return ts;
   return "";
 }
@@ -102,7 +109,7 @@ export async function POST(req: Request) {
     }
 
     const bodyText = await req.text();
-    let payload: Record<string, any>;
+    let payload: Record<string, unknown>;
 
     try {
       payload = JSON.parse(bodyText);
@@ -130,19 +137,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const ev = evSnap.data() as any;
+    const ev = (evSnap.data() || {}) as Record<string, unknown>;
 
     // 2️⃣ Generar número d’incidència
     const incidentNumber = await generateIncidentNumber();
 
     const normalizedImages = Array.isArray(images)
       ? images
-          .map((image: any) => ({
+          .map((image) => ({
             url: image?.url || null,
             path: image?.path || null,
             meta: image?.meta || null,
           }))
-          .filter((image: any) => image.url || image.path)
+          .filter((image) => image.url || image.path)
       : []
 
     const primaryImage = normalizedImages[0] || {
@@ -282,9 +289,12 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ id: docRef.id }, { status: 201 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[incidents] POST error:", err);
-    return NextResponse.json({ error: err.message || "Error intern" }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Error intern" },
+      { status: 500 }
+    );
   }
 }
 
