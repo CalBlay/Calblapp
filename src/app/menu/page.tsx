@@ -22,6 +22,7 @@ import {
   ClipboardCheck,
   Wrench,
   Images,
+  Sparkles,
 } from 'lucide-react'
 import type { LucideIcon, LucideProps } from 'lucide-react'
 import { getVisibleModules } from '@/lib/accessControl'
@@ -197,6 +198,11 @@ const UI_MAP: Record<
     icon: Shield,
     color: 'from-gray-200 to-gray-50',
     iconColor: 'text-gray-600',
+  },
+  '/menu/consultes-mcp': {
+    icon: Sparkles,
+    color: 'from-violet-100 to-purple-50',
+    iconColor: 'text-violet-600',
   },
   '/menu/media': {
     icon: Images,

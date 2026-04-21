@@ -184,6 +184,12 @@ export const MODULES: ModuleDef[] = [
   { label: 'Usuaris', path: '/menu/users',
     roles: ['admin'] },
 
+  {
+    label: 'Consultes MCP',
+    path: '/menu/consultes-mcp',
+    roles: ['admin'],
+  },
+
   { label: 'Imatges', path: '/menu/media',
     roles: ['admin'] },
 
