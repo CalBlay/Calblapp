@@ -31,6 +31,13 @@ type CompletedPayload = {
   checklist?: Record<string, boolean>
 }
 
+type CompletedRecord = {
+  status?: string
+  templateId?: string | null
+  plannedId?: string | null
+  createdAt?: number
+}
+
 type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
 
 const normalizeCompletedStatus = (value?: string) => {
@@ -98,16 +105,18 @@ export async function GET(req: Request) {
     const snap = await query.get()
     const items = snap.docs
       .map((doc) => {
-        const data = doc.data() as any
+        const data = doc.data() as Record<string, unknown>
         return {
           id: doc.id,
           ...data,
           status: normalizeCompletedStatus(data.status),
         }
       })
-      .sort((a: any, b: any) => {
-        const da = typeof a.completedAt === 'number' ? a.completedAt : Date.parse(a.completedAt || '') || 0
-        const dbTime = typeof b.completedAt === 'number' ? b.completedAt : Date.parse(b.completedAt || '') || 0
+      .sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+        const da =
+          typeof a.completedAt === 'number' ? a.completedAt : Date.parse(String(a.completedAt || '')) || 0
+        const dbTime =
+          typeof b.completedAt === 'number' ? b.completedAt : Date.parse(String(b.completedAt || '')) || 0
         return dbTime - da
       })
     return NextResponse.json({ records: items })
@@ -142,7 +151,7 @@ export async function POST(req: Request) {
     const currentSnap = requestedId
       ? await db.collection('maintenancePreventiusCompleted').doc(requestedId).get()
       : null
-    const currentRecord = currentSnap?.exists ? (currentSnap.data() as any) : null
+    const currentRecord = currentSnap?.exists ? (currentSnap.data() as CompletedRecord) : null
     const currentStatus = normalizeCompletedStatus(currentRecord?.status)
     const completedAt =
       typeof body.completedAt === 'string' || typeof body.completedAt === 'number'

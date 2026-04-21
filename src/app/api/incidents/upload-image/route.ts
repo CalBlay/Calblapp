@@ -7,6 +7,7 @@ import { storageAdmin } from '@/lib/firebaseAdmin'
 export const runtime = 'nodejs'
 
 const MAX_SIZE = 1024 * 1024
+type SessionUser = { id?: string }
 
 const clean = (s: string) =>
   s
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
     const form = await req.formData()
     const file = form.get('file') as File | null
     const eventId = clean(String(form.get('eventId') || ''))
-    const userId = clean(String((session.user as any)?.id || ''))
+    const userId = clean(String((session.user as SessionUser)?.id || ''))
 
     if (!file || !eventId || !userId) {
       return NextResponse.json({ error: 'Missing data' }, { status: 400 })

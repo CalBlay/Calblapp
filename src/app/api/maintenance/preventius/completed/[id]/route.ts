@@ -13,6 +13,7 @@ type SessionUser = {
   id: string
   name?: string
   role?: string
+  department?: string
 }
 
 type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
@@ -49,7 +50,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     if (!snap.exists) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
-    return NextResponse.json({ record: { id: snap.id, ...snap.data(), status: normalizeCompletedStatus((snap.data() as any)?.status) } })
+    const payload = (snap.data() || {}) as Record<string, unknown>
+    return NextResponse.json({
+      record: { id: snap.id, ...payload, status: normalizeCompletedStatus(payload.status) },
+    })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -64,7 +68,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const user = session.user as SessionUser
   const role = normalizeRole(user.role || '')
-  const dept = ((user as any).department || '')
+  const dept = (user.department || '')
     .toString()
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
@@ -90,7 +94,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    const current = snap.data() as any
+    const current = (snap.data() || {}) as Record<string, unknown>
     const currentStatus = normalizeCompletedStatus(current?.status)
     if (currentStatus !== 'validat') {
       return NextResponse.json({ error: 'Nomes es pot reobrir un preventiu validat' }, { status: 400 })

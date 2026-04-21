@@ -37,6 +37,25 @@ interface IncidentDoc {
   [key: string]: unknown;
 }
 
+type IncidentImageInput = {
+  url?: string | null
+  path?: string | null
+  meta?: { size?: number; type?: string } | null
+}
+
+type IncidentPayload = {
+  eventId?: string
+  department?: string
+  importance?: string
+  description?: string
+  respSala?: string
+  category?: { id?: string; label?: string }
+  images?: IncidentImageInput[]
+  imageUrl?: string | null
+  imagePath?: string | null
+  imageMeta?: { size?: number; type?: string } | null
+}
+
 /* -------------------------------------------------------
  * 🔵 HELPER: format timestamp
  * ----------------------------------------------------- */
@@ -109,7 +128,7 @@ export async function POST(req: Request) {
     }
 
     const bodyText = await req.text();
-    let payload: Record<string, unknown>;
+    let payload: IncidentPayload;
 
     try {
       payload = JSON.parse(bodyText);
@@ -138,13 +157,17 @@ export async function POST(req: Request) {
     }
 
     const ev = (evSnap.data() || {}) as Record<string, unknown>;
+    const eventCode = String(ev.code || ev.Code || ev.C_digo || ev.codi || "")
+    const eventTitle = String(ev.NomEvent || "")
+    const eventDate = String(ev.DataInici || ev.DataPeticio || "")
+    const eventLocation = String(ev.Ubicacio || "")
 
     // 2️⃣ Generar número d’incidència
     const incidentNumber = await generateIncidentNumber();
 
     const normalizedImages = Array.isArray(images)
       ? images
-          .map((image) => ({
+          .map((image: IncidentImageInput) => ({
             url: image?.url || null,
             path: image?.path || null,
             meta: image?.meta || null,
@@ -163,22 +186,21 @@ export async function POST(req: Request) {
     const docRef = await firestoreAdmin.collection("incidents").add({
       incidentNumber,
       eventId: String(eventId),
-      eventCode:
-        ev.code || ev.Code || ev.C_digo || ev.codi || "",
+      eventCode,
       department,
-      importance: importance.trim().toLowerCase(),
+      importance: String(importance).trim().toLowerCase(),
       description,
       createdBy: respSala,
       status: "obert",
       createdAt: admin.firestore.Timestamp.now(),
 
       // dades event
-      eventTitle: ev.NomEvent || "",
-      eventDate: ev.DataInici || ev.DataPeticio || "",
-      eventLocation: ev.Ubicacio || "",
+      eventTitle,
+      eventDate,
+      eventLocation,
       category: {
-        id: category?.id || "",
-        label: category?.label || "",
+        id: String(category?.id || ""),
+        label: String(category?.label || ""),
       },
       imageUrl: primaryImage.url || null,
       imagePath: primaryImage.path || null,
@@ -196,7 +218,7 @@ export async function POST(req: Request) {
         url: String(primaryImage.url || "").trim() || null,
         size: typeof meta?.size === "number" ? meta.size : null,
         contentType: meta?.type ? String(meta.type) : null,
-        title: [incidentNumber, ev.NomEvent, description.slice(0, 80)]
+        title: [incidentNumber, eventTitle, String(description).slice(0, 80)]
           .filter(Boolean)
           .join(" · "),
         createdAt: createdAtMs,
@@ -213,7 +235,7 @@ export async function POST(req: Request) {
       const ticketRef = await firestoreAdmin.collection("maintenanceTickets").add({
         ticketCode: incidentNumber,
         incidentNumber,
-        location: ev.Ubicacio || "",
+        location: eventLocation,
         machine: "",
         description,
         priority: normalizePriority(importance),
@@ -232,10 +254,10 @@ export async function POST(req: Request) {
         estimatedMinutes: null,
         source: "incidencia",
         sourceEventId: String(eventId),
-        sourceEventCode: ev.code || ev.Code || ev.C_digo || ev.codi || "",
-        sourceEventTitle: ev.NomEvent || "",
-        sourceEventLocation: ev.Ubicacio || "",
-        sourceEventDate: ev.DataInici || ev.DataPeticio || "",
+        sourceEventCode: eventCode,
+        sourceEventTitle: eventTitle,
+        sourceEventLocation: eventLocation,
+        sourceEventDate: eventDate,
         imageUrl: primaryImage.url || null,
         imagePath: primaryImage.path || null,
         imageMeta: primaryImage.meta || null,
@@ -258,14 +280,14 @@ export async function POST(req: Request) {
           title: 'Nou ticket de manteniment',
           body: buildTicketBody({
             machine: '',
-            location: ev.Ubicacio || '',
-            description,
+            location: eventLocation,
+            description: String(description),
           }),
           ticketId: ticketRef.id,
           ticketCode: incidentNumber,
           status: 'nou',
-          priority: normalizePriority(importance),
-          location: ev.Ubicacio || '',
+          priority: normalizePriority(String(importance)),
+          location: eventLocation,
           machine: '',
           source: 'incidencia',
         },
@@ -280,7 +302,7 @@ export async function POST(req: Request) {
           url: String(primaryImage.url || "").trim() || null,
           size: typeof meta?.size === "number" ? meta.size : null,
           contentType: meta?.type ? String(meta.type) : null,
-          title: [incidentNumber, ev.Ubicacio || "", description.slice(0, 80)]
+          title: [incidentNumber, eventLocation, String(description).slice(0, 80)]
             .filter(Boolean)
             .join(" · "),
           createdAt: now,

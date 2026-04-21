@@ -4,6 +4,14 @@ import fs from 'fs'
 import * as XLSX from 'xlsx'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
+type MachineRow = {
+  id: string
+  code: string
+  name: string
+  label: string
+  active: boolean
+}
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +21,7 @@ export async function GET() {
     if (!firestoreSnap.empty) {
       const machines = firestoreSnap.docs
         .map((doc) => {
-          const data = doc.data() || {}
+          const data = (doc.data() || {}) as Record<string, unknown>
           const code = String(data.code || '').trim()
           const name = String(data.name || '').trim()
           if (!code && !name) return null
@@ -25,8 +33,8 @@ export async function GET() {
             active: data.active !== false,
           }
         })
-        .filter(Boolean)
-        .filter((item: any) => item.active !== false)
+        .filter((item): item is MachineRow => Boolean(item))
+        .filter((item) => item.active !== false)
 
       return NextResponse.json({ machines })
     }
@@ -48,7 +56,7 @@ export async function GET() {
     let workbook: XLSX.WorkBook
     try {
       workbook = XLSX.readFile(filePath, { cellDates: false })
-    } catch (err) {
+    } catch {
       const buffer = fs.readFileSync(filePath)
       workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false })
     }

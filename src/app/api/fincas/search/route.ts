@@ -47,8 +47,8 @@ export async function GET(req: Request) {
 
     // 📊 Ordena per rellevància (exacte > parcial)
     const sorted = filtered.sort((a, b) => {
-      const na = normalize(a.nom)
-      const nb = normalize(b.nom)
+      const na = normalize(String(a.nom || ''))
+      const nb = normalize(String(b.nom || ''))
       if (na.startsWith(nq) && !nb.startsWith(nq)) return -1
       if (!na.startsWith(nq) && nb.startsWith(nq)) return 1
       return na.localeCompare(nb)
