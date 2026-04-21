@@ -19,6 +19,14 @@ import {
   YAxis,
 } from 'recharts'
 
+function defaultFincaMonthRange(): { start: string; end: string } {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return { start: `${y}-${m}-01`, end: `${y}-${m}-${d}` }
+}
+
 type StageEventRow = {
   id?: string
   code?: string
@@ -96,6 +104,20 @@ function ConsultesMcpPage() {
   const [errorCode, setErrorCode] = useState<McpUiError | null>(null)
   const [fullEvent, setFullEvent] = useState<FullByCodePayload | null>(null)
 
+  const [{ start: fincaStart, end: fincaEnd }, setFincaRange] = useState(defaultFincaMonthRange)
+  const [fincaLn, setFincaLn] = useState('')
+  const [fincaLines, setFincaLines] = useState<string[]>([])
+  const [fincaLoading, setFincaLoading] = useState(false)
+  const [fincaError, setFincaError] = useState<McpUiError | null>(null)
+  const [fincaRows, setFincaRows] = useState<
+    { fincaKey: string; label: string; importSum: number; eventCount: number }[]
+  >([])
+  const [fincaMeta, setFincaMeta] = useState<{
+    totalImportSum: number
+    eventDocsInRange: number
+    note?: string
+  } | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -165,6 +187,55 @@ function ConsultesMcpPage() {
     }
   }, [eventCode])
 
+  const loadFincaRanking = useCallback(async () => {
+    setFincaLoading(true)
+    setFincaError(null)
+    try {
+      const params = new URLSearchParams({
+        start: fincaStart,
+        end: fincaEnd,
+        top: '10',
+      })
+      if (fincaLn.trim()) params.set('ln', fincaLn.trim())
+      const res = await fetch(`/api/reports/finca-facturacio?${params}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      })
+      const data = (await res.json()) as {
+        ok?: boolean
+        rows?: typeof fincaRows
+        lines?: string[]
+        totalImportSum?: number
+        eventDocsInRange?: number
+        note?: string
+        error?: string
+      }
+      if (!res.ok || !data.ok) {
+        setFincaError({ message: data.error || `Error ${res.status}` })
+        setFincaRows([])
+        setFincaMeta(null)
+        return
+      }
+      setFincaRows(Array.isArray(data.rows) ? data.rows : [])
+      setFincaLines(Array.isArray(data.lines) ? data.lines : [])
+      setFincaMeta({
+        totalImportSum: data.totalImportSum ?? 0,
+        eventDocsInRange: data.eventDocsInRange ?? 0,
+        note: data.note,
+      })
+    } catch (e) {
+      setFincaError({ message: e instanceof Error ? e.message : 'Error de xarxa' })
+      setFincaRows([])
+      setFincaMeta(null)
+    } finally {
+      setFincaLoading(false)
+    }
+  }, [fincaStart, fincaEnd, fincaLn])
+
+  const fincaChartData = useMemo(() => {
+    return [...fincaRows].sort((a, b) => a.importSum - b.importSum)
+  }, [fincaRows])
+
   const chartData = useMemo(() => {
     if (!fullEvent?.event) return []
     const e = fullEvent.event
@@ -204,6 +275,143 @@ function ConsultesMcpPage() {
         Les crides passen per <code className="text-xs bg-muted px-1 rounded">/api/mcp/*</code> amb
         clau MCP només al servidor.
       </p>
+
+      {/* ——— Top finques per import (Firestore) ——— */}
+      <section className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 sm:p-5">
+        <h2 className="text-lg font-semibold">Top 10 finques per facturació (agenda)</h2>
+        <p className="text-sm text-muted-foreground">
+          Suma del camp <strong>Import</strong> de <code className="text-xs">stage_verd</code> per{' '}
+          <strong>finca</strong> (codi finca, id o ubicació) en un període. Filtre opcional per{' '}
+          <strong>línia de negoci</strong> (<code className="text-xs">LN</code>). No substitueix
+          facturació SAP.
+        </p>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <label htmlFor="finca-start" className="text-sm font-medium">
+              Des de
+            </label>
+            <Input
+              id="finca-start"
+              type="date"
+              className="border-2 border-slate-400 bg-white shadow-sm w-[11rem]"
+              value={fincaStart}
+              onChange={(e) =>
+                setFincaRange((r) => ({ ...r, start: e.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="finca-end" className="text-sm font-medium">
+              Fins a
+            </label>
+            <Input
+              id="finca-end"
+              type="date"
+              className="border-2 border-slate-400 bg-white shadow-sm w-[11rem]"
+              value={fincaEnd}
+              onChange={(e) =>
+                setFincaRange((r) => ({ ...r, end: e.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1 min-w-[12rem]">
+            <label htmlFor="finca-ln" className="text-sm font-medium">
+              Línia de negoci (LN)
+            </label>
+            <select
+              id="finca-ln"
+              className="flex h-10 w-full rounded-md border-2 border-slate-400 bg-white px-3 text-sm shadow-sm"
+              value={fincaLn}
+              onChange={(e) => setFincaLn(e.target.value)}
+            >
+              <option value="">Totes les línies</option>
+              {fincaLines.map((ln) => (
+                <option key={ln} value={ln}>
+                  {ln}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button
+            type="button"
+            size="lg"
+            onClick={loadFincaRanking}
+            disabled={fincaLoading}
+            className={cn(
+              'min-h-11 border-2 border-emerald-900 bg-emerald-600 text-base font-semibold text-white shadow-md',
+              'hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2'
+            )}
+          >
+            {fincaLoading ? (
+              <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+            ) : null}
+            Carregar rànking
+          </Button>
+        </div>
+
+        {fincaError ? <McpErrorBanner err={fincaError} /> : null}
+
+        {fincaMeta ? (
+          <p className="text-sm text-muted-foreground">
+            <strong>{fincaMeta.eventDocsInRange}</strong> esdeveniments al període · Import total
+            agrupat (top 10 mostrat):{' '}
+            <strong>
+              {fincaMeta.totalImportSum.toLocaleString('ca-ES', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              €
+            </strong>
+            {fincaMeta.note ? (
+              <>
+                <br />
+                <span className="text-xs">{fincaMeta.note}</span>
+              </>
+            ) : null}
+          </p>
+        ) : null}
+
+        {fincaChartData.length > 0 ? (
+          <div className="h-[380px] w-full min-w-0 rounded-lg border bg-white p-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                layout="vertical"
+                data={fincaChartData}
+                margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis
+                  type="number"
+                  tickFormatter={(v) =>
+                    `${Number(v).toLocaleString('ca-ES', { maximumFractionDigits: 0 })} €`
+                  }
+                />
+                <YAxis
+                  type="category"
+                  dataKey="label"
+                  width={148}
+                  tick={{ fontSize: 11 }}
+                  interval={0}
+                />
+                <Tooltip
+                  formatter={(v: number) => [
+                    `${v.toLocaleString('ca-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`,
+                    'Import',
+                  ]}
+                  labelFormatter={(_, payload) => {
+                    const p = payload?.[0]?.payload as { eventCount?: number } | undefined
+                    return p?.eventCount != null
+                      ? `Esdeveniments: ${p.eventCount}`
+                      : ''
+                  }}
+                />
+                <Bar dataKey="importSum" name="Import" fill="#059669" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : null}
+      </section>
 
       {/* ——— Detall per code ——— */}
       <section className="space-y-4">

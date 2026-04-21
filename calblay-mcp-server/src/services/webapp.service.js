@@ -44,6 +44,12 @@ export async function getEvents({ from, to, limit = 100 }) {
   });
 }
 
+function codeMatchesDocFields(code, fields) {
+  if (!code) return false;
+  const c = String(code).trim();
+  return fields.some((v) => String(v ?? "").trim() === c);
+}
+
 function linkQuadrantsIncidents(event, quadrants, incidents) {
   const eventId = event.id;
   const code = String(event.code || "").trim();
@@ -54,16 +60,61 @@ function linkQuadrantsIncidents(event, quadrants, incidents) {
       q.event_id === eventId ||
       q.eventId === eventId ||
       q.event === eventId ||
-      (code && String(q.code || "").trim() === code)
+      (code &&
+        codeMatchesDocFields(code, [q.code, q.eventCode, q.event_code]))
   );
   const relatedIncidents = incidents.filter(
     (i) =>
       i.event_id === eventId ||
       i.eventId === eventId ||
       i.event === eventId ||
-      (code && String(i.code || "").trim() === code) ||
+      (code &&
+        codeMatchesDocFields(code, [
+          i.code,
+          i.eventCode,
+          i.event_code,
+          i.C_digo,
+          i.codi
+        ])) ||
       (idZoho && String(i.eventId || i.event_id || "").trim() === idZoho)
   );
+
+  return { relatedQuadrants, relatedIncidents };
+}
+
+/** Uneix quadrants/incidències enllaçats a qualsevol dels documents `matches` (mateix `code`, ids diferents). */
+function mergeQuadrantsIncidentsForMatches(matches, quadrants, incidents) {
+  const seenQ = new Set();
+  const seenI = new Set();
+  const relatedQuadrants = [];
+  const relatedIncidents = [];
+
+  for (const eventDoc of matches) {
+    const { relatedQuadrants: rq, relatedIncidents: ri } =
+      linkQuadrantsIncidents(eventDoc, quadrants, incidents);
+    for (const q of rq) {
+      const key = q.id ? String(q.id) : null;
+      if (key) {
+        if (!seenQ.has(key)) {
+          seenQ.add(key);
+          relatedQuadrants.push(q);
+        }
+      } else {
+        relatedQuadrants.push(q);
+      }
+    }
+    for (const i of ri) {
+      const key = i.id ? String(i.id) : null;
+      if (key) {
+        if (!seenI.has(key)) {
+          seenI.add(key);
+          relatedIncidents.push(i);
+        }
+      } else {
+        relatedIncidents.push(i);
+      }
+    }
+  }
 
   return { relatedQuadrants, relatedIncidents };
 }
@@ -125,8 +176,8 @@ export async function getEventFullByCode(code) {
     listCollection("incidents", { limit: 500 })
   ]);
 
-  const { relatedQuadrants, relatedIncidents } = linkQuadrantsIncidents(
-    primary,
+  const { relatedQuadrants, relatedIncidents } = mergeQuadrantsIncidentsForMatches(
+    matches,
     quadrants,
     incidents
   );
