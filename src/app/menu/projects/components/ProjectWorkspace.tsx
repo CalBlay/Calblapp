@@ -444,6 +444,13 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
               departments: nextDepartments,
             }
 
+      if (!Array.isArray(nextProject.sprints)) {
+        nextProject = {
+          ...nextProject,
+          sprints: [],
+        }
+      }
+
       const roomsCandidate = ensureProjectRooms(nextProject, userByName)
       if (serializeRoomsState(roomsCandidate.rooms) !== serializeRoomsState(nextProject.rooms)) {
         nextProject = roomsCandidate
@@ -481,6 +488,28 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
 
       if (!sameBudgets) {
         nextProject = budgetCandidate
+      }
+
+      const sprintIds = new Set((nextProject.sprints || []).map((sprint) => String(sprint.id || '').trim()))
+      const blocksWithValidSprint = nextProject.blocks.map((block) => ({
+        ...block,
+        tasks: block.tasks.map((task) => {
+          const sprintId = String(task.sprintId || '').trim()
+          if (!sprintId || sprintIds.has(sprintId)) return task
+          return { ...task, sprintId: '' }
+        }),
+      }))
+      const sameTaskSprintRefs =
+        blocksWithValidSprint.length === nextProject.blocks.length &&
+        blocksWithValidSprint.every((block, blockIndex) =>
+          block.tasks.every((task, taskIndex) => task.sprintId === nextProject.blocks[blockIndex]?.tasks[taskIndex]?.sprintId)
+        )
+
+      if (!sameTaskSprintRefs) {
+        nextProject = {
+          ...nextProject,
+          blocks: blocksWithValidSprint,
+        }
       }
 
       const nextPhase = deriveProjectPhase(nextProject)
@@ -729,9 +758,33 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
         String(taskDraft.description || '').trim() ||
         String(taskDraft.department || '').trim() ||
         String(taskDraft.owner || '').trim() ||
-        String(taskDraft.deadline || '').trim()
+        String(taskDraft.deadline || '').trim() ||
+        String(taskDraft.sprintId || '').trim()
       )
     )
+
+  const createSprint = (name: string) => {
+    const nextName = String(name || '').trim()
+    if (!nextName) return
+    setDirtyBlocksState(true)
+    setProject((current) => {
+      if (current.sprints.some((sprint) => sprint.name.toLowerCase() === nextName.toLowerCase())) {
+        return current
+      }
+      const nextSprint = {
+        id: `sprint-${Date.now()}`,
+        name: nextName,
+        goal: '',
+        startDate: '',
+        endDate: '',
+        status: 'planned' as const,
+      }
+      return {
+        ...current,
+        sprints: [...(current.sprints || []), nextSprint],
+      }
+    })
+  }
 
   const hasPendingDocumentDraft =
     Boolean(pendingDocumentFile) || Boolean(String(documentDraft.label || '').trim())
@@ -946,6 +999,7 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
             <ProjectTasksTab
               projectId={projectId}
               projectBlocks={visibleProjectForTasks.blocks}
+              projectSprints={project.sprints || []}
               projectRooms={visibleProjectForTasks.rooms}
               allTasks={visibleProjectForTasks.blocks.flatMap((block) =>
                 block.tasks.map((task) => ({
@@ -975,6 +1029,7 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
               canManageTask={canManageSpecificTask}
               canAccessTaskOps={canAccessSpecificTaskOps}
               canMoveTask={canMoveSpecificTask}
+              onCreateSprint={createSprint}
             />
           ) : null}
 

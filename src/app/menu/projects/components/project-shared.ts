@@ -65,6 +65,24 @@ export const TASK_PRIORITY_OPTIONS = [
   { value: 'critical', label: 'Crítica' },
 ] as const
 
+export const SCRUM_STORY_POINT_OPTIONS = [
+  { value: '1', label: '1 punt' },
+  { value: '2', label: '2 punts' },
+  { value: '3', label: '3 punts' },
+  { value: '5', label: '5 punts' },
+  { value: '8', label: '8 punts' },
+  { value: '13', label: '13 punts' },
+] as const
+
+export type ProjectSprint = {
+  id: string
+  name: string
+  goal: string
+  startDate: string
+  endDate: string
+  status: 'planned' | 'active' | 'closed'
+}
+
 export type ProjectTask = {
   id: string
   createdAt?: number
@@ -75,6 +93,8 @@ export type ProjectTask = {
   deadline: string
   dependsOn: string
   cost?: string
+  sprintId?: string
+  storyPoints?: string
   priority: string
   status: string
   documents?: ProjectDocument[]
@@ -189,6 +209,7 @@ export type ProjectData = {
   phase: string
   status: string
   blocks: ProjectBlock[]
+  sprints: ProjectSprint[]
   rooms: ProjectRoom[]
   document: ProjectDocument
   documents: ProjectDocument[]
@@ -209,6 +230,15 @@ export const EMPTY_KICKOFF: KickoffData = {
   attendees: [],
   status: '',
   graphWebLink: '',
+}
+
+export const EMPTY_SPRINT: ProjectSprint = {
+  id: '',
+  name: '',
+  goal: '',
+  startDate: '',
+  endDate: '',
+  status: 'planned',
 }
 
 export const statusLabel = (status?: string) =>

@@ -624,6 +624,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
     }
 
+    const sprintsRaw = form.get('sprints')
+    if (sprintsRaw !== null) {
+      try {
+        payload.sprints = JSON.parse(String(sprintsRaw))
+      } catch {
+        payload.sprints = Array.isArray(currentData.sprints) ? currentData.sprints : []
+      }
+    }
+
     const roomsRaw = form.get('rooms')
     if (roomsRaw !== null) {
       try {

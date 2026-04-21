@@ -46,6 +46,11 @@ const toPercent = (value: number, total: number) => {
   return Math.round((value / total) * 100)
 }
 
+const parseStoryPoints = (value?: string | number | null) => {
+  const parsed = Number(String(value || '').trim())
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 const blockStatusLabel = (value: string) => {
   if (value === 'in_progress') return 'En curs'
   if (value === 'blocked') return 'Bloquejat'
@@ -99,6 +104,41 @@ export default function ProjectTrackingTab({ project }: Props) {
   const roomsWithoutActivity = project.rooms.filter(
     (room) => (room.messages || []).length === 0 && (room.documents || []).length === 0
   )
+  const tasksWithDependencies = allTasks.filter((task) => String(task.dependsOn || '').trim())
+  const blockedByDependencyTasks = allTasks.filter((task) => {
+    const dependencyId = String(task.dependsOn || '').trim()
+    if (!dependencyId || task.status === 'done') return false
+    const dependencyTask = allTasks.find((item) => item.id === dependencyId)
+    if (!dependencyTask) return false
+    return dependencyTask.status !== 'done'
+  })
+  const sprintStats = (project.sprints || []).map((sprint) => {
+    const sprintTasks = allTasks.filter((task) => String(task.sprintId || '').trim() === sprint.id)
+    const committedPoints = sprintTasks.reduce((sum, task) => sum + parseStoryPoints(task.storyPoints), 0)
+    const completedPoints = sprintTasks
+      .filter((task) => task.status === 'done')
+      .reduce((sum, task) => sum + parseStoryPoints(task.storyPoints), 0)
+    const spilledTasks = sprintTasks.filter((task) => task.status !== 'done').length
+    return {
+      sprint,
+      sprintTasks,
+      committedPoints,
+      completedPoints,
+      completionRate: toPercent(completedPoints, committedPoints || sprintTasks.length),
+      spilledTasks,
+    }
+  })
+  const activeSprintStat =
+    sprintStats.find((item) => item.sprint.status === 'active') ||
+    sprintStats[sprintStats.length - 1] ||
+    null
+  const closedSprintStats = sprintStats.filter((item) => item.sprint.status === 'closed')
+  const averageVelocity =
+    closedSprintStats.length > 0
+      ? Math.round(
+          closedSprintStats.reduce((sum, item) => sum + item.completedPoints, 0) / closedSprintStats.length
+        )
+      : 0
 
   const alerts = [
     ...blockedBlocks.map((block) => ({
@@ -212,6 +252,44 @@ export default function ProjectTrackingTab({ project }: Props) {
         </div>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-[24px] bg-white/75 p-5">
+          <div className="text-sm text-slate-500">Sprint actiu</div>
+          <div className="mt-2 text-lg font-semibold text-slate-900">
+            {activeSprintStat?.sprint.name || 'Sense sprint actiu'}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            {(activeSprintStat?.sprintTasks.length || 0)} tasques
+          </div>
+        </div>
+        <div className="rounded-[24px] bg-white/75 p-5">
+          <div className="text-sm text-slate-500">Compromes / completat</div>
+          <div className="mt-2 text-lg font-semibold text-slate-900">
+            {activeSprintStat ? `${activeSprintStat.committedPoints} / ${activeSprintStat.completedPoints} SP` : '0 / 0 SP'}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            {activeSprintStat ? `${activeSprintStat.completionRate}%` : 'Sense dades'}
+          </div>
+        </div>
+        <div className="rounded-[24px] bg-white/75 p-5">
+          <div className="text-sm text-slate-500">Velocity mitjana</div>
+          <div className="mt-2 text-lg font-semibold text-slate-900">{averageVelocity} SP</div>
+          <div className="mt-1 text-xs text-slate-500">{closedSprintStats.length} sprints tancats</div>
+        </div>
+        <div className="rounded-[24px] bg-white/75 p-5">
+          <div className="text-sm text-slate-500">Dependencies</div>
+          <div className="mt-2 text-lg font-semibold text-slate-900">{tasksWithDependencies.length}</div>
+          <div className="mt-1 text-xs text-slate-500">tasques amb dependencia</div>
+        </div>
+        <div className="rounded-[24px] bg-white/75 p-5">
+          <div className="text-sm text-slate-500">Spillover sprint</div>
+          <div className="mt-2 text-lg font-semibold text-slate-900">
+            {activeSprintStat?.spilledTasks || 0}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">tasques no completades</div>
+        </div>
+      </div>
+
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <section className="rounded-[24px] bg-white/75 p-5">
           <div className={`flex items-center gap-2 ${projectSectionTitleClass}`}>
@@ -249,6 +327,10 @@ export default function ProjectTrackingTab({ project }: Props) {
               <div className="text-xs uppercase tracking-wide text-slate-400">Tasques critiques</div>
               <div className="mt-1 text-lg font-semibold text-slate-900">{criticalTasks.length}</div>
             </div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-400">Bloquejades per dependencia</div>
+                <div className="mt-1 text-lg font-semibold text-slate-900">{blockedByDependencyTasks.length}</div>
+              </div>
           </div>
         </section>
 

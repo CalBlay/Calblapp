@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { TASK_PRIORITY_OPTIONS } from './project-shared'
+import { SCRUM_STORY_POINT_OPTIONS, TASK_PRIORITY_OPTIONS } from './project-shared'
 
 type Props = {
   blockId?: string
@@ -22,6 +22,11 @@ type Props = {
   owner?: string
   deadline: string
   priority: string
+  sprintId?: string
+  storyPoints?: string
+  sprintOptions?: Array<{ id: string; name: string }>
+  dependsOn?: string
+  dependencyOptions?: Array<{ id: string; label: string }>
   departments: string[]
   responsibleOptions?: Array<{ id: string; name: string }>
   maxDeadline?: string
@@ -34,6 +39,9 @@ type Props = {
   onOwnerChange?: (value: string) => void
   onDeadlineChange: (value: string) => void
   onPriorityChange: (value: string) => void
+  onSprintChange?: (value: string) => void
+  onStoryPointsChange?: (value: string) => void
+  onDependsOnChange?: (value: string) => void
   onSubmit: () => void
 }
 
@@ -46,6 +54,11 @@ export default function ProjectTaskQuickComposer({
   owner = '',
   deadline,
   priority,
+  sprintId = '',
+  storyPoints = '3',
+  sprintOptions = [],
+  dependsOn = '',
+  dependencyOptions = [],
   departments,
   responsibleOptions = [],
   maxDeadline,
@@ -58,6 +71,9 @@ export default function ProjectTaskQuickComposer({
   onOwnerChange,
   onDeadlineChange,
   onPriorityChange,
+  onSprintChange,
+  onStoryPointsChange,
+  onDependsOnChange,
   onSubmit,
 }: Props) {
   const selectedDepartment =
@@ -148,6 +164,60 @@ export default function ProjectTaskQuickComposer({
                   </Select>
                 </div>
               </div>
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Depen de</div>
+                <Select
+                  value={dependsOn || 'none'}
+                  onValueChange={(value) => onDependsOnChange?.(value === 'none' ? '' : value)}
+                >
+                  <SelectTrigger className="bg-white text-slate-700">
+                    <SelectValue placeholder="Sense dependencia" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sense dependencia</SelectItem>
+                    {dependencyOptions.map((option) => (
+                      <SelectItem key={`task-draft-dependency-${option.id}`} value={option.id}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Sprint</div>
+                  <Select value={sprintId || 'none'} onValueChange={(value) => onSprintChange?.(value === 'none' ? '' : value)}>
+                    <SelectTrigger className="bg-white text-slate-700">
+                      <SelectValue placeholder="Backlog" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Backlog</SelectItem>
+                      {sprintOptions.map((option) => (
+                        <SelectItem key={`task-draft-sprint-${option.id}`} value={option.id}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Story points</div>
+                  <Select value={storyPoints || '3'} onValueChange={(value) => onStoryPointsChange?.(value)}>
+                    <SelectTrigger className="bg-white text-slate-700">
+                      <SelectValue placeholder="Story points" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SCRUM_STORY_POINT_OPTIONS.map((option) => (
+                        <SelectItem key={`task-draft-points-${option.value}`} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -196,8 +266,8 @@ export default function ProjectTaskQuickComposer({
         <div
           className={`grid gap-3 ${
             showBlockSelector
-              ? 'md:grid-cols-[220px_minmax(0,1fr)_150px_160px_140px_120px_150px_auto]'
-              : 'md:grid-cols-[minmax(0,1fr)_150px_160px_140px_120px_150px_auto]'
+              ? 'md:grid-cols-[220px_minmax(0,1fr)_150px_160px_140px_140px_140px_120px_150px_auto]'
+              : 'md:grid-cols-[minmax(0,1fr)_150px_160px_140px_140px_140px_120px_150px_auto]'
           }`}
         >
           {showBlockSelector ? (
@@ -257,6 +327,47 @@ export default function ProjectTaskQuickComposer({
             max={maxDeadline || undefined}
             onChange={(event) => onDeadlineChange(event.target.value)}
           />
+          <Select value={sprintId || 'none'} onValueChange={(value) => onSprintChange?.(value === 'none' ? '' : value)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Sprint" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Backlog</SelectItem>
+              {sprintOptions.map((option) => (
+                <SelectItem key={`task-draft-sprint-${option.id}`} value={option.id}>
+                  {option.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={storyPoints || '3'} onValueChange={(value) => onStoryPointsChange?.(value)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Story points" />
+            </SelectTrigger>
+            <SelectContent>
+              {SCRUM_STORY_POINT_OPTIONS.map((option) => (
+                <SelectItem key={`task-draft-points-${option.value}`} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={dependsOn || 'none'}
+            onValueChange={(value) => onDependsOnChange?.(value === 'none' ? '' : value)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Depen de" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Sense dependencia</SelectItem>
+              {dependencyOptions.map((option) => (
+                <SelectItem key={`task-draft-dependency-${option.id}`} value={option.id}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={priority || 'normal'} onValueChange={onPriorityChange}>
             <SelectTrigger>
               <SelectValue placeholder="Nivell" />

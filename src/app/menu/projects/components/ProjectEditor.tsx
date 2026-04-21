@@ -56,6 +56,7 @@ const emptyProject: ProjectData = {
   phase: 'definition',
   status: 'definition',
   blocks: [],
+  sprints: [],
   rooms: [],
   document: null,
   documents: [],
@@ -188,6 +189,13 @@ export default function ProjectEditor() {
               departments: nextDepartments,
             }
 
+      if (!Array.isArray(nextProject.sprints)) {
+        nextProject = {
+          ...nextProject,
+          sprints: [],
+        }
+      }
+
       const roomsCandidate = ensureProjectRooms(nextProject, userByName)
       if (serializeRoomsState(roomsCandidate.rooms) !== serializeRoomsState(nextProject.rooms)) {
         nextProject = roomsCandidate
@@ -225,6 +233,28 @@ export default function ProjectEditor() {
 
       if (!sameBudgets) {
         nextProject = budgetCandidate
+      }
+
+      const sprintIds = new Set((nextProject.sprints || []).map((sprint) => String(sprint.id || '').trim()))
+      const blocksWithValidSprint = nextProject.blocks.map((block) => ({
+        ...block,
+        tasks: block.tasks.map((task) => {
+          const sprintId = String(task.sprintId || '').trim()
+          if (!sprintId || sprintIds.has(sprintId)) return task
+          return { ...task, sprintId: '' }
+        }),
+      }))
+      const sameTaskSprintRefs =
+        blocksWithValidSprint.length === nextProject.blocks.length &&
+        blocksWithValidSprint.every((block, blockIndex) =>
+          block.tasks.every((task, taskIndex) => task.sprintId === nextProject.blocks[blockIndex]?.tasks[taskIndex]?.sprintId)
+        )
+
+      if (!sameTaskSprintRefs) {
+        nextProject = {
+          ...nextProject,
+          blocks: blocksWithValidSprint,
+        }
       }
 
       const nextPhase = deriveProjectPhase(nextProject)
@@ -334,6 +364,7 @@ export default function ProjectEditor() {
     form.set('status', status)
     form.set('departments', JSON.stringify(project.departments))
     form.set('blocks', JSON.stringify(project.blocks))
+    form.set('sprints', JSON.stringify(project.sprints || []))
     form.set('rooms', JSON.stringify(project.rooms))
     form.set('documents', JSON.stringify(project.documents || []))
     form.set('kickoff', JSON.stringify(project.kickoff))
@@ -473,6 +504,7 @@ export default function ProjectEditor() {
         rooms: project.rooms,
         documents: project.documents,
         kickoff: project.kickoff,
+        sprints: project.sprints || [],
         phase: project.phase,
         status: project.status,
       },
@@ -510,6 +542,7 @@ export default function ProjectEditor() {
               rooms: project.rooms,
               documents: project.documents,
               kickoff: project.kickoff,
+              sprints: project.sprints || [],
               phase: project.phase,
               status: 'draft',
             },

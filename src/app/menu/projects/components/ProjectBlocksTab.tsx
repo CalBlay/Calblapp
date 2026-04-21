@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ChevronDown,
+  MessagesSquare,
   Plus,
   RotateCcw,
   Save,
@@ -61,6 +62,9 @@ type TaskDraft = {
   department: string
   owner: string
   deadline: string
+  dependsOn: string
+  sprintId: string
+  storyPoints: string
   priority: string
 }
 
@@ -458,16 +462,12 @@ export default function ProjectBlocksTab({
               return (
               <div
                 key={block.id}
-                onClick={() => {
-                  if (!canAccessCurrentBlockRoom || isExpanded) return
-                  router.push(blockRoomHref)
-                }}
                 className={`relative space-y-4 rounded-[24px] border p-5 shadow-sm transition ${
                   isExpanded && canEditCurrentBlock
                     ? 'border-violet-200 bg-violet-50/70 ring-1 ring-violet-200'
                     : 'border-slate-200 bg-slate-50/75'
                 } ${
-                  canAccessCurrentBlockRoom && !isExpanded ? 'cursor-pointer hover:border-violet-300 hover:shadow-md' : ''
+                  canAccessCurrentBlockRoom && !isExpanded ? 'hover:border-violet-300 hover:shadow-md' : ''
                 }`}
               >
                 <span
@@ -538,6 +538,23 @@ export default function ProjectBlocksTab({
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${blockStatusTone(block.status)}`}>
                       {BLOCK_STATUS_OPTIONS.find((option) => option.value === block.status)?.label || 'En curs'}
                     </span>
+                    {canAccessCurrentBlockRoom ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-full border-slate-200"
+                        title="Obrir sala"
+                        aria-label="Obrir sala"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          event.preventDefault()
+                          router.push(blockRoomHref)
+                        }}
+                      >
+                        <MessagesSquare className="h-4 w-4" />
+                      </Button>
+                    ) : null}
                     {canEditCurrentBlock ? (
                       <>
                         <Button
@@ -918,6 +935,17 @@ export default function ProjectBlocksTab({
                                 owner={taskDraft.owner}
                                 deadline={taskDraft.deadline}
                                 priority={taskDraft.priority || 'normal'}
+                                sprintId={taskDraft.sprintId || ''}
+                                storyPoints={taskDraft.storyPoints || '3'}
+                                sprintOptions={(project.sprints || []).map((sprint) => ({
+                                  id: sprint.id,
+                                  name: sprint.name,
+                                }))}
+                                dependsOn={taskDraft.dependsOn || ''}
+                                dependencyOptions={block.tasks.map((task) => ({
+                                  id: task.id,
+                                  label: `${task.title || 'Tasca'} (${task.status || 'pending'})`,
+                                }))}
                                 departments={getBlockDepartments(block)}
                                 responsibleOptions={departmentResponsibleOptions(getBlockDepartments(block)).map((option) => ({
                                   id: option.id,
@@ -929,6 +957,9 @@ export default function ProjectBlocksTab({
                                 onOwnerChange={(value) => onSetTaskDraftField('owner', value)}
                                 onDeadlineChange={(value) => onSetTaskDraftField('deadline', value)}
                                 onPriorityChange={(value) => onSetTaskDraftField('priority', value)}
+                                onSprintChange={(value) => onSetTaskDraftField('sprintId', value)}
+                                onStoryPointsChange={(value) => onSetTaskDraftField('storyPoints', value)}
+                                onDependsOnChange={(value) => onSetTaskDraftField('dependsOn', value)}
                                 onSubmit={() => onAddTaskToBlock(block.id)}
                               />
                             ) : null}

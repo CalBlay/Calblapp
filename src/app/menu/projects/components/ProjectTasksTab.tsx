@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, Paperclip, Save, Trash2 } from 'lucide-react'
+import { ChevronDown, MessagesSquare, Paperclip, Save, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
@@ -18,12 +18,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  SCRUM_STORY_POINT_OPTIONS,
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
   formatProjectDate,
   getPreLaunchDeadline,
   type ProjectDocument,
   type ProjectBlock,
+  type ProjectSprint,
   type ProjectTask,
 } from './project-shared'
 import ProjectTaskQuickComposer from './ProjectTaskQuickComposer'
@@ -41,6 +43,9 @@ type TaskDraft = {
   department: string
   owner: string
   deadline: string
+  dependsOn: string
+  sprintId: string
+  storyPoints: string
   priority: string
 }
 
@@ -53,6 +58,7 @@ type TaskEntry = {
 type Props = {
   projectId: string
   projectBlocks: ProjectBlock[]
+  projectSprints: ProjectSprint[]
   projectRooms: Array<{ id: string; blockId?: string; kind: 'block' | 'manual' }>
   allTasks: TaskEntry[]
   taskDraft: TaskDraft
@@ -81,6 +87,7 @@ type Props = {
   canManageTask?: (block: ProjectBlock, task: ProjectTask) => boolean
   canAccessTaskOps?: (block: ProjectBlock, task: ProjectTask) => boolean
   canMoveTask?: (block: ProjectBlock, task: ProjectTask) => boolean
+  onCreateSprint: (name: string) => void
 }
 
 const documentName = (document?: ProjectDocument) =>
@@ -145,6 +152,7 @@ const taskDeadlineAccentClass = (daysLeft: number | null, status?: string) => {
 export default function ProjectTasksTab({
   projectId,
   projectBlocks,
+  projectSprints,
   projectRooms,
   allTasks,
   taskDraft,
@@ -168,6 +176,7 @@ export default function ProjectTasksTab({
   canManageTask = () => false,
   canAccessTaskOps = () => false,
   canMoveTask = () => false,
+  onCreateSprint,
 }: Props) {
   const router = useRouter()
   const { setContent, setOpen } = useFilters()
@@ -176,6 +185,8 @@ export default function ProjectTasksTab({
   const [blockFilter, setBlockFilter] = useState<string>('all')
   const [levelFilter, setLevelFilter] = useState<string>('all')
   const [ownerFilter, setOwnerFilter] = useState<string>('all')
+  const [sprintFilter, setSprintFilter] = useState<string>('all')
+  const [newSprintName, setNewSprintName] = useState('')
   const [locallyDirtyTaskKeys, setLocallyDirtyTaskKeys] = useState<string[]>([])
   const fileInputsRef = useRef<Record<string, HTMLInputElement | null>>({})
   const hasPendingTaskDraft =
@@ -194,7 +205,12 @@ export default function ProjectTasksTab({
     const matchesBlock = blockFilter === 'all' || block.id === blockFilter
     const matchesLevel = levelFilter === 'all' || (task.priority || 'normal') === levelFilter
     const matchesOwner = ownerFilter === 'all' || String(task.owner || '').trim() === ownerFilter
-    return matchesBlock && matchesLevel && matchesOwner
+    const matchesSprint =
+      sprintFilter === 'all' ||
+      (sprintFilter === 'backlog'
+        ? !String(task.sprintId || '').trim()
+        : String(task.sprintId || '').trim() === sprintFilter)
+    return matchesBlock && matchesLevel && matchesOwner && matchesSprint
   })
   const draggingTask = filteredTasks.find(({ taskKey }) => taskKey === draggingTaskKey)
   const roomIdByBlockId = new Map(
@@ -204,6 +220,13 @@ export default function ProjectTasksTab({
   )
   const dirtyTasks = dirtyBlocks || locallyDirtyTaskKeys.length > 0 || hasPendingTaskDraft
   const totalFilteredTasks = filteredTasks.length
+  const draftDependencyOptions = projectBlocks
+    .find((block) => block.id === taskDraft.blockId)
+    ?.tasks.filter((task) => task.id !== taskDraft.dependsOn)
+    .map((task) => ({
+      id: task.id,
+      label: `${task.title || 'Tasca'} (${task.status || 'pending'})`,
+    })) || []
 
   useEffect(() => {
     if (!savingBlocks && !dirtyBlocks) {
@@ -278,6 +301,23 @@ export default function ProjectTasksTab({
           </Select>
         </div>
         <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">Sprint</label>
+          <Select value={sprintFilter} onValueChange={setSprintFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Tots els sprints" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tots els sprints</SelectItem>
+              <SelectItem value="backlog">Backlog</SelectItem>
+              {projectSprints.map((sprint) => (
+                <SelectItem key={`filter-sprint-${sprint.id}`} value={sprint.id}>
+                  {sprint.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700">Responsable</label>
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
             <SelectTrigger>
@@ -299,6 +339,7 @@ export default function ProjectTasksTab({
               setBlockFilter('all')
               setLevelFilter('all')
               setOwnerFilter('all')
+              setSprintFilter('all')
             }}
           />
         </div>
@@ -355,6 +396,11 @@ export default function ProjectTasksTab({
               owner={taskDraft.owner}
               deadline={taskDraft.deadline}
               priority={taskDraft.priority || 'normal'}
+              sprintId={taskDraft.sprintId || ''}
+              storyPoints={taskDraft.storyPoints || '3'}
+              sprintOptions={projectSprints.map((sprint) => ({ id: sprint.id, name: sprint.name }))}
+              dependsOn={taskDraft.dependsOn || ''}
+              dependencyOptions={draftDependencyOptions}
               departments={projectBlocks.find((block) => block.id === taskDraft.blockId)?.departments || []}
               responsibleOptions={taskResponsibleOptions(
                 taskDraft.department ||
@@ -381,6 +427,9 @@ export default function ProjectTasksTab({
               onOwnerChange={(value) => onSetTaskDraftField('owner', value)}
               onDeadlineChange={(value) => onSetTaskDraftField('deadline', value)}
               onPriorityChange={(value) => onSetTaskDraftField('priority', value)}
+              onSprintChange={(value) => onSetTaskDraftField('sprintId', value)}
+              onStoryPointsChange={(value) => onSetTaskDraftField('storyPoints', value)}
+              onDependsOnChange={(value) => onSetTaskDraftField('dependsOn', value)}
               onSubmit={() => {
                 if (taskDraft.blockId && taskDraft.blockId !== 'none') onAddTaskToBlock(taskDraft.blockId)
               }}
@@ -394,6 +443,27 @@ export default function ProjectTasksTab({
           </div>
         ) : (
           <div className="mt-4 overflow-x-auto pt-2">
+            <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={newSprintName}
+                  onChange={(event) => setNewSprintName(event.target.value)}
+                  placeholder="Nou sprint (ex: Sprint 12)"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    const nextName = newSprintName.trim()
+                    if (!nextName) return
+                    onCreateSprint(nextName)
+                    setNewSprintName('')
+                  }}
+                >
+                  Crear sprint
+                </Button>
+              </div>
+            </div>
             <div className="grid min-w-[1260px] grid-cols-4 gap-5">
               {TASK_STATUS_OPTIONS.map((statusOption) => {
                 const columnTasks = filteredTasks.filter(({ task }) => task.status === statusOption.value)
@@ -450,12 +520,12 @@ export default function ProjectTasksTab({
                       ) : (
                         columnTasks.map(({ block, task, taskKey }) => {
                           const roomId = roomIdByBlockId.get(block.id) || `room-block-${block.id}`
+                          const roomHref = `/menu/projects/${projectId}/rooms/${roomId}`
                           const canManageCurrentTask = canManageTask(block, task)
                           const canAccessOpsCurrentTask = canAccessTaskOps(block, task)
                           const canMoveCurrentTask = canMoveTask(block, task)
                           const isObserverTask = !canAccessOpsCurrentTask
                           const taskDaysLeft = taskDayDiffFromToday(task.deadline)
-                          const roomHref = `/menu/projects/${projectId}/rooms/${roomId}`
 
                           return (
                           <div
@@ -469,15 +539,11 @@ export default function ProjectTasksTab({
                               setDraggingTaskKey(null)
                               setDragOverStatus(null)
                             }}
-                            onClick={() => {
-                              if (draggingTaskKey || !canAccessOpsCurrentTask) return
-                              router.push(roomHref)
-                            }}
                             className={`relative rounded-[18px] border p-4 shadow-sm transition ${
                               draggingTaskKey === taskKey
                                 ? 'cursor-grabbing opacity-60'
                                 : canAccessOpsCurrentTask
-                                  ? 'border-slate-200 bg-white cursor-pointer hover:border-violet-300 hover:shadow-md'
+                                  ? 'border-slate-200 bg-white hover:border-violet-300 hover:shadow-md'
                                   : 'border-slate-200 bg-slate-50/90 cursor-default opacity-70 saturate-[0.85]'
                             }`}
                           >
@@ -513,6 +579,22 @@ export default function ProjectTasksTab({
 
                               <div className="flex items-start gap-1">
                                 <div className="flex items-center gap-1">
+                                  {canAccessOpsCurrentTask ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-8 w-8 rounded-full border-slate-200"
+                                      title="Obrir sala"
+                                      aria-label="Obrir sala"
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        router.push(roomHref)
+                                      }}
+                                    >
+                                      <MessagesSquare className="h-4 w-4" />
+                                    </Button>
+                                  ) : null}
                                   {canAccessOpsCurrentTask ? (
                                     <input
                                       ref={(node) => {
@@ -559,6 +641,17 @@ export default function ProjectTasksTab({
                               {task.department ? (
                                 <span className={`rounded-full px-2.5 py-1 font-medium ${isObserverTask ? 'bg-white text-slate-500 ring-1 ring-slate-200' : colorByDepartment(task.department)}`}>
                                   {task.department}
+                                </span>
+                              ) : null}
+                              <span className={`rounded-full px-2.5 py-1 font-medium ${isObserverTask ? 'bg-white text-slate-500 ring-1 ring-slate-200' : 'bg-indigo-100 text-indigo-700'}`}>
+                                {projectSprints.find((item) => item.id === task.sprintId)?.name || 'Backlog'}
+                              </span>
+                              <span className={`rounded-full px-2.5 py-1 font-medium ${isObserverTask ? 'bg-white text-slate-500 ring-1 ring-slate-200' : 'bg-violet-100 text-violet-700'}`}>
+                                {(task.storyPoints || '3').trim() || '3'} SP
+                              </span>
+                              {task.dependsOn ? (
+                                <span className={`rounded-full px-2.5 py-1 font-medium ${isObserverTask ? 'bg-white text-slate-500 ring-1 ring-slate-200' : 'bg-amber-100 text-amber-800'}`}>
+                                  Depen de 1 tasca
                                 </span>
                               ) : null}
                               {isObserverTask ? (
@@ -645,7 +738,78 @@ export default function ProjectTasksTab({
                                     />
                                   </div>
                                 </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div className="min-w-0">
+                                    <Select
+                                      value={task.sprintId || 'none'}
+                                      onValueChange={(value) => {
+                                        onSetTaskField(block.id, task.id, 'sprintId', value === 'none' ? '' : value)
+                                        markTaskDirty(taskKey)
+                                      }}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Sprint" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none">Backlog</SelectItem>
+                                        {projectSprints.map((sprint) => (
+                                          <SelectItem key={`${task.id}-sprint-${sprint.id}`} value={sprint.id}>
+                                            {sprint.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="min-w-0">
+                                    <Select
+                                      value={task.storyPoints || '3'}
+                                      onValueChange={(value) => {
+                                        onSetTaskField(block.id, task.id, 'storyPoints', value)
+                                        markTaskDirty(taskKey)
+                                      }}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Story points" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {SCRUM_STORY_POINT_OPTIONS.map((option) => (
+                                          <SelectItem key={`${task.id}-points-${option.value}`} value={option.value}>
+                                            {option.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
                                 <div className="grid grid-cols-1 gap-3">
+                                  <div className="min-w-0">
+                                    <Select
+                                      value={task.dependsOn || 'none'}
+                                      onValueChange={(value) => {
+                                        const nextValue = value === 'none' ? '' : value
+                                        if (nextValue === task.id) return
+                                        onSetTaskField(block.id, task.id, 'dependsOn', nextValue)
+                                        markTaskDirty(taskKey)
+                                      }}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Depen de" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none">Sense dependencia</SelectItem>
+                                        {block.tasks
+                                          .filter((candidate) => candidate.id !== task.id)
+                                          .map((candidate) => (
+                                            <SelectItem
+                                              key={`${task.id}-depends-${candidate.id}`}
+                                              value={candidate.id}
+                                            >
+                                              {(candidate.title || 'Tasca').slice(0, 44)}
+                                            </SelectItem>
+                                          ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
                                   <div className="min-w-0">
                                     <Select
                                       value={task.owner || 'none'}

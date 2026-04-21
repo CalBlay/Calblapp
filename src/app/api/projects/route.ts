@@ -193,6 +193,7 @@ export async function POST(req: Request) {
     const ownerUser = await findUserByName(owner)
     const departments = parseJsonField<string[]>(form.get('departments'), [])
     const blocks = parseJsonField<Record<string, unknown>[]>(form.get('blocks'), [])
+    const sprints = parseJsonField<Record<string, unknown>[]>(form.get('sprints'), [])
     const rooms = parseJsonField<Record<string, unknown>[]>(form.get('rooms'), [])
     const kickoff = parseJsonField<Record<string, unknown> | null>(form.get('kickoff'), null)
     const documents = parseJsonField<Record<string, unknown>[]>(form.get('documents'), [])
@@ -212,6 +213,7 @@ export async function POST(req: Request) {
       phase: clean(form.get('phase')) || 'definition',
       departments,
       blocks,
+      sprints,
       rooms,
       kickoff,
       document,

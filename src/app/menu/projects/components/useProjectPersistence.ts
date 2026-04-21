@@ -57,6 +57,7 @@ export function useProjectPersistence({
       }
       if (include('blocks')) {
         form.set('blocks', JSON.stringify(sourceProject.blocks))
+        form.set('sprints', JSON.stringify(sourceProject.sprints || []))
       }
       if (include('rooms')) {
         form.set('rooms', JSON.stringify(sourceProject.rooms))

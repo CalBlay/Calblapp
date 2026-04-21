@@ -59,6 +59,9 @@ export const createTaskDraft = () => ({
   owner: '',
   deadline: '',
   cost: '',
+  dependsOn: '',
+  sprintId: '',
+  storyPoints: '3',
   priority: 'normal',
 })
 
