@@ -40,6 +40,38 @@ type FullByCodePayload = {
   incidents: Record<string, unknown>[]
 }
 
+/** Error retornat pel proxy /api/mcp/* quan falla el MCP o la config. */
+type McpApiErr = {
+  ok?: boolean
+  error?: string
+  hint?: string
+  raw?: string
+}
+
+type McpUiError = { message: string; hint?: string; raw?: string }
+
+function mcpErrorFromApi(body: McpApiErr, status: number): McpUiError {
+  return {
+    message: body.error || `Error ${status}`,
+    hint: body.hint,
+    raw: body.raw,
+  }
+}
+
+function McpErrorBanner({ err }: { err: McpUiError }) {
+  return (
+    <div className="space-y-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      <p className="font-medium">{err.message}</p>
+      {err.hint ? <p className="text-xs leading-snug opacity-90">{err.hint}</p> : null}
+      {err.raw ? (
+        <pre className="max-h-36 overflow-auto whitespace-pre-wrap break-all rounded-md bg-black/10 p-2 text-xs text-slate-900">
+          {err.raw}
+        </pre>
+      ) : null}
+    </div>
+  )
+}
+
 function formatFieldValue(v: unknown): string {
   if (v === null || v === undefined) return '—'
   if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
@@ -55,13 +87,13 @@ function formatFieldValue(v: unknown): string {
 function ConsultesMcpPage() {
   const [limit, setLimit] = useState('10')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<McpUiError | null>(null)
   const [rows, setRows] = useState<StageEventRow[]>([])
   const [meta, setMeta] = useState<{ count?: number; ok?: boolean } | null>(null)
 
   const [eventCode, setEventCode] = useState('')
   const [loadingCode, setLoadingCode] = useState(false)
-  const [errorCode, setErrorCode] = useState<string | null>(null)
+  const [errorCode, setErrorCode] = useState<McpUiError | null>(null)
   const [fullEvent, setFullEvent] = useState<FullByCodePayload | null>(null)
 
   const load = useCallback(async () => {
@@ -78,9 +110,12 @@ function ConsultesMcpPage() {
         count?: number
         data?: StageEventRow[]
         error?: string
+        hint?: string
+        raw?: string
       }
-      if (!res.ok) {
-        setError(data.error || `Error ${res.status}`)
+      const failed = !res.ok || data.ok === false
+      if (failed) {
+        setError(mcpErrorFromApi(data, res.status))
         setRows([])
         setMeta(null)
         return
@@ -88,7 +123,7 @@ function ConsultesMcpPage() {
       setMeta({ ok: data.ok, count: data.count })
       setRows(Array.isArray(data.data) ? data.data : [])
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error de xarxa')
+      setError({ message: e instanceof Error ? e.message : 'Error de xarxa' })
       setRows([])
       setMeta(null)
     } finally {
@@ -99,7 +134,7 @@ function ConsultesMcpPage() {
   const loadByCode = useCallback(async () => {
     const code = eventCode.trim()
     if (!code) {
-      setErrorCode('Introdueix un code (ex. C2500012)')
+      setErrorCode({ message: 'Introdueix un code (ex. C2500012)' })
       setFullEvent(null)
       return
     }
@@ -115,14 +150,16 @@ function ConsultesMcpPage() {
         ok?: boolean
         data?: FullByCodePayload
         error?: string
+        hint?: string
+        raw?: string
       }
       if (!res.ok || !body.ok || !body.data) {
-        setErrorCode(body.error || `Error ${res.status}`)
+        setErrorCode(mcpErrorFromApi(body, res.status))
         return
       }
       setFullEvent(body.data)
     } catch (e) {
-      setErrorCode(e instanceof Error ? e.message : 'Error de xarxa')
+      setErrorCode({ message: e instanceof Error ? e.message : 'Error de xarxa' })
     } finally {
       setLoadingCode(false)
     }
@@ -209,11 +246,7 @@ function ConsultesMcpPage() {
           </Button>
         </div>
 
-        {errorCode && (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {errorCode}
-          </div>
-        )}
+        {errorCode ? <McpErrorBanner err={errorCode} /> : null}
 
         {fullEvent && fullEvent.matchCount > 1 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -404,11 +437,7 @@ function ConsultesMcpPage() {
           </Button>
         </div>
 
-        {error && (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        {error ? <McpErrorBanner err={error} /> : null}
 
         {meta?.ok === true && (
           <p className="text-sm text-muted-foreground">
