@@ -47,6 +47,9 @@ type RowEditorProps = {
   onClose: () => void
   onRevert?: () => void
   isLocked: boolean
+  vestimentModelChoice?: string
+  vestimentModelOptions?: string[]
+  onVestimentModelChange?: (value: string) => void
 }
 
 /* ------------------------------
@@ -120,6 +123,10 @@ function EditorHeader({
   onRevert,
   isLocked,
   compact,
+  showVestimentSelector,
+  vestimentModelChoice,
+  vestimentModelOptions,
+  onVestimentModelChange,
 }: {
   displayTitleName: string
   role: Role
@@ -127,17 +134,41 @@ function EditorHeader({
   onRevert?: () => void
   isLocked: boolean
   compact?: boolean
+  showVestimentSelector?: boolean
+  vestimentModelChoice?: string
+  vestimentModelOptions?: string[]
+  onVestimentModelChange?: (value: string) => void
 }) {
   return (
     <div
-      className={`mb-3 flex items-center justify-between ${
+      className={`mb-3 flex items-center gap-2 ${
         compact ? 'gap-2' : ''
       }`}
     >
-      <h3 className="text-sm font-semibold text-gray-700">
+      <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-700">
         Editant {role}: {displayTitleName}
       </h3>
-      <div className="flex gap-2">
+      {showVestimentSelector ? (
+        <div className="w-32 shrink-0">
+          <select
+            value={vestimentModelChoice || ''}
+            onChange={(event) => onVestimentModelChange?.(event.target.value)}
+            className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs"
+            disabled={isLocked}
+          >
+            <option value="">— Cap —</option>
+            {vestimentModelChoice && !(vestimentModelOptions || []).includes(vestimentModelChoice) ? (
+              <option value={vestimentModelChoice}>{vestimentModelChoice}</option>
+            ) : null}
+            {(vestimentModelOptions || []).map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      <div className="flex shrink-0 gap-2">
         {onRevert && (
           <Button
             size="sm"
@@ -508,6 +539,9 @@ export default function RowEditor(props: RowEditorProps) {
     onClose,
     onRevert,
     isLocked,
+    vestimentModelChoice = '',
+    vestimentModelOptions = [],
+    onVestimentModelChange,
   } = props
   const isDesktop = useIsDesktop()
   const displayTitleName = rowEditorTitleName(row, available)
@@ -521,6 +555,10 @@ export default function RowEditor(props: RowEditorProps) {
         onRevert={onRevert}
         isLocked={isLocked}
         compact={!isDesktop}
+        showVestimentSelector={isServeisDept && row.role === 'responsable'}
+        vestimentModelChoice={vestimentModelChoice}
+        vestimentModelOptions={vestimentModelOptions}
+        onVestimentModelChange={onVestimentModelChange}
       />
       <EditorFields
         row={row}

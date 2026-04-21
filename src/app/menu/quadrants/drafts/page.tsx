@@ -103,6 +103,7 @@ export interface Draft {
   updatedAt?: string
   status?: 'draft' | 'confirmed'
   service?: string | null
+  vestimentModel?: string | null
   numPax?: number | null
   commercial?: string | null  
 }
@@ -346,7 +347,7 @@ export default function DraftsPage() {
                 <TableHead className="py-1">Responsable</TableHead>
                 <TableHead className="py-1">Esdeveniment</TableHead>
                 <TableHead className="py-1">Finca / Ubicació</TableHead>
-                <TableHead className="py-1">Servei</TableHead>
+                <TableHead className="py-1">Servei / Vestimenta</TableHead>
                 <TableHead className="py-1">Personal assignat</TableHead>
                 <TableHead className="py-1">Horari</TableHead>
                <TableHead className="text-center py-1 w-[40px]">●</TableHead>
@@ -429,7 +430,14 @@ export default function DraftsPage() {
                           </TableCell>
 
                           {/* Servei */}
-                          <TableCell>{q.service ?? '—'}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span>{q.service ?? '—'}</span>
+                              {String(q.vestimentModel || '').trim() ? (
+                                <span className="text-[11px] text-violet-700">{q.vestimentModel}</span>
+                              ) : null}
+                            </div>
+                          </TableCell>
 
 
                           {/* Personal assignat */}

@@ -52,7 +52,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     }
     const payload = (snap.data() || {}) as Record<string, unknown>
     return NextResponse.json({
-      record: { id: snap.id, ...payload, status: normalizeCompletedStatus(payload.status) },
+      record: { id: snap.id, ...payload, status: normalizeCompletedStatus(String(payload.status || '')) },
     })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
@@ -95,7 +95,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     const current = (snap.data() || {}) as Record<string, unknown>
-    const currentStatus = normalizeCompletedStatus(current?.status)
+    const currentStatus = normalizeCompletedStatus(String(current?.status || ''))
     if (currentStatus !== 'validat') {
       return NextResponse.json({ error: 'Nomes es pot reobrir un preventiu validat' }, { status: 400 })
     }

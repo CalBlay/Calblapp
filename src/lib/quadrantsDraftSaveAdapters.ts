@@ -17,6 +17,7 @@ type SaveDraftContext = {
   canonicalEventId: string
   rows: EditorRow[]
   groups?: EditorGroup[]
+  vestimentModel?: string | null
 }
 
 type SaveDraftResult = {
@@ -121,6 +122,7 @@ const persistServeisDraft = async ({
   canonicalEventId,
   rows,
   groups,
+  vestimentModel,
 }: SaveDraftContext) => {
   const departmentKey = normalizeDepartmentKey(department)
   const normalizedRows = normalizeRowsForDepartmentSave({ rows })
@@ -240,6 +242,10 @@ const persistServeisDraft = async ({
         responsableName: mainResponsable?.name || '',
         status: 'draft',
         updatedAt: new Date(),
+        vestimentModel:
+          typeof vestimentModel === 'string' && vestimentModel.trim()
+            ? vestimentModel.trim()
+            : null,
         groups: [
           {
             ...group,

@@ -7,6 +7,7 @@ import {
   TRANSPORT_TYPE_LABELS,
   TRANSPORT_TYPE_OPTIONS,
   normalizeTransportPlateKey,
+  normalizeTransportType,
 } from '@/lib/transportTypes'
 import { parsePendingAssignacionsRowId } from '@/lib/transportAssignacionsRowSlot'
 import {
@@ -50,10 +51,11 @@ interface Props {
   onEditingChange?: (rowKey: string, isEditing: boolean) => void
 }
 
-/** Alineat amb GET /api/transports/assignacions: només Logística i Cuina tenen aquest flux de conductor. */
+/** Alineat amb GET /api/transports/assignacions: Logística, Cuina i Serveis poden tenir conductor. */
 const DEPARTMENTS = [
   { value: 'logistica', label: 'Logistica' },
   { value: 'cuina', label: 'Cuina' },
+  { value: 'serveis', label: 'Serveis' },
 ] as const
 
 const toTime5 = (t?: string) => (t ? String(t).slice(0, 5) : '')
@@ -150,14 +152,15 @@ export default function VehicleRow({
 
   const canLoadVehicles = Boolean(date && startTime)
   const effectiveVehicleType = (vehicleType || row?.vehicleType || '').toString().trim()
+  const normalizedVehicleType = normalizeTransportType(effectiveVehicleType)
   const { conductors } = useAvailablePersonnel({
     departament: department,
     startDate: date,
     startTime,
     endDate: date,
     endTime: endTime || startTime,
-    vehicleType: effectiveVehicleType || undefined,
-    enabled: isEditing && Boolean(date && startTime && effectiveVehicleType),
+    vehicleType: normalizedVehicleType || undefined,
+    enabled: isEditing && Boolean(date && startTime && normalizedVehicleType),
   })
   const drivers: Driver[] = useMemo(
     () => conductors.map((driver) => ({ id: driver.id, name: driver.name })),
@@ -202,7 +205,9 @@ export default function VehicleRow({
     if (!isEditing || loadingVehicles || !vehicleType || !plate.trim()) return
     const key = normalizeTransportPlateKey(plate)
     const rowMatch = availableVehicles.find(
-      (v) => v.type === vehicleType && normalizeTransportPlateKey(v.plate) === key
+      (v) =>
+        normalizeTransportType(v.type) === normalizeTransportType(vehicleType) &&
+        normalizeTransportPlateKey(v.plate) === key
     )
     if (rowMatch && rowMatch.available === false) {
       setPlate('')
@@ -213,7 +218,7 @@ export default function VehicleRow({
     if (!vehicleType) return []
 
     return availableVehicles.filter(
-      (v) => v.type === vehicleType && v.available === true
+      (v) => normalizeTransportType(v.type) === normalizeTransportType(vehicleType) && v.available === true
     )
   }, [availableVehicles, vehicleType])
 
@@ -225,7 +230,7 @@ export default function VehicleRow({
     const key = normalizeTransportPlateKey(p)
     const already = plateOptions.some(
       (v) =>
-        v.type === vehicleType &&
+        normalizeTransportType(v.type) === normalizeTransportType(vehicleType) &&
         normalizeTransportPlateKey(v.plate) === key
     )
     if (already) return plateOptions
@@ -233,12 +238,12 @@ export default function VehicleRow({
       {
         id: `__assignacions_current_plate__`,
         plate: p,
-        type: vehicleType,
+        type: normalizedVehicleType || vehicleType,
         available: true,
       },
       ...plateOptions,
     ]
-  }, [plateOptions, plate, vehicleType])
+  }, [plateOptions, plate, vehicleType, normalizedVehicleType])
 
   const handleSave = async () => {
     try {

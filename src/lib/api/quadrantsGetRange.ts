@@ -153,6 +153,12 @@ export async function computeQuadrantsGet(
             : d.responsableName || d.responsable?.name || '',
         pax: d.pax || d.numPax || 0,
         dressCode: d.dressCode || '',
+        vestimentModel:
+          typeof d.vestimentModel === 'string'
+            ? d.vestimentModel
+            : typeof d.dressCode === 'string'
+            ? d.dressCode
+            : '',
         department: departmentNormalized,
         service: d.service || d.servei || d.eventService || null,
         phaseType: d.phaseType || d.phaseLabel || '',

@@ -315,6 +315,9 @@ export default function QuadrantsPage() {
           PAX: ev.numPax ?? '',
           Ubicacio: ev.location || '',
           Servei: (ev as any).service || '',
+          Vestimenta:
+            String((ev as any).vestimentModel || '').trim() ||
+            String((ev as any)?.draft?.vestimentModel || '').trim(),
           Treballadors: ev.workersSummary || '',
           Horari: horariLabel,
           Estat: statusLabel(ev.quadrantStatus),
@@ -349,6 +352,7 @@ export default function QuadrantsPage() {
       'PAX',
       'Ubicacio',
       'Servei',
+      'Vestimenta',
       'Treballadors',
       'Horari',
       'Estat',
@@ -504,7 +508,7 @@ export default function QuadrantsPage() {
               {visibleGrouped.map(([day, evs]) => (
                 <React.Fragment key={day}>
                   <tr className="bg-transparent">
-                    <td colSpan={11} className="px-2 py-2">
+                    <td colSpan={12} className="px-2 py-2">
                       <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2">
                         <div className="text-xl font-semibold leading-none tracking-tight text-slate-700">
                           {format(parseISO(day), 'dd/MM/yyyy')}
@@ -582,6 +586,10 @@ export default function QuadrantsPage() {
                     const hasOverlapWarning =
                       draftAttention.some((n) => n.includes('ja està assignat')) ||
                       draftViolations.includes('person_double_booked')
+                    const vestimentModel =
+                      String((ev as any).vestimentModel || '').trim() ||
+                      String((draft as any)?.vestimentModel || '').trim() ||
+                      '-'
                     return (
                       <React.Fragment key={fragmentKey}>
                         <tr
@@ -645,6 +653,9 @@ export default function QuadrantsPage() {
                           <td className="px-3 py-2.5 text-[14px] text-slate-800">
                             {ev.service || '-'}
                           </td>
+                          <td className="px-3 py-2.5 text-[14px] text-slate-800">
+                            {vestimentModel}
+                          </td>
                           <td className="px-3 py-2.5 text-[14px] font-semibold text-slate-900">
                             {startTime}
                           </td>
@@ -678,7 +689,7 @@ export default function QuadrantsPage() {
 
                         {isExpanded && (
                           <tr>
-                            <td colSpan={11} className="bg-slate-50/40 px-3 pt-1 pb-2">
+                            <td colSpan={12} className="bg-slate-50/40 px-3 pt-1 pb-2">
                               <div className="p-0">
                                <QuadrantCard
                                  quadrant={draft}

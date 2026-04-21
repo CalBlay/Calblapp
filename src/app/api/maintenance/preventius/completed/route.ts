@@ -109,7 +109,7 @@ export async function GET(req: Request) {
         return {
           id: doc.id,
           ...data,
-          status: normalizeCompletedStatus(data.status),
+          status: normalizeCompletedStatus(String(data.status || '')),
         }
       })
       .sort((a: Record<string, unknown>, b: Record<string, unknown>) => {

@@ -516,7 +516,8 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
 
   useEffect(() => {
     if (!open || !isServeis) return
-    setVestimentModelChoice('__none__')
+    const draftVestimentRaw = String((event as unknown as { draft?: { vestimentModel?: string | null } })?.draft?.vestimentModel || '').trim()
+    setVestimentModelChoice(draftVestimentRaw || '__none__')
     let cancelled = false
     ;(async () => {
       try {
@@ -1130,6 +1131,9 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none__">— Cap —</SelectItem>
+                      {vestimentModelChoice !== '__none__' && !serveisVestimentModels.includes(vestimentModelChoice) ? (
+                        <SelectItem value={vestimentModelChoice}>{vestimentModelChoice}</SelectItem>
+                      ) : null}
                       {serveisVestimentModels.map((model) => (
                         <SelectItem key={model} value={model}>
                           {model}

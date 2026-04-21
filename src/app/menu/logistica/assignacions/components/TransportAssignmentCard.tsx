@@ -17,6 +17,13 @@ type VehicleRow = {
   name?: string
 }
 
+const displayEventName = (raw?: string) => {
+  const value = String(raw || '').trim()
+  if (!value) return '—'
+  // Some sources append date/pax separated by " / ".
+  return value.split('/')[0]?.trim() || value
+}
+
 export default function TransportAssignmentCard({
   item,
   onChanged,
@@ -108,7 +115,7 @@ export default function TransportAssignmentCard({
 
         <div className="min-w-0 space-y-1">
           <div className="truncate font-semibold text-gray-900">
-            {item.eventName}
+            {displayEventName(item.eventName)}
           </div>
           <div className="truncate text-sm text-gray-600">
             {item.location}

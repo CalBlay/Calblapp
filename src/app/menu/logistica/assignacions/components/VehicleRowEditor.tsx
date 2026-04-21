@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react'
 import { Save, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+  normalizeTransportType,
   TRANSPORT_TYPE_LABELS,
   TRANSPORT_TYPE_OPTIONS,
 } from '@/lib/transportTypes'
@@ -71,8 +72,11 @@ export default function VehicleRowEditor({
   })
 
   const plateOptions = useMemo(() => {
+    const normalizedVehicleType = normalizeTransportType(vehicleType)
     return vehicles.filter(
-      (v) => v.available === true && (!vehicleType || v.type === vehicleType)
+      (v) =>
+        v.available === true &&
+        (!normalizedVehicleType || normalizeTransportType(v.type) === normalizedVehicleType)
     )
   }, [vehicles, vehicleType])
 

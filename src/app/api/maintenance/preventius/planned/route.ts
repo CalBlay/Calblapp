@@ -26,6 +26,13 @@ type PlannedPayload = {
   workerNames?: string[]
 }
 
+type PlannedItem = Record<string, unknown> & {
+  workerIds?: string[]
+  workerNames?: string[]
+  date?: string
+  startTime?: string
+}
+
 const normalizeText = (value?: string) =>
   (value || '')
     .toString()
@@ -72,10 +79,13 @@ export async function GET(req: Request) {
     if (end) query = query.where('date', '<=', end)
 
     const snap = await query.get()
-    let items = snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as any) }))
+    let items: PlannedItem[] = snap.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Record<string, unknown>),
+    }))
 
     if (role === 'treballador' && dept === 'manteniment') {
-      items = items.filter((i: any) => {
+      items = items.filter((i) => {
         const ids = Array.isArray(i.workerIds) ? i.workerIds : []
         if (ids.includes(user.id)) return true
         const names = Array.isArray(i.workerNames) ? i.workerNames : []
@@ -84,7 +94,7 @@ export async function GET(req: Request) {
       })
     }
 
-    items.sort((a: any, b: any) => {
+    items.sort((a, b) => {
       const ad = String(a.date || '')
       const bd = String(b.date || '')
       if (ad !== bd) return ad.localeCompare(bd)

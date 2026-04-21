@@ -253,9 +253,9 @@ export async function GET(req: Request) {
     }
     if (assignedToId && !canViewAllTickets) {
       tickets = tickets.filter((t) => {
-        const assignedIds = Array.isArray((t as any).assignedToIds) ? (t as any).assignedToIds.map(String) : []
-        const assignedNames = Array.isArray((t as any).assignedToNames)
-          ? (t as any).assignedToNames.map((name: unknown) => normalizeName(String(name || '')))
+        const assignedIds = Array.isArray(t.assignedToIds) ? t.assignedToIds.map(String) : []
+        const assignedNames = Array.isArray(t.assignedToNames)
+          ? t.assignedToNames.map((name: unknown) => normalizeName(String(name || '')))
           : []
         const effectiveAssignedId = user.id || assignedToId
         return assignedIds.includes(effectiveAssignedId) || (!!sessionName && assignedNames.includes(sessionName))

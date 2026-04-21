@@ -26,6 +26,10 @@ type PlannedPatch = {
   workerNames?: string[]
 }
 
+type PlannedRecord = {
+  workerIds?: string[]
+}
+
 const canRead = (role: string) =>
   role === 'admin' || role === 'direccio' || role === 'cap' || role === 'treballador'
 
@@ -60,7 +64,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const snap = await ref.get()
     if (!snap.exists) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    const data = snap.data() as any
+    const data = (snap.data() || {}) as PlannedRecord
     if (role === 'treballador' && dept === 'manteniment') {
       const ids = Array.isArray(data?.workerIds) ? data.workerIds : []
       if (!ids.includes(user.id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -84,7 +88,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params
   try {
     const body = (await req.json()) as PlannedPatch
-    const patch: any = {}
+    const patch: Record<string, unknown> = {}
     if (body.templateId !== undefined) patch.templateId = body.templateId
     if (body.title !== undefined) patch.title = String(body.title || '').trim()
     if (body.date !== undefined) patch.date = String(body.date || '').trim()

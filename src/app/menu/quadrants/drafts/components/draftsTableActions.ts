@@ -4,6 +4,7 @@ type SaveParams = {
   draft: DraftInput
   rows: Row[]
   groups: DraftInput['groups']
+  vestimentModel?: string | null
   onSaved: (cleanedRows: Row[]) => void
 }
 
@@ -11,6 +12,7 @@ export async function saveDraftTable({
   draft,
   rows,
   groups,
+  vestimentModel,
   onSaved,
 }: SaveParams) {
   try {
@@ -24,6 +26,7 @@ export async function saveDraftTable({
         eventId: draft.id,
         rows: cleaned,
         groups,
+        vestimentModel: vestimentModel ?? null,
       }),
     })
 

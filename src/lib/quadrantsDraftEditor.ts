@@ -74,6 +74,7 @@ export type EditorDraftInput = {
     }
   >
   timetables?: Array<{ startTime: string; endTime: string }>
+  vestimentModel?: string | null
 }
 
 export type DraftEditorModel = {

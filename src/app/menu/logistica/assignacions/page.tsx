@@ -49,6 +49,21 @@ interface AssignmentExportRow {
   DataArribada: string
 }
 
+const formatAssignmentDay = (raw: string) => {
+  const value = String(raw || '').trim()
+  if (!value) return 'Sense data'
+  if (value === 'sense-data') return 'Sense data'
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleDateString('ca-ES', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
 export default function TransportAssignacionsPage() {
   useSession()
 
@@ -272,7 +287,7 @@ export default function TransportAssignacionsPage() {
           {grouped.map(([day, evs]) => (
             <section key={day} className="space-y-3">
               <div className="rounded-xl border bg-emerald-50 px-3 py-2 font-semibold text-emerald-800">
-                {day}
+                {formatAssignmentDay(day)}
               </div>
 
               <div className="space-y-3">

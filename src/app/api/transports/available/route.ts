@@ -6,7 +6,7 @@ import {
   orderedDayRangeFromISOStrings,
   queryQuadrantCollectionDocsInDateRange,
 } from '@/lib/firestoreQuadrantsRangeQuery'
-import { normalizeTransportPlateKey } from '@/lib/transportTypes'
+import { normalizeTransportPlateKey, normalizeTransportType } from '@/lib/transportTypes'
 
 export const runtime = 'nodejs'
 
@@ -156,7 +156,7 @@ export async function POST(req: Request) {
       .map(d => ({
         id: d.id,
         plate: d.data().plate || d.data().matricula || '',
-        type: d.data().type || '',
+        type: normalizeTransportType(String(d.data().type || '')),
       }))
       .filter(v => Boolean(v.plate))
 

@@ -80,11 +80,12 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { department, eventId, rows, groups } = (await req.json()) as {
+    const { department, eventId, rows, groups, vestimentModel } = (await req.json()) as {
       department: string
       eventId: string
       rows: RowInput[]
       groups?: GroupInput[]
+      vestimentModel?: string | null
     }
 
     if (!department || !eventId || !Array.isArray(rows)) {
@@ -106,6 +107,7 @@ export async function POST(req: NextRequest) {
       canonicalEventId,
       rows,
       groups,
+      vestimentModel,
     })
 
     // Distància: sempre recalculada amb l'adreça actual

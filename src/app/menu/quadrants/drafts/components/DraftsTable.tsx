@@ -80,7 +80,14 @@ export default function DraftsTable({
   const [editIdx, setEditIdx] = useState<number | null>(null)
   /** Baseline del document (sense overlay de roster); permet detectar desalineacions id/nom i activar Desar. */
   const initialRef = useRef(JSON.stringify({ rows: initialRows, groups: structuredGroups }))
-  const dirty = JSON.stringify({ rows, groups: groupDefs }) !== initialRef.current
+  const initialVestimentModelRef = useRef(String(draft.vestimentModel || '').trim())
+  const [serveisVestimentModels, setServeisVestimentModels] = useState<string[]>([])
+  const [vestimentModelChoice, setVestimentModelChoice] = useState<string>(
+    String(draft.vestimentModel || '').trim()
+  )
+  const rowsAndGroupsDirty = JSON.stringify({ rows, groups: groupDefs }) !== initialRef.current
+  const vestimentDirty = vestimentModelChoice !== initialVestimentModelRef.current
+  const dirty = rowsAndGroupsDirty || vestimentDirty
   const prevDraftHydrationKeyRef = useRef('')
   const [expandedMerged, setExpandedMerged] = useState<Set<string>>(new Set())
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -223,6 +230,36 @@ export default function DraftsTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- draft/initialRows/structuredGroups/available via clausura del render actual
   }, [hydrationKey, rosterFp])
 
+  useEffect(() => {
+    const nextVestiment = String(draft.vestimentModel || '').trim()
+    initialVestimentModelRef.current = nextVestiment
+    setVestimentModelChoice(nextVestiment)
+  }, [draft.id, draft.updatedAt, draft.vestimentModel])
+
+  useEffect(() => {
+    if (!isServeisDept) {
+      setServeisVestimentModels([])
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/quadrants/premises?department=serveis', { cache: 'no-store' })
+        const json = await res.json()
+        if (cancelled || !res.ok) return
+        const models = Array.isArray(json?.premises?.vestimentModels)
+          ? (json.premises.vestimentModels as string[]).map((item) => String(item || '').trim()).filter(Boolean)
+          : []
+        setServeisVestimentModels(models)
+      } catch {
+        if (!cancelled) setServeisVestimentModels([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isServeisDept])
+
   // --- Comptadors (ara eliminats del render, perÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â² ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºtils si es necessiten mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©s tard)
   useMemo(
     () => ({
@@ -299,6 +336,7 @@ export default function DraftsTable({
       draft,
       rows: rowsToSave,
       groups: groupsToSave,
+      vestimentModel: vestimentModelChoice || null,
       onSaved: (cleanedRows) => {
         rowsRef.current = cleanedRows
         groupDefsRef.current = groupsToSave
@@ -306,6 +344,7 @@ export default function DraftsTable({
         setGroupDefs(groupsToSave)
         setEditIdx(null)
         initialRef.current = JSON.stringify({ rows: cleanedRows, groups: groupsToSave })
+        initialVestimentModelRef.current = vestimentModelChoice
       },
     })
   }
@@ -628,6 +667,9 @@ export default function DraftsTable({
                 row={r}
                 available={availableForEditor}
                 isServeisDept={isServeisDept}
+                vestimentModelChoice={vestimentModelChoice}
+                vestimentModelOptions={serveisVestimentModels}
+                onVestimentModelChange={setVestimentModelChoice}
                 allowExternalWorkerName={Boolean(r.isExternal)}
                 canEditMeetingPoint={canEditMeetingPoint(r)}
                 groupHasDriverController={groupHasDriverController(r.groupId)}
@@ -839,7 +881,7 @@ export default function DraftsTable({
       hasInlineEditor ? '' : 'lg:max-w-[64%] lg:mx-auto'
     }`}
   >
-    <div className="flex items-center justify-end border-b border-slate-200 bg-slate-50/80 px-3 py-3 sm:px-4">
+    <div className="flex flex-wrap items-end justify-end gap-3 border-b border-slate-200 bg-slate-50/80 px-3 py-3 sm:px-4">
       <DraftActions
         confirmed={confirmed}
         confirming={confirming}
@@ -879,6 +921,9 @@ export default function DraftsTable({
       patchRow={patchRow}
       endEdit={endEdit}
       revertRow={revertRow}
+      vestimentModelChoice={vestimentModelChoice}
+      vestimentModelOptions={serveisVestimentModels}
+      onVestimentModelChange={setVestimentModelChoice}
     />
 
     <DraftsTableMobile
@@ -911,6 +956,9 @@ export default function DraftsTable({
       patchRow={patchRow}
       endEdit={endEdit}
       revertRow={revertRow}
+      vestimentModelChoice={vestimentModelChoice}
+      vestimentModelOptions={serveisVestimentModels}
+      onVestimentModelChange={setVestimentModelChoice}
     />
   </div>
 )

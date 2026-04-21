@@ -73,6 +73,7 @@ interface FirestoreDraftDoc {
   arrivalTime?: string | null
   service?: string | null
   Servei?: string | null
+  vestimentModel?: string | null
   numPax?: number | null
   NumPax?: number | null
   commercial?: string | null
@@ -135,6 +136,7 @@ type Draft = {
   confirmedAt?: string | null
   confirmed: boolean
   service?: string | null
+  vestimentModel?: string | null
   numPax?: number | null
   commercial?: string | null
 }
@@ -381,6 +383,7 @@ async function fetchDeptDrafts(
       confirmedAt,
       confirmed,
       service: d.service || d.Servei || null,
+      vestimentModel: typeof d.vestimentModel === 'string' ? d.vestimentModel : null,
       numPax: d.numPax || d.NumPax || null,
       commercial: d.commercial || d.Comercial || null,
     }

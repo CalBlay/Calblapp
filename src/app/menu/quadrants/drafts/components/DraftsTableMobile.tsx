@@ -35,6 +35,9 @@ type DraftsTableMobileProps = {
   patchRow: (patch: Partial<Row>) => void
   endEdit: () => void
   revertRow: () => void
+  vestimentModelChoice: string
+  vestimentModelOptions: string[]
+  onVestimentModelChange: (value: string) => void
 }
 
 export default function DraftsTableMobile({
@@ -65,6 +68,9 @@ export default function DraftsTableMobile({
   patchRow,
   endEdit,
   revertRow,
+  vestimentModelChoice,
+  vestimentModelOptions,
+  onVestimentModelChange,
 }: DraftsTableMobileProps) {
   return (
     <>
@@ -168,6 +174,9 @@ export default function DraftsTableMobile({
             row={currentEditingRow}
             available={availableForEditor}
             isServeisDept={isServeisDept}
+            vestimentModelChoice={vestimentModelChoice}
+            vestimentModelOptions={vestimentModelOptions}
+            onVestimentModelChange={onVestimentModelChange}
             allowExternalWorkerName={Boolean(currentEditingRow.isExternal)}
             canEditMeetingPoint={canEditMeetingPoint(currentEditingRow)}
             groupHasDriverController={groupHasDriverController(currentEditingRow.groupId)}

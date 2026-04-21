@@ -33,6 +33,9 @@ type DraftsTableDesktopProps = {
   patchRow: (patch: Partial<Row>) => void
   endEdit: () => void
   revertRow: () => void
+  vestimentModelChoice: string
+  vestimentModelOptions: string[]
+  onVestimentModelChange: (value: string) => void
 }
 
 export default function DraftsTableDesktop({
@@ -61,6 +64,9 @@ export default function DraftsTableDesktop({
   patchRow,
   endEdit,
   revertRow,
+  vestimentModelChoice,
+  vestimentModelOptions,
+  onVestimentModelChange,
 }: DraftsTableDesktopProps) {
   return (
     <div className="hidden sm:block">
@@ -145,6 +151,9 @@ export default function DraftsTableDesktop({
             row={currentEditingRow}
             available={availableForEditor}
             isServeisDept={isServeisDept}
+            vestimentModelChoice={vestimentModelChoice}
+            vestimentModelOptions={vestimentModelOptions}
+            onVestimentModelChange={onVestimentModelChange}
             allowExternalWorkerName={Boolean(currentEditingRow.isExternal)}
             canEditMeetingPoint={canEditMeetingPoint(currentEditingRow)}
             groupHasDriverController={groupHasDriverController(currentEditingRow.groupId)}

@@ -9,10 +9,10 @@ import {
 export const runtime = 'nodejs'
 
 /**
- * Només Logística i Cuina: són els departaments que poden requerir conductor de transport
+ * Logística, Cuina i Serveis: són els departaments que poden requerir conductor de transport
  * en el model actual (es coincideix amb el que demana el mòdul Assignacions).
  */
-const DEPTS = ['logistica', 'cuina'] as const
+const DEPTS = ['logistica', 'cuina', 'serveis'] as const
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 const normalizeStageKey = (raw?: string) =>
@@ -56,6 +56,7 @@ type Item = {
   eventName: string
   location: string
   pax: number
+  service?: string
   status: 'draft' | 'confirmed'
   rows: TransportAssignmentRow[]
 }
@@ -85,6 +86,10 @@ type StageVerdEventRecord = Record<string, unknown> & {
   NomEvent?: string
   Ubicacio?: string
   NumPax?: number | string
+  Servei?: string
+  Servicio?: string
+  service?: string
+  TipusServei?: string
 }
 
 type QuadrantConductorRecord = {
@@ -151,6 +156,7 @@ export async function GET(req: Request) {
         eventName: e.NomEvent || '—',
         location: e.Ubicacio || '—',
         pax: Number(e.NumPax || 0),
+        service: String(e.Servei || e.Servicio || e.service || e.TipusServei || '').trim(),
         status: 'draft',
         rows: [],
       })

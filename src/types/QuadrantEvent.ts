@@ -26,6 +26,7 @@ export interface QuadrantEvent {
   treballadors?: Array<string | { id?: string; name?: string }>
   code?: string
   service?: string | null
+  vestimentModel?: string | null
   numPax?: number | null
   commercial?: string | null
   phaseKey?: string
