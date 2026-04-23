@@ -1,9 +1,13 @@
 import fs from "fs/promises";
+import { createReadStream } from "fs";
 import path from "path";
+import readline from "node:readline";
 import { Storage } from "@google-cloud/storage";
 
 const DEFAULT_FINANCE_DIR =
   "C:\\Users\\PORTATIL126\\OneDrive - Cal Blay\\Escritorio\\Finances\\_clean_exports";
+
+const PURCHASES_CSV = "Consulta_Factura_per_linia__Sheet1.csv";
 
 function getFinanceDir() {
   return process.env.FINANCE_CSV_DIR || DEFAULT_FINANCE_DIR;
@@ -62,6 +66,110 @@ function buildGcsObjectName(fileName) {
   const prefix = getGcsPrefix();
   const safe = safeCsvFileName(fileName);
   return prefix ? `${prefix}/${safe}` : safe;
+}
+
+function openPurchasesCsvStream() {
+  const safeName = safeCsvFileName(PURCHASES_CSV);
+  const source = getFinanceSource();
+  if (source === "gcs") {
+    const storage = getStorageClient();
+    const bucket = storage.bucket(getGcsBucketName());
+    const objectName = buildGcsObjectName(safeName);
+    return bucket.file(objectName).createReadStream();
+  }
+  const financeDir = path.resolve(getFinanceDir());
+  const fullPath = path.resolve(financeDir, safeName);
+  if (!fullPath.startsWith(financeDir)) {
+    throw new Error("Invalid file path");
+  }
+  return createReadStream(fullPath, { encoding: "utf8" });
+}
+
+/**
+ * Recorre el CSV de compres línia a línia (sense carregar el fitxer sencer a memòria).
+ */
+async function scanPurchasesLines(onRow) {
+  const input = openPurchasesCsvStream();
+  const rl = readline.createInterface({ input, crlfDelay: Infinity });
+  let headerLine = null;
+  try {
+    for await (const line of rl) {
+      if (!line || line.length === 0) continue;
+      if (!headerLine) {
+        headerLine = line;
+        const headers = normalizeCsvLine(headerLine);
+        const headersMap = new Map(
+          headers.map((h, idx) => [String(h || "").trim().toLowerCase(), idx])
+        );
+        const idxSupplier = headersMap.get("nom_proveïdor");
+        const idxCode = headersMap.get("codi_proveïdor");
+        const idxArticle = headersMap.get("nom_article");
+        const idxAmount = headersMap.get("import");
+        const idxQty = headersMap.get("quantitat");
+        const idxDate = headersMap.get("data_comptable");
+        if (idxSupplier === undefined) {
+          throw new Error("CSV sense columna nom_proveïdor");
+        }
+        const cont = await onRow({
+          phase: "header",
+          headers,
+          idx: { idxSupplier, idxCode, idxArticle, idxAmount, idxQty, idxDate }
+        });
+        if (cont === false) break;
+        continue;
+      }
+      const fields = normalizeCsvLine(line);
+      const cont = await onRow({ phase: "data", fields });
+      if (cont === false) break;
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+function parseAmountLike(v) {
+  let s = String(v ?? "")
+    .trim()
+    .replace(/€|\$/g, "")
+    .replace(/\s/g, "");
+  if (!s) return 0;
+  const lastComma = s.lastIndexOf(",");
+  const lastDot = s.lastIndexOf(".");
+  if (lastComma > -1 && lastDot > -1) {
+    if (lastComma > lastDot) {
+      s = s.replace(/\./g, "").replace(",", ".");
+    } else {
+      s = s.replace(/,/g, "");
+    }
+  } else if (lastComma > -1) {
+    s = s.replace(",", ".");
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseQtyLike(v) {
+  let s = String(v ?? "").trim().replace(/€|\$/g, "").replace(/\s/g, "");
+  if (s.endsWith(".")) s = s.slice(0, -1);
+  if (!s) return 0;
+  const lastComma = s.lastIndexOf(",");
+  const lastDot = s.lastIndexOf(".");
+  if (lastComma > -1 && lastDot > -1) {
+    s = lastComma > lastDot ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  } else if (lastComma > -1) {
+    s = s.replace(",", ".");
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function rowYearFromDate(dateStr) {
+  const s = String(dateStr || "").trim();
+  if (s.length >= 4 && s[4] === "-") {
+    const y = Number(s.slice(0, 4));
+    return Number.isFinite(y) ? y : null;
+  }
+  return null;
 }
 
 async function readCsvText(fileName) {
@@ -155,40 +263,101 @@ export async function getPurchasesBySupplier(supplierName, limit = 200) {
   const term = String(supplierName || "").trim().toLowerCase();
   if (!term) throw new Error("Missing supplierName");
 
-  const data = await previewFinanceCsv("Consulta_Factura_per_linia__Sheet1.csv", 2000000);
-  const headersMap = new Map(
-    data.headers.map((h, idx) => [String(h || "").trim().toLowerCase(), idx])
-  );
-
-  const idxSupplier = headersMap.get("nom_proveïdor");
-  const idxArticle = headersMap.get("nom_article");
-  const idxAmount = headersMap.get("import");
-  const idxQty = headersMap.get("quantitat");
-  const idxDate = headersMap.get("data_comptable");
-
-  if (idxSupplier === undefined) {
-    throw new Error("CSV sense columna nom_proveïdor");
-  }
-
+  const cap = Number(limit || 200);
   const matched = [];
-  for (const row of data.rows) {
-    const supplier = String(row[idxSupplier] || "");
-    if (supplier.toLowerCase().includes(term)) {
-      matched.push({
-        supplier,
-        article: idxArticle !== undefined ? String(row[idxArticle] || "") : "",
-        amount: idxAmount !== undefined ? String(row[idxAmount] || "") : "",
-        quantity: idxQty !== undefined ? String(row[idxQty] || "") : "",
-        date: idxDate !== undefined ? String(row[idxDate] || "") : ""
-      });
-      if (matched.length >= Number(limit || 200)) break;
+  let idxMeta = null;
+
+  await scanPurchasesLines(async (row) => {
+    if (row.phase === "header") {
+      idxMeta = row.idx;
+      return true;
     }
-  }
+    const f = row.fields;
+    const {
+      idxSupplier,
+      idxCode,
+      idxArticle,
+      idxAmount,
+      idxQty,
+      idxDate
+    } = idxMeta;
+    const supplier = String(f[idxSupplier] || "");
+    const code = idxCode !== undefined ? String(f[idxCode] || "").trim().toLowerCase() : "";
+    const hit =
+      supplier.toLowerCase().includes(term) || (term && code === term);
+    if (!hit) return true;
+    matched.push({
+      supplier,
+      supplierCode: idxCode !== undefined ? String(f[idxCode] || "") : "",
+      article: idxArticle !== undefined ? String(f[idxArticle] || "") : "",
+      amount: idxAmount !== undefined ? String(f[idxAmount] || "") : "",
+      quantity: idxQty !== undefined ? String(f[idxQty] || "") : "",
+      date: idxDate !== undefined ? String(f[idxDate] || "") : ""
+    });
+    return matched.length < cap;
+  });
 
   return {
     supplierQuery: supplierName,
     count: matched.length,
     rows: matched
+  };
+}
+
+/**
+ * Agregació ràpida (una passada): quantitat i import totals per proveïdor i any.
+ * Accepta codi (ex. P003004) o text al nom.
+ */
+export async function getPurchasesSupplierYearSummary({
+  year,
+  supplierCode,
+  supplierName
+}) {
+  const y = Number(year);
+  if (!Number.isFinite(y) || y < 2000 || y > 2100) {
+    throw new Error("year invàlid");
+  }
+  const codeTerm = String(supplierCode || "").trim().toLowerCase();
+  const nameTerm = String(supplierName || "").trim().toLowerCase();
+  if (!codeTerm && !nameTerm) {
+    throw new Error("Cal supplierCode o supplierName");
+  }
+
+  let idxMeta = null;
+  let totalQty = 0;
+  let totalAmount = 0;
+  let lines = 0;
+
+  await scanPurchasesLines(async (row) => {
+    if (row.phase === "header") {
+      idxMeta = row.idx;
+      return true;
+    }
+    const f = row.fields;
+    const { idxSupplier, idxCode, idxAmount, idxQty, idxDate } = idxMeta;
+    const dateStr = idxDate !== undefined ? String(f[idxDate] || "") : "";
+    if (rowYearFromDate(dateStr) !== y) return true;
+
+    const sup = String(f[idxSupplier] || "");
+    const code = idxCode !== undefined ? String(f[idxCode] || "").trim().toLowerCase() : "";
+
+    const codeHit = codeTerm && code === codeTerm;
+    const nameHit = nameTerm && sup.toLowerCase().includes(nameTerm);
+    if (!codeHit && !nameHit) return true;
+
+    totalQty += parseQtyLike(idxQty !== undefined ? f[idxQty] : 0);
+    totalAmount += parseAmountLike(idxAmount !== undefined ? f[idxAmount] : 0);
+    lines += 1;
+    return true;
+  });
+
+  return {
+    year: y,
+    supplierCode: supplierCode || null,
+    supplierName: supplierName || null,
+    invoiceLinesMatched: lines,
+    totalQuantity: Math.round(totalQty * 10000) / 10000,
+    totalAmount: Math.round(totalAmount * 100) / 100
   };
 }
 

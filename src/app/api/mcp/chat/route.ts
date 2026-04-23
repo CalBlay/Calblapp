@@ -4,10 +4,13 @@ import { mcpUpstreamPost } from '@/lib/server/mcpUpstreamFetch'
 
 export const dynamic = 'force-dynamic'
 
+/** Vercel: allarga el límit del serverless (OpenAI + tools pot superar 10s). Requereix pla Pro per >60s segons regió. */
+export const maxDuration = 120
+
 /**
  * Proxy cap al MCP /chat (OpenAI + tools). Només administradors.
  *
- * Body JSON: { question: string, language?: string }
+ * Body JSON: { question: string, language?: string, rich?: boolean }
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAuth()
@@ -36,9 +39,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Falta question' }, { status: 400 })
   }
 
+  const rich =
+    typeof body === 'object' &&
+    body !== null &&
+    'rich' in body &&
+    (body as { rich: unknown }).rich === true
+
   const { status, body: upstream } = await mcpUpstreamPost('/chat', {
     question,
     language,
+    rich,
   })
 
   return NextResponse.json(upstream, { status })

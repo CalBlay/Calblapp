@@ -1,5 +1,5 @@
 import { cert, getApp, getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, getCountFromServer, Timestamp } from "firebase-admin/firestore";
 
 function getFirebaseApp() {
   if (getApps().length) return getApp();
@@ -70,4 +70,31 @@ export async function getDocument(collectionName, docId) {
   const ref = await getDb().collection(collectionName).doc(String(docId)).get();
   if (!ref.exists) return null;
   return { id: ref.id, ...ref.data() };
+}
+
+/**
+ * Recompte barat (agregació Firestore) per documents amb camp data tipus string ISO (YYYY-MM-DD).
+ */
+export async function countByStringDateYear(collectionName, fieldName, year) {
+  const y = Number(year);
+  const db = getDb();
+  const q = db
+    .collection(collectionName)
+    .where(fieldName, ">=", `${y}-01-01`)
+    .where(fieldName, "<=", `${y}-12-31`);
+  const snap = await getCountFromServer(q);
+  return snap.data().count;
+}
+
+/**
+ * Recompte per camp Timestamp (Firestore natiu).
+ */
+export async function countByTimestampYear(collectionName, fieldName, year) {
+  const y = Number(year);
+  const db = getDb();
+  const start = Timestamp.fromMillis(Date.UTC(y, 0, 1, 0, 0, 0));
+  const end = Timestamp.fromMillis(Date.UTC(y, 11, 31, 23, 59, 59, 999));
+  const q = db.collection(collectionName).where(fieldName, ">=", start).where(fieldName, "<=", end);
+  const snap = await getCountFromServer(q);
+  return snap.data().count;
 }

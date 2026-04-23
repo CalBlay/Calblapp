@@ -131,7 +131,8 @@ app.post("/chat", async (req, res) => {
     if (!question) {
       return res.status(400).json({ ok: false, error: "Missing question" });
     }
-    const result = await chatWithTools({ question, language });
+    const rich = Boolean(req.body?.rich);
+    const result = await chatWithTools({ question, language, rich });
     return res.json({ ok: true, ...result });
   } catch (error) {
     return res.status(500).json({ ok: false, error: error.message });

@@ -1,4 +1,6 @@
 import {
+  countByStringDateYear,
+  countByTimestampYear,
   getDocument,
   listCollection,
   queryCollectionWhere
@@ -42,6 +44,35 @@ export async function getEvents({ from, to, limit = 100 }) {
     if (toTs && eventTs > toTs) return false;
     return true;
   });
+}
+
+/**
+ * Recompte d'esdeveniments per any (agregació Firestore quan hi ha índex).
+ * Molt més barat que getEvents amb límit alt.
+ */
+export async function countEventsInYear(year) {
+  try {
+    const n = await countByStringDateYear(eventsCollection, "DataInici", year);
+    return { year, count: n, method: "aggregate_string_date" };
+  } catch {
+    try {
+      const n = await countByTimestampYear(eventsCollection, "DataInici", year);
+      return { year, count: n, method: "aggregate_timestamp" };
+    } catch {
+      const events = await getEvents({
+        from: `${year}-01-01`,
+        to: `${year}-12-31`,
+        limit: 400
+      });
+      return {
+        year,
+        count: events.length,
+        method: "sample_cap_400",
+        note:
+          "Recompte aproximat (falta índex Firestore per agregació sobre DataInici). Crea índex compost o revisa el tipus del camp."
+      };
+    }
+  }
 }
 
 function codeMatchesDocFields(code, fields) {
