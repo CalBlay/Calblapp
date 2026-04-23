@@ -18,16 +18,6 @@ interface PersonnelDoc {
   [key: string]: unknown
 }
 
-/** Body del PUT */
-interface UpdatePersonnelBody {
-  available: boolean
-  unavailableFrom?: string | null
-  unavailableUntil?: string | null
-  unavailableIndefinite?: boolean
-  unavailableNotifiedFor?: string | null
-  unavailableNotifiedAt?: number
-}
-
 /**
  * GET: Consulta una persona pel seu ID
  */

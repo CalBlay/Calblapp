@@ -131,7 +131,7 @@ function EventByCodeSectionInner({
                   key={String(label)}
                   className="rounded-lg border bg-muted/30 px-3 py-2 text-sm"
                 >
-                  <div className="text-muted-foreground text-xs">{label}</div>
+                  <div className="text-muted-foreground text-xs">{String(label)}</div>
                   <div className="font-medium break-words">{formatFieldValue(val)}</div>
                 </div>
               ))}

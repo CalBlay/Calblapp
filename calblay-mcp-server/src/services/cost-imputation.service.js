@@ -204,16 +204,16 @@ function rowMatchesCostSearch(rowLabel, termRaw) {
   return false;
 }
 
-export async function searchCostImputation({ contains, limit = 25 }) {
-  const term = String(contains || "").trim();
-  if (!term) {
-    throw new Error('Cal "contains" (text a cercar, ex. marketing, logistica, rh).');
-  }
-  const { meta, metaLines, rows, amountHeaders, amountHeaderLabels } = await loadCostImputation();
-  const file = await resolveCostReportFileName();
-  const matched = rows.filter((r) => rowMatchesCostSearch(r.label, term));
-  const lim = Math.min(80, Math.max(1, Number(limit || 25)));
-  const slice = matched.slice(0, lim);
+function buildCostImputationToolPayload({
+  file,
+  meta,
+  metaLines,
+  amountHeaders,
+  amountHeaderLabels,
+  sourceRows,
+  matchCount,
+  extra = {}
+}) {
   const amountColumns = amountHeaders.map((key, i) => ({
     key,
     label: amountHeaderLabels[i] || key
@@ -225,9 +225,10 @@ export async function searchCostImputation({ contains, limit = 25 }) {
     amountColumns,
     interpretationNote:
       "Cada fila té `amounts`: valors numèrics per columna d'import. `amountColumns[].label` és el text de capçalera al CSV (sovint indica període o concepte). " +
-      "Per comparar trimestres/anyos, assigna cada import al `label` de la columna corresponent; no inventis períodes que no surtin a amountColumns o metaLines.",
-    matchCount: matched.length,
-    rows: slice.map((r) => ({
+      "Per comparar trimestres (ex. T1 2025 vs T1 2026), identifica quina columna correspon a cada període als `label` de amountColumns o a metaLines; no inventis períodes que no surtin al CSV. " +
+      "Això és cost/imputació (P&L intern), no compres de proveïdors.",
+    matchCount,
+    rows: sourceRows.map((r) => ({
       label: r.label,
       line: r.line,
       amounts: r.amounts,
@@ -236,6 +237,55 @@ export async function searchCostImputation({ contains, limit = 25 }) {
         headerLabel: amountHeaderLabels[i] || key,
         value: r.amounts[key] ?? null
       }))
-    }))
+    })),
+    ...extra
   };
+}
+
+/**
+ * Primers centres/departaments de l’informe d’imputació (sense filtre).
+ * Útil quan l’usuari demana vista per tots els departaments o no en cita cap de concret.
+ */
+export async function getCostImputationOverview({ limit = 40 } = {}) {
+  const { meta, metaLines, rows, amountHeaders, amountHeaderLabels } = await loadCostImputation();
+  const file = await resolveCostReportFileName();
+  const lim = Math.min(80, Math.max(1, Number(limit || 40)));
+  const slice = rows.slice(0, lim);
+  return buildCostImputationToolPayload({
+    file,
+    meta,
+    metaLines,
+    amountHeaders,
+    amountHeaderLabels,
+    sourceRows: slice,
+    matchCount: rows.length,
+    extra: {
+      overview: true,
+      totalRowCount: rows.length,
+      returnedRowCount: slice.length,
+      truncatedList: rows.length > lim
+    }
+  });
+}
+
+export async function searchCostImputation({ contains, limit = 25 }) {
+  const term = String(contains || "").trim();
+  if (!term) {
+    throw new Error('Cal "contains" (text a cercar, ex. marketing, logistica, rh).');
+  }
+  const { meta, metaLines, rows, amountHeaders, amountHeaderLabels } = await loadCostImputation();
+  const file = await resolveCostReportFileName();
+  const matched = rows.filter((r) => rowMatchesCostSearch(r.label, term));
+  const lim = Math.min(80, Math.max(1, Number(limit || 25)));
+  const slice = matched.slice(0, lim);
+  return buildCostImputationToolPayload({
+    file,
+    meta,
+    metaLines,
+    amountHeaders,
+    amountHeaderLabels,
+    sourceRows: slice,
+    matchCount: matched.length,
+    extra: matched.length > lim ? { truncatedMatches: matched.length - lim } : {}
+  });
 }

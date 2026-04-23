@@ -61,11 +61,11 @@ interface NormalizedDeal {
   Import?: number | string | null
 }
 
-function cleanUndefined<T extends Record<string, any>>(obj: T): T {
-  const clean: any = {}
+function cleanUndefined<T extends Record<string, unknown>>(obj: T): T {
+  const clean = {} as T
   for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
-      clean[key] = value
+      ;(clean as Record<string, unknown>)[key] = value
     }
   }
   return clean
@@ -266,32 +266,6 @@ const normalizeIncomingZohoCode = (code?: string | null): string | null => {
 const nextCEUCode = (currentMaxNum: number | null): string =>
   formatCeuCode((currentMaxNum ?? CEU_BASE_FALLBACK) + 1)
 
-function normalizeName(raw: string): string {
-  if (!raw) return ''
-
-  const cleaned = raw
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // treure accents
-    .toLowerCase()
-    .replace(/\bcasaments\b/g, '')
-    .replace(/\bempresa\b/g, '')
-    .replace(/\brestaurant\b/g, '')
-    .replace(/\bcasament\b/g, '')
-    .replace(/\bgrup\b/g, '')
-    .replace(/\bcb\b/g, '')
-    .replace(/-/g, ' ')
-    .replace(/\s+/g, ' ')
-
-  return cleaned
-    .trim()
-    .replace(/\b(?:de|del|la|las|el|els|les|l|lo|d|l')\b/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .slice(0, 2)
-    .join(' ')
-}
-
 
 // ─────────────────────────────
 // SYNC PRINCIPAL
@@ -370,7 +344,13 @@ export async function syncZohoDealsToFirestore(): Promise<{
   const finquesByCompactName = new Map<string, FincaIndexEntry[]>()
   const finquesList: FincaIndexEntry[] = []
   for (const doc of finquesMatchSnap.docs) {
-    const d = doc.data() as any
+    const d = doc.data() as {
+      code?: string | number
+      codi?: string | number
+      nom?: string
+      ln?: string
+      LN?: string
+    }
     const docIdCode = String(doc.id || '').trim().toUpperCase()
     const fallbackIdAsCode =
       /^(CCB|CCE|CCR|CCF|CEU)\d+$/i.test(docIdCode) ? docIdCode : ''
@@ -704,7 +684,7 @@ StageGroup:
   const verdSnap = await firestore.collection('stage_verd').get()
   for (const doc of verdSnap.docs) {
     const id = doc.id
-    const data = doc.data() as any
+    const data = doc.data() as { origen?: string }
     if (data?.origen !== 'zoho') continue
 
     const zoho = zohoById.get(id)

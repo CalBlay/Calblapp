@@ -37,7 +37,7 @@ function jwtFieldString(token: JWT, key: "name" | "email" | "sub"): string {
 
 /** Primer string no buit entre les claus indicades (documents Firestore heterogenis). */
 function stageDocString(
-  doc: Record<string, unknown> | undefined,
+  doc: Record<string, unknown> | null | undefined,
   ...keys: string[]
 ): string {
   if (!doc) return ""

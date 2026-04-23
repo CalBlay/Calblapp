@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 
@@ -27,6 +28,28 @@ type QuadrantDoc = {
   treballadors?: Array<{ name?: string }>
 }
 
+type VehicleRow = {
+  plate: string
+  type: string
+  conductor: string
+  source: string
+}
+
+type LogisticaAggregateRow = {
+  id: string
+  code: string
+  LN: string
+  eventName: string
+  phaseLabel: string
+  startDate: string
+  startTime: string
+  arrivalTime: string
+  location: string
+  status: string
+  vehicles: VehicleRow[]
+  workers: string[]
+}
+
 const norm = (v?: string | null) =>
   String(v ?? '')
     .normalize('NFD')
@@ -37,7 +60,11 @@ const norm = (v?: string | null) =>
 async function authContext(req: NextRequest) {
   const token = await getToken({ req })
   if (!token) return { error: NextResponse.json({ error: 'No autenticat' }, { status: 401 }) }
-  const role = normalizeRole(String((token as any)?.role || 'treballador'))
+  const roleRaw =
+    typeof token === 'object' && token !== null && 'role' in token
+      ? (token as Record<string, unknown>)['role']
+      : undefined
+  const role = normalizeRole(typeof roleRaw === 'string' ? roleRaw : 'treballador')
   if (!ALLOWED_ROLES.has(role)) {
     return { error: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
   }
@@ -67,7 +94,7 @@ export async function GET(req: NextRequest) {
     }
 
     const collections = ['quadrantsLogistica', 'quadrantsCuina']
-    const map = new Map<string, any>()
+    const map = new Map<string, LogisticaAggregateRow>()
 
     const snaps = await Promise.all(collections.map((name) => loadRange(name, start, end)))
 
@@ -75,7 +102,7 @@ export async function GET(req: NextRequest) {
       const colName = collections[idx]
       const snap = snaps[idx]
 
-      snap.forEach((doc: any) => {
+      snap.forEach((doc: QueryDocumentSnapshot) => {
         const d = doc.data() as QuadrantDoc
         const st = norm(d.status)
         if (st && st !== 'confirmed' && st !== 'draft') return
@@ -127,7 +154,7 @@ export async function GET(req: NextRequest) {
           arrivalTime: d.arrivalTime || '',
           location: d.location || '',
           status: d.status || '',
-          vehicles: [] as any[],
+          vehicles: [] as VehicleRow[],
           workers: [] as string[],
         }
 

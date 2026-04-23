@@ -44,9 +44,11 @@ function OpenConsultSectionInner({
         Preguntes en llenguatge natural amb sortida professional:{' '}
         <strong>resum executiu</strong>, <strong>taules</strong> i <strong>gràfics</strong> (barres /
         línies) quan les dades ho permeten. El MCP prioritza eines barates; el mode només text és més
-        econòmic. Preguntes idèntiques es cachegen uns minuts. Cal{' '}
-        <code className="text-xs bg-white px-1 rounded">OPENAI_API_KEY</code> al Cloud Run (
-        <code className="text-xs bg-white px-1 rounded">gpt-4o-mini</code> recomanat).
+        econòmic. Preguntes idèntiques es cachegen uns minuts. Al servei MCP (p. ex. Cloud Run) cal{' '}
+        <code className="text-xs bg-white px-1 rounded">OPENAI_API_KEY</code> i, opcionalment,{' '}
+        <code className="text-xs bg-white px-1 rounded">OPENAI_MODEL</code> (
+        <code className="text-xs bg-white px-1 rounded">gpt-4o</code> per millor qualitat en informes;{' '}
+        <code className="text-xs bg-white px-1 rounded">gpt-4o-mini</code> per cost més baix).
       </p>
       <div className="space-y-2">
         <label htmlFor="open-question" className="text-sm font-medium">

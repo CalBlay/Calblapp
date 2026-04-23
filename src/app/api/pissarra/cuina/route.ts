@@ -1,5 +1,6 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 
@@ -14,6 +15,7 @@ type QuadrantDoc = {
   startTime?: string
   location?: string
   service?: string
+  NumPax?: number
   numPax?: number
   pax?: number
   status?: string
@@ -35,10 +37,21 @@ const norm = (v?: string | null) =>
     .toLowerCase()
     .trim()
 
+type StageVerdPaxDoc = {
+  code?: string
+  NumPax?: number
+  numPax?: number
+  pax?: number
+}
+
 async function authContext(req: NextRequest) {
   const token = await getToken({ req })
   if (!token) return { error: NextResponse.json({ error: 'No autenticat' }, { status: 401 }) }
-  const role = normalizeRole(String((token as any)?.role || 'treballador'))
+  const roleRaw =
+    typeof token === 'object' && token !== null && 'role' in token
+      ? (token as Record<string, unknown>)['role']
+      : undefined
+  const role = normalizeRole(typeof roleRaw === 'string' ? roleRaw : 'treballador')
   if (!ALLOWED_ROLES.has(role)) {
     return { error: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
   }
@@ -60,8 +73,8 @@ async function loadPaxByCodes(codes: string[]) {
   for (const part of chunk(clean, 10)) {
     try {
       const snap = await db.collection('stage_verd').where('code', 'in', part).get()
-      snap.forEach((doc: any) => {
-        const ev = doc.data() as any
+      snap.forEach((doc: QueryDocumentSnapshot) => {
+        const ev = doc.data() as StageVerdPaxDoc
         const code = String(ev?.code || '').trim()
         if (!code) return
         const pax = Number(ev?.NumPax || ev?.numPax || ev?.pax || 0)
@@ -74,7 +87,7 @@ async function loadPaxByCodes(codes: string[]) {
           try {
             const snap = await db.collection('stage_verd').where('code', '==', code).limit(1).get()
             if (!snap.empty) {
-              const ev = snap.docs[0].data() as any
+              const ev = snap.docs[0].data() as StageVerdPaxDoc
               map.set(code, Number(ev?.NumPax || ev?.numPax || ev?.pax || 0))
             }
           } catch {
@@ -112,7 +125,7 @@ export async function GET(req: NextRequest) {
     const sourceDocs: Array<{ id: string; d: QuadrantDoc }> = []
     const missingPaxCodes: string[] = []
 
-    snap.docs.forEach((doc: any) => {
+    snap.docs.forEach((doc: QueryDocumentSnapshot) => {
       const d = doc.data() as QuadrantDoc
       const st = norm(d.status)
       if (st && st !== 'confirmed' && st !== 'draft') return
@@ -121,7 +134,7 @@ export async function GET(req: NextRequest) {
       if (!startDate || startDate < start || startDate > end) return
 
       sourceDocs.push({ id: doc.id, d })
-      const pax = Number(d.numPax || (d as any).NumPax || d.pax || 0)
+      const pax = Number(d.numPax || d.NumPax || d.pax || 0)
       const code = String(d.code || '').trim()
       if (!pax && code) missingPaxCodes.push(code)
     })
@@ -170,7 +183,7 @@ export async function GET(req: NextRequest) {
       const g2 = buildGroup(group2)
 
       const code = String(d.code || '').trim()
-      const rawPax = Number(d.numPax || (d as any).NumPax || d.pax || 0)
+      const rawPax = Number(d.numPax || d.NumPax || d.pax || 0)
       const pax = rawPax || Number(paxByCode.get(code) || 0)
 
       return {

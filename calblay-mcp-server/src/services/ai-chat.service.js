@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import axios from "axios";
 import { countEventsByLnInMonth, countEventsInYear } from "./webapp.service.js";
-import { searchCostImputation } from "./cost-imputation.service.js";
+import { buildCostImputationReportCalblay } from "./cost-imputation-report.js";
+import { getCostImputationOverview, searchCostImputation } from "./cost-imputation.service.js";
 import {
   aggregatePurchasesByBusinessLineAndCentre,
   comparePurchasesSupplierQuarters,
@@ -10,7 +11,8 @@ import {
   getPurchasesBySupplier,
   getPurchasesSupplierArticlePeriodSummary,
   getPurchasesSupplierYearSummary,
-  listFinanceCsvFiles,
+  listFinanceCsvFilesForKind,
+  normalizeFinanceKind,
   previewFinanceCsv,
   searchPurchases
 } from "./finances.service.js";
@@ -28,7 +30,7 @@ function getOpenAiConfig() {
 const TOOL_RESULT_MAX_CHARS = Number(process.env.OPENAI_TOOL_RESULT_MAX_CHARS || 9000);
 const CHAT_CACHE_TTL_MS = Number(process.env.OPENAI_CHAT_CACHE_TTL_MS || 120_000);
 const CHAT_CACHE_MAX_KEYS = Number(process.env.OPENAI_CHAT_CACHE_MAX_KEYS || 200);
-const MAX_TOOL_STEPS = Number(process.env.OPENAI_MAX_TOOL_STEPS || 6);
+const MAX_TOOL_STEPS = Number(process.env.OPENAI_MAX_TOOL_STEPS || 8);
 
 const responseCache = new Map();
 
@@ -40,6 +42,27 @@ function cacheKey(model, language, question, rich) {
 }
 
 const CALBLAY_JSON_MARKER = "```calblay-json";
+
+/**
+ * Detecta preguntes d’informe de cost intern / sou / P&L / departaments.
+ * El primer pas del bucle pot forçar `costs_imputation_overview` (tool_choice) per evitar una sola eina mal triada.
+ */
+function shouldForceCostImputationOverview(question) {
+  const raw = String(question || "");
+  const s = raw
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const costLike =
+    /\b(cost|imputaci|salar|nomina|n[oó]mina|departament|recursos\s+humans|personal)\b/i.test(s) ||
+    /\bp\s*&\s*l\b/i.test(raw);
+  const reportLike =
+    /\b(informe|informacio|variacion|compar|trimestre|per[ií]ode)\b/i.test(s) ||
+    /\b20[2-3]\d\b/.test(s) ||
+    /\bt\s*[1-4]\b/i.test(s) ||
+    /\b(1er|primer|1r)\b/i.test(s);
+  return costLike && reportLike;
+}
 
 function normalizeReport(raw) {
   if (!raw || typeof raw !== "object") return null;
@@ -253,20 +276,37 @@ function buildTools() {
       type: "function",
       function: {
         name: "finances_list_files",
-        description: "List finance CSV file names (only if user needs file names).",
-        parameters: { type: "object", properties: {} }
+        description:
+          "List finance CSV file names in one category folder (compres, costos, vendes, rh). " +
+          "Use kind=costos for imputació/P&L CSVs, kind=compres for purchases.",
+        parameters: {
+          type: "object",
+          properties: {
+            kind: {
+              type: "string",
+              enum: ["compres", "costos", "vendes", "rh"],
+              description: "Which FINANCE_SUBFOLDERS segment to list (default compres)."
+            }
+          }
+        }
       }
     },
     {
       type: "function",
       function: {
         name: "finances_preview_file",
-        description: "Preview top rows of one CSV. Keep rows small (<=12).",
+        description:
+          "Preview top rows of one CSV in a category folder. Keep rows small (<=12). Match kind to the folder where the file lives.",
         parameters: {
           type: "object",
           properties: {
             file: { type: "string" },
-            rows: { type: "integer", minimum: 1, maximum: 15 }
+            rows: { type: "integer", minimum: 1, maximum: 15 },
+            kind: {
+              type: "string",
+              enum: ["compres", "costos", "vendes", "rh"],
+              description: "Subfolder when FINANCE_SUBFOLDERS=true (default compres)."
+            }
           },
           required: ["file"]
         }
@@ -275,11 +315,33 @@ function buildTools() {
     {
       type: "function",
       function: {
+        name: "costs_imputation_overview",
+        description:
+          "Vista del CSV d'IMPUTACIÓ DE COSTOS (cost salarial / P&L per centre o departament, NO compres). " +
+          "Retorna metaLines (períodes al PDF/Excel), amountColumns (cada label sol ser un període o concepte d'import) i les primeres N files amb tots els departaments/centres trobats. " +
+          "CRIDA AQUESTA EINA PRIMER quan l'usuari demana variació de cost salarial per departament, comparativa entre trimestres (ex. T1 2025 vs T1 2026), P&L creuat, o no especifica cap departament. " +
+          "Després pots usar costs_imputation_search amb contains per afinar un departament. No usar purchases_* per cost intern.",
+        parameters: {
+          type: "object",
+          properties: {
+            limit: {
+              type: "integer",
+              minimum: 10,
+              maximum: 80,
+              description: "Màxim de files (centres) a retornar; per defecte el servidor n'usa ~40."
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
         name: "costs_imputation_search",
         description:
-          "Costos / imputació salarial per centre o departament (CSV IMPUTACIO DE COSTOS, no compres). " +
-          "Cerca amb contains (ex. marketing, logistica, rh). La resposta inclou amountColumns (key + label de capçalera) i rows[].valuesByColumn: usa label de capçalera per saber quin import és de quin període en informes comparatius (T1 2025 vs T1 2026 sovint són columnes diferents). " +
-          "metaLines = text del CSV abans de la taula (períodes, títol). No confonguis amb purchases_search.",
+          "Costos / imputació salarial filtrats per mot clau de centre o departament (mateix CSV que costs_imputation_overview). " +
+          "Cerca amb contains (ex. marketing, logistica, rh). La resposta inclou amountColumns i rows[].valuesByColumn: usa label de capçalera per saber quin import és de quin període. " +
+          "Per preguntes globals o comparatives sense departament concret, cridar abans costs_imputation_overview. No confonguis amb purchases_search.",
         parameters: {
           type: "object",
           properties: {
@@ -483,12 +545,18 @@ async function runTool(toolName, args) {
     return countEventsByLnInMonth(String(args?.yearMonth || ""));
   }
   if (toolName === "finances_list_files") {
-    const files = await listFinanceCsvFiles();
-    return { count: files.length, files };
+    const kind = normalizeFinanceKind(args?.kind);
+    const files = await listFinanceCsvFilesForKind(kind);
+    return { kind, count: files.length, files };
   }
   if (toolName === "finances_preview_file") {
+    const kind = normalizeFinanceKind(args?.kind);
     const rows = Math.min(15, Math.max(1, Number(args?.rows || 8)));
-    return previewFinanceCsv(String(args?.file || ""), rows);
+    return previewFinanceCsv(String(args?.file || ""), rows, kind);
+  }
+  if (toolName === "costs_imputation_overview") {
+    const lim = Math.min(80, Math.max(10, Number(args?.limit || 40)));
+    return getCostImputationOverview({ limit: lim });
   }
   if (toolName === "costs_imputation_search") {
     const lim = Math.min(80, Math.max(1, Number(args?.limit || 25)));
@@ -593,8 +661,9 @@ export async function chatWithTools({ question, language = "ca", rich = false })
   const currentYear = new Date().getFullYear();
   const systemBase =
     "Cal Blay. Tools = facts only. " +
-    "Cost salarial / imputació / departaments: costs_imputation_search amb contains (p.ex. marketing). Interpreta imports amb rows.valuesByColumn i amountColumns.label (cada columna pot ser un període). Revisa metaLines. No usar purchases_search. " +
-    "Compres: purchases_search; dimensió 1 = LN (column ln/dim1/dimensio_1), dimensió 2 = centre (dim2/centre). Per taula agregada LN+centre en un interval: purchases_analytics_ln_centre. " +
+    "Cost salarial / imputació / departaments / P&L intern: per informes que creuen períodes (ex. T1 2025 vs T1 2026) o 'per departament' sense nom concret, crida PRIMER costs_imputation_overview; després costs_imputation_search amb contains si cal un departament. " +
+    "Interpreta imports amb rows.valuesByColumn i amountColumns.label (cada columna pot ser un període diferent al mateix CSV). Llegeix metaLines per dates o títol. No demanis a l'usuari les dades si pots obtenir-les amb aquestes eines; si el CSV no té la columna esperada, explica-ho amb el que sí retornen amountColumns. " +
+    "Compres (factures proveïdor): purchases_search; dimensió 1 = LN, dimensió 2 = centre. purchases_analytics_ln_centre és COMPRES agregades, no cost salarial: no ho barregis amb imputació de costos. " +
     "Proveïdor P###### preu mig per article i comparació trimestres: purchases_supplier_quarter_article_compare. " +
     "Per un interval de dates arbitrari: purchases_supplier_article_period_summary. purchases_by_supplier és només mostreig; purchases_by_article / purchases_article_month_summary per article M######. " +
     `Esdeveniments: events_count_by_year (total anual); si l'usuari no indica any, omet year o usa ${currentYear}. ` +
@@ -631,12 +700,22 @@ export async function chatWithTools({ question, language = "ca", rich = false })
     "chart.type is bar or line; series items have name and dataKey; data rows are objects (e.g. {mes, import}). " +
     "Use ONLY numbers from tools; chart.data max 24 points; highlights 3-6 bullets; strictly valid JSON. " +
     "If you called purchases_supplier_quarter_article_compare: do NOT hand-type the main tables in calblay-json (the app merges server-built tables). " +
+    "If you called costs_imputation_overview or costs_imputation_search in report mode: the app merges server-built tables, KPIs and chart from CSV data—do NOT invent numbers; narrative = conclusions only; you may still output minimal calblay-json placeholders if needed. " +
     "Still output valid calblay-json if required—e.g. duplicate structure with placeholder tables: [] and highlights: []—or a minimal valid object; prefer a short narrative focused on facts, neutral controller tone (no hype adjectives). " +
     "When the tool purchases_supplier_quarter_article_compare returns reportTable and reportTotalsTable: set tables[0] = reportTable and tables[1] = reportTotalsTable (title, columns, rows as string arrays). " +
     "highlights must cite key % changes (preu mig i volum). Optional chart: bar comparing totalAmount or avgUnitPrice top articles (max 12 bars).";
 
+  const forceCostOverview =
+    String(process.env.OPENAI_FORCE_COST_OVERVIEW || "1").toLowerCase() !== "0" &&
+    shouldForceCostImputationOverview(qNorm);
+
   const systemContent =
-    (rich ? systemRich : systemBase + " Max 4 short sentences.") + supplierCodeHint + articleCodeHint;
+    (rich ? systemRich : systemBase + " Max 4 short sentences.") +
+    supplierCodeHint +
+    articleCodeHint +
+    (forceCostOverview
+      ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser costs_imputation_overview (sense omplir contains); després interpreta amountColumns i rows. No diguis que no hi ha dades sense haver rebut el resultat d’aquesta eina."
+      : "");
 
   const messages = [
     {
@@ -653,13 +732,19 @@ export async function chatWithTools({ question, language = "ca", rich = false })
   let serverReportCalblay = null;
 
   for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
+    const anyToolMessageYet = messages.some((m) => m.role === "tool");
+    const toolChoice =
+      forceCostOverview && !anyToolMessageYet
+        ? { type: "function", function: { name: "costs_imputation_overview" } }
+        : "auto";
+
     const response = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
         model,
         messages,
         tools,
-        tool_choice: "auto",
+        tool_choice: toolChoice,
         temperature: 0,
         max_tokens: maxTokens
       },
@@ -712,6 +797,13 @@ export async function chatWithTools({ question, language = "ca", rich = false })
         const raw = await runTool(name, args);
         if (name === "purchases_supplier_quarter_article_compare" && raw?.reportCalblay) {
           serverReportCalblay = raw.reportCalblay;
+        }
+        if (
+          rich &&
+          (name === "costs_imputation_overview" || name === "costs_imputation_search")
+        ) {
+          const built = buildCostImputationReportCalblay(raw);
+          if (built) serverReportCalblay = built;
         }
         const result = shrinkToolPayload(raw);
         if (result && typeof result === "object" && result.reportCalblay) {
