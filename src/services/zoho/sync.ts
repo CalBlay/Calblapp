@@ -61,11 +61,12 @@ interface NormalizedDeal {
   Import?: number | string | null
 }
 
-function cleanUndefined<T extends Record<string, unknown>>(obj: T): T {
-  const clean = {} as T
+/** Retorna un objecte vàlid per a Firestore `set`/`merge` (sense claus `undefined`). */
+function cleanUndefined(obj: NormalizedDeal): Record<string, unknown> {
+  const clean: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
-      ;(clean as Record<string, unknown>)[key] = value
+      clean[key] = value
     }
   }
   return clean

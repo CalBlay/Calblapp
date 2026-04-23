@@ -163,13 +163,10 @@ type TornDoc = {
 }
 
 function isConfirmed(data: FirestoreData): boolean {
-  const st = String((data as any)?.status ?? (data as any)?.estat ?? '')
+  const st = String(data.status ?? data.estat ?? '')
     .toLowerCase()
     .trim()
-  const hasMark =
-    !!(data as any)?.['confirmedAt'] ||
-    !!(data as any)?.['confirmada'] ||
-    !!(data as any)?.['confirmed']
+  const hasMark = !!(data.confirmedAt ?? data.confirmada ?? data.confirmed)
   return (
     st === 'confirmed' ||
     st === 'confirmada' ||
@@ -193,7 +190,7 @@ function mapDocToTorn(
   const endDate = doc?.endDate ? parseAnyDateToISO(doc.endDate) : ''
   const startTime = toTimeHHmm(doc?.startTime)
   const endTime = toTimeHHmm(doc?.endTime)
-  const arrivalTime = toTimeHHmm((doc as any)?.arrivalTime)
+  const arrivalTime = toTimeHHmm(doc.arrivalTime)
   const meetingPoint = doc?.meetingPoint ?? ''
   const department = doc?.department
     ? norm(doc.department)
@@ -201,7 +198,7 @@ function mapDocToTorn(
     ? norm(fallbackDept)
     : 'sense departament'
   const location = doc?.location ? String(doc.location) : undefined
-  const vestimentModelRaw = String((doc as any)?.vestimentModel ?? '').trim()
+  const vestimentModelRaw = String(doc.vestimentModel ?? '').trim()
   const vestimentModel = vestimentModelRaw || undefined
 
   const arrTreballadors = Array.isArray(doc?.treballadors) ? doc.treballadors : []
@@ -239,12 +236,13 @@ function mapDocToTorn(
   }
 
   if (responsableObj) {
+    const ro = responsableObj as RawWorker
     const nw = normalizeTornWorker({
       ...responsableObj,
       role: 'responsable',
-      startTime: (responsableObj as any).startTime ?? doc.startTime,
-      endTime: (responsableObj as any).endTime ?? doc.endTime,
-      meetingPoint: (responsableObj as any).meetingPoint ?? meetingPoint,
+      startTime: ro.startTime ?? doc.startTime,
+      endTime: ro.endTime ?? doc.endTime,
+      meetingPoint: ro.meetingPoint ?? meetingPoint,
       department,
     })
     unified.push(nw)
@@ -325,7 +323,8 @@ async function fetchDeptCollectionRange(
     if (!t.startDate && !t.endDate) return
 
     if (dep === 'serveis') {
-      const groups = Array.isArray((data as any)?.groups) ? (data as any).groups : []
+      const tornDoc = data as TornDoc
+      const groups = Array.isArray(tornDoc.groups) ? tornDoc.groups : []
       const seen = new Set<string>()
       let pushed = false
 
@@ -407,7 +406,7 @@ async function fetchTransportAssignmentsRange(
   }
 
   for (const doc of docs) {
-    const data = doc.data() as any
+    const data = doc.data() as FirestoreData
     const status = String(data?.status || 'pending')
     if (!ACTIVE_ASSIGNMENT_STATUSES.has(status)) continue
 

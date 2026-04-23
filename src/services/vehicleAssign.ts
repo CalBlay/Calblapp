@@ -1,6 +1,6 @@
 // ✅ filename: src/services/vehicleAssign.ts
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { isEligibleByName } from './eligibility'
+import { isEligibleByName, type BusyAssignment } from './eligibility'
 import { normalizeVehicleType } from '@/utils/normalizeVehicleType'
 import { canDriverHandleVehicleType } from '@/lib/driverCapabilities'
 
@@ -28,7 +28,7 @@ export type DriverPoolItem = {
 }
 
 export type BaseCtx = {
-  busyAssignments: any[]   // 👈 ara s’ajusta al tipus real que ve del ledger
+  busyAssignments: BusyAssignment[]
   restHours: number
   allowMultipleEventsSameDay: boolean
 }

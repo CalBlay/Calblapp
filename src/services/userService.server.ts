@@ -9,7 +9,7 @@ export type UserAlias = {
   role?: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
 }
 
-function norm(s: any): string {
+function norm(s: unknown): string {
   return String(s ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // sense diacrítics
@@ -64,7 +64,7 @@ export async function resolveWorkerAlias(authIdOrName: string): Promise<UserAlia
     // const snap2 = await db.collection('users').where('aliases','array-contains', q).limit(1).get()
     // ...
 
-  } catch (e) {
+  } catch {
     // sense admin configurat → seguim al fallback
   }
 

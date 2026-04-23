@@ -5,6 +5,7 @@ import { buildCostImputationReportCalblay } from "./cost-imputation-report.js";
 import { getCostImputationOverview, searchCostImputation } from "./cost-imputation.service.js";
 import {
   aggregatePurchasesByBusinessLineAndCentre,
+  aggregateSalesByCentreMonth,
   comparePurchasesSupplierQuarters,
   getPurchasesArticleMonthSummary,
   getPurchasesByArticle,
@@ -218,6 +219,41 @@ function shrinkToolPayload(result) {
     clone.byLnCentre = clone.byLnCentre.slice(0, 45);
     clone._truncatedByLnCentre = total - 45;
   }
+  if (clone.rows && Array.isArray(clone.rows) && clone.kind === "vendes" && clone.rows.length > 80) {
+    const total = clone.rows.length;
+    clone.rows = clone.rows.slice(0, 80);
+    clone._truncatedSalesRows = total - 80;
+  }
+  if (
+    clone.kind === "vendes" &&
+    clone.byCentre &&
+    Array.isArray(clone.byCentre) &&
+    clone.byCentre.length > 40
+  ) {
+    const total = clone.byCentre.length;
+    clone.byCentre = clone.byCentre.slice(0, 40);
+    clone._truncatedByCentre = total - 40;
+  }
+  if (
+    clone.kind === "vendes" &&
+    clone.byMonth &&
+    Array.isArray(clone.byMonth) &&
+    clone.byMonth.length > 36
+  ) {
+    const total = clone.byMonth.length;
+    clone.byMonth = clone.byMonth.slice(0, 36);
+    clone._truncatedByMonth = total - 36;
+  }
+  if (
+    clone.kind === "vendes" &&
+    clone.fileErrors &&
+    Array.isArray(clone.fileErrors) &&
+    clone.fileErrors.length > 8
+  ) {
+    const total = clone.fileErrors.length;
+    clone.fileErrors = clone.fileErrors.slice(0, 8);
+    clone._truncatedFileErrors = total - 8;
+  }
 
   let s = JSON.stringify(clone);
   if (s.length > TOOL_RESULT_MAX_CHARS) {
@@ -309,6 +345,34 @@ function buildTools() {
             }
           },
           required: ["file"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "sales_by_centre_month",
+        description:
+          "PRIMARY for sales/revenue from vendes CSV exports: aggregates cobrades (or brut) EUR and units by establishment (centre) and calendar month. " +
+          "Uses column jornada (values like 2026-01 or 2026-01 enero). " +
+          "Call this when the user asks vendes/facturació/billing by centre and month/year. " +
+          "Optional year filters rows to that calendar year. " +
+          "Optional file limits to one .csv in the vendes folder; omit to scan all vendes CSVs. " +
+          "If unsure of file names, call finances_list_files kind=vendes first.",
+        parameters: {
+          type: "object",
+          properties: {
+            year: {
+              type: "integer",
+              minimum: 2000,
+              maximum: 2100,
+              description: "Optional. Filter to this calendar year (e.g. 2026). Omit to include all years in the files."
+            },
+            file: {
+              type: "string",
+              description: "Optional. One CSV file name inside the vendes folder. Omit to aggregate every .csv there."
+            }
+          }
         }
       }
     },
@@ -555,6 +619,13 @@ async function runTool(toolName, args) {
     const rows = Math.min(15, Math.max(1, Number(args?.rows || 8)));
     return previewFinanceCsv(String(args?.file || ""), rows, kind);
   }
+  if (toolName === "sales_by_centre_month") {
+    const f = args?.file != null ? String(args.file).trim() : "";
+    return aggregateSalesByCentreMonth({
+      year: args?.year,
+      file: f || undefined
+    });
+  }
   if (toolName === "costs_imputation_overview") {
     const lim = Math.min(80, Math.max(10, Number(args?.limit || 40)));
     return getCostImputationOverview({ limit: lim });
@@ -670,6 +741,7 @@ export async function chatWithTools({ question, language = "ca", rich = false })
     `Esdeveniments: events_count_by_year (total anual); si l'usuari no indica any, omet year o usa ${currentYear}. ` +
     "Per recompte per línia de negoci (LN) i un mes concret: events_count_by_ln_month amb yearMonth=YYYY-MM (ex. febrer 2026 → 2026-02). No usar només events_count_by_year per aquestes preguntes. " +
     "finances_preview per capçaleres. " +
+    "Vendes / facturació (CSV exportats a carpeta vendes, no SAP compres): per imports per centre i mes, crida sales_by_centre_month (year opcional, file opcional). Si no coneixes el nom del fitxer, finances_list_files kind=vendes abans. " +
     "If tools return aggregated figures (avgUnitPrice, comparison, totals), report them in the answer at once; do not ask the user whether to calculate. " +
     "Reply in user language; use EUR for money.";
 

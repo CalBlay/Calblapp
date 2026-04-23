@@ -24,3 +24,4 @@ export {
   aggregatePurchasesByBusinessLineAndCentre,
   searchPurchases
 } from "./purchases-queries-articles.js";
+export { aggregateSalesByCentreMonth, parseVendesJornadaYearMonth } from "./sales-queries.js";

@@ -11,17 +11,27 @@ import { buildGcsObjectName, resolveLocalFinanceFilePath, safeCsvFileName } from
 
 export function openPurchasesCsvStream() {
   const safeName = safeCsvFileName(PURCHASES_CSV);
+  return openFinanceCsvStream(safeName, "compres");
+}
+
+/**
+ * Stream de lectura d’un CSV dins la carpeta de kind (local o GCS).
+ * @param {string} fileName — nom segur .csv
+ * @param {"compres"|"costos"|"vendes"|"rh"} [kind="compres"]
+ */
+export function openFinanceCsvStream(fileName, kind = "compres") {
+  const safeName = safeCsvFileName(fileName);
   const source = getFinanceSource();
   const enc = getFinanceCsvEncoding();
   if (source === "gcs") {
     const storage = getStorageClient();
     const bucket = storage.bucket(getGcsBucketName());
-    const objectName = buildGcsObjectName(safeName, "compres");
+    const objectName = buildGcsObjectName(safeName, kind);
     const stream = bucket.file(objectName).createReadStream();
     stream.setEncoding(enc);
     return stream;
   }
-  const fullPath = resolveLocalFinanceFilePath(safeName, "compres");
+  const fullPath = resolveLocalFinanceFilePath(safeName, kind);
   return createReadStream(fullPath, { encoding: enc });
 }
 

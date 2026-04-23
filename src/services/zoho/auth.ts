@@ -57,14 +57,15 @@ export async function zohoFetch<T = unknown>(path: string, options: RequestInit 
     cache: 'no-store',
   })
 
-  const json = await res.json().catch(() => ({}))
+  const json: unknown = await res.json().catch(() => ({}))
   if (!res.ok) {
     console.error('[ZohoFetch] ❌', json)
     throw new Error(`Error Zoho ${res.status}`)
   }
 
   // 🧐 Trace útil (primer registre només)
-  const sample = (json as any)?.data?.[0]
-  if (sample) console.log('🔎 Zoho sample:', JSON.stringify(sample, null, 2))
+  const body = json as { data?: unknown[] }
+  const sample = Array.isArray(body.data) ? body.data[0] : undefined
+  if (sample !== undefined) console.log('🔎 Zoho sample:', JSON.stringify(sample, null, 2))
   return json as T
 }

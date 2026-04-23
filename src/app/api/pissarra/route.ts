@@ -1,8 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
+import type { JWT } from 'next-auth/jwt'
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
+
+/** Dades Firestore llegides com a mapa genèric (evita `any`). */
+type FirestoreData = Record<string, unknown>
+
+function strVal(v: unknown): string {
+  if (v == null) return ''
+  return String(v).trim()
+}
+
+function fieldString(data: FirestoreData, ...keys: string[]): string {
+  for (const k of keys) {
+    const s = strVal(data[k])
+    if (s) return s
+  }
+  return ''
+}
+
+function firstField(data: FirestoreData, ...keys: string[]): string | null {
+  const s = fieldString(data, ...keys)
+  return s || null
+}
 
 export const runtime = 'nodejs'
 
@@ -53,7 +76,7 @@ async function authContext(req: NextRequest) {
   const token = await getToken({ req })
   if (!token) return { error: NextResponse.json({ error: 'No autenticat' }, { status: 401 }) }
 
-  const role = normalizeRole(String((token as any)?.role || 'treballador'))
+  const role = normalizeRole(String((token as JWT).role || 'treballador'))
   if (!ALLOWED_ROLES.has(role)) {
     return { error: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
   }
@@ -63,7 +86,7 @@ async function authContext(req: NextRequest) {
 
 async function loadStageVerdDocsInRange(start: string, end: string) {
   const col = db.collection('stage_verd')
-  const byId = new Map<string, any>()
+  const byId = new Map<string, QueryDocumentSnapshot>()
 
   for (const field of ['DataInici', 'startDate', 'date', 'dataInici', 'DataInicio']) {
     try {
@@ -98,35 +121,41 @@ async function loadQuadrantsIndex(start: string, end: string) {
   const byEventId = new Map<string, QuadrantCandidate[]>()
   const byCode = new Map<string, QuadrantCandidate[]>()
 
-  snap.docs.forEach((doc: any) => {
-    const data = doc.data() as any
-    if (!isPhaseActive(data?.status)) return
+  snap.docs.forEach((doc: QueryDocumentSnapshot) => {
+    const data = doc.data() as FirestoreData
+    if (!isPhaseActive(strVal(data.status))) return
 
     const candidate =
-      data?.phaseLabel ||
-      data?.phaseType ||
-      data?.phaseKey ||
-      data?.phase ||
-      data?.fase ||
-      data?.phaseName ||
-      data?.label ||
+      fieldString(data, 'phaseLabel', 'phaseType', 'phaseKey', 'phase', 'fase', 'phaseName', 'label') ||
       ''
 
     const normalizedCandidate = normalizeLabel(candidate)
     if (!normalizedCandidate) return
 
-    const dateValue =
-      data?.phaseDate || data?.date || data?.startDate || data?.phaseStart || data?.phase_day || ''
+    const dateValue = fieldString(
+      data,
+      'phaseDate',
+      'date',
+      'startDate',
+      'phaseStart',
+      'phase_day'
+    )
+
+    const nestedResp = data.responsable
+    const fromNested =
+      nestedResp && typeof nestedResp === 'object' && nestedResp !== null && 'name' in nestedResp
+        ? strVal((nestedResp as { name?: unknown }).name)
+        : ''
 
     const info: QuadrantCandidate = {
       normalizedCandidate,
       phaseLabel: String(candidate).trim(),
       phaseDate: normalizeDay(dateValue) || (dateValue ? String(dateValue) : undefined),
-      responsableName: data?.responsableName || data?.responsable?.name,
+      responsableName: fieldString(data, 'responsableName') || fromNested || undefined,
     }
 
-    const eventId = String(data?.eventId || '').trim()
-    const code = String(data?.code || '').trim()
+    const eventId = fieldString(data, 'eventId')
+    const code = fieldString(data, 'code')
 
     if (eventId) byEventId.set(eventId, [...(byEventId.get(eventId) || []), info])
     if (code) byCode.set(code, [...(byCode.get(code) || []), info])
@@ -153,16 +182,39 @@ export async function GET(req: NextRequest) {
       loadQuadrantsIndex(start, end),
     ])
 
-    const events: any[] = []
+    type PissarraItem = {
+      id: string
+      code: string
+      LN: string
+      eventName: string
+      startDate: string
+      startTime: string
+      location: string
+      pax: number
+      servei: string
+      comercial: string
+      responsableName?: string
+      phaseLabel?: string
+      phaseDate?: string
+    }
+    const events: PissarraItem[] = []
 
     for (const doc of stageDocs) {
-      const d = doc.data() as any
-      if (!d.code) continue
+      const d = doc.data() as FirestoreData
+      if (!fieldString(d, 'code')) continue
 
-      const rawStart =
-        d.startDate || d.date || d.start || d.DataInici || d.dataInici || d.DataInicio || d.start_time || null
+      const rawStart = firstField(
+        d,
+        'startDate',
+        'date',
+        'start',
+        'DataInici',
+        'dataInici',
+        'DataInicio',
+        'start_time'
+      )
       const rawEnd =
-        d.endDate || d.DataFi || d.dataFi || d.DataFinal || d.end || d.end_time || rawStart
+        firstField(d, 'endDate', 'DataFi', 'dataFi', 'DataFinal', 'end', 'end_time') || rawStart
 
       const startDate = normalizeDay(rawStart)
       if (!startDate) continue
@@ -173,7 +225,7 @@ export async function GET(req: NextRequest) {
       let phaseLabel: string | undefined
       let phaseDate: string | undefined
 
-      const code = String(d.code || '').trim()
+      const code = fieldString(d, 'code')
       const candidates = [
         ...(quadrants.byEventId.get(doc.id) || []),
         ...(code ? quadrants.byCode.get(code) || [] : []),
@@ -195,14 +247,14 @@ export async function GET(req: NextRequest) {
         events.push({
           id: `${doc.id}__${day}`,
           code,
-          LN: d.LN || d.ln || d.lineaNegoci || '',
-          eventName: d.eventName || d.NomEvent || d.title || '',
+          LN: fieldString(d, 'LN', 'ln', 'lineaNegoci'),
+          eventName: fieldString(d, 'eventName', 'NomEvent', 'title'),
           startDate: day,
-          startTime: d.startTime || d.HoraInici || '',
-          location: d.location || d.Ubicacio || '',
-          pax: Number(d.pax || d.NumPax || 0),
-          servei: d.servei || d.Servei || '',
-          comercial: d.comercial || d.Comercial || '',
+          startTime: fieldString(d, 'startTime', 'HoraInici'),
+          location: fieldString(d, 'location', 'Ubicacio'),
+          pax: Number(fieldString(d, 'pax', 'NumPax') || 0),
+          servei: fieldString(d, 'servei', 'Servei'),
+          comercial: fieldString(d, 'comercial', 'Comercial'),
           responsableName,
           phaseLabel,
           phaseDate,
