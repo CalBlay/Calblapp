@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/app.js",
-    "start": "node src/app.js"
+    "start": "node src/app.js",
+    "test": "node --test test/"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",
