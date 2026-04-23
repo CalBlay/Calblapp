@@ -40,6 +40,7 @@ interface Props {
   }
   user: {
     department?: string
+    role?: string
     name?: string
   }
 }
@@ -95,7 +96,9 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null)
   const [executionStatus, setExecutionStatus] = useState<'draft' | 'completed' | 'validated' | 'rejected'>('draft')
 
-  const department = normalizeAuditDepartment(user.department || '') || ''
+  const userRole = String(user.role || '').trim().toLowerCase()
+  const department =
+    userRole === 'comercial' ? 'comercial' : normalizeAuditDepartment(user.department || '') || ''
   const eventId = String(event.id || '')
 
   const executionUrl = useMemo(() => {

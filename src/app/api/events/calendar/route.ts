@@ -1,17 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { unstable_cache } from 'next/cache'
 import { isIsoDateDayParam } from '@/lib/firestoreStageRangeQuery'
 import { computeCalendarEventsInRange } from '@/lib/api/calendarEventsRange'
 
 export const runtime = 'nodejs'
-
-const RANGE_REVALIDATE_SEC = 90
-
-const getCalendarEventsCached = unstable_cache(
-  async (start: string, end: string) => computeCalendarEventsInRange(start, end),
-  ['api-events-calendar-v1'],
-  { revalidate: RANGE_REVALIDATE_SEC }
-)
 
 export async function GET(req: NextRequest) {
   const startedAt = Date.now()
@@ -30,7 +21,7 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const { events: base } = await getCalendarEventsCached(start, end)
+    const { events: base } = await computeCalendarEventsInRange(start, end)
 
     console.log(`[events/calendar] Total esdeveniments trobats: ${base.length}`)
     console.info('[events/calendar] completed', {

@@ -66,7 +66,8 @@ async function getAuthContext() {
 
   if (!user?.id) return { error: NextResponse.json({ error: 'No autenticat' }, { status: 401 }) }
   const role = normalizeRole(user.role || '')
-  const department = normalizeDept(user.department || '')
+  const normalizedSessionDept = normalizeDept(user.department || '')
+  const department = role === 'comercial' ? 'comercial' : normalizedSessionDept
   return { user, role, department }
 }
 
@@ -82,7 +83,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'eventId i department son obligatoris' }, { status: 400 })
     }
 
-    if (!['admin', 'direccio'].includes(auth.role)) {
+    if (!['admin', 'direccio', 'cap', 'comercial'].includes(auth.role)) {
       if (!auth.department || auth.department !== department) {
         return NextResponse.json({ error: 'Sense permisos per aquest departament' }, { status: 403 })
       }
@@ -196,7 +197,7 @@ export async function POST(req: Request) {
       )
     }
 
-    if (!['admin', 'direccio'].includes(auth.role)) {
+    if (!['admin', 'direccio', 'cap', 'comercial'].includes(auth.role)) {
       if (!auth.department || auth.department !== department) {
         return NextResponse.json({ error: 'Sense permisos per aquest departament' }, { status: 403 })
       }

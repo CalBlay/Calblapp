@@ -83,6 +83,7 @@ export default function EventsPage() {
   }, [])
 
   const [filters, setFilters] = useState<FiltersState>(initial)
+  const [commercialFilterInitialized, setCommercialFilterInitialized] = useState(false)
 
   const fromISO = `${filters.start}T00:00:00.000Z`
   const toISO = `${filters.end}T23:59:59.999Z`
@@ -147,7 +148,8 @@ export default function EventsPage() {
 
   if (filters.responsable && filters.responsable !== '__all__') {
     filteredEvents = filteredEvents.filter(ev => {
-      const evResps = (ev.responsableName || '')
+      const evResps = [ev.responsableName || '', String(ev.commercial || '')]
+        .join(',')
         .split(',')
         .map(r => normalize(r))
         .filter(Boolean)
@@ -245,6 +247,15 @@ export default function EventsPage() {
     department: (session?.user as SessionUser)?.department,
     name: (session?.user as SessionUser)?.name,
   }
+
+  useEffect(() => {
+    if (commercialFilterInitialized) return
+    if (role !== 'comercial') return
+    const userName = String((session?.user as SessionUser)?.name || '').trim()
+    if (!userName) return
+    setFilters((prev) => ({ ...prev, responsable: userName }))
+    setCommercialFilterInitialized(true)
+  }, [commercialFilterInitialized, role, session?.user])
 
   useEffect(() => {
     setAvisosState(prev => {
@@ -399,7 +410,7 @@ export default function EventsPage() {
             eventCode: auditEvent.eventCode || undefined,
             location: auditEvent.location,
           }}
-          user={{ department: userForModal.department, name: userForModal.name }}
+          user={{ department: userForModal.department, role: userForModal.role, name: userForModal.name }}
         />
       )}
 

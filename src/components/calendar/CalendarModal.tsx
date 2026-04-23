@@ -85,6 +85,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
 
   // Fitxers (file1, file2, ...) llegits del deal
   const [files, setFiles] = useState<{ key: string; url: string }[]>([])
+  const [multiDay, setMultiDay] = useState(false)
 
   // Només editable si és Confirmat o manual (respectant readonly si ve informat)
   const isZohoVerd =
@@ -314,6 +315,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
 
     setEditData(next as any)
     setInitialData(next as any)
+    setMultiDay(Boolean(DataFi && DataFi !== DataInici))
     setCodeDirty(false)
   }, [deal])
 
@@ -326,6 +328,16 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
 
   // Helpers
   const handleChange = (field: string, value: string) => {
+    if (field === 'DataInici') {
+      setEditData((prev) => {
+        const next = { ...prev, [field]: value }
+        if (!multiDay) {
+          next.DataFi = value
+        }
+        return next
+      })
+      return
+    }
     if (field === 'code') {
       const prevCode = String(initialData?.code || '').trim()
       const nextCode = String(value || '').trim()
@@ -340,10 +352,21 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     if (!canEdit) return
 
     try {
+      const startDate = String(editData.DataInici || '').trim()
+      const endDate = String(editData.DataFi || '').trim()
+      if (startDate && endDate && endDate < startDate) {
+        alert("❌ La data de fi no pot ser anterior a la data d'inici.")
+        return
+      }
+
       const prevCode = String(initialData?.code || '').trim()
       const nextCode = String(editData?.code || '').trim()
+      const normalizedDataFi = multiDay
+        ? endDate || startDate || null
+        : startDate || null
       const payload: Record<string, any> = {
         ...editData,
+        DataFi: normalizedDataFi,
         // 🔧 FIX: si ve buit, deixem null (igual que abans però més robust)
         NumPax:
           editData.NumPax === '' || editData.NumPax === null || editData.NumPax === undefined
@@ -539,7 +562,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
           {/* Data inici */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">Data</label>
-            {isManual && !readonly ? (
+            {(isManual || canEditStageVerd) && !readonly ? (
               <Input
                 type="date"
                 value={editData.DataInici}
@@ -549,6 +572,43 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
               <p>{editData.DataInici}</p>
             )}
           </div>
+
+          {/* Multi-dia + Data fi editable */}
+          {(isManual || canEditStageVerd) && !readonly ? (
+            <>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={multiDay}
+                  onChange={(e) => {
+                    const checked = e.target.checked
+                    setMultiDay(checked)
+                    if (!checked) {
+                      const start = String(editData.DataInici || '').trim()
+                      setEditData((prev) => ({ ...prev, DataFi: start }))
+                    }
+                  }}
+                  id={`calendar-multi-day-${deal.id}`}
+                  className="w-4 h-4"
+                />
+                <label htmlFor={`calendar-multi-day-${deal.id}`} className="text-xs text-gray-600">
+                  L'esdeveniment dura més d'un dia
+                </label>
+              </div>
+
+              {multiDay ? (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Data fi</label>
+                  <Input
+                    type="date"
+                    value={editData.DataFi || ''}
+                    min={editData.DataInici || undefined}
+                    onChange={(e) => handleChange('DataFi', e.target.value)}
+                  />
+                </div>
+              ) : null}
+            </>
+          ) : null}
 
           {/* Hora inici (manual o Zoho confirmat editable) */}
           <div>
@@ -578,8 +638,10 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
             )}
           </div>
 
-          {/* Data fi si és diferent */}
-          {editData.DataFi && editData.DataFi !== editData.DataInici && (
+          {/* Data fi (només lectura si no es pot editar) */}
+          {!((isManual || canEditStageVerd) && !readonly) &&
+            editData.DataFi &&
+            editData.DataFi !== editData.DataInici && (
             <div>
               <label className="block text-xs text-gray-500 mb-1">
                 Data fi

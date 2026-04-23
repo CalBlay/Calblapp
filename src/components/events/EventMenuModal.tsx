@@ -292,6 +292,7 @@ const treballadorsPersons =
   const canCreateIncident =
     isAdmin ||
     isDireccio ||
+    roleN === 'comercial' ||
     (isCapDept && ['foodlovers', 'logistica', 'cuina', 'serveis'].includes(norm(deptN))) ||
       isWorkerResponsible
 

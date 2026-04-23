@@ -10,7 +10,7 @@ export const runtime = 'nodejs'
  * Cridat des de l'AttachFileButton
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const { id } = params
+  const { id } = await params
 
   try {
     const body = await req.json()
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
  * ✏️ PUT — Actualitza camps generals de l’esdeveniment
  */
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  const { id } = params
+  const { id } = await params
 
   try {
     const body = await req.json()
@@ -86,6 +86,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
  */
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const { id } = await params
     const url = new URL(req.url)
     const collection = url.searchParams.get('collection')
 
@@ -94,9 +95,9 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       return NextResponse.json({ error: 'Col·lecció invàlida' }, { status: 400 })
     }
 
-    await db.collection(collection).doc(params.id).delete()
+    await db.collection(collection).doc(id).delete()
 
-    console.log(`🗑️ Esdeveniment ${params.id} eliminat de ${collection}`)
+    console.log(`🗑️ Esdeveniment ${id} eliminat de ${collection}`)
     return NextResponse.json({ ok: true })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error eliminant esdeveniment'

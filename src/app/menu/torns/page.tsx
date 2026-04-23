@@ -444,6 +444,7 @@ export default function TornsPage() {
           }}
           user={{
             department: userForEventMenu.department,
+            role: userForEventMenu.role,
             name: userForEventMenu.name,
           }}
         />
