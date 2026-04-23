@@ -11,8 +11,9 @@ import {
 } from "./config.js";
 import {
   financeKindSegment,
+  isListableFinanceDataFile,
   normalizeFinanceKind,
-  resolveLocalKindSubdirSync,
+  resolveFinanceKindDirSync,
   safeCsvFileName
 } from "./paths.js";
 import { normalizeCsvLine, normalizeCsvLineDelimited } from "./csv-lines.js";
@@ -34,15 +35,13 @@ export async function listFinanceCsvFilesForKind(kind = "compres") {
     const [files] = await bucket.getFiles(prefix ? { prefix: `${prefix}/` } : undefined);
     return files
       .map((f) => f.name)
-      .filter((name) => name.toLowerCase().endsWith(".csv"))
+      .filter((name) => isListableFinanceDataFile(path.posix.basename(name)))
       .map((name) => path.posix.basename(name))
       .sort((a, b) => a.localeCompare(b));
   }
 
   const financeDir = path.resolve(getFinanceDir());
-  const listDir = isFinanceSubfolderLayout()
-    ? resolveLocalKindSubdirSync(financeDir, financeKindSegment(k))
-    : financeDir;
+  const listDir = isFinanceSubfolderLayout() ? resolveFinanceKindDirSync(financeDir, k) : financeDir;
   let items;
   try {
     items = await fs.readdir(listDir, { withFileTypes: true });
@@ -50,7 +49,7 @@ export async function listFinanceCsvFilesForKind(kind = "compres") {
     return [];
   }
   return items
-    .filter((item) => item.isFile() && item.name.toLowerCase().endsWith(".csv"))
+    .filter((item) => item.isFile() && isListableFinanceDataFile(item.name))
     .map((item) => item.name)
     .sort((a, b) => a.localeCompare(b));
 }

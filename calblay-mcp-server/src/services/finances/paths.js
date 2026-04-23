@@ -74,10 +74,62 @@ export function financeKindSegment(kind) {
     .replace(/\/+$/, "");
 }
 
+function directoryExistsSync(dirPath) {
+  try {
+    return fs.statSync(dirPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Subcarpeta real sota FINANCE_CSV_DIR per kind: prova el nom configurat i variants (RRHH vs recursos_humans, c.explotacio vs costos).
+ */
+export function resolveFinanceKindDirSync(root, kindRaw) {
+  const k = normalizeFinanceKind(kindRaw);
+  const primary = financeKindSegment(k);
+  /** @type {string[]} */
+  let chain = [primary];
+  if (k === "rh") {
+    chain = [primary, "RRHH", "rrhh", "Recursos_humans", "recursos_humans"];
+  } else if (k === "costos") {
+    chain = [primary, "c.explotacio", "c_explotacio", "C.explotacio", "costos"];
+  }
+  const tried = new Set();
+  for (const seg of chain) {
+    const s = String(seg || "").trim();
+    if (!s) continue;
+    const key = foldAscii(s);
+    if (tried.has(key)) continue;
+    tried.add(key);
+    const candidate = resolveLocalKindSubdirSync(root, s);
+    if (directoryExistsSync(candidate)) return candidate;
+  }
+  return resolveLocalKindSubdirSync(root, primary);
+}
+
+/**
+ * Fitxers que podem llegir com a taula (CSV/TSV o export sense extensió tipus vendes_2026).
+ */
+export function isListableFinanceDataFile(fileName) {
+  const base = path.basename(String(fileName || "").replace(/\\/g, "/"));
+  const n = base.toLowerCase();
+  if (n.endsWith(".csv") || n.endsWith(".tsv")) return true;
+  const off = String(process.env.FINANCE_ALLOW_EXTENSIONLESS_TABULAR || "1").toLowerCase();
+  if (off === "0" || off === "false" || off === "no") return false;
+  return base.length > 0 && !base.includes(".");
+}
+
 export function safeCsvFileName(fileName) {
-  const safe = path.basename(String(fileName || "").trim());
-  if (!safe || !safe.toLowerCase().endsWith(".csv")) {
-    throw new Error("Invalid CSV file name");
+  const raw = String(fileName || "").trim().replace(/\\/g, "/");
+  const safe = path.basename(raw);
+  if (!safe || safe.includes("..")) {
+    throw new Error("Invalid file name");
+  }
+  if (!isListableFinanceDataFile(safe)) {
+    throw new Error(
+      "Invalid data file name (esperat .csv / .tsv o export sense extensió; FINANCE_ALLOW_EXTENSIONLESS_TABULAR=0 per desactivar)"
+    );
   }
   return safe;
 }
@@ -85,8 +137,7 @@ export function safeCsvFileName(fileName) {
 export function resolveLocalFinanceFilePath(fileName, kind = "compres") {
   const safe = safeCsvFileName(fileName);
   const root = path.resolve(getFinanceDir());
-  const sub = isFinanceSubfolderLayout() ? financeKindSegment(kind) : "";
-  const dir = sub ? resolveLocalKindSubdirSync(root, sub) : root;
+  const dir = isFinanceSubfolderLayout() ? resolveFinanceKindDirSync(root, kind) : root;
   const full = path.join(dir, safe);
   if (!full.startsWith(root)) {
     throw new Error("Invalid file path");

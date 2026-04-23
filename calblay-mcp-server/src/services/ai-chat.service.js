@@ -1,11 +1,21 @@
 import { createHash } from "node:crypto";
 import axios from "axios";
 import { countEventsByLnInMonth, countEventsInYear } from "./webapp.service.js";
+import {
+  comercialsForBusinessLineForChat,
+  getEventContextByCodeForChat,
+  listRecentEventsForChat,
+  listTransportsForChat,
+  quadrantsDeptSummaryForChat,
+  searchFinquesForChat,
+  searchPersonnelForChat
+} from "./operations-data.service.js";
 import { buildCostImputationReportCalblay } from "./cost-imputation-report.js";
 import { getCostImputationOverview, searchCostImputation } from "./cost-imputation.service.js";
 import {
   aggregatePurchasesByBusinessLineAndCentre,
   aggregateSalesByCentreMonth,
+  aggregateVendesTopArticlesByEstablishment,
   comparePurchasesSupplierQuarters,
   getPurchasesArticleMonthSummary,
   getPurchasesByArticle,
@@ -55,6 +65,14 @@ function shouldForceCostImputationOverview(question) {
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .toLowerCase();
+  // Quadrants d'operació (planificació per departament a Firestore), no CSV d'imputació: no forçar cost.
+  if (/\bquadrants?\b/.test(s)) {
+    const financialContext =
+      /\b(imputaci|imputacion|cost\s*salar|n[oó]mina|sou|p\s*[\&\u0026]\s*l|p&l|trimestre|imput\w*.*(cost|salar)|variaci\w*.*(cost|sou))\b/i.test(
+        s
+      ) || /\b20[2-3]\d\b.*\b(cost|salar|nomina|imput)\b/i.test(s);
+    if (!financialContext) return false;
+  }
   const costLike =
     /\b(cost|imputaci|salar|nomina|n[oó]mina|departament|recursos\s+humans|personal)\b/i.test(s) ||
     /\bp\s*&\s*l\b/i.test(raw);
@@ -255,6 +273,56 @@ function shrinkToolPayload(result) {
     clone.fileErrors = clone.fileErrors.slice(0, 8);
     clone._truncatedFileErrors = total - 8;
   }
+  if (
+    clone.kind === "vendes" &&
+    clone.ranking === "top_articles_by_establishment" &&
+    Array.isArray(clone.top) &&
+    clone.top.length > 35
+  ) {
+    const total = clone.top.length;
+    clone.top = clone.top.slice(0, 35);
+    clone._truncatedTopArticles = total - 35;
+  }
+  if (clone.personnel && Array.isArray(clone.personnel) && clone.personnel.length > 50) {
+    const total = clone.personnel.length;
+    clone.personnel = clone.personnel.slice(0, 50);
+    clone._truncatedPersonnel = total - 50;
+  }
+  if (clone.finques && Array.isArray(clone.finques) && clone.finques.length > 30) {
+    const total = clone.finques.length;
+    clone.finques = clone.finques.slice(0, 30);
+    clone._truncatedFinques = total - 30;
+  }
+  if (clone.events && Array.isArray(clone.events) && clone.events.length > 40) {
+    const total = clone.events.length;
+    clone.events = clone.events.slice(0, 40);
+    clone._truncatedEvents = total - 40;
+  }
+  if (clone.kind === "quadrants_dept" && Array.isArray(clone.items) && clone.items.length > 35) {
+    const total = clone.items.length;
+    clone.items = clone.items.slice(0, 35);
+    clone._truncatedQuadrantItems = total - 35;
+  }
+  if (clone.kind === "comercials_by_ln" && Array.isArray(clone.comercials) && clone.comercials.length > 80) {
+    const total = clone.comercials.length;
+    clone.comercials = clone.comercials.slice(0, 80);
+    clone._truncatedComercials = total - 80;
+  }
+  if (clone.vehicles && Array.isArray(clone.vehicles) && clone.vehicles.length > 80) {
+    const total = clone.vehicles.length;
+    clone.vehicles = clone.vehicles.slice(0, 80);
+    clone._truncatedVehicles = total - 80;
+  }
+  if (clone.quadrants && Array.isArray(clone.quadrants) && clone.quadrants.length > 25) {
+    const total = clone.quadrants.length;
+    clone.quadrants = clone.quadrants.slice(0, 25);
+    clone._truncatedQuadrants = total - 25;
+  }
+  if (clone.incidents && Array.isArray(clone.incidents) && clone.incidents.length > 25) {
+    const total = clone.incidents.length;
+    clone.incidents = clone.incidents.slice(0, 25);
+    clone._truncatedIncidents = total - 25;
+  }
 
   let s = JSON.stringify(clone);
   if (s.length > TOOL_RESULT_MAX_CHARS) {
@@ -312,6 +380,168 @@ function buildTools() {
     {
       type: "function",
       function: {
+        name: "event_context_by_code",
+        description:
+          "Dades d’operació d’UN esdeveniment a partir del codi d’esdeveniment (ex. C2500012 com a la webapp). " +
+          "Retorna l’esdeveniment a Firestore, els quadrants vinculats (treballadors, grups de servei, conductors) i incidències enllaçades. " +
+          "Ús obligatori quan l'usuari demana detall, personal, serveis, vehicles/conductors o incidències d’un event concret per code.",
+        parameters: {
+          type: "object",
+          properties: {
+            code: {
+              type: "string",
+              description: "Codi d’esdeveniment (mateix que a l’app / stage_verd)."
+            }
+          },
+          required: ["code"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "events_list_recent",
+        description:
+          "Els darrers esdeveniments del calendari (ordre per data) amb id, code, nom i dates. " +
+          "Quan l'usuari vol veure llista o context sense un codi concret.",
+        parameters: {
+          type: "object",
+          properties: {
+            limit: {
+              type: "integer",
+              minimum: 5,
+              maximum: 100,
+              description: "Opcional, per defecte ~30."
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "personnel_search",
+        description:
+          "Personal (treballadors) a la col·lecció Firestore `personnel`. Filtre opcional per nom/correu i per text al camp `role`. " +
+          "Això NO llista comercials assignats per línia de negoci (LN) als esdeveniments: per això usar comercials_for_business_line. " +
+          "Per dades d’un event concret (qui treballa un dia) prioritzar event_context_by_code (quadrants).",
+        parameters: {
+          type: "object",
+          properties: {
+            nameContains: {
+              type: "string",
+              description: "Opcional. Part del nom o text a cercar (tolerància sense accents)."
+            },
+            roleContains: {
+              type: "string",
+              description: "Opcional. Subcadena al rol en minúscules/variant (ex. comercial) si consta al document de personnel."
+            },
+            limit: { type: "integer", minimum: 5, maximum: 100 }
+          }
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "comercials_for_business_line",
+        description:
+          "Llista noms de comercial la línia de negoci (LN) del qual coincideix amb el text (ex. «empresa» pot coincidir amb «Empreses» o «Empresa» als esdeveniments). " +
+          "Dades extretes del camp comercial/Comercial dels esdeveniments (calendari), no del CSV d’imputació. " +
+          "Ús obligatori per «comercials de la línia…», «qui ven a empresa/casaments…» sense codi d’event; retorna noms i recompte aproximat al mostreig d’esdeveniments recents. " +
+          "Si l’usuari dóna un codi C…, preferir event_context_by_code per detall d’un event.",
+        parameters: {
+          type: "object",
+          properties: {
+            lineContains: {
+              type: "string",
+              description:
+                "Text que ha d’aparèixer a LN (línia de negoci) en minúscules/sense accents, ex. empresa, casament, food, nautic."
+            },
+            eventScanLimit: {
+              type: "integer",
+              minimum: 200,
+              maximum: 5000,
+              description: "Opcional. Fins a quants esdeveniments recents escanejar (per defecte ~2500). Ampliar si el resultat ve buit però hauria d’haver dades."
+            }
+          },
+          required: ["lineContains"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "vehicles_list",
+        description:
+          "Llista de vehicles (col·lecció transports: matrícula, tipus). " +
+          "No és el mateix que conductors assignats a un event; per assignacions d’event usar event_context_by_code.",
+        parameters: {
+          type: "object",
+          properties: {
+            limit: { type: "integer", minimum: 5, maximum: 120 }
+          }
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "finques_search",
+        description:
+          "Cerca finques o espais (col·lecció finques: nom, codi). Mínim 2 caràcters de cerca. " +
+          "Per a tot el detall d’on és un event concret, combinar amb event_context_by_code.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "Text a cercar a nom, codi o camp searchable (>= 2 caràcters)."
+            },
+            limit: { type: "integer", minimum: 1, maximum: 40 }
+          },
+          required: ["query"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "quadrants_dept_summary",
+        description:
+          "Quadrants d'OPERACIÓ / planificació de serveis a Firestore (col·leccions com quadrantsLogistica, quadrantsCuina): esborranys i confirmats, codi d'event, dates. " +
+          "Ús obligatori per «quants quadrants», «quadrants confirmats», llistat per departament (logística, cuina, serveis…) dins un període. " +
+          "Això NO és el CSV d'imputació de costos salarials: per costos / nòmina / T1 P&L usar costs_imputation_*, no aquesta eina. " +
+          "Per un sol esdeveniment concret amb codi C… usar event_context_by_code.",
+        parameters: {
+          type: "object",
+          properties: {
+            department: {
+              type: "string",
+              description:
+                "Departament com a l'app: logistica, cuina, serveis, bar, sala… (tolerància d'accents; ha de coincidir amb el sufix de la col·lecció quadrants* del projecte)."
+            },
+            start: {
+              type: "string",
+              description: "Opcional. Inici de rang data d'inici de servei YYYY-MM-DD. Si falta, s'usa el dilluns de la setmana natural actual."
+            },
+            end: {
+              type: "string",
+              description: "Opcional. Fi de rang YYYY-MM-DD. Si falta, s'usa el diumenge de la setmana natural actual."
+            },
+            status: {
+              type: "string",
+              enum: ["all", "confirmed", "draft"],
+              description: "Opcional. Filtra per estat: all (per defecte), només confirmats, només esborrany."
+            }
+          },
+          required: ["department"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
         name: "finances_list_files",
         description:
           "List finance CSV file names in one category folder (compres, costos, vendes, rh). " +
@@ -358,7 +588,7 @@ function buildTools() {
           "Uses column jornada (values like 2026-01 or 2026-01 enero). " +
           "Call this when the user asks vendes/facturació/billing by centre and month/year. " +
           "Optional year filters rows to that calendar year. " +
-          "Optional file limits to one .csv in the vendes folder; omit to scan all vendes CSVs. " +
+          "Optional file limits to one data file in the vendes folder (.csv, .tsv, or extensionless export); omit to scan all listable files there. " +
           "If unsure of file names, call finances_list_files kind=vendes first.",
         parameters: {
           type: "object",
@@ -371,9 +601,43 @@ function buildTools() {
             },
             file: {
               type: "string",
-              description: "Optional. One CSV file name inside the vendes folder. Omit to aggregate every .csv there."
+              description: "Optional. One file name inside the vendes folder. Omit to aggregate every tabular file there."
             }
           }
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "sales_top_articles_by_establishment",
+        description:
+          "PRIMARY for vendes exports (carpeta vendes, NOT compres/SAP): best-selling articles/products at one establishment. " +
+          "Keeps rows whose centre column contains centreContains (e.g. NAUTIC; case/accent insensitive), groups by article column, sums cobrades EUR or units. " +
+          "Use for «article més venut», «més vendes al NAUTIC», top product by revenue at a site. " +
+          "Optional year filters jornada; optional file; else all listable files in vendes. Call finances_list_files kind=vendes if the user names a specific export.",
+        parameters: {
+          type: "object",
+          properties: {
+            centreContains: {
+              type: "string",
+              description: 'Substring of establishment name as in CSV centre column (ex. "NAUTIC", "MASIA").'
+            },
+            year: {
+              type: "integer",
+              minimum: 2000,
+              maximum: 2100,
+              description: "Optional. Limit to this calendar year from jornada YYYY-MM."
+            },
+            file: { type: "string", description: "Optional single file in vendes folder." },
+            topN: { type: "integer", minimum: 1, maximum: 40 },
+            metric: {
+              type: "string",
+              enum: ["amount", "quantity"],
+              description: "Rank by EUR (amount, default) or units (quantity)."
+            }
+          },
+          required: ["centreContains"]
         }
       }
     },
@@ -385,6 +649,7 @@ function buildTools() {
           "Vista del CSV d'IMPUTACIÓ DE COSTOS (cost salarial / P&L per centre o departament, NO compres). " +
           "Retorna metaLines (períodes al PDF/Excel), amountColumns (cada label sol ser un període o concepte d'import) i les primeres N files amb tots els departaments/centres trobats. " +
           "CRIDA AQUESTA EINA PRIMER quan l'usuari demana variació de cost salarial per departament, comparativa entre trimestres (ex. T1 2025 vs T1 2026), P&L creuat, o no especifica cap departament. " +
+          "No usar per quadrants de planificació d'serveis (comptar confirmats a logística, etc.): això és quadrants_dept_summary. " +
           "Després pots usar costs_imputation_search amb contains per afinar un departament. No usar purchases_* per cost intern.",
         parameters: {
           type: "object",
@@ -405,7 +670,8 @@ function buildTools() {
         name: "costs_imputation_search",
         description:
           "Costos / imputació salarial filtrats per mot clau de centre o departament (mateix CSV que costs_imputation_overview). " +
-          "Cerca amb contains (ex. marketing, logistica, rh). La resposta inclou amountColumns i rows[].valuesByColumn: usa label de capçalera per saber quin import és de quin període. " +
+          "Cerca amb contains (ex. marketing, rh). La resposta inclou amountColumns i rows[].valuesByColumn: usa label de capçalera per saber quin import és de quin període. " +
+          "No confondre 'logística' com a centre de cost amb quadrants d'operació: per «quants quadrants confirmats a logística» usar quadrants_dept_summary amb department=logistica. " +
           "Per preguntes globals o comparatives sense departament concret, cridar abans costs_imputation_overview. No confonguis amb purchases_search.",
         parameters: {
           type: "object",
@@ -641,6 +907,42 @@ async function runTool(toolName, args) {
   if (toolName === "events_count_by_ln_month") {
     return countEventsByLnInMonth(String(args?.yearMonth || ""));
   }
+  if (toolName === "event_context_by_code") {
+    return getEventContextByCodeForChat(String(args?.code || ""));
+  }
+  if (toolName === "events_list_recent") {
+    return listRecentEventsForChat({ limit: args?.limit });
+  }
+  if (toolName === "personnel_search") {
+    return searchPersonnelForChat({
+      nameContains: args?.nameContains,
+      roleContains: args?.roleContains,
+      limit: args?.limit
+    });
+  }
+  if (toolName === "comercials_for_business_line") {
+    return comercialsForBusinessLineForChat({
+      lineContains: String(args?.lineContains || ""),
+      eventScanLimit: args?.eventScanLimit != null ? Number(args.eventScanLimit) : undefined
+    });
+  }
+  if (toolName === "vehicles_list") {
+    return listTransportsForChat({ limit: args?.limit });
+  }
+  if (toolName === "finques_search") {
+    return searchFinquesForChat({
+      query: args?.query,
+      limit: args?.limit
+    });
+  }
+  if (toolName === "quadrants_dept_summary") {
+    return quadrantsDeptSummaryForChat({
+      department: String(args?.department || ""),
+      start: args?.start != null ? String(args.start) : undefined,
+      end: args?.end != null ? String(args.end) : undefined,
+      status: args?.status != null ? String(args.status) : undefined
+    });
+  }
   if (toolName === "finances_list_files") {
     const kind = normalizeFinanceKind(args?.kind);
     const files = await listFinanceCsvFilesForKind(kind);
@@ -656,6 +958,16 @@ async function runTool(toolName, args) {
     return aggregateSalesByCentreMonth({
       year: args?.year,
       file: f || undefined
+    });
+  }
+  if (toolName === "sales_top_articles_by_establishment") {
+    const f = args?.file != null ? String(args.file).trim() : "";
+    return aggregateVendesTopArticlesByEstablishment({
+      centreContains: String(args?.centreContains ?? ""),
+      year: args?.year,
+      file: f || undefined,
+      topN: args?.topN != null ? Number(args.topN) : undefined,
+      metric: args?.metric != null ? String(args.metric) : undefined
     });
   }
   if (toolName === "costs_imputation_overview") {
@@ -789,7 +1101,8 @@ export async function chatWithTools({ question, language = "ca", rich = false })
   const currentYear = new Date().getFullYear();
   const systemBase =
     "Cal Blay. Tools = facts only. " +
-    "Cost salarial / imputació / departaments / P&L intern: per informes que creuen períodes (ex. T1 2025 vs T1 2026) o 'per departament' sense nom concret, crida PRIMER costs_imputation_overview; després costs_imputation_search amb contains si cal un departament. " +
+    "Quadrants d'operació (planificació de serveis, confirmats/esborranys per departament com logística o cuina): quadrants_dept_summary. No usar costs_imputation_* per això (aquestes són dades de cost salarial a CSV, no les col·leccions quadrants* de l'app). " +
+    "Cost salarial / imputació / P&L intern: per informes que creuen períodes (ex. T1 2025 vs T1 2026) o variació de cost per centre, crida PRIMER costs_imputation_overview; després costs_imputation_search amb contains si cal. " +
     "Interpreta imports amb rows.valuesByColumn i amountColumns.label (cada columna pot ser un període diferent al mateix CSV). Llegeix metaLines per dates o títol. No demanis a l'usuari les dades si pots obtenir-les amb aquestes eines; si el CSV no té la columna esperada, explica-ho amb el que sí retornen amountColumns. " +
     "Compres (factures proveïdor): purchases_search; dimensió 1 = LN, dimensió 2 = centre. purchases_analytics_ln_centre = agregat per LN+centre (no cost salarial / imputació). " +
     "Per «article més comprat», «top articles», «més comprat per valor/import» en COMPRES: purchases_top_articles_by_amount (yearMonth YYYY-MM o dateFrom/dateTo); mai endevinis el guanyador amb un mostreig de purchases_search. " +
@@ -797,8 +1110,15 @@ export async function chatWithTools({ question, language = "ca", rich = false })
     "Per un interval de dates arbitrari: purchases_supplier_article_period_summary. purchases_by_supplier és només mostreig; purchases_by_article / purchases_article_month_summary per article M######. " +
     `Esdeveniments: events_count_by_year (total anual); si l'usuari no indica any, omet year o usa ${currentYear}. ` +
     "Per recompte per línia de negoci (LN) i un mes concret: events_count_by_ln_month amb yearMonth=YYYY-MM (ex. febrer 2026 → 2026-02). No usar només events_count_by_year per aquestes preguntes. " +
+    "Producció / operació (mateixa base Firestore que l'app, enllaç principal: code d'esdeveniment): " +
+    "event_context_by_code quan l'usuari dóna un codi (C… o id) i vol detall, quadrants, treballadors/conductors per grups, incidències. " +
+    "quadrants_dept_summary per recomptes o llistats de quadrants per departament (sense codi C…) en un interval de dates (per defecte setmana actual). " +
+    "comercials_for_business_line per llistar noms de comercial segons la línia de negoci (LN) als esdeveniments (ex. 'empresa'); no és personnel_search. " +
+    "events_list_recent per llistar darrers events sense codi. personnel_search per llista de personal (nom o correu, opcional roleContains). " +
+    "vehicles_list per vehicle/matrícula a la flota. finques_search per finques o espais (>=2 lletres). " +
+    "Quan el codi d'event C… apareix a la pregunta, crida event_context_by_code abans d'inferir. " +
     "finances_preview per capçaleres. " +
-    "Vendes / facturació (CSV exportats a carpeta vendes, no SAP compres): per imports per centre i mes, crida sales_by_centre_month (year opcional, file opcional). Si no coneixes el nom del fitxer, finances_list_files kind=vendes abans. " +
+    "Vendes / facturació (fitxers a carpeta vendes, no SAP compres): imports per centre i mes → sales_by_centre_month; article més venut / més vendes a un centre concret (ex. NAUTIC) → sales_top_articles_by_establishment amb centreContains. finances_list_files kind=vendes si cal el nom del fitxer. " +
     "If tools return aggregated figures (avgUnitPrice, comparison, totals), report them in the answer at once; do not ask the user whether to calculate. " +
     "Reply in user language; use EUR for money.";
 
@@ -819,6 +1139,13 @@ export async function chatWithTools({ question, language = "ca", rich = false })
     if (!m) return "";
     const code = m[1].toUpperCase();
     return ` Hint: article SAP code ${code}: use articleCode="${code}" in purchases_by_article or purchases_article_month_summary.`;
+  })();
+
+  const eventCodeHint = (() => {
+    const m = qNorm.match(/\b(C\d+)\b/i);
+    if (!m) return "";
+    const code = m[1].toUpperCase();
+    return ` Hint: l'usuari indica un codi d'esdeveniment (code) ${code}: per defecte crida event_context_by_code amb code="${code}" per obtenir quadrants, treballadors, conductors, incidències.`;
   })();
 
   const systemRich =
@@ -843,6 +1170,7 @@ export async function chatWithTools({ question, language = "ca", rich = false })
     (rich ? systemRich : systemBase + " Max 4 short sentences.") +
     supplierCodeHint +
     articleCodeHint +
+    eventCodeHint +
     (forceCostOverview
       ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser costs_imputation_overview (sense omplir contains); després interpreta amountColumns i rows. No diguis que no hi ha dades sense haver rebut el resultat d’aquesta eina."
       : "");

@@ -9,44 +9,97 @@ import {
 
 /** Evita tornar a escanejar el directori en cada crida d'eina. */
 let resolvedCostReportFileName = null;
+/** Subcarpeta/origen on viu el fitxer (costos | rh), p.ex. RRHH amb cost salarial. */
+let resolvedCostReportKind = null;
+
+function costReportCacheDisabled() {
+  return String(process.env.FINANCE_COST_REPORT_CACHE_DISABLED || "").match(/^(1|true|yes)$/i);
+}
 
 /**
- * Nom del CSV d'imputació: FINANCE_COST_CSV si està definit; si no, el primer .csv
- * del mateix origen que readCsvText(..., "costos") que parsegi com a informe (fila "Importe bruto").
+ * Nom del CSV d'imputació: FINANCE_COST_CSV si està definit; si no, el primer fitxer vàlid
+ * a les carpetes costos i rh (RRHH / recursos_humans) que parsegi com a informe (fila Importe bruto / Import brut).
  */
 export async function resolveCostReportFileName() {
-  if (resolvedCostReportFileName) return resolvedCostReportFileName;
+  if (resolvedCostReportFileName && resolvedCostReportKind && !costReportCacheDisabled()) {
+    return resolvedCostReportFileName;
+  }
 
   const explicit = process.env.FINANCE_COST_CSV?.trim();
   if (explicit) {
-    resolvedCostReportFileName = explicit;
-    return explicit;
+    const forcedKind = process.env.FINANCE_COST_CSV_KIND?.trim().toLowerCase();
+    if (forcedKind === "rh" || forcedKind === "costos") {
+      const raw = await readCsvText(explicit, forcedKind);
+      parseCostImputationCsv(raw);
+      resolvedCostReportFileName = explicit;
+      resolvedCostReportKind = forcedKind;
+      return explicit;
+    }
+    for (const kind of ["costos", "rh"]) {
+      try {
+        const raw = await readCsvText(explicit, kind);
+        parseCostImputationCsv(raw);
+        resolvedCostReportFileName = explicit;
+        resolvedCostReportKind = kind;
+        return explicit;
+      } catch {
+        /* següent carpeta */
+      }
+    }
+    throw new Error(
+      `FINANCE_COST_CSV=${explicit} no es pot llegir com a informe d'imputació dins costos ni rh. ` +
+        "Comprova el nom (inclou extensió .csv si escau) o posa FINANCE_COST_CSV_KIND=costos o rh."
+    );
   }
 
-  const names = await listFinanceCsvFilesForKind("costos");
-  if (names.length === 0) {
+  const kinds = String(process.env.FINANCE_COST_IMPUTATION_KINDS || "costos,rh")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter((k) => k === "costos" || k === "rh");
+
+  /** @type {{ name: string, kind: string }[]} */
+  const candidates = [];
+  for (const kind of kinds) {
+    const names = await listFinanceCsvFilesForKind(kind);
+    for (const name of names) {
+      candidates.push({ name, kind });
+    }
+  }
+
+  if (candidates.length === 0) {
     throw new Error(
-      "No hi ha cap .csv de costos al directori configurat (FINANCE_CSV_DIR o, amb FINANCE_SUBFOLDERS, la subcarpeta costos / GCS_FINANCE_BASE/…/costos). " +
-        "Afegeix l'informe d'imputació o defineix FINANCE_COST_CSV amb el nom del fitxer."
+      "No hi ha cap fitxer de dades a les carpetes d'imputació (costos ni rh/RRHH). " +
+        "Revisa FINANCE_CSV_DIR, FINANCE_SUBFOLDERS, FINANCE_PATH_COSTOS, FINANCE_PATH_RH i que el desplegament (GCS) tingui els mateixos fitxers que el teu OneDrive. " +
+        "O defineix FINANCE_COST_CSV amb el nom exacte del fitxer."
     );
   }
 
   const scoreName = (n) => {
     const l = n.toLowerCase();
     if (l.includes("imputaci")) return 0;
-    if (l.includes("cost")) return 1;
-    return 2;
+    if (l.includes("salar") || l.includes("salari")) return 1;
+    if (l.includes("cost")) return 2;
+    return 3;
   };
-  const sorted = [...names].sort((a, b) => {
-    const d = scoreName(a) - scoreName(b);
-    return d !== 0 ? d : a.localeCompare(b);
+  const maxYearInName = (n) => {
+    const years = String(n).match(/20\d{2}/g);
+    if (!years || !years.length) return 0;
+    return Math.max(...years.map(Number));
+  };
+  const sorted = [...candidates].sort((a, b) => {
+    const d = scoreName(a.name) - scoreName(b.name);
+    if (d !== 0) return d;
+    const yd = maxYearInName(b.name) - maxYearInName(a.name);
+    if (yd !== 0) return yd;
+    return a.name.localeCompare(b.name);
   });
 
-  for (const name of sorted) {
+  for (const { name, kind } of sorted) {
     try {
-      const raw = await readCsvText(name, "costos");
+      const raw = await readCsvText(name, kind);
       parseCostImputationCsv(raw);
       resolvedCostReportFileName = name;
+      resolvedCostReportKind = kind;
       return name;
     } catch {
       /* següent candidat */
@@ -54,10 +107,11 @@ export async function resolveCostReportFileName() {
   }
 
   throw new Error(
-    `No s'ha detectat cap CSV d'imputació vàlid (fila amb «Importe bruto») entre: ${sorted.join(", ")}. ` +
-      "Posa el fitxer correcte a la carpeta de costos o defineix FINANCE_COST_CSV amb el nom exacte."
+    `No s'ha detectat cap CSV d'imputació vàlid (fila «Importe bruto» / «Import brut») entre: ${sorted.map((c) => `${c.kind}:${c.name}`).join(", ")}. ` +
+      "Defineix FINANCE_COST_CSV o revisa el format de l'export."
   );
 }
+
 
 function slugHeader(s) {
   return String(s || "")
@@ -94,12 +148,20 @@ function isLikelyAmountCell(s) {
   return n !== 0 || t === "0" || /^0[,.]0+$/.test(plain);
 }
 
+function cellIsAmountHeaderLabel(c) {
+  const s = stripCsvCell(c).toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+  return (
+    s.includes("importe bruto") ||
+    s.includes("import brut") ||
+    s.includes("importe brut") ||
+    (s.includes("import") && s.includes("brut"))
+  );
+}
+
 function findAmountHeaderRow(lines) {
   for (let i = 0; i < lines.length; i += 1) {
     const cells = normalizeCsvLine(lines[i]);
-    const idx = cells.findIndex((c) =>
-      stripCsvCell(c).toLowerCase().includes("importe bruto")
-    );
+    const idx = cells.findIndex((c) => cellIsAmountHeaderLabel(c));
     if (idx >= 0) return { rowIndex: i, amountStart: idx, cells };
   }
   return null;
@@ -126,7 +188,7 @@ export function parseCostImputationCsv(raw) {
   const head = findAmountHeaderRow(lines);
   if (!head) {
     throw new Error(
-      "No s'ha trobat la fila amb 'Importe bruto'. Aquest CSV no sembla un informe d'imputació de costos."
+      "No s'ha trobat la fila amb capçalera d'import tipus «Importe bruto» / «Import brut». Aquest CSV no sembla un informe d'imputació de costos."
     );
   }
 
@@ -176,8 +238,11 @@ export function parseCostImputationCsv(raw) {
 }
 
 export async function loadCostImputation() {
-  const fileName = await resolveCostReportFileName();
-  const raw = await readCsvText(fileName, "costos");
+  await resolveCostReportFileName();
+  const fileName = resolvedCostReportFileName;
+  const kind = resolvedCostReportKind || "costos";
+  if (!fileName) throw new Error("Cost imputation: fitxer no resolt");
+  const raw = await readCsvText(fileName, kind);
   return parseCostImputationCsv(raw);
 }
 
@@ -263,7 +328,8 @@ export async function getCostImputationOverview({ limit = 40 } = {}) {
       overview: true,
       totalRowCount: rows.length,
       returnedRowCount: slice.length,
-      truncatedList: rows.length > lim
+      truncatedList: rows.length > lim,
+      sourceFinanceKind: resolvedCostReportKind
     }
   });
 }
@@ -286,6 +352,9 @@ export async function searchCostImputation({ contains, limit = 25 }) {
     amountHeaderLabels,
     sourceRows: slice,
     matchCount: matched.length,
-    extra: matched.length > lim ? { truncatedMatches: matched.length - lim } : {}
+    extra: {
+      ...(matched.length > lim ? { truncatedMatches: matched.length - lim } : {}),
+      sourceFinanceKind: resolvedCostReportKind
+    }
   });
 }

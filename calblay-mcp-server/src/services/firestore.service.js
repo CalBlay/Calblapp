@@ -50,6 +50,24 @@ export async function listCollection(
   return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
 
+/**
+ * Esdeveniments o altres col·leccions amb orderBy desc i límit més alt que listCollection (p. ex. mostreig de comercials per LN).
+ */
+export async function listCollectionOrderByDesc(
+  collectionName,
+  orderField,
+  { limit = 2000, max = 5000 } = {}
+) {
+  const n = Number.parseInt(String(limit ?? ""), 10);
+  const cap = Math.min(Math.max(Number.isFinite(n) ? n : 2000, 1), Math.min(max, 5000));
+  const snap = await getDb()
+    .collection(collectionName)
+    .orderBy(orderField, "desc")
+    .limit(cap)
+    .get();
+  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+}
+
 export async function queryCollectionWhere(
   collectionName,
   field,
