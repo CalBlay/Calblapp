@@ -2,6 +2,8 @@ import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import { requireApiKey } from "./utils/auth.js";
+import { chatWithTools } from "./services/ai-chat.service.js";
+import { listFinanceCsvFiles, previewFinanceCsv } from "./services/finances.service.js";
 import {
   buildEventSummary,
   getEventDetail,
@@ -99,6 +101,40 @@ app.get("/tools/sap/sales", async (_req, res) => {
     res.json({ ok: true, count: Array.isArray(data) ? data.length : 0, data });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.get("/tools/finances/list", async (_req, res) => {
+  try {
+    const files = await listFinanceCsvFiles();
+    res.json({ ok: true, count: files.length, files });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.get("/tools/finances/preview", async (req, res) => {
+  try {
+    const file = String(req.query.file || "");
+    const rows = Number(req.query.rows || 20);
+    const data = await previewFinanceCsv(file, rows);
+    res.json({ ok: true, data });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/chat", async (req, res) => {
+  try {
+    const question = String(req.body?.question || "").trim();
+    const language = String(req.body?.language || "ca");
+    if (!question) {
+      return res.status(400).json({ ok: false, error: "Missing question" });
+    }
+    const result = await chatWithTools({ question, language });
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message });
   }
 });
 

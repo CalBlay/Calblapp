@@ -82,6 +82,9 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
   const avatarLetter = username[0]?.toUpperCase() ?? 'U'
 
   const visibleModules = getVisibleModules({ role, department })
+  const sortedVisibleModules = [...visibleModules].sort((a, b) =>
+    a.label.localeCompare(b.label, 'ca', { sensitivity: 'base' })
+  )
 
   return (
       <div className="min-h-[100dvh] bg-background text-foreground">
@@ -135,7 +138,7 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
             </div>
 
             <nav className="flex flex-col gap-2">
-              {visibleModules.map(mod => (
+              {sortedVisibleModules.map(mod => (
                 <Link
                   key={mod.path}
                   href={mod.path}

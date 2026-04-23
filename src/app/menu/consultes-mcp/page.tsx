@@ -5,8 +5,9 @@ import { withAdmin } from '@/hooks/withAdmin'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Sparkles, RefreshCw, Search } from 'lucide-react'
+import { Sparkles, RefreshCw, Search, MessageSquareText } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import {
@@ -118,6 +119,15 @@ function ConsultesMcpPage() {
     note?: string
   } | null>(null)
 
+  const [openQuestion, setOpenQuestion] = useState('')
+  const [openLoading, setOpenLoading] = useState(false)
+  const [openError, setOpenError] = useState<McpUiError | null>(null)
+  const [openAnswer, setOpenAnswer] = useState<{
+    text: string
+    model?: string
+    toolCallsUsed?: number
+  } | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -152,6 +162,50 @@ function ConsultesMcpPage() {
       setLoading(false)
     }
   }, [limit])
+
+  const submitOpenQuestion = useCallback(async () => {
+    const q = openQuestion.trim()
+    if (!q) {
+      setOpenError({ message: 'Escriu una pregunta' })
+      setOpenAnswer(null)
+      return
+    }
+    setOpenLoading(true)
+    setOpenError(null)
+    setOpenAnswer(null)
+    try {
+      const res = await fetch('/api/mcp/chat', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q, language: 'ca' }),
+      })
+      const data = (await res.json()) as {
+        ok?: boolean
+        answer?: string
+        model?: string
+        toolCallsUsed?: number
+        error?: string
+        hint?: string
+        raw?: string
+      }
+      if (!res.ok || data.ok === false) {
+        setOpenError(mcpErrorFromApi(data, res.status))
+        return
+      }
+      setOpenAnswer({
+        text: String(data.answer ?? ''),
+        model: data.model,
+        toolCallsUsed:
+          typeof data.toolCallsUsed === 'number' ? data.toolCallsUsed : undefined,
+      })
+    } catch (e) {
+      setOpenError({ message: e instanceof Error ? e.message : 'Error de xarxa' })
+    } finally {
+      setOpenLoading(false)
+    }
+  }, [openQuestion])
 
   const loadByCode = useCallback(async () => {
     const code = eventCode.trim()
@@ -275,6 +329,77 @@ function ConsultesMcpPage() {
         Les crides passen per <code className="text-xs bg-muted px-1 rounded">/api/mcp/*</code> amb
         clau MCP només al servidor.
       </p>
+
+      {/* ——— Consulta oberta (OpenAI + eines MCP) ——— */}
+      <section
+        id="consulta-oberta"
+        className="space-y-4 rounded-xl border border-violet-200 bg-violet-50/40 p-4 sm:p-5 scroll-mt-4"
+      >
+        <div className="flex items-center gap-2">
+          <MessageSquareText className="h-6 w-6 text-violet-700" />
+          <h2 className="text-lg font-semibold text-violet-950">Consulta oberta</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Preguntes en llenguatge natural. El MCP usa OpenAI i les eines (events, finances, compres)
+          quan cal. Prova-ho a Vercel amb <code className="text-xs bg-white px-1 rounded">OPENAI_API_KEY</code>{' '}
+          configurada al servei Cloud Run.
+        </p>
+        <div className="space-y-2">
+          <label htmlFor="open-question" className="text-sm font-medium">
+            Pregunta
+          </label>
+          <Textarea
+            id="open-question"
+            placeholder="Ex.: Quina va ser la venda total del gener del 2026?"
+            className="min-h-[100px] border-2 border-violet-300 bg-white text-slate-900 shadow-sm"
+            value={openQuestion}
+            onChange={(e) => setOpenQuestion(e.target.value)}
+          />
+        </div>
+        <Button
+          type="button"
+          size="lg"
+          onClick={submitOpenQuestion}
+          disabled={openLoading}
+          className={cn(
+            'min-h-11 border-2 border-violet-900 bg-violet-700 text-base font-semibold text-white shadow-md',
+            'hover:bg-violet-800 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2'
+          )}
+        >
+          {openLoading ? (
+            <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+          ) : (
+            <MessageSquareText className="mr-2 h-5 w-5" />
+          )}
+          Enviar consulta
+        </Button>
+        {openError ? <McpErrorBanner err={openError} /> : null}
+        {openAnswer ? (
+          <Card className="border-violet-200 bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Resposta</CardTitle>
+              <CardDescription>
+                {openAnswer.model ? (
+                  <>
+                    Model: <span className="font-mono">{openAnswer.model}</span>
+                    {openAnswer.toolCallsUsed != null ? (
+                      <>
+                        {' '}
+                        · Eines MCP: <strong>{openAnswer.toolCallsUsed}</strong>
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900">
+                {openAnswer.text || '—'}
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
+      </section>
 
       {/* ——— Top finques per import (Firestore) ——— */}
       <section className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 sm:p-5">

@@ -188,6 +188,18 @@ export const MODULES: ModuleDef[] = [
     label: 'Consultes MCP',
     path: '/menu/consultes-mcp',
     roles: ['admin'],
+    submodules: [
+      {
+        label: 'Consulta oberta',
+        path: '/menu/consultes-mcp#consulta-oberta',
+        roles: ['admin'],
+      },
+      {
+        label: 'Consultes fixes',
+        path: '/menu/consultes-mcp',
+        roles: ['admin'],
+      },
+    ],
   },
 
   { label: 'Imatges', path: '/menu/media',

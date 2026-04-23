@@ -18,6 +18,24 @@ const normalizeDept = (raw?: string) => {
   return base
 }
 
+const normalizeSpaceCode = (raw?: unknown) =>
+  String(raw || '')
+    .trim()
+    .toUpperCase()
+
+async function codeAlreadyExists(code: string): Promise<boolean> {
+  if (!code) return false
+  const snap = await db.collection('finques').get()
+  return snap.docs.some((doc) => {
+    const data = doc.data() as Record<string, unknown>
+    const current =
+      normalizeSpaceCode(data.code) ||
+      normalizeSpaceCode(data.codi) ||
+      normalizeSpaceCode(doc.id)
+    return current === code
+  })
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -76,7 +94,13 @@ export async function POST(req: Request) {
       }
     }
 
-    const codeValue = String(rest.code || '').trim()
+    const codeValue = normalizeSpaceCode(rest.code)
+    if (codeValue && (await codeAlreadyExists(codeValue))) {
+      return NextResponse.json(
+        { error: 'Aquest codi ja existeix.' },
+        { status: 409 }
+      )
+    }
     const tipusValue =
       rest.tipus || (codeValue.startsWith('CC') ? 'Propi' : 'Extern')
 

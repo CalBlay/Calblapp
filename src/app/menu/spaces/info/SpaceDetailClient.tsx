@@ -72,6 +72,8 @@ export default function SpaceDetailClient({
   const isNew = !espai.id
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [checkingCode, setCheckingCode] = useState(false)
+  const [codeExistsError, setCodeExistsError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -266,6 +268,10 @@ const handleSave = async () => {
     setError("El nom és obligatori per crear un espai.")
     return
   }
+  if (codeExistsError) {
+    setError(codeExistsError)
+    return
+  }
   setError(null)
   setSuccess(null)
   setSaving(true)
@@ -299,6 +305,35 @@ const handleSave = async () => {
     setError(err instanceof Error ? err.message : 'Hi ha hagut un error en desar els canvis.')
   } finally {
     setSaving(false)
+  }
+}
+
+const checkCodeAvailability = async (rawCode: string) => {
+  const normalizedCode = String(rawCode || '').trim().toUpperCase()
+  if (!normalizedCode) {
+    setCodeExistsError(null)
+    return
+  }
+
+  setCheckingCode(true)
+  try {
+    const qs = new URLSearchParams({
+      code: normalizedCode,
+      ...(espai.id ? { excludeId: espai.id } : {}),
+    })
+    const res = await fetch(`/api/spaces/code-exists?${qs.toString()}`, {
+      cache: 'no-store',
+    })
+    const json = await safeParseJson(res)
+    if (!res.ok) {
+      throw new Error(json.error || json.raw || 'Error comprovant codi')
+    }
+    setCodeExistsError(json.exists ? 'Aquest codi ja existeix.' : null)
+  } catch (err) {
+    console.error('Error comprovant codi:', err)
+    setCodeExistsError(null)
+  } finally {
+    setCheckingCode(false)
   }
 }
 
@@ -422,11 +457,23 @@ const handleDelete = async () => {
               </label>
               <input
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(e) => {
+                  setCode(e.target.value)
+                  if (codeExistsError) setCodeExistsError(null)
+                }}
+                onBlur={() => {
+                  void checkCodeAvailability(code)
+                }}
                 disabled={!canEdit}
                 className="w-full border rounded-lg px-2 py-1.5 text-sm font-mono"
                 placeholder="CEU00001 / CCB00001..."
               />
+              {checkingCode && (
+                <p className="mt-1 text-xs text-gray-500">Comprovant codi...</p>
+              )}
+              {!checkingCode && codeExistsError && (
+                <p className="mt-1 text-xs text-red-600">{codeExistsError}</p>
+              )}
             </div>
 
             <div>

@@ -271,6 +271,9 @@ function MenuContent({ user }: { user: SessionUser }) {
 
   // 🔑 ÚNICA FONT DE MÒDULS
   const modules = getVisibleModules(user)
+  const sortedModules = [...modules].sort((a, b) =>
+    a.label.localeCompare(b.label, 'ca', { sensitivity: 'base' })
+  )
 
   return (
     <section className="relative w-full max-w-2xl mx-auto p-4">
@@ -279,7 +282,7 @@ function MenuContent({ user }: { user: SessionUser }) {
       </h1>
 
       <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-3">
-        {modules.map(mod => {
+        {sortedModules.map(mod => {
           const ui = UI_MAP[mod.path]
           if (!ui) return null
 
