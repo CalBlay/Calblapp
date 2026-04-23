@@ -1,3 +1,4 @@
+import fs from "fs";
 import path from "path";
 import {
   getFinanceDir,
@@ -5,6 +6,41 @@ import {
   getGcsPrefix,
   isFinanceSubfolderLayout
 } from "./config.js";
+
+/** Minúscules + sense accents (per comparar noms de carpeta entre SO). */
+function foldAscii(s) {
+  return String(s || "")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+}
+
+/**
+ * Resol la subcarpeta de kind sota root: primer camí exacte; si no existeix,
+ * cerca un directori amb el mateix nom ignorant majúscules/minúscules (p.ex. vendes vs Vendes).
+ */
+export function resolveLocalKindSubdirSync(root, segment) {
+  if (!segment) return root;
+  const exact = path.join(root, segment);
+  try {
+    const st = fs.statSync(exact);
+    if (st.isDirectory()) return exact;
+  } catch {
+    /* prova coincidència insensible a caixa */
+  }
+  let entries;
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return exact;
+  }
+  const want = foldAscii(segment);
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    if (foldAscii(e.name) === want) return path.join(root, e.name);
+  }
+  return exact;
+}
 
 /** kind vàlid per API i readCsvText: compres | costos | vendes | rh */
 export function normalizeFinanceKind(kind) {
@@ -50,7 +86,8 @@ export function resolveLocalFinanceFilePath(fileName, kind = "compres") {
   const safe = safeCsvFileName(fileName);
   const root = path.resolve(getFinanceDir());
   const sub = isFinanceSubfolderLayout() ? financeKindSegment(kind) : "";
-  const full = sub ? path.join(root, sub, safe) : path.join(root, safe);
+  const dir = sub ? resolveLocalKindSubdirSync(root, sub) : root;
+  const full = path.join(dir, safe);
   if (!full.startsWith(root)) {
     throw new Error("Invalid file path");
   }

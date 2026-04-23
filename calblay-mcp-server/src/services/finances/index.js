@@ -2,7 +2,8 @@ export { financeKindSegment, normalizeFinanceKind } from "./paths.js";
 export {
   parseAmountLike,
   stripCsvCell,
-  normalizeArticleNameForMatch
+  normalizeArticleNameForMatch,
+  normalizeArticleNameCompact
 } from "./csv-cells.js";
 export { normalizeCsvLineDelimited, normalizeCsvLine } from "./csv-lines.js";
 export { readCsvText } from "./purchases-io.js";

@@ -48,3 +48,12 @@ export function normalizeArticleNameForMatch(s) {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+/**
+ * Mateixa base que normalizeArticleNameForMatch però sense espais ni puntuació
+ * (només lletres i dígits). Permet que "coca cola" coincideixi amb "COCA COLA LLAUNA".
+ * No corregeix errors tipogràfics (p.ex. "coacola" vs "cocacola").
+ */
+export function normalizeArticleNameCompact(s) {
+  return normalizeArticleNameForMatch(s).replace(/[^a-z0-9]/g, "");
+}

@@ -361,7 +361,8 @@ function buildTools() {
       function: {
         name: "purchases_search",
         description:
-          "PRIMARY for purchase CSV: filter by column (normalized keys: nom_article, codi_proveidor, import, data_comptable…). Dimensions SAP: column may be dimensio_1 / ln / dim1 (línia de negoci), dimensio_2 / dim2 / centre (centre). Each condition: column + value; mode contains (default), equals, starts_with, gte, lte. Optional dateFrom/dateTo on dateField. Use finances_preview if a column is missing.",
+          "PRIMARY for purchase CSV: filter by column (normalized keys: nom_article, codi_proveidor, import, data_comptable…). Dimensions SAP: column may be dimensio_1 / ln / dim1 (línia de negoci), dimensio_2 / dim2 / centre (centre). Each condition: column + value; mode contains (default), equals, starts_with, gte, lte. Optional dateFrom/dateTo on dateField. Use finances_preview if a column is missing. " +
+          "Text conditions ignore case; contains / starts_with / equals also treat runs of letters the same with or without spaces (e.g. coca cola matches COCA COLA LLAUNA). Does not fix typos (coacola ≠ cocacola).",
         parameters: {
           type: "object",
           properties: {

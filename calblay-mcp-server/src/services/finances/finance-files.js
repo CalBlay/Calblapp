@@ -9,8 +9,13 @@ import {
   getStorageClient,
   isFinanceSubfolderLayout
 } from "./config.js";
-import { financeKindSegment, normalizeFinanceKind, safeCsvFileName } from "./paths.js";
-import { normalizeCsvLine } from "./csv-lines.js";
+import {
+  financeKindSegment,
+  normalizeFinanceKind,
+  resolveLocalKindSubdirSync,
+  safeCsvFileName
+} from "./paths.js";
+import { normalizeCsvLine, normalizeCsvLineDelimited } from "./csv-lines.js";
 import { readCsvText } from "./purchases-io.js";
 
 /**
@@ -36,7 +41,7 @@ export async function listFinanceCsvFilesForKind(kind = "compres") {
 
   const financeDir = path.resolve(getFinanceDir());
   const listDir = isFinanceSubfolderLayout()
-    ? path.join(financeDir, financeKindSegment(k))
+    ? resolveLocalKindSubdirSync(financeDir, financeKindSegment(k))
     : financeDir;
   let items;
   try {
@@ -54,17 +59,25 @@ export async function listFinanceCsvFiles() {
   return listFinanceCsvFilesForKind("compres");
 }
 
-export async function previewFinanceCsv(fileName, maxRows = 20) {
+export async function previewFinanceCsv(fileName, maxRows = 20, kind = "compres") {
   if (!fileName || String(fileName).trim() === "") throw new Error("Missing file query param");
+  const k = normalizeFinanceKind(kind);
   const safeName = safeCsvFileName(fileName);
-  const raw = await readCsvText(safeName);
+  const raw = await readCsvText(safeName, k);
   const lines = raw.split(/\r?\n/).filter((line) => line.length > 0);
   if (lines.length === 0) {
-    return { file: safeName, headers: [], rows: [] };
+    return { file: safeName, kind: k, headers: [], rows: [], totalRowsApprox: 0 };
   }
 
-  const headers = normalizeCsvLine(lines[0]);
-  const rows = lines.slice(1, 1 + Number(maxRows || 20)).map((line) => normalizeCsvLine(line));
+  const headerLine = lines[0].replace(/^\uFEFF/, "");
+  let delimiter = ",";
+  if (normalizeCsvLineDelimited(headerLine, delimiter).length <= 1 && headerLine.includes(";")) {
+    delimiter = ";";
+  }
+  const headers = normalizeCsvLineDelimited(headerLine, delimiter);
+  const rows = lines
+    .slice(1, 1 + Number(maxRows || 20))
+    .map((line) => normalizeCsvLineDelimited(line, delimiter));
 
   return {
     file: safeName,

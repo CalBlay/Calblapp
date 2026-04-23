@@ -5,6 +5,7 @@ import {
   normalizeHeaderKey
 } from "./csv-columns.js";
 import {
+  normalizeArticleNameCompact,
   normalizeArticleNameForMatch,
   parseAmountLike,
   stripCsvCell
@@ -44,7 +45,10 @@ export function rowYearMonthFromDate(dateStr) {
 function cellContainsHayNeedle(hay, needle) {
   const h = normalizeArticleNameForMatch(hay);
   const n = normalizeArticleNameForMatch(needle);
-  return n.length > 0 && h.includes(n);
+  if (n.length > 0 && h.includes(n)) return true;
+  const hc = normalizeArticleNameCompact(hay);
+  const nc = normalizeArticleNameCompact(needle);
+  return nc.length >= 2 && hc.includes(nc);
 }
 
 function normalizeCellTight(v) {
@@ -61,11 +65,15 @@ export function evaluateSearchCondition(cellValue, mode, needle) {
     return (
       normalizeArticleNameForMatch(cell) === normalizeArticleNameForMatch(needle) ||
       cell.trim().toLowerCase() === String(needle).trim().toLowerCase() ||
-      normalizeCellTight(cell) === normalizeCellTight(needle)
+      normalizeCellTight(cell) === normalizeCellTight(needle) ||
+      normalizeArticleNameCompact(cell) === normalizeArticleNameCompact(needle)
     );
   }
   if (m === "starts_with" || m === "starts") {
-    return normalizeArticleNameForMatch(cell).startsWith(normalizeArticleNameForMatch(needle));
+    const a = normalizeArticleNameForMatch(cell);
+    const b = normalizeArticleNameForMatch(needle);
+    if (a.startsWith(b)) return true;
+    return normalizeArticleNameCompact(cell).startsWith(normalizeArticleNameCompact(needle));
   }
   if (m === "gte" || m === ">=") {
     return parseAmountLike(cell) >= parseAmountLike(needle);
