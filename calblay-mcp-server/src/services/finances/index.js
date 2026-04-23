@@ -21,6 +21,7 @@ export { comparePurchasesSupplierQuarters } from "./purchases-queries-compare.js
 export {
   getPurchasesByArticle,
   getPurchasesArticleMonthSummary,
+  getPurchasesTopArticlesByAmount,
   aggregatePurchasesByBusinessLineAndCentre,
   searchPurchases
 } from "./purchases-queries-articles.js";

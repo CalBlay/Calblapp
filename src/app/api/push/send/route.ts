@@ -68,8 +68,15 @@ export async function POST(req: Request) {
               urgency: 'high',
             })
             sent++
-          } catch (err: any) {
-            if (err?.statusCode === 404 || err?.statusCode === 410) {
+          } catch (err: unknown) {
+            const statusCode =
+              err &&
+              typeof err === 'object' &&
+              'statusCode' in err &&
+              typeof (err as { statusCode?: unknown }).statusCode === 'number'
+                ? (err as { statusCode: number }).statusCode
+                : undefined
+            if (statusCode === 404 || statusCode === 410) {
               await doc.ref.delete()
             }
           }
@@ -100,10 +107,10 @@ export async function POST(req: Request) {
 
         res.responses.forEach((r, idx) => {
           if (r.success) return
-          const code = (r.error as any)?.code
+          const code = r.error?.code
           if (code === 'messaging/registration-token-not-registered') {
-            const token = tokens[idx]
-            const doc = fcmSnap.docs.find((d) => d.data().token === token)
+            const tok = tokens[idx]
+            const doc = fcmSnap.docs.find((d) => d.data().token === tok)
             if (doc) void doc.ref.delete()
           }
         })
@@ -111,7 +118,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ success: true, sent })
-  } catch (err) {
+  } catch (e: unknown) {
+    console.error('[push/send]', e)
     return NextResponse.json(
       { error: 'Internal error' },
       { status: 500 }

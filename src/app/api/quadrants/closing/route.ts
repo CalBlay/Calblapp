@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken } from 'next-auth/jwt'
+import { getToken, type JWT } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 type Dept =
@@ -46,10 +46,26 @@ function matchByName(a?: string, b?: string) {
   return norm(a) === norm(b) && norm(a) !== ''
 }
 
-function updateArray(arr: any[] | undefined, updates: PersonUpdate[], setter: (item: any, upd: PersonUpdate) => void) {
+type ClosingRow = Record<string, unknown>
+
+function jwtString(token: JWT, keys: readonly string[]): string {
+  const rec = token as JWT & Record<string, unknown>
+  for (const key of keys) {
+    const v = rec[key]
+    if (typeof v === 'string') return v
+  }
+  return ''
+}
+
+function updateArray(
+  arr: ClosingRow[] | undefined,
+  updates: PersonUpdate[],
+  setter: (item: ClosingRow, upd: PersonUpdate) => void
+): ClosingRow[] | undefined {
   if (!Array.isArray(arr)) return arr
   return arr.map((item) => {
-    const upd = updates.find((u) => matchByName(u.name, item?.name))
+    const itemName = typeof item.name === 'string' ? item.name : undefined
+    const upd = updates.find((u) => matchByName(u.name, itemName))
     if (!upd) return item
     const next = { ...item }
     setter(next, upd)
@@ -73,13 +89,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Falten camps requerits' }, { status: 400 })
     }
 
-    const roleRaw = String((token as any)?.role || (token as any)?.userRole || '')
+    const roleRaw = jwtString(token, ['role', 'userRole'])
     const deptToken = norm(
-      (token as any)?.department ||
-        (token as any)?.userDepartment ||
-        (token as any)?.dept ||
-        (token as any)?.departmentName ||
-        ''
+      jwtString(token, ['department', 'userDepartment', 'dept', 'departmentName'])
     )
     const role = norm(roleRaw)
     const isAdmin = role === 'admin'
@@ -99,9 +111,9 @@ export async function PUT(req: NextRequest) {
 
     const data = snap.data() || {}
     const now = new Date().toISOString()
-    const userId = String((token as any)?.sub || (token as any)?.id || '')
+    const userId = jwtString(token, ['sub', 'id'])
 
-    const setter = (item: any, upd: PersonUpdate) => {
+    const setter = (item: ClosingRow, upd: PersonUpdate) => {
       item.endTimeReal = upd.endTimeReal || null
       item.sortidaNotes = upd.notes || ''
       item.noShow = !!upd.noShow
@@ -109,13 +121,30 @@ export async function PUT(req: NextRequest) {
       item.sortidaSetBy = { userId, ts: now }
     }
 
-    const responsable = Array.isArray(data.responsable) ? data.responsable : data.responsable ? [data.responsable] : []
+    const rawResp = data.responsable
+    const responsable: ClosingRow[] = Array.isArray(rawResp)
+      ? (rawResp as ClosingRow[])
+      : rawResp && typeof rawResp === 'object'
+        ? [rawResp as ClosingRow]
+        : []
     const updatedResponsable = updateArray(responsable, updates, setter)
-    const updatedConductors = updateArray(data.conductors, updates, setter)
-    const updatedTreballadors = updateArray(data.treballadors, updates, setter)
-    const updatedWorkers = updateArray(data.workers, updates, setter)
+    const updatedConductors = updateArray(
+      Array.isArray(data.conductors) ? (data.conductors as ClosingRow[]) : undefined,
+      updates,
+      setter
+    )
+    const updatedTreballadors = updateArray(
+      Array.isArray(data.treballadors) ? (data.treballadors as ClosingRow[]) : undefined,
+      updates,
+      setter
+    )
+    const updatedWorkers = updateArray(
+      Array.isArray(data.workers) ? (data.workers as ClosingRow[]) : undefined,
+      updates,
+      setter
+    )
 
-    const payload: Record<string, any> = {
+    const payload: Record<string, unknown> = {
       updatedAt: now,
     }
     if (updatedResponsable) payload.responsable = Array.isArray(updatedResponsable) && updatedResponsable.length === 1 ? updatedResponsable[0] : updatedResponsable
@@ -123,8 +152,13 @@ export async function PUT(req: NextRequest) {
     if (updatedTreballadors) payload.treballadors = updatedTreballadors
     if (updatedWorkers) payload.workers = updatedWorkers
     if (closeDept) {
+      const prevRaw = data.closedByDept
+      const prev =
+        prevRaw && typeof prevRaw === 'object' && !Array.isArray(prevRaw)
+          ? { ...(prevRaw as Record<string, unknown>) }
+          : {}
       payload.closedByDept = {
-        ...(data.closedByDept || {}),
+        ...prev,
         [norm(department)]: now,
       }
     }
@@ -132,8 +166,9 @@ export async function PUT(req: NextRequest) {
     await docRef.set(payload, { merge: true })
 
     return NextResponse.json({ ok: true })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[quadrants/closing] error', err)
-    return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 })
+    const message = err instanceof Error ? err.message : 'Internal error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

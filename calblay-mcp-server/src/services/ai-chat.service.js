@@ -12,6 +12,7 @@ import {
   getPurchasesBySupplier,
   getPurchasesSupplierArticlePeriodSummary,
   getPurchasesSupplierYearSummary,
+  getPurchasesTopArticlesByAmount,
   listFinanceCsvFilesForKind,
   normalizeFinanceKind,
   previewFinanceCsv,
@@ -425,7 +426,8 @@ function buildTools() {
       function: {
         name: "purchases_search",
         description:
-          "PRIMARY for purchase CSV: filter by column (normalized keys: nom_article, codi_proveidor, import, data_comptable…). Dimensions SAP: column may be dimensio_1 / ln / dim1 (línia de negoci), dimensio_2 / dim2 / centre (centre). Each condition: column + value; mode contains (default), equals, starts_with, gte, lte. Optional dateFrom/dateTo on dateField. Use finances_preview if a column is missing. " +
+          "Purchase CSV row filter (NOT for ranking “top article” by total spend—use purchases_top_articles_by_amount). " +
+          "Filter by column (normalized keys: nom_article, codi_proveidor, import, data_comptable…). Dimensions SAP: column may be dimensio_1 / ln / dim1 (línia de negoci), dimensio_2 / dim2 / centre (centre). Each condition: column + value; mode contains (default), equals, starts_with, gte, lte. Optional dateFrom/dateTo on dateField. Use finances_preview if a column is missing. " +
           "Text conditions ignore case; contains / starts_with / equals also treat runs of letters the same with or without spaces (e.g. coca cola matches COCA COLA LLAUNA). Does not fix typos (coacola ≠ cocacola).",
         parameters: {
           type: "object",
@@ -470,6 +472,35 @@ function buildTools() {
             supplierName: { type: "string" }
           },
           required: ["dateFrom", "dateTo"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "purchases_top_articles_by_amount",
+        description:
+          "MANDATORY for questions like: which article was bought the most, top articles by purchase value/amount, ranking articles by import for a month or year (COMPRES / SAP purchase lines, not vendes sales). " +
+          "Aggregates every invoice line in the period, groups by article code+name, sums import and quantity, returns sorted top N. " +
+          "Prefer yearMonth=YYYY-MM when the user names one calendar month (febrer/febrero 2026 → 2026-02; gener/enero → 2026-01). " +
+          "For a full calendar year use dateFrom YYYY-01-01 and dateTo YYYY-12-31. " +
+          "Do NOT infer the winner from purchases_search line samples. purchases_article_month_summary requires a known article; do not use it alone for ranking.",
+        parameters: {
+          type: "object",
+          properties: {
+            yearMonth: {
+              type: "string",
+              description: 'Single month YYYY-MM (ex. "2026-02"). Omit if using dateFrom/dateTo instead.'
+            },
+            dateFrom: { type: "string", description: "YYYY-MM-DD inclòs (with dateTo if no yearMonth)" },
+            dateTo: { type: "string", description: "YYYY-MM-DD inclòs" },
+            topN: { type: "integer", minimum: 1, maximum: 40, description: "How many ranked articles to return (default 15)" },
+            metric: {
+              type: "string",
+              enum: ["amount", "quantity"],
+              description: "Sort by total EUR (amount, default) or total units (quantity)"
+            }
+          }
         }
       }
     },
@@ -582,7 +613,8 @@ function buildTools() {
       function: {
         name: "purchases_article_month_summary",
         description:
-          "Resum d’un mes per article: quantitat total, import, preu mig ponderat. Per comparació de preus entre mesos, crida l’eina dues vegades (un yearMonth cada vegada). Preferir articleCode si el coneixes.",
+          "Resum d’un mes per UN article concret (cal articleCode o articleName). No serveix per saber quin article és el més comprat del mes—per això usa purchases_top_articles_by_amount. " +
+          "Quantitat total, import, preu mig ponderat. Per comparació de preus entre mesos, crida l’eina dues vegades (un yearMonth cada vegada). Preferir articleCode si el coneixes.",
         parameters: {
           type: "object",
           properties: {
@@ -645,6 +677,28 @@ async function runTool(toolName, args) {
       dateTo: args?.dateTo ? String(args.dateTo) : undefined,
       dateField: args?.dateField ? String(args.dateField) : "data_comptable",
       limit: lim
+    });
+  }
+  if (toolName === "purchases_analytics_ln_centre") {
+    return aggregatePurchasesByBusinessLineAndCentre({
+      dateFrom: String(args?.dateFrom || ""),
+      dateTo: String(args?.dateTo || ""),
+      supplierCode: args?.supplierCode ? String(args.supplierCode) : undefined,
+      supplierName: args?.supplierName ? String(args.supplierName) : undefined
+    });
+  }
+  if (toolName === "purchases_top_articles_by_amount") {
+    const ym = args?.yearMonth != null ? String(args.yearMonth).trim().slice(0, 7) : "";
+    const df = args?.dateFrom != null ? String(args.dateFrom).trim().slice(0, 10) : "";
+    const dt = args?.dateTo != null ? String(args.dateTo).trim().slice(0, 10) : "";
+    const topN = args?.topN != null ? Number(args.topN) : 15;
+    const metric = args?.metric != null ? String(args.metric) : "amount";
+    return getPurchasesTopArticlesByAmount({
+      yearMonth: ym || undefined,
+      dateFrom: df || undefined,
+      dateTo: dt || undefined,
+      topN,
+      metric
     });
   }
   if (toolName === "purchases_by_supplier") {
@@ -720,8 +774,10 @@ async function runTool(toolName, args) {
 export async function chatWithTools({ question, language = "ca", rich = false }) {
   const { apiKey, model } = getOpenAiConfig();
   const tools = buildTools();
-  const baseMax = Math.min(800, Math.max(64, Number(process.env.OPENAI_MAX_TOKENS || 320)));
-  const maxTokens = rich ? Math.min(900, baseMax + 320) : baseMax;
+  /** sense prou tokens, les tool_calls es truncuen i el bucle falla (errors 500 opacs en producció). */
+  const envMax = Number(process.env.OPENAI_MAX_TOKENS || 1200);
+  const baseMax = Math.min(4096, Math.max(1024, Number.isFinite(envMax) ? envMax : 1200));
+  const maxTokens = rich ? Math.min(4096, baseMax + 512) : baseMax;
 
   const qNorm = question.trim();
   const ck = cacheKey(model, language, qNorm, rich);
@@ -735,7 +791,8 @@ export async function chatWithTools({ question, language = "ca", rich = false })
     "Cal Blay. Tools = facts only. " +
     "Cost salarial / imputació / departaments / P&L intern: per informes que creuen períodes (ex. T1 2025 vs T1 2026) o 'per departament' sense nom concret, crida PRIMER costs_imputation_overview; després costs_imputation_search amb contains si cal un departament. " +
     "Interpreta imports amb rows.valuesByColumn i amountColumns.label (cada columna pot ser un període diferent al mateix CSV). Llegeix metaLines per dates o títol. No demanis a l'usuari les dades si pots obtenir-les amb aquestes eines; si el CSV no té la columna esperada, explica-ho amb el que sí retornen amountColumns. " +
-    "Compres (factures proveïdor): purchases_search; dimensió 1 = LN, dimensió 2 = centre. purchases_analytics_ln_centre és COMPRES agregades, no cost salarial: no ho barregis amb imputació de costos. " +
+    "Compres (factures proveïdor): purchases_search; dimensió 1 = LN, dimensió 2 = centre. purchases_analytics_ln_centre = agregat per LN+centre (no cost salarial / imputació). " +
+    "Per «article més comprat», «top articles», «més comprat per valor/import» en COMPRES: purchases_top_articles_by_amount (yearMonth YYYY-MM o dateFrom/dateTo); mai endevinis el guanyador amb un mostreig de purchases_search. " +
     "Proveïdor P###### preu mig per article i comparació trimestres: purchases_supplier_quarter_article_compare. " +
     "Per un interval de dates arbitrari: purchases_supplier_article_period_summary. purchases_by_supplier és només mostreig; purchases_by_article / purchases_article_month_summary per article M######. " +
     `Esdeveniments: events_count_by_year (total anual); si l'usuari no indica any, omet year o usa ${currentYear}. ` +
@@ -867,7 +924,17 @@ export async function chatWithTools({ question, language = "ca", rich = false })
         } catch {
           args = {};
         }
-        const raw = await runTool(name, args);
+        let raw;
+        try {
+          raw = await runTool(name, args);
+        } catch (toolErr) {
+          raw = {
+            ok: false,
+            toolError: true,
+            tool: name,
+            message: toolErr instanceof Error ? toolErr.message : String(toolErr)
+          };
+        }
         if (name === "purchases_supplier_quarter_article_compare" && raw?.reportCalblay) {
           serverReportCalblay = raw.reportCalblay;
         }

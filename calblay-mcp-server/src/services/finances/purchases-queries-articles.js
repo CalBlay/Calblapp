@@ -1,5 +1,6 @@
 import { resolveColumnIndexFromKeyMap } from "./csv-columns.js";
 import {
+  normalizeArticleNameCompact,
   normalizeArticleNameForMatch,
   parseAmountLike,
   parseQtyLike,
@@ -205,6 +206,117 @@ export async function getPurchasesArticleMonthSummary({
  * Agregació per **Dimensió 1** (línia de negoci / LN) i **Dimensió 2** (centre), en una passada sobre el CSV de compres.
  * Opcionalment filtra per proveïdor (codi P###### o nom).
  */
+/**
+ * Articles amb més volum de compra (suma d’imports o quantitats) en un mes natural o interval de dates.
+ * Ús obligatori per a preguntes tipus «article més comprat per valor», «top articles», etc. (no usar només purchases_search).
+ */
+export async function getPurchasesTopArticlesByAmount({
+  yearMonth,
+  dateFrom,
+  dateTo,
+  topN = 15,
+  metric = "amount"
+}) {
+  let df;
+  let dt;
+  const ymRaw = yearMonth != null ? String(yearMonth).trim().slice(0, 7) : "";
+  if (ymRaw) {
+    if (!/^\d{4}-\d{2}$/.test(ymRaw)) {
+      throw new Error("yearMonth ha de ser YYYY-MM");
+    }
+    const [yStr, mStr] = ymRaw.split("-");
+    const y = Number(yStr);
+    const mo = Number(mStr);
+    if (!Number.isFinite(y) || !Number.isFinite(mo) || mo < 1 || mo > 12) {
+      throw new Error("yearMonth invàlid");
+    }
+    df = `${ymRaw}-01`;
+    const lastDay = new Date(y, mo, 0).getDate();
+    dt = `${ymRaw}-${String(lastDay).padStart(2, "0")}`;
+  } else {
+    df = dateFrom ? String(dateFrom).trim().slice(0, 10) : "";
+    dt = dateTo ? String(dateTo).trim().slice(0, 10) : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(df) || !/^\d{4}-\d{2}-\d{2}$/.test(dt)) {
+      throw new Error("Cal yearMonth (YYYY-MM) o dateFrom i dateTo (YYYY-MM-DD)");
+    }
+  }
+
+  const cap = Math.min(40, Math.max(1, Number(topN || 15)));
+  const useQty = String(metric || "amount").toLowerCase() === "quantity";
+
+  let idxMeta = null;
+  const map = new Map();
+
+  await scanPurchasesLines(async (row) => {
+    if (row.phase === "header") {
+      idxMeta = row.idx;
+      return true;
+    }
+    const f = row.fields;
+    const m = idxMeta;
+    if (!m) return true;
+
+    const ds = m.idxDate !== undefined ? stripCsvCell(f[m.idxDate]) : "";
+    if (!compareDateRange(ds, df, dt)) return true;
+
+    const nomArt = m.idxArticle !== undefined ? stripCsvCell(f[m.idxArticle]) : "";
+    const codiArt = m.idxArticleCode !== undefined ? stripCsvCell(f[m.idxArticleCode]) : "";
+    const key =
+      (codiArt || "").toLowerCase() ||
+      normalizeArticleNameCompact(nomArt) ||
+      "_sense_article_";
+
+    const qty = parseQtyLike(m.idxQty !== undefined ? f[m.idxQty] : 0);
+    const amt = parseAmountLike(m.idxAmount !== undefined ? f[m.idxAmount] : 0);
+
+    let rec = map.get(key);
+    if (!rec) {
+      rec = {
+        articleCode: codiArt || null,
+        articleName: nomArt || null,
+        invoiceLines: 0,
+        totalQuantity: 0,
+        totalAmount: 0
+      };
+      map.set(key, rec);
+    }
+    if (codiArt && !rec.articleCode) rec.articleCode = codiArt;
+    if (nomArt && (!rec.articleName || rec.articleName.length < nomArt.length)) rec.articleName = nomArt;
+
+    rec.invoiceLines += 1;
+    rec.totalQuantity += qty;
+    rec.totalAmount += amt;
+    return true;
+  });
+
+  const arr = [...map.values()].map((r) => ({
+    articleCode: r.articleCode,
+    articleName: r.articleName,
+    invoiceLines: r.invoiceLines,
+    totalQuantity: Math.round(r.totalQuantity * 10000) / 10000,
+    totalAmount: Math.round(r.totalAmount * 100) / 100,
+    avgUnitPrice:
+      r.totalQuantity > 0
+        ? Math.round((r.totalAmount / r.totalQuantity) * 10000) / 10000
+        : 0
+  }));
+
+  arr.sort((a, b) =>
+    useQty ? b.totalQuantity - a.totalQuantity : b.totalAmount - a.totalAmount
+  );
+
+  return {
+    period: ymRaw
+      ? { yearMonth: ymRaw, dateFrom: df, dateTo: dt }
+      : { dateFrom: df, dateTo: dt },
+    metric: useQty ? "totalQuantity" : "totalAmount",
+    distinctArticles: arr.length,
+    top: arr.slice(0, cap),
+    note:
+      "Rànking sobre totes les línies de factura del període; el #1 és el màxim import (o quantitat si metric=quantity)."
+  };
+}
+
 export async function aggregatePurchasesByBusinessLineAndCentre({
   dateFrom,
   dateTo,

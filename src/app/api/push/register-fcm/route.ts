@@ -30,7 +30,8 @@ export async function POST(req: Request) {
     )
 
     return NextResponse.json({ success: true })
-  } catch (err) {
+  } catch (e: unknown) {
+    console.error('[push/register-fcm]', e)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }

@@ -56,10 +56,15 @@ function toISODate(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-function parseAnyDateToISO(
-  v: string | Date | { toDate: () => Date } | null | undefined
-): string {
-  if (!v) return ''
+function parseAnyDateToISO(v: unknown): string {
+  if (v == null || v === '') return ''
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    const d = new Date(v)
+    return isNaN(d.getTime()) ? '' : toISODate(d)
+  }
+  if (v instanceof Date) {
+    return isNaN(v.getTime()) ? '' : toISODate(v)
+  }
   if (typeof v === 'object' && v !== null && 'toDate' in v && typeof (v as { toDate: () => Date }).toDate === 'function') {
     return toISODate((v as { toDate: () => Date }).toDate())
   }
@@ -83,20 +88,21 @@ function pad2(n: number | string): string {
   return String(n).padStart(2, '0')
 }
 
-function toTimeHHmm(
-  v: string | number | Date | { toDate: () => Date } | null | undefined
-): string {
-  if (!v) return ''
-  const str = String(v)
-  if (/^\d{2}:\d{2}$/.test(str)) return str
-  if (/^\d{4}$/.test(str)) return `${str.slice(0, 2)}:${str.slice(2)}`
-  if (typeof v === 'number') {
+function toTimeHHmm(v: unknown): string {
+  if (v == null || v === '') return ''
+  if (typeof v === 'number' && Number.isFinite(v)) {
     return `${pad2(Math.floor(v / 60))}:${pad2(Number(v) % 60)}`
+  }
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return `${pad2(v.getHours())}:${pad2(v.getMinutes())}`
   }
   if (typeof v === 'object' && v !== null && 'toDate' in v && typeof (v as { toDate: () => Date }).toDate === 'function') {
     const d = (v as { toDate: () => Date }).toDate()
     return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
   }
+  const str = String(v)
+  if (/^\d{2}:\d{2}$/.test(str)) return str
+  if (/^\d{4}$/.test(str)) return `${str.slice(0, 2)}:${str.slice(2)}`
   const d = new Date(str)
   return isNaN(d.getTime())
     ? ''
@@ -410,7 +416,7 @@ async function fetchTransportAssignmentsRange(
     const status = String(data?.status || 'pending')
     if (!ACTIVE_ASSIGNMENT_STATUSES.has(status)) continue
 
-    const department = norm(data?.department || 'logistica')
+    const department = norm(String(data?.department ?? 'logistica'))
     if (deptFilter && norm(deptFilter) !== department) continue
 
     const startDate = parseAnyDateToISO(data?.startDate)
