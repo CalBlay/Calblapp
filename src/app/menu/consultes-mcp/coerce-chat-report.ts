@@ -1,4 +1,4 @@
-import type { ChatReport, ChatReportChart, ChatReportTable } from './types'
+import type { ChatReport, ChatReportChart, ChatReportKpi, ChatReportTable } from './types'
 
 export function coerceChatReport(raw: unknown): ChatReport | null {
   if (!raw || typeof raw !== 'object') return null
@@ -51,6 +51,37 @@ export function coerceChatReport(raw: unknown): ChatReport | null {
     }
   }
   const highlights = Array.isArray(o.highlights) ? o.highlights.map((h) => String(h)) : []
-  if (!tables.length && !chart && !highlights.length) return null
-  return { tables, chart, highlights }
+  const kpisRaw = o.kpis
+  const kpis: ChatReportKpi[] = Array.isArray(kpisRaw)
+    ? kpisRaw
+        .filter((k) => k && typeof k === 'object')
+        .map((k, i) => {
+          const x = k as Record<string, unknown>
+          const fmt = String(x.format ?? 'text').toLowerCase()
+          const format =
+            fmt === 'eur' || fmt === 'qty' || fmt === 'count' || fmt === 'text' ? fmt : 'text'
+          return {
+            id: String(x.id ?? `kpi_${i}`).slice(0, 64),
+            label: String(x.label ?? '').slice(0, 140),
+            periodALabel: String(x.periodALabel ?? '').slice(0, 36),
+            periodBLabel: String(x.periodBLabel ?? '').slice(0, 36),
+            valueA: String(x.valueA ?? '—').slice(0, 72),
+            valueB: String(x.valueB ?? '—').slice(0, 72),
+            delta:
+              x.delta !== undefined && x.delta !== null ? String(x.delta).slice(0, 72) : undefined,
+            deltaPct:
+              x.deltaPct !== undefined && x.deltaPct !== null
+                ? String(x.deltaPct).slice(0, 36)
+                : undefined,
+            format,
+          }
+        })
+    : []
+  if (!tables.length && !chart && !highlights.length && !kpis.length) return null
+  return {
+    tables,
+    chart,
+    highlights,
+    ...(kpis.length ? { kpis } : {}),
+  }
 }

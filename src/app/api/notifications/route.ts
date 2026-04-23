@@ -13,6 +13,14 @@ interface SessionUser {
   role?: string
 }
 
+type NotificationFirestoreDoc = Record<string, unknown> & {
+  createdAt?: number
+  read?: boolean
+  type?: string
+}
+
+type NotificationListItem = { id: string } & NotificationFirestoreDoc
+
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user) {
@@ -44,10 +52,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ count: snap.size })
     }
 
-    let listDocs: Array<{ id: string; createdAt?: number }> = []
+    let listDocs: NotificationListItem[] = []
     if (type) {
       const listSnap = await baseRef.limit(200).get()
-      listDocs = listSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))
+      listDocs = listSnap.docs.map((d) => {
+        const data = d.data() as NotificationFirestoreDoc
+        return { id: d.id, ...data }
+      })
       listDocs.sort((a, b) => {
         const av = typeof a.createdAt === 'number' ? a.createdAt : 0
         const bv = typeof b.createdAt === 'number' ? b.createdAt : 0
@@ -56,7 +67,10 @@ export async function GET(req: Request) {
       listDocs = listDocs.slice(0, 50)
     } else {
       const listSnap = await baseRef.orderBy('createdAt', 'desc').limit(50).get()
-      listDocs = listSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))
+      listDocs = listSnap.docs.map((d) => {
+        const data = d.data() as NotificationFirestoreDoc
+        return { id: d.id, ...data }
+      })
     }
     return NextResponse.json({ notifications: listDocs })
   } catch (err: unknown) {

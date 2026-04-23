@@ -62,6 +62,44 @@ function OpenChatAnswerCardInner({
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900">
           {openAnswer.text || '—'}
         </p>
+        {openAnswer.report?.kpis?.length ? (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Indicadors (KPI)
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {openAnswer.report.kpis.map((k) => (
+                <div
+                  key={k.id}
+                  className="rounded-lg border border-slate-200 bg-gradient-to-b from-slate-50 to-white px-3 py-2.5 shadow-sm"
+                >
+                  <p className="text-xs font-medium leading-snug text-slate-700">{k.label}</p>
+                  <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-xs">
+                    <span className="text-muted-foreground">{k.periodALabel}</span>
+                    <span className="text-right font-mono font-semibold text-slate-900 tabular-nums">
+                      {k.valueA}
+                    </span>
+                    <span className="text-muted-foreground">{k.periodBLabel}</span>
+                    <span className="text-right font-mono font-semibold text-slate-900 tabular-nums">
+                      {k.valueB}
+                    </span>
+                  </div>
+                  {k.delta != null || k.deltaPct != null ? (
+                    <p className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-600">
+                      Δ{' '}
+                      <span className="font-mono font-medium text-slate-800 tabular-nums">
+                        {k.delta ?? '—'}
+                      </span>
+                      {k.deltaPct ? (
+                        <span className="ml-2 text-violet-800">({k.deltaPct})</span>
+                      ) : null}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {openAnswer.report?.highlights?.length ? (
           <div className="rounded-lg border border-violet-100 bg-violet-50/60 px-3 py-2">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-violet-900">

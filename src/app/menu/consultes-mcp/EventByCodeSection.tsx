@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { RefreshCw, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatFieldValue, McpErrorBanner } from './mcp-helpers'
-import type { FullByCodePayload, McpUiError } from './types'
+import type { FullByCodePayload, McpUiError, StageVerdEventByCode } from './types'
 import {
   DOCUMENT_FIELDS_VIRTUAL_THRESHOLD,
   VirtualizedDocumentFields,
@@ -41,7 +41,7 @@ function EventByCodeSectionInner({
   loadByCode: () => void
   errorCode: McpUiError | null
   fullEvent: FullByCodePayload | null
-  ev: (Record<string, unknown> & { id?: string }) | undefined
+  ev: StageVerdEventByCode | undefined
   chartData: { name: string; value: number }[]
   ticketMig: number | null
   sortedEntries: [string, unknown][]
@@ -93,7 +93,10 @@ function EventByCodeSectionInner({
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           Hi ha <strong>{fullEvent.matchCount}</strong> documents amb aquest code. Es mostra el
           primer; altres:{' '}
-          {fullEvent.alternateMatches.map((m) => m.id).join(', ')}
+          {fullEvent.alternateMatches
+            .map((m) => m.id)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0)
+            .join(', ')}
         </div>
       )}
 

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { firestoreAdmin } from "@/lib/firebaseAdmin"
 import admin from "firebase-admin"
 import { getToken } from "next-auth/jwt"
+import type { JWT } from "next-auth/jwt"
 
 interface ModificationDoc {
   id?: string
@@ -27,6 +28,24 @@ interface ModificationDoc {
 
 function isTimestamp(val: unknown): val is FirebaseFirestore.Timestamp {
   return typeof val === "object" && val !== null && "toDate" in val
+}
+
+function jwtFieldString(token: JWT, key: "name" | "email" | "sub"): string {
+  const v = token[key]
+  return typeof v === "string" ? v : ""
+}
+
+/** Primer string no buit entre les claus indicades (documents Firestore heterogenis). */
+function stageDocString(
+  doc: Record<string, unknown> | undefined,
+  ...keys: string[]
+): string {
+  if (!doc) return ""
+  for (const k of keys) {
+    const v = doc[k]
+    if (typeof v === "string" && v.trim()) return v
+  }
+  return ""
 }
 
 async function generateModificationNumber(): Promise<string> {
@@ -73,24 +92,39 @@ export async function POST(req: NextRequest) {
       description,
     } = payload as ModificationDoc
 
-    const createdByFinal = createdBy || (token as any)?.name || (token as any)?.email || ""
-    const createdByIdFinal = createdById || (token as any)?.sub || ""
-    const createdByEmailFinal = createdByEmail || (token as any)?.email || ""
+    const jwt = token as JWT
+    const createdByFinal =
+      createdBy || jwtFieldString(jwt, "name") || jwtFieldString(jwt, "email") || ""
+    const createdByIdFinal = createdById || jwtFieldString(jwt, "sub") || ""
+    const createdByEmailFinal = createdByEmail || jwtFieldString(jwt, "email") || ""
 
     const modificationNumber = await generateModificationNumber()
 
     // Llegir event de stage_verd (si existeix) per omplir camps d'esdeveniment
-    let ev: any = null
+    let ev: Record<string, unknown> | null = null
     if (eventId) {
       const evSnap = await firestoreAdmin.collection("stage_verd").doc(String(eventId)).get()
-      if (evSnap.exists) ev = evSnap.data()
+      if (evSnap.exists) ev = (evSnap.data() ?? null) as Record<string, unknown> | null
     }
 
-    const eventTitleFinal = eventTitle || ev?.NomEvent || ""
-    const eventLocationFinal = eventLocation || ev?.Ubicacio || ""
-    const eventCodeFinal = eventCode || ev?.code || ev?.Code || ev?.C_digo || ev?.codi || ""
-    const eventDateFinal = eventDate || ev?.DataInici || ev?.DataPeticio || ""
-    const eventCommercialFinal = eventCommercial || ev?.Comercial || ""
+    const eventTitleFinal =
+      (typeof eventTitle === "string" && eventTitle.trim()) || stageDocString(ev, "NomEvent") || ""
+    const eventLocationFinal =
+      (typeof eventLocation === "string" && eventLocation.trim()) ||
+      stageDocString(ev, "Ubicacio") ||
+      ""
+    const eventCodeFinal =
+      (typeof eventCode === "string" && eventCode.trim()) ||
+      stageDocString(ev, "code", "Code", "C_digo", "codi") ||
+      ""
+    const eventDateFinal =
+      (typeof eventDate === "string" && eventDate.trim()) ||
+      stageDocString(ev, "DataInici", "DataPeticio") ||
+      ""
+    const eventCommercialFinal =
+      (typeof eventCommercial === "string" && eventCommercial.trim()) ||
+      stageDocString(ev, "Comercial") ||
+      ""
 
     const now = new Date()
     const eventDateObj = eventDateFinal ? new Date(eventDateFinal) : null
@@ -200,19 +234,23 @@ export async function GET(req: Request) {
           .get()
       : null
 
-    const eventsMap = new Map<string, any>()
-    eventsSnap?.docs.forEach((doc) => eventsMap.set(doc.id, doc.data()))
+    const eventsMap = new Map<string, Record<string, unknown>>()
+    eventsSnap?.docs.forEach((doc) =>
+      eventsMap.set(doc.id, doc.data() as Record<string, unknown>)
+    )
 
     const modifications = baseMods.map((m) => {
-      const ev = eventsMap.get(m.eventId || "")
-      if (!ev) return m
+      const evRow = m.eventId ? eventsMap.get(m.eventId) : undefined
+      if (!evRow) return m
       return {
         ...m,
-        eventTitle: m.eventTitle || ev.NomEvent || "",
-        eventLocation: m.eventLocation || ev.Ubicacio || "",
-        eventCode: m.eventCode || ev.code || ev.Code || ev.C_digo || ev.codi || "",
-        eventDate: m.eventDate || ev.DataInici || ev.DataPeticio || "",
-        eventCommercial: m.eventCommercial || ev.Comercial || "",
+        eventTitle: m.eventTitle || stageDocString(evRow, "NomEvent") || "",
+        eventLocation: m.eventLocation || stageDocString(evRow, "Ubicacio") || "",
+        eventCode:
+          m.eventCode || stageDocString(evRow, "code", "Code", "C_digo", "codi") || "",
+        eventDate:
+          m.eventDate || stageDocString(evRow, "DataInici", "DataPeticio") || "",
+        eventCommercial: m.eventCommercial || stageDocString(evRow, "Comercial") || "",
       }
     })
 

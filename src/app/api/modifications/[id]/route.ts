@@ -3,8 +3,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
 import { getToken } from 'next-auth/jwt'
+import type { JWT } from 'next-auth/jwt'
 
 const normalize = (v?: string | null) => (v || '').toLowerCase().trim()
+
+type ModificationAuthRow = {
+  createdById?: string
+  createdByEmail?: string
+  createdBy?: string
+}
+
+function jwtFieldString(t: JWT, key: 'name' | 'email' | 'sub'): string {
+  const v = t[key]
+  return typeof v === 'string' ? v : ''
+}
 
 async function assertCanEdit(req: NextRequest, docId: string) {
   const token = await getToken({ req })
@@ -13,12 +25,13 @@ async function assertCanEdit(req: NextRequest, docId: string) {
   const snap = await firestoreAdmin.collection('modifications').doc(docId).get()
   if (!snap.exists) return { ok: false, status: 404, error: 'Modificació no trobada' }
 
-  const data = snap.data() as any
+  const data = snap.data() as ModificationAuthRow
+  const jwt = token as JWT
   const isOwner =
-    normalize(data.createdById) === normalize(token.sub) ||
-    normalize(data.createdByEmail) === normalize((token as any).email) ||
-    normalize(data.createdBy) === normalize(token.name) ||
-    normalize(data.createdBy) === normalize((token as any).email)
+    normalize(data.createdById) === normalize(jwt.sub ?? '') ||
+    normalize(data.createdByEmail) === normalize(jwtFieldString(jwt, 'email')) ||
+    normalize(data.createdBy) === normalize(jwtFieldString(jwt, 'name')) ||
+    normalize(data.createdBy) === normalize(jwtFieldString(jwt, 'email'))
 
   if (!isOwner) return { ok: false, status: 403, error: 'Només el creador pot modificar/eliminar' }
 

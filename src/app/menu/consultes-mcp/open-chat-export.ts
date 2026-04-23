@@ -53,7 +53,32 @@ export async function exportOpenChatToXlsx(
     appendSheet(XLSX.utils.aoa_to_sheet(aoa), 'Punts_clau', 'Punts_clau')
   }
 
-  openAnswer.report?.tables.forEach((t, i) => {
+  const kpis = openAnswer.report?.kpis
+  if (kpis?.length) {
+    const header = [
+      'Indicador',
+      'Període A',
+      'Valor A',
+      'Període B',
+      'Valor B',
+      'Δ',
+      '% var.',
+      'Format',
+    ]
+    const rows = kpis.map((k) => [
+      k.label,
+      k.periodALabel,
+      k.valueA,
+      k.periodBLabel,
+      k.valueB,
+      k.delta ?? '',
+      k.deltaPct ?? '',
+      k.format ?? '',
+    ])
+    appendSheet(XLSX.utils.aoa_to_sheet([header, ...rows]), 'KPIs', 'KPIs')
+  }
+
+  openAnswer.report?.tables?.forEach((t, i) => {
     const aoa = [t.columns, ...t.rows]
     appendSheet(
       XLSX.utils.aoa_to_sheet(aoa),
@@ -102,9 +127,38 @@ export function buildOpenChatInformePdfHtml(
         .join('')}</ul>`
     : ''
 
+  const kpis = openAnswer.report?.kpis
+  const kpisBlock =
+    kpis?.length ?
+      `<h2>Indicadors (KPI)</h2>
+      <table class="kpi-table">
+        <thead><tr>
+          <th>Indicador</th>
+          <th>${esc(kpis[0]?.periodALabel ?? 'Període A')}</th>
+          <th>${esc(kpis[0]?.periodBLabel ?? 'Període B')}</th>
+          <th>Δ (B−A)</th>
+          <th>% variació</th>
+        </tr></thead>
+        <tbody>
+        ${kpis
+          .map(
+            (k) =>
+              `<tr>
+            <td>${esc(k.label)}</td>
+            <td class="num">${esc(k.valueA)}</td>
+            <td class="num">${esc(k.valueB)}</td>
+            <td class="num">${esc(k.delta ?? '—')}</td>
+            <td class="num">${esc(k.deltaPct ?? '—')}</td>
+          </tr>`
+          )
+          .join('')}
+        </tbody>
+      </table>`
+    : ''
+
   const tablesBlock =
     openAnswer.report?.tables
-      .map((t) => {
+      ?.map((t) => {
         const header = t.columns.map((c) => `<th>${esc(String(c))}</th>`).join('')
         const body = t.rows
           .map((row) => {
@@ -163,6 +217,7 @@ export function buildOpenChatInformePdfHtml(
     <div class="pregunta"><strong>Pregunta</strong><br/>${esc(openQuestion)}</div>
     <h2>Resposta</h2>
     <div class="narrative">${esc(openAnswer.text || '—')}</div>
+    ${kpisBlock}
     ${highlightsBlock}
     ${tablesBlock}
     ${chartBlock}

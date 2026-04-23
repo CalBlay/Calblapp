@@ -22,6 +22,7 @@ import type {
   McpUiError,
   OpenChatAnswer,
   StageEventRow,
+  StageVerdEventByCode,
 } from './types'
 
 export function useConsultesMcpPage() {
@@ -299,7 +300,7 @@ export function useConsultesMcpPage() {
 
   const chartData = useMemo(() => {
     if (!fullEvent?.event) return []
-    const e = fullEvent.event
+    const e = fullEvent.event as StageVerdEventByCode
     const preu = Number(e.PreuMenu)
     const imp = Number(e.Import)
     const out: { name: string; value: number }[] = []
@@ -310,7 +311,7 @@ export function useConsultesMcpPage() {
 
   const ticketMig = useMemo(() => {
     if (!fullEvent?.event) return null
-    const e = fullEvent.event
+    const e = fullEvent.event as StageVerdEventByCode
     const imp = Number(e.Import)
     const pax = Number(e.NumPax)
     if (!Number.isFinite(imp) || !Number.isFinite(pax) || pax <= 0) return null
@@ -319,10 +320,14 @@ export function useConsultesMcpPage() {
 
   const sortedEntries = useMemo(() => {
     if (!fullEvent?.event) return []
-    return Object.entries(fullEvent.event).sort(([a], [b]) => a.localeCompare(b, 'ca'))
+    return Object.entries(fullEvent.event as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b, 'ca')
+    )
   }, [fullEvent])
 
-  const ev = fullEvent?.event
+  const ev: StageVerdEventByCode | undefined = fullEvent?.event as
+    | StageVerdEventByCode
+    | undefined
 
   return {
     limit,

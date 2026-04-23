@@ -10,11 +10,34 @@ export type StageEventRow = {
   LN?: string
 }
 
+/** Camps habituals de `stage_verd` a la fitxa per code (hi ha més claus al document). */
+export type StageVerdEventByCode = {
+  id?: string
+  NomEvent?: string
+  code?: string
+  DataInici?: string
+  DataFi?: string
+  NumPax?: number
+  Import?: unknown
+  PreuMenu?: unknown
+  Ubicacio?: string
+  Comercial?: string
+  Servei?: string
+  LN?: string
+  Stage?: string
+  StageGroup?: string
+  origen?: string
+  DataPeticio?: string
+  Code?: string
+  C_digo?: string
+  codi?: string
+}
+
 export type FullByCodePayload = {
   code: string
   matchCount: number
   alternateMatches: Array<{ id?: string; NomEvent?: string; DataInici?: string }>
-  event: Record<string, unknown> & { id?: string }
+  event: StageVerdEventByCode & Record<string, unknown>
   quadrants: Record<string, unknown>[]
   incidents: Record<string, unknown>[]
 }
@@ -35,6 +58,19 @@ export type ChatReportTable = {
   rows: string[][]
 }
 
+/** KPI comparatiu (p. ex. dos trimestres); valors ja formats per mostrar. */
+export type ChatReportKpi = {
+  id: string
+  label: string
+  periodALabel: string
+  periodBLabel: string
+  valueA: string
+  valueB: string
+  delta?: string
+  deltaPct?: string
+  format?: 'eur' | 'qty' | 'count' | 'text'
+}
+
 export type ChatReportChart = {
   type: 'bar' | 'line'
   title: string
@@ -47,6 +83,8 @@ export type ChatReport = {
   tables: ChatReportTable[]
   chart: ChatReportChart | null
   highlights: string[]
+  /** Targetes resum (import, volum, etc.); opcional per informes antics. */
+  kpis?: ChatReportKpi[]
 }
 
 export type OpenChatAnswer = {

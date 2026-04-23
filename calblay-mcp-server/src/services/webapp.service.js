@@ -3,11 +3,25 @@ import {
   countByTimestampYear,
   getDocument,
   listCollection,
+  listDocsByStringDateMonth,
+  listDocsByTimestampMonth,
   queryCollectionWhere
 } from "./firestore.service.js";
 
 const eventsCollection =
   process.env.FIRESTORE_EVENTS_COLLECTION || "stage_verd";
+
+const eventsDateField =
+  String(process.env.FIRESTORE_EVENTS_DATE_FIELD || "DataInici").trim() || "DataInici";
+
+const eventsLnField =
+  String(process.env.FIRESTORE_EVENTS_LN_FIELD || "LN").trim() || "LN";
+
+function lnFromEventDoc(doc) {
+  const v = doc[eventsLnField];
+  if (v != null && String(v).trim() !== "") return String(v).trim();
+  return "(sense LN)";
+}
 
 function normalizeDateValue(raw) {
   if (!raw) return null;
@@ -24,7 +38,7 @@ function normalizeDateValue(raw) {
 export async function getEvents({ from, to, limit = 100 }) {
   const events = await listCollection(eventsCollection, {
     limit,
-    orderBy: "DataInici",
+    orderBy: eventsDateField,
     orderDirection: "desc"
   });
   const fromTs = from ? new Date(from).getTime() : null;
@@ -32,7 +46,8 @@ export async function getEvents({ from, to, limit = 100 }) {
 
   return events.filter((event) => {
     const eventTs = normalizeDateValue(
-      event.DataInici ||
+      event[eventsDateField] ||
+        event.DataInici ||
         event.DataFi ||
         event.date ||
         event.event_date ||
@@ -52,11 +67,11 @@ export async function getEvents({ from, to, limit = 100 }) {
  */
 export async function countEventsInYear(year) {
   try {
-    const n = await countByStringDateYear(eventsCollection, "DataInici", year);
+    const n = await countByStringDateYear(eventsCollection, eventsDateField, year);
     return { year, count: n, method: "aggregate_string_date" };
   } catch {
     try {
-      const n = await countByTimestampYear(eventsCollection, "DataInici", year);
+      const n = await countByTimestampYear(eventsCollection, eventsDateField, year);
       return { year, count: n, method: "aggregate_timestamp" };
     } catch {
       const events = await getEvents({
@@ -73,6 +88,82 @@ export async function countEventsInYear(year) {
       };
     }
   }
+}
+
+/**
+ * Recompte d'esdeveniments agrupats per LN (línia de negoci) dins un mes natural (YYYY-MM).
+ * Prova camp DataInici com a string ISO i, si cal, com a Timestamp (mateix patró que countEventsInYear).
+ */
+export async function countEventsByLnInMonth(yearMonth, { limit = 8000 } = {}) {
+  const ym = String(yearMonth || "").trim().slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(ym)) {
+    throw new Error("yearMonth obligatori (YYYY-MM)");
+  }
+  const cap = Math.min(Math.max(Number(limit) || 8000, 1), 10_000);
+
+  let docs = [];
+  let method = "";
+  let capped = false;
+
+  try {
+    const r = await listDocsByStringDateMonth(eventsCollection, eventsDateField, ym, {
+      limit: cap
+    });
+    docs = r.docs;
+    capped = r.capped;
+    method = "string_date";
+  } catch {
+    try {
+      const r = await listDocsByTimestampMonth(eventsCollection, eventsDateField, ym, {
+        limit: cap
+      });
+      docs = r.docs;
+      capped = r.capped;
+      method = "timestamp";
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(
+        `No s'han pogut llegir esdeveniments per ${ym} (${eventsDateField}). Revisa tipus de camp o índexs Firestore. ${msg}`
+      );
+    }
+  }
+
+  if (docs.length === 0 && method === "string_date") {
+    try {
+      const r2 = await listDocsByTimestampMonth(eventsCollection, eventsDateField, ym, {
+        limit: cap
+      });
+      if (r2.docs.length > 0) {
+        docs = r2.docs;
+        capped = r2.capped;
+        method = "timestamp";
+      }
+    } catch {
+      /* es manté el resultat buit de la consulta string */
+    }
+  }
+
+  const byLnMap = new Map();
+  for (const d of docs) {
+    const ln = lnFromEventDoc(d);
+    byLnMap.set(ln, (byLnMap.get(ln) || 0) + 1);
+  }
+  const byLn = [...byLnMap.entries()]
+    .map(([ln, count]) => ({ ln, count }))
+    .sort((a, b) => b.count - a.count || a.ln.localeCompare(b.ln));
+
+  return {
+    yearMonth: ym,
+    total: docs.length,
+    lnField: eventsLnField,
+    byLn,
+    method,
+    ...(capped
+      ? {
+          note: `Resultat limitat als primers ${cap} documents del mes; el desglossament per LN pot ser incomplet.`
+        }
+      : {})
+  };
 }
 
 function codeMatchesDocFields(code, fields) {
@@ -155,7 +246,7 @@ export async function getEventDetail(eventId) {
   if (!event) {
     const events = await listCollection(eventsCollection, {
       limit: 400,
-      orderBy: "DataInici",
+      orderBy: eventsDateField,
       orderDirection: "desc"
     });
     event = events.find(
@@ -219,7 +310,7 @@ export async function getEventFullByCode(code) {
     alternateMatches: matches.slice(1).map((m) => ({
       id: m.id,
       NomEvent: m.NomEvent,
-      DataInici: m.DataInici
+      DataInici: m[eventsDateField] ?? m.DataInici
     })),
     event: primary,
     quadrants: relatedQuadrants,
