@@ -269,6 +269,56 @@ function rowMatchesCostSearch(rowLabel, termRaw) {
   return false;
 }
 
+function normForMatch(s) {
+  return String(s || "")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+function periodTokensFromInput(periodRaw) {
+  const t = String(periodRaw || "").trim();
+  if (!t) return [];
+  const norm = normForMatch(t).replace(/\s+/g, "");
+  const tokens = new Set([norm]);
+
+  const mYearMonth = norm.match(/\b(20\d{2})[-/](0[1-9]|1[0-2])\b/);
+  if (mYearMonth) {
+    tokens.add(`${mYearMonth[1]}-${mYearMonth[2]}`);
+    tokens.add(`${mYearMonth[1]}${mYearMonth[2]}`);
+  }
+
+  const mQuarterA = norm.match(/\b(20\d{2})[-_]?q([1-4])\b/);
+  if (mQuarterA) {
+    const y = mQuarterA[1];
+    const q = mQuarterA[2];
+    tokens.add(`${y}q${q}`);
+    tokens.add(`t${q}${y}`);
+    tokens.add(`q${q}${y}`);
+  }
+  const mQuarterB = norm.match(/\b(t|q)([1-4])[-_ ]?(20\d{2})\b/);
+  if (mQuarterB) {
+    const q = mQuarterB[2];
+    const y = mQuarterB[3];
+    tokens.add(`${y}q${q}`);
+    tokens.add(`t${q}${y}`);
+    tokens.add(`q${q}${y}`);
+  }
+
+  const mYear = norm.match(/\b(20\d{2})\b/);
+  if (mYear) tokens.add(mYear[1]);
+  return [...tokens].filter(Boolean);
+}
+
+function columnMatchesPeriod(label, key, periodRaw) {
+  const tokens = periodTokensFromInput(periodRaw);
+  if (!tokens.length) return true;
+  const ln = normForMatch(label).replace(/\s+/g, "");
+  const kn = normForMatch(key).replace(/\s+/g, "");
+  return tokens.some((tok) => ln.includes(tok) || kn.includes(tok));
+}
+
 function buildCostImputationToolPayload({
   file,
   meta,
@@ -357,4 +407,82 @@ export async function searchCostImputation({ contains, limit = 25 }) {
       sourceFinanceKind: resolvedCostReportKind
     }
   });
+}
+
+export async function getCostByDepartmentPeriod({
+  departmentContains,
+  period,
+  topRows = 20
+} = {}) {
+  const department = String(departmentContains || "").trim();
+  if (!department) {
+    throw new Error('Cal "departmentContains" (ex. marketing, logística, RH).');
+  }
+  const periodRaw = String(period || "").trim();
+  if (!periodRaw) {
+    throw new Error('Cal "period" (ex. 2026-02, 2026-Q1, T1 2026 o 2026).');
+  }
+
+  const { meta, metaLines, rows, amountHeaders, amountHeaderLabels } = await loadCostImputation();
+  const file = await resolveCostReportFileName();
+  const matchedRows = rows.filter((r) => rowMatchesCostSearch(r.label, department));
+  const periodColumns = amountHeaders
+    .map((key, i) => ({ key, label: amountHeaderLabels[i] || key }))
+    .filter((c) => columnMatchesPeriod(c.label, c.key, periodRaw));
+
+  if (!periodColumns.length) {
+    return {
+      file,
+      meta,
+      metaLines,
+      sourceFinanceKind: resolvedCostReportKind,
+      departmentContains: department,
+      period,
+      matchCount: matchedRows.length,
+      totalRowsScanned: rows.length,
+      totalAmount: 0,
+      periodColumns: [],
+      rows: [],
+      warning:
+        "No s'ha trobat cap columna d'import que coincideixi amb el període indicat. Revisa amountColumns/labels amb costs_imputation_overview."
+    };
+  }
+
+  const rowsWithTotals = matchedRows.map((r) => {
+    let subtotal = 0;
+    for (const col of periodColumns) subtotal += Number(r.amounts[col.key] || 0);
+    return {
+      label: r.label,
+      line: r.line,
+      totalForPeriod: subtotal,
+      valuesByColumn: periodColumns.map((col) => ({
+        key: col.key,
+        headerLabel: col.label,
+        value: r.amounts[col.key] ?? null
+      }))
+    };
+  });
+
+  const sortedRows = rowsWithTotals.sort((a, b) => b.totalForPeriod - a.totalForPeriod);
+  const lim = Math.min(60, Math.max(1, Number(topRows || 20)));
+  const sliced = sortedRows.slice(0, lim);
+  const totalAmount = rowsWithTotals.reduce((acc, r) => acc + Number(r.totalForPeriod || 0), 0);
+
+  return {
+    file,
+    meta,
+    metaLines,
+    sourceFinanceKind: resolvedCostReportKind,
+    departmentContains: department,
+    period,
+    periodColumns,
+    matchCount: rowsWithTotals.length,
+    totalRowsScanned: rows.length,
+    totalAmount,
+    returnedRows: sliced.length,
+    truncatedRows: rowsWithTotals.length > lim ? rowsWithTotals.length - lim : 0,
+    rows: sliced,
+    interpretationNote:
+      "Resultat determinista d'imputació de costos: suma només les columnes de període que coincideixen amb el filtre. No és compra de proveïdors."
+  };
 }

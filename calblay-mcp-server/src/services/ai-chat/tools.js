@@ -430,6 +430,37 @@ export function buildTools() {
     {
       type: "function",
       function: {
+        name: "costs_by_department_period",
+        description:
+          "Eina determinista d'IMPUTACIÓ DE COSTOS per departament/centre i període. " +
+          "Filtra files per departmentContains (ex. logística, marketing, RH) i suma només columnes d'import que coincideixen amb period (YYYY-MM, 2026-Q1, T1 2026 o any). " +
+          "Utilitza aquesta eina per preguntes tipus «cost total de logística al 2026-02» o comparatives on cal import exacte de cost intern. " +
+          "NO usar per compres de proveïdors (usa purchases_*).",
+        parameters: {
+          type: "object",
+          properties: {
+            departmentContains: {
+              type: "string",
+              description: "Text de departament/centre a cercar dins label de l'informe (ex. logística, marketing, RH)."
+            },
+            period: {
+              type: "string",
+              description: "Període: YYYY-MM, YYYY-QN, TN YYYY o YYYY."
+            },
+            topRows: {
+              type: "integer",
+              minimum: 1,
+              maximum: 60,
+              description: "Nombre màxim de files retornades ordenades per import."
+            }
+          },
+          required: ["departmentContains", "period"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
         name: "costs_imputation_overview",
         description:
           "Vista del CSV d'IMPUTACIÓ DE COSTOS (cost salarial / P&L per centre o departament, NO compres). " +

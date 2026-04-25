@@ -8,7 +8,11 @@ import {
   searchFinquesForChat,
   searchPersonnelForChat
 } from "../operations-data.service.js";
-import { getCostImputationOverview, searchCostImputation } from "../cost-imputation.service.js";
+import {
+  getCostByDepartmentPeriod,
+  getCostImputationOverview,
+  searchCostImputation
+} from "../cost-imputation.service.js";
 import {
   collectionsCatalogForChat,
   queryCollectionForChat
@@ -147,6 +151,14 @@ export async function runTool(toolName, args) {
     return searchCostImputation({
       contains: String(args?.contains || ""),
       limit: lim
+    });
+  }
+  if (toolName === "costs_by_department_period") {
+    const topRows = Math.min(60, Math.max(1, Number(args?.topRows || 20)));
+    return getCostByDepartmentPeriod({
+      departmentContains: String(args?.departmentContains || ""),
+      period: String(args?.period || ""),
+      topRows
     });
   }
   if (toolName === "purchases_search") {

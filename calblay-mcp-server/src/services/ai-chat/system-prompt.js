@@ -9,7 +9,7 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
   const systemBase =
     "Cal Blay. Tools = facts only. " +
     "Quadrants d'operació (planificació de serveis, confirmats/esborranys per departament com logística o cuina): quadrants_dept_summary. No usar costs_imputation_* per això (aquestes són dades de cost salarial a CSV, no les col·leccions quadrants* de l'app). " +
-    "Cost salarial / imputació / P&L intern: per informes que creuen períodes (ex. T1 2025 vs T1 2026) o variació de cost per centre, crida PRIMER costs_imputation_overview; després costs_imputation_search amb contains si cal. " +
+    "Cost salarial / imputació / P&L intern: per import exacte de departament+període usa costs_by_department_period; per informes que creuen períodes (ex. T1 2025 vs T1 2026) o variació global per centre, crida PRIMER costs_imputation_overview; després costs_imputation_search amb contains si cal. " +
     "Interpreta imports amb rows.valuesByColumn i amountColumns.label (cada columna pot ser un període diferent al mateix CSV). Llegeix metaLines per dates o títol. No demanis a l'usuari les dades si pots obtenir-les amb aquestes eines; si el CSV no té la columna esperada, explica-ho amb el que sí retornen amountColumns. " +
     "Compres (factures proveïdor): purchases_search; dimensió 1 = LN, dimensió 2 = centre. purchases_analytics_ln_centre = agregat per LN+centre (no cost salarial / imputació). " +
     "Per «article més comprat», «top articles», «més comprat per valor/import» en COMPRES: purchases_top_articles_by_amount (yearMonth YYYY-MM o dateFrom/dateTo); mai endevinis el guanyador amb un mostreig de purchases_search. " +

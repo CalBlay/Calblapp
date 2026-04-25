@@ -35,6 +35,20 @@ function centreMatchesNeedle(centre, needle) {
   return n.length > 0 && c.includes(n);
 }
 
+function pickVendesFilesWithFallback({ file }) {
+  return listFinanceCsvFilesForKind("vendes").then((available) => {
+    const all = Array.isArray(available) ? available : [];
+    if (!file || String(file).trim() === "") {
+      return { files: all, fallbackFromFile: null };
+    }
+    const requested = safeCsvFileName(String(file).trim());
+    const exists = all.includes(requested);
+    if (exists) return { files: [requested], fallbackFromFile: null };
+    // Fallback robust: if model invented filename, scan all known vendes files.
+    return { files: all, fallbackFromFile: requested };
+  });
+}
+
 function resolveVendesColumnIndices(headersMap) {
   const pickIdx = (candidates) => {
     for (const key of candidates) {
@@ -390,12 +404,7 @@ export async function aggregateVendesTopArticlesByEstablishment(opts = {}) {
       ? yNum
       : undefined;
 
-  let files;
-  if (opts.file && String(opts.file).trim() !== "") {
-    files = [safeCsvFileName(String(opts.file).trim())];
-  } else {
-    files = await listFinanceCsvFilesForKind("vendes");
-  }
+  const { files, fallbackFromFile } = await pickVendesFilesWithFallback({ file: opts.file });
 
   if (!files.length) {
     return {
@@ -447,6 +456,15 @@ export async function aggregateVendesTopArticlesByEstablishment(opts = {}) {
     yearFilter: yearFilter ?? null,
     metric: useQty ? "unitats" : "cobrades_eur",
     filesScanned: perFileStats,
+    ...(fallbackFromFile
+      ? {
+          fallback: {
+            requestedFile: fallbackFromFile,
+            applied: true,
+            reason: "requested_file_not_found_scanned_all_vendes_files"
+          }
+        }
+      : {}),
     fileErrors,
     distinctArticles: arr.length,
     top: arr.slice(0, cap),
@@ -467,12 +485,7 @@ export async function aggregateSalesByCentreMonth(opts = {}) {
       ? yNum
       : undefined;
 
-  let files;
-  if (opts.file && String(opts.file).trim() !== "") {
-    files = [safeCsvFileName(String(opts.file).trim())];
-  } else {
-    files = await listFinanceCsvFilesForKind("vendes");
-  }
+  const { files, fallbackFromFile } = await pickVendesFilesWithFallback({ file: opts.file });
 
   if (!files.length) {
     return {
@@ -542,6 +555,15 @@ export async function aggregateSalesByCentreMonth(opts = {}) {
     metric: "cobrades_eur (suma columna cobrades o, si no existeix, brut)",
     yearFilter: yearFilter ?? null,
     filesScanned: perFileStats,
+    ...(fallbackFromFile
+      ? {
+          fallback: {
+            requestedFile: fallbackFromFile,
+            applied: true,
+            reason: "requested_file_not_found_scanned_all_vendes_files"
+          }
+        }
+      : {}),
     fileErrors,
     rowCount: rows.length,
     rows,
@@ -563,12 +585,7 @@ export async function aggregateSalesByArticleCentreMonth(opts = {}) {
   if (!articleNeedle) throw new Error("Cal articleContains");
   if (!/^\d{4}-\d{2}$/.test(yearMonth)) throw new Error("Cal yearMonth en format YYYY-MM");
 
-  let files;
-  if (opts.file && String(opts.file).trim() !== "") {
-    files = [safeCsvFileName(String(opts.file).trim())];
-  } else {
-    files = await listFinanceCsvFilesForKind("vendes");
-  }
+  const { files, fallbackFromFile } = await pickVendesFilesWithFallback({ file: opts.file });
 
   if (!files.length) {
     return {
@@ -628,6 +645,15 @@ export async function aggregateSalesByArticleCentreMonth(opts = {}) {
     articleFilter: articleNeedle,
     yearMonth,
     filesScanned: perFileStats,
+    ...(fallbackFromFile
+      ? {
+          fallback: {
+            requestedFile: fallbackFromFile,
+            applied: true,
+            reason: "requested_file_not_found_scanned_all_vendes_files"
+          }
+        }
+      : {}),
     fileErrors,
     matches,
     totalMatches: matches.length,
