@@ -7,7 +7,14 @@ const MCP_TIMEOUT_MS = 25_000
 const MCP_CHAT_TIMEOUT_MS = 120_000
 
 function normalizeMcpBase(raw: string): string {
-  return raw.trim().replace(/\/$/, '')
+  return raw.trim().replace(/\/+$/, '')
+}
+
+function normalizeUpstreamPath(rawPath: string): string {
+  const p = String(rawPath || '').trim()
+  if (!p) return '/'
+  const withLeading = p.startsWith('/') ? p : `/${p}`
+  return withLeading.replace(/\/+$/, '') || '/'
 }
 
 export async function mcpUpstreamGet(
@@ -34,7 +41,7 @@ export async function mcpUpstreamGet(
     }
   }
 
-  const path = toolPath.startsWith('/') ? toolPath : `/tools/${toolPath}`
+  const path = normalizeUpstreamPath(toolPath.startsWith('/') ? toolPath : `/tools/${toolPath}`)
   const target = new URL(`${base}${path}`)
   if (searchParams) {
     searchParams.forEach((value, key) => {
@@ -122,7 +129,7 @@ export async function mcpUpstreamPost(
     }
   }
 
-  const path = absolutePath.startsWith('/') ? absolutePath : `/${absolutePath}`
+  const path = normalizeUpstreamPath(absolutePath)
   const target = new URL(`${base}${path}`)
   const timeoutMs = options?.timeoutMs ?? MCP_CHAT_TIMEOUT_MS
 
