@@ -30,6 +30,38 @@ export function shouldForceCostImputationOverview(question) {
 }
 
 /**
+ * Força eina determinista de cost quan la pregunta ja inclou:
+ * - context de cost intern/salarial
+ * - pista de departament/centre
+ * - pista temporal (YYYY, YYYY-MM, trimestre)
+ */
+export function shouldForceCostDepartmentPeriod(question) {
+  const raw = String(question || "");
+  const s = raw
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+
+  // Evita falsos positius en preguntes de compres/proveïdors.
+  if (/\b(compres?|proveidor|factura|p\d{4,})\b/.test(s)) return false;
+
+  const costLike =
+    /\b(cost|imputaci|salar|nomina|n[oó]mina|p\s*[\&\u0026]\s*l|p&l)\b/i.test(s) ||
+    /\bcost\s+total\b/i.test(s);
+  const deptLike =
+    /\b(departament|centre|logistica|rh|rrhh|recursos humans|marketing|cuina|sala|operativa)\b/i.test(
+      s
+    );
+  const periodLike =
+    /\b20[2-3]\d\b/.test(s) ||
+    /\b20[2-3]\d[-/](0[1-9]|1[0-2])\b/.test(s) ||
+    /\b(t|q)\s*[1-4]\b/i.test(s) ||
+    /\btrimestre\b/i.test(s);
+
+  return costLike && deptLike && periodLike;
+}
+
+/**
  * Detecta preguntes que han d'anar contra col·leccions Firestore (allergens/plats/projectes o mòduls no financers).
  * Força una primera passada de descoberta de col·leccions per evitar respostes genèriques sense dades.
  */

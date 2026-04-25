@@ -23,7 +23,7 @@ export async function chatWithTools({ question, language = "ca", rich = false })
   const qNorm = question.trim();
   const intent = detectQueryIntent(qNorm);
   const currentYear = new Date().getFullYear();
-  const { systemContent, forceCostOverview, forceFirestoreCatalog } = buildChatSystemContent({
+  const { systemContent, forceCostOverview, forceCostDepartmentPeriod, forceFirestoreCatalog } = buildChatSystemContent({
     qNorm,
     rich,
     currentYear
@@ -54,7 +54,9 @@ export async function chatWithTools({ question, language = "ca", rich = false })
   for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
     const anyToolMessageYet = messages.some((m) => m.role === "tool");
     const toolChoice =
-      forceCostOverview && !anyToolMessageYet
+      forceCostDepartmentPeriod && !anyToolMessageYet
+        ? { type: "function", function: { name: "costs_by_department_period" } }
+        : forceCostOverview && !anyToolMessageYet
         ? { type: "function", function: { name: "costs_imputation_overview" } }
         : forceFirestoreCatalog && !anyToolMessageYet
           ? { type: "function", function: { name: "firestore_collections_catalog" } }
@@ -138,7 +140,9 @@ export async function chatWithTools({ question, language = "ca", rich = false })
         }
         if (
           rich &&
-          (name === "costs_imputation_overview" || name === "costs_imputation_search")
+          (name === "costs_imputation_overview" ||
+            name === "costs_imputation_search" ||
+            name === "costs_by_department_period")
         ) {
           const built = buildCostImputationReportCalblay(raw);
           if (built) serverReportCalblay = built;

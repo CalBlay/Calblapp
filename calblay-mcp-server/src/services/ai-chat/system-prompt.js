@@ -1,9 +1,18 @@
 import { CALBLAY_JSON_MARKER } from "./config.js";
-import { shouldForceCostImputationOverview, shouldForceFirestoreCatalog } from "./helpers.js";
+import {
+  shouldForceCostDepartmentPeriod,
+  shouldForceCostImputationOverview,
+  shouldForceFirestoreCatalog
+} from "./helpers.js";
 
 /**
  * @param {{ qNorm: string, rich: boolean, currentYear: number }} p
- * @returns {{ systemContent: string, forceCostOverview: boolean, forceFirestoreCatalog: boolean }}
+ * @returns {{
+ *   systemContent: string,
+ *   forceCostOverview: boolean,
+ *   forceCostDepartmentPeriod: boolean,
+ *   forceFirestoreCatalog: boolean
+ * }}
  */
 export function buildChatSystemContent({ qNorm, rich, currentYear }) {
   const systemBase =
@@ -77,6 +86,9 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
   const forceCostOverview =
     String(process.env.OPENAI_FORCE_COST_OVERVIEW || "1").toLowerCase() !== "0" &&
     shouldForceCostImputationOverview(qNorm);
+  const forceCostDepartmentPeriod =
+    String(process.env.OPENAI_FORCE_COST_DEPT_PERIOD || "1").toLowerCase() !== "0" &&
+    shouldForceCostDepartmentPeriod(qNorm);
   const forceFirestoreCatalog =
     String(process.env.OPENAI_FORCE_FIRESTORE_CATALOG || "1").toLowerCase() !== "0" &&
     shouldForceFirestoreCatalog(qNorm);
@@ -86,9 +98,12 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
     supplierCodeHint +
     articleCodeHint +
     eventCodeHint +
+    (forceCostDepartmentPeriod
+      ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser costs_by_department_period (departmentContains + period) abans de qualsevol altra eina de costos."
+      : "") +
     (forceCostOverview
       ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser costs_imputation_overview (sense omplir contains); després interpreta amountColumns i rows. No diguis que no hi ha dades sense haver rebut el resultat d’aquesta eina."
       : "");
 
-  return { systemContent, forceCostOverview, forceFirestoreCatalog };
+  return { systemContent, forceCostOverview, forceCostDepartmentPeriod, forceFirestoreCatalog };
 }

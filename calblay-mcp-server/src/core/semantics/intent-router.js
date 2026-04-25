@@ -21,20 +21,33 @@ export function detectQueryIntent(question) {
   const q = normalizeText(question);
   const domainHit = DOMAIN_PATTERNS.find((p) => p.re.test(q));
   const domain = domainHit ? domainHit.domain : "unknown";
+  const financeType =
+    domain !== "finance"
+      ? null
+      : /\b(vendes|facturacio|ingres)\b/.test(q)
+        ? "sales"
+        : /\b(compres|proveidor|factura)\b/.test(q)
+          ? "purchases"
+          : /\b(cost|imputaci|salar|nomina|p&l)\b/.test(q)
+            ? "costs"
+            : "mixed";
 
   const asksSpecificArticle = /\b(aigua|article|producte|plat)\b/.test(q);
   const asksMonth = /\b(gener|febrer|marc|abril|maig|juny|juliol|agost|setembre|octubre|novembre|desembre|\d{4}-\d{2})\b/.test(
     q
   );
   const asksCentre = /\b(nautic|mirador|masia|origens|camp nou|centre|restaurant)\b/.test(q);
+  const asksPeriod = /\b(20\d{2}([-\/](0[1-9]|1[0-2]))?|t[1-4]|q[1-4]|trimestre)\b/.test(q);
 
   return {
     domain,
     requiresDataTools: domain !== "unknown",
     hints: {
+      financeType,
       asksSpecificArticle,
       asksMonth,
-      asksCentre
+      asksCentre,
+      asksPeriod
     }
   };
 }
