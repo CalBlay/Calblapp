@@ -1,0 +1,6 @@
+issue_id,issue_type,raw_value,proposed_canonical,severity,status,notes
+1,dimension_2_code_format,CCB0000,CCB00000,medium,open,Revisar si el codi correcte te 5 digits
+2,duplicate_dimension_3,DRJ0004,DRJ0004,low,open,Comercial repetit per JUNO HOUSE
+3,spelling_admin,ADMINSTRACIO,ADMINISTRACIO,low,open,Unificar text per facilitar consultes
+4,missing_event_code_in_finances,,event_code,high,open,Definir estrategia de pont contextual fins tenir codi
+5,center_alias_ambiguity,RESTAURANT MIRADOR,CCR00006,medium,open,Confirmar si sempre referencia MIRADOR DE LES CAVES

@@ -30,3 +30,9 @@ export {
   aggregateVendesTopArticlesByEstablishment,
   parseVendesJornadaYearMonth
 } from "./sales-queries.js";
+export {
+  CANONICAL_DICTIONARY_FILES,
+  canonicalDictionaryRequired,
+  getCanonicalDictionaryDir,
+  validateCanonicalDictionary
+} from "./canonical-dictionary.js";

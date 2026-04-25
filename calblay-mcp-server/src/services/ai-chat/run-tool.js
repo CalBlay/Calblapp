@@ -10,6 +10,10 @@ import {
 } from "../operations-data.service.js";
 import { getCostImputationOverview, searchCostImputation } from "../cost-imputation.service.js";
 import {
+  collectionsCatalogForChat,
+  queryCollectionForChat,
+} from "../firestore.service.js";
+import {
   aggregatePurchasesByBusinessLineAndCentre,
   aggregateSalesByCentreMonth,
   aggregateVendesTopArticlesByEstablishment,
@@ -73,6 +77,22 @@ export async function runTool(toolName, args) {
       start: args?.start != null ? String(args.start) : undefined,
       end: args?.end != null ? String(args.end) : undefined,
       status: args?.status != null ? String(args.status) : undefined
+    });
+  }
+  if (toolName === "firestore_collections_catalog") {
+    return collectionsCatalogForChat({
+      q: args?.q != null ? String(args.q) : "",
+      limit: args?.limit != null ? Number(args.limit) : undefined,
+      sampleLimit: args?.sampleLimit != null ? Number(args.sampleLimit) : undefined
+    });
+  }
+  if (toolName === "firestore_query_collection") {
+    return queryCollectionForChat({
+      collection: String(args?.collection || ""),
+      filters: Array.isArray(args?.filters) ? args.filters : [],
+      fields: Array.isArray(args?.fields) ? args.fields : [],
+      limit: args?.limit != null ? Number(args.limit) : undefined,
+      scanLimit: args?.scanLimit != null ? Number(args.scanLimit) : undefined
     });
   }
   if (toolName === "finances_list_files") {

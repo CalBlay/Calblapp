@@ -20,6 +20,15 @@ import {
   refreshPowerBiDataset
 } from "./services/powerbi.service.js";
 import { getPurchases, getSales, loginSap } from "./services/sap.service.js";
+import {
+  clearFirestoreCatalogCache,
+  getFirestoreCatalogCacheStats,
+  listTopLevelCollections,
+  mapCollectionsToDomainsDetailed,
+  mapCollectionsToDomains,
+  sampleCollectionDocuments
+} from "./services/firestore.service.js";
+import { buildCollectionDictionarySnapshot, readCollectionDictionary } from "./services/collection-dictionary.service.js";
 
 /**
  * Rutes amb dependències pesants (Firestore, etc.). Es carreguen després que el port
@@ -27,6 +36,78 @@ import { getPurchases, getSales, loginSap } from "./services/sap.service.js";
  */
 export function registerRoutes(app) {
   app.use(requireApiKey);
+
+  app.get(
+    "/tools/firestore/collections",
+    asyncHandler(async (req, res) => {
+      const q = String(req.query.q || "").trim().toLowerCase();
+      const all = await listTopLevelCollections();
+      const data = q ? all.filter((name) => name.toLowerCase().includes(q)) : all;
+      res.json({ ok: true, count: data.length, total: all.length, data });
+    })
+  );
+
+  app.get(
+    "/tools/firestore/collection-sample",
+    asyncHandler(async (req, res) => {
+      const name = String(req.query.name || "").trim();
+      const limit = Number(req.query.limit || 10);
+      if (!name) throw new HttpError(400, "Missing name query param");
+      const data = await sampleCollectionDocuments(name, { limit });
+      res.json({ ok: true, data });
+    })
+  );
+
+  app.get(
+    "/tools/firestore/domain-mapping",
+    asyncHandler(async (_req, res) => {
+      const data = await mapCollectionsToDomains();
+      res.json({ ok: true, ...data });
+    })
+  );
+
+  app.get(
+    "/tools/firestore/domain-mapping-detailed",
+    asyncHandler(async (req, res) => {
+      const q = String(req.query.q || "");
+      const collectionLimit = Number(req.query.collectionLimit || 200);
+      const sampleLimit = Number(req.query.sampleLimit || 12);
+      const data = await mapCollectionsToDomainsDetailed({ q, collectionLimit, sampleLimit });
+      res.json({ ok: true, ...data });
+    })
+  );
+
+  app.get(
+    "/tools/firestore/collection-dictionary",
+    asyncHandler(async (req, res) => {
+      const q = String(req.query.q || "");
+      const collectionLimit = Number(req.query.collectionLimit || 200);
+      const sampleLimit = Number(req.query.sampleLimit || 8);
+      const includeDynamic = String(req.query.includeDynamic || "1").toLowerCase() !== "0";
+      if (!includeDynamic) {
+        const data = readCollectionDictionary();
+        return res.json({ ok: data.ok, ...data });
+      }
+      const data = await buildCollectionDictionarySnapshot({ q, collectionLimit, sampleLimit });
+      res.json({ ok: true, ...data });
+    })
+  );
+
+  app.get(
+    "/tools/firestore/cache-stats",
+    asyncHandler(async (_req, res) => {
+      const data = getFirestoreCatalogCacheStats();
+      res.json({ ok: true, ...data });
+    })
+  );
+
+  app.post(
+    "/tools/firestore/cache-clear",
+    asyncHandler(async (_req, res) => {
+      const data = clearFirestoreCatalogCache();
+      res.json({ ok: true, ...data });
+    })
+  );
 
   app.get(
     "/tools/get_events",

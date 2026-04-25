@@ -209,6 +209,91 @@ export function buildTools() {
     {
       type: "function",
       function: {
+        name: "firestore_collections_catalog",
+        description:
+          "Catàleg de col·leccions Firestore (actuals i futures) amb domini suggerit, camps detectats i claus de join candidates. " +
+          "Ús obligatori quan la pregunta fa referència a una col·lecció/mòdul no cobert per una eina específica (ex. projectes, al·lèrgens, nous mòduls).",
+        parameters: {
+          type: "object",
+          properties: {
+            q: {
+              type: "string",
+              description: "Opcional. Filtre per nom de col·lecció (contains)."
+            },
+            limit: {
+              type: "integer",
+              minimum: 1,
+              maximum: 500,
+              description: "Màxim col·leccions a inspeccionar (default ~120)."
+            },
+            sampleLimit: {
+              type: "integer",
+              minimum: 1,
+              maximum: 50,
+              description: "Mostra de documents per col·lecció per inferir camps (default ~8)."
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "firestore_query_collection",
+        description:
+          "Consulta genèrica de qualsevol col·lecció Firestore (incloses noves) amb filtres i projecció de camps. " +
+          "Llegeix un subconjunt controlat (scanLimit) i filtra en memòria. Ideal per al·lèrgens, projectes o mòduls nous quan encara no hi ha eina dedicada.",
+        parameters: {
+          type: "object",
+          properties: {
+            collection: {
+              type: "string",
+              description: "Nom exacte de la col·lecció Firestore."
+            },
+            filters: {
+              type: "array",
+              description: "Filtres opcionals sobre camps.",
+              items: {
+                type: "object",
+                properties: {
+                  field: { type: "string" },
+                  op: {
+                    type: "string",
+                    enum: ["contains", "equals", "starts_with", "gte", "lte"]
+                  },
+                  value: {
+                    type: "string",
+                    description: "Valor comparat (text, número o data representada com text)."
+                  }
+                },
+                required: ["field", "value"]
+              }
+            },
+            fields: {
+              type: "array",
+              description: "Camps a retornar (projectar). Si s'omet, retorna el document complet.",
+              items: { type: "string" }
+            },
+            limit: {
+              type: "integer",
+              minimum: 1,
+              maximum: 100,
+              description: "Màxim de files retornades."
+            },
+            scanLimit: {
+              type: "integer",
+              minimum: 20,
+              maximum: 2000,
+              description: "Quantes files escanejar abans de filtrar (cost/rendiment)."
+            }
+          },
+          required: ["collection"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
         name: "finances_list_files",
         description:
           "List finance CSV file names in one category folder (compres, costos, vendes, rh). " +

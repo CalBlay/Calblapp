@@ -1,0 +1,57 @@
+{
+  "version": "v1",
+  "updatedAt": "2026-04-25",
+  "collections": {
+    "stage_verd": {
+      "domain": "events",
+      "description": "Esdeveniments principals de la webapp.",
+      "owner": "Operativa",
+      "joinKeys": ["code", "LN", "DataInici"],
+      "sensitivity": "admin_only",
+      "mlReady": true,
+      "mlFeatures": ["code", "LN", "DataInici", "DataFi", "comercial"],
+      "mlLabelCandidates": ["status", "tipusServei"]
+    },
+    "quadrants": {
+      "domain": "operations",
+      "description": "Quadrants i assignacions de personal per serveis.",
+      "owner": "Operativa",
+      "joinKeys": ["eventId", "event_id", "code"],
+      "sensitivity": "admin_only"
+    },
+    "incidents": {
+      "domain": "maintenance",
+      "description": "Incidencies i tickets vinculats a serveis.",
+      "owner": "Manteniment",
+      "joinKeys": ["eventId", "event_id", "code"],
+      "sensitivity": "admin_only",
+      "mlReady": true,
+      "mlFeatures": ["eventId", "code", "status", "title", "createdAt"],
+      "mlLabelCandidates": ["status", "priority", "isResolved"]
+    },
+    "personnel": {
+      "domain": "operations",
+      "description": "Master de personal i rols.",
+      "owner": "RRHH",
+      "joinKeys": ["id", "department", "role"],
+      "sensitivity": "admin_only"
+    },
+    "transports": {
+      "domain": "logistics",
+      "description": "Vehicles i dades base de transport.",
+      "owner": "Logistica",
+      "joinKeys": ["id", "plate", "conductorId"],
+      "sensitivity": "admin_only",
+      "mlReady": true,
+      "mlFeatures": ["plate", "type", "conductorId"],
+      "mlLabelCandidates": ["availabilityStatus"]
+    },
+    "finques": {
+      "domain": "operations",
+      "description": "Espais, finques i ubicacions operatives.",
+      "owner": "Operativa",
+      "joinKeys": ["id", "codi", "nom"],
+      "sensitivity": "admin_only"
+    }
+  }
+}

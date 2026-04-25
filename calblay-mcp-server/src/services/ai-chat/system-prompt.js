@@ -23,6 +23,8 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
     "comercials_for_business_line per llistar noms de comercial segons la línia de negoci (LN) als esdeveniments (ex. 'empresa'); no és personnel_search. " +
     "events_list_recent per llistar darrers events sense codi. personnel_search per llista de personal (nom o correu, opcional roleContains). " +
     "vehicles_list per vehicle/matrícula a la flota. finques_search per finques o espais (>=2 lletres). " +
+    "Per qualsevol mòdul/col·lecció Firestore no cobert amb eina específica (ex. al·lèrgens, projectes o col·leccions noves): primer firestore_collections_catalog i després firestore_query_collection amb collection+filters. " +
+    "No inventis noms de col·lecció: descobreix-los amb firestore_collections_catalog si hi ha dubte. " +
     "Quan el codi d'event C… apareix a la pregunta, crida event_context_by_code abans d'inferir. " +
     "finances_preview per capçaleres. " +
     "Vendes / facturació (fitxers a carpeta vendes, no SAP compres): imports per centre i mes → sales_by_centre_month; article més venut / més vendes a un centre concret (ex. NAUTIC) → sales_top_articles_by_establishment amb centreContains. finances_list_files kind=vendes si cal el nom del fitxer. " +

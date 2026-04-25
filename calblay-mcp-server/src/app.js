@@ -2,10 +2,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import cors from "cors";
+import { validateCanonicalDictionary } from "./services/finances/canonical-dictionary.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 dotenv.config({ path: path.join(projectRoot, ".env.example") });
+dotenv.config({ path: path.join(projectRoot, "..", ".env.local") });
 dotenv.config({ path: path.join(projectRoot, ".env"), override: true });
 import express from "express";
 import { requestLog } from "./middleware/request-log.js";
@@ -18,6 +20,22 @@ process.on("unhandledRejection", (reason) => {
 });
 
 const app = express();
+const canonicalDictionary = validateCanonicalDictionary();
+app.locals.canonicalDictionary = canonicalDictionary;
+if (!canonicalDictionary.ok) {
+  const joined = canonicalDictionary.missingFiles.join(", ");
+  const msg =
+    `[startup] Canonical dictionary incomplete at "${canonicalDictionary.dir}". ` +
+    `Missing: ${joined}`;
+  if (canonicalDictionary.required) {
+    throw new Error(msg);
+  }
+  console.warn(`${msg} (continuing because CANONICAL_DICTIONARY_REQUIRED=0)`);
+} else {
+  console.log(
+    `[startup] Canonical dictionary loaded from "${canonicalDictionary.dir}" (${canonicalDictionary.missingFiles.length} missing)`
+  );
+}
 /** Darrere de Cloud Run / balancejador: X-Forwarded-* fiables. Desactiva amb TRUST_PROXY=0. */
 if (String(process.env.TRUST_PROXY || "1").toLowerCase() !== "0") {
   app.set("trust proxy", 1);

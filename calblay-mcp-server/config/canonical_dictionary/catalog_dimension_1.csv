@@ -1,0 +1,8 @@
+dimension_1_code,dimension_1_name,business_group,status
+LN00000,CENTRAL,corporatiu,active
+LN00001,RESTAURANTS,restauracio,active
+LN00002,EMPRESA,events_empresa,active
+LN00003,CASAMENTS,events_casaments,active
+LN00004,PRECUINATS,menjar_preparat,active
+LN00005,FIRES & FESTIVALS,foodlovers_festivals,active
+LN00006,GREEN VITA,restauracio,active
