@@ -1,0 +1,86 @@
+name: Quality CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  quality-pr-baseline:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      QUERY_PLANNER_TOOL_CHOICE: "1"
+      QUERY_PLANNER_DETERMINISTIC_EXECUTOR: "1"
+      QUERY_PLANNER_STRICT_CATALOG_EXECUTOR: "1"
+      QUALITY_PLANNER_ALERT_ENABLED: "1"
+      QUALITY_PLANNER_MIN_PERCENT: "15"
+      QUALITY_PLANNER_STATS_LIMIT: "500"
+      QUALITY_ALLOW_SKIP_FIRESTORE: "1"
+      GOLDEN_ALLOW_SKIP_FIRESTORE: "1"
+      QUALITY_DRIFT_TRACE_LIMIT: "500"
+      QUALITY_DRIFT_MIN_MATCHED: "1"
+      QUALITY_DRIFT_MAX_MISMATCH_PERCENT: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run quality pipeline
+        run: npm run quality:ci
+
+      - name: Generate quality report
+        run: npm run quality:report
+
+  quality-main-strict:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      QUERY_PLANNER_TOOL_CHOICE: "1"
+      QUERY_PLANNER_DETERMINISTIC_EXECUTOR: "1"
+      QUERY_PLANNER_STRICT_CATALOG_EXECUTOR: "1"
+      QUALITY_PLANNER_ALERT_ENABLED: "1"
+      QUALITY_PLANNER_MIN_PERCENT: "15"
+      QUALITY_PLANNER_STATS_LIMIT: "500"
+      QUALITY_ALLOW_SKIP_FIRESTORE: "0"
+      GOLDEN_ALLOW_SKIP_FIRESTORE: "0"
+      QUALITY_DRIFT_TRACE_LIMIT: "500"
+      QUALITY_DRIFT_MIN_MATCHED: "5"
+      QUALITY_DRIFT_MAX_MISMATCH_PERCENT: "0"
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
+      FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Firebase secrets are present
+        run: |
+          test -n "$FIREBASE_PROJECT_ID"
+          test -n "$FIREBASE_CLIENT_EMAIL"
+          test -n "$FIREBASE_PRIVATE_KEY"
+
+      - name: Run strict quality pipeline
+        run: npm run quality:ci
+
+      - name: Generate strict quality report
+        run: npm run quality:report
