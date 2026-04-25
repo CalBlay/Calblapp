@@ -1,5 +1,10 @@
-import { countEventsByLnInMonth, countEventsInYear } from "../webapp.service.js";
+import { countEventsByLnInMonth, countEventsInDay, countEventsInYear } from "../webapp.service.js";
 import {
+  countAuditsForChat,
+  countFinquesForChat,
+  countPlannedPreventiusForChat,
+  countVehicleAssignmentsByPlateForChat,
+  countWorkerServicesForChat,
   comercialsForBusinessLineForChat,
   getEventContextByCodeForChat,
   listRecentEventsForChat,
@@ -17,12 +22,14 @@ import {
   collectionsCatalogForChat,
   queryCollectionForChat
 } from "../firestore.service.js";
+import { buildCollectionDictionarySnapshot } from "../collection-dictionary.service.js";
 import {
   aggregatePurchasesByBusinessLineAndCentre,
   aggregateSalesByArticleCentreMonth,
   aggregateSalesByCentreMonth,
   aggregateVendesTopArticlesByEstablishment,
   comparePurchasesSupplierQuarters,
+  getFinanceResultByLnMonth,
   getPurchasesArticleMonthSummary,
   getPurchasesByArticle,
   getPurchasesBySupplier,
@@ -49,6 +56,9 @@ export async function runTool(toolName, args) {
   if (toolName === "events_count_by_ln_month") {
     return countEventsByLnInMonth(String(args?.yearMonth || ""));
   }
+  if (toolName === "events_count_by_day") {
+    return countEventsInDay(String(args?.date || ""));
+  }
   if (toolName === "event_context_by_code") {
     return getEventContextByCodeForChat(String(args?.code || ""));
   }
@@ -59,6 +69,7 @@ export async function runTool(toolName, args) {
     return searchPersonnelForChat({
       nameContains: args?.nameContains,
       roleContains: args?.roleContains,
+      departmentContains: args?.departmentContains,
       limit: args?.limit
     });
   }
@@ -71,10 +82,47 @@ export async function runTool(toolName, args) {
   if (toolName === "vehicles_list") {
     return listTransportsForChat({ limit: args?.limit });
   }
+  if (toolName === "vehicle_assignments_count_by_plate") {
+    return countVehicleAssignmentsByPlateForChat({
+      plate: String(args?.plate || ""),
+      start: args?.start ? String(args.start) : undefined,
+      end: args?.end ? String(args.end) : undefined,
+      limitPerCollection: args?.limitPerCollection != null ? Number(args.limitPerCollection) : undefined
+    });
+  }
+  if (toolName === "worker_services_count") {
+    return countWorkerServicesForChat({
+      workerName: String(args?.workerName || ""),
+      start: args?.start ? String(args.start) : undefined,
+      end: args?.end ? String(args.end) : undefined,
+      departments: Array.isArray(args?.departments) ? args.departments : undefined,
+      limitPerCollection: args?.limitPerCollection != null ? Number(args.limitPerCollection) : undefined
+    });
+  }
   if (toolName === "finques_search") {
     return searchFinquesForChat({
       query: args?.query,
       limit: args?.limit
+    });
+  }
+  if (toolName === "finques_count") {
+    return countFinquesForChat({
+      limit: args?.limit != null ? Number(args.limit) : undefined
+    });
+  }
+  if (toolName === "audits_count") {
+    return countAuditsForChat({
+      yearMonth: args?.yearMonth ? String(args.yearMonth) : undefined,
+      year: args?.year != null ? Number(args.year) : undefined,
+      department: args?.department ? String(args.department) : undefined,
+      status: args?.status ? String(args.status) : undefined,
+      limit: args?.limit != null ? Number(args.limit) : undefined
+    });
+  }
+  if (toolName === "preventius_planned_count_by_day") {
+    return countPlannedPreventiusForChat({
+      date: args?.date ? String(args.date) : undefined,
+      limit: args?.limit != null ? Number(args.limit) : undefined
     });
   }
   if (toolName === "quadrants_dept_summary") {
@@ -89,6 +137,13 @@ export async function runTool(toolName, args) {
     return collectionsCatalogForChat({
       q: args?.q != null ? String(args.q) : "",
       limit: args?.limit != null ? Number(args.limit) : undefined,
+      sampleLimit: args?.sampleLimit != null ? Number(args.sampleLimit) : undefined
+    });
+  }
+  if (toolName === "firestore_mapping_status") {
+    return buildCollectionDictionarySnapshot({
+      q: args?.q != null ? String(args.q) : "",
+      collectionLimit: args?.limit != null ? Number(args.limit) : undefined,
       sampleLimit: args?.sampleLimit != null ? Number(args.sampleLimit) : undefined
     });
   }
@@ -158,7 +213,16 @@ export async function runTool(toolName, args) {
     return getCostByDepartmentPeriod({
       departmentContains: String(args?.departmentContains || ""),
       period: String(args?.period || ""),
+      financeKindPreferred: args?.financeKindPreferred ? String(args.financeKindPreferred) : undefined,
       topRows
+    });
+  }
+  if (toolName === "finance_result_by_ln_month") {
+    return getFinanceResultByLnMonth({
+      yearMonth: String(args?.yearMonth || ""),
+      file: args?.file ? String(args.file) : undefined,
+      rowLabelContains: args?.rowLabelContains ? String(args.rowLabelContains) : undefined,
+      lnContains: args?.lnContains ? String(args.lnContains) : undefined
     });
   }
   if (toolName === "purchases_search") {

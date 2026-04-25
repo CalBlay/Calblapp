@@ -665,6 +665,19 @@ function parseYearMonthParts(yearMonth) {
   return { ym, yNum, mNum, ys, ms };
 }
 
+function parseYmdParts(ymd) {
+  const v = String(ymd || "").trim().slice(0, 10);
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) throw new Error("date ha de ser YYYY-MM-DD");
+  const yNum = Number(m[1]);
+  const mNum = Number(m[2]);
+  const dNum = Number(m[3]);
+  if (mNum < 1 || mNum > 12 || dNum < 1 || dNum > 31) {
+    throw new Error("date invàlida");
+  }
+  return { ymd: v, yNum, mNum, dNum };
+}
+
 /**
  * Documents amb camp data tipus string ISO (YYYY-MM-DD…) dins el mes [yearMonth, yearMonth+1).
  */
@@ -684,6 +697,55 @@ export async function listDocsByStringDateMonth(
     .collection(collectionName)
     .where(fieldName, ">=", startStr)
     .where(fieldName, "<", endExclusiveStr)
+    .limit(cap)
+    .get();
+  return {
+    docs: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+    capped: snap.size >= cap
+  };
+}
+
+/**
+ * Documents amb camp data string ISO dins un dia concret (prefix YYYY-MM-DD).
+ */
+export async function listDocsByStringDateDay(
+  collectionName,
+  fieldName,
+  dateYmd,
+  { limit = 5000 } = {}
+) {
+  const { ymd } = parseYmdParts(dateYmd);
+  const cap = Math.min(Math.max(Number(limit) || 5000, 1), 10_000);
+  const endExclusive = `${ymd}~`;
+  const snap = await getDb()
+    .collection(collectionName)
+    .where(fieldName, ">=", ymd)
+    .where(fieldName, "<", endExclusive)
+    .limit(cap)
+    .get();
+  return {
+    docs: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+    capped: snap.size >= cap
+  };
+}
+
+/**
+ * Documents amb camp Timestamp dins un dia concret (interval [dia, dia+1)).
+ */
+export async function listDocsByTimestampDay(
+  collectionName,
+  fieldName,
+  dateYmd,
+  { limit = 5000 } = {}
+) {
+  const { yNum, mNum, dNum } = parseYmdParts(dateYmd);
+  const start = Timestamp.fromMillis(Date.UTC(yNum, mNum - 1, dNum, 0, 0, 0, 0));
+  const endExclusive = Timestamp.fromMillis(Date.UTC(yNum, mNum - 1, dNum + 1, 0, 0, 0, 0));
+  const cap = Math.min(Math.max(Number(limit) || 5000, 1), 10_000);
+  const snap = await getDb()
+    .collection(collectionName)
+    .where(fieldName, ">=", start)
+    .where(fieldName, "<", endExclusive)
     .limit(cap)
     .get();
   return {

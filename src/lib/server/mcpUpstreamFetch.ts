@@ -17,6 +17,21 @@ function normalizeUpstreamPath(rawPath: string): string {
   return withLeading.replace(/\/+$/, '') || '/'
 }
 
+function isLocalHttpUrl(base: string): boolean {
+  try {
+    const u = new URL(base)
+    if (u.protocol !== 'http:') return false
+    const host = u.hostname.toLowerCase()
+    return host === 'localhost' || host === '127.0.0.1'
+  } catch {
+    return false
+  }
+}
+
+function isAllowedMcpBase(base: string): boolean {
+  return base.startsWith('https://') || isLocalHttpUrl(base)
+}
+
 export async function mcpUpstreamGet(
   toolPath: string,
   searchParams?: URLSearchParams
@@ -31,12 +46,13 @@ export async function mcpUpstreamGet(
     }
   }
 
-  if (!base.startsWith('https://')) {
+  if (!isAllowedMcpBase(base)) {
     return {
       status: 500,
       body: {
         ok: false,
-        error: 'MCP_SERVER_URL ha de ser una URL https (ex. https://….run.app)',
+        error:
+          'MCP_SERVER_URL ha de ser https (Cloud Run) o http://localhost:PORT / http://127.0.0.1:PORT per proves locals',
       },
     }
   }
@@ -119,12 +135,13 @@ export async function mcpUpstreamPost(
     }
   }
 
-  if (!base.startsWith('https://')) {
+  if (!isAllowedMcpBase(base)) {
     return {
       status: 500,
       body: {
         ok: false,
-        error: 'MCP_SERVER_URL ha de ser una URL https (ex. https://….run.app)',
+        error:
+          'MCP_SERVER_URL ha de ser https (Cloud Run) o http://localhost:PORT / http://127.0.0.1:PORT per proves locals',
       },
     }
   }

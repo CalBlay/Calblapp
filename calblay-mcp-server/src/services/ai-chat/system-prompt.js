@@ -2,6 +2,13 @@ import { CALBLAY_JSON_MARKER } from "./config.js";
 import {
   shouldForceCostDepartmentPeriod,
   shouldForceCostImputationOverview,
+  shouldForceFinanceResultByLnMonth,
+  shouldForceEventsCountByDay,
+  shouldForcePersonnelSearch,
+  shouldForceVehicleAssignmentsByPlate,
+  shouldForceWorkerServicesCount,
+  shouldForceAuditsCount,
+  shouldForceFinquesCount,
   shouldForceFirestoreCatalog
 } from "./helpers.js";
 
@@ -11,6 +18,13 @@ import {
  *   systemContent: string,
  *   forceCostOverview: boolean,
  *   forceCostDepartmentPeriod: boolean,
+ *   forceFinanceResultByLnMonth: boolean,
+ *   forceEventsCountByDay: boolean,
+ *   forcePersonnelSearch: boolean,
+ *   forceVehicleAssignmentsByPlate: boolean,
+ *   forceWorkerServicesCount: boolean,
+ *   forceAuditsCount: boolean,
+ *   forceFinquesCount: boolean,
  *   forceFirestoreCatalog: boolean
  * }}
  */
@@ -18,7 +32,8 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
   const systemBase =
     "Cal Blay. Tools = facts only. " +
     "Quadrants d'operació (planificació de serveis, confirmats/esborranys per departament com logística o cuina): quadrants_dept_summary. No usar costs_imputation_* per això (aquestes són dades de cost salarial a CSV, no les col·leccions quadrants* de l'app). " +
-    "Cost salarial / imputació / P&L intern: per import exacte de departament+període usa costs_by_department_period; per informes que creuen períodes (ex. T1 2025 vs T1 2026) o variació global per centre, crida PRIMER costs_imputation_overview; després costs_imputation_search amb contains si cal. " +
+    "Cost salarial / imputació / P&L intern (fitxers finances, c.explotació; NO Firestore): per import exacte de departament/categoria+període usa costs_by_department_period; per informes que creuen períodes (ex. T1 2025 vs T1 2026) o variació global per centre, crida PRIMER costs_imputation_overview; després costs_imputation_search amb contains si cal. " +
+    "Per preguntes de P&L mensual per línia de negoci (ex. resultat financer del gener 2026 per LN), usa finance_result_by_ln_month amb yearMonth. " +
     "Interpreta imports amb rows.valuesByColumn i amountColumns.label (cada columna pot ser un període diferent al mateix CSV). Llegeix metaLines per dates o títol. No demanis a l'usuari les dades si pots obtenir-les amb aquestes eines; si el CSV no té la columna esperada, explica-ho amb el que sí retornen amountColumns. " +
     "Compres (factures proveïdor): purchases_search; dimensió 1 = LN, dimensió 2 = centre. purchases_analytics_ln_centre = agregat per LN+centre (no cost salarial / imputació). " +
     "Per «article més comprat», «top articles», «més comprat per valor/import» en COMPRES: purchases_top_articles_by_amount (yearMonth YYYY-MM o dateFrom/dateTo); mai endevinis el guanyador amb un mostreig de purchases_search. " +
@@ -26,14 +41,18 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
     "Per un interval de dates arbitrari: purchases_supplier_article_period_summary. purchases_by_supplier és només mostreig; purchases_by_article / purchases_article_month_summary per article M######. " +
     `Esdeveniments: events_count_by_year (total anual); si l'usuari no indica any, omet year o usa ${currentYear}. ` +
     "Per recompte per línia de negoci (LN) i un mes concret: events_count_by_ln_month amb yearMonth=YYYY-MM (ex. febrer 2026 → 2026-02). No usar només events_count_by_year per aquestes preguntes. " +
+    "Per recompte de preventius planificats en un dia concret, usa preventius_planned_count_by_day amb date=YYYY-MM-DD: interpretació europea DD-MM; si hi ha any de 2 xifres (ex. 04-05-26) expandeix-lo (26→2026); sense any explícit usa l'any natural actual del servidor. Cita collection/dateField/scopeNote a la resposta. " +
     "Producció / operació (mateixa base Firestore que l'app, enllaç principal: code d'esdeveniment): " +
     "event_context_by_code quan l'usuari dóna un codi (C… o id) i vol detall, quadrants, treballadors/conductors per grups, incidències. " +
     "quadrants_dept_summary per recomptes o llistats de quadrants per departament (sense codi C…) en un interval de dates (per defecte setmana actual). " +
     "comercials_for_business_line per llistar noms de comercial segons la línia de negoci (LN) als esdeveniments (ex. 'empresa'); no és personnel_search. " +
-    "events_list_recent per llistar darrers events sense codi. personnel_search per llista de personal (nom o correu, opcional roleContains). " +
-    "vehicles_list per vehicle/matrícula a la flota. finques_search per finques o espais (>=2 lletres). " +
+    "events_list_recent per llistar darrers events sense codi. personnel_search per llista de personal (nom/correu, roleContains o departmentContains). " +
+    "Per «quants cops s'ha assignat una matrícula/furgoneta», usa vehicle_assignments_count_by_plate amb plate (i opcionalment rang dates). " +
+    "Per «quants serveis ha anat X», usa worker_services_count amb workerName (i opcionalment rang/departaments). " +
+    "vehicles_list per vehicle/matrícula a la flota. Per «quantes finques tenim» o «com classifiquem finques per tipus» usa finques_count; per cercar per nom/codi usa finques_search (>=2 lletres). " +
     "Per preguntes de plats aptes per celíacs o intoleràncies, usa food_safety_celiac_dishes abans de respondre. " +
     "Per qualsevol mòdul/col·lecció Firestore no cobert amb eina específica (ex. al·lèrgens, projectes o col·leccions noves): primer firestore_collections_catalog i després firestore_query_collection amb collection+filters. " +
+    "Per governança i creixement futur del mapping (què falta documentar, cobertura i revisió manual), usa firestore_mapping_status. " +
     "No inventis noms de col·lecció: descobreix-los amb firestore_collections_catalog si hi ha dubte. " +
     "Quan el codi d'event C… apareix a la pregunta, crida event_context_by_code abans d'inferir. " +
     "finances_preview per capçaleres. " +
@@ -89,6 +108,27 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
   const forceCostDepartmentPeriod =
     String(process.env.OPENAI_FORCE_COST_DEPT_PERIOD || "1").toLowerCase() !== "0" &&
     shouldForceCostDepartmentPeriod(qNorm);
+  const forceFinanceResultByLnMonth =
+    String(process.env.OPENAI_FORCE_FINANCE_RESULT_LN_MONTH || "1").toLowerCase() !== "0" &&
+    shouldForceFinanceResultByLnMonth(qNorm);
+  const forceEventsCountByDay =
+    String(process.env.OPENAI_FORCE_EVENTS_DAY || "1").toLowerCase() !== "0" &&
+    shouldForceEventsCountByDay(qNorm);
+  const forcePersonnelSearch =
+    String(process.env.OPENAI_FORCE_PERSONNEL_SEARCH || "1").toLowerCase() !== "0" &&
+    shouldForcePersonnelSearch(qNorm);
+  const forceVehicleAssignmentsByPlate =
+    String(process.env.OPENAI_FORCE_VEHICLE_ASSIGNMENTS || "1").toLowerCase() !== "0" &&
+    shouldForceVehicleAssignmentsByPlate(qNorm);
+  const forceWorkerServicesCount =
+    String(process.env.OPENAI_FORCE_WORKER_SERVICES || "1").toLowerCase() !== "0" &&
+    shouldForceWorkerServicesCount(qNorm);
+  const forceAuditsCount =
+    String(process.env.OPENAI_FORCE_AUDITS_COUNT || "1").toLowerCase() !== "0" &&
+    shouldForceAuditsCount(qNorm);
+  const forceFinquesCount =
+    String(process.env.OPENAI_FORCE_FINQUES_COUNT || "1").toLowerCase() !== "0" &&
+    shouldForceFinquesCount(qNorm);
   const forceFirestoreCatalog =
     String(process.env.OPENAI_FORCE_FIRESTORE_CATALOG || "1").toLowerCase() !== "0" &&
     shouldForceFirestoreCatalog(qNorm);
@@ -98,6 +138,27 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
     supplierCodeHint +
     articleCodeHint +
     eventCodeHint +
+    (forceFinanceResultByLnMonth
+      ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser finance_result_by_ln_month amb yearMonth."
+      : "") +
+    (forceEventsCountByDay
+      ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser preventius_planned_count_by_day amb date YYYY-MM-DD (04-05 = DD-MM; 04-05-26 = DD-MM-YY). Cita scopeNote i collection a la resposta."
+      : "") +
+    (forcePersonnelSearch
+      ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser personnel_search. Si es menciona departament, omple departmentContains."
+      : "") +
+    (forceVehicleAssignmentsByPlate
+      ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser vehicle_assignments_count_by_plate amb plate."
+      : "") +
+    (forceWorkerServicesCount
+      ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser worker_services_count amb workerName."
+      : "") +
+    (forceAuditsCount
+      ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser audits_count."
+      : "") +
+    (forceFinquesCount
+      ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser finques_count."
+      : "") +
     (forceCostDepartmentPeriod
       ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser costs_by_department_period (departmentContains + period) abans de qualsevol altra eina de costos."
       : "") +
@@ -105,5 +166,17 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
       ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser costs_imputation_overview (sense omplir contains); després interpreta amountColumns i rows. No diguis que no hi ha dades sense haver rebut el resultat d’aquesta eina."
       : "");
 
-  return { systemContent, forceCostOverview, forceCostDepartmentPeriod, forceFirestoreCatalog };
+  return {
+    systemContent,
+    forceCostOverview,
+    forceCostDepartmentPeriod,
+    forceFinanceResultByLnMonth,
+    forceEventsCountByDay,
+    forcePersonnelSearch,
+    forceVehicleAssignmentsByPlate,
+    forceWorkerServicesCount,
+    forceAuditsCount,
+    forceFinquesCount,
+    forceFirestoreCatalog
+  };
 }

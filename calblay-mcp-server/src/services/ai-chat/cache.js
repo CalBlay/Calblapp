@@ -3,10 +3,11 @@ import { CHAT_CACHE_MAX_KEYS, CHAT_CACHE_TTL_MS } from "./config.js";
 
 export const responseCache = new Map();
 
-export function cacheKey(model, language, question, rich) {
+export function cacheKey(model, language, question, rich, cacheVersion = "") {
   const q = question.trim().toLowerCase();
+  const v = String(cacheVersion || "").trim();
   return createHash("sha256")
-    .update(`${model}|${language}|${rich ? "1" : "0"}|${q}`)
+    .update(`${model}|${language}|${rich ? "1" : "0"}|${v}|${q}`)
     .digest("hex");
 }
 

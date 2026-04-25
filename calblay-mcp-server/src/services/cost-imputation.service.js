@@ -1,6 +1,7 @@
 import {
   listFinanceCsvFilesForKind,
   normalizeArticleNameForMatch,
+  normalizeCsvLineDelimited,
   normalizeCsvLine,
   parseAmountLike,
   readCsvText,
@@ -11,6 +12,8 @@ import {
 let resolvedCostReportFileName = null;
 /** Subcarpeta/origen on viu el fitxer (costos | rh), p.ex. RRHH amb cost salarial. */
 let resolvedCostReportKind = null;
+/** Cache per període (YYYY-MM) quan es resol fitxer específic. */
+const resolvedCostReportByPeriod = new Map();
 
 function costReportCacheDisabled() {
   return String(process.env.FINANCE_COST_REPORT_CACHE_DISABLED || "").match(/^(1|true|yes)$/i);
@@ -21,7 +24,81 @@ function costReportCacheDisabled() {
  * a les carpetes costos i rh (RRHH / recursos_humans) que parsegi com a informe (fila Importe bruto / Import brut).
  */
 export async function resolveCostReportFileName() {
-  if (resolvedCostReportFileName && resolvedCostReportKind && !costReportCacheDisabled()) {
+  return resolveCostReportFileNameForPeriod("");
+}
+
+function parseYearMonthFromPeriod(periodRaw) {
+  const s = String(periodRaw || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .trim();
+  if (!s) return null;
+  const mIso = s.match(/\b(20\d{2})[-/](0[1-9]|1[0-2])\b/);
+  if (mIso) return { year: mIso[1], month: mIso[2] };
+  const mMy = s.match(/\b(0[1-9]|1[0-2])[-/](20\d{2}|\d{2})\b/);
+  if (mMy) {
+    const yy = mMy[2].length === 2 ? `20${mMy[2]}` : mMy[2];
+    return { year: yy, month: mMy[1] };
+  }
+  const monthMap = {
+    gener: "01",
+    enero: "01",
+    febrer: "02",
+    febrero: "02",
+    marc: "03",
+    marzo: "03",
+    abril: "04",
+    maig: "05",
+    mayo: "05",
+    juny: "06",
+    junio: "06",
+    juliol: "07",
+    julio: "07",
+    agost: "08",
+    agosto: "08",
+    setembre: "09",
+    septiembre: "09",
+    octubre: "10",
+    novembre: "11",
+    noviembre: "11",
+    desembre: "12",
+    diciembre: "12"
+  };
+  const mName = s.match(
+    /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\b.*\b(20\d{2})\b/i
+  );
+  if (!mName) return null;
+  const mm = monthMap[mName[1].toLowerCase()];
+  if (!mm) return null;
+  return { year: mName[2], month: mm };
+}
+
+function filenameMatchesPeriod(name, ym) {
+  if (!ym) return false;
+  const n = String(name || "").toLowerCase();
+  const y = ym.year;
+  const m = ym.month;
+  return (
+    n.includes(`${m}_${y}`) ||
+    n.includes(`${m}-${y}`) ||
+    n.includes(`${y}_${m}`) ||
+    n.includes(`${y}-${m}`) ||
+    n.includes(`${m}${y}`) ||
+    n.includes(`${y}${m}`)
+  );
+}
+
+export async function resolveCostReportFileNameForPeriod(periodRaw = "") {
+  const ym = parseYearMonthFromPeriod(periodRaw);
+  const periodKey = ym ? `${ym.year}-${ym.month}` : "";
+  if (periodKey && resolvedCostReportByPeriod.has(periodKey) && !costReportCacheDisabled()) {
+    const hit = resolvedCostReportByPeriod.get(periodKey);
+    resolvedCostReportFileName = hit.name;
+    resolvedCostReportKind = hit.kind;
+    return hit.name;
+  }
+  if (!periodKey && resolvedCostReportFileName && resolvedCostReportKind && !costReportCacheDisabled()) {
     return resolvedCostReportFileName;
   }
 
@@ -87,6 +164,9 @@ export async function resolveCostReportFileName() {
     return Math.max(...years.map(Number));
   };
   const sorted = [...candidates].sort((a, b) => {
+    const pA = filenameMatchesPeriod(a.name, ym) ? 0 : 1;
+    const pB = filenameMatchesPeriod(b.name, ym) ? 0 : 1;
+    if (pA !== pB) return pA - pB;
     const d = scoreName(a.name) - scoreName(b.name);
     if (d !== 0) return d;
     const yd = maxYearInName(b.name) - maxYearInName(a.name);
@@ -100,6 +180,7 @@ export async function resolveCostReportFileName() {
       parseCostImputationCsv(raw);
       resolvedCostReportFileName = name;
       resolvedCostReportKind = kind;
+      if (periodKey) resolvedCostReportByPeriod.set(periodKey, { name, kind });
       return name;
     } catch {
       /* següent candidat */
@@ -158,11 +239,38 @@ function cellIsAmountHeaderLabel(c) {
   );
 }
 
+function detectCostCsvDelimiter(lines) {
+  const sample = Array.isArray(lines) ? lines.slice(0, 25) : [];
+  const candidates = [",", ";", "\t", "|"];
+  let best = ",";
+  let bestScore = -1;
+  for (const d of candidates) {
+    let score = 0;
+    for (const ln of sample) {
+      const cells = normalizeCsvLineDelimited(ln, d);
+      // Prefer delimiters producing multi-column rows with recognizable header tokens.
+      if (cells.length > 1) score += 1;
+      if (cells.some((c) => cellIsAmountHeaderLabel(c))) score += 3;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = d;
+    }
+  }
+  return best;
+}
+
+function splitCostCsvLine(line, delimiter) {
+  if (!delimiter || delimiter === ",") return normalizeCsvLine(line);
+  return normalizeCsvLineDelimited(line, delimiter);
+}
+
 function findAmountHeaderRow(lines) {
+  const delimiter = detectCostCsvDelimiter(lines);
   for (let i = 0; i < lines.length; i += 1) {
-    const cells = normalizeCsvLine(lines[i]);
+    const cells = splitCostCsvLine(lines[i], delimiter);
     const idx = cells.findIndex((c) => cellIsAmountHeaderLabel(c));
-    if (idx >= 0) return { rowIndex: i, amountStart: idx, cells };
+    if (idx >= 0) return { rowIndex: i, amountStart: idx, cells, delimiter };
   }
   return null;
 }
@@ -193,7 +301,7 @@ export function parseCostImputationCsv(raw) {
   }
 
   for (let i = 0; i < head.rowIndex; i += 1) {
-    const cells = normalizeCsvLine(lines[i]);
+    const cells = splitCostCsvLine(lines[i], head.delimiter);
     const joined = cells.map(stripCsvCell).filter(Boolean).join(" | ");
     if (joined) metaLines.push(joined);
     if (/imputaci[oó]/i.test(joined)) meta.title = joined;
@@ -211,7 +319,7 @@ export function parseCostImputationCsv(raw) {
 
   const rows = [];
   for (let i = head.rowIndex + 1; i < lines.length; i += 1) {
-    const cells = normalizeCsvLine(lines[i]);
+    const cells = splitCostCsvLine(lines[i], head.delimiter);
     const label = pickLabelFromRow(cells, head.amountStart);
     if (!label) continue;
 
@@ -237,13 +345,71 @@ export function parseCostImputationCsv(raw) {
   };
 }
 
+function parsePnlCostMatrixCsv(raw) {
+  const lines = String(raw || "")
+    .split(/\r?\n/)
+    .filter((l) => l.length > 0);
+  if (!lines.length) throw new Error("CSV buit");
+  const header = normalizeCsvLine(lines[0]).map(stripCsvCell);
+  const headerNorm = header.map((h) => normForMatch(h));
+  const idxDesc = headerNorm.findIndex((h) => h === "description" || h === "descripcio");
+  const idxTotal = headerNorm.findIndex((h) => h === "total");
+  if (idxDesc < 0 || idxTotal < 0) {
+    throw new Error("No és un CSV P&L de costos (falten columnes description/total).");
+  }
+  const amountHeaders = ["total"];
+  const amountHeaderLabels = ["total"];
+  const rows = [];
+  for (let i = 1; i < lines.length; i += 1) {
+    const cells = normalizeCsvLine(lines[i]).map(stripCsvCell);
+    const label = String(cells[idxDesc] || "").trim();
+    if (!label) continue;
+    const total = parseAmountLike(cells[idxTotal] || "");
+    rows.push({
+      label,
+      amounts: { total },
+      line: i + 1
+    });
+  }
+  return {
+    meta: {
+      title: "P&L cost matrix",
+      period: "",
+      empresa: ""
+    },
+    metaLines: [],
+    amountHeaders,
+    amountHeaderLabels,
+    rows,
+    format: "pnl_cost_matrix"
+  };
+}
+
+function parseCostCsvWithFallback(raw) {
+  try {
+    const out = parseCostImputationCsv(raw);
+    return { ...out, format: "imputation" };
+  } catch {
+    return parsePnlCostMatrixCsv(raw);
+  }
+}
+
 export async function loadCostImputation() {
-  await resolveCostReportFileName();
+  await resolveCostReportFileNameForPeriod("");
   const fileName = resolvedCostReportFileName;
   const kind = resolvedCostReportKind || "costos";
   if (!fileName) throw new Error("Cost imputation: fitxer no resolt");
   const raw = await readCsvText(fileName, kind);
-  return parseCostImputationCsv(raw);
+  return parseCostCsvWithFallback(raw);
+}
+
+export async function loadCostImputationForPeriod(periodRaw = "") {
+  await resolveCostReportFileNameForPeriod(periodRaw);
+  const fileName = resolvedCostReportFileName;
+  const kind = resolvedCostReportKind || "costos";
+  if (!fileName) throw new Error("Cost imputation: fitxer no resolt");
+  const raw = await readCsvText(fileName, kind);
+  return parseCostCsvWithFallback(raw);
 }
 
 const COST_SEARCH_TYPOS = {
@@ -252,7 +418,12 @@ const COST_SEARCH_TYPOS = {
   marqueting: "marketing",
   marketingfes: "marketing",
   marketinf: "marketing",
-  marketin: "marketing"
+  marketin: "marketing",
+  subminstramtnets: "subministraments",
+  subminstraments: "subministraments",
+  submintraments: "subministraments",
+  suministraments: "subministraments",
+  suministros: "subministraments"
 };
 
 function rowMatchesCostSearch(rowLabel, termRaw) {
@@ -277,10 +448,79 @@ function normForMatch(s) {
     .trim();
 }
 
+const MONTH_ALIASES = {
+  gener: "01",
+  enero: "01",
+  febrer: "02",
+  febrero: "02",
+  marc: "03",
+  marzo: "03",
+  abril: "04",
+  maig: "05",
+  mayo: "05",
+  juny: "06",
+  junio: "06",
+  juliol: "07",
+  julio: "07",
+  agost: "08",
+  agosto: "08",
+  setembre: "09",
+  septiembre: "09",
+  octubre: "10",
+  novembre: "11",
+  noviembre: "11",
+  desembre: "12",
+  diciembre: "12"
+};
+
+const QUARTER_WORDS = {
+  primer: "1",
+  primertrimestre: "1",
+  t1: "1",
+  q1: "1",
+  segon: "2",
+  segondotrimestre: "2",
+  segundo: "2",
+  t2: "2",
+  q2: "2",
+  tercer: "3",
+  t3: "3",
+  q3: "3",
+  quart: "4",
+  cuarto: "4",
+  t4: "4",
+  q4: "4"
+};
+
+function normalizedDepartmentFilter(raw) {
+  const base = normForMatch(raw);
+  if (!base) return "";
+  const keywords = [
+    "marketing",
+    "logistica",
+    "subministr",
+    "suministr",
+    "recursos humans",
+    "recursos humanos",
+    "rh",
+    "rrhh",
+    "transport",
+    "compres",
+    "compras",
+    "produccio",
+    "produccion"
+  ];
+  for (const k of keywords) {
+    if (base.includes(k)) return k.startsWith("suministr") ? "subministr" : k;
+  }
+  return base;
+}
+
 function periodTokensFromInput(periodRaw) {
   const t = String(periodRaw || "").trim();
   if (!t) return [];
-  const norm = normForMatch(t).replace(/\s+/g, "");
+  const normWords = normForMatch(t);
+  const norm = normWords.replace(/\s+/g, "");
   const tokens = new Set([norm]);
 
   const mYearMonth = norm.match(/\b(20\d{2})[-/](0[1-9]|1[0-2])\b/);
@@ -297,6 +537,14 @@ function periodTokensFromInput(periodRaw) {
     tokens.add(`t${q}${y}`);
     tokens.add(`q${q}${y}`);
   }
+  const mQuarterAT = norm.match(/\b(20\d{2})[-_]?t([1-4])\b/);
+  if (mQuarterAT) {
+    const y = mQuarterAT[1];
+    const q = mQuarterAT[2];
+    tokens.add(`${y}q${q}`);
+    tokens.add(`t${q}${y}`);
+    tokens.add(`q${q}${y}`);
+  }
   const mQuarterB = norm.match(/\b(t|q)([1-4])[-_ ]?(20\d{2})\b/);
   if (mQuarterB) {
     const q = mQuarterB[2];
@@ -306,9 +554,38 @@ function periodTokensFromInput(periodRaw) {
     tokens.add(`q${q}${y}`);
   }
 
+  const mMonthName = normWords.match(
+    /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\b.*\b(20\d{2})\b/i
+  );
+  if (mMonthName) {
+    const mm = MONTH_ALIASES[mMonthName[1].toLowerCase()];
+    const yy = mMonthName[2];
+    if (mm) {
+      tokens.add(`${yy}-${mm}`);
+      tokens.add(`${yy}${mm}`);
+    }
+  }
+
+  const mQuarterWords = normWords.match(
+    /\b(primer|segon|segundo|tercer|quart|cuarto|t[1-4]|q[1-4])\b.*\btrimestre\b.*\b(20\d{2})\b/i
+  );
+  if (mQuarterWords) {
+    const q = QUARTER_WORDS[mQuarterWords[1].toLowerCase()];
+    const y = mQuarterWords[2];
+    if (q) {
+      tokens.add(`${y}q${q}`);
+      tokens.add(`t${q}${y}`);
+      tokens.add(`q${q}${y}`);
+    }
+  }
+
   const mYear = norm.match(/\b(20\d{2})\b/);
   if (mYear) tokens.add(mYear[1]);
   return [...tokens].filter(Boolean);
+}
+
+export function __periodTokensFromInputForTest(periodRaw) {
+  return periodTokensFromInput(periodRaw);
 }
 
 function columnMatchesPeriod(label, key, periodRaw) {
@@ -317,6 +594,60 @@ function columnMatchesPeriod(label, key, periodRaw) {
   const ln = normForMatch(label).replace(/\s+/g, "");
   const kn = normForMatch(key).replace(/\s+/g, "");
   return tokens.some((tok) => ln.includes(tok) || kn.includes(tok));
+}
+
+function pickPreferredTotalColumn(periodColumns) {
+  const cols = Array.isArray(periodColumns) ? periodColumns : [];
+  if (!cols.length) return null;
+  const norm = (s) =>
+    String(s || "")
+      .normalize("NFKD")
+      .replace(/\p{M}/gu, "")
+      .toLowerCase();
+
+  const byTotal = cols.find((c) => /\btotal\b/.test(norm(c.label)));
+  if (byTotal) return byTotal;
+  const byOp = cols.find((c) => /\boperacio?n\b/.test(norm(c.label)));
+  if (byOp) return byOp;
+  const byImputation = cols.find((c) => /\bimputacio?n\b/.test(norm(c.label)));
+  if (byImputation) return byImputation;
+  return null;
+}
+
+function periodMentionedInMeta(metaLines, periodRaw) {
+  const tokens = periodTokensFromInput(periodRaw);
+  if (!tokens.length) return false;
+  const joined = (Array.isArray(metaLines) ? metaLines : [])
+    .map((x) => normForMatch(x).replace(/\s+/g, ""))
+    .join(" ");
+  if (!joined) return false;
+
+  // Token directes (YYYY, YYYYMM, YYYYQ1, T12026...)
+  if (tokens.some((tok) => joined.includes(tok))) return true;
+
+  // Cas típic "Del 01/01/2026 al 31/03/2026": inferim trimestres naturals.
+  const m = joined.match(/del(\d{1,2})\/(\d{1,2})\/(20\d{2}).*al(\d{1,2})\/(\d{1,2})\/(20\d{2})/i);
+  if (!m) return false;
+  const startMonth = Number(m[2]);
+  const startYear = Number(m[3]);
+  const endMonth = Number(m[5]);
+  const endYear = Number(m[6]);
+  if (!Number.isFinite(startMonth) || !Number.isFinite(endMonth)) return false;
+  if (startYear !== endYear) return false;
+
+  const quarter =
+    startMonth >= 1 && startMonth <= 3 && endMonth <= 3
+      ? 1
+      : startMonth >= 4 && startMonth <= 6 && endMonth <= 6
+        ? 2
+        : startMonth >= 7 && startMonth <= 9 && endMonth <= 9
+          ? 3
+          : startMonth >= 10 && startMonth <= 12 && endMonth <= 12
+            ? 4
+            : null;
+  if (!quarter) return false;
+  const qTokens = [`${startYear}q${quarter}`, `q${quarter}${startYear}`, `t${quarter}${startYear}`];
+  return tokens.some((tok) => qTokens.includes(tok));
 }
 
 function buildCostImputationToolPayload({
@@ -362,7 +693,7 @@ function buildCostImputationToolPayload({
  * Útil quan l’usuari demana vista per tots els departaments o no en cita cap de concret.
  */
 export async function getCostImputationOverview({ limit = 40 } = {}) {
-  const { meta, metaLines, rows, amountHeaders, amountHeaderLabels } = await loadCostImputation();
+  const { meta, metaLines, rows, amountHeaders, amountHeaderLabels } = await loadCostImputationForPeriod("");
   const file = await resolveCostReportFileName();
   const lim = Math.min(80, Math.max(1, Number(limit || 40)));
   const slice = rows.slice(0, lim);
@@ -412,6 +743,7 @@ export async function searchCostImputation({ contains, limit = 25 }) {
 export async function getCostByDepartmentPeriod({
   departmentContains,
   period,
+  financeKindPreferred,
   topRows = 20
 } = {}) {
   const department = String(departmentContains || "").trim();
@@ -423,12 +755,136 @@ export async function getCostByDepartmentPeriod({
     throw new Error('Cal "period" (ex. 2026-02, 2026-Q1, T1 2026 o 2026).');
   }
 
-  const { meta, metaLines, rows, amountHeaders, amountHeaderLabels } = await loadCostImputation();
-  const file = await resolveCostReportFileName();
-  const matchedRows = rows.filter((r) => rowMatchesCostSearch(r.label, department));
-  const periodColumns = amountHeaders
+  const deptFilter = normalizedDepartmentFilter(department);
+  const forcedKind =
+    String(financeKindPreferred || "")
+      .trim()
+      .toLowerCase() === "rh"
+      ? "rh"
+      : String(financeKindPreferred || "")
+            .trim()
+            .toLowerCase() === "costos"
+        ? "costos"
+        : "";
+  let parsed;
+  let file;
+  if (forcedKind) {
+    const ym = parseYearMonthFromPeriod(periodRaw);
+    const names = await listFinanceCsvFilesForKind(forcedKind);
+    const sorted = [...names].sort((a, b) => {
+      const pA = filenameMatchesPeriod(a, ym) ? 0 : 1;
+      const pB = filenameMatchesPeriod(b, ym) ? 0 : 1;
+      if (pA !== pB) return pA - pB;
+      return a.localeCompare(b);
+    });
+    let picked = null;
+    for (const name of sorted) {
+      try {
+        const raw = await readCsvText(name, forcedKind);
+        const out = parseCostCsvWithFallback(raw);
+        picked = { name, out };
+        break;
+      } catch {
+        // try next candidate
+      }
+    }
+    if (picked) {
+      file = picked.name;
+      parsed = picked.out;
+      resolvedCostReportFileName = picked.name;
+      resolvedCostReportKind = forcedKind;
+      if (ym) resolvedCostReportByPeriod.set(`${ym.year}-${ym.month}`, { name: picked.name, kind: forcedKind });
+    }
+  }
+  if (!parsed) {
+  if (/\bsubministr\b/.test(deptFilter)) {
+    // For subministraments, force c.explotacio/costos files (never RH cost-salary exports).
+    const ym = parseYearMonthFromPeriod(periodRaw);
+    const costosNames = await listFinanceCsvFilesForKind("costos");
+    const sorted = [...costosNames].sort((a, b) => {
+      const pA = filenameMatchesPeriod(a, ym) ? 0 : 1;
+      const pB = filenameMatchesPeriod(b, ym) ? 0 : 1;
+      if (pA !== pB) return pA - pB;
+      return a.localeCompare(b);
+    });
+    let picked = null;
+    for (const name of sorted) {
+      try {
+        const raw = await readCsvText(name, "costos");
+        const out = parseCostCsvWithFallback(raw);
+        picked = { name, out };
+        break;
+      } catch {
+        // keep trying until a valid costos file parses
+      }
+    }
+    if (picked) {
+      file = picked.name;
+      parsed = picked.out;
+      resolvedCostReportFileName = picked.name;
+      resolvedCostReportKind = "costos";
+      if (ym) resolvedCostReportByPeriod.set(`${ym.year}-${ym.month}`, { name: picked.name, kind: "costos" });
+    } else {
+      parsed = await loadCostImputationForPeriod(periodRaw);
+      file = await resolveCostReportFileNameForPeriod(periodRaw);
+    }
+  } else {
+    parsed = await loadCostImputationForPeriod(periodRaw);
+    file = await resolveCostReportFileNameForPeriod(periodRaw);
+  }
+  }
+  const { meta, metaLines, rows, amountHeaders, amountHeaderLabels, format } = parsed;
+  let matchedRows = rows.filter((r) => rowMatchesCostSearch(r.label, deptFilter));
+  if (!matchedRows.length && /\bsubministr\b/.test(deptFilter)) {
+    // Fallback explícit per categories de subministraments amb etiquetes variants.
+    matchedRows = rows.filter((r) => /\b(submin|sumin)/.test(normForMatch(r.label)));
+  }
+  if (/\bsubministr\b/.test(deptFilter)) {
+    // Inclou subcategories habituals de subministraments quan no venen etiquetades com "subministraments".
+    const utilityRows = rows.filter((r) =>
+      /\b(submin|sumin|electric|llum|luz|aigua|agua|gas)\b/.test(normForMatch(r.label))
+    );
+    if (utilityRows.length) {
+      const seen = new Set(matchedRows.map((r) => String(r.line)));
+      for (const r of utilityRows) {
+        const k = String(r.line);
+        if (!seen.has(k)) {
+          matchedRows.push(r);
+          seen.add(k);
+        }
+      }
+    }
+  }
+  if (!matchedRows.length) {
+    return {
+      file,
+      meta,
+      metaLines,
+      sourceFinanceKind: resolvedCostReportKind,
+      departmentContains: department,
+      period,
+      matchCount: 0,
+      totalRowsScanned: rows.length,
+      totalAmount: 0,
+      periodColumns: [],
+      rows: [],
+      warning:
+        "No s'ha trobat cap fila de cost que coincideixi amb el filtre de departament/categoria indicat. Això NO implica necessàriament cost 0 global; revisa el text de filtre o usa costs_imputation_overview per veure els labels disponibles."
+    };
+  }
+  let periodColumns = amountHeaders
     .map((key, i) => ({ key, label: amountHeaderLabels[i] || key }))
     .filter((c) => columnMatchesPeriod(c.label, c.key, periodRaw));
+
+  // Si el fitxer ja és monoperíode (dates al meta) i les columnes són genèriques
+  // ("Import brut", "Imputació"...), fem servir totes les columnes d'import.
+  if (!periodColumns.length && periodMentionedInMeta(metaLines, periodRaw)) {
+    periodColumns = amountHeaders.map((key, i) => ({ key, label: amountHeaderLabels[i] || key }));
+  }
+  if (!periodColumns.length && format === "pnl_cost_matrix") {
+    // Monthly c.explotacio files expose direct "total" column (period is encoded in filename).
+    periodColumns = amountHeaders.map((key, i) => ({ key, label: amountHeaderLabels[i] || key }));
+  }
 
   if (!periodColumns.length) {
     return {
@@ -449,12 +905,19 @@ export async function getCostByDepartmentPeriod({
   }
 
   const rowsWithTotals = matchedRows.map((r) => {
+    const totalColumn = pickPreferredTotalColumn(periodColumns);
     let subtotal = 0;
-    for (const col of periodColumns) subtotal += Number(r.amounts[col.key] || 0);
+    if (totalColumn) {
+      subtotal = Number(r.amounts[totalColumn.key] || 0);
+    } else {
+      for (const col of periodColumns) subtotal += Number(r.amounts[col.key] || 0);
+    }
     return {
       label: r.label,
       line: r.line,
       totalForPeriod: subtotal,
+      totalColumnUsed: totalColumn ? totalColumn.label : null,
+      aggregationMode: totalColumn ? "preferred_total_column" : "sum_all_period_columns",
       valuesByColumn: periodColumns.map((col) => ({
         key: col.key,
         headerLabel: col.label,
@@ -479,9 +942,12 @@ export async function getCostByDepartmentPeriod({
     matchCount: rowsWithTotals.length,
     totalRowsScanned: rows.length,
     totalAmount,
+    aggregationMode: rowsWithTotals[0]?.aggregationMode || "sum_all_period_columns",
+    totalColumnUsed: rowsWithTotals[0]?.totalColumnUsed || null,
     returnedRows: sliced.length,
     truncatedRows: rowsWithTotals.length > lim ? rowsWithTotals.length - lim : 0,
     rows: sliced,
+    normalizedDepartmentFilter: deptFilter,
     interpretationNote:
       "Resultat determinista d'imputació de costos: suma només les columnes de període que coincideixen amb el filtre. No és compra de proveïdors."
   };

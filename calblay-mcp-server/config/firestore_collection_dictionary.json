@@ -29,6 +29,37 @@
       "mlFeatures": ["eventId", "code", "status", "title", "createdAt"],
       "mlLabelCandidates": ["status", "priority", "isResolved"]
     },
+    "maintenancePreventiusPlanned": {
+      "domain": "maintenance",
+      "description": "Preventius planificats (mòdul de manteniment). Font per recompte diari de preventius.",
+      "owner": "Manteniment",
+      "joinKeys": ["id", "date", "templateId", "location"],
+      "sensitivity": "admin_only",
+      "usedByTools": ["preventius_planned_count_by_day"],
+      "queryHints": {
+        "primaryDateField": "date",
+        "fallbackDateFields": ["startDate", "DataInici", "createdAt"],
+        "commonFilters": ["date == YYYY-MM-DD", "priority", "location", "updatedByName"]
+      }
+    },
+    "maintenancePreventiusCompleted": {
+      "domain": "maintenance",
+      "description": "Preventius completats (històric execució).",
+      "owner": "Manteniment",
+      "joinKeys": ["id", "date", "templateId", "location"],
+      "sensitivity": "admin_only",
+      "queryHints": {
+        "primaryDateField": "date",
+        "fallbackDateFields": ["completedAt", "updatedAt"]
+      }
+    },
+    "maintenancePreventiusTemplates": {
+      "domain": "maintenance",
+      "description": "Plantilles de preventius (definició de tasques recurrents).",
+      "owner": "Manteniment",
+      "joinKeys": ["id", "title", "location", "priority"],
+      "sensitivity": "admin_only"
+    },
     "personnel": {
       "domain": "operations",
       "description": "Master de personal i rols.",

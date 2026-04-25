@@ -1,0 +1,132 @@
+{
+  "version": "v1",
+  "updatedAt": "2026-04-25",
+  "metrics": [
+    {
+      "metricId": "cost_subministraments_month",
+      "domain": "finance_costs",
+      "sourceOfTruth": {
+        "system": "csv_finances",
+        "kind": "costos",
+        "dataset": "c_explotacio"
+      },
+      "slotSchema": ["period"],
+      "normalization": {
+        "categoryCanonical": "subministr",
+        "synonyms": ["subministraments", "suministros", "utilities", "llum", "gas", "aigua"]
+      },
+      "calculationRule": {
+        "executor": "costs_by_department_period",
+        "departmentContains": "subministr",
+        "periodFormat": "YYYY-MM",
+        "aggregation": "preferred_total_column"
+      },
+      "outputContract": {
+        "unit": "EUR",
+        "confidence": "high",
+        "includeSource": true,
+        "includeTrace": true
+      },
+      "owner": "Finances+IT",
+      "active": true
+    },
+    {
+      "metricId": "preventius_planned_count_day",
+      "domain": "maintenance",
+      "sourceOfTruth": {
+        "system": "firestore",
+        "collection": "maintenancePreventiusPlanned",
+        "dateField": "date"
+      },
+      "slotSchema": ["date"],
+      "normalization": {
+        "dateFormatAccepted": ["DD-MM", "DD-MM-YY", "YYYY-MM-DD"]
+      },
+      "calculationRule": {
+        "executor": "preventius_planned_count_by_day",
+        "aggregation": "count_documents"
+      },
+      "outputContract": {
+        "unit": "count",
+        "confidence": "high",
+        "includeSource": true,
+        "includeTrace": true
+      },
+      "owner": "Manteniment+IT",
+      "active": true
+    },
+    {
+      "metricId": "personnel_count_by_department",
+      "domain": "operations",
+      "sourceOfTruth": {
+        "system": "firestore",
+        "collection": "personnel"
+      },
+      "slotSchema": ["department"],
+      "normalization": {
+        "departmentSynonyms": ["logistica", "cuina", "serveis", "rh", "rrhh"]
+      },
+      "calculationRule": {
+        "executor": "personnel_search",
+        "aggregation": "count_rows"
+      },
+      "outputContract": {
+        "unit": "count",
+        "confidence": "high",
+        "includeSource": true,
+        "includeTrace": true
+      },
+      "owner": "Operativa+IT",
+      "active": true
+    },
+    {
+      "metricId": "vehicle_assignments_count_by_plate",
+      "domain": "logistics",
+      "sourceOfTruth": {
+        "system": "firestore",
+        "collectionsPrefix": "quadrants",
+        "field": "conductors[].plate"
+      },
+      "slotSchema": ["plate", "period_optional"],
+      "normalization": {
+        "platePattern": "####-AAA"
+      },
+      "calculationRule": {
+        "executor": "vehicle_assignments_count_by_plate",
+        "aggregation": "count_assignments"
+      },
+      "outputContract": {
+        "unit": "count",
+        "confidence": "medium",
+        "includeSource": true,
+        "includeTrace": true
+      },
+      "owner": "Logistica+IT",
+      "active": true
+    },
+    {
+      "metricId": "worker_services_count",
+      "domain": "operations",
+      "sourceOfTruth": {
+        "system": "firestore",
+        "collectionsPrefix": "quadrants"
+      },
+      "slotSchema": ["workerName", "period_optional", "department_optional"],
+      "normalization": {
+        "nameMatch": "accent_insensitive_contains"
+      },
+      "calculationRule": {
+        "executor": "worker_services_count",
+        "aggregation": "count_services"
+      },
+      "outputContract": {
+        "unit": "count",
+        "confidence": "medium",
+        "includeSource": true,
+        "includeTrace": true
+      },
+      "owner": "Operativa+IT",
+      "active": true
+    }
+  ]
+}

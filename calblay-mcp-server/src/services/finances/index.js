@@ -31,6 +31,7 @@ export {
   aggregateVendesTopArticlesByEstablishment,
   parseVendesJornadaYearMonth
 } from "./sales-queries.js";
+export { getFinanceResultByLnMonth } from "./pnl-queries.js";
 export {
   CANONICAL_DICTIONARY_FILES,
   canonicalDictionaryRequired,

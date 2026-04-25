@@ -135,7 +135,7 @@ function trimPersonnelRow(d) {
 /**
  * Llista de personal; opcionalment filtrat per nom (contains, sense accents).
  */
-export async function searchPersonnelForChat({ nameContains, roleContains, limit = 40 }) {
+export async function searchPersonnelForChat({ nameContains, roleContains, departmentContains, limit = 40 }) {
   const cap = Math.min(100, Math.max(5, Number(limit) || 40));
   const all = await listCollection("personnel", { limit: 500 });
   const needle = normTxt(nameContains || "");
@@ -150,6 +150,13 @@ export async function searchPersonnelForChat({ nameContains, roleContains, limit
   }
   if (roleNeedle) {
     rows = rows.filter((d) => normTxt(d.role || "").includes(roleNeedle));
+  }
+  const deptNeedle = normTxt(departmentContains || "");
+  if (deptNeedle) {
+    rows = rows.filter((d) => {
+      const dep = normTxt(d.department || d.departament || "");
+      return dep.includes(deptNeedle);
+    });
   }
   return {
     kind: "personnel",
@@ -206,6 +213,50 @@ export async function searchFinquesForChat({ query, limit = 15 }) {
     kind: "finques",
     count: filtered.length,
     finques: filtered
+  };
+}
+
+/**
+ * Recompte de finques a Firestore (col·lecció finques).
+ * Útil per preguntes tipus "quantes finques tenim?" sense text de cerca.
+ */
+export async function countFinquesForChat({ limit = 2000 } = {}) {
+  const cap = Math.min(5000, Math.max(100, Number(limit) || 2000));
+  const all = await listCollection("finques", { limit: cap });
+  const normalized = all.map((f) => ({
+    id: f.id,
+    nom: f.nom || null,
+    codi: f.codi || null,
+    propietat:
+      f.propietat != null
+        ? String(f.propietat)
+        : f.esPropia != null
+          ? String(f.esPropia)
+          : f.tipusPropietat != null
+            ? String(f.tipusPropietat)
+            : null
+  }));
+  const byTypeMap = new Map();
+  for (const f of all) {
+    const t = String(f.tipus || f.type || "sense_tipus").trim() || "sense_tipus";
+    byTypeMap.set(t, (byTypeMap.get(t) || 0) + 1);
+  }
+  const byType = [...byTypeMap.entries()]
+    .map(([type, count]) => ({ type, count }))
+    .sort((a, b) => b.count - a.count);
+  const ownLike = (v) => {
+    const n = normTxt(v);
+    return n === "si" || n === "sí" || n === "true" || n === "1" || n.includes("prop");
+  };
+  const ownCount = normalized.filter((f) => ownLike(f.propietat)).length;
+  return {
+    kind: "finques_count",
+    totalCount: normalized.length,
+    ownCount,
+    byType,
+    cap,
+    capped: normalized.length >= cap,
+    sample: normalized.slice(0, 20)
   };
 }
 
@@ -460,5 +511,418 @@ export async function quadrantsDeptSummaryForChat({
     /** Files retornades (si statusFilter ≠ all, només les que coincideixen). */
     items: rows,
     listCount: rows.length
+  };
+}
+
+function toIsoDateLike(v) {
+  if (!v) return "";
+  if (typeof v === "string") return v.slice(0, 10);
+  if (typeof v?.toDate === "function") {
+    try {
+      return v.toDate().toISOString().slice(0, 10);
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+function normalizeAuditStatus(v) {
+  const s = String(v || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .trim();
+  if (!s) return "";
+  if (s.includes("complet")) return "completed";
+  if (s.includes("incomplet")) return "incomplete";
+  if (s.includes("draft") || s.includes("esborr")) return "draft";
+  if (s.includes("pending") || s.includes("pendent")) return "pending";
+  return s;
+}
+
+function parseAuditYearMonth(raw) {
+  const s = String(raw || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .trim();
+  const mIso = s.match(/\b(20\d{2})[-/](0[1-9]|1[0-2])\b/);
+  if (mIso) return `${mIso[1]}-${mIso[2]}`;
+  const monthMap = {
+    gener: "01",
+    enero: "01",
+    febrer: "02",
+    febrero: "02",
+    marc: "03",
+    marzo: "03",
+    abril: "04",
+    maig: "05",
+    mayo: "05",
+    juny: "06",
+    junio: "06",
+    juliol: "07",
+    julio: "07",
+    agost: "08",
+    agosto: "08",
+    setembre: "09",
+    septiembre: "09",
+    octubre: "10",
+    novembre: "11",
+    noviembre: "11",
+    desembre: "12",
+    diciembre: "12"
+  };
+  const mName = s.match(
+    /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\b.*\b(20\d{2})\b/
+  );
+  if (!mName) return "";
+  const mm = monthMap[mName[1]] || "";
+  return mm ? `${mName[2]}-${mm}` : "";
+}
+
+export async function countAuditsForChat({ yearMonth, year, department, status, limit = 5000 } = {}) {
+  const cap = Math.min(10000, Math.max(200, Number(limit) || 5000));
+  const rows = await listCollection("audit_runs", { limit: cap });
+  const ym = parseAuditYearMonth(yearMonth);
+  const y = Number(year);
+  const depNeedle = normTxt(department || "");
+  const statusNeedle = normalizeAuditStatus(status || "");
+
+  const filtered = rows.filter((r) => {
+    const date = toIsoDateLike(r.completedAt || r.savedAt || r.createdAt || "");
+    if (ym && !date.startsWith(ym)) return false;
+    if (!ym && Number.isFinite(y) && y >= 2000 && y <= 2100 && !date.startsWith(String(y))) return false;
+    if (depNeedle && !normTxt(r.department || "").includes(depNeedle)) return false;
+    if (statusNeedle && normalizeAuditStatus(r.status || "") !== statusNeedle) return false;
+    return true;
+  });
+
+  const byDepartmentMap = new Map();
+  const byStatusMap = new Map();
+  for (const r of filtered) {
+    const d = String(r.department || "sense_departament").trim() || "sense_departament";
+    const s = normalizeAuditStatus(r.status || "") || "sense_status";
+    byDepartmentMap.set(d, (byDepartmentMap.get(d) || 0) + 1);
+    byStatusMap.set(s, (byStatusMap.get(s) || 0) + 1);
+  }
+
+  return {
+    kind: "audits_count",
+    totalCount: filtered.length,
+    cap,
+    capped: rows.length >= cap,
+    yearMonth: ym || null,
+    year: !ym && Number.isFinite(y) ? y : null,
+    department: department || null,
+    status: statusNeedle || null,
+    byDepartment: [...byDepartmentMap.entries()]
+      .map(([departmentName, count]) => ({ department: departmentName, count }))
+      .sort((a, b) => b.count - a.count),
+    byStatus: [...byStatusMap.entries()]
+      .map(([statusName, count]) => ({ status: statusName, count }))
+      .sort((a, b) => b.count - a.count),
+    sample: filtered.slice(0, 20).map((r) => ({
+      id: r.id,
+      status: r.status || null,
+      department: r.department || null,
+      completedAt: toIsoDateLike(r.completedAt),
+      eventCode: r.eventCode || null
+    }))
+  };
+}
+
+const PREVENTIUS_PLANNED_COLLECTION =
+  String(process.env.FIRESTORE_PREVENTIUS_PLANNED_COLLECTION || "maintenancePreventiusPlanned").trim() ||
+  "maintenancePreventiusPlanned";
+const PREVENTIUS_PLANNED_DATE_FIELD =
+  String(process.env.FIRESTORE_PREVENTIUS_PLANNED_DATE_FIELD || "date").trim() || "date";
+
+function toYmd(value) {
+  if (!value) return "";
+  if (typeof value === "string") {
+    const s = value.trim();
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  }
+  if (typeof value?.toDate === "function") {
+    try {
+      return value.toDate().toISOString().slice(0, 10);
+    } catch {
+      return "";
+    }
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    try {
+      return new Date(value).toISOString().slice(0, 10);
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+export async function countPlannedPreventiusForChat({ date, limit = 10000 } = {}) {
+  const ymd = String(date || "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    return {
+      ok: false,
+      kind: "preventius_planned_count_by_day",
+      error: "Cal date en format YYYY-MM-DD."
+    };
+  }
+  const cap = Math.min(10000, Math.max(200, Number(limit) || 10000));
+  const rows = await listCollection(PREVENTIUS_PLANNED_COLLECTION, { limit: cap });
+
+  const filtered = rows.filter((r) => {
+    const dateCandidates = [
+      r[PREVENTIUS_PLANNED_DATE_FIELD],
+      r.date,
+      r.startDate,
+      r.DataInici,
+      r.createdAt
+    ];
+    return dateCandidates.some((v) => toYmd(v) === ymd);
+  });
+
+  const byPriorityMap = new Map();
+  for (const r of filtered) {
+    const p = String(r.priority || "sense_prioritat").trim() || "sense_prioritat";
+    byPriorityMap.set(p, (byPriorityMap.get(p) || 0) + 1);
+  }
+
+  return {
+    ok: true,
+    kind: "preventius_planned_count_by_day",
+    date: ymd,
+    total: filtered.length,
+    collection: PREVENTIUS_PLANNED_COLLECTION,
+    dateField: PREVENTIUS_PLANNED_DATE_FIELD,
+    scopeNote: "Recompte de manteniment preventiu planificat (planned), no calendari d'esdeveniments.",
+    capped: rows.length >= cap,
+    byPriority: [...byPriorityMap.entries()]
+      .map(([priority, count]) => ({ priority, count }))
+      .sort((a, b) => b.count - a.count),
+    sample: filtered.slice(0, 20).map((r) => ({
+      id: r.id,
+      date: toYmd(r[PREVENTIUS_PLANNED_DATE_FIELD] || r.date || r.startDate || r.DataInici),
+      startTime: r.startTime || null,
+      endTime: r.endTime || null,
+      title: r.title || null,
+      location: r.location || null,
+      priority: r.priority || null,
+      updatedByName: r.updatedByName || null
+    }))
+  };
+}
+
+function normalizePlate(raw) {
+  return String(raw || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toUpperCase()
+    .replace(/[\s_]/g, "")
+    .trim();
+}
+
+export async function countVehicleAssignmentsByPlateForChat({
+  plate,
+  start,
+  end,
+  limitPerCollection = 5000
+} = {}) {
+  const plateRaw = String(plate || "").trim();
+  const plateNorm = normalizePlate(plateRaw);
+  if (!plateNorm) {
+    return {
+      ok: false,
+      kind: "vehicle_assignments_count_by_plate",
+      error: "Cal una matrícula (plate)."
+    };
+  }
+
+  const startYmd = start ? String(start).trim().slice(0, 10) : "";
+  const endYmd = end ? String(end).trim().slice(0, 10) : "";
+  const hasRange =
+    (!!startYmd && /^\d{4}-\d{2}-\d{2}$/.test(startYmd)) ||
+    (!!endYmd && /^\d{4}-\d{2}-\d{2}$/.test(endYmd));
+  const cap = Math.min(10000, Math.max(300, Number(limitPerCollection) || 5000));
+
+  const db = getDb();
+  const allCols = await db.listCollections();
+  const targetCols = allCols
+    .map((c) => c.id)
+    .filter((id) => /^quadrants/i.test(id) && id.toLowerCase() !== "quadrants");
+
+  let total = 0;
+  const byCollection = [];
+  const samples = [];
+
+  for (const col of targetCols) {
+    let rows = await listCollection(col, { limit: cap });
+    if (hasRange) {
+      rows = rows.filter((r) => {
+        const d = String(r.startDate || r.DataInici || "").trim().slice(0, 10);
+        if (!d) return false;
+        if (startYmd && /^\d{4}-\d{2}-\d{2}$/.test(startYmd) && d < startYmd) return false;
+        if (endYmd && /^\d{4}-\d{2}-\d{2}$/.test(endYmd) && d > endYmd) return false;
+        return true;
+      });
+    }
+
+    let inCol = 0;
+    for (const r of rows) {
+      const conductors = Array.isArray(r.conductors) ? r.conductors : [];
+      const matches = conductors.filter((c) => normalizePlate(c?.plate) === plateNorm);
+      if (!matches.length) continue;
+      inCol += matches.length;
+      total += matches.length;
+      if (samples.length < 30) {
+        samples.push({
+          collection: col,
+          code: r.code || null,
+          eventId: r.eventId || r.event_id || null,
+          startDate: r.startDate || r.DataInici || null,
+          startTime: r.startTime || null,
+          conductorMatches: matches.length
+        });
+      }
+    }
+    byCollection.push({ collection: col, count: inCol });
+  }
+
+  return {
+    ok: true,
+    kind: "vehicle_assignments_count_by_plate",
+    plate: plateRaw,
+    normalizedPlate: plateNorm,
+    totalAssignments: total,
+    range: hasRange ? { start: startYmd || null, end: endYmd || null } : null,
+    scannedCollections: targetCols,
+    byCollection: byCollection.filter((x) => x.count > 0).sort((a, b) => b.count - a.count),
+    sample: samples,
+    scopeNote:
+      "Recompte d'assignacions de la matrícula a conductors[] dels quadrants de transport (logística/cuina/serveis)."
+  };
+}
+
+function collectNamesFromUnknown(value) {
+  const out = [];
+  if (value == null) return out;
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (s) out.push(s);
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) out.push(...collectNamesFromUnknown(item));
+    return out;
+  }
+  if (typeof value === "object") {
+    const maybeName = String(value.name || value.nom || value.workerName || value.driverName || "").trim();
+    if (maybeName) out.push(maybeName);
+    return out;
+  }
+  return out;
+}
+
+function countPersonInQuadrantDoc(doc, personNeedle) {
+  const names = [];
+  names.push(...collectNamesFromUnknown(doc.treballadors));
+  names.push(...collectNamesFromUnknown(doc.conductors));
+  if (Array.isArray(doc.groups)) {
+    for (const g of doc.groups) {
+      names.push(...collectNamesFromUnknown(g?.workers));
+      names.push(...collectNamesFromUnknown(g?.drivers));
+      names.push(...collectNamesFromUnknown(g?.driverName));
+    }
+  }
+  const normalizedNames = names.map((n) => normTxt(n)).filter(Boolean);
+  return normalizedNames.some((n) => n.includes(personNeedle));
+}
+
+export async function countWorkerServicesForChat({
+  workerName,
+  start,
+  end,
+  departments,
+  limitPerCollection = 5000
+} = {}) {
+  const rawName = String(workerName || "").trim();
+  const needle = normTxt(rawName);
+  if (needle.length < 2) {
+    return {
+      ok: false,
+      kind: "worker_services_count",
+      error: "Cal workerName (mínim 2 caràcters)."
+    };
+  }
+  const startYmd = start ? String(start).trim().slice(0, 10) : "";
+  const endYmd = end ? String(end).trim().slice(0, 10) : "";
+  const hasRange =
+    (!!startYmd && /^\d{4}-\d{2}-\d{2}$/.test(startYmd)) ||
+    (!!endYmd && /^\d{4}-\d{2}-\d{2}$/.test(endYmd));
+  const cap = Math.min(10000, Math.max(300, Number(limitPerCollection) || 5000));
+
+  const db = getDb();
+  const allCols = await db.listCollections();
+  const requestedDepts = Array.isArray(departments)
+    ? departments.map((d) => normTxt(d)).filter(Boolean)
+    : [];
+  const targetCols = allCols
+    .map((c) => c.id)
+    .filter((id) => /^quadrants/i.test(id) && id.toLowerCase() !== "quadrants")
+    .filter((id) => {
+      if (!requestedDepts.length) return true;
+      const rest = normTxt(id.replace(/^quadrants/i, ""));
+      return requestedDepts.some((d) => rest.includes(d));
+    });
+
+  let total = 0;
+  const byCollection = [];
+  const sample = [];
+  for (const col of targetCols) {
+    let rows = await listCollection(col, { limit: cap });
+    if (hasRange) {
+      rows = rows.filter((r) => {
+        const d = String(r.startDate || r.DataInici || "").trim().slice(0, 10);
+        if (!d) return false;
+        if (startYmd && /^\d{4}-\d{2}-\d{2}$/.test(startYmd) && d < startYmd) return false;
+        if (endYmd && /^\d{4}-\d{2}-\d{2}$/.test(endYmd) && d > endYmd) return false;
+        return true;
+      });
+    }
+    let inCol = 0;
+    for (const r of rows) {
+      const matched = countPersonInQuadrantDoc(r, needle);
+      if (!matched) continue;
+      inCol += 1;
+      total += 1;
+      if (sample.length < 30) {
+        sample.push({
+          collection: col,
+          code: r.code || null,
+          eventId: r.eventId || r.event_id || null,
+          startDate: r.startDate || r.DataInici || null,
+          startTime: r.startTime || null,
+          department: r.department || null
+        });
+      }
+    }
+    byCollection.push({ collection: col, count: inCol });
+  }
+
+  return {
+    ok: true,
+    kind: "worker_services_count",
+    workerName: rawName,
+    totalServices: total,
+    range: hasRange ? { start: startYmd || null, end: endYmd || null } : null,
+    scannedCollections: targetCols,
+    byCollection: byCollection.filter((x) => x.count > 0).sort((a, b) => b.count - a.count),
+    sample,
+    scopeNote: "Recompte de serveis on la persona apareix a treballadors/conductors/groups dels quadrants."
   };
 }

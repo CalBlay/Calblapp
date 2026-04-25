@@ -3,11 +3,21 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import cors from "cors";
 import { validateCanonicalDictionary } from "./services/finances/canonical-dictionary.js";
+import {
+  getFinanceSource,
+  getGcsFinanceBase,
+  getGcsPrefix,
+  isFinanceSubfolderLayout
+} from "./services/finances/config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
-dotenv.config({ path: path.join(projectRoot, ".env.example") });
-dotenv.config({ path: path.join(projectRoot, "..", ".env.local") });
+const nodeEnv = String(process.env.NODE_ENV || "").toLowerCase();
+const isProduction = nodeEnv === "production";
+if (!isProduction) {
+  dotenv.config({ path: path.join(projectRoot, ".env.example") });
+  dotenv.config({ path: path.join(projectRoot, "..", ".env.local") });
+}
 dotenv.config({ path: path.join(projectRoot, ".env"), override: true });
 import express from "express";
 import { requestLog } from "./middleware/request-log.js";
@@ -19,9 +29,46 @@ process.on("unhandledRejection", (reason) => {
   console.error("[fatal] unhandledRejection", reason);
 });
 
+function isPlaceholderApiKey(v) {
+  const s = String(v || "").trim().toLowerCase();
+  return !s || s.includes("replace_with_secure_key") || s.includes("la_teva") || s.includes("your_");
+}
+
+function validateStartupConfig() {
+  const apiKey = process.env.MCP_API_KEY;
+  if (isPlaceholderApiKey(apiKey)) {
+    throw new Error("MCP_API_KEY absent o placeholder. Configura una clau real abans d'arrencar.");
+  }
+
+  const financeSource = getFinanceSource();
+  if (!["local", "gcs"].includes(financeSource)) {
+    throw new Error(`FINANCE_SOURCE invàlid: "${financeSource}". Valors permesos: local|gcs.`);
+  }
+  if (financeSource === "gcs" && !String(process.env.GCS_BUCKET || "").trim()) {
+    throw new Error("FINANCE_SOURCE=gcs requereix GCS_BUCKET definit.");
+  }
+
+  const fbase = getGcsFinanceBase();
+  const fprefix = getGcsPrefix();
+  if (financeSource === "gcs" && isFinanceSubfolderLayout() && !fbase) {
+    throw new Error("FINANCE_SUBFOLDERS=true requereix GCS_FINANCE_BASE no buit.");
+  }
+  if (financeSource === "gcs" && !isFinanceSubfolderLayout() && !fprefix) {
+    throw new Error("FINANCE_SUBFOLDERS=false requereix GCS_FINANCE_PREFIX no buit.");
+  }
+
+  console.log(
+    `[startup] config: env=${nodeEnv || "undefined"} financeSource=${financeSource} ` +
+      `subfolders=${isFinanceSubfolderLayout() ? "1" : "0"} gcsBase=${fbase || "-"} gcsPrefix=${fprefix || "-"}`
+  );
+}
+
+validateStartupConfig();
+
 const app = express();
 const canonicalDictionary = validateCanonicalDictionary();
 app.locals.canonicalDictionary = canonicalDictionary;
+app.locals.routesReady = false;
 if (!canonicalDictionary.ok) {
   const joined = canonicalDictionary.missingFiles.join(", ");
   const msg =
@@ -80,18 +127,20 @@ app.get("/health/ready", (req, res) => {
 const port = Number(process.env.PORT || 8080);
 const host = process.env.HOST || "0.0.0.0";
 
+console.log("Loading API routes (Firestore, finances, …)…");
+const { registerRoutes } = await import("./routes.js");
+registerRoutes(app);
+app.locals.routesReady = true;
+console.log("API routes registered.");
+
+const { startFirestoreMappingNightlyScheduler } = await import(
+  "./services/firestore-mapping-delta.service.js"
+);
+const nightlyScheduler = startFirestoreMappingNightlyScheduler();
+console.log("[startup] firestore mapping nightly scheduler:", nightlyScheduler);
+
 const server = app.listen(port, host, () => {
   console.log(`MCP server listening on ${host}:${port}`);
-  console.log("Loading API routes (Firestore, finances, …)…");
-  import("./routes.js")
-    .then(({ registerRoutes }) => {
-      registerRoutes(app);
-      console.log("API routes registered.");
-    })
-    .catch((err) => {
-      console.error("[fatal] Failed to register routes", err);
-      process.exit(1);
-    });
 });
 
 function shutdown(signal) {

@@ -8,10 +8,10 @@ function normalizeText(s) {
 const DOMAIN_PATTERNS = [
   { domain: "food_safety", re: /\b(alergen|allergen|celiac|celiacs|gluten|intoleranc|ingredient)\b/ },
   { domain: "projects", re: /\b(projecte|projectes|project|milestone|tasca)\b/ },
-  { domain: "maintenance", re: /\b(incidenc|ticket|manteniment|avaria)\b/ },
+  { domain: "maintenance", re: /\b(incidenc|ticket|manteniment|avaria|preventiu|preventius|planificat|planificats)\b/ },
   { domain: "logistics", re: /\b(logistica|vehicle|transport|preparacio)\b/ },
-  { domain: "operations", re: /\b(quadrant|personal|treballador|servei|event|esdeveniment)\b/ },
-  { domain: "finance", re: /\b(vendes|compres|cost|marge|proveidor|factura|ingres)\b/ }
+  { domain: "operations", re: /\b(quadrant|personal|treballador|servei|event|esdeveniment|finca|finques)\b/ },
+  { domain: "finance", re: /\b(vendes|compres|cost|marge|proveidor|factura|ingres|financer|resultat|benefici)\b/ }
 ];
 
 /**
@@ -28,7 +28,7 @@ export function detectQueryIntent(question) {
         ? "sales"
         : /\b(compres|proveidor|factura)\b/.test(q)
           ? "purchases"
-          : /\b(cost|imputaci|salar|nomina|p&l)\b/.test(q)
+        : /\b(cost|imputaci|salar|nomina|p&l|resultat|benefici|financer)\b/.test(q)
             ? "costs"
             : "mixed";
 

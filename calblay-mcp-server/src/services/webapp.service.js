@@ -3,7 +3,9 @@ import {
   countByTimestampYear,
   getDocument,
   listCollection,
+  listDocsByStringDateDay,
   listDocsByStringDateMonth,
+  listDocsByTimestampDay,
   listDocsByTimestampMonth,
   queryCollectionWhere
 } from "./firestore.service.js";
@@ -161,6 +163,79 @@ export async function countEventsByLnInMonth(yearMonth, { limit = 8000 } = {}) {
     ...(capped
       ? {
           note: `Resultat limitat als primers ${cap} documents del mes; el desglossament per LN pot ser incomplet.`
+        }
+      : {})
+  };
+}
+
+/**
+ * Recompte d'esdeveniments en un dia natural (YYYY-MM-DD), amb fallback string/timestamp.
+ */
+export async function countEventsInDay(dateYmd, { limit = 8000 } = {}) {
+  const ymd = String(dateYmd || "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    throw new Error("date obligatori (YYYY-MM-DD)");
+  }
+  const cap = Math.min(Math.max(Number(limit) || 8000, 1), 10_000);
+
+  let docs = [];
+  let method = "";
+  let capped = false;
+  try {
+    const r = await listDocsByStringDateDay(eventsCollection, eventsDateField, ymd, { limit: cap });
+    docs = r.docs;
+    capped = r.capped;
+    method = "string_date";
+  } catch {
+    try {
+      const r = await listDocsByTimestampDay(eventsCollection, eventsDateField, ymd, { limit: cap });
+      docs = r.docs;
+      capped = r.capped;
+      method = "timestamp";
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(
+        `No s'han pogut llegir esdeveniments per ${ymd} (${eventsDateField}). Revisa tipus de camp o índexs Firestore. ${msg}`
+      );
+    }
+  }
+
+  if (docs.length === 0 && method === "string_date") {
+    try {
+      const r2 = await listDocsByTimestampDay(eventsCollection, eventsDateField, ymd, { limit: cap });
+      if (r2.docs.length > 0) {
+        docs = r2.docs;
+        capped = r2.capped;
+        method = "timestamp";
+      }
+    } catch {
+      /* es manté el resultat buit de la consulta string */
+    }
+  }
+
+  const byLnMap = new Map();
+  for (const d of docs) {
+    const ln = lnFromEventDoc(d);
+    byLnMap.set(ln, (byLnMap.get(ln) || 0) + 1);
+  }
+  const byLn = [...byLnMap.entries()]
+    .map(([ln, count]) => ({ ln, count }))
+    .sort((a, b) => b.count - a.count || a.ln.localeCompare(b.ln));
+
+  return {
+    kind: "events_count_by_day",
+    date: ymd,
+    total: docs.length,
+    lnField: eventsLnField,
+    byLn,
+    method,
+    eventsCollection,
+    dateField: eventsDateField,
+    scopeNote:
+      "Recompte d'esdeveniments del calendari (mateixa col·lecció i camp de data que l'app d'esdeveniments). Si el mòdul de manteniment preventiu usa una altra col·lecció, aquest número pot no coincidir amb el calendari visual de manteniment.",
+    ...(capped
+      ? {
+          note: `Resultat limitat als primers ${cap} documents del dia; el desglossament per LN pot ser incomplet.`
         }
       : {})
   };

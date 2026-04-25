@@ -46,19 +46,113 @@ export function shouldForceCostDepartmentPeriod(question) {
   if (/\b(compres?|proveidor|factura|p\d{4,})\b/.test(s)) return false;
 
   const costLike =
-    /\b(cost|imputaci|salar|nomina|n[oó]mina|p\s*[\&\u0026]\s*l|p&l)\b/i.test(s) ||
+    /\b(cost|imputaci|salar|nomina|n[oó]mina|p\s*[\&\u0026]\s*l|p&l|subministr|suministr|cexplotaci|c\.?\s*explotaci)\b/i.test(
+      s
+    ) ||
     /\bcost\s+total\b/i.test(s);
   const deptLike =
-    /\b(departament|centre|logistica|rh|rrhh|recursos humans|marketing|cuina|sala|operativa)\b/i.test(
+    /\b(departament|centre|logistica|rh|rrhh|recursos humans|marketing|cuina|sala|operativa|subministr\w*|suministr\w*)\b/i.test(
       s
     );
   const periodLike =
     /\b20[2-3]\d\b/.test(s) ||
     /\b20[2-3]\d[-/](0[1-9]|1[0-2])\b/.test(s) ||
+    /\b(0[1-9]|1[0-2])[-/](20[2-3]\d|\d{2})\b/.test(s) ||
     /\b(t|q)\s*[1-4]\b/i.test(s) ||
     /\btrimestre\b/i.test(s);
 
   return costLike && deptLike && periodLike;
+}
+
+/**
+ * Guard adicional: només forçar costs_by_department_period si podem inferir mínim:
+ * - una pista de departament
+ * - una pista temporal sòlida
+ */
+export function canExtractCostDepartmentPeriodSlots(question) {
+  const raw = String(question || "");
+  const s = raw
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+
+  const hasDepartment =
+    /\b(marketing|logistica|rrhh|rh|recursos humans|recursos humanos|transport|compres|compras|produccio|produccion|operativa|cuina|sala|subministr\w*|suministr\w*)\b/.test(
+      s
+    );
+  const hasPeriod =
+    /\b20[2-3]\d[-/](0[1-9]|1[0-2])\b/.test(s) ||
+    /\b(0[1-9]|1[0-2])[-/](20[2-3]\d|\d{2})\b/.test(s) ||
+    /\b20[2-3]\d[-_ ]?(t|q)[1-4]\b/i.test(s) ||
+    /\b(t|q)\s*[1-4]\s*(de)?\s*20[2-3]\d\b/i.test(s) ||
+    /\b(primer|segon|segundo|tercer|quart|cuarto)\s+trimestre\s+de?\s*20[2-3]\d\b/i.test(s) ||
+    /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\s+de?\s*20[2-3]\d\b/i.test(
+      s
+    );
+
+  return hasDepartment && hasPeriod;
+}
+
+/**
+ * Extracció tolerant de slots per costs_by_department_period.
+ * Retorna null si no pot inferir departament+període amb mínima confiança.
+ */
+export function extractCostDepartmentPeriodSlots(question) {
+  const raw = String(question || "");
+  const s = raw
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+
+  const deptMatch = s.match(
+    /\b(marketing|logistica|rrhh|rh|recursos humans|recursos humanos|transport|compres|compras|produccio|produccion|operativa|cuina|sala|subministr\w*|suministr\w*)\b/
+  );
+  let departmentContains = deptMatch ? deptMatch[1] : "";
+  if (departmentContains && /\b(subministr|suministr)/.test(departmentContains)) {
+    departmentContains = "subministr";
+  }
+
+  const periodPatterns = [
+    /\b20[2-3]\d[-/](0[1-9]|1[0-2])\b/i,
+    /\b(0[1-9]|1[0-2])[-/](20[2-3]\d|\d{2})\b/i,
+    /\b20[2-3]\d[-_ ]?(?:t|q)[1-4]\b/i,
+    /\b(?:t|q)\s*[1-4]\s*(?:de)?\s*20[2-3]\d\b/i,
+    /\b(?:primer|segon|segundo|tercer|quart|cuarto)\s+trimestre\s+(?:de)?\s*20[2-3]\d\b/i,
+    /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\s+(?:de)?\s*20[2-3]\d\b/i
+  ];
+  let period = "";
+  for (const re of periodPatterns) {
+    const m = s.match(re);
+    if (m && m[0]) {
+      period = m[0].trim();
+      break;
+    }
+  }
+
+  // Normalitza MM-YY / MM-YYYY cap a YYYY-MM.
+  const mMonthYear = period.match(/\b(0[1-9]|1[0-2])[-/](20[2-3]\d|\d{2})\b/i);
+  if (mMonthYear) {
+    const mm = mMonthYear[1];
+    const yRaw = mMonthYear[2];
+    const yy = yRaw.length === 2 ? `20${yRaw}` : yRaw;
+    period = `${yy}-${mm}`;
+  }
+
+  if (!departmentContains || !period) return null;
+  return { departmentContains, period };
+}
+
+export function normalizeCostDepartmentContains(rawValue) {
+  const s = String(rawValue || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .trim();
+  if (!s) return "";
+  if (/\bsubmin|sumin/.test(s)) return "subministr";
+  if (/\blogist/.test(s)) return "logistica";
+  if (/\brrhh|\brh\b|recursos humans|recursos humanos/.test(s)) return "rh";
+  return s;
 }
 
 /**
@@ -78,6 +172,237 @@ export function shouldForceFirestoreCatalog(question) {
   return /\b(alergen|celiac|celiacs|gluten|plats?|menu|menus|projecte|projectes|modul|moduls)\b/.test(
     s
   );
+}
+
+export function shouldForceFinanceResultByLnMonth(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksFinanceResult =
+    /\b(resultat financer|p&l|p\s*&\s*l|ebitda|resultat abans d'impostos)\b/.test(s);
+  const asksLn =
+    /\b(linia de negoci|ln\d{5}|per ln|per linia)\b/.test(s) ||
+    /\b(foodlovers?|empresa|restaurants?|casaments?|fires?|precuinats?)\b/.test(s);
+  const asksPeriod =
+    /\b20[2-3]\d[-/](0[1-9]|1[0-2])\b/.test(s) ||
+    /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\b.*\b20[2-3]\d\b/.test(
+      s
+    );
+  return asksFinanceResult && asksLn && asksPeriod;
+}
+
+export function extractYearMonthFromQuestion(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const mIso = s.match(/\b(20\d{2})[-/](0[1-9]|1[0-2])\b/);
+  if (mIso) return `${mIso[1]}-${mIso[2]}`;
+  const monthMap = {
+    gener: "01",
+    enero: "01",
+    febrer: "02",
+    febrero: "02",
+    marc: "03",
+    marzo: "03",
+    abril: "04",
+    maig: "05",
+    mayo: "05",
+    juny: "06",
+    junio: "06",
+    juliol: "07",
+    julio: "07",
+    agost: "08",
+    agosto: "08",
+    setembre: "09",
+    septiembre: "09",
+    octubre: "10",
+    novembre: "11",
+    noviembre: "11",
+    desembre: "12",
+    diciembre: "12"
+  };
+  const mName = s.match(
+    /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\b.*\b(20\d{2})\b/
+  );
+  if (!mName) return "";
+  const mm = monthMap[mName[1]] || "";
+  return mm ? `${mName[2]}-${mm}` : "";
+}
+
+export function shouldForceEventsCountByDay(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksPreventive = /\b(prevenit\w*|preventiu|preventius|preventive|planificat|planificats)\b/.test(
+    s
+  );
+  const hasDayMonthNumeric =
+    /\b([0-2]?\d|3[01])[-/.]([0]?\d|1[0-2])[-/.]((?:19|20)\d{2}|\d{2})\b/.test(s) ||
+    /\b([0-2]?\d|3[01])[-/.]([0]?\d|1[0-2])\b/.test(s) ||
+    /\b(20\d{2}|19\d{2})[-/.]([0]?\d|1[0-2])[-/.]([0-2]?\d|3[01])\b/.test(s);
+  const hasDayMonthText =
+    /\b([0-2]?\d|3[01])\s+(de\s+)?(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)(\s+de?\s*((?:19|20)\d{2}|\d{2}))?\b/.test(
+      s
+    );
+  return asksPreventive && (hasDayMonthNumeric || hasDayMonthText);
+}
+
+export function extractDateYmdFromQuestion(question, fallbackYear = new Date().getFullYear()) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const pad2 = (v) => String(v).padStart(2, "0");
+
+  /** Any explícit de 4 xifres, o 2 xifres (pivot 69/70 → 19xx/20xx). */
+  const expandYearToken = (tok) => {
+    const raw = String(tok || "").trim();
+    if (!raw) return String(fallbackYear);
+    if (/^(?:19|20)\d{2}$/.test(raw)) return raw;
+    if (/^\d{2}$/.test(raw)) {
+      const n = Number(raw);
+      return String(n <= 69 ? 2000 + n : 1900 + n);
+    }
+    return String(fallbackYear);
+  };
+
+  // ISO YYYY-MM-DD (prioritari sobre DD-MM per evitar ambigüitat).
+  const iso = s.match(/\b(20\d{2}|19\d{2})[-/.]([0]?\d|1[0-2])[-/.]([0-2]?\d|3[01])\b/);
+  if (iso) return `${iso[1]}-${pad2(iso[2])}-${pad2(iso[3])}`;
+
+  // DD-MM-YYYY o DD-MM-YY (format local; ex. 04-05-26 → 2026-05-04).
+  const dmyFull = s.match(
+    /\b([0-2]?\d|3[01])[-/.]([0]?\d|1[0-2])[-/.]((?:19|20)\d{2}|\d{2})\b/
+  );
+  if (dmyFull) {
+    const year = expandYearToken(dmyFull[3]);
+    return `${year}-${pad2(dmyFull[2])}-${pad2(dmyFull[1])}`;
+  }
+
+  // DD-MM sense any → any d'inferència (normalment any natural actual del servidor).
+  const dm = s.match(/\b([0-2]?\d|3[01])[-/.]([0]?\d|1[0-2])\b/);
+  if (dm) {
+    const year = String(fallbackYear);
+    return `${year}-${pad2(dm[2])}-${pad2(dm[1])}`;
+  }
+
+  const monthMap = {
+    gener: "01",
+    enero: "01",
+    febrer: "02",
+    febrero: "02",
+    marc: "03",
+    marzo: "03",
+    abril: "04",
+    maig: "05",
+    mayo: "05",
+    juny: "06",
+    junio: "06",
+    juliol: "07",
+    julio: "07",
+    agost: "08",
+    agosto: "08",
+    setembre: "09",
+    septiembre: "09",
+    octubre: "10",
+    novembre: "11",
+    noviembre: "11",
+    desembre: "12",
+    diciembre: "12"
+  };
+  const dayText = s.match(
+    /\b([0-2]?\d|3[01])\s+(?:de\s+)?(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)(?:\s+(?:de\s+)?((?:19|20)\d{2}|\d{2}))?\b/
+  );
+  if (!dayText) return "";
+  const mm = monthMap[dayText[2]];
+  if (!mm) return "";
+  const yy = dayText[3] ? expandYearToken(dayText[3]) : String(fallbackYear);
+  return `${yy}-${mm}-${pad2(dayText[1])}`;
+}
+
+export function shouldForceFinquesCount(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksFinques = /\b(finca|finques)\b/.test(s);
+  const asksHowMany = /\b(quantes?|cuantas?|nombre|n[úu]mero|total)\b/.test(s);
+  const asksClassification =
+    /\b(classif\w*|tipus|tipologia|agrupa\w*|desglossa\w*|distribucio\w*)\b/.test(s);
+  return asksFinques && (asksHowMany || asksClassification);
+}
+
+export function shouldForceAuditsCount(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksAudit = /\b(auditor\w*|auditoria\w*|audit_runs|audits?)\b/.test(s);
+  const asksCount = /\b(quantes?|cuantas?|nombre|n[úu]mero|total|hem fet)\b/.test(s);
+  return asksAudit && asksCount;
+}
+
+export function shouldForcePersonnelSearch(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksHeadcount = /\b(quants?|cuantos?|nombre|numero|total)\b/.test(s);
+  const asksPeople = /\b(personal|treballadors?|empleats?|staff)\b/.test(s);
+  const hasDepartment = /\b(departament|departamento|logistica|cuina|sala|serveis|rrhh|rh)\b/.test(s);
+  return asksHeadcount && asksPeople && hasDepartment;
+}
+
+export function extractDepartmentFromQuestion(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const m = s.match(/\b(logistica|cuina|sala|serveis|rrhh|rh|recursos humans|recursos humanos)\b/);
+  return m?.[1] || "";
+}
+
+export function shouldForceVehicleAssignmentsByPlate(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksAssignedCount =
+    /\b(quants?\s+cops?|cuantas?\s+veces|vegades|assignat|assignada|asignad[oa])\b/.test(s) &&
+    /\b(furgoneta|vehicle|matricula|placa)\b/.test(s);
+  const hasPlateLike = /\b\d{3,4}[- ]?[a-z]{2,4}\b/i.test(String(question || ""));
+  return asksAssignedCount && hasPlateLike;
+}
+
+export function extractPlateFromQuestion(question) {
+  const raw = String(question || "");
+  const m = raw.match(/\b(\d{3,4}[- ]?[A-Za-z]{2,4})\b/);
+  return m ? m[1].replace(/\s+/g, "-").toUpperCase() : "";
+}
+
+export function shouldForceWorkerServicesCount(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksCount = /\b(quants?|cuantos?|nombre|numero|total)\b/.test(s);
+  const asksServices = /\b(serveis?|servicios?)\b/.test(s);
+  const asksAttendance = /\b(ha anat|ha ido|fet|ha fet|hizo)\b/.test(s);
+  const hasLikelyPerson = /\b(el|la)\s+[a-z]+\s+[a-z]+\b/.test(s) || /\b[A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+\b/.test(String(question || ""));
+  return asksCount && asksServices && (asksAttendance || hasLikelyPerson);
+}
+
+export function extractWorkerNameFromQuestion(question) {
+  const raw = String(question || "").trim();
+  const m1 = raw.match(/\b(?:ha anat|ha ido|ha fet|hizo)\s+(?:el|la)?\s*([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){0,2})/);
+  if (m1?.[1]) return m1[1].trim();
+  const m2 = raw.match(/\b(?:el|la)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){0,2})/);
+  if (m2?.[1]) return m2[1].trim();
+  const m3 = raw.match(/\b([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\b/);
+  return m3?.[1] ? m3[1].trim() : "";
 }
 
 export function normalizeReport(raw) {

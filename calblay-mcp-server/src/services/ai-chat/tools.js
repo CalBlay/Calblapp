@@ -47,6 +47,32 @@ export function buildTools() {
     {
       type: "function",
       function: {
+        name: "preventius_planned_count_by_day",
+        description:
+          "Recompte de manteniment preventiu PLANIFICAT en UN dia natural (YYYY-MM-DD), a la col·lecció maintenancePreventiusPlanned (o la definida per env FIRESTORE_PREVENTIUS_PLANNED_COLLECTION). " +
+          "Ús obligatori quan l'usuari demana quants preventius planificats hi ha un dia concret; interpreta dates locals DD-MM, DD-MM-YY o DD-MM-YYYY (ex. 04-05, 04-05-26, 4/5/2026) i ISO YYYY-MM-DD. " +
+          "A la resposta textual, cita total, byPriority i recorda l'àmbit (preventiu planned).",
+        parameters: {
+          type: "object",
+          properties: {
+            date: {
+              type: "string",
+              description: 'Data exacta YYYY-MM-DD (ex. "2026-05-04").'
+            },
+            limit: {
+              type: "integer",
+              minimum: 200,
+              maximum: 10000,
+              description: "Opcional. Màxim de documents escanejats."
+            }
+          },
+          required: ["date"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
         name: "event_context_by_code",
         description:
           "Dades d'operació d'UN esdeveniment a partir del codi d'esdeveniment (ex. C2500012 com a la webapp). " +
@@ -91,7 +117,8 @@ export function buildTools() {
         description:
           "Personal (treballadors) a la col·lecció Firestore `personnel`. Filtre opcional per nom/correu i per text al camp `role`. " +
           "Això NO llista comercials assignats per línia de negoci (LN) als esdeveniments: per això usar comercials_for_business_line. " +
-          "Per dades d'un event concret (qui treballa un dia) prioritzar event_context_by_code (quadrants).",
+          "Per dades d'un event concret (qui treballa un dia) prioritzar event_context_by_code (quadrants). " +
+          "Per preguntes de cap de departament (ex. logística), utilitza departmentContains.",
         parameters: {
           type: "object",
           properties: {
@@ -102,6 +129,10 @@ export function buildTools() {
             roleContains: {
               type: "string",
               description: "Opcional. Subcadena al rol en minúscules/variant (ex. comercial) si consta al document de personnel."
+            },
+            departmentContains: {
+              type: "string",
+              description: "Opcional. Subcadena de departament (ex. logistica, cuina, sala, serveis)."
             },
             limit: { type: "integer", minimum: 5, maximum: 100 }
           }
@@ -147,6 +178,107 @@ export function buildTools() {
           type: "object",
           properties: {
             limit: { type: "integer", minimum: 5, maximum: 120 }
+          }
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "vehicle_assignments_count_by_plate",
+        description:
+          "Compta quants cops una matrícula concreta ha estat assignada a conductors dins quadrants de transport (col·leccions quadrantsLogistica/Cuina/Serveis). " +
+          "Ús obligatori per preguntes com «quants cops hem assignat la furgoneta 4259-FWD?».",
+        parameters: {
+          type: "object",
+          properties: {
+            plate: {
+              type: "string",
+              description: "Matrícula (ex. 4259-FWD)."
+            },
+            start: {
+              type: "string",
+              description: "Opcional. Inici rang YYYY-MM-DD."
+            },
+            end: {
+              type: "string",
+              description: "Opcional. Fi rang YYYY-MM-DD."
+            },
+            limitPerCollection: {
+              type: "integer",
+              minimum: 300,
+              maximum: 10000
+            }
+          },
+          required: ["plate"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "worker_services_count",
+        description:
+          "Compta quants serveis ha fet una persona concreta dins quadrants (treballadors/conductors/groups). " +
+          "Ús obligatori per preguntes com «Quants serveis ha anat el Marc Gomez?».",
+        parameters: {
+          type: "object",
+          properties: {
+            workerName: { type: "string", description: "Nom de la persona (ex. Marc Gomez)." },
+            start: { type: "string", description: "Opcional. Inici rang YYYY-MM-DD." },
+            end: { type: "string", description: "Opcional. Fi rang YYYY-MM-DD." },
+            departments: {
+              type: "array",
+              description: "Opcional. Filtre de departaments (ex. [logistica, serveis, cuina]).",
+              items: { type: "string" }
+            },
+            limitPerCollection: { type: "integer", minimum: 300, maximum: 10000 }
+          },
+          required: ["workerName"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "audits_count",
+        description:
+          "Recompte d'auditories executades des de la col·lecció audit_runs. " +
+          "Permet filtrar per any/mes, departament i estat. Ús principal: «quantes auditories hem fet?»",
+        parameters: {
+          type: "object",
+          properties: {
+            yearMonth: {
+              type: "string",
+              description: "Opcional. YYYY-MM o mes+any (ex. gener 2026)."
+            },
+            year: { type: "integer", minimum: 2000, maximum: 2100, description: "Opcional si no es passa yearMonth." },
+            department: { type: "string", description: "Opcional (ex. logística, serveis)." },
+            status: {
+              type: "string",
+              description: "Opcional (ex. completed, draft, pending)."
+            },
+            limit: { type: "integer", minimum: 200, maximum: 10000 }
+          }
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "finques_count",
+        description:
+          "Recompte de finques de la col·lecció finques, amb desglossat per camp tipus (byType). " +
+          "Ús principal per preguntes com «quantes finques tenim/propies tenim» o «com classifiquem les finques».",
+        parameters: {
+          type: "object",
+          properties: {
+            limit: {
+              type: "integer",
+              minimum: 100,
+              maximum: 5000,
+              description: "Opcional. Màxim de documents a escanejar per al recompte (default ~2000)."
+            }
           }
         }
       }
@@ -231,6 +363,37 @@ export function buildTools() {
               minimum: 1,
               maximum: 50,
               description: "Mostra de documents per col·lecció per inferir camps (default ~8)."
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "firestore_mapping_status",
+        description:
+          "Estat del mapping Firestore manual + descobriment automàtic. " +
+          "Retorna cobertura del diccionari, col·leccions sense documentar (needsManualReview) i detall per col·lecció (domini, camps, join hints). " +
+          "Ús obligatori quan l'usuari demana inventari, governança o manteniment futur del mapping.",
+        parameters: {
+          type: "object",
+          properties: {
+            q: {
+              type: "string",
+              description: "Opcional. Filtre per nom de col·lecció."
+            },
+            limit: {
+              type: "integer",
+              minimum: 1,
+              maximum: 500,
+              description: "Màxim col·leccions a inspeccionar."
+            },
+            sampleLimit: {
+              type: "integer",
+              minimum: 1,
+              maximum: 50,
+              description: "Mostra de documents per inferir camps per col·lecció."
             }
           }
         }
@@ -455,6 +618,38 @@ export function buildTools() {
             }
           },
           required: ["departmentContains", "period"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "finance_result_by_ln_month",
+        description:
+          "P&L mensual per línia de negoci (LN) des del CSV de c.explotacio/costos. " +
+          "Llegeix la fila objectiu (per defecte 'RESULTAT FINANCER') i retorna imports per LN00000..LNxxxxx amb nom de LN. " +
+          "Ús principal: «resultat financer del gener 2026 per línia de negoci».",
+        parameters: {
+          type: "object",
+          properties: {
+            yearMonth: {
+              type: "string",
+              description: "YYYY-MM (ex. 2026-01) o text mes+any (ex. gener 2026)."
+            },
+            file: {
+              type: "string",
+              description: "Opcional: nom exacte del fitxer P&L (ex. 01_2026_Sheet1)."
+            },
+            rowLabelContains: {
+              type: "string",
+              description: "Opcional: fila de P&L a cercar (default RESULTAT FINANCER)."
+            },
+            lnContains: {
+              type: "string",
+              description: "Opcional: filtre de línia de negoci (ex. EMPRESA, RESTAURANTS, LN00002)."
+            }
+          },
+          required: ["yearMonth"]
         }
       }
     },
@@ -704,7 +899,8 @@ export function buildTools() {
             yearMonth: { type: "string", description: "YYYY-MM obligatori" },
             articleCode: { type: "string" },
             articleName: { type: "string" }
-          }
+          },
+          required: ["yearMonth"]
         }
       }
     }

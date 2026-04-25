@@ -29,6 +29,16 @@ import {
   sampleCollectionDocuments
 } from "./services/firestore.service.js";
 import { buildCollectionDictionarySnapshot, readCollectionDictionary } from "./services/collection-dictionary.service.js";
+import {
+  getMappingDeltaStatus,
+  runFirestoreMappingDeltaJob
+} from "./services/firestore-mapping-delta.service.js";
+import { getMlLearningStatus, getToolChoiceSourceStats, logChatFeedback } from "./services/ml-learning.service.js";
+import { getControlledEvolutionChecklist, runDodChecks } from "./services/quality-gates.service.js";
+import { getDodHistory, writeDodSnapshot } from "./services/quality-history.service.js";
+import { getMetricCatalogStatus, readMetricCatalog } from "./services/metric-catalog.service.js";
+import { buildQueryPlan } from "./services/query-planner.service.js";
+import { executeDeterministicMetric } from "./services/deterministic-executor.service.js";
 
 /**
  * Rutes amb dependències pesants (Firestore, etc.). Es carreguen després que el port
@@ -94,6 +104,44 @@ export function registerRoutes(app) {
   );
 
   app.get(
+    "/tools/metrics/catalog",
+    asyncHandler(async (_req, res) => {
+      const out = readMetricCatalog();
+      res.json(out);
+    })
+  );
+
+  app.get(
+    "/tools/metrics/catalog/status",
+    asyncHandler(async (_req, res) => {
+      const out = getMetricCatalogStatus();
+      res.json(out);
+    })
+  );
+
+  app.post(
+    "/tools/query-plan",
+    asyncHandler(async (req, res) => {
+      const question = String(req.body?.question || "").trim();
+      if (!question) throw new HttpError(400, "Missing question");
+      const currentYear = new Date().getFullYear();
+      const plan = buildQueryPlan({ question, currentYear });
+      res.json({ ok: true, plan });
+    })
+  );
+
+  app.post(
+    "/tools/executor/run",
+    asyncHandler(async (req, res) => {
+      const metricId = String(req.body?.metricId || "").trim();
+      if (!metricId) throw new HttpError(400, "Missing metricId");
+      const slots = req.body?.slots && typeof req.body.slots === "object" ? req.body.slots : {};
+      const out = await executeDeterministicMetric({ metricId, slots });
+      res.status(out.ok ? 200 : 400).json({ ok: out.ok, ...out });
+    })
+  );
+
+  app.get(
     "/tools/firestore/cache-stats",
     asyncHandler(async (_req, res) => {
       const data = getFirestoreCatalogCacheStats();
@@ -106,6 +154,30 @@ export function registerRoutes(app) {
     asyncHandler(async (_req, res) => {
       const data = clearFirestoreCatalogCache();
       res.json({ ok: true, ...data });
+    })
+  );
+
+  app.get(
+    "/jobs/firestore/mapping-delta/status",
+    asyncHandler(async (_req, res) => {
+      const data = getMappingDeltaStatus();
+      res.json({ ok: true, ...data });
+    })
+  );
+
+  app.post(
+    "/jobs/firestore/mapping-delta/run",
+    asyncHandler(async (req, res) => {
+      const q = String(req.body?.q || "");
+      const limit = Number(req.body?.limit || 500);
+      const sampleLimit = Number(req.body?.sampleLimit || 8);
+      const result = await runFirestoreMappingDeltaJob({
+        q,
+        limit,
+        sampleLimit,
+        trigger: "manual_endpoint"
+      });
+      res.json(result);
     })
   );
 
@@ -236,6 +308,74 @@ export function registerRoutes(app) {
       const rich = Boolean(req.body?.rich);
       const result = await chatWithTools({ question, language, rich });
       res.json({ ok: true, ...result });
+    })
+  );
+
+  app.post(
+    "/chat/feedback",
+    asyncHandler(async (req, res) => {
+      const traceId = String(req.body?.traceId || "").trim();
+      if (!traceId) throw new HttpError(400, "Missing traceId");
+      const helpful = req.body?.helpful;
+      const correctedAnswer = String(req.body?.correctedAnswer || "");
+      const note = String(req.body?.note || "");
+      const tags = Array.isArray(req.body?.tags) ? req.body.tags : [];
+      const out = logChatFeedback({ traceId, helpful, correctedAnswer, note, tags });
+      res.json({ ok: true, ...out });
+    })
+  );
+
+  app.get(
+    "/chat/learning/status",
+    asyncHandler(async (_req, res) => {
+      const out = getMlLearningStatus();
+      res.json({ ok: true, ...out });
+    })
+  );
+
+  app.get(
+    "/chat/learning/tool-choice-stats",
+    asyncHandler(async (req, res) => {
+      const limit = Number(req.query.limit || 200);
+      const out = getToolChoiceSourceStats({ limit });
+      res.json({ ok: true, ...out });
+    })
+  );
+
+  app.get(
+    "/jobs/quality/dod-check",
+    asyncHandler(async (_req, res) => {
+      const out = await runDodChecks();
+      res.json({ ok: true, ...out });
+    })
+  );
+
+  app.get(
+    "/jobs/quality/evolution-checklist",
+    asyncHandler(async (_req, res) => {
+      const out = await getControlledEvolutionChecklist();
+      res.json({ ok: true, ...out });
+    })
+  );
+
+  app.post(
+    "/jobs/quality/dod-snapshot",
+    asyncHandler(async (req, res) => {
+      const releaseTag = String(req.body?.releaseTag || "");
+      const out = await writeDodSnapshot({
+        releaseTag,
+        trigger: "manual_endpoint"
+      });
+      res.json(out);
+    })
+  );
+
+  app.get(
+    "/jobs/quality/dod-history",
+    asyncHandler(async (req, res) => {
+      const limit = Number(req.query.limit || 30);
+      const out = getDodHistory({ limit });
+      res.json(out);
     })
   );
 

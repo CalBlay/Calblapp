@@ -1,0 +1,359 @@
+{
+  "version": "v1",
+  "updatedAt": "2026-04-25",
+  "cases": [
+    {
+      "id": "maintenance_preventius_day_2026_05_04",
+      "question": "Quants preventius planificats tenim el 04-05-26?",
+      "slots": { "date": "2026-05-04" },
+      "expected": {
+        "metricId": "preventius_planned_count_day",
+        "policySystem": "firestore",
+        "numericAssertions": [{ "path": "result.total", "op": "eq", "value": 16 }]
+      }
+    },
+    {
+      "id": "personnel_logistica_count",
+      "question": "Quant de personal té el departament de logística?",
+      "slots": { "department": "logistica" },
+      "expected": {
+        "metricId": "personnel_count_by_department",
+        "policySystem": "firestore",
+        "numericAssertions": [{ "path": "result.count", "op": "eq", "value": 17 }]
+      }
+    },
+    {
+      "id": "vehicle_assignments_4259_fwd",
+      "question": "Quants cops hem assignat la furgoneta 4259-FWD?",
+      "slots": { "plate": "4259-FWD" },
+      "expected": {
+        "metricId": "vehicle_assignments_count_by_plate",
+        "policySystem": "firestore",
+        "numericAssertions": [{ "path": "result.totalAssignments", "op": "eq", "value": 2 }]
+      }
+    },
+    {
+      "id": "worker_services_marc_gomez",
+      "question": "Quants serveis ha anat el Marc Gomez?",
+      "slots": { "workerName": "Marc Gomez" },
+      "expected": {
+        "metricId": "worker_services_count",
+        "policySystem": "firestore",
+        "numericAssertions": [{ "path": "result.totalServices", "op": "eq", "value": 3 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2026_03",
+      "question": "Quin cost en subministraments hem tingut el 03-26?",
+      "slots": { "departmentContains": "subministr", "period": "2026-03" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -36113.22 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2026_02",
+      "question": "Cost de subministraments al 02-26",
+      "slots": { "departmentContains": "subministr", "period": "2026-02" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -38266.92 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2026_01",
+      "question": "Cost de subministraments del gener 2026",
+      "slots": { "departmentContains": "subministr", "period": "2026-01" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -37131.31 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2025_12",
+      "question": "Quin cost de subministraments tenim al desembre de 2025?",
+      "slots": { "departmentContains": "subministr", "period": "2025-12" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -32031.43 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2025_11",
+      "question": "Cost subministraments 11-25",
+      "slots": { "departmentContains": "subministr", "period": "2025-11" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -15827.09 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2025_10",
+      "question": "Subministraments octubre 2025",
+      "slots": { "departmentContains": "subministr", "period": "2025-10" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -30070.41 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2025_09",
+      "question": "Subministraments setembre 2025",
+      "slots": { "departmentContains": "subministr", "period": "2025-09" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -30785.52 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2025_08",
+      "question": "Subministraments 08-25",
+      "slots": { "departmentContains": "subministr", "period": "2025-08" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -31675.21 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2025_07",
+      "question": "Subministraments juliol 2025",
+      "slots": { "departmentContains": "subministr", "period": "2025-07" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -35360.84 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2025_06",
+      "question": "Subministraments juny 2025",
+      "slots": { "departmentContains": "subministr", "period": "2025-06" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -30646.24 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2025_05",
+      "question": "Subministraments maig 2025",
+      "slots": { "departmentContains": "subministr", "period": "2025-05" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -24124.82 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2025_04",
+      "question": "Subministraments abril 2025",
+      "slots": { "departmentContains": "subministr", "period": "2025-04" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -23803.19 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2025_03",
+      "question": "Subministraments març 2025",
+      "slots": { "departmentContains": "subministr", "period": "2025-03" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -27933.31 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_2025_02",
+      "question": "Subministraments febrer 2025",
+      "slots": { "departmentContains": "subministr", "period": "2025-02" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -26600.03 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_typo_query_2026_03",
+      "question": "Qun cost en subminstrametns hem tinguet el 03-26?",
+      "slots": { "departmentContains": "subministr", "period": "2026-03" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -36113.22 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_slash_period_2026_03",
+      "question": "Cost de subministraments 03/2026",
+      "slots": { "departmentContains": "subministr", "period": "2026-03" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -36113.22 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_text_period_2026_03",
+      "question": "Subministraments del març de 2026",
+      "slots": { "departmentContains": "subministr", "period": "marc 2026" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -36113.22 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_typo_subminstramtnets_2026_02",
+      "question": "Cost subminstramtnets 02-26",
+      "slots": { "departmentContains": "subminstramtnets", "period": "2026-02" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -38266.92 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_typo_suministraments_2026_01",
+      "question": "Cost de suministraments al gener 2026",
+      "slots": { "departmentContains": "suministraments", "period": "2026-01" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -37131.31 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_text_period_2025_12",
+      "question": "Cost subministraments desembre 2025",
+      "slots": { "departmentContains": "subministr", "period": "desembre 2025" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -32031.43 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_short_period_2025_11",
+      "question": "Subministraments 11/25",
+      "slots": { "departmentContains": "subministr", "period": "2025-11" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -15827.09 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_short_period_2025_10",
+      "question": "Subministraments 10/25",
+      "slots": { "departmentContains": "subministr", "period": "2025-10" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -30070.41 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_short_period_2025_09",
+      "question": "Subministraments 09/25",
+      "slots": { "departmentContains": "subministr", "period": "2025-09" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -30785.52 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_short_period_2025_08",
+      "question": "Subministraments 08/25 total",
+      "slots": { "departmentContains": "subministr", "period": "2025-08" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -31675.21 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_short_period_2025_07",
+      "question": "Subministraments 07/25",
+      "slots": { "departmentContains": "subministr", "period": "2025-07" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -35360.84 }]
+      }
+    },
+    {
+      "id": "cost_subministraments_short_period_2025_06",
+      "question": "Subministraments 06/25",
+      "slots": { "departmentContains": "subministr", "period": "2025-06" },
+      "expected": {
+        "metricId": "cost_subministraments_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "mustNotHaveWarning": true,
+        "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -30646.24 }]
+      }
+    }
+  ]
+}
+
