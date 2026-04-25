@@ -1,9 +1,9 @@
 import { CALBLAY_JSON_MARKER } from "./config.js";
-import { shouldForceCostImputationOverview } from "./helpers.js";
+import { shouldForceCostImputationOverview, shouldForceFirestoreCatalog } from "./helpers.js";
 
 /**
  * @param {{ qNorm: string, rich: boolean, currentYear: number }} p
- * @returns {{ systemContent: string, forceCostOverview: boolean }}
+ * @returns {{ systemContent: string, forceCostOverview: boolean, forceFirestoreCatalog: boolean }}
  */
 export function buildChatSystemContent({ qNorm, rich, currentYear }) {
   const systemBase =
@@ -23,11 +23,14 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
     "comercials_for_business_line per llistar noms de comercial segons la línia de negoci (LN) als esdeveniments (ex. 'empresa'); no és personnel_search. " +
     "events_list_recent per llistar darrers events sense codi. personnel_search per llista de personal (nom o correu, opcional roleContains). " +
     "vehicles_list per vehicle/matrícula a la flota. finques_search per finques o espais (>=2 lletres). " +
+    "Per preguntes de plats aptes per celíacs o intoleràncies, usa food_safety_celiac_dishes abans de respondre. " +
     "Per qualsevol mòdul/col·lecció Firestore no cobert amb eina específica (ex. al·lèrgens, projectes o col·leccions noves): primer firestore_collections_catalog i després firestore_query_collection amb collection+filters. " +
     "No inventis noms de col·lecció: descobreix-los amb firestore_collections_catalog si hi ha dubte. " +
     "Quan el codi d'event C… apareix a la pregunta, crida event_context_by_code abans d'inferir. " +
     "finances_preview per capçaleres. " +
-    "Vendes / facturació (fitxers a carpeta vendes, no SAP compres): imports per centre i mes → sales_by_centre_month; article més venut / més vendes a un centre concret (ex. NAUTIC) → sales_top_articles_by_establishment amb centreContains. finances_list_files kind=vendes si cal el nom del fitxer. " +
+    "Vendes / facturació (fitxers a carpeta vendes, no SAP compres): imports per centre i mes → sales_by_centre_month; " +
+    "si la pregunta és d'un article concret (ex. aigua) en un centre i mes, usa sales_by_article_centre_month; " +
+    "article més venut / top al centre → sales_top_articles_by_establishment amb centreContains. finances_list_files kind=vendes si cal el nom del fitxer. " +
     "If tools return aggregated figures (avgUnitPrice, comparison, totals), report them in the answer at once; do not ask the user whether to calculate. " +
     "Reply in user language; use EUR for money.";
 
@@ -74,6 +77,9 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
   const forceCostOverview =
     String(process.env.OPENAI_FORCE_COST_OVERVIEW || "1").toLowerCase() !== "0" &&
     shouldForceCostImputationOverview(qNorm);
+  const forceFirestoreCatalog =
+    String(process.env.OPENAI_FORCE_FIRESTORE_CATALOG || "1").toLowerCase() !== "0" &&
+    shouldForceFirestoreCatalog(qNorm);
 
   const systemContent =
     (rich ? systemRich : systemBase + " Max 4 short sentences.") +
@@ -84,5 +90,5 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
       ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser costs_imputation_overview (sense omplir contains); després interpreta amountColumns i rows. No diguis que no hi ha dades sense haver rebut el resultat d’aquesta eina."
       : "");
 
-  return { systemContent, forceCostOverview };
+  return { systemContent, forceCostOverview, forceFirestoreCatalog };
 }

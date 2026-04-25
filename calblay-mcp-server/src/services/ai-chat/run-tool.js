@@ -11,10 +11,11 @@ import {
 import { getCostImputationOverview, searchCostImputation } from "../cost-imputation.service.js";
 import {
   collectionsCatalogForChat,
-  queryCollectionForChat,
+  queryCollectionForChat
 } from "../firestore.service.js";
 import {
   aggregatePurchasesByBusinessLineAndCentre,
+  aggregateSalesByArticleCentreMonth,
   aggregateSalesByCentreMonth,
   aggregateVendesTopArticlesByEstablishment,
   comparePurchasesSupplierQuarters,
@@ -29,6 +30,7 @@ import {
   previewFinanceCsv,
   searchPurchases
 } from "../finances.service.js";
+import { listCeliacSafeDishes } from "../food-safety.service.js";
 
 export async function runTool(toolName, args) {
   if (toolName === "events_count_by_year") {
@@ -120,6 +122,20 @@ export async function runTool(toolName, args) {
       file: f || undefined,
       topN: args?.topN != null ? Number(args.topN) : undefined,
       metric: args?.metric != null ? String(args.metric) : undefined
+    });
+  }
+  if (toolName === "sales_by_article_centre_month") {
+    const f = args?.file != null ? String(args.file).trim() : "";
+    return aggregateSalesByArticleCentreMonth({
+      centreContains: String(args?.centreContains ?? ""),
+      articleContains: String(args?.articleContains ?? ""),
+      yearMonth: String(args?.yearMonth ?? ""),
+      file: f || undefined
+    });
+  }
+  if (toolName === "food_safety_celiac_dishes") {
+    return listCeliacSafeDishes({
+      limit: args?.limit != null ? Number(args.limit) : undefined
     });
   }
   if (toolName === "costs_imputation_overview") {

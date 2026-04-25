@@ -290,6 +290,90 @@ async function scanVendesCsvTopArticlesByCentre(
   });
 }
 
+async function scanVendesCsvArticleByCentreMonth(
+  fileName,
+  { yearMonth, centreNeedle, articleNeedle, bucket, stats }
+) {
+  const input = openFinanceCsvStream(fileName, "vendes");
+  const rl = readline.createInterface({ input, crlfDelay: Infinity });
+  let csvDelimiter = ",";
+  let headerResolved = false;
+  let idxCentre;
+  let idxJornada;
+  let idxCobrades;
+  let idxUnitats;
+  let idxArticle;
+  let dataRows = 0;
+  let skippedNoMonth = 0;
+  let skippedCentre = 0;
+  let skippedArticle = 0;
+  try {
+    for await (const line of rl) {
+      if (!line || line.length === 0) continue;
+      if (!headerResolved) {
+        const headerLine = line.replace(/^\uFEFF/, "");
+        let headers = normalizeCsvLineDelimited(headerLine, csvDelimiter);
+        if (headers.length <= 1 && headerLine.includes(";")) {
+          csvDelimiter = ";";
+          headers = normalizeCsvLineDelimited(headerLine, csvDelimiter);
+        }
+        const headersMap = new Map(headers.map((h, i) => [normalizeHeaderKey(h), i]));
+        const idx = resolveVendesColumnIndices(headersMap);
+        if (
+          idx.idxCentre === undefined ||
+          idx.idxJornada === undefined ||
+          idx.idxCobrades === undefined ||
+          idx.idxArticle === undefined
+        ) {
+          const found = headers.filter(Boolean).slice(0, 50).join(" | ");
+          throw new Error(
+            `CSV vendes: calen columnes centre, jornada, import (cobrades/brut) i article. Capçaleres: ${found}`
+          );
+        }
+        idxCentre = idx.idxCentre;
+        idxJornada = idx.idxJornada;
+        idxCobrades = idx.idxCobrades;
+        idxUnitats = idx.idxUnitats;
+        idxArticle = idx.idxArticle;
+        headerResolved = true;
+        continue;
+      }
+
+      const fields = normalizeCsvLineDelimited(line, csvDelimiter);
+      const centre = stripCsvCell(fields[idxCentre] ?? "") || "(sense centre)";
+      if (!centreMatchesNeedle(centre, centreNeedle)) {
+        skippedCentre += 1;
+        continue;
+      }
+
+      const ym = parseVendesJornadaYearMonth(fields[idxJornada] ?? "");
+      if (!ym) {
+        skippedNoMonth += 1;
+        continue;
+      }
+      if (ym !== yearMonth) continue;
+
+      const article = stripCsvCell(fields[idxArticle] ?? "") || "(sense article)";
+      if (!centreMatchesNeedle(article, articleNeedle)) {
+        skippedArticle += 1;
+        continue;
+      }
+
+      const cobrades = parseAmountLike(fields[idxCobrades] ?? "");
+      const unitats = idxUnitats !== undefined ? parseQtyLike(fields[idxUnitats] ?? "") : 0;
+      const cur = bucket.get(article) || { cobrades: 0, unitats: 0, lines: 0 };
+      cur.cobrades += cobrades;
+      cur.unitats += unitats;
+      cur.lines += 1;
+      bucket.set(article, cur);
+      dataRows += 1;
+    }
+  } finally {
+    rl.close();
+  }
+  stats.push({ file: fileName, dataRows, skippedNoMonth, skippedCentre, skippedArticle });
+}
+
 /**
  * Rànquing d’articles (vendes) per import o unitats dins els centres el nom dels quals conté centreContains (ex. NAUTIC).
  */
@@ -465,5 +549,89 @@ export async function aggregateSalesByCentreMonth(opts = {}) {
     byMonth,
     grandTotalCobrades: roundMoney(grandTotalCobrades),
     grandTotalUnitats: roundMoney(grandTotalUnitats)
+  };
+}
+
+/**
+ * Vendes per article dins un centre i mes concret (casos "vendes d'aigua al Nàutic al febrer").
+ */
+export async function aggregateSalesByArticleCentreMonth(opts = {}) {
+  const centreNeedle = String(opts.centreContains ?? "").trim();
+  const articleNeedle = String(opts.articleContains ?? "").trim();
+  const yearMonth = String(opts.yearMonth ?? "").trim().slice(0, 7);
+  if (!centreNeedle) throw new Error("Cal centreContains");
+  if (!articleNeedle) throw new Error("Cal articleContains");
+  if (!/^\d{4}-\d{2}$/.test(yearMonth)) throw new Error("Cal yearMonth en format YYYY-MM");
+
+  let files;
+  if (opts.file && String(opts.file).trim() !== "") {
+    files = [safeCsvFileName(String(opts.file).trim())];
+  } else {
+    files = await listFinanceCsvFilesForKind("vendes");
+  }
+
+  if (!files.length) {
+    return {
+      kind: "vendes",
+      query: "article_by_centre_month",
+      centreFilter: centreNeedle,
+      articleFilter: articleNeedle,
+      yearMonth,
+      filesScanned: [],
+      fileErrors: [],
+      matches: [],
+      totalCobradesEUR: 0,
+      totalUnitats: 0,
+      note: "No s'han trobat fitxers a vendes."
+    };
+  }
+
+  const bucket = new Map();
+  const perFileStats = [];
+  const fileErrors = [];
+  for (const fn of files) {
+    try {
+      await scanVendesCsvArticleByCentreMonth(fn, {
+        yearMonth,
+        centreNeedle,
+        articleNeedle,
+        bucket,
+        stats: perFileStats
+      });
+    } catch (e) {
+      fileErrors.push({ file: fn, error: e.message || String(e) });
+    }
+  }
+
+  const matches = Array.from(bucket.entries())
+    .map(([article, v]) => ({
+      article,
+      cobradesEUR: roundMoney(v.cobrades),
+      unitats: roundMoney(v.unitats),
+      lineCount: v.lines
+    }))
+    .sort((a, b) => b.cobradesEUR - a.cobradesEUR);
+
+  const totals = matches.reduce(
+    (acc, r) => {
+      acc.c += r.cobradesEUR;
+      acc.u += r.unitats;
+      return acc;
+    },
+    { c: 0, u: 0 }
+  );
+
+  return {
+    kind: "vendes",
+    query: "article_by_centre_month",
+    centreFilter: centreNeedle,
+    articleFilter: articleNeedle,
+    yearMonth,
+    filesScanned: perFileStats,
+    fileErrors,
+    matches,
+    totalMatches: matches.length,
+    totalCobradesEUR: roundMoney(totals.c),
+    totalUnitats: roundMoney(totals.u)
   };
 }

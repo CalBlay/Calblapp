@@ -294,6 +294,21 @@ export function buildTools() {
     {
       type: "function",
       function: {
+        name: "food_safety_celiac_dishes",
+        description:
+          "Llista plats aptes per celíacs des de Firestore (col·lecció plats; filtre alergeno.gluten=NO). " +
+          "Retorna codi i nom de plat. Ús obligatori quan l'usuari demana plats per celíacs o preguntes d'intoleràncies.",
+        parameters: {
+          type: "object",
+          properties: {
+            limit: { type: "integer", minimum: 1, maximum: 80 }
+          }
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
         name: "finances_list_files",
         description:
           "List finance CSV file names in one category folder (compres, costos, vendes, rh). " +
@@ -328,6 +343,25 @@ export function buildTools() {
             }
           },
           required: ["file"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "sales_by_article_centre_month",
+        description:
+          "Consulta de vendes per article dins un centre i un mes concret (ex. aigua al Nautic al 2026-02). " +
+          "Retorna només l'article filtrat, no un top genèric.",
+        parameters: {
+          type: "object",
+          properties: {
+            centreContains: { type: "string" },
+            articleContains: { type: "string" },
+            yearMonth: { type: "string", description: "YYYY-MM" },
+            file: { type: "string" }
+          },
+          required: ["centreContains", "articleContains", "yearMonth"]
         }
       }
     },

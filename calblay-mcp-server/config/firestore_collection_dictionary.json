@@ -52,6 +52,23 @@
       "owner": "Operativa",
       "joinKeys": ["id", "codi", "nom"],
       "sensitivity": "admin_only"
+    },
+    "plats": {
+      "domain": "food_safety",
+      "description": "Master de plats, ingredients i camps d'al.lergens.",
+      "owner": "Qualitat",
+      "joinKeys": ["code", "menus.ca", "alergeno.gluten"],
+      "sensitivity": "admin_only",
+      "mlReady": true,
+      "mlFeatures": ["alergeno.*", "consumption.*", "menus.ca", "category"],
+      "mlLabelCandidates": ["isCeliacSafe", "isVegan"]
+    },
+    "projects": {
+      "domain": "projects",
+      "description": "Projectes operatius i seguiment.",
+      "owner": "Operativa",
+      "joinKeys": ["id", "code", "status", "startDate"],
+      "sensitivity": "admin_only"
     }
   }
 }

@@ -29,6 +29,25 @@ export function shouldForceCostImputationOverview(question) {
   return costLike && reportLike;
 }
 
+/**
+ * Detecta preguntes que han d'anar contra col·leccions Firestore (allergens/plats/projectes o mòduls no financers).
+ * Força una primera passada de descoberta de col·leccions per evitar respostes genèriques sense dades.
+ */
+export function shouldForceFirestoreCatalog(question) {
+  const raw = String(question || "");
+  const s = raw
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+
+  if (/\b(p\d{4,}|proveidor|compres?|cost|factura|vendes?|revenue|marge)\b/.test(s)) return false;
+  if (/\b(c\d+)\b/.test(s)) return false; // event_context_by_code ja cobreix aquest cas
+
+  return /\b(alergen|celiac|celiacs|gluten|plats?|menu|menus|projecte|projectes|modul|moduls)\b/.test(
+    s
+  );
+}
+
 export function normalizeReport(raw) {
   if (!raw || typeof raw !== "object") return null;
   const tables = Array.isArray(raw.tables) ? raw.tables : [];

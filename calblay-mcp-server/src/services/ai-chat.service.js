@@ -1,5 +1,7 @@
 import axios from "axios";
 import { buildCostImputationReportCalblay } from "./cost-imputation-report.js";
+import { enforceDataBackedAnswerPolicy } from "../core/policies/answer-policy.js";
+import { detectQueryIntent } from "../core/semantics/intent-router.js";
 import { cacheGet, cacheKey, cacheSet } from "./ai-chat/cache.js";
 import { getOpenAiConfig, MAX_TOOL_STEPS } from "./ai-chat/config.js";
 import { normalizeReport, shrinkToolPayload, splitNarrativeAndReport } from "./ai-chat/helpers.js";
@@ -19,18 +21,21 @@ export async function chatWithTools({ question, language = "ca", rich = false })
   const maxTokens = rich ? Math.min(4096, baseMax + 512) : baseMax;
 
   const qNorm = question.trim();
-  const ck = cacheKey(model, language, qNorm, rich);
-  const cached = cacheGet(ck);
-  if (cached) {
-    return { ...cached, cached: true };
-  }
-
+  const intent = detectQueryIntent(qNorm);
   const currentYear = new Date().getFullYear();
-  const { systemContent, forceCostOverview } = buildChatSystemContent({
+  const { systemContent, forceCostOverview, forceFirestoreCatalog } = buildChatSystemContent({
     qNorm,
     rich,
     currentYear
   });
+  const ck = cacheKey(model, language, qNorm, rich);
+  const cached = cacheGet(ck);
+  if (cached) {
+    const bypassCachedNoTools = forceFirestoreCatalog && Number(cached.toolCallsUsed || 0) === 0;
+    if (!bypassCachedNoTools) {
+      return { ...cached, cached: true };
+    }
+  }
 
   const messages = [
     {
@@ -51,6 +56,8 @@ export async function chatWithTools({ question, language = "ca", rich = false })
     const toolChoice =
       forceCostOverview && !anyToolMessageYet
         ? { type: "function", function: { name: "costs_imputation_overview" } }
+        : forceFirestoreCatalog && !anyToolMessageYet
+          ? { type: "function", function: { name: "firestore_collections_catalog" } }
         : "auto";
 
     const response = await axios.post(
@@ -81,6 +88,12 @@ export async function chatWithTools({ question, language = "ca", rich = false })
     if (!toolCalls.length) {
       const rawContent = choice.content || "";
       let { narrative, report } = splitNarrativeAndReport(rawContent, rich);
+      const policy = enforceDataBackedAnswerPolicy({
+        intent,
+        toolCallsUsed: messages.filter((m) => m.role === "tool").length,
+        rawAnswer: narrative
+      });
+      narrative = policy.answer;
       if (rich && serverReportCalblay) {
         report = normalizeReport(serverReportCalblay);
       }

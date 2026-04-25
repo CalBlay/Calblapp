@@ -26,6 +26,7 @@ export {
   searchPurchases
 } from "./purchases-queries-articles.js";
 export {
+  aggregateSalesByArticleCentreMonth,
   aggregateSalesByCentreMonth,
   aggregateVendesTopArticlesByEstablishment,
   parseVendesJornadaYearMonth
