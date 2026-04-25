@@ -4,6 +4,7 @@ import {
   shouldForceCostImputationOverview,
   shouldForceFinanceResultByLnMonth,
   shouldForceEventsCountByDay,
+  shouldForceIncidentsCountYear,
   shouldForcePersonnelSearch,
   shouldForceVehicleAssignmentsByPlate,
   shouldForceWorkerServicesCount,
@@ -20,6 +21,7 @@ import {
  *   forceCostDepartmentPeriod: boolean,
  *   forceFinanceResultByLnMonth: boolean,
  *   forceEventsCountByDay: boolean,
+ *   forceIncidentsCountYear: boolean,
  *   forcePersonnelSearch: boolean,
  *   forceVehicleAssignmentsByPlate: boolean,
  *   forceWorkerServicesCount: boolean,
@@ -114,6 +116,9 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
   const forceEventsCountByDay =
     String(process.env.OPENAI_FORCE_EVENTS_DAY || "1").toLowerCase() !== "0" &&
     shouldForceEventsCountByDay(qNorm);
+  const forceIncidentsCountYear =
+    String(process.env.OPENAI_FORCE_INCIDENTS_YEAR || "1").toLowerCase() !== "0" &&
+    shouldForceIncidentsCountYear(qNorm);
   const forcePersonnelSearch =
     String(process.env.OPENAI_FORCE_PERSONNEL_SEARCH || "1").toLowerCase() !== "0" &&
     shouldForcePersonnelSearch(qNorm);
@@ -144,6 +149,9 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
     (forceEventsCountByDay
       ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser preventius_planned_count_by_day amb date YYYY-MM-DD (04-05 = DD-MM; 04-05-26 = DD-MM-YY). Cita scopeNote i collection a la resposta."
       : "") +
+    (forceIncidentsCountYear
+      ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser incidents_count_by_year (incidències) amb year si l'usuari l'indica."
+      : "") +
     (forcePersonnelSearch
       ? " OBLIGATORI per aquesta pregunta: la PRIMERA eina ha de ser personnel_search. Si es menciona departament, omple departmentContains."
       : "") +
@@ -172,6 +180,7 @@ export function buildChatSystemContent({ qNorm, rich, currentYear }) {
     forceCostDepartmentPeriod,
     forceFinanceResultByLnMonth,
     forceEventsCountByDay,
+    forceIncidentsCountYear,
     forcePersonnelSearch,
     forceVehicleAssignmentsByPlate,
     forceWorkerServicesCount,

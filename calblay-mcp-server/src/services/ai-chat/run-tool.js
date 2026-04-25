@@ -2,6 +2,7 @@ import { countEventsByLnInMonth, countEventsInDay, countEventsInYear } from "../
 import {
   countAuditsForChat,
   countFinquesForChat,
+  countIncidentsForChat,
   countPlannedPreventiusForChat,
   countVehicleAssignmentsByPlateForChat,
   countWorkerServicesForChat,
@@ -116,6 +117,12 @@ export async function runTool(toolName, args) {
       year: args?.year != null ? Number(args.year) : undefined,
       department: args?.department ? String(args.department) : undefined,
       status: args?.status ? String(args.status) : undefined,
+      limit: args?.limit != null ? Number(args.limit) : undefined
+    });
+  }
+  if (toolName === "incidents_count_by_year") {
+    return countIncidentsForChat({
+      year: args?.year != null ? Number(args.year) : undefined,
       limit: args?.limit != null ? Number(args.limit) : undefined
     });
   }

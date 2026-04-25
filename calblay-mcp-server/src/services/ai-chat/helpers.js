@@ -46,12 +46,12 @@ export function shouldForceCostDepartmentPeriod(question) {
   if (/\b(compres?|proveidor|factura|p\d{4,})\b/.test(s)) return false;
 
   const costLike =
-    /\b(cost|imputaci|salar|nomina|n[oó]mina|p\s*[\&\u0026]\s*l|p&l|subministr|suministr|cexplotaci|c\.?\s*explotaci)\b/i.test(
+    /\b(cost|imputaci|salar|nomina|n[oó]mina|p\s*[\&\u0026]\s*l|p&l|submin\w*|sumin\w*|cexplotaci|c\.?\s*explotaci)\b/i.test(
       s
     ) ||
     /\bcost\s+total\b/i.test(s);
   const deptLike =
-    /\b(departament|centre|logistica|rh|rrhh|recursos humans|marketing|cuina|sala|operativa|subministr\w*|suministr\w*)\b/i.test(
+    /\b(departament|centre|logistica|rh|rrhh|recursos humans|marketing|cuina|sala|operativa|personal|submin\w*|sumin\w*)\b/i.test(
       s
     );
   const periodLike =
@@ -77,16 +77,16 @@ export function canExtractCostDepartmentPeriodSlots(question) {
     .toLowerCase();
 
   const hasDepartment =
-    /\b(marketing|logistica|rrhh|rh|recursos humans|recursos humanos|transport|compres|compras|produccio|produccion|operativa|cuina|sala|subministr\w*|suministr\w*)\b/.test(
+    /\b(marketing|logistica|rrhh|rh|recursos humans|recursos humanos|transport|compres|compras|produccio|produccion|operativa|cuina|sala|personal|submin\w*|sumin\w*)\b/.test(
       s
     );
   const hasPeriod =
     /\b20[2-3]\d[-/](0[1-9]|1[0-2])\b/.test(s) ||
     /\b(0[1-9]|1[0-2])[-/](20[2-3]\d|\d{2})\b/.test(s) ||
     /\b20[2-3]\d[-_ ]?(t|q)[1-4]\b/i.test(s) ||
-    /\b(t|q)\s*[1-4]\s*(de)?\s*20[2-3]\d\b/i.test(s) ||
-    /\b(primer|segon|segundo|tercer|quart|cuarto)\s+trimestre\s+de?\s*20[2-3]\d\b/i.test(s) ||
-    /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\s+de?\s*20[2-3]\d\b/i.test(
+    /\b(t|q)\s*[1-4]\s*(?:de|del)?\s*20[2-3]\d\b/i.test(s) ||
+    /\b(primer|segon|segundo|tercer|quart|cuarto)\s+trimestre\s+(?:de|del)?\s*20[2-3]\d\b/i.test(s) ||
+    /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\s+(?:de|del)?\s*20[2-3]\d\b/i.test(
       s
     );
 
@@ -105,7 +105,7 @@ export function extractCostDepartmentPeriodSlots(question) {
     .toLowerCase();
 
   const deptMatch = s.match(
-    /\b(marketing|logistica|rrhh|rh|recursos humans|recursos humanos|transport|compres|compras|produccio|produccion|operativa|cuina|sala|subministr\w*|suministr\w*)\b/
+    /\b(marketing|logistica|rrhh|rh|recursos humans|recursos humanos|transport|compres|compras|produccio|produccion|operativa|cuina|sala|personal|submin\w*|sumin\w*)\b/
   );
   let departmentContains = deptMatch ? deptMatch[1] : "";
   if (departmentContains && /\b(subministr|suministr)/.test(departmentContains)) {
@@ -116,9 +116,9 @@ export function extractCostDepartmentPeriodSlots(question) {
     /\b20[2-3]\d[-/](0[1-9]|1[0-2])\b/i,
     /\b(0[1-9]|1[0-2])[-/](20[2-3]\d|\d{2})\b/i,
     /\b20[2-3]\d[-_ ]?(?:t|q)[1-4]\b/i,
-    /\b(?:t|q)\s*[1-4]\s*(?:de)?\s*20[2-3]\d\b/i,
-    /\b(?:primer|segon|segundo|tercer|quart|cuarto)\s+trimestre\s+(?:de)?\s*20[2-3]\d\b/i,
-    /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\s+(?:de)?\s*20[2-3]\d\b/i
+    /\b(?:t|q)\s*[1-4]\s*(?:de|del)?\s*20[2-3]\d\b/i,
+    /\b(?:primer|segon|segundo|tercer|quart|cuarto)\s+trimestre\s+(?:de|del)?\s*20[2-3]\d\b/i,
+    /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\s+(?:de|del)?\s*20[2-3]\d\b/i
   ];
   let period = "";
   for (const re of periodPatterns) {
@@ -150,6 +150,7 @@ export function normalizeCostDepartmentContains(rawValue) {
     .trim();
   if (!s) return "";
   if (/\bsubmin|sumin/.test(s)) return "subministr";
+  if (/\bpersonal\b/.test(s)) return "personal";
   if (/\blogist/.test(s)) return "logistica";
   if (/\brrhh|\brh\b|recursos humans|recursos humanos/.test(s)) return "rh";
   return s;
@@ -172,6 +173,17 @@ export function shouldForceFirestoreCatalog(question) {
   return /\b(alergen|celiac|celiacs|gluten|plats?|menu|menus|projecte|projectes|modul|moduls)\b/.test(
     s
   );
+}
+
+export function shouldForceIncidentsCountYear(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksIncidents = /\b(inciden\w*|incident\w*)\b/.test(s);
+  const asksCount = /\b(quants?|quantas?|cuantas?|total|nombre|numero|registrat|hem generat)\b/.test(s);
+  const asksYear = /\b(20\d{2}|19\d{2}|aquest any)\b/.test(s);
+  return asksIncidents && (asksCount || asksYear);
 }
 
 export function shouldForceFinanceResultByLnMonth(question) {
@@ -340,7 +352,7 @@ export function shouldForceAuditsCount(question) {
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .toLowerCase();
-  const asksAudit = /\b(auditor\w*|auditoria\w*|audit_runs|audits?)\b/.test(s);
+  const asksAudit = /\b(audit\w*|auditor\w*|auditoria\w*|audit_runs)\b/.test(s);
   const asksCount = /\b(quantes?|cuantas?|nombre|n[úu]mero|total|hem fet)\b/.test(s);
   return asksAudit && asksCount;
 }

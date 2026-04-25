@@ -47,6 +47,31 @@ export function buildTools() {
     {
       type: "function",
       function: {
+        name: "incidents_count_by_year",
+        description:
+          "Recompte d'incidències reals (col·lecció incidents) per any natural. " +
+          "Ús obligatori quan l'usuari pregunta per incidències (no esdeveniments).",
+        parameters: {
+          type: "object",
+          properties: {
+            year: {
+              type: "integer",
+              minimum: 2000,
+              maximum: 2100,
+              description: "Opcional. Si falta, s'usa l'any natural actual del servidor."
+            },
+            limit: {
+              type: "integer",
+              minimum: 200,
+              maximum: 10000
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
         name: "preventius_planned_count_by_day",
         description:
           "Recompte de manteniment preventiu PLANIFICAT en UN dia natural (YYYY-MM-DD), a la col·lecció maintenancePreventiusPlanned (o la definida per env FIRESTORE_PREVENTIUS_PLANNED_COLLECTION). " +

@@ -17,6 +17,12 @@ function normalizeSlots(metricId, slots = {}) {
       period: String(s.period || "")
     };
   }
+  if (metricId === "cost_personal_month") {
+    return {
+      departmentContains: normalizeCostDepartmentContains(s.departmentContains || "personal"),
+      period: String(s.period || "")
+    };
+  }
   if (metricId === "preventius_planned_count_day") {
     return { date: String(s.date || "") };
   }
@@ -55,7 +61,7 @@ export async function executeDeterministicMetric({ metricId, slots = {}, runner 
   if (!executor) throw new Error(`Metric ${id} has no executor`);
 
   const normalizedSlots = normalizeSlots(id, slots);
-  if (id === "cost_subministraments_month" && metric?.sourceOfTruth?.kind) {
+  if ((id === "cost_subministraments_month" || id === "cost_personal_month") && metric?.sourceOfTruth?.kind) {
     normalizedSlots.financeKindPreferred = String(metric.sourceOfTruth.kind);
   }
   const missing = validateRequiredSlots(metric, normalizedSlots);

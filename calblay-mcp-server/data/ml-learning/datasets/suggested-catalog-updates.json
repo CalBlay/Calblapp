@@ -1,0 +1,278 @@
+{
+  "generatedAt": "2026-04-25T21:47:40.846Z",
+  "source": {
+    "datasetPath": "C:\\Users\\PORTATIL126\\OneDrive - Cal Blay\\Escritorio\\dev\\cal-blay-webapp\\calblay-mcp-server\\data\\ml-learning\\datasets\\training-dataset.jsonl",
+    "totalRows": 65
+  },
+  "policy": {
+    "autoMerge": false,
+    "note": "Suggestions only. Manual review required before catalog changes."
+  },
+  "summary": {
+    "totalSuggestions": 4
+  },
+  "suggestions": [
+    {
+      "type": "new_alias_candidates",
+      "priority": "high",
+      "reason": "Questions unresolved by catalog (metricId=unknown/catalog_miss).",
+      "affectedRows": 17,
+      "tokenHints": [
+        {
+          "token": "quantes",
+          "count": 7
+        },
+        {
+          "token": "febrer",
+          "count": 5
+        },
+        {
+          "token": "foodlovers",
+          "count": 5
+        },
+        {
+          "token": "facturacio",
+          "count": 4
+        },
+        {
+          "token": "aquest",
+          "count": 4
+        },
+        {
+          "token": "tenim",
+          "count": 3
+        },
+        {
+          "token": "incidenices",
+          "count": 3
+        },
+        {
+          "token": "incidencies",
+          "count": 3
+        },
+        {
+          "token": "catalogem",
+          "count": 2
+        },
+        {
+          "token": "quantas",
+          "count": 2
+        },
+        {
+          "token": "comercials",
+          "count": 2
+        },
+        {
+          "token": "qauntes",
+          "count": 1
+        }
+      ],
+      "examples": [
+        {
+          "traceId": "62be3990-c896-4206-8be9-483df6858ca1",
+          "question": "Qauntes coca coles ha venut Nautic el mes de febrer?"
+        },
+        {
+          "traceId": "af22b9e1-6805-4de2-a1ae-b37155070761",
+          "question": "Facturacio de Foodlovers el mes de febrer del 2026"
+        },
+        {
+          "traceId": "abbcb3ba-5337-4ab3-840b-8297b1c95ec6",
+          "question": "Facturacio de Foodlovers el mes de febrer del 2026"
+        },
+        {
+          "traceId": "31b6ed34-8a5b-475d-bf71-9d0af07a116b",
+          "question": "Facturacio de Foodlovers el mes de febrer del 2026"
+        },
+        {
+          "traceId": "e26b8702-8928-45d3-8611-b8f98b8237a7",
+          "question": "Facturacio de Fires i Festivals el mes de febrer del 2026"
+        },
+        {
+          "traceId": "ebd7bc08-b97d-4597-8377-6a2e3685b807",
+          "question": "quantes auditoties hem fet?"
+        },
+        {
+          "traceId": "45f9a0dd-f3f8-45dd-ab22-eced9e67fa89",
+          "question": "Quantes finques tenim classificades?"
+        },
+        {
+          "traceId": "08daf998-d301-4eaa-91de-b51444cdffdc",
+          "question": "Quin és el resultat financer de Foodlovers al març 2026?"
+        },
+        {
+          "traceId": "ef7786d3-afba-4ec0-b845-c49afda60479",
+          "question": "Quantes incidenies i enquin esdeveiemnts hem generat?"
+        },
+        {
+          "traceId": "7f4ef879-53c6-49c1-b484-4616c2305f7c",
+          "question": "quantes incidenices aquest 2026"
+        }
+      ],
+      "action": "Review token hints and map to existing metric synonyms or add new metric candidates."
+    },
+    {
+      "type": "slot_extraction_improvement",
+      "priority": "high",
+      "metricId": "cost_subministraments_month",
+      "reason": "Ambiguous planner outputs for known metric; likely slot extraction gaps.",
+      "affectedRows": 3,
+      "tokenHints": [
+        {
+          "token": "cost",
+          "count": 3
+        },
+        {
+          "token": "subminstraments",
+          "count": 1
+        },
+        {
+          "token": "total",
+          "count": 1
+        },
+        {
+          "token": "subminstramtnets",
+          "count": 1
+        },
+        {
+          "token": "personal",
+          "count": 1
+        },
+        {
+          "token": "febrer",
+          "count": 1
+        }
+      ],
+      "examples": [
+        {
+          "traceId": "2af6256b-b0b3-4d67-b720-8da8d924b2d4",
+          "question": "cost de subminstraments total pel 03-26?",
+          "slotsSeen": {
+            "departmentContains": "",
+            "period": ""
+          }
+        },
+        {
+          "traceId": "03c0d6a9-d573-465a-8383-74182bd37f82",
+          "question": "Cost subminstramtnets 02-26",
+          "slotsSeen": {
+            "departmentContains": "",
+            "period": ""
+          }
+        },
+        {
+          "traceId": "df86ff4a-5fe4-41fa-927b-aa9a1cc4472d",
+          "question": "Cost de personal pel febrer del 2026",
+          "slotsSeen": {
+            "departmentContains": "",
+            "period": ""
+          }
+        }
+      ],
+      "action": "Add slot aliases/regex patterns in helper extractors for this metric."
+    },
+    {
+      "type": "slot_extraction_improvement",
+      "priority": "medium",
+      "metricId": "cost_personal_month",
+      "reason": "Ambiguous planner outputs for known metric; likely slot extraction gaps.",
+      "affectedRows": 2,
+      "tokenHints": [
+        {
+          "token": "cost",
+          "count": 2
+        },
+        {
+          "token": "personal",
+          "count": 2
+        },
+        {
+          "token": "febrer",
+          "count": 2
+        }
+      ],
+      "examples": [
+        {
+          "traceId": "93a905f9-77ad-478b-a0d4-49eed4c05a9b",
+          "question": "Cost de personal pel febrer del 2026",
+          "slotsSeen": {
+            "departmentContains": "personal",
+            "period": ""
+          }
+        },
+        {
+          "traceId": "c08972f4-6e39-44a5-bfd8-154891ea5028",
+          "question": "Cost de personal pel febrer del 2026",
+          "slotsSeen": {
+            "departmentContains": "personal",
+            "period": ""
+          }
+        }
+      ],
+      "action": "Add slot aliases/regex patterns in helper extractors for this metric."
+    },
+    {
+      "type": "deterministic_blocked_review",
+      "priority": "high",
+      "reason": "Deterministic executor blocked fallback in strict mode.",
+      "affectedRows": 4,
+      "tokenHints": [
+        {
+          "token": "cost",
+          "count": 4
+        },
+        {
+          "token": "personal",
+          "count": 3
+        },
+        {
+          "token": "febrer",
+          "count": 3
+        },
+        {
+          "token": "subminstramtnets",
+          "count": 1
+        }
+      ],
+      "examples": [
+        {
+          "traceId": "03c0d6a9-d573-465a-8383-74182bd37f82",
+          "question": "Cost subminstramtnets 02-26",
+          "metricId": "cost_subministraments_month",
+          "slotsSeen": {
+            "departmentContains": "",
+            "period": ""
+          }
+        },
+        {
+          "traceId": "df86ff4a-5fe4-41fa-927b-aa9a1cc4472d",
+          "question": "Cost de personal pel febrer del 2026",
+          "metricId": "cost_subministraments_month",
+          "slotsSeen": {
+            "departmentContains": "",
+            "period": ""
+          }
+        },
+        {
+          "traceId": "93a905f9-77ad-478b-a0d4-49eed4c05a9b",
+          "question": "Cost de personal pel febrer del 2026",
+          "metricId": "cost_personal_month",
+          "slotsSeen": {
+            "departmentContains": "personal",
+            "period": ""
+          }
+        },
+        {
+          "traceId": "c08972f4-6e39-44a5-bfd8-154891ea5028",
+          "question": "Cost de personal pel febrer del 2026",
+          "metricId": "cost_personal_month",
+          "slotsSeen": {
+            "departmentContains": "personal",
+            "period": ""
+          }
+        }
+      ],
+      "action": "Investigate missing required slots and improve planner/slot completion."
+    }
+  ]
+}

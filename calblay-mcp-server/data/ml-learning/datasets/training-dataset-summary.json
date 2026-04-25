@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2026-04-25T21:49:07.351Z",
+  "source": {
+    "tracesPath": "C:\\Users\\PORTATIL126\\OneDrive - Cal Blay\\Escritorio\\dev\\cal-blay-webapp\\calblay-mcp-server\\data\\ml-learning\\chat-traces.jsonl",
+    "feedbackPath": "C:\\Users\\PORTATIL126\\OneDrive - Cal Blay\\Escritorio\\dev\\cal-blay-webapp\\calblay-mcp-server\\data\\ml-learning\\chat-feedback.jsonl"
+  },
+  "output": {
+    "datasetPath": "C:\\Users\\PORTATIL126\\OneDrive - Cal Blay\\Escritorio\\dev\\cal-blay-webapp\\calblay-mcp-server\\data\\ml-learning\\datasets\\training-dataset.jsonl",
+    "summaryPath": "C:\\Users\\PORTATIL126\\OneDrive - Cal Blay\\Escritorio\\dev\\cal-blay-webapp\\calblay-mcp-server\\data\\ml-learning\\datasets\\training-dataset-summary.json"
+  },
+  "stats": {
+    "totalRows": 70,
+    "withFeedback": 0,
+    "helpfulTrue": 0,
+    "helpfulFalse": 0,
+    "byToolChoiceSource": {
+      "auto": 29,
+      "legacy_forced": 8,
+      "deterministic_executor": 24,
+      "deterministic_executor_blocked": 4,
+      "planner": 5
+    }
+  }
+}

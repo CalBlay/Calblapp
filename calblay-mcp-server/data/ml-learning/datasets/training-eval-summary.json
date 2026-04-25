@@ -1,0 +1,32 @@
+{
+  "generatedAt": "2026-04-25T21:50:27.270Z",
+  "source": {
+    "datasetPath": "C:\\Users\\PORTATIL126\\OneDrive - Cal Blay\\Escritorio\\dev\\cal-blay-webapp\\calblay-mcp-server\\data\\ml-learning\\datasets\\training-dataset.jsonl",
+    "totalRows": 70,
+    "evaluatedRows": 5,
+    "filters": {
+      "from": "2026-04-25T21:40:00.000Z",
+      "limit": 200
+    }
+  },
+  "metrics": {
+    "metricId": {
+      "comparableRows": 5,
+      "exactMatches": 5,
+      "exactMatchPercent": 100,
+      "upgradedFromUnknownCount": 0,
+      "effectiveCoveragePercent": 100
+    },
+    "slots": {
+      "comparableRows": 0,
+      "perfectRows": 0,
+      "perfectRowPercent": 0,
+      "comparedFields": 0,
+      "matchedFields": 0,
+      "fieldMatchPercent": 0
+    }
+  },
+  "samples": {
+    "metricMismatches": []
+  }
+}

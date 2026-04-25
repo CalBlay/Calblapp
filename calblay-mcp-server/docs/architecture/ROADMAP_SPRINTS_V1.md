@@ -86,10 +86,12 @@ Sprint status: CLOSED (V1 baseline completed: golden + CI gate + drift guard).
 
 Goal: use feedback safely to improve parser/routing.
 
-- [ ] Build ETL for traces + feedback -> training dataset.
-- [ ] Add offline evaluation for intent/slot models.
-- [ ] Add "suggested catalog updates" report (no auto-merge).
+- [x] Build ETL for traces + feedback -> training dataset (`npm run learning:etl`).
+- [x] Add offline evaluation for intent/slot models (`npm run learning:eval`).
+- [x] Add "suggested catalog updates" report (no auto-merge) (`npm run learning:suggested-catalog-updates`).
 
 Exit criteria:
 - monthly measurable gain in routing accuracy, zero critical value regressions.
+
+Sprint status: CLOSED (V1 baseline completed: ETL + offline eval + suggested updates report).
 

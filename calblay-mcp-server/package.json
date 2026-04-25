@@ -11,7 +11,10 @@
     "quality:report": "node src/scripts/quality-report.js",
     "quality:golden": "node src/scripts/golden-business-check.js",
     "quality:drift": "node src/scripts/quality-drift.js",
-    "quality:ci": "npm run test:quality && npm run quality:golden && npm run quality:drift"
+    "quality:ci": "npm run test:quality && npm run quality:golden && npm run quality:drift",
+    "learning:etl": "node src/scripts/ml-learning-etl.js",
+    "learning:eval": "node src/scripts/ml-learning-eval.js",
+    "learning:suggested-catalog-updates": "node src/scripts/ml-learning-suggested-catalog-updates.js"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",

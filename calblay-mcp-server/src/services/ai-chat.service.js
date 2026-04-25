@@ -41,6 +41,7 @@ function plannerToolChoiceFromPlan(plan) {
 function legacyForcedToolName({
   forceFinanceResultByLnMonth,
   forceEventsCountByDay,
+  forceIncidentsCountYear,
   forcePersonnelSearch,
   forceVehicleAssignmentsByPlate,
   forceWorkerServicesCount,
@@ -52,6 +53,7 @@ function legacyForcedToolName({
 } = {}) {
   if (forceFinanceResultByLnMonth) return "finance_result_by_ln_month";
   if (forceEventsCountByDay) return "preventius_planned_count_by_day";
+  if (forceIncidentsCountYear) return "incidents_count_by_year";
   if (forcePersonnelSearch) return "personnel_search";
   if (forceVehicleAssignmentsByPlate) return "vehicle_assignments_count_by_plate";
   if (forceWorkerServicesCount) return "worker_services_count";
@@ -137,6 +139,20 @@ function buildAnswerFromDeterministicResult(execOut, language = "ca") {
     }).format(total);
     return `El cost de subministraments per al període ${period} és ${eur}.`;
   }
+  if (metricId === "cost_personal_month") {
+    const warning = String(execOut?.result?.warning || "").trim();
+    if (warning) {
+      return `No s'ha pogut calcular el cost de personal de forma fiable: ${warning}`;
+    }
+    const period = String(execOut?.slotsUsed?.period || "");
+    const total = Number(execOut?.result?.totalAmount || 0);
+    const eur = new Intl.NumberFormat(language.startsWith("es") ? "es-ES" : "ca-ES", {
+      style: "currency",
+      currency: "EUR",
+      maximumFractionDigits: 2
+    }).format(total);
+    return `El cost de personal per al període ${period} és ${eur}.`;
+  }
   return "";
 }
 
@@ -164,12 +180,13 @@ function enrichDeterministicSlots(metricId, baseSlots, question, currentYear) {
       slots.departmentContains = department;
     }
   }
-  if (metricId === "cost_subministraments_month") {
+  if (metricId === "cost_subministraments_month" || metricId === "cost_personal_month") {
     const inferred = extractCostDepartmentPeriodSlots(question) || {};
     if (!String(slots.departmentContains || "").trim()) {
-      slots.departmentContains = normalizeCostDepartmentContains(
-        String(inferred.departmentContains || "subministr")
-      );
+      slots.departmentContains = normalizeCostDepartmentContains(String(inferred.departmentContains || ""));
+      if (!slots.departmentContains) {
+        slots.departmentContains = metricId === "cost_personal_month" ? "personal" : "subministr";
+      }
     }
     if (!String(slots.period || "").trim()) {
       slots.period = String(inferred.period || "");
@@ -195,7 +212,7 @@ export async function chatWithTools({ question, language = "ca", rich = false })
   const intent = detectQueryIntent(qNorm);
   const currentYear = new Date().getFullYear();
   const queryPlan = buildQueryPlan({ question: qNorm, currentYear });
-  const { systemContent, forceCostOverview, forceCostDepartmentPeriod, forceFinanceResultByLnMonth, forceEventsCountByDay, forcePersonnelSearch, forceVehicleAssignmentsByPlate, forceWorkerServicesCount, forceAuditsCount, forceFinquesCount, forceFirestoreCatalog } = buildChatSystemContent({
+  const { systemContent, forceCostOverview, forceCostDepartmentPeriod, forceFinanceResultByLnMonth, forceEventsCountByDay, forceIncidentsCountYear, forcePersonnelSearch, forceVehicleAssignmentsByPlate, forceWorkerServicesCount, forceAuditsCount, forceFinquesCount, forceFirestoreCatalog } = buildChatSystemContent({
     qNorm,
     rich,
     currentYear
@@ -207,7 +224,7 @@ export async function chatWithTools({ question, language = "ca", rich = false })
     String(process.env.QUERY_PLANNER_STRICT_CATALOG_EXECUTOR || "1").trim() !== "0";
   const cacheVersion =
     process.env.OPENAI_CACHE_VERSION ||
-    `v24|costDept=${forceCostDepartmentPeriod ? 1 : 0}|costOv=${forceCostOverview ? 1 : 0}|pnlLn=${forceFinanceResultByLnMonth ? 1 : 0}|eventsDay=${forceEventsCountByDay ? 1 : 0}|personnel=${forcePersonnelSearch ? 1 : 0}|vehicleAssign=${forceVehicleAssignmentsByPlate ? 1 : 0}|workerServices=${forceWorkerServicesCount ? 1 : 0}|audits=${forceAuditsCount ? 1 : 0}|finques=${forceFinquesCount ? 1 : 0}|fsCat=${forceFirestoreCatalog ? 1 : 0}|qpStatus=${queryPlan.status || "na"}|policy=v1|strictCatalog=${strictCatalogExecutor ? 1 : 0}`;
+    `v26|costDept=${forceCostDepartmentPeriod ? 1 : 0}|costOv=${forceCostOverview ? 1 : 0}|pnlLn=${forceFinanceResultByLnMonth ? 1 : 0}|eventsDay=${forceEventsCountByDay ? 1 : 0}|personnel=${forcePersonnelSearch ? 1 : 0}|vehicleAssign=${forceVehicleAssignmentsByPlate ? 1 : 0}|workerServices=${forceWorkerServicesCount ? 1 : 0}|audits=${forceAuditsCount ? 1 : 0}|finques=${forceFinquesCount ? 1 : 0}|fsCat=${forceFirestoreCatalog ? 1 : 0}|qpStatus=${queryPlan.status || "na"}|policy=v1|strictCatalog=${strictCatalogExecutor ? 1 : 0}`;
   const ck = cacheKey(model, language, qNorm, rich, cacheVersion);
   const cached = cacheGet(ck);
   const executionPolicy = buildQueryExecutionPolicy({
@@ -464,6 +481,7 @@ export async function chatWithTools({ question, language = "ca", rich = false })
     const hasLegacyForcedChoice =
       forceFinanceResultByLnMonth ||
       forceEventsCountByDay ||
+      forceIncidentsCountYear ||
       forcePersonnelSearch ||
       forceVehicleAssignmentsByPlate ||
       forceWorkerServicesCount ||
@@ -475,6 +493,7 @@ export async function chatWithTools({ question, language = "ca", rich = false })
     const forcedToolName = legacyForcedToolName({
       forceFinanceResultByLnMonth,
       forceEventsCountByDay,
+      forceIncidentsCountYear,
       forcePersonnelSearch,
       forceVehicleAssignmentsByPlate,
       forceWorkerServicesCount,
@@ -511,6 +530,8 @@ export async function chatWithTools({ question, language = "ca", rich = false })
         ? { type: "function", function: { name: "finance_result_by_ln_month" } }
         : forceEventsCountByDay && !anyToolMessageYet
           ? { type: "function", function: { name: "preventius_planned_count_by_day" } }
+        : forceIncidentsCountYear && !anyToolMessageYet
+          ? { type: "function", function: { name: "incidents_count_by_year" } }
         : forcePersonnelSearch && !anyToolMessageYet
           ? { type: "function", function: { name: "personnel_search" } }
         : forceVehicleAssignmentsByPlate && !anyToolMessageYet

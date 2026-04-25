@@ -718,6 +718,53 @@ export async function countPlannedPreventiusForChat({ date, limit = 10000 } = {}
   };
 }
 
+function parseIncidentYear(rawYear) {
+  const y = Number(rawYear);
+  if (Number.isFinite(y) && y >= 2000 && y <= 2100) return y;
+  return new Date().getFullYear();
+}
+
+function incidentDateYmd(row) {
+  const candidates = [row?.date, row?.createdAt, row?.updatedAt, row?.closedAt, row?.openedAt];
+  for (const c of candidates) {
+    const ymd = toYmd(c);
+    if (ymd) return ymd;
+  }
+  return "";
+}
+
+export async function countIncidentsForChat({ year, limit = 10000 } = {}) {
+  const targetYear = parseIncidentYear(year);
+  const cap = Math.min(10000, Math.max(200, Number(limit) || 10000));
+  const rows = await listCollection("incidents", { limit: cap });
+  const filtered = rows.filter((r) => incidentDateYmd(r).startsWith(String(targetYear)));
+
+  const byStatusMap = new Map();
+  for (const r of filtered) {
+    const s = String(r.status || "sense_status").trim() || "sense_status";
+    byStatusMap.set(s, (byStatusMap.get(s) || 0) + 1);
+  }
+
+  return {
+    ok: true,
+    kind: "incidents_count_by_year",
+    year: targetYear,
+    total: filtered.length,
+    sourceCollection: "incidents",
+    byStatus: [...byStatusMap.entries()]
+      .map(([status, count]) => ({ status, count }))
+      .sort((a, b) => b.count - a.count),
+    capped: rows.length >= cap,
+    sample: filtered.slice(0, 20).map((r) => ({
+      id: r.id,
+      code: r.code || null,
+      eventId: r.eventId || r.event_id || null,
+      status: r.status || null,
+      date: incidentDateYmd(r)
+    }))
+  };
+}
+
 function normalizePlate(raw) {
   return String(raw || "")
     .normalize("NFD")

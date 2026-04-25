@@ -423,7 +423,13 @@ const COST_SEARCH_TYPOS = {
   subminstraments: "subministraments",
   submintraments: "subministraments",
   suministraments: "subministraments",
-  suministros: "subministraments"
+  suministros: "subministraments",
+  rrhh: "personal",
+  rh: "personal",
+  nomina: "personal",
+  nomines: "personal",
+  salarial: "personal",
+  salaris: "personal"
 };
 
 function rowMatchesCostSearch(rowLabel, termRaw) {
@@ -500,6 +506,7 @@ function normalizedDepartmentFilter(raw) {
     "logistica",
     "subministr",
     "suministr",
+    "personal",
     "recursos humans",
     "recursos humanos",
     "rh",
@@ -514,6 +521,27 @@ function normalizedDepartmentFilter(raw) {
     if (base.includes(k)) return k.startsWith("suministr") ? "subministr" : k;
   }
   return base;
+}
+
+function isPersonalDeptFilter(deptFilter) {
+  const n = normForMatch(deptFilter);
+  return /\b(personal|rh|rrhh|recursos humans|recursos humanos|nomina|salar|sou)\b/.test(n);
+}
+
+function personalRowsFromParsedRows(rows) {
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const normRows = sourceRows.map((r) => ({ row: r, labelNorm: normForMatch(r.label) }));
+  const totalCostRows = normRows
+    .filter(({ labelNorm }) => /\b(total\s+cost\s+salar\w*|cost\s+salar\w*\s+total)\b/.test(labelNorm))
+    .map(({ row }) => row);
+  if (totalCostRows.length) return totalCostRows;
+
+  return normRows
+    .filter(
+      ({ labelNorm }) =>
+        /\b(personal|salar\w*|nomina\w*|sou\w*|seguretat social|seguridad social)\b/.test(labelNorm)
+    )
+    .map(({ row }) => row);
 }
 
 function periodTokensFromInput(periodRaw) {
@@ -853,6 +881,45 @@ export async function getCostByDepartmentPeriod({
           seen.add(k);
         }
       }
+    }
+  }
+  if (!matchedRows.length && isPersonalDeptFilter(deptFilter)) {
+    matchedRows = personalRowsFromParsedRows(rows);
+  }
+  if (!matchedRows.length && isPersonalDeptFilter(deptFilter) && resolvedCostReportKind !== "rh") {
+    // Fallback explícit per cost de personal: si c.explotacio no conté la fila, prova carpeta RH.
+    try {
+      const ym = parseYearMonthFromPeriod(periodRaw);
+      const rhNames = await listFinanceCsvFilesForKind("rh");
+      const sortedRh = [...rhNames].sort((a, b) => {
+        const pA = filenameMatchesPeriod(a, ym) ? 0 : 1;
+        const pB = filenameMatchesPeriod(b, ym) ? 0 : 1;
+        if (pA !== pB) return pA - pB;
+        return a.localeCompare(b);
+      });
+      for (const name of sortedRh) {
+        try {
+          const rawRh = await readCsvText(name, "rh");
+          const parsedRh = parseCostCsvWithFallback(rawRh);
+          const personalRhRows = personalRowsFromParsedRows(parsedRh.rows);
+          if (!personalRhRows.length) continue;
+          file = name;
+          resolvedCostReportFileName = name;
+          resolvedCostReportKind = "rh";
+          if (ym) resolvedCostReportByPeriod.set(`${ym.year}-${ym.month}`, { name, kind: "rh" });
+          matchedRows = personalRhRows;
+          // Reassign parsed context to keep amount columns/meta aligned with the selected file.
+          parsed.meta = parsedRh.meta;
+          parsed.metaLines = parsedRh.metaLines;
+          parsed.amountHeaders = parsedRh.amountHeaders;
+          parsed.amountHeaderLabels = parsedRh.amountHeaderLabels;
+          break;
+        } catch {
+          // next RH candidate
+        }
+      }
+    } catch {
+      // keep original no-match behavior
     }
   }
   if (!matchedRows.length) {
