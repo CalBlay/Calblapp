@@ -6,7 +6,12 @@
   "scripts": {
     "dev": "node --watch src/app.js",
     "start": "node src/app.js",
-    "test": "node --test test/"
+    "test": "node --test",
+    "test:quality": "node --test test/cost-period-parsing.test.js test/cost-imputation-delimiter.test.js test/pnl-queries.test.js test/answer-policy.test.js test/intent-router.test.js test/ai-chat-helpers.test.js test/query-planner.test.js test/deterministic-executor.test.js test/query-execution-policy.test.js test/golden-drift.test.js",
+    "quality:report": "node src/scripts/quality-report.js",
+    "quality:golden": "node src/scripts/golden-business-check.js",
+    "quality:drift": "node src/scripts/quality-drift.js",
+    "quality:ci": "npm run test:quality && npm run quality:golden && npm run quality:drift"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",
