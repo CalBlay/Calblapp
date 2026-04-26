@@ -7,6 +7,7 @@ import {
   shouldBlockCatalogFallback
 } from "../core/policies/query-execution-policy.js";
 import { executeDeterministicMetric } from "../services/deterministic-executor.service.js";
+import { getFinanceDir, getFinanceSource } from "../services/finances/config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "../..");
@@ -34,6 +35,17 @@ function hasFirebaseEnv() {
     String(process.env.CORREU_ELECTRONIC_DE_CLIENT_DE_FIREBASE || "").trim() &&
     String(process.env.FIREBASE_PRIVATE_CLAU || "").trim();
   return Boolean(a || b);
+}
+
+function hasFinanceSourceForGolden() {
+  const source = getFinanceSource();
+  if (source === "gcs") {
+    return Boolean(String(process.env.GCS_BUCKET || "").trim());
+  }
+  if (source === "local") {
+    return fs.existsSync(getFinanceDir());
+  }
+  return false;
 }
 
 function getByPath(obj, dotted) {
@@ -135,11 +147,15 @@ async function main() {
   const golden = readGoldenCases();
   const allowSkipOnMissingFirebase =
     String(process.env.GOLDEN_ALLOW_SKIP_FIRESTORE || "1").trim() !== "0";
+  const allowSkipOnMissingFinance =
+    String(process.env.GOLDEN_ALLOW_SKIP_FINANCE || "1").trim() !== "0";
   const firebaseReady = hasFirebaseEnv();
+  const financeReady = hasFinanceSourceForGolden();
   const results = [];
   for (const c of golden.cases) {
     const expected = c?.expected && typeof c.expected === "object" ? c.expected : {};
     const needsFirestore = String(expected.policySystem || "").trim() === "firestore";
+    const needsFinance = String(expected.policySystem || "").trim() === "csv_finances";
     if (needsFirestore && !firebaseReady && allowSkipOnMissingFirebase) {
       results.push({
         id: String(c?.id || ""),
@@ -148,6 +164,18 @@ async function main() {
         question: String(c?.question || ""),
         failures: [],
         note: "Skipped: missing Firebase credentials in environment."
+      });
+      // eslint-disable-next-line no-continue
+      continue;
+    }
+    if (needsFinance && !financeReady && allowSkipOnMissingFinance) {
+      results.push({
+        id: String(c?.id || ""),
+        skipped: true,
+        ok: true,
+        question: String(c?.question || ""),
+        failures: [],
+        note: "Skipped: missing finance CSV/GCS source in environment."
       });
       // eslint-disable-next-line no-continue
       continue;

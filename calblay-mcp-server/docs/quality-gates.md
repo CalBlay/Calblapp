@@ -31,6 +31,7 @@ Aquest servidor inclou portes de qualitat executables per al blueprint.
   - Valida per cas: `metricId`, policy/source lock i execució determinista.
   - Si algun cas falla, retorna codi de sortida diferent de zero (apta per bloqueig a CI).
   - Si falten credencials Firebase, per defecte salta casos `policySystem=firestore` (`GOLDEN_ALLOW_SKIP_FIRESTORE=1`).
+  - Si falta font de finances al runner, per defecte salta casos `policySystem=csv_finances` (`GOLDEN_ALLOW_SKIP_FINANCE=1`).
 
 - `npm run quality:drift`
   - Compara traces recents (`data/ml-learning/chat-traces.jsonl`) amb expectatives del golden.
@@ -71,6 +72,7 @@ set QUALITY_PLANNER_STATS_LIMIT=200
 
 set QUALITY_ALLOW_SKIP_FIRESTORE=1
 set GOLDEN_ALLOW_SKIP_FIRESTORE=1
+set GOLDEN_ALLOW_SKIP_FINANCE=1
 
 set QUALITY_DRIFT_TRACE_LIMIT=300
 set QUALITY_DRIFT_MIN_MATCHED=1
@@ -92,6 +94,7 @@ set QUALITY_PLANNER_STATS_LIMIT=500
 
 set QUALITY_ALLOW_SKIP_FIRESTORE=0
 set GOLDEN_ALLOW_SKIP_FIRESTORE=0
+set GOLDEN_ALLOW_SKIP_FINANCE=1
 
 set QUALITY_DRIFT_TRACE_LIMIT=500
 set QUALITY_DRIFT_MIN_MATCHED=5
@@ -116,6 +119,17 @@ Secrets requerits a GitHub (`Settings -> Secrets and variables -> Actions`):
 - `FIREBASE_PROJECT_ID`
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY`
+
+Secrets opcionals per validar golden de finances contra GCS:
+
+- `FINANCE_SOURCE` (`gcs`)
+- `FINANCE_SUBFOLDERS` (`true`)
+- `GCS_BUCKET`
+- `GCS_FINANCE_BASE`
+- `GOOGLE_PROJECT_ID`
+- `GOOGLE_CLIENT_EMAIL`
+- `GOOGLE_PRIVATE_KEY`
+- `FINANCE_COST_CSV` / `FINANCE_COST_CSV_KIND` si cal forÃ§ar el fitxer.
 
 ## Ús recomanat
 

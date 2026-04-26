@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
+import { CheckCircle2, Loader2, MessageSquareWarning, ThumbsDown, ThumbsUp } from 'lucide-react'
 import ExportMenu, { type ExportMenuItem } from '@/components/export/ExportMenu'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import type { OpenChatAnswer } from './types'
@@ -33,10 +34,12 @@ function OpenChatAnswerCardInner({
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null)
   const [feedbackNote, setFeedbackNote] = useState('')
   const [feedbackCorrected, setFeedbackCorrected] = useState('')
+  const [showCorrectionForm, setShowCorrectionForm] = useState(false)
 
   useEffect(() => {
     setFeedbackNote('')
     setFeedbackCorrected('')
+    setShowCorrectionForm(false)
     setFeedbackState('idle')
     setFeedbackMsg(null)
   }, [openAnswer.traceId])
@@ -124,25 +127,101 @@ function OpenChatAnswerCardInner({
         />
       </CardHeader>
       <CardContent className="space-y-4">
+        <div
+          id="consultes-mcp-feedback-quick"
+          className="rounded-lg border-2 border-violet-300 bg-violet-50 px-4 py-3 shadow-md"
+        >
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-sm font-bold text-violet-950">
+                <MessageSquareWarning className="h-4 w-4 shrink-0" />
+                Valora aquesta resposta
+              </p>
+              <p className="mt-1 text-xs leading-snug text-violet-900">
+                {openAnswer.traceId
+                  ? 'El teu feedback queda lligat a la traça del MCP i ajuda a millorar el sistema.'
+                  : 'Encara no ha arribat cap traceId; els botons queden visibles però desactivats.'}
+              </p>
+            </div>
+            {feedbackState === 'sent' ? (
+              <span className="inline-flex w-fit items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Feedback registrat
+              </span>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              disabled={!openAnswer.traceId || feedbackState === 'sending' || feedbackState === 'sent'}
+              onClick={() => void sendFeedback(true)}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border-2 border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {feedbackState === 'sending' && !showCorrectionForm ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <ThumbsUp className="h-5 w-5" />
+              )}
+              Útil
+            </button>
+            <button
+              type="button"
+              disabled={!openAnswer.traceId || feedbackState === 'sending' || feedbackState === 'sent'}
+              onClick={() => {
+                setShowCorrectionForm(true)
+                setFeedbackMsg(null)
+              }}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border-2 border-rose-700 bg-white px-4 py-2 text-sm font-bold text-rose-800 shadow-sm transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ThumbsDown className="h-5 w-5" />
+              No útil
+            </button>
+          </div>
+          {openAnswer.traceId && feedbackState !== 'sent' ? (
+            <button
+              type="button"
+              disabled={feedbackState === 'sending'}
+              onClick={() => {
+                setShowCorrectionForm((v) => !v)
+                setFeedbackMsg(null)
+              }}
+              className="mt-3 inline-flex min-h-9 items-center justify-center rounded-md border border-violet-300 bg-white px-3 py-1.5 text-xs font-semibold text-violet-900 shadow-sm hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {showCorrectionForm ? 'Amagar correcció/context' : 'Afegir resposta correcta o context'}
+            </button>
+          ) : null}
+          {feedbackMsg ? (
+            <p
+              className={`mt-2 text-xs font-medium ${feedbackState === 'error' ? 'text-rose-700' : 'text-emerald-800'}`}
+            >
+              {feedbackMsg}
+            </p>
+          ) : null}
+        </div>
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900">
           {openAnswer.text || '—'}
         </p>
         {openAnswer.traceId ? (
           <div
             id="consultes-mcp-feedback"
-            className="rounded-md border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-sm shadow-sm"
+            className={
+              showCorrectionForm
+                ? 'rounded-md border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-sm shadow-sm'
+                : 'hidden'
+            }
           >
             <p className="mb-2 text-xs font-semibold text-amber-950">
-              La resposta és correcta? (opcional, per millorar el sistema)
+              Correcció o context per aprenentatge
             </p>
             <p className="mb-2 text-[11px] text-amber-900/90">
-              Prem <strong>No útil</strong> si la dada o el raonament són erronis, i si vols escriu la{' '}
-              <strong>resposta correcta</strong> o una nota. S&apos;enregistra al MCP (Firestore) amb
-              la traça <span className="font-mono text-[10px]">{openAnswer.traceId}</span>.
+              Si saps la resposta correcta, escriu-la. Si no, indica on s&apos;hauria de trobar:
+              col·lecció Firestore, fitxer, pantalla, camp, període o qualsevol pista útil. S&apos;enregistra
+              al MCP (Firestore) amb la traça{' '}
+              <span className="font-mono text-[10px]">{openAnswer.traceId}</span>.
             </p>
             <div className="mb-3 space-y-2">
               <label className="block text-xs text-slate-600" htmlFor="mcp-feedback-note">
-                Nota o context
+                Context / on trobar la resposta correcta
               </label>
               <textarea
                 id="mcp-feedback-note"
@@ -151,7 +230,7 @@ function OpenChatAnswerCardInner({
                 disabled={feedbackState === 'sending' || feedbackState === 'sent'}
                 rows={2}
                 className="w-full resize-y rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 disabled:opacity-50"
-                placeholder="Ex.: esperava la mètrica X, o el període Y"
+                placeholder="Ex.: mirar stage_verd camp Import, fitxer vendes_2026, període gener 2026, LN Empresa..."
               />
               <label className="block text-xs text-slate-600" htmlFor="mcp-feedback-corrected">
                 Resposta correcta (si la saps)
@@ -170,18 +249,18 @@ function OpenChatAnswerCardInner({
               <button
                 type="button"
                 disabled={feedbackState === 'sending' || feedbackState === 'sent'}
-                onClick={() => void sendFeedback(true)}
-                className="rounded-md border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:opacity-50"
+                onClick={() => void sendFeedback(false)}
+                className="rounded-md border border-rose-700 bg-rose-700 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-rose-800 disabled:opacity-50"
               >
-                Útil
+                Enviar com a no útil
               </button>
               <button
                 type="button"
                 disabled={feedbackState === 'sending' || feedbackState === 'sent'}
-                onClick={() => void sendFeedback(false)}
-                className="rounded-md border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm hover:bg-rose-50 disabled:opacity-50"
+                onClick={() => setShowCorrectionForm(false)}
+                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
-                No útil — resposta incorrecta
+                Cancel·lar
               </button>
               {feedbackState === 'sending' ? (
                 <span className="text-xs text-muted-foreground">Enviant…</span>

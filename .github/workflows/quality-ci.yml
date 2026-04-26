@@ -17,7 +17,6 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       QUERY_PLANNER_TOOL_CHOICE: "1"
       QUERY_PLANNER_DETERMINISTIC_EXECUTOR: "1"
       QUERY_PLANNER_STRICT_CATALOG_EXECUTOR: "1"
@@ -26,15 +25,16 @@ jobs:
       QUALITY_PLANNER_STATS_LIMIT: "500"
       QUALITY_ALLOW_SKIP_FIRESTORE: "1"
       GOLDEN_ALLOW_SKIP_FIRESTORE: "1"
+      GOLDEN_ALLOW_SKIP_FINANCE: "1"
       QUALITY_DRIFT_TRACE_LIMIT: "500"
       QUALITY_DRIFT_MIN_MATCHED: "1"
       QUALITY_DRIFT_MAX_MISMATCH_PERCENT: "0"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: "npm"
@@ -53,7 +53,6 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       QUERY_PLANNER_TOOL_CHOICE: "1"
       QUERY_PLANNER_DETERMINISTIC_EXECUTOR: "1"
       QUERY_PLANNER_STRICT_CATALOG_EXECUTOR: "1"
@@ -62,18 +61,30 @@ jobs:
       QUALITY_PLANNER_STATS_LIMIT: "500"
       QUALITY_ALLOW_SKIP_FIRESTORE: "0"
       GOLDEN_ALLOW_SKIP_FIRESTORE: "0"
+      GOLDEN_ALLOW_SKIP_FINANCE: "1"
       QUALITY_DRIFT_TRACE_LIMIT: "500"
       QUALITY_DRIFT_MIN_MATCHED: "5"
       QUALITY_DRIFT_MAX_MISMATCH_PERCENT: "0"
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
       FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+      FINANCE_SOURCE: ${{ secrets.FINANCE_SOURCE }}
+      FINANCE_SUBFOLDERS: ${{ secrets.FINANCE_SUBFOLDERS }}
+      GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
+      GCS_FINANCE_BASE: ${{ secrets.GCS_FINANCE_BASE }}
+      GCS_FINANCE_PREFIX: ${{ secrets.GCS_FINANCE_PREFIX }}
+      GOOGLE_PROJECT_ID: ${{ secrets.GOOGLE_PROJECT_ID }}
+      GOOGLE_CLIENT_EMAIL: ${{ secrets.GOOGLE_CLIENT_EMAIL }}
+      GOOGLE_PRIVATE_KEY: ${{ secrets.GOOGLE_PRIVATE_KEY }}
+      FINANCE_COST_CSV: ${{ secrets.FINANCE_COST_CSV }}
+      FINANCE_COST_CSV_KIND: ${{ secrets.FINANCE_COST_CSV_KIND }}
+      FINANCE_CSV_ENCODING: ${{ secrets.FINANCE_CSV_ENCODING }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: "npm"
