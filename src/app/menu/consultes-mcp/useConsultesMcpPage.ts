@@ -145,6 +145,8 @@ export function useConsultesMcpPage() {
         toolCallsUsed?: number
         cached?: boolean
         report?: unknown
+        traceId?: string
+        toolChoiceSource?: string
         error?: string
         hint?: string
         raw?: string
@@ -161,6 +163,11 @@ export function useConsultesMcpPage() {
           typeof data.toolCallsUsed === 'number' ? data.toolCallsUsed : undefined,
         cached: data.cached === true,
         report: openRich ? coerceChatReport(data.report) : null,
+        traceId: typeof data.traceId === 'string' && data.traceId.trim() ? data.traceId.trim() : undefined,
+        toolChoiceSource:
+          typeof data.toolChoiceSource === 'string' && data.toolChoiceSource.trim()
+            ? data.toolChoiceSource.trim()
+            : undefined,
       }
       if (signal.aborted) return
       startTransition(() => {

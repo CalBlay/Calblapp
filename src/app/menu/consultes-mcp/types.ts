@@ -93,6 +93,9 @@ export type OpenChatAnswer = {
   toolCallsUsed?: number
   cached?: boolean
   report?: ChatReport | null
+  /** Identificador de traça al MCP (learning / feedback). */
+  traceId?: string
+  toolChoiceSource?: string
 }
 
 export type FincaRankingRow = {

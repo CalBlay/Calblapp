@@ -1,6 +1,6 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import ExportMenu, { type ExportMenuItem } from '@/components/export/ExportMenu'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,6 +27,59 @@ function OpenChatAnswerCardInner({
   exportItems: ExportMenuItem[]
 }) {
   const chart = openAnswer.report?.chart
+  const [feedbackState, setFeedbackState] = useState<
+    'idle' | 'sending' | 'sent' | 'error'
+  >('idle')
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null)
+  const [feedbackNote, setFeedbackNote] = useState('')
+  const [feedbackCorrected, setFeedbackCorrected] = useState('')
+
+  useEffect(() => {
+    setFeedbackNote('')
+    setFeedbackCorrected('')
+    setFeedbackState('idle')
+    setFeedbackMsg(null)
+  }, [openAnswer.traceId])
+
+  const sendFeedback = useCallback(
+    async (helpful: boolean) => {
+      const traceId = openAnswer.traceId?.trim()
+      if (!traceId) return
+      setFeedbackState('sending')
+      setFeedbackMsg(null)
+      try {
+        const res = await fetch('/api/mcp/chat/feedback', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            traceId,
+            helpful,
+            note: feedbackNote.trim(),
+            correctedAnswer: feedbackCorrected.trim(),
+            tags: ['consultes-mcp-ui'],
+          }),
+        })
+        const data = (await res.json()) as { ok?: boolean; error?: string }
+        if (!res.ok || data.ok === false) {
+          setFeedbackState('error')
+          setFeedbackMsg(data.error || `Error ${res.status}`)
+          return
+        }
+        setFeedbackState('sent')
+        setFeedbackMsg(
+          helpful
+            ? "S'ha registrat com a útil."
+            : "S'ha registrat com a no útil (amb correcció si n'has indicat)."
+        )
+      } catch (e) {
+        setFeedbackState('error')
+        setFeedbackMsg(e instanceof Error ? e.message : 'Error de xarxa')
+      }
+    },
+    [openAnswer.traceId, feedbackNote, feedbackCorrected]
+  )
+
   return (
     <Card id="consultes-mcp-open-print-root" className="border-violet-200 bg-white">
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-2">
@@ -48,7 +101,19 @@ function OpenChatAnswerCardInner({
                     · <span className="text-emerald-700">Cache (sense cost OpenAI)</span>
                   </>
                 ) : null}
+                {openAnswer.toolChoiceSource ? (
+                  <>
+                    {' '}
+                    · Ruta:{' '}
+                    <span className="font-mono text-xs">{openAnswer.toolChoiceSource}</span>
+                  </>
+                ) : null}
               </>
+            ) : null}
+            {openAnswer.traceId ? (
+              <span className="mt-1 block font-mono text-[10px] text-muted-foreground break-all">
+                Trace: {openAnswer.traceId}
+              </span>
             ) : null}
           </CardDescription>
         </div>
@@ -164,6 +229,67 @@ function OpenChatAnswerCardInner({
             <div className="h-[300px] w-full min-w-0">
               <OpenChatReportChartLazy chart={chart} />
             </div>
+          </div>
+        ) : null}
+        {openAnswer.traceId ? (
+          <div className="rounded-md border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm">
+            <p className="mb-2 text-xs font-medium text-slate-600">
+              Avaluació per millorar el sistema (opcional)
+            </p>
+            <div className="mb-3 space-y-2">
+              <label className="block text-xs text-slate-600" htmlFor="mcp-feedback-note">
+                Nota o context
+              </label>
+              <textarea
+                id="mcp-feedback-note"
+                value={feedbackNote}
+                onChange={(e) => setFeedbackNote(e.target.value)}
+                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                rows={2}
+                className="w-full resize-y rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 disabled:opacity-50"
+                placeholder="Ex.: esperava la mètrica X, o el període Y"
+              />
+              <label className="block text-xs text-slate-600" htmlFor="mcp-feedback-corrected">
+                Resposta correcta (si la saps)
+              </label>
+              <textarea
+                id="mcp-feedback-corrected"
+                value={feedbackCorrected}
+                onChange={(e) => setFeedbackCorrected(e.target.value)}
+                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                rows={2}
+                className="w-full resize-y rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 disabled:opacity-50"
+                placeholder="Opcional; s’usa com a objectiu d’entrenament al dataset ETL"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                onClick={() => void sendFeedback(true)}
+                className="rounded-md border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:opacity-50"
+              >
+                Útil
+              </button>
+              <button
+                type="button"
+                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                onClick={() => void sendFeedback(false)}
+                className="rounded-md border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm hover:bg-rose-50 disabled:opacity-50"
+              >
+                No útil
+              </button>
+              {feedbackState === 'sending' ? (
+                <span className="text-xs text-muted-foreground">Enviant…</span>
+              ) : null}
+            </div>
+            {feedbackMsg ? (
+              <p
+                className={`mt-2 text-xs ${feedbackState === 'error' ? 'text-rose-700' : 'text-emerald-800'}`}
+              >
+                {feedbackMsg}
+              </p>
+            ) : null}
           </div>
         ) : null}
       </CardContent>

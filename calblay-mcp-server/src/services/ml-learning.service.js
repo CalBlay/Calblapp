@@ -10,6 +10,100 @@ function enabled() {
   return String(process.env.ML_LEARNING_ENABLED || "1").toLowerCase() !== "0";
 }
 
+/** Persistència estable per Cloud Run / producció: escriu també a Firestore (recomanat amb Vercel + app). */
+function firestoreLearningEnabled() {
+  return String(process.env.ML_LEARNING_USE_FIRESTORE || "").toLowerCase() === "1";
+}
+
+function tracesFirestoreCollection() {
+  const c = String(process.env.ML_LEARNING_FIRESTORE_TRACES_COLLECTION || "mcp_ml_traces").trim();
+  return c || "mcp_ml_traces";
+}
+
+function feedbackFirestoreCollection() {
+  const c = String(process.env.ML_LEARNING_FIRESTORE_FEEDBACK_COLLECTION || "mcp_ml_feedback").trim();
+  return c || "mcp_ml_feedback";
+}
+
+function stripUndefinedDeep(v) {
+  if (v === undefined) return undefined;
+  if (v === null || typeof v !== "object") return v;
+  if (Array.isArray(v)) {
+    return v.map(stripUndefinedDeep).filter((x) => x !== undefined);
+  }
+  const o = {};
+  for (const [k, val] of Object.entries(v)) {
+    if (val === undefined) continue;
+    const x = stripUndefinedDeep(val);
+    if (x === undefined) continue;
+    o[k] = x;
+  }
+  return o;
+}
+
+function schedulePersistChatTraceToFirestore(payload) {
+  if (!firestoreLearningEnabled()) return;
+  const traceId = String(payload?.traceId || "");
+  if (!traceId) return;
+  setImmediate(() => {
+    (async () => {
+      try {
+        const { getDb } = await import("./firestore.service.js");
+        const { Timestamp } = await import("firebase-admin/firestore");
+        const db = getDb();
+        const atTs = payload.at ? Timestamp.fromDate(new Date(String(payload.at))) : Timestamp.now();
+        const doc = stripUndefinedDeep({
+          kind: payload.kind,
+          traceId: payload.traceId,
+          at: atTs,
+          question: payload.question,
+          language: payload.language,
+          rich: payload.rich,
+          intent: payload.intent,
+          queryPlan: payload.queryPlan,
+          result: payload.result,
+          toolOutcomes: payload.toolOutcomes,
+          forcedFlags: payload.forcedFlags,
+          durationMs: payload.durationMs,
+          storedAt: Timestamp.now()
+        });
+        await db.collection(tracesFirestoreCollection()).doc(traceId).set(doc);
+      } catch (e) {
+        console.error("[ml-learning] Firestore trace write failed:", e?.message || e);
+      }
+    })();
+  });
+}
+
+function schedulePersistChatFeedbackToFirestore(payload) {
+  if (!firestoreLearningEnabled()) return;
+  const traceId = String(payload?.traceId || "");
+  if (!traceId) return;
+  setImmediate(() => {
+    (async () => {
+      try {
+        const { getDb } = await import("./firestore.service.js");
+        const { Timestamp } = await import("firebase-admin/firestore");
+        const db = getDb();
+        const atTs = payload.at ? Timestamp.fromDate(new Date(String(payload.at))) : Timestamp.now();
+        const doc = stripUndefinedDeep({
+          kind: payload.kind,
+          traceId: payload.traceId,
+          at: atTs,
+          helpful: payload.helpful,
+          correctedAnswer: payload.correctedAnswer,
+          note: payload.note,
+          tags: payload.tags,
+          storedAt: Timestamp.now()
+        });
+        await db.collection(feedbackFirestoreCollection()).add(doc);
+      } catch (e) {
+        console.error("[ml-learning] Firestore feedback write failed:", e?.message || e);
+      }
+    })();
+  });
+}
+
 function baseDir() {
   const fromEnv = String(process.env.ML_LEARNING_DIR || "").trim();
   if (fromEnv) return fromEnv;
@@ -134,6 +228,7 @@ export function logChatTrace({
     durationMs: Number.isFinite(durationMs) ? durationMs : null
   };
   appendJsonl(tracesPath(), payload);
+  schedulePersistChatTraceToFirestore(payload);
   return { enabled: true, traceId: payload.traceId };
 }
 
@@ -155,6 +250,7 @@ export function logChatFeedback({
     tags: Array.isArray(tags) ? tags.map((t) => String(t)) : []
   };
   appendJsonl(feedbackPath(), payload);
+  schedulePersistChatFeedbackToFirestore(payload);
   return { enabled: true, traceId: payload.traceId };
 }
 
@@ -169,6 +265,11 @@ export function getMlLearningStatus() {
     counts: {
       traces: readJsonlCount(tracesPath()),
       feedback: readJsonlCount(feedbackPath())
+    },
+    firestore: {
+      enabled: firestoreLearningEnabled(),
+      tracesCollection: tracesFirestoreCollection(),
+      feedbackCollection: feedbackFirestoreCollection()
     }
   };
 }
