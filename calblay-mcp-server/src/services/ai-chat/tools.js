@@ -620,16 +620,18 @@ export function buildTools() {
       function: {
         name: "costs_by_department_period",
         description:
-          "Eina determinista d'IMPUTACIÓ DE COSTOS per departament/centre i període. " +
-          "Filtra files per departmentContains (ex. logística, marketing, RH) i suma només columnes d'import que coincideixen amb period (YYYY-MM, 2026-Q1, T1 2026 o any). " +
+          "Eina determinista d'IMPUTACIÓ DE COSTOS per departament/centre i període (CSV c.explotació / carpeta costos). " +
+          "Filtra files per departmentContains (ex. logística, marketing, RH, compres) i suma només columnes d'import que coincideixen amb period (YYYY-MM, 2026-Q1, T1 2026 o any). " +
+          "Per «total de compres» o «import compres del mes» com a línia P&L / centre al mateix informe (no suma de factures SAP), usar departmentContains=compres. " +
           "Utilitza aquesta eina per preguntes tipus «cost total de logística al 2026-02» o comparatives on cal import exacte de cost intern. " +
-          "NO usar per compres de proveïdors (usa purchases_*).",
+          "Per línies de factura, proveïdor P###### o articles SAP, usar purchases_*.",
         parameters: {
           type: "object",
           properties: {
             departmentContains: {
               type: "string",
-              description: "Text de departament/centre a cercar dins label de l'informe (ex. logística, marketing, RH)."
+              description:
+                "Text de departament/centre a cercar dins label de l'informe (ex. logística, marketing, RH, compres per total P&L)."
             },
             period: {
               type: "string",
@@ -683,7 +685,7 @@ export function buildTools() {
       function: {
         name: "costs_imputation_overview",
         description:
-          "Vista del CSV d'IMPUTACIÓ DE COSTOS (cost salarial / P&L per centre o departament, NO compres). " +
+          "Vista del CSV d'IMPUTACIÓ DE COSTOS (cost salarial / P&L per centre o departament; inclou la fila o centre «compres» com a imputació, no factures SAP). " +
           "Retorna metaLines (períodes al PDF/Excel), amountColumns (cada label sol ser un període o concepte d'import) i les primeres N files amb tots els departaments/centres trobats. " +
           "CRIDA AQUESTA EINA PRIMER quan l'usuari demana variació de cost salarial per departament, comparativa entre trimestres (ex. T1 2025 vs T1 2026), P&L creuat, o no especifica cap departament. " +
           "No usar per quadrants de planificació d'serveis (comptar confirmats a logística, etc.): això és quadrants_dept_summary. " +
@@ -709,7 +711,7 @@ export function buildTools() {
           "Costos / imputació salarial filtrats per mot clau de centre o departament (mateix CSV que costs_imputation_overview). " +
           "Cerca amb contains (ex. marketing, rh). La resposta inclou amountColumns i rows[].valuesByColumn: usa label de capçalera per saber quin import és de quin període. " +
           "No confondre 'logística' com a centre de cost amb quadrants d'operació: per «quants quadrants confirmats a logística» usar quadrants_dept_summary amb department=logistica. " +
-          "Per preguntes globals o comparatives sense departament concret, cridar abans costs_imputation_overview. No confonguis amb purchases_search.",
+          "Per preguntes globals o comparatives sense departament concret, cridar abans costs_imputation_overview. Per total compres al P&L (c.explotació), contains=compres o costs_by_department_period. No confondre amb purchases_search (factures proveïdor).",
         parameters: {
           type: "object",
           properties: {

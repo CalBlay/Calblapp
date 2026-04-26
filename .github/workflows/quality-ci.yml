@@ -1,5 +1,6 @@
 name: Quality CI
 
+# El pipeline de qualitat (golden, drift, tests) viu a la carpeta calblay-mcp-server.
 on:
   pull_request:
     branches: [main, principal]
@@ -7,11 +8,16 @@ on:
     branches: [main, principal]
   workflow_dispatch:
 
+defaults:
+  run:
+    working-directory: calblay-mcp-server
+
 jobs:
   quality-pr-baseline:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       QUERY_PLANNER_TOOL_CHOICE: "1"
       QUERY_PLANNER_DETERMINISTIC_EXECUTOR: "1"
       QUERY_PLANNER_STRICT_CATALOG_EXECUTOR: "1"
@@ -32,6 +38,7 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
+          cache-dependency-path: calblay-mcp-server/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -46,6 +53,7 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       QUERY_PLANNER_TOOL_CHOICE: "1"
       QUERY_PLANNER_DETERMINISTIC_EXECUTOR: "1"
       QUERY_PLANNER_STRICT_CATALOG_EXECUTOR: "1"
@@ -69,6 +77,7 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
+          cache-dependency-path: calblay-mcp-server/package-lock.json
 
       - name: Install dependencies
         run: npm ci

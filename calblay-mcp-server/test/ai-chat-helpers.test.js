@@ -61,6 +61,20 @@ test("shouldForceCostDepartmentPeriod: true for subministraments + MM-YY", () =>
   );
 });
 
+test("shouldForceCostDepartmentPeriod: true for total compres + month (c.explotació / P&L)", () => {
+  assert.equal(
+    shouldForceCostDepartmentPeriod("Quin és el total de compres al gener de 2026?"),
+    true
+  );
+});
+
+test("shouldForceCostDepartmentPeriod: false when supplier invoice context", () => {
+  assert.equal(
+    shouldForceCostDepartmentPeriod("Total compres del proveïdor P003004 al gener de 2026"),
+    false
+  );
+});
+
 test("canExtractCostDepartmentPeriodSlots: true for subministraments + MM-YY", () => {
   assert.equal(
     canExtractCostDepartmentPeriodSlots("Quin cost en subministraments hem tingut el 03-26?"),

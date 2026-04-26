@@ -10,9 +10,31 @@ function enabled() {
   return String(process.env.ML_LEARNING_ENABLED || "1").toLowerCase() !== "0";
 }
 
-/** Persistència estable per Cloud Run / producció: escriu també a Firestore (recomanat amb Vercel + app). */
+/**
+ * Escriure traces/feedback també a Firestore (col·leccions mcp_ml_*).
+ * - ML_LEARNING_USE_FIRESTORE=1|true|on → sí
+ * - ML_LEARNING_USE_FIRESTORE=0|false|off → no
+ * - Sense definir: sí si hi ha credencials Firebase Admin (mateixes que la resta del MCP);
+ *   així Cloud Run amb FIREBASE_* crea la col·lecció sense pas manual d’env extra.
+ */
+export function isMlLearningFirestoreSinkEnabled() {
+  const raw = String(process.env.ML_LEARNING_USE_FIRESTORE ?? "").trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") return false;
+  if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") return true;
+  const projectId = String(
+    process.env.FIREBASE_PROJECT_ID || process.env.ID_PROJECTE_FIREBASE || ""
+  ).trim();
+  const clientEmail = String(
+    process.env.FIREBASE_CLIENT_EMAIL || process.env.CORREU_ELECTRONIC_DE_CLIENT_DE_FIREBASE || ""
+  ).trim();
+  const privateKey = String(
+    process.env.FIREBASE_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_CLAU || ""
+  ).trim();
+  return Boolean(projectId && clientEmail && privateKey);
+}
+
 function firestoreLearningEnabled() {
-  return String(process.env.ML_LEARNING_USE_FIRESTORE || "").toLowerCase() === "1";
+  return isMlLearningFirestoreSinkEnabled();
 }
 
 function tracesFirestoreCollection() {

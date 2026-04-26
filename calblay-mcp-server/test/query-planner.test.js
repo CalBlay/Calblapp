@@ -22,6 +22,16 @@ test("query planner: subministraments cost question", () => {
   assert.equal(plan.slots.departmentContains, "subministr");
 });
 
+test("query planner: total compres uses cost_compres_month and c.explotació executor", () => {
+  const plan = buildQueryPlan({
+    question: "Quin és el total de compres al gener de 2026?",
+    currentYear: 2026
+  });
+  assert.equal(plan.metricId, "cost_compres_month");
+  assert.equal(plan.executor, "costs_by_department_period");
+  assert.equal(plan.slots.departmentContains, "compres");
+});
+
 test("query planner: unknown question gives catalog miss", () => {
   const plan = buildQueryPlan({
     question: "Quin és el millor restaurant del món?",

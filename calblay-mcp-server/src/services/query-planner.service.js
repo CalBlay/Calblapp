@@ -48,9 +48,10 @@ export function buildQueryPlan({ question, currentYear = new Date().getFullYear(
     .toLowerCase();
   const asksHeadcount = /\b(quants?|cuantos?|nombre|numero|total)\b/.test(qNorm);
   const asksPeople = /\b(personal|treballadors?|empleats?|staff)\b/.test(qNorm);
-  const asksCostLike = /\b(cost|submin\w*|sumin\w*|personal|rh|rrhh|imputaci|cexplotaci|c\.?\s*explotaci)\b/.test(
-    qNorm
-  );
+  const asksCostLike =
+    /\b(cost|submin\w*|sumin\w*|personal|rh|rrhh|imputaci|cexplotaci|c\.?\s*explotaci)\b/.test(qNorm) ||
+    (/\b(compres|compras)\b/.test(qNorm) &&
+      !/\b(proveidor|proveedor|factur|P\d{4,})\b/i.test(qNorm));
   const plan = {
     plannerVersion: "v1",
     question: q,
@@ -137,7 +138,12 @@ export function buildQueryPlan({ question, currentYear = new Date().getFullYear(
       normalizedDept === "rh" ||
       normalizedDept === "personal" ||
       /\b(cost.*personal|personal.*cost|cost de personal)\b/.test(qNorm);
-    plan.metricId = isPersonalCost ? "cost_personal_month" : "cost_subministraments_month";
+    const isCompresDept = normalizedDept === "compres";
+    plan.metricId = isPersonalCost
+      ? "cost_personal_month"
+      : isCompresDept
+        ? "cost_compres_month"
+        : "cost_subministraments_month";
     plan.executor = "costs_by_department_period";
     plan.confidence = "medium";
     plan.slots = {

@@ -21,6 +21,7 @@ if (!isProduction) {
 dotenv.config({ path: path.join(projectRoot, ".env"), override: true });
 import express from "express";
 import { requestLog } from "./middleware/request-log.js";
+import { isMlLearningFirestoreSinkEnabled } from "./services/ml-learning.service.js";
 
 process.on("uncaughtException", (err) => {
   console.error("[fatal] uncaughtException", err);
@@ -83,6 +84,20 @@ if (!canonicalDictionary.ok) {
     `[startup] Canonical dictionary loaded from "${canonicalDictionary.dir}" (${canonicalDictionary.missingFiles.length} missing)`
   );
 }
+
+const mlLearningOn = String(process.env.ML_LEARNING_ENABLED || "1").toLowerCase() !== "0";
+const mlFirestoreSink = isMlLearningFirestoreSinkEnabled();
+const mlFsExplicit = String(process.env.ML_LEARNING_USE_FIRESTORE ?? "").trim();
+console.log(
+  `[startup] ML learning traces: enabled=${mlLearningOn}, firestore_sink=${mlFirestoreSink}` +
+    (mlFirestoreSink ? " (col·leccions mcp_ml_traces / mcp_ml_feedback)" : "") +
+    (mlLearningOn && !mlFsExplicit
+      ? " [firestore_sink=auto: credencials Firebase]"
+      : mlFsExplicit
+        ? ` [ML_LEARNING_USE_FIRESTORE=${mlFsExplicit}]`
+        : "")
+);
+
 /** Darrere de Cloud Run / balancejador: X-Forwarded-* fiables. Desactiva amb TRUST_PROXY=0. */
 if (String(process.env.TRUST_PROXY || "1").toLowerCase() !== "0") {
   app.set("trust proxy", 1);

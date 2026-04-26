@@ -59,6 +59,34 @@
       "active": true
     },
     {
+      "metricId": "cost_compres_month",
+      "domain": "finance_costs",
+      "sourceOfTruth": {
+        "system": "csv_finances",
+        "kind": "costos",
+        "dataset": "c_explotacio"
+      },
+      "slotSchema": ["period"],
+      "normalization": {
+        "categoryCanonical": "compres",
+        "synonyms": ["compras", "total compres", "import compres"]
+      },
+      "calculationRule": {
+        "executor": "costs_by_department_period",
+        "departmentContains": "compres",
+        "periodFormat": "YYYY-MM",
+        "aggregation": "preferred_total_column"
+      },
+      "outputContract": {
+        "unit": "EUR",
+        "confidence": "high",
+        "includeSource": true,
+        "includeTrace": true
+      },
+      "owner": "Finances+IT",
+      "active": true
+    },
+    {
       "metricId": "preventius_planned_count_day",
       "domain": "maintenance",
       "sourceOfTruth": {

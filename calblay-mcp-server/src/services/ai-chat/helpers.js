@@ -42,16 +42,28 @@ export function shouldForceCostDepartmentPeriod(question) {
     .replace(/\p{M}/gu, "")
     .toLowerCase();
 
-  // Evita falsos positius en preguntes de compres/proveïdors.
-  if (/\b(compres?|proveidor|factura|p\d{4,})\b/.test(s)) return false;
+  // Compres a nivell de factura SAP / proveïdor: no forçar el CSV d'imputació (c.explotació).
+  if (
+    /\b(proveidor|proveedor)\b/.test(s) ||
+    /\bfactur(a|es|aci|aci[oó])\b/.test(s) ||
+    /\bP\d{4,}\b/i.test(raw) ||
+    /\bm\d{6,}\b/i.test(s) ||
+    /\b(article|més comprat|mes comprat|top\s+\d+\s+articles?|l[ií]nies?\s+de\s+compra)\b/.test(s)
+  ) {
+    return false;
+  }
 
   const costLike =
     /\b(cost|imputaci|salar|nomina|n[oó]mina|p\s*[\&\u0026]\s*l|p&l|submin\w*|sumin\w*|cexplotaci|c\.?\s*explotaci)\b/i.test(
       s
     ) ||
     /\bcost\s+total\b/i.test(s);
+
+  /** Total o import de «compres» com a fila/centre al P&L (c.explotació), no suma de línies SAP. */
+  const imputacioCompresLike = /\b(compres|compras)\b/.test(s);
+
   const deptLike =
-    /\b(departament|centre|logistica|rh|rrhh|recursos humans|marketing|cuina|sala|operativa|personal|submin\w*|sumin\w*)\b/i.test(
+    /\b(departament|centre|logistica|rh|rrhh|recursos humans|marketing|cuina|sala|operativa|personal|submin\w*|sumin\w*|compres|compras)\b/i.test(
       s
     );
   const periodLike =
@@ -61,7 +73,7 @@ export function shouldForceCostDepartmentPeriod(question) {
     /\b(t|q)\s*[1-4]\b/i.test(s) ||
     /\btrimestre\b/i.test(s);
 
-  return costLike && deptLike && periodLike;
+  return (costLike || imputacioCompresLike) && deptLike && periodLike;
 }
 
 /**
@@ -153,6 +165,7 @@ export function normalizeCostDepartmentContains(rawValue) {
   if (/\bpersonal\b/.test(s)) return "personal";
   if (/\blogist/.test(s)) return "logistica";
   if (/\brrhh|\brh\b|recursos humans|recursos humanos/.test(s)) return "rh";
+  if (/\bcompras\b/.test(s)) return "compres";
   return s;
 }
 
