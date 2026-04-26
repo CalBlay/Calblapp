@@ -127,6 +127,90 @@ function OpenChatAnswerCardInner({
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900">
           {openAnswer.text || '—'}
         </p>
+        {openAnswer.traceId ? (
+          <div
+            id="consultes-mcp-feedback"
+            className="rounded-md border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-sm shadow-sm"
+          >
+            <p className="mb-2 text-xs font-semibold text-amber-950">
+              La resposta és correcta? (opcional, per millorar el sistema)
+            </p>
+            <p className="mb-2 text-[11px] text-amber-900/90">
+              Prem <strong>No útil</strong> si la dada o el raonament són erronis, i si vols escriu la{' '}
+              <strong>resposta correcta</strong> o una nota. S&apos;enregistra al MCP (Firestore) amb
+              la traça <span className="font-mono text-[10px]">{openAnswer.traceId}</span>.
+            </p>
+            <div className="mb-3 space-y-2">
+              <label className="block text-xs text-slate-600" htmlFor="mcp-feedback-note">
+                Nota o context
+              </label>
+              <textarea
+                id="mcp-feedback-note"
+                value={feedbackNote}
+                onChange={(e) => setFeedbackNote(e.target.value)}
+                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                rows={2}
+                className="w-full resize-y rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 disabled:opacity-50"
+                placeholder="Ex.: esperava la mètrica X, o el període Y"
+              />
+              <label className="block text-xs text-slate-600" htmlFor="mcp-feedback-corrected">
+                Resposta correcta (si la saps)
+              </label>
+              <textarea
+                id="mcp-feedback-corrected"
+                value={feedbackCorrected}
+                onChange={(e) => setFeedbackCorrected(e.target.value)}
+                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                rows={2}
+                className="w-full resize-y rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 disabled:opacity-50"
+                placeholder="Opcional; s’usa com a objectiu d’entrenament al dataset ETL"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                onClick={() => void sendFeedback(true)}
+                className="rounded-md border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:opacity-50"
+              >
+                Útil
+              </button>
+              <button
+                type="button"
+                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
+                onClick={() => void sendFeedback(false)}
+                className="rounded-md border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm hover:bg-rose-50 disabled:opacity-50"
+              >
+                No útil — resposta incorrecta
+              </button>
+              {feedbackState === 'sending' ? (
+                <span className="text-xs text-muted-foreground">Enviant…</span>
+              ) : null}
+            </div>
+            {feedbackMsg ? (
+              <p
+                className={`mt-2 text-xs ${feedbackState === 'error' ? 'text-rose-700' : 'text-emerald-800'}`}
+              >
+                {feedbackMsg}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div
+            id="consultes-mcp-feedback"
+            className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+          >
+            <p className="font-medium text-slate-800">Valoració de la resposta</p>
+            <p className="mt-1 leading-snug">
+              Aquesta pantalla no ha rebut l&apos;identificador de traça del servidor (<code className="text-[10px]">traceId</code>),
+              així que ara mateix <strong>no es pot</strong> enviar &quot;no útil&quot; des del navegador. Prova: recarregar la
+              pàgina amb <kbd className="rounded border bg-white px-1">Ctrl</kbd>+<kbd className="rounded border bg-white px-1">F5</kbd>,
+              tornar a enviar la consulta, o demanar que es desplegui de nou l&apos;app (Vercel) i el MCP amb respostes que incloguin{' '}
+              <code className="text-[10px]">traceId</code>. A la capçalera de la resposta hauria d&apos;aparèixer la línia{' '}
+              <span className="font-mono text-[10px]">Trace: …</span>.
+            </p>
+          </div>
+        )}
         {openAnswer.report?.kpis?.length ? (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -229,67 +313,6 @@ function OpenChatAnswerCardInner({
             <div className="h-[300px] w-full min-w-0">
               <OpenChatReportChartLazy chart={chart} />
             </div>
-          </div>
-        ) : null}
-        {openAnswer.traceId ? (
-          <div className="rounded-md border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm">
-            <p className="mb-2 text-xs font-medium text-slate-600">
-              Avaluació per millorar el sistema (opcional)
-            </p>
-            <div className="mb-3 space-y-2">
-              <label className="block text-xs text-slate-600" htmlFor="mcp-feedback-note">
-                Nota o context
-              </label>
-              <textarea
-                id="mcp-feedback-note"
-                value={feedbackNote}
-                onChange={(e) => setFeedbackNote(e.target.value)}
-                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
-                rows={2}
-                className="w-full resize-y rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 disabled:opacity-50"
-                placeholder="Ex.: esperava la mètrica X, o el període Y"
-              />
-              <label className="block text-xs text-slate-600" htmlFor="mcp-feedback-corrected">
-                Resposta correcta (si la saps)
-              </label>
-              <textarea
-                id="mcp-feedback-corrected"
-                value={feedbackCorrected}
-                onChange={(e) => setFeedbackCorrected(e.target.value)}
-                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
-                rows={2}
-                className="w-full resize-y rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 disabled:opacity-50"
-                placeholder="Opcional; s’usa com a objectiu d’entrenament al dataset ETL"
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
-                onClick={() => void sendFeedback(true)}
-                className="rounded-md border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:opacity-50"
-              >
-                Útil
-              </button>
-              <button
-                type="button"
-                disabled={feedbackState === 'sending' || feedbackState === 'sent'}
-                onClick={() => void sendFeedback(false)}
-                className="rounded-md border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-800 shadow-sm hover:bg-rose-50 disabled:opacity-50"
-              >
-                No útil
-              </button>
-              {feedbackState === 'sending' ? (
-                <span className="text-xs text-muted-foreground">Enviant…</span>
-              ) : null}
-            </div>
-            {feedbackMsg ? (
-              <p
-                className={`mt-2 text-xs ${feedbackState === 'error' ? 'text-rose-700' : 'text-emerald-800'}`}
-              >
-                {feedbackMsg}
-              </p>
-            ) : null}
           </div>
         ) : null}
       </CardContent>

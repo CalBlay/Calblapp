@@ -146,6 +146,7 @@ export function useConsultesMcpPage() {
         cached?: boolean
         report?: unknown
         traceId?: string
+        result?: { traceId?: string }
         toolChoiceSource?: string
         error?: string
         hint?: string
@@ -156,6 +157,10 @@ export function useConsultesMcpPage() {
         setOpenError(mcpErrorFromApi(data, res.status))
         return
       }
+      const fromTop = typeof data.traceId === 'string' ? data.traceId.trim() : ''
+      const fromNested =
+        typeof data.result?.traceId === 'string' ? data.result.traceId.trim() : ''
+      const traceIdRaw = fromTop || fromNested
       const answer: OpenChatAnswer = {
         text: String(data.answer ?? ''),
         model: data.model,
@@ -163,7 +168,7 @@ export function useConsultesMcpPage() {
           typeof data.toolCallsUsed === 'number' ? data.toolCallsUsed : undefined,
         cached: data.cached === true,
         report: openRich ? coerceChatReport(data.report) : null,
-        traceId: typeof data.traceId === 'string' && data.traceId.trim() ? data.traceId.trim() : undefined,
+        traceId: traceIdRaw || undefined,
         toolChoiceSource:
           typeof data.toolChoiceSource === 'string' && data.toolChoiceSource.trim()
             ? data.toolChoiceSource.trim()
