@@ -10,6 +10,7 @@ export type User = {
   isAdmin?: boolean
   department: string
   departmentLower?: string
+  commercialName?: string
   email?: string
   phone?: string
   available?: boolean
@@ -56,6 +57,7 @@ export function useUsers() {
       role:       data.role,
       isAdmin:    data.isAdmin,
       department: data.department,
+      commercialName: data.commercialName,
       email:      data.email,
       phone:      data.phone,
       available:  data.available,

@@ -167,6 +167,7 @@ export default function AuditoriaValoracioDetailPage() {
   const currentNavIndex = navIds.findIndex((id) => id === executionId)
   const prevId = currentNavIndex > 0 ? navIds[currentNavIndex - 1] : null
   const nextId = currentNavIndex >= 0 && currentNavIndex < navIds.length - 1 ? navIds[currentNavIndex + 1] : null
+  const auditNotes = String(detail?.notes || '').trim()
 
   const allItemsChecked = useMemo(() => {
     const blocks = Array.isArray(detail?.templateBlocks) ? detail.templateBlocks : []
@@ -300,6 +301,13 @@ export default function AuditoriaValoracioDetailPage() {
                   </div>
                 </div>
               </header>
+
+              {auditNotes && (
+                <section className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <h3 className="text-sm font-semibold text-amber-950">Notes de l'auditoria</h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-amber-950">{auditNotes}</p>
+                </section>
+              )}
 
               {(detail.templateBlocks || []).map((block, bIdx) => {
                 const blockId = String(block.id || `b-${bIdx + 1}`)

@@ -6,6 +6,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { registerAuditAnswersInIndex } from '@/lib/media/storageMediaIndex'
+import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
 type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 type IncidentOutcome = 'none' | 'reported'
@@ -66,7 +67,7 @@ async function getAuthContext() {
 
   if (!user?.id) return { error: NextResponse.json({ error: 'No autenticat' }, { status: 401 }) }
   const role = normalizeRole(user.role || '')
-  const normalizedSessionDept = normalizeDept(user.department || '')
+  const normalizedSessionDept = resolveAuditDepartmentForUser(user.department || '')
   const department = role === 'comercial' ? 'comercial' : normalizedSessionDept
   return { user, role, department }
 }
@@ -272,6 +273,7 @@ export async function POST(req: Request) {
           savedAt: now,
           savedById: auth.user.id,
           savedByName: auth.user.name || auth.user.email || 'Usuari',
+          savedByDepartment: auth.user.department || null,
         },
         { merge: true }
       )
@@ -301,6 +303,7 @@ export async function POST(req: Request) {
         completedAt: now,
         completedById: auth.user.id,
         completedByName: auth.user.name || auth.user.email || 'Usuari',
+        completedByDepartment: auth.user.department || null,
       },
       { merge: true }
     )

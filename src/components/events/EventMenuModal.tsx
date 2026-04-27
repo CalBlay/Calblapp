@@ -286,7 +286,7 @@ const treballadorsPersons =
 
 
 
-  const canSeeIncidents = isAdmin || isDireccio || isCapDept
+  const canSeeIncidents = isAdmin || isDireccio || isCapDept || roleN === 'comercial'
   const canSeeKitchenDocs = isAdmin || isDireccio || isCuina
 
   const canCreateIncident =

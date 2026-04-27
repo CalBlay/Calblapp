@@ -15,12 +15,13 @@ export type FiltersState = {
   dateMode?: 'all' | 'planned' | 'created' | 'updated' | 'completed'
   ln?: string
   responsable?: string
+  commercial?: string
   location?: string
   status?: string
   priority?: string
 }
 
-type FilterKey = 'ln' | 'responsable' | 'location'
+type FilterKey = 'ln' | 'responsable' | 'commercial' | 'location'
 
 export type FiltersBarProps = {
   id?: string
@@ -31,6 +32,7 @@ export type FiltersBarProps = {
   hiddenFilters?: FilterKey[]
   lnOptions?: string[]
   responsables?: string[]
+  commercials?: string[]
   locations?: string[]
   collapseOnMobile?: boolean
   statusOptions?: { value: string; label: string }[]
@@ -47,6 +49,7 @@ export default function FiltersBar({
   hiddenFilters = ['ln', 'responsable', 'location'],
   lnOptions = [],
   responsables = [],
+  commercials = [],
   locations = [],
   collapseOnMobile = false,
   statusOptions = [],
@@ -103,6 +106,21 @@ export default function FiltersBar({
           >
             <option value="__all__">Resp: Tots</option>
             {responsables.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {visibleFilters.includes('commercial') && (
+          <select
+            className={`${base} w-[180px]`}
+            value={filters.commercial ?? '__all__'}
+            onChange={(e) => setFilters({ commercial: e.target.value })}
+          >
+            <option value="__all__">Comercial: Tots</option>
+            {commercials.map((o) => (
               <option key={o} value={o}>
                 {o}
               </option>
@@ -234,6 +252,24 @@ export default function FiltersBar({
                   </div>
                 )}
 
+                {commercials && commercials.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-sm text-gray-600">Comercial</label>
+                    <select
+                      className="h-10 rounded-xl border bg-white px-3"
+                      value={filters.commercial ?? '__all__'}
+                      onChange={(e) => setFilters({ commercial: e.target.value })}
+                    >
+                      <option value="__all__">Tots</option>
+                      {commercials.map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {locations && locations.length > 0 && (
                   <div className="flex flex-col gap-1">
                     <label className="text-sm text-gray-600">Ubicació</label>
@@ -262,6 +298,7 @@ export default function FiltersBar({
                       mode: 'week',
                       ln: undefined,
                       responsable: undefined,
+                      commercial: undefined,
                       location: undefined,
                       status: undefined,
                       priority: undefined,

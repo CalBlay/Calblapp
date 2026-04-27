@@ -45,8 +45,9 @@ export default function CreateIncidentModal({
   const { data: session } = useSession()
   const userName = session?.user?.name ?? session?.user?.email ?? 'Desconegut'
   const userDepartmentRaw = session?.user?.department ?? ''
-  const normalizedUserDepartment = userDepartmentRaw.trim() || INCIDENT_ORIGIN_DEPARTMENTS[0]
   const normalizedUserRole = (session?.user?.role ?? '').toLowerCase().trim()
+  const normalizedUserDepartment =
+    normalizedUserRole === 'comercial' ? 'Comercial' : userDepartmentRaw.trim() || INCIDENT_ORIGIN_DEPARTMENTS[0]
   const canPickDepartment = ['admin', 'direccio'].includes(normalizedUserRole)
 
   const [department, setDepartment] = useState(normalizedUserDepartment)

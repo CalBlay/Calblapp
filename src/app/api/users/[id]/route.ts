@@ -29,6 +29,8 @@ interface UserUpdate {
   isAdmin?: boolean
   department?: string
   departmentLower?: string
+  commercialName?: string
+  commercialNameFold?: string
   opsEventsConfigurable?: boolean
   opsEventsEnabled?: boolean
   opsProjectsConfigurable?: boolean
@@ -121,6 +123,11 @@ export async function PUT(
     if (typeof rawUpdate.name === 'string') {
       rawUpdate.name = rawUpdate.name.trim()
       rawUpdate.nameFold = normLower(rawUpdate.name)
+    }
+
+    if (typeof rawUpdate.commercialName === 'string') {
+      rawUpdate.commercialName = rawUpdate.commercialName.trim()
+      rawUpdate.commercialNameFold = rawUpdate.commercialName ? normLower(rawUpdate.commercialName) : ''
     }
 
     // 🔹 Si NO és treballador → netegem camps específics de torns

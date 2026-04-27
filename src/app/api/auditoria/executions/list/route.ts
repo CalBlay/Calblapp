@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { normalizeCommercialAuditGroup, resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
 type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 
@@ -23,6 +24,19 @@ function normalizeDept(raw?: string): Department | null {
   return null
 }
 
+async function loadCommercialUserIdsForGroup(group: string) {
+  const snap = await firestoreAdmin.collection('users').get()
+  const ids = new Set<string>()
+  snap.docs.forEach((doc) => {
+    const data = doc.data() as Record<string, unknown>
+    const role = normalizeRole(String(data.role || ''))
+    if (role !== 'comercial') return
+    const dept = normalizeCommercialAuditGroup(String(data.departmentLower || data.department || ''))
+    if (dept === group) ids.add(doc.id)
+  })
+  return ids
+}
+
 export async function GET(req: Request) {
   const startedAt = Date.now()
   try {
@@ -31,7 +45,8 @@ export async function GET(req: Request) {
     if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
 
     const role = normalizeRole(user.role || '')
-    const userDept = normalizeDept(user.department || '')
+    const userDept = resolveAuditDepartmentForUser(user.department || '')
+    const commercialGroup = normalizeCommercialAuditGroup(user.department || '')
 
     const { searchParams } = new URL(req.url)
     const status = String(searchParams.get('status') || '').trim().toLowerCase()
@@ -82,6 +97,8 @@ export async function GET(req: Request) {
         incidentIds: Array.isArray(data.incidentIds) ? data.incidentIds : [],
         status: String(data.status || ''),
         completedAt: Number(data.completedAt || 0),
+        completedById: String(data.completedById || ''),
+        completedByDepartment: String(data.completedByDepartment || ''),
         completedByName: String(data.completedByName || ''),
         reviewedAt: Number(data.reviewedAt || 0),
         reviewedByName: String(data.reviewedByName || ''),
@@ -116,6 +133,9 @@ export async function GET(req: Request) {
       }
     }
 
+    const allowedCommercialUserIds =
+      role === 'cap' && commercialGroup ? await loadCommercialUserIdsForGroup(commercialGroup) : null
+
     const filteredRows = rawRows.filter((row) => {
       if (status && row.status !== status) return false
       if (department && row.department !== department) return false
@@ -123,6 +143,10 @@ export async function GET(req: Request) {
       if (fromTs > 0 && row.completedAt < fromTs) return false
       if (toTs > 0 && row.completedAt > toTs) return false
       if (cursorTs > 0 && row.completedAt >= cursorTs) return false
+      if (allowedCommercialUserIds) {
+        const rowGroup = normalizeCommercialAuditGroup(row.completedByDepartment || '')
+        if (rowGroup !== commercialGroup && !allowedCommercialUserIds.has(row.completedById)) return false
+      }
       if (!q) return true
       const text = `${row.eventId} ${row.eventSummary} ${row.department} ${row.templateName} ${row.completedByName} ${row.status}`.toLowerCase()
       return text.includes(q)

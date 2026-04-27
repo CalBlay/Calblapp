@@ -15,6 +15,7 @@ declare module "next-auth" {
       isAdmin?: boolean
       department?: string
       deptLower?: string
+      commercialName?: string
     } & DefaultSession["user"]
   }
 }
@@ -27,6 +28,7 @@ declare module "next-auth/jwt" {
     isAdmin?: boolean
     department?: string
     deptLower?: string
+    commercialName?: string
   }
 }
 

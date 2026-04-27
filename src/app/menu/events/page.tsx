@@ -40,12 +40,14 @@ const normalize = (s?: string | null) =>
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
+    .replace(/\s+/g, ' ')
 
 type SessionUser = {
   id?: string
   role?: string
   department?: string
   name?: string
+  commercialName?: string
 }
 
 type LnKey = 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
@@ -148,13 +150,17 @@ export default function EventsPage() {
 
   if (filters.responsable && filters.responsable !== '__all__') {
     filteredEvents = filteredEvents.filter(ev => {
-      const evResps = [ev.responsableName || '', String(ev.commercial || '')]
+      const evResps = [ev.responsableName || '']
         .join(',')
         .split(',')
         .map(r => normalize(r))
         .filter(Boolean)
       return evResps.includes(normalize(filters.responsable))
     })
+  }
+
+  if (filters.commercial && filters.commercial !== '__all__') {
+    filteredEvents = filteredEvents.filter(ev => normalize(ev.commercial) === normalize(filters.commercial))
   }
 
   if (filters.location && filters.location !== '__all__') {
@@ -251,9 +257,10 @@ export default function EventsPage() {
   useEffect(() => {
     if (commercialFilterInitialized) return
     if (role !== 'comercial') return
-    const userName = String((session?.user as SessionUser)?.name || '').trim()
-    if (!userName) return
-    setFilters((prev) => ({ ...prev, responsable: userName }))
+    const user = session?.user as SessionUser | undefined
+    const commercialName = String(user?.commercialName || user?.name || '').trim()
+    if (!commercialName) return
+    setFilters((prev) => ({ ...prev, commercial: commercialName }))
     setCommercialFilterInitialized(true)
   }, [commercialFilterInitialized, role, session?.user])
 
@@ -350,6 +357,13 @@ export default function EventsPage() {
           )
         ).sort()}
         responsables={responsablesDetailed?.map(r => r.name).filter(Boolean) ?? []}
+        commercials={Array.from(
+          new Set(
+            events
+              .map(e => e.commercial)
+              .filter((value): value is string => Boolean(value))
+          )
+        ).sort((a, b) => a.localeCompare(b))}
         locations={Array.from(
           new Set(
             filteredEvents

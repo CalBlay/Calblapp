@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin, storageAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { normalizeCommercialAuditGroup, resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
 type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 
@@ -187,13 +188,28 @@ async function authContext() {
 
   if (!user?.id) return { error: NextResponse.json({ error: 'No autenticat' }, { status: 401 }) }
   const role = normalizeRole(user.role || '')
-  const department = normalizeDept(user.department || '')
+  const department = resolveAuditDepartmentForUser(user.department || '')
+  const commercialGroup = normalizeCommercialAuditGroup(user.department || '')
 
   if (!['admin', 'direccio', 'cap'].includes(role)) {
     return { error: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
   }
 
-  return { user, role, department }
+  return { user, role, department, commercialGroup }
+}
+
+async function commercialRunBelongsToGroup(run: Record<string, unknown>, group: string | null) {
+  if (!group) return false
+  const storedGroup = normalizeCommercialAuditGroup(String(run.completedByDepartment || run.savedByDepartment || ''))
+  if (storedGroup === group) return true
+
+  const completedById = String(run.completedById || run.savedById || '').trim()
+  if (!completedById) return false
+  const userSnap = await firestoreAdmin.collection('users').doc(completedById).get()
+  if (!userSnap.exists) return false
+  const data = userSnap.data() as Record<string, unknown>
+  const userGroup = normalizeCommercialAuditGroup(String(data.departmentLower || data.department || ''))
+  return userGroup === group
 }
 
 export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -211,6 +227,10 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
 
     if (auth.role === 'cap' && (!runDepartment || auth.department !== runDepartment)) {
       return NextResponse.json({ error: 'Sense permisos per aquest departament' }, { status: 403 })
+    }
+    if (auth.role === 'cap' && runDepartment === 'comercial' && auth.commercialGroup) {
+      const allowed = await commercialRunBelongsToGroup(run, auth.commercialGroup)
+      if (!allowed) return NextResponse.json({ error: 'Sense permisos sobre aquest comercial' }, { status: 403 })
     }
 
     const templateBlocks = await getTemplateBlocksForRun(run)
@@ -266,6 +286,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const runDepartment = normalizeDept(String(run.department || ''))
     if (auth.role === 'cap' && (!runDepartment || auth.department !== runDepartment)) {
       return NextResponse.json({ error: 'Sense permisos per aquest departament' }, { status: 403 })
+    }
+    if (auth.role === 'cap' && runDepartment === 'comercial' && auth.commercialGroup) {
+      const allowed = await commercialRunBelongsToGroup(run, auth.commercialGroup)
+      if (!allowed) return NextResponse.json({ error: 'Sense permisos sobre aquest comercial' }, { status: 403 })
     }
 
     if (action === 'reopen') {

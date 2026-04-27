@@ -24,6 +24,7 @@ export interface AppUser {
   role: string
   isAdmin?: boolean
   department: string
+  commercialName?: string
   phone?: string
   email?: string
   opsChannelsConfigurable?: string[]
@@ -240,6 +241,7 @@ function UsersPage() {
             role: modalUser.role,
             isAdmin: modalUser.isAdmin ?? false,
             department: modalUser.department,
+            commercialName: modalUser.commercialName ?? '',
             phone: modalUser.phone ?? '',
             email: modalUser.email ?? '',
             available: modalUser.available ?? true,

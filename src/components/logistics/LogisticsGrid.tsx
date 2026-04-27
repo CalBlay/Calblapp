@@ -7,6 +7,7 @@ import { format, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
 import { RefreshCcw, CalendarClock } from 'lucide-react'
 import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilters'
+import { formatDayMonthValue } from '@/lib/date-format'
 
 export type EditedMap = Record<string, { PreparacioData?: string; PreparacioHora?: string }>
 
@@ -26,9 +27,8 @@ interface LogisticsGridProps {
 
 function fmtDM(dateIsoOrEmpty: string) {
   if (!dateIsoOrEmpty) return ''
-  const d = new Date(dateIsoOrEmpty)
-  if (isNaN(d.getTime())) return ''
-  return format(d, 'dd/MM', { locale: ca })
+  const formatted = formatDayMonthValue(dateIsoOrEmpty, '')
+  return formatted === '-' ? '' : formatted
 }
 
 export default function LogisticsGrid({
@@ -173,9 +173,7 @@ function WorkerGroupedView({ events, loading }: { events: any[]; loading: boolea
                       {ev.PreparacioHora || '--:--'}
                     </div>
                     <div className="text-xs text-slate-500">
-                      {ev.DataInici
-                        ? format(new Date(ev.DataInici), 'dd/LL/yy', { locale: ca })
-                        : '--/--/--'}
+                      {ev.DataInici ? formatDayMonthValue(ev.DataInici, '--/--') : '--/--'}
                     </div>
                   </div>
 
@@ -217,7 +215,7 @@ function WorkerGroupedView({ events, loading }: { events: any[]; loading: boolea
                       <td className="px-3 py-2 text-slate-700">{ev.NumPax ?? '--'}</td>
                       <td className="px-3 py-2 text-slate-700">{ev.Ubicacio || 'Sense ubicació'}</td>
                       <td className="px-3 py-2 text-slate-700">
-                        {ev.DataInici ? format(new Date(ev.DataInici), 'dd/MM', { locale: ca }) : '--/--/--'}
+                        {ev.DataInici ? formatDayMonthValue(ev.DataInici, '--/--') : '--/--'}
                       </td>
                     </tr>
                   ))}
@@ -320,7 +318,7 @@ function EditableTable({
                   <td className="p-2">{ev.NumPax ?? '-'}</td>
                   <td className="p-2">{ev.Ubicacio}</td>
                   <td className="p-2">
-                    {format(new Date(ev.DataInici), 'dd/MM', { locale: ca })}
+                    {formatDayMonthValue(ev.DataInici, '--/--')}
                   </td>
                 </tr>
               )

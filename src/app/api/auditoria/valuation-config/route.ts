@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
 type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 
@@ -65,7 +66,7 @@ async function authContext() {
   if (!user?.id) return { error: NextResponse.json({ error: 'No autenticat' }, { status: 401 }) }
 
   const role = normalizeRole(user.role || '')
-  const department = normalizeDept(user.department || '')
+  const department = resolveAuditDepartmentForUser(user.department || '')
 
   if (!['admin', 'direccio', 'cap'].includes(role)) {
     return { error: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }

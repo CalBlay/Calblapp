@@ -30,6 +30,8 @@ interface UserPayload {
   isAdmin?: boolean
   department: string
   departmentLower: string
+  commercialName?: string
+  commercialNameFold?: string
   email: string | null
   phone: string | null
   opsEventsConfigurable?: boolean
@@ -85,6 +87,7 @@ export async function POST(req: Request) {
       role?: string
       isAdmin?: boolean
       department?: string
+      commercialName?: string
       email?: string
       phone?: string
       opsEventsConfigurable?: boolean
@@ -104,6 +107,7 @@ export async function POST(req: Request) {
       role = '',
       isAdmin = false,
       department = '',
+      commercialName = '',
       email = '',
       phone = '',
       opsEventsConfigurable = false,
@@ -132,6 +136,8 @@ export async function POST(req: Request) {
       isAdmin: Boolean(isAdmin || normalizeRole(role) === 'admin'),
       department: department.trim(),
       departmentLower: normLower(department),
+      commercialName: commercialName.trim() || undefined,
+      commercialNameFold: commercialName.trim() ? normLower(commercialName) : undefined,
       email: email.trim() || null,
       phone: phone.trim() || null,
       opsEventsConfigurable: Boolean(opsEventsConfigurable),

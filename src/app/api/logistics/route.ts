@@ -45,6 +45,12 @@ const parseDateOnly = (value: string) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+const formatEventName = (value?: string | null) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  return raw.split('/')[0].trim()
+}
+
 const normalizeDataInici = (value: unknown) => {
   if (!value) return ''
 
@@ -165,7 +171,7 @@ export async function GET(req: NextRequest) {
 
       events.push({
         id: doc.id,
-        NomEvent: ev.NomEvent ?? ev.eventName ?? '',
+        NomEvent: formatEventName(ev.NomEvent ?? ev.eventName ?? ''),
         Ubicacio: ev.Ubicacio ?? ev.finca ?? '',
         NumPax: Number(ev.NumPax ?? ev.numPax ?? ev.Pax ?? 0) || 0,
         DataInici: dataIniciIso,

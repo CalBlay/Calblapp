@@ -12,6 +12,7 @@ import FloatingAddButton from '@/components/ui/floating-add-button'
 import { useAuditTemplates } from '@/hooks/auditoria/useAuditTemplates'
 import type { AuditDepartment, AuditTemplatePreview } from '@/types/auditoria'
 import { normalizeRole } from '@/lib/roles'
+import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
 const DEFAULT_TEMPLATE_NAME = 'Escriure nom de la nova plantilla'
 
@@ -31,21 +32,6 @@ const DEPARTMENTS: DepartmentMeta[] = [
 type StatusFilter = 'all' | 'draft' | 'active' | 'visible'
 type VisibilityFilter = 'all' | 'visible' | 'not_visible'
 
-const normalizeDepartment = (raw?: string): AuditDepartment | null => {
-  const value = (raw || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-  if (value === 'comercial') return 'comercial'
-  if (value === 'serveis') return 'serveis'
-  if (value === 'cuina') return 'cuina'
-  if (value === 'logistica') return 'logistica'
-  if (value === 'deco' || value === 'decoracio' || value === 'decoracions') return 'deco'
-  return null
-}
-
 const normalizeText = (raw?: string) =>
   (raw || '')
     .toString()
@@ -58,7 +44,7 @@ export default function AuditoriaPlantillesPage() {
   const router = useRouter()
   const { data: session } = useSession()
   const userRole = normalizeRole((session?.user as any)?.role || '')
-  const userDepartment = normalizeDepartment((session?.user as any)?.department || '')
+  const userDepartment = resolveAuditDepartmentForUser((session?.user as any)?.department || '')
   const forcedDepartment = userRole === 'cap' ? userDepartment : null
   const initialDepartment: AuditDepartment = forcedDepartment || 'comercial'
 

@@ -22,6 +22,7 @@ export interface User {
   role?: string
   isAdmin?: boolean
   department?: string
+  commercialName?: string
   available?: boolean
   driver?: { isDriver?: boolean }
   workerRank?: string
@@ -40,6 +41,7 @@ export interface NewUserPayload {
   role: string
   isAdmin?: boolean
   department: string
+  commercialName?: string
   opsChannelsConfigurable?: string[]
   opsEventsConfigurable?: boolean
   opsProjectsConfigurable?: boolean
@@ -81,6 +83,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const [role, setRole] = React.useState<string>('Treballador')
   const [isAdmin, setIsAdmin] = React.useState(false)
   const [department, setDepartment] = React.useState<string>('Total')
+  const [commercialName, setCommercialName] = React.useState('')
   const [phone, setPhone] = React.useState('')
   const [email, setEmail] = React.useState('')
   const [available, setAvailable] = React.useState(true)
@@ -150,6 +153,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     setRole(user.role ?? 'Treballador')
     setIsAdmin(Boolean(user.isAdmin || normalizeRole(user.role) === 'admin'))
     setDepartment(user.department ?? 'Total')
+    setCommercialName(user.commercialName ?? '')
     setPhone(user.phone ?? '')
     setEmail(user.email ?? '')
     setOpsChannelsConfigurable(
@@ -198,6 +202,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         role,
         isAdmin,
         department,
+        commercialName,
         phone,
         email,
         available,
@@ -222,6 +227,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       role,
       isAdmin,
       department,
+      commercialName,
       phone,
       email,
       opsChannelsConfigurable,
@@ -309,6 +315,21 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                 ))}
               </select>
             </div>
+
+            {normalizeRole(role) === 'comercial' ? (
+              <div>
+                <Label>Nom comercial a Zoho</Label>
+                <input
+                  className="mt-1 w-full rounded-md border p-2 text-sm"
+                  value={commercialName}
+                  onChange={(e) => setCommercialName(e.target.value)}
+                  placeholder="Ex: Raquel Queralt"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Ha de coincidir amb el camp Comercial que arriba de Zoho per filtrar correctament.
+                </p>
+              </div>
+            ) : null}
 
             <div>
               <Label>Telefon</Label>

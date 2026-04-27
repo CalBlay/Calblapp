@@ -11,6 +11,7 @@ import {
 } from '@/lib/maintenanceNotifications'
 import { canAccessIncidentsModule, canPostIncident } from '@/lib/incidentPolicy'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
+import { normalizeRole } from '@/lib/roles'
 
 interface IncidentDoc {
   id?: string;
@@ -80,6 +81,37 @@ function normalizePriority(value?: string) {
   return "normal";
 }
 
+const normalizeText = (value?: string | null) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+
+const getEventCommercial = (ev: Record<string, unknown>) =>
+  String(
+    ev.Comercial ||
+      ev.comercial ||
+      ev.comercialNom ||
+      ev.Comercial_nom ||
+      ev.ComercialName ||
+      ev.ComercialNom ||
+      ""
+  ).trim();
+
+const commercialOwnsEvent = (
+  user: { name?: string | null; commercialName?: string | null },
+  ev: Record<string, unknown>
+) => {
+  const eventCommercial = normalizeText(getEventCommercial(ev));
+  if (!eventCommercial) return false;
+  const aliases = [user.commercialName, user.name]
+    .map((value) => normalizeText(value || ""))
+    .filter(Boolean);
+  return aliases.some((alias) => alias === eventCommercial);
+};
+
 /** Resposta més lleugera per llistats (tauler, quadre): sense payloads d’imatges. */
 function projectIncidentLight(inc: Record<string, unknown>): Record<string, unknown> {
   const {
@@ -121,7 +153,7 @@ async function generateIncidentNumber(): Promise<string> {
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined;
+    const user = session?.user as { id?: string; role?: string; department?: string; name?: string; commercialName?: string } | undefined;
     if (!user?.id) return NextResponse.json({ error: "No autenticat" }, { status: 401 });
     if (!canPostIncident(user)) {
       return NextResponse.json({ error: "Sense permisos" }, { status: 403 });
@@ -157,6 +189,10 @@ export async function POST(req: Request) {
     }
 
     const ev = (evSnap.data() || {}) as Record<string, unknown>;
+    if (normalizeRole(user.role || "") === "comercial" && !commercialOwnsEvent(user, ev)) {
+      return NextResponse.json({ error: "Aquest esdeveniment no esta assignat al teu comercial" }, { status: 403 });
+    }
+
     const eventCode = String(ev.code || ev.Code || ev.C_digo || ev.codi || "")
     const eventTitle = String(ev.NomEvent || "")
     const eventDate = String(ev.DataInici || ev.DataPeticio || "")

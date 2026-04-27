@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
 type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
     }
 
     const role = normalizeRole(user.role || '')
-    const userDept = normalizeDept(user.department || '')
+    const userDept = resolveAuditDepartmentForUser(user.department || '')
 
     if (!['admin', 'direccio', 'cap'].includes(role)) {
       return NextResponse.json({ error: 'Sense permisos per crear plantilles' }, { status: 403 })

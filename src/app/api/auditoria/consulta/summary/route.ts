@@ -5,8 +5,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
-
-type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
+import { normalizeCommercialAuditGroup, resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
 type ExecutionRow = {
   id: string
@@ -16,6 +15,8 @@ type ExecutionRow = {
   eventLocation: string
   eventDay: string
   status: string
+  completedById: string
+  completedByDepartment: string
   completedAt: number
 }
 
@@ -30,21 +31,6 @@ type EventSummaryRow = {
   lastAt: number
 }
 
-function normalizeDept(raw?: string): Department | null {
-  const value = (raw || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-  if (value === 'comercial') return 'comercial'
-  if (value === 'serveis' || value === 'sala') return 'serveis'
-  if (value === 'cuina') return 'cuina'
-  if (value === 'logistica') return 'logistica'
-  if (value === 'deco' || value === 'decoracio' || value === 'decoracions') return 'deco'
-  return null
-}
-
 function lnFromCode(code?: string) {
   const s = String(code || '').trim().toUpperCase()
   if (!s) return ''
@@ -55,6 +41,19 @@ function lnFromCode(code?: string) {
   return ''
 }
 
+async function loadCommercialUserIdsForGroup(group: string) {
+  const snap = await firestoreAdmin.collection('users').get()
+  const ids = new Set<string>()
+  snap.docs.forEach((doc) => {
+    const data = doc.data() as Record<string, unknown>
+    const role = normalizeRole(String(data.role || ''))
+    if (role !== 'comercial') return
+    const dept = normalizeCommercialAuditGroup(String(data.departmentLower || data.department || ''))
+    if (dept === group) ids.add(doc.id)
+  })
+  return ids
+}
+
 export async function GET(req: Request) {
   const startedAt = Date.now()
   try {
@@ -63,7 +62,8 @@ export async function GET(req: Request) {
     if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
 
     const role = normalizeRole(user.role || '')
-    const userDept = normalizeDept(user.department || '')
+    const userDept = resolveAuditDepartmentForUser(user.department || '')
+    const commercialGroup = normalizeCommercialAuditGroup(user.department || '')
 
     if (!['admin', 'direccio', 'cap'].includes(role)) {
       return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
@@ -101,6 +101,8 @@ export async function GET(req: Request) {
           eventLocation: String(data.eventLocation || ''),
           eventDay: String(data.eventDay || ''),
           status: String(data.status || ''),
+          completedById: String(data.completedById || ''),
+          completedByDepartment: String(data.completedByDepartment || ''),
           completedAt: Number(data.completedAt || 0),
         }
       })
@@ -118,6 +120,16 @@ export async function GET(req: Request) {
         if (fromTs > 0 && row.completedAt < fromTs) return false
         if (toTs > 0 && row.completedAt > toTs) return false
         return row.status === 'validated'
+      })
+    }
+
+    const allowedCommercialUserIds =
+      role === 'cap' && commercialGroup ? await loadCommercialUserIdsForGroup(commercialGroup) : null
+
+    if (allowedCommercialUserIds) {
+      rows = rows.filter((row) => {
+        const rowGroup = normalizeCommercialAuditGroup(row.completedByDepartment || '')
+        return rowGroup === commercialGroup || allowedCommercialUserIds.has(row.completedById)
       })
     }
 

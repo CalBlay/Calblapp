@@ -41,6 +41,11 @@ export const normalizeDept = (raw?: string) => {
 export const isMaintenanceCapDepartment = (raw?: string) =>
   MAINTENANCE_CAP_DEPARTMENTS.has(normalizeDept(raw))
 
+const moduleAccessDepartmentFor = (role: Role, department?: string) => {
+  if (role === 'comercial') return 'empresa'
+  return normalizeDept(department)
+}
+
 /**
  * Caps que entren al planificador / tickets de manteniment (MODULES Manteniment) poden
  * demanar explícitament el llistat de personal de manteniment via API encara que el seu
@@ -63,25 +68,25 @@ export const MODULES: ModuleDef[] = [
     label: 'Auditoria',
     path: '/menu/auditoria',
     roles: ['admin', 'direccio', 'cap'],
-    departments: ['comercial', 'serveis', 'cuina', 'logistica', 'decoracio', 'decoracions'],
+    departments: ['comercial', 'empresa', 'casaments', 'foodlovers', 'food lover', 'serveis', 'cuina', 'logistica', 'decoracio', 'decoracions'],
     submodules: [
       {
         label: 'Plantilles',
         path: '/menu/auditoria/plantilles',
         roles: ['admin', 'direccio', 'cap'],
-        departments: ['comercial', 'serveis', 'cuina', 'logistica', 'decoracio', 'decoracions'],
+        departments: ['comercial', 'empresa', 'casaments', 'foodlovers', 'food lover', 'serveis', 'cuina', 'logistica', 'decoracio', 'decoracions'],
       },
       {
         label: 'Avaluacio',
         path: '/menu/auditoria/valoracio',
         roles: ['admin', 'direccio', 'cap'],
-        departments: ['comercial', 'serveis', 'cuina', 'logistica', 'decoracio', 'decoracions'],
+        departments: ['comercial', 'empresa', 'casaments', 'foodlovers', 'food lover', 'serveis', 'cuina', 'logistica', 'decoracio', 'decoracions'],
       },
       {
         label: 'Consulta',
         path: '/menu/auditoria/consulta',
         roles: ['admin', 'direccio', 'cap'],
-        departments: ['comercial', 'serveis', 'cuina', 'logistica', 'decoracio', 'decoracions'],
+        departments: ['comercial', 'empresa', 'casaments', 'foodlovers', 'food lover', 'serveis', 'cuina', 'logistica', 'decoracio', 'decoracions'],
       },
     ],
   },
@@ -272,7 +277,7 @@ export const MODULES: ModuleDef[] = [
 /** 🧠 VISIBILITAT DE MÒDULS + SUBMÒDULS */
 export function getVisibleModules(user: AccessUser): ModuleDef[] {
   const role = normalizeRole(user.role)
-  const dept = normalizeDept(user.department)
+  const dept = moduleAccessDepartmentFor(role, user.department)
   const matchesDept = (d?: string) => normalizeDept(d) === dept
   const isMaintenanceWorker = role === 'treballador' && dept === 'manteniment'
 

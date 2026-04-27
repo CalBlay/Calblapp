@@ -20,6 +20,7 @@ interface FirestoreUser {
   role?: string
   isAdmin?: boolean
   department?: string
+  commercialName?: string
   canRespondSurveys?: boolean
 }
 
@@ -30,6 +31,7 @@ declare module 'next-auth/jwt' {
     isAdmin?: boolean
     department?: string
     deptLower?: string
+    commercialName?: string
     canRespondSurveys?: boolean
   }
 }
@@ -43,6 +45,7 @@ declare module 'next-auth' {
       isAdmin?: boolean
       department?: string
       deptLower?: string
+      commercialName?: string
       canRespondSurveys?: boolean
     } & User
   }
@@ -124,6 +127,7 @@ export const authOptions = {
               return {
                 id: data.userId || doc.id,
                 name: data.name || '',
+                commercialName: data.commercialName || '',
                 role: isAdmin ? 'admin' : roleNorm,
                 isAdmin,
                 department,
@@ -153,6 +157,7 @@ export const authOptions = {
           isAdmin?: boolean
           department?: string
           canRespondSurveys?: boolean
+          commercialName?: string
         }
 
         token.sub = u.id
@@ -161,6 +166,7 @@ export const authOptions = {
         token.department = u.department || ''
         token.deptLower = normLower(token.department)
         token.canRespondSurveys = Boolean(u.canRespondSurveys)
+        token.commercialName = u.commercialName || ''
       }
 
       token.isAdmin = Boolean(token.isAdmin || normalizeRole(String(token.role || '')) === 'admin')
@@ -185,6 +191,7 @@ export const authOptions = {
           department: token.department,
           deptLower: token.deptLower,
           canRespondSurveys: Boolean(token.canRespondSurveys),
+          commercialName: token.commercialName,
         },
         accessToken: token,
       }

@@ -14,6 +14,7 @@ import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { normalizeRole } from '@/lib/roles'
 import { Switch } from '@/components/ui/switch'
+import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
 type ExecutionRow = {
   id: string
@@ -152,11 +153,13 @@ export default function AuditoriaValoracioPage() {
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .trim()
+  const userAuditDepartment = resolveAuditDepartmentForUser((session?.user as any)?.department || '')
   const userRole = normalizeRole((session?.user as any)?.role || '')
   const isAdmin = userRole === 'admin'
   const isGlobalViewer = userRole === 'admin' || userRole === 'direccio'
   const canSeeValoracio =
     isGlobalViewer ||
+    userAuditDepartment === 'comercial' ||
     userDepartment === 'serveis' ||
     userDepartment === 'cuina' ||
     userDepartment === 'logistica'
@@ -257,12 +260,12 @@ export default function AuditoriaValoracioPage() {
       }
     } catch {
       // silent fallback to defaults
-      const dept = (userDepartment as Department) || 'serveis'
+      const dept = (userAuditDepartment as Department) || 'serveis'
       const safeDept = DEPARTMENTS.some((d) => d.id === dept) ? dept : 'serveis'
       setAllowedDepartments([safeDept])
       setValuationDepartment(safeDept)
     }
-  }, [userDepartment, valuationDepartment])
+  }, [userAuditDepartment, valuationDepartment])
 
   const loadValuationSummary = useCallback(async () => {
     setValuationLoading(true)
@@ -885,5 +888,4 @@ export default function AuditoriaValoracioPage() {
     </RoleGuard>
   )
 }
-
 

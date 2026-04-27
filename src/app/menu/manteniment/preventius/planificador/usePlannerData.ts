@@ -310,9 +310,15 @@ export default function usePlannerData({
     const startStr = format(weekStart, 'yyyy-MM-dd')
     const endStr = format(addDays(weekStart, dayCount - 1), 'yyyy-MM-dd')
     try {
+      const dueDates = dueTemplates
+        .map((template) => template.dueDate)
+        .filter(Boolean)
+        .sort()
+      const plannedStartStr = dueDates[0] && dueDates[0] < startStr ? dueDates[0] : startStr
+
       const [plannedRes, ticketsData] = await Promise.all([
         fetch(
-          `/api/maintenance/preventius/planned?start=${encodeURIComponent(startStr)}&end=${encodeURIComponent(endStr)}`,
+          `/api/maintenance/preventius/planned?start=${encodeURIComponent(plannedStartStr)}&end=${encodeURIComponent(endStr)}`,
           { cache: 'no-store' }
         ),
         loadTicketsData(),
@@ -364,7 +370,9 @@ export default function usePlannerData({
       const workingAgenda: ScheduledItem[] = [...plannedMapped, ...ticketsMapped]
       const templateMap = new Map(templates.map((template) => [template.id, template]))
       const alreadyPlannedTemplateIds = new Set(
-        workingPreventius.map((item) => String(item.templateId || '')).filter(Boolean)
+        plannedList
+          .map((item: any) => String(item?.templateId || ''))
+          .filter(Boolean)
       )
 
       for (let index = 0; index < workingPreventius.length; index += 1) {

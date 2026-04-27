@@ -12,6 +12,7 @@ import { useLogisticsData } from '@/hooks/useLogisticsData'
 import type { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import type { EditedMap } from '@/components/logistics/LogisticsGrid'
 import { Truck } from 'lucide-react'
+import { formatDateOnly, formatDayMonthValue } from '@/lib/date-format'
 
 function parseDM(value: string) {
   const m = /^(\d{1,2})\/(\d{1,2})$/.exec(value?.trim() || '')
@@ -168,12 +169,12 @@ export default function LogisticsPage() {
 
   const exportRows = useMemo<PreparationExportRow[]>(() => {
     return rows.map((ev) => ({
-      PreparacioData: ev.PreparacioData || '',
+      PreparacioData: formatDayMonthValue(ev.PreparacioData, ''),
       PreparacioHora: ev.PreparacioHora || '',
       Event: ev.NomEvent || '',
       Ubicacio: ev.Ubicacio || '',
       Pax: ev.NumPax ?? '',
-      DataEvent: ev.DataInici || '',
+      DataEvent: formatDateOnly(ev.DataInici, ''),
       HoraEvent: ev.HoraInici || '',
     }))
   }, [rows])
@@ -233,8 +234,8 @@ export default function LogisticsPage() {
   <body>
     <h1>Preparacio logistica</h1>
     <div class="meta">Rang: ${escapeHtml(
-      dateRange?.start || ''
-    )} - ${escapeHtml(dateRange?.end || '')}</div>
+      formatDateOnly(dateRange?.start, '')
+    )} - ${escapeHtml(formatDateOnly(dateRange?.end, ''))}</div>
     <table>
       <thead><tr>${header}</tr></thead>
       <tbody>${body}</tbody>
