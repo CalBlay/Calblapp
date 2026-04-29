@@ -72,6 +72,60 @@ function cleanUndefined(obj: NormalizedDeal): Record<string, unknown> {
   return clean
 }
 
+const LOCAL_CALENDAR_FIELDS = new Set([
+  'LN',
+  'code',
+  'NomEvent',
+  'DataInici',
+  'DataFi',
+  'HoraInici',
+  'HoraFi',
+  'NumPax',
+  'Ubicacio',
+  'Servei',
+  'Comercial',
+])
+
+function preserveLocalCalendarChanges(
+  incoming: Record<string, unknown>,
+  existing?: FirebaseFirestore.DocumentData
+): Record<string, unknown> {
+  if (!existing) return incoming
+
+  const out: Record<string, unknown> = { ...incoming }
+  const manualOverrides =
+    existing.manualOverrides && typeof existing.manualOverrides === 'object'
+      ? (existing.manualOverrides as Record<string, unknown>)
+      : {}
+
+  for (const field of LOCAL_CALENDAR_FIELDS) {
+    if (manualOverrides[field] === true && existing[field] !== undefined) {
+      out[field] = existing[field]
+    }
+  }
+
+  for (const [key, value] of Object.entries(existing)) {
+    const lower = key.toLowerCase()
+    if (lower.startsWith('file') && typeof value === 'string' && value.trim()) {
+      out[key] = value
+    }
+  }
+
+  for (const field of [
+    'code',
+    'codeSource',
+    'codeConfirmed',
+    'manualOverrides',
+    'manualUpdatedAt',
+  ]) {
+    if (existing[field] !== undefined && out[field] === undefined) {
+      out[field] = existing[field]
+    }
+  }
+
+  return out
+}
+
 // ─────────────────────────────
 // HELPERS GLOBALS
 // ─────────────────────────────
@@ -617,12 +671,24 @@ StageGroup:
   }
 
   // 7.1 — Escriure/actualitzar stage_verd (no s’esborren antics)
+  const readStageDocs = async (collection: string) => {
+    const snap = await firestore.collection(collection).get()
+    return new Map(snap.docs.map((doc) => [doc.id, doc.data()]))
+  }
+
+  const existingVerd = await readStageDocs('stage_verd')
+  const existingGroc = await readStageDocs('stage_groc')
+  const existingTaronja = await readStageDocs('stage_taronja')
+
   const batchVerd = firestore.batch()
 
   for (const deal of normalized) {
     if (deal.collection !== 'verd') continue
     const ref = firestore.collection('stage_verd').doc(deal.idZoho)
-    const dataToSave = cleanUndefined(deal)
+    const dataToSave = preserveLocalCalendarChanges(
+      cleanUndefined(deal),
+      existingVerd.get(deal.idZoho)
+    )
     batchVerd.set(ref, dataToSave, { merge: true })
   }
 
@@ -640,12 +706,20 @@ StageGroup:
 
     if (deal.collection === 'groc') {
       const ref = firestore.collection('stage_groc').doc(id)
-      batchOthers.set(ref, dataToSave, { merge: true })
+      batchOthers.set(
+        ref,
+        preserveLocalCalendarChanges(dataToSave, existingVerd.get(id) || existingGroc.get(id)),
+        { merge: true }
+      )
     }
 
     if (deal.collection === 'taronja') {
       const ref = firestore.collection('stage_taronja').doc(id)
-      batchOthers.set(ref, dataToSave, { merge: true })
+      batchOthers.set(
+        ref,
+        preserveLocalCalendarChanges(dataToSave, existingVerd.get(id) || existingTaronja.get(id)),
+        { merge: true }
+      )
     }
   }
 

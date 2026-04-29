@@ -5,6 +5,25 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
 
+const MODAL_OVERRIDE_FIELDS = new Set([
+  'LN',
+  'code',
+  'NomEvent',
+  'DataInici',
+  'DataFi',
+  'HoraInici',
+  'HoraFi',
+  'NumPax',
+  'Ubicacio',
+  'Servei',
+  'Comercial',
+])
+
+const comparable = (value: unknown) => {
+  if (value === null || value === undefined) return ''
+  return String(value).trim()
+}
+
 /**
  * 🟢 POST — Desa o actualitza un fitxer adjunt (file1, file2, ...)
  * Cridat des de l'AttachFileButton
@@ -58,9 +77,15 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     const docRef = db.collection(collection).doc(id)
     const now = new Date().toISOString()
     let codeMeta: Record<string, unknown> = {}
+    const snap = await docRef.get()
+    const previous = snap.exists ? snap.data() || {} : {}
+    const manualOverrides: Record<string, true> = {
+      ...((previous.manualOverrides && typeof previous.manualOverrides === 'object'
+        ? previous.manualOverrides
+        : {}) as Record<string, true>),
+    }
 
     if (Object.prototype.hasOwnProperty.call(data, 'code')) {
-      const snap = await docRef.get()
       const prevCode = String(snap.get('code') || '').trim()
       const nextCode = String(data.code || '').trim()
       if (prevCode !== nextCode) {
@@ -71,7 +96,23 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       }
     }
 
-    await docRef.set({ ...data, ...codeMeta, updatedAt: now }, { merge: true })
+    for (const [field, value] of Object.entries(data)) {
+      if (!MODAL_OVERRIDE_FIELDS.has(field)) continue
+      if (comparable(previous[field]) !== comparable(value)) {
+        manualOverrides[field] = true
+      }
+    }
+
+    await docRef.set(
+      {
+        ...data,
+        ...codeMeta,
+        manualOverrides,
+        manualUpdatedAt: now,
+        updatedAt: now,
+      },
+      { merge: true }
+    )
 
     console.log(`✅ Esdeveniment ${id} actualitzat correctament a ${collection}`)
     return NextResponse.json({ ok: true })

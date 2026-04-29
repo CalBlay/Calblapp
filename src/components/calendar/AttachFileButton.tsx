@@ -52,7 +52,7 @@ export default function AttachFileButton({
       const publicUrl = item.url // ja ve en format valid via /api/sharepoint/file
       const nextKey = findNextFileKey(existingKeys)
 
-      await fetch(`/api/calendar/manual/${docId}`, {
+      const res = await fetch(`/api/calendar/manual/${docId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -61,6 +61,7 @@ export default function AttachFileButton({
           url: publicUrl,
         }),
       })
+      if (!res.ok) throw new Error('Error desant el fitxer')
 
       onAdded?.({ name: item.name, url: publicUrl, key: nextKey })
     } catch (err) {

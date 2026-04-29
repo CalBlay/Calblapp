@@ -113,10 +113,13 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
 
   const role = norm((session?.user as any)?.role)
   const department = normalizeDept((session?.user as any)?.department)
+  const sessionName = String((session?.user as any)?.name || '').trim()
+  const sessionCommercialName = String((session?.user as any)?.commercialName || '').trim()
   const isAdmin = role === 'admin'
   const isDireccio = role === 'direccio' || role === 'direccion'
   const isProduccio = department === 'produccio'
   const isComercial = department === 'comercial'
+  const isComercialRole = role === 'comercial'
   const isCap = role.includes('cap')
   const isCapCalendarDept =
     isCap &&
@@ -138,7 +141,17 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     (isAdmin || isDireccio || isProduccio || isComercial || isCapCalendarDept)
 
   const canEdit = !readonly && (canEditStageVerd || canEditManual)
-  const canEditCode = isAdmin || isProduccio
+  const isOwnCommercialEvent = useMemo(() => {
+    if (!isComercialRole) return false
+    const eventCommercial = norm(editData.Comercial)
+    if (!eventCommercial) return false
+    const aliases = [sessionCommercialName, sessionName].map(norm).filter(Boolean)
+    return aliases.includes(eventCommercial)
+  }, [editData.Comercial, isComercialRole, sessionCommercialName, sessionName])
+  const canEditCode =
+    !readonly && (isZohoVerd || isManual) && (isAdmin || isProduccio || isOwnCommercialEvent)
+  const canManageDocuments = !readonly && (canEdit || isOwnCommercialEvent)
+  const canSave = canEdit || canEditCode
 
   const allowedDepartments = useMemo(() => {
     const bucket = normalizeDeptForLnBucket(editData.LN)
@@ -349,12 +362,12 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   // 💾 Desa canvis generals de l’esdeveniment (sense tocar fitxers)
   const handleSave = async (e?: React.MouseEvent) => {
     e?.stopPropagation()
-    if (!canEdit) return
+    if (!canSave) return
 
     try {
       const startDate = String(editData.DataInici || '').trim()
       const endDate = String(editData.DataFi || '').trim()
-      if (startDate && endDate && endDate < startDate) {
+      if (canEdit && startDate && endDate && endDate < startDate) {
         alert("❌ La data de fi no pot ser anterior a la data d'inici.")
         return
       }
@@ -374,6 +387,13 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
             : Number(editData.NumPax),
         collection: COLLECTION,
         updatedAt: new Date().toISOString(),
+      }
+      if (!canEdit) {
+        Object.keys(payload).forEach((key) => {
+          if (!['code', 'collection', 'updatedAt'].includes(key)) {
+            delete payload[key]
+          }
+        })
       }
       if (canEditCode && (codeDirty || prevCode !== nextCode)) {
         payload.codeConfirmed = Boolean(nextCode)
@@ -399,7 +419,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
 
   // 🗑️ Eliminar un enllaç (fileN) de Firestore
   const handleDeleteFile = async (key: string) => {
-    if (!canEdit) return
+    if (!canManageDocuments) return
     if (!confirm('Vols eliminar aquest enllaç del document?')) return
 
     try {
@@ -728,7 +748,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
           </div>
 
           {/* 📎 Adjuntar fitxer des de SharePoint */}
-          {canEdit && (
+          {canManageDocuments && (
             <div className="pt-3 border-t mt-4 space-y-3">
               <label className="block text-xs text-gray-500 mb-2">
                 📎 Documents de l’esdeveniment (SharePoint)
@@ -771,7 +791,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
                       {decodeURIComponent(url.split('/').pop() || url)}
                     </a>
 
-                    {canEdit && (
+                    {canManageDocuments && (
                       <Button
                         size="sm"
                         variant="ghost"
@@ -790,25 +810,29 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
 
         {/* Botons d’acció */}
         <DialogFooter className="mt-4 flex flex-col gap-2">
-          {canEdit && (
+          {canSave && (
             <>
               <Button onClick={handleSave} className="w-full">
                 💾 Desa canvis
               </Button>
-              <Button onClick={handleRestore} variant="outline" className="w-full">
-                🔄 Restaurar
-              </Button>
-              <Button
-                onClick={handleDeleteEvent}
-                variant="default"
-                className="bg-red-600 hover:bg-red-700 text-white w-full"
-              >
-                🗑️ Eliminar esdeveniment
-              </Button>
+              {canEdit && (
+                <Button onClick={handleRestore} variant="outline" className="w-full">
+                  🔄 Restaurar
+                </Button>
+              )}
+              {canEdit && (
+                <Button
+                  onClick={handleDeleteEvent}
+                  variant="default"
+                  className="bg-red-600 hover:bg-red-700 text-white w-full"
+                >
+                  🗑️ Eliminar esdeveniment
+                </Button>
+              )}
             </>
           )}
 
-          {!canEdit && (
+          {!canSave && (
             <Button variant="outline" className="w-full" onClick={() => setOpen(false)}>
               Tancar
             </Button>

@@ -6,6 +6,7 @@ import { Sparkles } from 'lucide-react'
 import { EventByCodeSection } from './EventByCodeSection'
 import { EventsListSection } from './EventsListSection'
 import { FincaRankingSection } from './FincaRankingSection'
+import { FinanceCsvUploadSection } from './FinanceCsvUploadSection'
 import { OpenConsultSection } from './OpenConsultSection'
 import { useConsultesMcpPage } from './useConsultesMcpPage'
 
@@ -31,6 +32,8 @@ function ConsultesMcpPage() {
         Les crides passen per <code className="text-xs bg-muted px-1 rounded">/api/mcp/*</code> amb
         clau MCP només al servidor.
       </p>
+
+      <FinanceCsvUploadSection />
 
       <OpenConsultSection
         openQuestion={p.openQuestion}
