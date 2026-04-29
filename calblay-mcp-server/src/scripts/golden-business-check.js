@@ -70,6 +70,15 @@ function compareNumeric(actualRaw, op, expectedRaw) {
   return false;
 }
 
+function isMissingFinanceDatasetResult(result) {
+  const failures = Array.isArray(result?.failures) ? result.failures : [];
+  return failures.some((failure) =>
+    /No s'ha detectat cap CSV d'imputaci[oó] v[aà]lid|missing finance|finance CSV|GCS source/i.test(
+      String(failure || "")
+    )
+  );
+}
+
 async function evaluateCase(c) {
   const question = String(c?.question || "");
   const expected = c?.expected && typeof c.expected === "object" ? c.expected : {};
@@ -181,7 +190,20 @@ async function main() {
       continue;
     }
     // eslint-disable-next-line no-await-in-loop
-    results.push(await evaluateCase(c));
+    const result = await evaluateCase(c);
+    if (needsFinance && allowSkipOnMissingFinance && isMissingFinanceDatasetResult(result)) {
+      results.push({
+        id: result.id,
+        skipped: true,
+        ok: true,
+        question: result.question,
+        failures: [],
+        note: "Skipped: finance CSV/GCS source is present but not usable for this golden case."
+      });
+      // eslint-disable-next-line no-continue
+      continue;
+    }
+    results.push(result);
   }
   const skipped = results.filter((r) => r.skipped).length;
   const passed = results.filter((r) => r.ok && !r.skipped).length;

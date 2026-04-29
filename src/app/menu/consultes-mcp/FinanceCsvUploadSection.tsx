@@ -14,6 +14,16 @@ type UploadResult = {
   error?: string
 }
 
+type SignedUpload = {
+  ok?: boolean
+  url?: string
+  bucket?: string
+  path?: string
+  kind?: string
+  contentType?: string
+  error?: string
+}
+
 const relativePathFor = (file: File) =>
   String((file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name)
 
@@ -46,22 +56,60 @@ function FinanceCsvUploadSectionInner() {
     setError(null)
 
     try {
-      const form = new FormData()
-      form.append('kind', fallbackKind)
-      files.forEach((file) => {
-        form.append('files', file, file.name)
-        form.append('paths', relativePathFor(file))
-      })
+      const uploaded: NonNullable<UploadResult['uploaded']> = []
+      const skipped: NonNullable<UploadResult['skipped']> = []
+      let bucket = ''
 
-      const res = await fetch('/api/mcp/finances/upload-csv', {
-        method: 'POST',
-        body: form,
-      })
-      const payload = (await res.json().catch(() => ({}))) as UploadResult
-      if (!res.ok || payload.ok === false) {
-        throw new Error(payload.error || `Error ${res.status}`)
+      for (const file of files) {
+        if (!/\.(csv|tsv)$/i.test(file.name)) {
+          skipped.push({ name: file.name, reason: 'No es CSV/TSV' })
+          continue
+        }
+
+        const relativePath = relativePathFor(file)
+        const signRes = await fetch('/api/mcp/finances/signed-upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileName: file.name,
+            relativePath,
+            kind: fallbackKind,
+            contentType: file.type || 'text/csv',
+          }),
+        })
+        const signed = (await signRes.json().catch(() => ({}))) as SignedUpload
+        if (!signRes.ok || !signed.url || signed.ok === false) {
+          skipped.push({ name: file.name, reason: signed.error || `Error ${signRes.status}` })
+          continue
+        }
+
+        const uploadRes = await fetch(signed.url, {
+          method: 'PUT',
+          headers: { 'Content-Type': signed.contentType || file.type || 'text/csv' },
+          body: file,
+        })
+        if (!uploadRes.ok) {
+          skipped.push({ name: file.name, reason: `Bucket ${uploadRes.status}` })
+          continue
+        }
+
+        bucket = signed.bucket || bucket
+        uploaded.push({
+          name: file.name,
+          path: signed.path || file.name,
+          kind: signed.kind || fallbackKind,
+          size: file.size,
+        })
       }
-      setResult(payload)
+
+      setResult({
+        ok: true,
+        bucket,
+        uploadedCount: uploaded.length,
+        skippedCount: skipped.length,
+        uploaded,
+        skipped,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No s’han pogut pujar els CSV')
     } finally {
