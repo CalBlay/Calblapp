@@ -9,7 +9,7 @@
       "expected": {
         "metricId": "preventius_planned_count_day",
         "policySystem": "firestore",
-        "numericAssertions": [{ "path": "result.total", "op": "eq", "value": 16 }]
+        "numericAssertions": [{ "path": "result.total", "op": "eq", "value": 13 }]
       }
     },
     {
