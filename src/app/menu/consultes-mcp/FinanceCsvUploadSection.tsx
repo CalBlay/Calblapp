@@ -27,6 +27,20 @@ type SignedUpload = {
 const relativePathFor = (file: File) =>
   String((file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name)
 
+const uploadOneThroughApp = async (file: File, relativePath: string, kind: string) => {
+  const form = new FormData()
+  form.append('kind', kind)
+  form.append('files', file, file.name)
+  form.append('paths', relativePath)
+
+  const res = await fetch('/api/mcp/finances/upload-csv', {
+    method: 'POST',
+    body: form,
+  })
+  const data = (await res.json().catch(() => ({}))) as UploadResult
+  return { res, data }
+}
+
 function FinanceCsvUploadSectionInner() {
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const [files, setFiles] = useState<File[]>([])
@@ -67,39 +81,72 @@ function FinanceCsvUploadSectionInner() {
         }
 
         const relativePath = relativePathFor(file)
-        const signRes = await fetch('/api/mcp/finances/signed-upload-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileName: file.name,
-            relativePath,
-            kind: fallbackKind,
-            contentType: file.type || 'text/csv',
-          }),
-        })
-        const signed = (await signRes.json().catch(() => ({}))) as SignedUpload
-        if (!signRes.ok || !signed.url || signed.ok === false) {
-          skipped.push({ name: file.name, reason: signed.error || `Error ${signRes.status}` })
+        let signed: SignedUpload = {}
+        let directUploadError = ''
+
+        try {
+          const signRes = await fetch('/api/mcp/finances/signed-upload-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileName: file.name,
+              relativePath,
+              kind: fallbackKind,
+              contentType: file.type || 'text/csv',
+            }),
+          })
+          signed = (await signRes.json().catch(() => ({}))) as SignedUpload
+          if (!signRes.ok || !signed.url || signed.ok === false) {
+            directUploadError = signed.error || `Signatura ${signRes.status}`
+          }
+        } catch (err) {
+          directUploadError = err instanceof Error ? err.message : "No s'ha pogut signar la pujada"
+        }
+
+        if (signed.url && !directUploadError) {
+          try {
+            const uploadRes = await fetch(signed.url, {
+              method: 'PUT',
+              headers: { 'Content-Type': signed.contentType || file.type || 'text/csv' },
+              body: file,
+            })
+            if (uploadRes.ok) {
+              bucket = signed.bucket || bucket
+              uploaded.push({
+                name: file.name,
+                path: signed.path || file.name,
+                kind: signed.kind || fallbackKind,
+                size: file.size,
+              })
+              continue
+            }
+            directUploadError = `Bucket ${uploadRes.status}`
+          } catch (err) {
+            directUploadError =
+              err instanceof Error
+                ? `${err.message}. Reintentant via app`
+                : 'Pujada directa bloquejada. Reintentant via app'
+          }
+        }
+
+        const fallback = await uploadOneThroughApp(file, relativePath, fallbackKind).catch((err) => ({
+          res: null,
+          data: {
+            error: err instanceof Error ? err.message : "No s'ha pogut pujar via app",
+          } as UploadResult,
+        }))
+
+        if (!fallback.res?.ok || fallback.data.ok === false) {
+          skipped.push({
+            name: file.name,
+            reason: fallback.data.error || directUploadError || 'Error pujant via app',
+          })
           continue
         }
 
-        const uploadRes = await fetch(signed.url, {
-          method: 'PUT',
-          headers: { 'Content-Type': signed.contentType || file.type || 'text/csv' },
-          body: file,
-        })
-        if (!uploadRes.ok) {
-          skipped.push({ name: file.name, reason: `Bucket ${uploadRes.status}` })
-          continue
-        }
-
-        bucket = signed.bucket || bucket
-        uploaded.push({
-          name: file.name,
-          path: signed.path || file.name,
-          kind: signed.kind || fallbackKind,
-          size: file.size,
-        })
+        bucket = fallback.data.bucket || bucket
+        uploaded.push(...(fallback.data.uploaded || []))
+        skipped.push(...(fallback.data.skipped || []))
       }
 
       setResult({
@@ -201,6 +248,15 @@ function FinanceCsvUploadSectionInner() {
               {result.uploaded.slice(0, 12).map((item) => (
                 <li key={item.path} className="truncate">
                   {item.path}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {result.skipped?.length ? (
+            <ul className="mt-2 max-h-32 space-y-1 overflow-auto text-xs text-amber-800">
+              {result.skipped.slice(0, 12).map((item) => (
+                <li key={`${item.name}-${item.reason}`} className="truncate">
+                  {item.name}: {item.reason}
                 </li>
               ))}
             </ul>
