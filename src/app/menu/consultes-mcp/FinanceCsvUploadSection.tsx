@@ -27,6 +27,29 @@ type SignedUpload = {
 const relativePathFor = (file: File) =>
   String((file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name)
 
+const readUploadResult = async (res: Response): Promise<UploadResult> => {
+  const contentType = res.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    return (await res.json().catch(() => ({}))) as UploadResult
+  }
+
+  const text = await res.text().catch(() => '')
+  return {
+    error: text.trim() || `${res.status} ${res.statusText}`.trim() || 'Resposta no JSON',
+  }
+}
+
+const responseError = (res: Response, data: UploadResult) =>
+  data.error || `${res.status} ${res.statusText}`.trim() || 'Error desconegut'
+
+const fetchErrorMessage = (err: unknown, context: string) => {
+  const message = err instanceof Error ? err.message : ''
+  if (/failed to fetch/i.test(message)) {
+    return `${context}: el navegador ha bloquejat la connexio o el bucket no te CORS configurat`
+  }
+  return message ? `${context}: ${message}` : context
+}
+
 const uploadOneThroughApp = async (file: File, relativePath: string, kind: string) => {
   const form = new FormData()
   form.append('kind', kind)
@@ -37,7 +60,7 @@ const uploadOneThroughApp = async (file: File, relativePath: string, kind: strin
     method: 'POST',
     body: form,
   })
-  const data = (await res.json().catch(() => ({}))) as UploadResult
+  const data = await readUploadResult(res)
   return { res, data }
 }
 
@@ -97,10 +120,10 @@ function FinanceCsvUploadSectionInner() {
           })
           signed = (await signRes.json().catch(() => ({}))) as SignedUpload
           if (!signRes.ok || !signed.url || signed.ok === false) {
-            directUploadError = signed.error || `Signatura ${signRes.status}`
+            directUploadError = signed.error || `Signatura ${signRes.status} ${signRes.statusText}`.trim()
           }
         } catch (err) {
-          directUploadError = err instanceof Error ? err.message : "No s'ha pogut signar la pujada"
+          directUploadError = fetchErrorMessage(err, "No s'ha pogut signar la pujada")
         }
 
         if (signed.url && !directUploadError) {
@@ -120,26 +143,25 @@ function FinanceCsvUploadSectionInner() {
               })
               continue
             }
-            directUploadError = `Bucket ${uploadRes.status}`
+            directUploadError = `Bucket ${uploadRes.status} ${uploadRes.statusText}`.trim()
           } catch (err) {
-            directUploadError =
-              err instanceof Error
-                ? `${err.message}. Reintentant via app`
-                : 'Pujada directa bloquejada. Reintentant via app'
+            directUploadError = `${fetchErrorMessage(err, 'Pujada directa al bucket')}. Reintentant via app`
           }
         }
 
         const fallback = await uploadOneThroughApp(file, relativePath, fallbackKind).catch((err) => ({
           res: null,
           data: {
-            error: err instanceof Error ? err.message : "No s'ha pogut pujar via app",
+            error: fetchErrorMessage(err, "No s'ha pogut pujar via app"),
           } as UploadResult,
         }))
 
         if (!fallback.res?.ok || fallback.data.ok === false) {
           skipped.push({
             name: file.name,
-            reason: fallback.data.error || directUploadError || 'Error pujant via app',
+            reason: fallback.res
+              ? responseError(fallback.res, fallback.data)
+              : fallback.data.error || directUploadError || 'Error pujant via app',
           })
           continue
         }
