@@ -26,6 +26,7 @@ import {
   normalizeIncidentStatus,
   type IncidentWorkflowStatus,
 } from '@/lib/incidentPolicy'
+import { normalizeDept } from '@/lib/accessControl'
 import { INCIDENT_ORIGIN_DEPARTMENTS } from '@/lib/incidentOriginDepartments'
 import {
   buildDaySeriesForChart,
@@ -59,6 +60,9 @@ function iso(d: Date) {
   return format(d, 'yyyy-MM-dd')
 }
 
+const MARKETING_DEFAULT_CATEGORY_FILTER = '9XX'
+const MARKETING_DEPARTMENTS = new Set(['marqueting', 'marketing'])
+
 function thisWeekRange() {
   const now = new Date()
   return {
@@ -89,6 +93,7 @@ export default function IncidentsQuadrePage() {
   const router = useRouter()
   const user = session?.user as { role?: string; department?: string } | undefined
   const canSee = canAccessIncidentsModule(user || {})
+  const isMarketingUser = MARKETING_DEPARTMENTS.has(normalizeDept(user?.department || ''))
 
   const { setContent, setOpen } = useFilters()
 
@@ -101,6 +106,7 @@ export default function IncidentsQuadrePage() {
   const [from, setFrom] = useState(() => thisWeekRange().from)
   const [to, setTo] = useState(() => thisWeekRange().to)
   const [dateResetSignal, setDateResetSignal] = useState(0)
+  const [marketingDefaultSuppressed, setMarketingDefaultSuppressed] = useState(false)
 
   const [apiDepartment, setApiDepartment] = useState<string | undefined>(undefined)
   const [importance, setImportance] = useState('all')
@@ -113,13 +119,16 @@ export default function IncidentsQuadrePage() {
   const [actionDepartment, setActionDepartment] = useState('all')
   const [actionSearch, setActionSearch] = useState('')
 
-  const [categoryCatalog, setCategoryCatalog] = useState<{ id: string; label: string }[]>([])
-
   const [incidents, setIncidents] = useState<IncidentDashboardRow[]>([])
   const [actions, setActions] = useState<BatchActionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionsError, setActionsError] = useState<string | null>(null)
+
+  const effectiveCategoryLabel =
+    isMarketingUser && !marketingDefaultSuppressed && categoryLabel === 'all'
+      ? MARKETING_DEFAULT_CATEGORY_FILTER
+      : categoryLabel
 
   useEffect(() => {
     if (status === 'loading') return
@@ -131,31 +140,6 @@ export default function IncidentsQuadrePage() {
       router.replace('/menu')
     }
   }, [status, session, router, canSee])
-
-  useEffect(() => {
-    if (status === 'loading' || !session || !canSee) return
-    let cancel = false
-    void (async () => {
-      try {
-        const res = await fetch('/api/incidents/categories', { cache: 'no-store' })
-        const json = await res.json().catch(() => ({}))
-        if (!res.ok || cancel) return
-        const raw = Array.isArray(json.categories) ? json.categories : []
-        const list = raw
-          .filter((c: { active?: boolean }) => c.active !== false)
-          .map((c: { id: string; label: string }) => ({
-            id: String(c.id),
-            label: String(c.label),
-          }))
-        if (!cancel) setCategoryCatalog(list)
-      } catch {
-        if (!cancel) setCategoryCatalog([])
-      }
-    })()
-    return () => {
-      cancel = true
-    }
-  }, [status, session, canSee])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -169,7 +153,10 @@ export default function IncidentsQuadrePage() {
       qs.set('light', '1')
       if (apiDepartment) qs.set('department', apiDepartment)
       if (importance && importance !== 'all') qs.set('importance', importance)
-      if (categoryLabel && categoryLabel !== 'all') qs.set('categoryLabel', categoryLabel)
+      if (effectiveCategoryLabel && effectiveCategoryLabel !== 'all') {
+        if (/^\d+$/.test(effectiveCategoryLabel)) qs.set('categoryId', effectiveCategoryLabel)
+        else qs.set('categoryLabel', effectiveCategoryLabel)
+      }
       const res = await fetch(`/api/incidents?${qs.toString()}`, { cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(String(data?.error || `HTTP ${res.status}`))
@@ -209,7 +196,7 @@ export default function IncidentsQuadrePage() {
     } finally {
       setLoading(false)
     }
-  }, [from, to, apiDepartment, importance, categoryLabel])
+  }, [from, to, apiDepartment, importance, effectiveCategoryLabel])
 
   useEffect(() => {
     if (status === 'loading' || !session || !canSee) return
@@ -226,16 +213,23 @@ export default function IncidentsQuadrePage() {
   }, [incidents])
 
   const categorySelectOptions = useMemo(() => {
-    const byLabel = new Map<string, string>()
-    categoryCatalog.forEach((c) => byLabel.set(c.label, c.id))
+    const byId = new Map<string, string>()
     incidents.forEach((i) => {
+      const id = (i.category?.id || '').trim()
       const label = (i.category?.label || '').trim()
-      if (label && !byLabel.has(label)) byLabel.set(label, label)
+      if (id && label && !byId.has(id)) byId.set(id, label)
     })
-    return Array.from(byLabel.entries())
-      .map(([label]) => ({ id: label, label }))
+    let items = Array.from(byId.entries())
+      .map(([id, label]) => ({ id, label }))
       .sort((a, b) => a.label.localeCompare(b.label))
-  }, [categoryCatalog, incidents])
+    if (isMarketingUser && effectiveCategoryLabel === MARKETING_DEFAULT_CATEGORY_FILTER) {
+      items = items.filter((item) => item.id.startsWith('9'))
+    }
+    return items
+  }, [effectiveCategoryLabel, incidents, isMarketingUser])
+
+  const categorySelectValue =
+    effectiveCategoryLabel === MARKETING_DEFAULT_CATEGORY_FILTER ? 'all' : effectiveCategoryLabel
 
   const visibleIncidents = useMemo(() => {
     return incidents.filter((inc) => {
@@ -320,14 +314,25 @@ export default function IncidentsQuadrePage() {
 
         <div className="space-y-2">
           <label className={typography('label')}>Tipologia</label>
-          <Select value={categoryLabel} onValueChange={setCategoryLabel}>
+          <Select
+            value={categorySelectValue}
+            onValueChange={(v) => {
+              if (v === 'all') {
+                setMarketingDefaultSuppressed(true)
+                setCategoryLabel('all')
+                return
+              }
+              setMarketingDefaultSuppressed(true)
+              setCategoryLabel(v)
+            }}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Totes" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Totes</SelectItem>
               {categorySelectOptions.map((c) => (
-                <SelectItem key={c.id} value={c.label}>
+                <SelectItem key={c.id} value={c.id}>
                   {c.label}
                 </SelectItem>
               ))}
@@ -419,6 +424,7 @@ export default function IncidentsQuadrePage() {
               setFrom(w.from)
               setTo(w.to)
               setDateResetSignal((n) => n + 1)
+              setMarketingDefaultSuppressed(true)
               setApiDepartment(undefined)
               setImportance('all')
               setCategoryLabel('all')
@@ -471,7 +477,7 @@ export default function IncidentsQuadrePage() {
   const hasActionFilters =
     actionStatus !== 'all' || actionDepartment !== 'all' || actionSearch.trim().length > 0
   const hasServerFilters =
-    Boolean(apiDepartment) || importance !== 'all' || categoryLabel !== 'all'
+    Boolean(apiDepartment) || importance !== 'all' || effectiveCategoryLabel !== 'all'
 
   const actionsForVisibleIncidents = useMemo(
     () =>

@@ -90,14 +90,15 @@ export default function CreateIncidentModal({
         const json = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(String(json?.error || 'Error categories'))
         const raw = Array.isArray(json.categories) ? json.categories : []
-        const active = raw
-          .filter((c: { active?: boolean }) => c.active !== false)
-          .map((c: { id: string; label: string }) => ({ id: String(c.id), label: String(c.label) }))
+        const allCategories = raw.map((c: { id: string; label: string }) => ({
+          id: String(c.id),
+          label: String(c.label),
+        }))
         if (cancel) return
-        setCategories(active)
+        setCategories(allCategories)
         setCategory((prev) => {
-          if (prev && active.some((x) => x.id === prev.id)) return prev
-          return active[0] || null
+          if (prev && allCategories.some((x) => x.id === prev.id)) return prev
+          return allCategories[0] || null
         })
       } catch {
         if (!cancel) {
@@ -293,7 +294,7 @@ export default function CreateIncidentModal({
               {categoriesLoading ? (
                 <option value="">Carregant…</option>
               ) : categories.length === 0 ? (
-                <option value="">No hi ha categories actives</option>
+                <option value="">No hi ha categories</option>
               ) : (
                 categories.map((c) => (
                   <option key={c.id} value={c.id}>

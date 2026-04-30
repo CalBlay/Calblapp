@@ -1,7 +1,7 @@
 // file: src/app/menu/incidents/page.tsx
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { AlertTriangle, FileText } from 'lucide-react'
@@ -19,6 +19,7 @@ import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilt
 import { useIncidents } from '@/hooks/useIncidents'
 import IncidentsTable from './components/IncidentsTable'
 import FilterButton from '@/components/ui/filter-button'
+import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
 import ExportMenu from '@/components/export/ExportMenu'
 import { Button } from '@/components/ui/button'
@@ -27,8 +28,28 @@ import {
   canManageIncidentCategories,
   normalizeIncidentStatus,
 } from '@/lib/incidentPolicy'
+import { normalizeDept } from '@/lib/accessControl'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
+
+const MARKETING_DEFAULT_CATEGORY_FILTER = '9XX'
+const MARKETING_DEPARTMENTS = new Set(['marqueting', 'marketing'])
+
+function thisWeekRange() {
+  const now = new Date()
+  const start = new Date(now)
+  const day = start.getDay()
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  start.setDate(now.getDate() + diffToMonday)
+  start.setHours(0, 0, 0, 0)
+
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  end.setHours(0, 0, 0, 0)
+
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  return { from: iso(start), to: iso(end) }
+}
 
 function incidentStatusDisplayLabel(raw?: string | null) {
   const w = normalizeIncidentStatus(raw)
@@ -39,27 +60,39 @@ function incidentStatusDisplayLabel(raw?: string | null) {
 }
 
 export default function IncidentsPage() {
-  const { data: session } = useSession()
+  const { data: session, status: sessionStatus } = useSession()
   const sessionUser = session?.user as { name?: string; email?: string } | undefined
+  const accessUser = (session?.user as { role?: string; department?: string }) || {}
+  const isMarketingUser = MARKETING_DEPARTMENTS.has(normalizeDept(accessUser.department || ''))
   const actaAuthorLabel = sessionUser?.name?.trim() || sessionUser?.email?.trim()
   const canEditTipologies = canManageIncidentCategories(
-    (session?.user as { role?: string; department?: string }) || {}
+    accessUser
   )
   const [meetingMinutesOpen, setMeetingMinutesOpen] = useState(false)
-
+  const initialRange = useMemo(() => thisWeekRange(), [])
+  const [dateResetSignal, setDateResetSignal] = useState(0)
+  const [defaultFiltersReady, setDefaultFiltersReady] = useState(false)
+  const [marketingDefaultSuppressed, setMarketingDefaultSuppressed] = useState(false)
   const [filters, setFilters] = useState({
-    from: undefined as string | undefined,
-    to: undefined as string | undefined,
+    from: initialRange.from as string | undefined,
+    to: initialRange.to as string | undefined,
     department: undefined as string | undefined,
     importance: 'all' as string,
     categoryLabel: 'all' as string,
     status: 'all' as 'all' | 'obert' | 'en_curs' | 'resolt' | 'tancat',
   })
 
+  const effectiveCategoryLabel =
+    isMarketingUser && !marketingDefaultSuppressed && filters.categoryLabel === 'all'
+      ? MARKETING_DEFAULT_CATEGORY_FILTER
+      : filters.categoryLabel
+
   const { incidents, rawIncidents, loading, isRefreshing, error, updateIncident } = useIncidents({
     ...filters,
+    categoryLabel: effectiveCategoryLabel,
     limit: 800,
     light: true,
+    enabled: defaultFiltersReady,
   })
 
   const departmentOptions = useMemo(() => {
@@ -72,13 +105,28 @@ export default function IncidentsPage() {
   }, [rawIncidents])
 
   const categoryOptions = useMemo(() => {
-    const set = new Set<string>()
+    const map = new Map<string, string>()
     rawIncidents.forEach((i) => {
+      const id = i.category?.id?.trim()
       const label = i.category?.label?.trim()
-      if (label) set.add(label)
+      if (id && label && !map.has(id)) map.set(id, label)
     })
-    return Array.from(set).map((l) => ({ id: l, label: l }))
-  }, [rawIncidents])
+    let items = Array.from(map.entries())
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+    if (isMarketingUser && effectiveCategoryLabel === MARKETING_DEFAULT_CATEGORY_FILTER) {
+      items = items.filter((item) => item.id.startsWith('9'))
+    }
+    return items
+  }, [effectiveCategoryLabel, isMarketingUser, rawIncidents])
+
+  const categorySelectValue =
+    effectiveCategoryLabel === MARKETING_DEFAULT_CATEGORY_FILTER ? 'all' : effectiveCategoryLabel || 'all'
+
+  useEffect(() => {
+    if (sessionStatus === 'loading') return
+    setDefaultFiltersReady(true)
+  }, [sessionStatus])
 
   const totalIncidencies = incidents.length
 
@@ -90,7 +138,7 @@ export default function IncidentsPage() {
       department: f.department,
       importance: f.importance || 'all',
       categoryLabel:
-        f.categoryId && f.categoryId !== 'all' ? f.categoryId : 'all',
+        f.categoryId === undefined ? prev.categoryLabel : f.categoryId !== 'all' ? f.categoryId : 'all',
     }))
   }
 
@@ -145,9 +193,17 @@ export default function IncidentsPage() {
         <div className="space-y-2">
           <label className={typography('label')}>Categoria</label>
           <Select
-            value={filters.categoryLabel || 'all'}
+            value={categorySelectValue}
             onValueChange={(v) =>
-              setFilters((prev) => ({ ...prev, categoryLabel: v === 'all' ? 'all' : v }))
+              {
+                if (v === 'all') {
+                  setMarketingDefaultSuppressed(true)
+                  setFilters((prev) => ({ ...prev, categoryLabel: 'all' }))
+                  return
+                }
+                setMarketingDefaultSuppressed(true)
+                setFilters((prev) => ({ ...prev, categoryLabel: v }))
+              }
             }
           >
             <SelectTrigger>
@@ -186,6 +242,32 @@ export default function IncidentsPage() {
               <SelectItem value="tancat">Tancat</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+          <ResetFilterButton
+            onClick={() => {
+              const range = thisWeekRange()
+              setDateResetSignal((n) => n + 1)
+              setMarketingDefaultSuppressed(true)
+              setFilters({
+                from: range.from,
+                to: range.to,
+                department: undefined,
+                importance: 'all',
+                categoryLabel: 'all',
+                status: 'all',
+              })
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen(false)}
+          >
+            Tancar
+          </Button>
         </div>
       </div>
     )
@@ -358,7 +440,7 @@ export default function IncidentsPage() {
         open={meetingMinutesOpen}
         onOpenChange={setMeetingMinutesOpen}
         incidents={incidents}
-        filters={filters}
+        filters={{ ...filters, categoryLabel: effectiveCategoryLabel }}
         generatedByLabel={actaAuthorLabel}
       />
 
@@ -374,6 +456,8 @@ export default function IncidentsPage() {
       <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm mb-2 flex items-center gap-3 flex-nowrap">
 
         <SmartFilters
+          modeDefault="week"
+          modeOptions={['week', 'month', 'year', 'range']}
           role="Direcció"
           onChange={handleFilterChange}
           showDepartment={false}
@@ -384,6 +468,9 @@ export default function IncidentsPage() {
           categoryOptions={categoryOptions}
           showAdvanced={false}
           compact
+          initialStart={filters.from}
+          initialEnd={filters.to}
+          resetSignal={dateResetSignal}
         />
         <div className="flex-1 min-w-[8px]" />
         <FilterButton onClick={openFiltersPanel} />

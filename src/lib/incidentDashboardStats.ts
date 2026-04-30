@@ -12,7 +12,7 @@ export type IncidentDashboardRow = {
   eventCode?: string | null
   status?: string | null
   department?: string | null
-  category?: { label?: string | null } | null
+  category?: { id?: string | null; label?: string | null } | null
   importance?: string | null
   eventDate?: string | null
   createdAt?: string | null

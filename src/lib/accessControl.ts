@@ -159,13 +159,13 @@ export const MODULES: ModuleDef[] = [
     label: 'Incidències',
     path: '/menu/incidents',
     roles: ['admin', 'direccio', 'cap', 'usuari', 'comercial'],
-    departments: ['produccio', 'logistica', 'cuina', 'serveis'],
+    departments: ['produccio', 'logistica', 'cuina', 'serveis', 'marqueting', 'marketing'],
     submodules: [
       {
         label: 'Quadre',
         path: '/menu/incidents/quadre',
         roles: ['admin', 'direccio', 'cap', 'usuari', 'comercial'],
-        departments: ['produccio', 'logistica', 'cuina', 'serveis'],
+        departments: ['produccio', 'logistica', 'cuina', 'serveis', 'marqueting', 'marketing'],
       },
       {
         label: 'Tipologies',

@@ -36,6 +36,8 @@ export interface Incident {
   }>
 }
 
+const CATEGORY_PREFIX_9XX = '9XX'
+
 const normalizeTimestamp = (ts: any): string => {
   if (ts && typeof ts.toDate === 'function') return ts.toDate().toISOString()
   if (typeof ts === 'string') return ts
@@ -170,8 +172,11 @@ export function useIncidents(_filters: {
         if (filters.department) qs.set('department', filters.department)
         if (filters.importance && filters.importance !== 'all')
           qs.set('importance', filters.importance)
-        if (filters.categoryLabel && filters.categoryLabel !== 'all')
-          qs.set('categoryLabel', filters.categoryLabel)
+        if (filters.categoryLabel && filters.categoryLabel !== 'all') {
+          if (filters.categoryLabel === CATEGORY_PREFIX_9XX) qs.set('categoryPrefix', '9')
+          else if (/^\d+$/.test(filters.categoryLabel)) qs.set('categoryId', filters.categoryLabel)
+          else qs.set('categoryLabel', filters.categoryLabel)
+        }
         if (typeof filters.limit === 'number' && filters.limit > 0) {
           qs.set('limit', String(Math.min(1000, Math.floor(filters.limit))))
         }

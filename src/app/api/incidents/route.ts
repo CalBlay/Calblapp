@@ -9,9 +9,11 @@ import {
   buildTicketBody,
   notifyMaintenanceManagers,
 } from '@/lib/maintenanceNotifications'
+import { notifyMarketingManagersFor9xxIncident } from '@/lib/incidentNotifications'
 import { canAccessIncidentsModule, canPostIncident } from '@/lib/incidentPolicy'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { normalizeRole } from '@/lib/roles'
+import { normalizeDept } from '@/lib/accessControl'
 
 interface IncidentDoc {
   id?: string;
@@ -263,6 +265,31 @@ export async function POST(req: Request) {
 
     const categoryId = String(category?.id || "").trim();
     const categoryPrefix = categoryId.charAt(0);
+    const baseUrl = new URL(req.url).origin
+
+    if (categoryPrefix === '9') {
+      await notifyMarketingManagersFor9xxIncident({
+        baseUrl,
+        payload: {
+          type: 'incident_marketing_9xx_new',
+          title: 'Nova incidencia 9XX',
+          body: [
+            incidentNumber,
+            eventTitle || eventLocation || eventCode,
+            String(category?.label || '').trim(),
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          incidentId: docRef.id,
+          incidentNumber,
+          eventId: String(eventId),
+          eventCode,
+          categoryId,
+          categoryLabel: String(category?.label || '').trim() || null,
+        },
+      })
+    }
+
     const shouldCreateTicket = categoryPrefix === "2" || categoryPrefix === "4";
     const ticketType = categoryPrefix === "4" ? "deco" : "maquinaria";
 
@@ -376,6 +403,7 @@ export async function GET(req: Request) {
     const department = searchParams.get("department");
     const categoryLabel = searchParams.get("categoryLabel");
     const categoryId = searchParams.get("categoryId"); // compat: nom antic
+    const categoryPrefix = searchParams.get("categoryPrefix");
     const limitRaw = Number(searchParams.get("limit") || "");
     const limitN = Math.min(
       1000,
@@ -409,15 +437,16 @@ export async function GET(req: Request) {
       ref = ref.where("department", "==", department);
 
     // Filtre de categoria: admet tant label (nou) com id (antic)
-    const categoryFilter =
-      categoryLabel && categoryLabel !== "all"
-        ? categoryLabel
-        : categoryId && categoryId !== "all"
-        ? categoryId
-        : null;
+    const categoryLabelFilter =
+      categoryLabel && categoryLabel !== "all" ? categoryLabel : null;
+    const categoryIdFilter =
+      !categoryLabelFilter && categoryId && categoryId !== "all" ? categoryId : null;
 
-    if (categoryFilter)
-      ref = ref.where("category.label", "==", categoryFilter);
+    if (categoryLabelFilter) {
+      ref = ref.where("category.label", "==", categoryLabelFilter);
+    } else if (categoryIdFilter) {
+      ref = ref.where("category.id", "==", categoryIdFilter);
+    }
 
     ref = ref.limit(limitN);
 
@@ -476,9 +505,18 @@ export async function GET(req: Request) {
       };
     });
 
+    const categoryPrefixFilter =
+      !categoryLabelFilter && !categoryIdFilter && categoryPrefix && categoryPrefix !== 'all'
+        ? categoryPrefix
+        : ''
+
+    const filteredIncidents = categoryPrefixFilter
+      ? incidents.filter((inc) => String(inc.category?.id || '').trim().startsWith(categoryPrefixFilter))
+      : incidents
+
     const payload = lightList
-      ? incidents.map((row) => projectIncidentLight(row as Record<string, unknown>))
-      : incidents;
+      ? filteredIncidents.map((row) => projectIncidentLight(row as Record<string, unknown>))
+      : filteredIncidents
 
     return NextResponse.json({ incidents: payload }, { status: 200 });
   } catch (err) {

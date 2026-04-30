@@ -8,7 +8,7 @@ export function canAccessIncidentsModule(user: { role?: string | null; departmen
   const allowedRoles = new Set(['admin', 'direccio', 'cap', 'usuari', 'comercial'])
   if (!allowedRoles.has(role)) return false
   if (role === 'admin' || role === 'direccio' || role === 'comercial') return true
-  const allowedDepts = new Set(['produccio', 'logistica', 'cuina', 'serveis'])
+  const allowedDepts = new Set(['produccio', 'logistica', 'cuina', 'serveis', 'marqueting', 'marketing'])
   return allowedDepts.has(dept)
 }
 

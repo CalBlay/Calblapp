@@ -34,6 +34,7 @@ import {
 } from '@/hooks/useAdminNotifications'
 import { useMessagingUnreadCount } from '@/hooks/useMessagingUnread'
 import { useMaintenanceNotificationCount } from '@/hooks/useMaintenanceNotificationCount'
+import { useIncidentNotificationCount } from '@/hooks/useIncidentNotificationCount'
 import { useSurveyNotificationCount } from '@/hooks/useSurveyNotificationCount'
 
 /* ─────────────────────────────────────────────
@@ -266,6 +267,7 @@ function MenuContent({ user }: { user: SessionUser }) {
   const { count: tornCount } = useTornNotificationCount()
   const { count: messagingCount } = useMessagingUnreadCount()
   const { count: maintenanceNotificationCount } = useMaintenanceNotificationCount()
+  const { count: incidentNotificationCount } = useIncidentNotificationCount()
   const { count: surveyNotificationCount } = useSurveyNotificationCount()
   const maintenanceBadge = maintenanceNotificationCount
 
@@ -324,6 +326,11 @@ function MenuContent({ user }: { user: SessionUser }) {
                 {mod.path === '/menu/manteniment' && maintenanceBadge > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                     {maintenanceBadge}
+                  </span>
+                )}
+                {mod.path === '/menu/incidents' && incidentNotificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {incidentNotificationCount}
                   </span>
                 )}
                 {mod.path === '/menu/projects' && projectAssignmentCount > 0 && (

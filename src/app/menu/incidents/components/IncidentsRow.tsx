@@ -177,6 +177,10 @@ function IncidentsRow({
         )}
       </td>
 
+      <td className={cellTrunc}>
+        {inc.category?.label || inc.category?.id || '—'}
+      </td>
+
       {/* Origen */}
       <td className={cellTrunc}>
         {isEditing ? (
