@@ -224,7 +224,18 @@ async function main() {
     results
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-  if (failed > 0) process.exit(2);
+  if (failed > 0) {
+    const failedCases = results.filter((r) => !r.ok);
+    const summary = failedCases
+      .map((r) => {
+        const firstFailure = Array.isArray(r.failures) && r.failures.length ? r.failures[0] : "unknown failure";
+        return `- ${r.id}: ${firstFailure}`;
+      })
+      .join("\n");
+    // eslint-disable-next-line no-console
+    console.error(`[golden-business-check] ${failed} failed case(s)\n${summary}`);
+    process.exit(2);
+  }
 }
 
 main().catch((e) => {

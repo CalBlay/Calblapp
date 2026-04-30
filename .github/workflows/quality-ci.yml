@@ -43,10 +43,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run quality pipeline
-        run: npm run quality:ci
+      - name: Run quality tests
+        run: npm run test:quality
+
+      - name: Run golden suite
+        run: npm run quality:golden
+
+      - name: Run drift check
+        run: npm run quality:drift
 
       - name: Generate quality report
+        if: always()
         run: npm run quality:report
 
   quality-main-strict:
@@ -99,8 +106,15 @@ jobs:
           test -n "$FIREBASE_CLIENT_EMAIL"
           test -n "$FIREBASE_PRIVATE_KEY"
 
-      - name: Run strict quality pipeline
-        run: npm run quality:ci
+      - name: Run strict quality tests
+        run: npm run test:quality
+
+      - name: Run strict golden suite
+        run: npm run quality:golden
+
+      - name: Run strict drift check
+        run: npm run quality:drift
 
       - name: Generate strict quality report
+        if: always()
         run: npm run quality:report
