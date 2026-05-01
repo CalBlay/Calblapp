@@ -100,15 +100,27 @@ export async function fetchQuadrantDocsByEndDate(colId: string, endDate: string)
 
 /* =============== Premisses (JSON) =============== */
 export async function loadMinRestHours(department: string): Promise<number> {
+  const dept = norm(department)
+  if (!dept) return 8
+
+  try {
+    const snap = await firestoreAdmin.collection('quadrantPremises').doc(dept).get()
+    if (snap.exists) {
+      const data = snap.data() as { restHours?: unknown } | undefined
+      const stored = Number(data?.restHours)
+      if (Number.isFinite(stored) && stored >= 0) return stored
+    }
+  } catch {}
+
   const filePath = path.resolve(
     process.cwd(),
-    `src/data/premises-${norm(department)}.json`
+    `src/data/premises-${dept}.json`
   )
   try {
     const raw = await fs.promises.readFile(filePath, 'utf8')
     const data = JSON.parse(raw) as { restHours?: number }
     const v = Number(data?.restHours)
-    return Number.isFinite(v) && v > 0 ? v : 8
+    return Number.isFinite(v) && v >= 0 ? v : 8
   } catch {
     return 8
   }
@@ -181,7 +193,8 @@ export function hasMinRestByName(
   newEnd: Date,
   minRestH: number
 ): boolean {
-  const msRest = (minRestH || 8) * 3600000
+  const safeRestHours = Number.isFinite(minRestH) && minRestH >= 0 ? minRestH : 8
+  const msRest = safeRestHours * 3600000
   const person = norm(personName)
   const reqNorm = normalizeRange(newStart, newEnd)
 
