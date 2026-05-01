@@ -34,6 +34,42 @@ type SendKickoffNotificationEmailInput = {
   notes?: string
 }
 
+type CreateProjectMeetingEventInput = {
+  organizerEmail: string
+  subject: string
+  startDateTime: string
+  endDateTime: string
+  notes?: string
+  attendees: KickoffAttendee[]
+  projectName: string
+  scope: 'block' | 'task'
+  scopeName: string
+  blockName?: string
+  attachments?: Array<{
+    name: string
+    path: string
+    contentType?: string | null
+  }>
+}
+
+type SendProjectMeetingNotificationEmailInput = {
+  organizerEmail: string
+  recipients: KickoffAttendee[]
+  subject: string
+  projectName: string
+  startDateTime: string
+  endDateTime: string
+  notes?: string
+  scope: 'block' | 'task'
+  scopeName: string
+  blockName?: string
+  attachments?: Array<{
+    name: string
+    path: string
+    contentType?: string | null
+  }>
+}
+
 type ProjectRecipient = {
   email: string
   name?: string
@@ -196,6 +232,107 @@ export async function sendKickoffNotificationEmail(input: SendKickoffNotificatio
             }),
           },
           toRecipients: recipients,
+        },
+        saveToSentItems: true,
+      }),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`No s ha pogut enviar el correu de convocatoria: ${response.status} ${text}`)
+  }
+}
+
+export async function createProjectMeetingCalendarEvent(input: CreateProjectMeetingEventInput) {
+  const accessToken = await getAccessToken()
+
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(input.organizerEmail)}/events`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        subject: input.subject,
+        body: {
+          contentType: 'HTML',
+          content: buildProjectMeetingHtml(input),
+        },
+        start: {
+          dateTime: input.startDateTime,
+          timeZone: 'Europe/Madrid',
+        },
+        end: {
+          dateTime: input.endDateTime,
+          timeZone: 'Europe/Madrid',
+        },
+        attendees: input.attendees.map((attendee) => ({
+          emailAddress: {
+            address: attendee.email,
+            name: attendee.name || attendee.email,
+          },
+          type: 'required',
+        })),
+        isReminderOn: true,
+        allowNewTimeProposals: true,
+      }),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`No s ha pogut crear la convocatoria Outlook: ${response.status} ${text}`)
+  }
+
+  const data = (await response.json()) as GraphEventResponse
+  if (data.id && Array.isArray(input.attachments) && input.attachments.length > 0) {
+    await attachFilesToGraphEvent(input.organizerEmail, data.id, input.attachments)
+  }
+  return {
+    id: data.id || '',
+    webLink: data.webLink || '',
+    joinUrl: data.onlineMeeting?.joinUrl || '',
+  }
+}
+
+export async function sendProjectMeetingNotificationEmail(
+  input: SendProjectMeetingNotificationEmailInput
+) {
+  const accessToken = await getAccessToken()
+  const attachments = await buildMailAttachments(input.attachments || [])
+  const recipients = input.recipients
+    .map((attendee) => ({
+      emailAddress: {
+        address: attendee.email,
+        name: attendee.name || attendee.email,
+      },
+    }))
+    .filter((recipient) => recipient.emailAddress.address.includes('@'))
+
+  if (recipients.length === 0) return
+
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(input.organizerEmail)}/sendMail`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        message: {
+          subject: input.subject,
+          body: {
+            contentType: 'HTML',
+            content: buildProjectMeetingEmailHtml(input),
+          },
+          toRecipients: recipients,
+          attachments,
         },
         saveToSentItems: true,
       }),
@@ -498,6 +635,60 @@ function buildKickoffEmailHtml(params: {
   `
 }
 
+function buildProjectMeetingHtml(params: {
+  projectName: string
+  scope: 'block' | 'task'
+  scopeName: string
+  blockName?: string
+  notes?: string
+}) {
+  const label = params.scope === 'task' ? 'tasca' : 'bloc'
+  const extraBlock =
+    params.scope === 'task' && params.blockName
+      ? `<p><strong>Bloc:</strong> ${escapeHtml(params.blockName)}</p>`
+      : ''
+  const extraNotes = params.notes?.trim()
+    ? `<p><strong>Notes:</strong><br/>${escapeHtml(params.notes).replace(/\n/g, '<br/>')}</p>`
+    : ''
+
+  return `
+    <p>Convocatoria de reunio del ${label} <strong>${escapeHtml(params.scopeName || 'Element del projecte')}</strong>.</p>
+    <p><strong>Projecte:</strong> ${escapeHtml(params.projectName || 'Projecte')}</p>
+    ${extraBlock}
+    ${extraNotes}
+  `
+}
+
+function buildProjectMeetingEmailHtml(params: {
+  projectName: string
+  startDateTime: string
+  endDateTime: string
+  notes?: string
+  scope: 'block' | 'task'
+  scopeName: string
+  blockName?: string
+}) {
+  const label = params.scope === 'task' ? 'tasca' : 'bloc'
+  const start = formatBarcelonaDateTime(params.startDateTime)
+  const end = formatBarcelonaDateTime(params.endDateTime)
+  const extraBlock =
+    params.scope === 'task' && params.blockName
+      ? `<p><strong>Bloc:</strong> ${escapeHtml(params.blockName)}</p>`
+      : ''
+  const extraNotes = params.notes?.trim()
+    ? `<p><strong>Notes convocatoria:</strong><br/>${escapeHtml(params.notes).replace(/\n/g, '<br/>')}</p>`
+    : ''
+
+  return `
+    <p>S'ha convocat una reunio del ${label} <strong>${escapeHtml(params.scopeName || 'Element del projecte')}</strong>.</p>
+    <p><strong>Projecte:</strong> ${escapeHtml(params.projectName || 'Projecte')}</p>
+    ${extraBlock}
+    <p><strong>Data i hora:</strong> ${escapeHtml(start)} - ${escapeHtml(end)}</p>
+    ${extraNotes}
+    <p>Rebreu tambe la invitacio de calendari d'Outlook per poder acceptar o rebutjar la reunio.</p>
+  `
+}
+
 function buildBlockAssignmentEmailHtml(params: SendBlockAssignmentEmailInput) {
   const deadlineLabel = params.deadline ? formatBarcelonaDate(params.deadline) : 'Sense data'
 
@@ -621,6 +812,37 @@ async function buildMailAttachments(
   }
 
   return result
+}
+
+async function attachFilesToGraphEvent(
+  organizerEmail: string,
+  eventId: string,
+  attachments: Array<{ name: string; path: string; contentType?: string | null }>
+) {
+  const accessToken = await getAccessToken()
+  const graphAttachments = await buildMailAttachments(attachments)
+
+  for (const attachment of graphAttachments) {
+    const response = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(
+        organizerEmail
+      )}/events/${encodeURIComponent(eventId)}/attachments`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(attachment),
+        cache: 'no-store',
+      }
+    )
+
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(`No s ha pogut adjuntar el fitxer a la convocatoria: ${response.status} ${text}`)
+    }
+  }
 }
 
 function formatDisplayDateTime(value?: number) {

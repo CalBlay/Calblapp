@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, MessagesSquare, Paperclip, Save, Trash2 } from 'lucide-react'
+import { CalendarDays, ChevronDown, MessagesSquare, Paperclip, Save, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
@@ -88,6 +88,7 @@ type Props = {
   canAccessTaskOps?: (block: ProjectBlock, task: ProjectTask) => boolean
   canMoveTask?: (block: ProjectBlock, task: ProjectTask) => boolean
   onCreateSprint: (name: string) => void
+  onOpenTaskMeeting?: (blockId: string, taskId: string) => void
 }
 
 const documentName = (document?: ProjectDocument) =>
@@ -177,6 +178,7 @@ export default function ProjectTasksTab({
   canAccessTaskOps = () => false,
   canMoveTask = () => false,
   onCreateSprint,
+  onOpenTaskMeeting,
 }: Props) {
   const router = useRouter()
   const { setContent, setOpen } = useFilters()
@@ -595,6 +597,22 @@ export default function ProjectTasksTab({
                                       <MessagesSquare className="h-4 w-4" />
                                     </Button>
                                   ) : null}
+                                  {canManageCurrentTask && onOpenTaskMeeting ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-8 w-8 rounded-full border-slate-200"
+                                      title="Convocar reunió"
+                                      aria-label="Convocar reunió"
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        onOpenTaskMeeting(block.id, task.id)
+                                      }}
+                                    >
+                                      <CalendarDays className="h-4 w-4" />
+                                    </Button>
+                                  ) : null}
                                   {canAccessOpsCurrentTask ? (
                                     <input
                                       ref={(node) => {
@@ -662,6 +680,7 @@ export default function ProjectTasksTab({
                               {(task.documents || []).length > 0 ? (
                                 <span>{(task.documents || []).length} docs</span>
                               ) : null}
+                              <span>{(task.meetings || []).length} reunions</span>
                               {canMoveCurrentTask ? (
                                 <span className="text-slate-400">Arrossega per moure</span>
                               ) : null}

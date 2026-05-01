@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
+  CalendarDays,
   ChevronDown,
   MessagesSquare,
   Plus,
@@ -111,6 +112,7 @@ type Props = {
   canEditBlock?: (block: ProjectBlock) => boolean
   canAccessBlockRoom?: (block: ProjectBlock) => boolean
   canEditBlockOwner?: boolean
+  onOpenBlockMeeting?: (blockId: string) => void
 }
 
 const blockStatusTone = (status: string) => {
@@ -178,6 +180,7 @@ export default function ProjectBlocksTab({
   canEditBlock = () => false,
   canAccessBlockRoom = () => false,
   canEditBlockOwner = false,
+  onOpenBlockMeeting,
 }: Props) {
   const router = useRouter()
   const [showKickoffAttendeeEditor, setShowKickoffAttendeeEditor] = useState(false)
@@ -522,6 +525,9 @@ export default function ProjectBlocksTab({
                         <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
                           {block.tasks.filter((task) => task.status === 'done').length} fetes
                         </span>
+                        <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
+                          {(block.meetings || []).length} reunions
+                        </span>
                       </div>
                     </div>
                     {block.dependsOn ? (
@@ -553,6 +559,23 @@ export default function ProjectBlocksTab({
                         }}
                       >
                         <MessagesSquare className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                    {canEditCurrentBlock && onOpenBlockMeeting ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-full border-slate-200"
+                        title="Convocar reunió"
+                        aria-label="Convocar reunió"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          event.preventDefault()
+                          onOpenBlockMeeting(block.id)
+                        }}
+                      >
+                        <CalendarDays className="h-4 w-4" />
                       </Button>
                     ) : null}
                     {canEditCurrentBlock ? (

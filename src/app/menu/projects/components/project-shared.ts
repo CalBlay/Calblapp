@@ -98,6 +98,7 @@ export type ProjectTask = {
   priority: string
   status: string
   documents?: ProjectDocument[]
+  meetings?: ProjectMeetingRecord[]
 }
 
 export type ProjectBlock = {
@@ -113,6 +114,7 @@ export type ProjectBlock = {
   dependsOn: string
   status: string
   tasks: ProjectTask[]
+  meetings?: ProjectMeetingRecord[]
 }
 
 export type ProjectDocument = {
@@ -167,6 +169,34 @@ export type KickoffAttendee = {
   name: string
   email: string
   attended?: boolean
+}
+
+export type ProjectMeetingAttendee = {
+  key: string
+  department: string
+  userId: string
+  name: string
+  email: string
+}
+
+export type ProjectMeetingRecord = {
+  id: string
+  scope: 'block' | 'task'
+  title: string
+  date: string
+  startTime: string
+  durationMinutes: number
+  notes: string
+  attendees: ProjectMeetingAttendee[]
+  organizerEmail?: string
+  attachments?: Array<Exclude<ProjectDocument, null>>
+  invitedAt?: number
+  graphEventId?: string
+  graphWebLink?: string
+  graphJoinUrl?: string
+  status?: string
+  emailNotificationStatus?: 'sent' | 'failed'
+  emailNotificationError?: string
 }
 
 export type KickoffData = {
