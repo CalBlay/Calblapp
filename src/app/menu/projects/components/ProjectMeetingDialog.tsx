@@ -171,8 +171,8 @@ export default function ProjectMeetingDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[94vw] max-w-2xl rounded-2xl p-0 overflow-hidden">
-        <DialogHeader className="border-b border-slate-200 px-5 py-4">
+      <DialogContent className="flex max-h-[90vh] w-[94vw] max-w-2xl flex-col gap-0 overflow-hidden rounded-2xl p-0">
+        <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4">
           <DialogTitle className="text-base font-semibold text-slate-900">
             Convocar reunió
           </DialogTitle>
@@ -184,7 +184,7 @@ export default function ProjectMeetingDialog({
           ) : null}
         </DialogHeader>
 
-        <div className="space-y-5 px-5 py-4">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
           <div className="grid gap-4 sm:grid-cols-[150px_140px_140px]">
             <div className="space-y-2">
               <Label>Data</Label>
@@ -314,7 +314,7 @@ export default function ProjectMeetingDialog({
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 px-5 py-4">
           <div className="text-sm text-slate-500">
             {selectedAttendees.length} assistent{selectedAttendees.length === 1 ? '' : 's'} seleccionat
             {selectedAttendees.length === 1 ? '' : 's'}

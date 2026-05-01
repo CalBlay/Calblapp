@@ -27,7 +27,7 @@ export interface ModuleDef {
 const TORNS_CAP_DEPARTMENTS = new Set(['logistica', 'cuina', 'serveis'])
 const MAINTENANCE_CAP_DEPARTMENTS = new Set(['manteniment', 'logistica'])
 
-export const normalizeDept = (raw?: string) => {
+export const normalizeDept = (raw?: string | null) => {
   const base = (raw || '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
@@ -109,7 +109,7 @@ export const MODULES: ModuleDef[] = [
 
   { label: 'Manteniment', path: '/menu/manteniment',
     roles: ['admin','direccio','cap'],
-    departments: ['manteniment','logistica','Total'],
+    departments: ['manteniment', 'logistica'],
     submodules: [
       {
         label: 'Jornada',
@@ -188,6 +188,18 @@ export const MODULES: ModuleDef[] = [
 
   { label: 'Usuaris', path: '/menu/users',
     roles: ['admin'] },
+
+  {
+    label: 'Roba personal',
+    path: '/menu/roba-personal',
+    roles: ['admin'],
+  },
+
+  {
+    label: 'Documentació',
+    path: '/menu/documentacio',
+    roles: ['admin', 'direccio'],
+  },
 
   {
     label: 'Consultes MCP',

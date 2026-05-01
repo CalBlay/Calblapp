@@ -23,6 +23,8 @@ import {
   Wrench,
   Images,
   Sparkles,
+  BookOpen,
+  Shirt,
 } from 'lucide-react'
 import type { LucideIcon, LucideProps } from 'lucide-react'
 import { getVisibleModules } from '@/lib/accessControl'
@@ -195,10 +197,20 @@ const UI_MAP: Record<
     color: 'from-cyan-100 to-blue-100',
     iconColor: 'text-cyan-600',
   },
+  '/menu/roba-personal': {
+    icon: Shirt,
+    color: 'from-sky-100 to-indigo-50',
+    iconColor: 'text-indigo-600',
+  },
   '/menu/users': {
     icon: Shield,
     color: 'from-gray-200 to-gray-50',
     iconColor: 'text-gray-600',
+  },
+  '/menu/documentacio': {
+    icon: BookOpen,
+    color: 'from-teal-100 to-cyan-50',
+    iconColor: 'text-teal-700',
   },
   '/menu/consultes-mcp': {
     icon: Sparkles,

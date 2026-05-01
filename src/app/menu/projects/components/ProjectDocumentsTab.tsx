@@ -7,7 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { type ProjectData } from './project-shared'
-import { projectCardTitleClass, projectEmptyStateClass } from './project-ui'
+import {
+  attachmentListCardTitleClass,
+  attachmentListEmptyBoxClass,
+  attachmentListIconWrapClass,
+  attachmentListMetaRowClass,
+  attachmentListRowClass,
+} from '@/lib/attachmentListUi'
 
 const CATEGORY_ALIASES: Record<string, string[]> = {
   initial: ['initial', 'inicial', 'inicials', 'overview', 'document inicial', 'docs inicials'],
@@ -386,7 +392,7 @@ export default function ProjectDocumentsTab({
 
       <div className="space-y-2">
         {filteredDocuments.length === 0 ? (
-          <div className={`rounded-2xl bg-slate-50/80 px-4 py-4 ${projectEmptyStateClass}`}>
+          <div className={attachmentListEmptyBoxClass}>
             {search.trim()
               ? 'No hi ha documents que coincideixin amb la cerca.'
               : 'Encara no hi ha documents al projecte.'}
@@ -395,10 +401,10 @@ export default function ProjectDocumentsTab({
           filteredDocuments.map((item) => (
             <div
               key={item?.id || item?.path || item?.url}
-              className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50/70 px-4 py-3"
+              className={attachmentListRowClass}
             >
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+                <div className={attachmentListIconWrapClass}>
                   <FileText className="h-4 w-4" />
                 </div>
 
@@ -407,16 +413,16 @@ export default function ProjectDocumentsTab({
                     <Link
                       href={item.url}
                       target="_blank"
-                      className={`block truncate hover:text-violet-700 ${projectCardTitleClass}`}
+                      className={`block truncate hover:text-violet-700 ${attachmentListCardTitleClass}`}
                     >
                       {item?.name || item?.label || 'Document'}
                     </Link>
                   ) : (
-                    <div className={`truncate ${projectCardTitleClass}`}>
+                    <div className={`truncate ${attachmentListCardTitleClass}`}>
                       {item?.name || item?.label || 'Document'}
                     </div>
                   )}
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <div className={attachmentListMetaRowClass}>
                     {item?.label && item?.label !== item?.name ? <span>{item.label}</span> : null}
                     {item?.category ? (
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">

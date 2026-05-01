@@ -346,6 +346,82 @@ export async function sendProjectMeetingNotificationEmail(
   }
 }
 
+/** Envia correu des del compte de l’usuari (Outlook) via Graph, mateix patró que projectes. */
+export async function sendOutlookTextMail(input: {
+  organizerEmail: string
+  toRecipients: Array<{ email: string; name?: string }>
+  ccRecipients?: Array<{ email: string; name?: string }>
+  subject: string
+  bodyText: string
+}) {
+  const accessToken = await getAccessToken()
+  const organizerEmail = String(input.organizerEmail || '').trim()
+  if (!organizerEmail.includes('@')) {
+    throw new Error('Falta el correu de l’usuari que envia (organitzador)')
+  }
+
+  const html = `<div style="font-family:Segoe UI,system-ui,sans-serif;font-size:14px;line-height:1.5"><pre style="white-space:pre-wrap;font-family:inherit;margin:0">${escapeHtml(
+    input.bodyText
+  )}</pre></div>`
+
+  const mapRecipients = (list: Array<{ email: string; name?: string }>) =>
+    list
+      .map((attendee) => {
+        const address = String(attendee.email || '').trim()
+        return {
+          emailAddress: {
+            address,
+            name: String(attendee.name || address).trim() || address,
+          },
+        }
+      })
+      .filter((r) => r.emailAddress.address.includes('@'))
+
+  const toRecipients = mapRecipients(input.toRecipients)
+
+  if (toRecipients.length === 0) {
+    throw new Error('No hi ha destinataris amb correu vàlid')
+  }
+
+  const toSet = new Set(toRecipients.map((r) => r.emailAddress.address.toLowerCase()))
+  const ccRecipients = mapRecipients(input.ccRecipients || []).filter(
+    (r) => !toSet.has(r.emailAddress.address.toLowerCase())
+  )
+
+  const message: Record<string, unknown> = {
+    subject: input.subject,
+    body: {
+      contentType: 'HTML',
+      content: html,
+    },
+    toRecipients,
+  }
+  if (ccRecipients.length > 0) {
+    message.ccRecipients = ccRecipients
+  }
+
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(organizerEmail)}/sendMail`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        message,
+        saveToSentItems: true,
+      }),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`No s’ha pogut enviar el correu (Outlook): ${response.status} ${text}`)
+  }
+}
+
 export async function sendBlockAssignmentEmail(input: SendBlockAssignmentEmailInput) {
   const recipientEmail = String(input.recipient.email || '').trim()
   const senderEmail = String(input.senderEmail || '').trim()

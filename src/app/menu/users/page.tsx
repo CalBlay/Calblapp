@@ -13,7 +13,7 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import UserFilters, { UserFiltersState } from '@/components/users/UserFilters'
 import FloatingAddButton from '@/components/ui/floating-add-button'
 import { markAdminUserRequestsRead } from '@/hooks/useAdminNotifications'
-import { DEPARTMENTS } from '@/data/departments'
+import { DEFAULT_USER_DEPARTMENT, DEPARTMENTS } from '@/data/departments'
 
 
 // 🔥 Model unificat amb UserFormModal (id opcional)
@@ -209,7 +209,7 @@ function UsersPage() {
       name: '',
       role: 'Treballador',
       isAdmin: false,
-      department: 'Total',
+      department: DEFAULT_USER_DEPARTMENT,
       phone: '',
       available: true,
       isDriver: false,

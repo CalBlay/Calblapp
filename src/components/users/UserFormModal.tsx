@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { normalizeRole } from '@/lib/roles'
-import { DEPARTMENTS } from '@/data/departments'
+import { DEFAULT_USER_DEPARTMENT, DEPARTMENTS } from '@/data/departments'
 import useSWR from 'swr'
 
 export interface User {
@@ -82,7 +82,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const [password, setPassword] = React.useState('')
   const [role, setRole] = React.useState<string>('Treballador')
   const [isAdmin, setIsAdmin] = React.useState(false)
-  const [department, setDepartment] = React.useState<string>('Total')
+  const [department, setDepartment] = React.useState<string>(DEFAULT_USER_DEPARTMENT)
   const [commercialName, setCommercialName] = React.useState('')
   const [phone, setPhone] = React.useState('')
   const [email, setEmail] = React.useState('')
@@ -126,7 +126,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         setName(data.name ?? '')
         setRole(data.role ?? 'Treballador')
         setIsAdmin(Boolean(data.isAdmin || normalizeRole(data.role) === 'admin'))
-        setDepartment(data.department ?? data.departmentLower ?? 'Total')
+        setDepartment(data.department ?? data.departmentLower ?? DEFAULT_USER_DEPARTMENT)
         setPhone(data.phone ?? '')
         setEmail(data.email ?? '')
         setAvailable(data.available ?? true)
@@ -152,7 +152,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     setName(user.name ?? '')
     setRole(user.role ?? 'Treballador')
     setIsAdmin(Boolean(user.isAdmin || normalizeRole(user.role) === 'admin'))
-    setDepartment(user.department ?? 'Total')
+    setDepartment(user.department ?? DEFAULT_USER_DEPARTMENT)
     setCommercialName(user.commercialName ?? '')
     setPhone(user.phone ?? '')
     setEmail(user.email ?? '')

@@ -34,6 +34,8 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     manteniment: 'from-emerald-50 to-green-100',
     deco: 'from-rose-50 to-pink-100',
     incidents: 'from-red-100 to-pink-100',
+    documentacio: 'from-teal-100 to-cyan-50',
+    'roba-personal': 'from-sky-100 to-indigo-50',
   }
 
   const color = colorMap[module] ?? 'from-gray-50 to-gray-100'
@@ -51,6 +53,8 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     manteniment: 'Manteniment',
     deco: 'Deco',
     incidents: 'Incidències',
+    documentacio: 'Documentació',
+    'roba-personal': 'Roba personal',
   }
 
   const mainLabel = title || moduleLabels[module] || module

@@ -6,6 +6,7 @@ import {
   CalendarDays,
   ChevronDown,
   MessagesSquare,
+  MoreHorizontal,
   Plus,
   RotateCcw,
   Save,
@@ -13,6 +14,13 @@ import {
   Users2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -25,6 +33,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { colorByDepartment } from '@/lib/colors'
+import { cn } from '@/lib/utils'
 import {
   BLOCK_STATUS_OPTIONS,
   TASK_PRIORITY_OPTIONS,
@@ -462,10 +471,24 @@ export default function ProjectBlocksTab({
                 project.rooms.find((room) => room.kind === 'block' && room.blockId === block.id)?.id ||
                 `room-block-${block.id}`
               const blockRoomHref = `/menu/projects/${projectId}/rooms/${blockRoomId}`
+              const taskPending = block.tasks.filter((task) => task.status === 'pending').length
+              const taskInProgress = block.tasks.filter((task) => task.status === 'in_progress').length
+              const taskDone = block.tasks.filter((task) => task.status === 'done').length
+              const taskTotal = block.tasks.length
+              const meetingCount = (block.meetings || []).length
+              const taskProgressPct = taskTotal > 0 ? Math.round((taskDone / taskTotal) * 100) : 0
+              const taskSublineParts: string[] = []
+              if (taskPending > 0) taskSublineParts.push(`${taskPending} pendents`)
+              if (taskInProgress > 0) taskSublineParts.push(`${taskInProgress} en curs`)
+              if (meetingCount > 0) taskSublineParts.push(`${meetingCount} reunions`)
+              const showBlockActionsMenu =
+                canAccessCurrentBlockRoom ||
+                (canEditCurrentBlock && Boolean(onOpenBlockMeeting)) ||
+                canEditCurrentBlock
               return (
               <div
                 key={block.id}
-                className={`relative space-y-4 rounded-[24px] border p-5 shadow-sm transition ${
+                className={`group relative space-y-4 rounded-[24px] border p-5 shadow-sm transition ${
                   isExpanded && canEditCurrentBlock
                     ? 'border-violet-200 bg-violet-50/70 ring-1 ring-violet-200'
                     : 'border-slate-200 bg-slate-50/75'
@@ -499,35 +522,54 @@ export default function ProjectBlocksTab({
                         {block.summary}
                       </div>
                     ) : null}
-                    <div className={`mt-3 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start ${projectCardMetaClass}`}>
-                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <div
+                      className={`mt-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-6 ${projectCardMetaClass}`}
+                    >
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                         {getBlockDepartments(block).length > 0 ? (
                           getBlockDepartments(block).map((department) => (
                             <span
                               key={`${block.id}-summary-${department}`}
-                              className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${colorByDepartment(department)}`}
+                              className={cn(
+                                colorByDepartment(department),
+                                'rounded-md border-0 px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ring-slate-200/75'
+                              )}
                             >
                               {department}
                             </span>
                           ))
                         ) : (
-                          <span>Sense departament</span>
+                          <span className="text-sm text-slate-500">Sense departament</span>
                         )}
                       </div>
-                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-l border-slate-200/70 pl-4 text-right">
-                        <span className="text-xs font-medium text-slate-500">Tasques</span>
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
-                          {block.tasks.filter((task) => task.status === 'pending').length} pendents
-                        </span>
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-                          {block.tasks.filter((task) => task.status === 'in_progress').length} en curs
-                        </span>
-                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                          {block.tasks.filter((task) => task.status === 'done').length} fetes
-                        </span>
-                        <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700">
-                          {(block.meetings || []).length} reunions
-                        </span>
+                      <div className="flex min-w-0 shrink-0 flex-col gap-1 md:max-w-[min(100%,20rem)] md:items-end">
+                        <div className="flex w-full items-center gap-2 md:w-auto md:justify-end">
+                          <div
+                            className="h-1.5 min-w-[4.5rem] flex-1 overflow-hidden rounded-full bg-slate-200/90 md:flex-initial md:w-28"
+                            title={
+                              taskTotal > 0
+                                ? `${taskDone} de ${taskTotal} tasques fetes`
+                                : 'Sense tasques en aquest bloc'
+                            }
+                          >
+                            <div
+                              className="h-full rounded-full bg-emerald-500/90 transition-[width]"
+                              style={{ width: taskTotal > 0 ? `${taskProgressPct}%` : '0%' }}
+                            />
+                          </div>
+                          <span className="shrink-0 text-xs font-medium tabular-nums text-slate-600">
+                            {taskTotal > 0 ? (
+                              <>
+                                {taskDone}/{taskTotal} fetes
+                              </>
+                            ) : (
+                              <>Sense tasques</>
+                            )}
+                          </span>
+                        </div>
+                        {taskSublineParts.length > 0 ? (
+                          <p className="text-xs leading-snug text-slate-500">{taskSublineParts.join(' · ')}</p>
+                        ) : null}
                       </div>
                     </div>
                     {block.dependsOn ? (
@@ -540,84 +582,37 @@ export default function ProjectBlocksTab({
                     ) : null}
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${blockStatusTone(block.status)}`}>
+                  <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+                    <span
+                      className={`mr-1 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium sm:px-2.5 sm:py-1 sm:text-xs ${blockStatusTone(block.status)}`}
+                    >
                       {BLOCK_STATUS_OPTIONS.find((option) => option.value === block.status)?.label || 'En curs'}
                     </span>
-                    {canAccessCurrentBlockRoom ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8 rounded-full border-slate-200"
-                        title="Obrir sala"
-                        aria-label="Obrir sala"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          event.preventDefault()
-                          router.push(blockRoomHref)
-                        }}
-                      >
-                        <MessagesSquare className="h-4 w-4" />
-                      </Button>
-                    ) : null}
-                    {canEditCurrentBlock && onOpenBlockMeeting ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8 rounded-full border-slate-200"
-                        title="Convocar reunió"
-                        aria-label="Convocar reunió"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          event.preventDefault()
-                          onOpenBlockMeeting(block.id)
-                        }}
-                      >
-                        <CalendarDays className="h-4 w-4" />
-                      </Button>
-                    ) : null}
                     {canEditCurrentBlock ? (
-                      <>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 rounded-full"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            event.preventDefault()
-                            onSetEditingBlockId((current) => (current === block.id ? null : block.id))
-                          }}
-                          aria-label={editingBlockId === block.id ? 'Plegar edicio' : 'Desplegar edicio'}
-                        >
-                          <ChevronDown
-                            className={`h-4 w-4 transition-transform ${
-                              editingBlockId === block.id ? 'rotate-180' : ''
-                            }`}
-                          />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 rounded-full text-red-600 hover:bg-red-50 hover:text-red-700"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            event.preventDefault()
-                            onRemoveBlock(block.id)
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 rounded-full text-slate-600"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          event.preventDefault()
+                          onSetEditingBlockId((current) => (current === block.id ? null : block.id))
+                        }}
+                        aria-label={editingBlockId === block.id ? 'Plegar edicio' : 'Desplegar edicio'}
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${
+                            editingBlockId === block.id ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </Button>
                     ) : (
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-9 w-9 rounded-full"
+                        className="h-9 w-9 rounded-full text-slate-600"
                         onClick={(event) => {
                           event.stopPropagation()
                           event.preventDefault()
@@ -632,6 +627,65 @@ export default function ProjectBlocksTab({
                         />
                       </Button>
                     )}
+                    {showBlockActionsMenu ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 rounded-full text-slate-500 opacity-80 hover:opacity-100"
+                            aria-label="Més accions del bloc"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                            }}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52" onClick={(e) => e.stopPropagation()}>
+                          {canAccessCurrentBlockRoom ? (
+                            <DropdownMenuItem
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                router.push(blockRoomHref)
+                              }}
+                            >
+                              <MessagesSquare className="h-4 w-4" />
+                              Obrir sala
+                            </DropdownMenuItem>
+                          ) : null}
+                          {canEditCurrentBlock && onOpenBlockMeeting ? (
+                            <DropdownMenuItem
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                onOpenBlockMeeting(block.id)
+                              }}
+                            >
+                              <CalendarDays className="h-4 w-4" />
+                              Convocar reunió
+                            </DropdownMenuItem>
+                          ) : null}
+                          {canEditCurrentBlock ? (
+                            <>
+                              {canAccessCurrentBlockRoom || onOpenBlockMeeting ? (
+                                <DropdownMenuSeparator />
+                              ) : null}
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  onRemoveBlock(block.id)
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Eliminar bloc
+                              </DropdownMenuItem>
+                            </>
+                          ) : null}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : null}
                   </div>
                 </div>
 

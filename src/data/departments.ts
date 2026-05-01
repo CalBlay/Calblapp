@@ -1,5 +1,4 @@
 export const DEPARTMENTS = [
-  'Total',
   'Empresa',
   'Compres',
   'Comptabilitat',
@@ -23,3 +22,6 @@ export const DEPARTMENTS = [
   'Casaments',
   'Transports',
 ] as const
+
+/** Departament per defecte en formularis nous (primer de la llista). */
+export const DEFAULT_USER_DEPARTMENT = DEPARTMENTS[0]

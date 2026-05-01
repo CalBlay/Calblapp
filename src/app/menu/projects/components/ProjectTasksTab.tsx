@@ -2,14 +2,30 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarDays, ChevronDown, MessagesSquare, Paperclip, Save, Trash2 } from 'lucide-react'
+import {
+  CalendarDays,
+  ChevronDown,
+  MessagesSquare,
+  MoreHorizontal,
+  Paperclip,
+  Save,
+  Trash2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useFilters } from '@/context/FiltersContext'
 import { colorByDepartment } from '@/lib/colors'
+import { cn } from '@/lib/utils'
 import {
   Select,
   SelectContent,
@@ -528,6 +544,25 @@ export default function ProjectTasksTab({
                           const canMoveCurrentTask = canMoveTask(block, task)
                           const isObserverTask = !canAccessOpsCurrentTask
                           const taskDaysLeft = taskDayDiffFromToday(task.deadline)
+                          const sprintLabel =
+                            projectSprints.find((item) => item.id === task.sprintId)?.name || 'Backlog'
+                          const spLabel = `${(task.storyPoints || '3').trim() || '3'} SP`
+                          const docCount = (task.documents || []).length
+                          const meetingCount = (task.meetings || []).length
+                          const taskMetaParts: string[] = [`${sprintLabel} · ${spLabel}`]
+                          if (task.dependsOn) taskMetaParts.push('Depen de 1 tasca')
+                          if (docCount > 0) taskMetaParts.push(`${docCount} doc${docCount === 1 ? '' : 's'}`)
+                          if (meetingCount > 0) {
+                            taskMetaParts.push(`${meetingCount} reunió${meetingCount === 1 ? '' : 's'}`)
+                          }
+                          if (isObserverTask) taskMetaParts.push('Observador')
+                          if (canMoveCurrentTask) taskMetaParts.push('Arrossega per moure')
+                          const showTaskActionsMenu =
+                            canAccessOpsCurrentTask || canManageCurrentTask
+                          const taskMenuHasDestructive = canManageCurrentTask
+                          const taskMenuHasNonDestructive =
+                            canAccessOpsCurrentTask ||
+                            (canManageCurrentTask && Boolean(onOpenTaskMeeting))
 
                           return (
                           <div
@@ -541,7 +576,7 @@ export default function ProjectTasksTab({
                               setDraggingTaskKey(null)
                               setDragOverStatus(null)
                             }}
-                            className={`relative rounded-[18px] border p-4 shadow-sm transition ${
+                            className={`group relative rounded-[18px] border p-4 shadow-sm transition ${
                               draggingTaskKey === taskKey
                                 ? 'cursor-grabbing opacity-60'
                                 : canAccessOpsCurrentTask
@@ -579,111 +614,149 @@ export default function ProjectTasksTab({
                                 ) : null}
                               </div>
 
-                              <div className="flex items-start gap-1">
-                                <div className="flex items-center gap-1">
-                                  {canAccessOpsCurrentTask ? (
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="icon"
-                                      className="h-8 w-8 rounded-full border-slate-200"
-                                      title="Obrir sala"
-                                      aria-label="Obrir sala"
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        router.push(roomHref)
-                                      }}
-                                    >
-                                      <MessagesSquare className="h-4 w-4" />
-                                    </Button>
-                                  ) : null}
-                                  {canManageCurrentTask && onOpenTaskMeeting ? (
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="icon"
-                                      className="h-8 w-8 rounded-full border-slate-200"
-                                      title="Convocar reunió"
-                                      aria-label="Convocar reunió"
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        onOpenTaskMeeting(block.id, task.id)
-                                      }}
-                                    >
-                                      <CalendarDays className="h-4 w-4" />
-                                    </Button>
-                                  ) : null}
-                                  {canAccessOpsCurrentTask ? (
-                                    <input
-                                      ref={(node) => {
-                                        fileInputsRef.current[taskKey] = node
-                                      }}
-                                      type="file"
-                                      className="hidden"
-                                      onChange={(event) => {
-                                        if (!canAccessOpsCurrentTask) return
-                                        const file = event.target.files?.[0]
-                                        if (!file) return
-                                        onAttachTaskDocument(block.id, task.id, file)
-                                        event.currentTarget.value = ''
-                                      }}
+                              <div className="flex shrink-0 items-start gap-0.5">
+                                {canAccessOpsCurrentTask ? (
+                                  <input
+                                    ref={(node) => {
+                                      fileInputsRef.current[taskKey] = node
+                                    }}
+                                    type="file"
+                                    className="hidden"
+                                    onChange={(event) => {
+                                      if (!canAccessOpsCurrentTask) return
+                                      const file = event.target.files?.[0]
+                                      if (!file) return
+                                      onAttachTaskDocument(block.id, task.id, file)
+                                      event.currentTarget.value = ''
+                                    }}
+                                  />
+                                ) : null}
+                                {canManageCurrentTask ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 rounded-full text-slate-600"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      onSetEditingTaskKey((current) => (current === taskKey ? null : taskKey))
+                                    }}
+                                    aria-label={editingTaskKey === taskKey ? 'Plegar edicio' : 'Desplegar edicio'}
+                                  >
+                                    <ChevronDown
+                                      className={`h-4 w-4 transition-transform ${
+                                        editingTaskKey === taskKey ? 'rotate-180' : ''
+                                      }`}
                                     />
-                                  ) : null}
-                                  {canManageCurrentTask ? (
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 rounded-full"
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        onSetEditingTaskKey((current) => (current === taskKey ? null : taskKey))
-                                      }}
-                                      aria-label={editingTaskKey === taskKey ? 'Plegar edicio' : 'Desplegar edicio'}
+                                  </Button>
+                                ) : null}
+                                {showTaskActionsMenu ? (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 rounded-full text-slate-500 opacity-80 hover:opacity-100"
+                                        aria-label="Més accions de la tasca"
+                                        onClick={(event) => {
+                                          event.stopPropagation()
+                                        }}
+                                      >
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent
+                                      align="end"
+                                      className="w-52"
+                                      onClick={(e) => e.stopPropagation()}
                                     >
-                                      <ChevronDown
-                                        className={`h-4 w-4 transition-transform ${
-                                          editingTaskKey === taskKey ? 'rotate-180' : ''
-                                        }`}
-                                      />
-                                    </Button>
-                                  ) : null}
-                                </div>
+                                      {canAccessOpsCurrentTask ? (
+                                        <DropdownMenuItem
+                                          onClick={(event) => {
+                                            event.stopPropagation()
+                                            router.push(roomHref)
+                                          }}
+                                        >
+                                          <MessagesSquare className="h-4 w-4" />
+                                          Obrir sala
+                                        </DropdownMenuItem>
+                                      ) : null}
+                                      {canManageCurrentTask && onOpenTaskMeeting ? (
+                                        <DropdownMenuItem
+                                          onClick={(event) => {
+                                            event.stopPropagation()
+                                            onOpenTaskMeeting(block.id, task.id)
+                                          }}
+                                        >
+                                          <CalendarDays className="h-4 w-4" />
+                                          Convocar reunió
+                                        </DropdownMenuItem>
+                                      ) : null}
+                                      {canAccessOpsCurrentTask ? (
+                                        <DropdownMenuItem
+                                          onClick={(event) => {
+                                            event.stopPropagation()
+                                            fileInputsRef.current[taskKey]?.click()
+                                          }}
+                                        >
+                                          <Paperclip className="h-4 w-4" />
+                                          Adjuntar document
+                                        </DropdownMenuItem>
+                                      ) : null}
+                                      {taskMenuHasDestructive ? (
+                                        <>
+                                          {taskMenuHasNonDestructive ? <DropdownMenuSeparator /> : null}
+                                          <DropdownMenuItem
+                                            variant="destructive"
+                                            onClick={(event) => {
+                                              event.stopPropagation()
+                                              onRemoveTask(block.id, task.id)
+                                            }}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                            Eliminar tasca
+                                          </DropdownMenuItem>
+                                        </>
+                                      ) : null}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                ) : null}
                               </div>
                             </div>
 
-                            <div className={`mt-3 flex flex-wrap items-center gap-2.5 pl-2 text-xs ${isObserverTask ? 'text-slate-400' : 'text-slate-500'}`}>
-                              <span className={`rounded-full px-2.5 py-1 font-medium ${isObserverTask ? 'bg-white text-slate-500 ring-1 ring-slate-200' : 'bg-slate-100 text-slate-700'}`}>
-                                {block.name}
-                              </span>
-                              {task.department ? (
-                                <span className={`rounded-full px-2.5 py-1 font-medium ${isObserverTask ? 'bg-white text-slate-500 ring-1 ring-slate-200' : colorByDepartment(task.department)}`}>
-                                  {task.department}
+                            <div className="mt-3 space-y-1.5 pl-2">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span
+                                  className={cn(
+                                    'rounded-md px-2 py-0.5 text-[11px] font-medium',
+                                    isObserverTask
+                                      ? 'bg-white text-slate-500 ring-1 ring-slate-200'
+                                      : 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200/75'
+                                  )}
+                                >
+                                  {block.name}
                                 </span>
-                              ) : null}
-                              <span className={`rounded-full px-2.5 py-1 font-medium ${isObserverTask ? 'bg-white text-slate-500 ring-1 ring-slate-200' : 'bg-indigo-100 text-indigo-700'}`}>
-                                {projectSprints.find((item) => item.id === task.sprintId)?.name || 'Backlog'}
-                              </span>
-                              <span className={`rounded-full px-2.5 py-1 font-medium ${isObserverTask ? 'bg-white text-slate-500 ring-1 ring-slate-200' : 'bg-violet-100 text-violet-700'}`}>
-                                {(task.storyPoints || '3').trim() || '3'} SP
-                              </span>
-                              {task.dependsOn ? (
-                                <span className={`rounded-full px-2.5 py-1 font-medium ${isObserverTask ? 'bg-white text-slate-500 ring-1 ring-slate-200' : 'bg-amber-100 text-amber-800'}`}>
-                                  Depen de 1 tasca
-                                </span>
-                              ) : null}
-                              {isObserverTask ? (
-                                <span className="rounded-full bg-white px-2.5 py-1 font-medium text-slate-500 ring-1 ring-slate-200">
-                                  Observador
-                                </span>
-                              ) : null}
-                              {(task.documents || []).length > 0 ? (
-                                <span>{(task.documents || []).length} docs</span>
-                              ) : null}
-                              <span>{(task.meetings || []).length} reunions</span>
-                              {canMoveCurrentTask ? (
-                                <span className="text-slate-400">Arrossega per moure</span>
-                              ) : null}
+                                {task.department ? (
+                                  <span
+                                    className={cn(
+                                      isObserverTask
+                                        ? 'rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200'
+                                        : cn(
+                                            colorByDepartment(task.department),
+                                            'rounded-md border-0 px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ring-slate-200/75'
+                                          )
+                                    )}
+                                  >
+                                    {task.department}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p
+                                className={`text-xs leading-snug ${isObserverTask ? 'text-slate-400' : 'text-slate-500'}`}
+                              >
+                                {taskMetaParts.join(' · ')}
+                              </p>
                             </div>
 
                             {editingTaskKey !== taskKey ? (
