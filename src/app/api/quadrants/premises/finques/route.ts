@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { normalizeRole } from '@/lib/roles'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { jwtRoleFields, readAppJwt } from '@/lib/appJwtPayload'
 
 export const runtime = 'nodejs'
 
@@ -16,9 +17,7 @@ async function getSessionContext(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return null
 
-  const role = normalizeRole(
-    String((token as any).userRole ?? (token as any).role ?? '')
-  )
+  const role = normalizeRole(jwtRoleFields(readAppJwt(token)))
 
   return { role }
 }
@@ -37,7 +36,7 @@ export async function GET(req: NextRequest) {
     const snap = await db.collection('finques').get()
     const finques = snap.docs
       .map((doc) => {
-        const data = doc.data() as any
+        const data = doc.data() as { nom?: string; tipus?: string }
         return {
           id: doc.id,
           nom: String(data?.nom || '').trim(),

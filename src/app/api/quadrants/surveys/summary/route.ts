@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { jwtDepartmentFields, jwtRoleFields, readAppJwt } from '@/lib/appJwtPayload'
 
 export const runtime = 'nodejs'
 
@@ -39,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     const snap = await db.collection('quadrantSurveys').where('department', '==', department).get()
     const surveyKeys = snap.docs
-      .map((doc) => doc.data() as any)
+      .map((doc) => doc.data() as { serviceDate?: string; eventId?: string })
       .filter((survey) => {
         const serviceDate = String(survey?.serviceDate || '').slice(0, 10)
         return serviceDate >= start && serviceDate <= end

@@ -5,8 +5,12 @@ import { NextResponse } from 'next/server'
 import { FieldValue } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
+import { SUPPLIERS_COLLECTION } from '@/lib/companySuppliers/constants'
+import { requireRobaPersonalAdmin, resolveRobaAccess } from '@/lib/roba-personal/guard'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
+import { productDepartmentsVisibleToRobaLead } from '@/lib/roba-personal/deptScope'
+import { DEFAULT_DOTACIO_MAGATZEM } from '@/lib/roba-personal/dotacioDefaults'
+import { normalizeRobaProductDepartments } from '@/data/departments'
 
 const COL = DOTACIO_COLLECTIONS.products
 
@@ -14,18 +18,46 @@ function str(v: unknown): string {
   return String(v ?? '').trim()
 }
 
+async function resolveSupplierName(supplierId: string): Promise<string | null> {
+  if (!supplierId) return null
+  const snap = await db.collection(SUPPLIERS_COLLECTION).doc(supplierId).get()
+  if (!snap.exists) return null
+  return str((snap.data() as Record<string, unknown>).name)
+}
+
 export async function GET() {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await resolveRobaAccess()
   if (!auth.ok) return auth.res
 
-  const snap = await db.collection(COL).get()
-  const items = snap.docs
-    .map((d) => serializeFirestoreDoc(d.id, d.data() as Record<string, unknown>))
-    .sort((a, b) => {
-      const c = String(a.code).localeCompare(String(b.code), 'ca')
-      if (c !== 0) return c
-      return String(a.size).localeCompare(String(b.size), 'ca')
-    })
+  /** Evita lectura sense límit si el catàleg creix; pugeu el límit si cal. */
+  const snap = await db.collection(COL).limit(10_000).get()
+  let items = snap.docs.map((d) =>
+    serializeFirestoreDoc(d.id, d.data() as Record<string, unknown>)
+  )
+  if (auth.access.scope === 'deptLead') {
+    const lead = auth.access.leadDeptNorm
+    items = items.filter((row) =>
+      productDepartmentsVisibleToRobaLead(
+        (row as { departments?: string[] }).departments,
+        lead
+      )
+    )
+  } else if (auth.access.scope === 'workerSelf') {
+    const lead = auth.access.workerDeptNorm
+    items = items.filter((row) =>
+      productDepartmentsVisibleToRobaLead(
+        (row as { departments?: string[] }).departments,
+        lead
+      )
+    )
+  }
+  items.sort((a, b) => {
+    const c = String(a.code).localeCompare(String(b.code), 'ca')
+    if (c !== 0) return c
+    const n = String(a.name).localeCompare(String(b.name), 'ca')
+    if (n !== 0) return n
+    return String(a.size || '').localeCompare(String(b.size || ''), 'ca')
+  })
   return NextResponse.json(items)
 }
 
@@ -35,23 +67,48 @@ export async function POST(req: Request) {
 
   try {
     const body = (await req.json()) as Record<string, unknown>
-    const code = str(body.code)
-    const supplier = str(body.supplier)
+    const code = str(body.code).slice(0, 12)
     const name = str(body.name)
-    const size = str(body.size)
-    if (!code || !supplier || !name || !size) {
+    const supplierId = str(body.supplierId)
+    const supplierManual = str(body.supplier)
+
+    let supplier = supplierManual
+    if (supplierId) {
+      const resolved = await resolveSupplierName(supplierId)
+      if (!resolved) {
+        return NextResponse.json({ error: 'Proveïdor no trobat (supplierId).' }, { status: 400 })
+      }
+      supplier = resolved
+    }
+
+    if (!code || !name || !supplier) {
       return NextResponse.json(
-        { error: 'Calen code, supplier, name i size.' },
+        { error: 'Calen code, name i proveïdor (supplierId del catàleg o supplier).' },
         { status: 400 }
       )
     }
 
+    const size = str(body.size)
     const now = FieldValue.serverTimestamp()
+    const magatzemRaw = str(body.magatzem)
+    const magatzem = magatzemRaw || DEFAULT_DOTACIO_MAGATZEM
+
+    const departmentsRaw = Array.isArray(body.departments)
+      ? body.departments.map((x) => str(x)).filter(Boolean)
+      : []
+    const departments = normalizeRobaProductDepartments(departmentsRaw)
+
     const doc: Record<string, unknown> = {
       code,
       supplier,
+      supplierId: supplierId || null,
       name,
-      size,
+      size: size || '',
+      grup: str(body.grup) || 'Roba',
+      familia: str(body.familia) || null,
+      subfamilia: str(body.subfamilia) || null,
+      departments: departments.length ? departments : null,
+      magatzem,
       supplierSku: str(body.supplierSku) || null,
       unit: str(body.unit) || null,
       category: str(body.category) || null,
@@ -61,6 +118,7 @@ export async function POST(req: Request) {
           ? body.minStock
           : null,
       quantityOnHand: 0,
+      quantityReserved: 0,
       notes: str(body.notes) || null,
       createdAt: now,
       updatedAt: now,

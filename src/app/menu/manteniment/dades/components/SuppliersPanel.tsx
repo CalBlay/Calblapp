@@ -13,6 +13,7 @@ type SuppliersPanelProps = {
     specialty: string
     notes: string
     active: boolean
+    supplierDepartments: string[]
   }
   loading: boolean
   saving: boolean
@@ -58,6 +59,19 @@ export default function SuppliersPanel({
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="font-semibold text-slate-900">{item.name}</div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {(item.supplierDepartments?.length
+                        ? item.supplierDepartments
+                        : ['Manteniment']
+                      ).map((d) => (
+                        <span
+                          key={d}
+                          className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-600"
+                        >
+                          {d === 'Recursos Humans' ? 'RRHH' : d}
+                        </span>
+                      ))}
+                    </div>
                     <div className="mt-1 text-sm text-slate-500">
                       {[item.email, item.phone, item.specialty].filter(Boolean).join(' / ') || 'Sense dades extra'}
                     </div>
@@ -113,6 +127,54 @@ export default function SuppliersPanel({
             placeholder="Notes"
             className="min-h-[120px] rounded-2xl border px-4 py-3"
           />
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Àmbit del proveïdor
+            </div>
+            <p className="mb-2 text-[11px] leading-snug text-slate-500">
+              Mateixa col·lecció que Roba personal (RRHH). Marqueu on s’ha de poder triar aquest proveïdor.
+            </p>
+            <label className="flex items-center gap-2 py-1 text-sm text-slate-800">
+              <input
+                type="checkbox"
+                checked={supplierForm.supplierDepartments.includes('Manteniment')}
+                onChange={(e) => {
+                  const on = e.target.checked
+                  onSupplierFormChange((prev) => {
+                    const set = new Set(prev.supplierDepartments)
+                    if (on) set.add('Manteniment')
+                    else set.delete('Manteniment')
+                    const next = Array.from(set) as string[]
+                    return {
+                      ...prev,
+                      supplierDepartments: next.length ? next : ['Manteniment'],
+                    }
+                  })
+                }}
+              />
+              Manteniment (màquines, tickets…)
+            </label>
+            <label className="flex items-center gap-2 py-1 text-sm text-slate-800">
+              <input
+                type="checkbox"
+                checked={supplierForm.supplierDepartments.includes('Recursos Humans')}
+                onChange={(e) => {
+                  const on = e.target.checked
+                  onSupplierFormChange((prev) => {
+                    const set = new Set(prev.supplierDepartments)
+                    if (on) set.add('Recursos Humans')
+                    else set.delete('Recursos Humans')
+                    const next = Array.from(set) as string[]
+                    return {
+                      ...prev,
+                      supplierDepartments: next.length ? next : ['Manteniment'],
+                    }
+                  })
+                }}
+              />
+              Recursos humans (Roba personal)
+            </label>
+          </div>
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"

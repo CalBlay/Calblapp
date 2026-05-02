@@ -31,6 +31,7 @@ import { getVisibleModules } from '@/lib/accessControl'
 import {
   useAdminUserRequestCount,
   useProjectAssignmentCount,
+  useRobaPersonalRequestNotificationCount,
   useUserRequestResultCount,
   useTornNotificationCount,
 } from '@/hooks/useAdminNotifications'
@@ -47,6 +48,8 @@ interface SessionUser {
   role?: string
   department?: string
   canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
+  robaLinkedPersonnelId?: string | null
 }
 
 /* ─────────────────────────────────────────────
@@ -281,6 +284,7 @@ function MenuContent({ user }: { user: SessionUser }) {
   const { count: maintenanceNotificationCount } = useMaintenanceNotificationCount()
   const { count: incidentNotificationCount } = useIncidentNotificationCount()
   const { count: surveyNotificationCount } = useSurveyNotificationCount()
+  const { count: robaPersonalRequestCount } = useRobaPersonalRequestNotificationCount()
   const maintenanceBadge = maintenanceNotificationCount
 
   // 🔑 ÚNICA FONT DE MÒDULS
@@ -353,6 +357,11 @@ function MenuContent({ user }: { user: SessionUser }) {
                 {mod.path === '/menu/sondeigs' && surveyNotificationCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                     {surveyNotificationCount}
+                  </span>
+                )}
+                {mod.path === '/menu/roba-personal' && robaPersonalRequestCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {robaPersonalRequestCount}
                   </span>
                 )}
                 {!isAdmin && mod.path === '/menu/personnel' && userRequestResultsCount > 0 && (

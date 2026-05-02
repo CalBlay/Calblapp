@@ -6,6 +6,10 @@ export interface AccessUser {
   role?: string
   department?: string
   canRespondSurveys?: boolean
+  /** Responsable de roba del departament (mòdul Roba personal). */
+  isDepartmentRobaLead?: boolean
+  /** Treballador amb `personnel` vinculat i usuari d’app (roba personal). */
+  robaLinkedPersonnelId?: string | null
 }
 
 export interface SubModuleDef {
@@ -192,7 +196,8 @@ export const MODULES: ModuleDef[] = [
   {
     label: 'Roba personal',
     path: '/menu/roba-personal',
-    roles: ['admin'],
+    roles: ['admin', 'cap', 'treballador'],
+    departments: ['recursos humans'],
   },
 
   {
@@ -293,17 +298,19 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
   const matchesDept = (d?: string) => normalizeDept(d) === dept
   const isMaintenanceWorker = role === 'treballador' && dept === 'manteniment'
 
+  const robaLinked = Boolean(String(user.robaLinkedPersonnelId || '').trim())
+
   return MODULES
     .filter(mod => {
       if (isMaintenanceWorker) {
-        return mod.path === '/menu/manteniment'
+        return mod.path === '/menu/manteniment' || (robaLinked && mod.path === '/menu/roba-personal')
       }
 
       return true
     })
     .filter(mod => {
       if (isMaintenanceWorker) {
-        return mod.path === '/menu/manteniment'
+        return mod.path === '/menu/manteniment' || (robaLinked && mod.path === '/menu/roba-personal')
       }
 
       if (mod.path === '/menu/torns') {
@@ -316,6 +323,15 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
       if (mod.path === '/menu/sondeigs') {
         if (role === 'admin' || role === 'direccio' || role === 'cap') return true
         return Boolean(user.canRespondSurveys)
+      }
+
+      if (mod.path === '/menu/roba-personal') {
+        if (role === 'admin' || role === 'direccio') return true
+        if (robaLinked) return true
+        if (!mod.roles.includes(role)) return false
+        if (mod.departments?.some(matchesDept)) return true
+        if (user.isDepartmentRobaLead) return true
+        return false
       }
 
       if (!mod.roles.includes(role)) return false

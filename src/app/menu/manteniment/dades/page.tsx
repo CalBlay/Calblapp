@@ -400,6 +400,11 @@ export default function MaintenanceDataPage() {
                 specialty: supplier.specialty || '',
                 notes: supplier.notes || '',
                 active: supplier.active !== false,
+                supplierDepartments:
+                  supplier.supplierDepartments?.length &&
+                  supplier.supplierDepartments.some(Boolean)
+                    ? [...supplier.supplierDepartments]
+                    : ['Manteniment'],
               })
             }
             onSupplierFormChange={(updater) => setSupplierForm((prev) => updater(prev))}

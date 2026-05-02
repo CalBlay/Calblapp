@@ -506,6 +506,98 @@ export async function createBlockDeadlineCalendarEvent(input: CreateBlockDeadlin
   }
 }
 
+type CreateRobaPickupEventInput = {
+  assigneeEmail: string
+  pickupDate: string
+  reference: string
+  requestingDepartment: string
+  workerName?: string
+  /** Text lliure de RRHH (estoc pendent, condicions, etc.) */
+  availabilityMessage?: string
+  /** Convidats addicionals (p. ex. caps de departament) */
+  additionalAttendees?: Array<{ email: string; name?: string }>
+}
+
+function buildRobaPickupEventHtml(input: CreateRobaPickupEventInput): string {
+  const w = escapeHtml(input.workerName?.trim() || '')
+  const dept = escapeHtml(input.requestingDepartment || '')
+  const ref = escapeHtml(input.reference || '')
+  const day = escapeHtml(formatBarcelonaDate(input.pickupDate))
+  const note = (input.availabilityMessage || '').trim()
+  const noteHtml = note
+    ? `<p><b>Nota de RRHH:</b> ${escapeHtml(note).replace(/\n/g, '<br/>')}</p>`
+    : ''
+  return `<p>Material de roba llest per recollir.</p><p><b>Referència:</b> ${ref}<br/><b>Departament:</b> ${dept}<br/><b>Treballador:</b> ${w}<br/><b>Dia de recollida:</b> ${day}</p>${noteHtml}<p>Podeu recollir el material a Recursos Humans.</p>`
+}
+
+/** Esdeveniment tot el dia al calendari Outlook del sol·licitant (mateix patró que blocs/projectes). */
+export async function createRobaPickupCalendarEvent(
+  input: CreateRobaPickupEventInput
+): Promise<{ id: string; webLink: string }> {
+  const pickupDate = String(input.pickupDate || '').trim()
+  const assigneeEmail = String(input.assigneeEmail || '').trim()
+  if (!pickupDate || !assigneeEmail) {
+    return { id: '', webLink: '' }
+  }
+
+  const accessToken = await getAccessToken()
+  const endDate = addOneDay(pickupDate)
+  const attendees = (input.additionalAttendees || [])
+    .map((a) => ({
+      email: String(a.email || '').trim(),
+      name: String(a.name || '').trim(),
+    }))
+    .filter((a) => a.email)
+
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        subject: `Recollida roba · ${input.reference || 'Sol·licitud'}`,
+        body: {
+          contentType: 'HTML',
+          content: buildRobaPickupEventHtml(input),
+        },
+        start: {
+          dateTime: `${pickupDate}T00:00:00`,
+          timeZone: 'Europe/Madrid',
+        },
+        end: {
+          dateTime: `${endDate}T00:00:00`,
+          timeZone: 'Europe/Madrid',
+        },
+        isAllDay: true,
+        isReminderOn: true,
+        ...(attendees.length
+          ? {
+              attendees: attendees.map((a) => ({
+                emailAddress: { address: a.email, name: a.name || a.email },
+                type: 'required',
+              })),
+            }
+          : {}),
+      }),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`No s’ha pogut crear el dia de recollida al calendari: ${response.status} ${text}`)
+  }
+
+  const data = (await response.json()) as GraphEventResponse
+  return {
+    id: data.id || '',
+    webLink: data.webLink || '',
+  }
+}
+
 export async function sendTaskAssignmentEmail(input: SendTaskAssignmentEmailInput) {
   const recipientEmail = String(input.recipient.email || '').trim()
   const senderEmail = String(input.senderEmail || '').trim()

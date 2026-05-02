@@ -18,6 +18,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { taulaContentidorScroll } from '@/lib/taules'
+import { cn } from '@/lib/utils'
 import QuadrantCard from './components/QuadrantCard'
 
 /* ──────────────────────────────
@@ -340,7 +342,7 @@ export default function DraftsPage() {
 
       {/* 📊 Vista tipus operativa / Excel */}
       {!isLoading && !error && drafts.length > 0 && (
-        <div className="overflow-x-auto border rounded-2xl shadow-sm bg-white">
+        <div className={cn(taulaContentidorScroll, 'rounded-2xl shadow-sm')}>
           <Table>
             <TableHeader>
               <TableRow className="bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-900 text-sm h-8">

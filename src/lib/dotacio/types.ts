@@ -4,21 +4,31 @@ export type DotacioDate = Date | string | { toDate?: () => Date }
 /**
  * Producte en catàleg / estoc.
  *
- * Obligatoris (negoci): code, supplier, name, size.
+ * Obligatoris (negoci): code, supplier (nom denormalitzat), name.
+ * La talla va dins la descripció; `size` és opcional (llegat).
  */
 export interface DotacioProduct {
   /** Codi intern article (obligatori). */
   code: string
-  /** Proveïdor (obligatori). */
+  /** Proveïdor (nom denormalitzat). */
   supplier: string
+  /** Id document `maintenanceSuppliers` (catàleg compartit amb Manteniment). */
+  supplierId?: string | null
   /** Nom comercial / descripció curta (obligatori). */
   name: string
-  /** Talla o variant (obligatori; pot ser "Única" / "N/A" si no aplica). */
-  size: string
+  /** Talla o variant (opcional). */
+  size?: string
+
+  grup?: string | null
+  familia?: string | null
+  subfamilia?: string | null
+  departments?: string[]
 
   supplierSku?: string
   unit?: string
   category?: string
+  /** Magatzem físic o lògic (per defecte «Roba personal» als nous articles). */
+  magatzem?: string
   isActive?: boolean
   minStock?: number
   /** Cache opcional de quantitat; es pot derivar només de moviments. */
@@ -30,14 +40,12 @@ export interface DotacioProduct {
   updatedAt?: DotacioDate
 }
 
-export type DotacioProductCreate = Pick<
-  DotacioProduct,
-  'code' | 'supplier' | 'name' | 'size'
-> &
-  Partial<Omit<DotacioProduct, 'code' | 'supplier' | 'name' | 'size'>>
+export type DotacioProductCreate = Pick<DotacioProduct, 'code' | 'supplier' | 'name'> &
+  Partial<Omit<DotacioProduct, 'code' | 'supplier' | 'name'>>
 
 /**
  * Treballador per a dotacions i CSV.
+ * Emmagatzemat a Firestore com a document de la col·lecció `personnel` (camps `workerCode`, `roba*`).
  *
  * Obligatoris (negoci): name, code, department.
  */
@@ -86,6 +94,7 @@ export type DotacioRequestStatus =
   | 'approved'
   | 'rejected'
   | 'fulfilled'
+  | 'receipt_confirmed'
   | 'cancelled'
 
 export interface DotacioRequestLine {
@@ -96,11 +105,15 @@ export interface DotacioRequestLine {
 
 /** Sol·licitud de material (departament → RRHH / magatzem). */
 export interface DotacioRequest {
+  /** Referència automàtica visible (p. ex. S-{idFirestore}). */
+  reference?: string
   /** Departament que demana (o id; flexible fins que definiu mestre). */
   requestingDepartment: string
   lines: DotacioRequestLine[]
   status?: DotacioRequestStatus
   requestedByWorkerId?: string
+  /** Nom del treballador (denormalitzat des de `personnel`). */
+  requestedByWorkerName?: string
   notes?: string
   createdAt?: DotacioDate
   updatedAt?: DotacioDate
@@ -114,6 +127,8 @@ export interface DotacioDeliveryLine {
 
 /** Entrega registrada a treballador. */
 export interface DotacioDelivery {
+  /** Referència automàtica de l’entrega (p. ex. E-{idFirestore}). */
+  reference?: string
   workerId: string
   lines: DotacioDeliveryLine[]
   deliveredAt?: DotacioDate

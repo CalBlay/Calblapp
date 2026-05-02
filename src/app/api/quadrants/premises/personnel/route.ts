@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { normalizeRole } from '@/lib/roles'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { jwtDepartmentFields, jwtRoleFields, readAppJwt } from '@/lib/appJwtPayload'
 
 export const runtime = 'nodejs'
 
@@ -35,18 +36,9 @@ async function getSessionContext(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return null
 
-  const role = normalizeRole(
-    String((token as any).userRole ?? (token as any).role ?? '')
-  )
-  const sessionDept = norm(
-    String(
-      (token as any).department ??
-        (token as any).userDepartment ??
-        (token as any).dept ??
-        (token as any).departmentName ??
-        ''
-    )
-  )
+  const t = readAppJwt(token)
+  const role = normalizeRole(jwtRoleFields(t))
+  const sessionDept = norm(jwtDepartmentFields(t))
 
   return { role, sessionDept }
 }
@@ -90,7 +82,7 @@ export async function GET(req: NextRequest) {
     if (byId.size === 0) {
       const fallbackSnap = await db.collection('personnel').get()
       fallbackSnap.docs.forEach((doc) => {
-        const data = doc.data() as any
+        const data = doc.data() as { department?: string; departmentLower?: string }
         if (norm(data?.department || data?.departmentLower || '') === requestedDept) {
           byId.set(doc.id, doc)
         }
@@ -99,7 +91,13 @@ export async function GET(req: NextRequest) {
 
     const personnel = Array.from(byId.values())
       .map((doc) => {
-        const data = doc.data() as any
+        const data = doc.data() as {
+          name?: string
+          department?: string
+          departmentLower?: string
+          isDriver?: boolean
+          driver?: { isDriver?: boolean; camioGran?: boolean; camioPetit?: boolean }
+        }
         const isDriver =
           data?.isDriver === true ||
           data?.driver?.isDriver === true ||

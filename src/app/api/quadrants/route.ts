@@ -1,7 +1,6 @@
 // src/app/api/quadrants/route.ts
 import { NextResponse, type NextRequest } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import { autoAssign } from '@/services/autoAssign'
 import { loadDepartmentPersonnel, loadPremises, type DriverCrewPremise } from '@/services/premises'
@@ -152,11 +151,110 @@ interface QuadrantSave {
   vestimentModel?: string | null
 }
 
-async function enrichWithSurveyPreferences(
-  payload: any,
+type ServeisGroupInput = Record<string, unknown> & {
+  wantsResponsible?: boolean
+  id?: string | null
+  serviceDate?: string | null
+  dateLabel?: string | null
+  meetingPoint?: string
+  startTime?: string
+  endTime?: string
+  workers?: number | string
+  jamoneros?: number | string
+  drivers?: number | string
+  needsDriver?: boolean
+  driverId?: string | null
+  driverName?: string | null
+  responsibleId?: string | null
+  responsibleName?: string | null
+}
+
+type ExternalWorkerInput = {
+  name?: string
+  meetingPoint?: string
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  endTime?: string
+  arrivalTime?: string | null
+  isExternal?: boolean
+}
+
+/** Subset of POST body fields consumed by `buildToSave` */
+type QuadrantSaveRequestBody = {
+  code?: string
+  eventId?: string
+  eventName?: string
+  location?: string
+  meetingPoint?: string
+  startDate?: string
+  startTime?: string
+  endDate?: string
+  endTime?: string
+  arrivalTime?: string | null
+  numDrivers?: number | string
+  totalWorkers?: number | string
+  numPax?: number | null
+  service?: string | null
+  phaseType?: string | null
+  phaseLabel?: string | null
+  phaseDate?: string | null
+  manualResponsibleName?: string
+  externalWorkers?: ExternalWorkerInput[]
+  timetables?: Array<{ startTime?: unknown; endTime?: unknown }>
+  vestimentModel?: unknown
+  groups?: ServeisGroupInput[]
+  jamoneroCount?: number | string
+  cuinaGroupCount?: number | string
+}
+
+type JamoneroAssignmentRaw = {
+  id?: string
+  mode?: string
+  personnelId?: string
+  personnelName?: string
+}
+
+type JamoneroAssignmentNormalized = {
+  id: string
+  mode: 'manual' | 'auto'
+  personnelId: string | null
+  personnelName: string | null
+}
+
+type PhaseRequest = Record<string, unknown> & {
+  groupId?: string | null
+  label?: string
+  phaseType?: string
+  date?: string
+  endDate?: string
+  startTime?: string
+  endTime?: string
+  totalWorkers?: number
+  jamoneroCount?: number
+  numDrivers?: number
+  wantsResp?: boolean
+  responsableId?: string | null
+  manualDriverId?: string | null
+  meetingPoint?: string
+  vehicles?: unknown[]
+  groupsOverride?: ServeisGroupInput[]
+  serviceJamoneroAssignmentsOverride?: JamoneroAssignmentNormalized[]
+  partitionedServiceJamoneros?: JamoneroAssignmentNormalized[]
+  timetables?: unknown
+}
+
+async function enrichWithSurveyPreferences<T extends Record<string, unknown>>(
+  payload: T,
   department: string,
   surveyPreferred?: { yes: string[]; maybe: string[] }
-) {
+): Promise<
+  T & {
+    preferredStaffNames: string[]
+    preferredDriverNames: string[]
+    preferredResponsibleName: string | null
+  }
+> {
   const eventId = normalizeEventId(String(payload?.eventId || ''))
   const serviceDate = String(payload?.phaseDate || payload?.startDate || '').slice(0, 10)
   if (!eventId || !serviceDate) return payload
@@ -298,11 +396,17 @@ export async function POST(req: NextRequest) {
       : []
 
     const buildToSave = (
-      bodyForSave: any,
+      bodyForSave: QuadrantSaveRequestBody,
       assignmentForSave: {
         responsible?: { name: string } | null
-        drivers?: Array<{ name: string; meetingPoint?: string; plate?: string; vehicleType?: string }>
-        staff?: Array<{ name: string; meetingPoint?: string }>
+        drivers?: Array<{
+          name: string
+          meetingPoint?: string
+          plate?: string
+          vehicleType?: string
+          isJamonero?: boolean
+        }>
+        staff?: Array<{ name: string; meetingPoint?: string; isJamonero?: boolean }>
       },
       metaForSave: { needsReview?: boolean; violations?: string[]; notes?: string[] }
     ) => {
@@ -322,15 +426,14 @@ export async function POST(req: NextRequest) {
         ? bodyForSave.timetables
         : []
       const normalizedTimetables = rawTimetables
-        .map((entry: any) => toTimetableEntry(entry))
+        .map((entry) => toTimetableEntry(entry as { startTime?: unknown; endTime?: unknown }))
         .filter((entry): entry is { startTime: string; endTime: string } => Boolean(entry))
 
       const staffRaw = (assignmentForSave.staff || []).filter((s) => s?.name)
       const externalWorkersRaw = Array.isArray(bodyForSave.externalWorkers)
-        ? bodyForSave.externalWorkers.filter((s: any) => s?.name)
+        ? bodyForSave.externalWorkers.filter((s) => s?.name)
         : []
-      let extraCount = staffRaw.filter((s) => s.name === 'Extra').length
-      let staffClean = staffRaw.filter((s) => s.name !== 'Extra')
+      const staffClean = staffRaw.filter((s) => s.name !== 'Extra')
 
       const toSave: QuadrantSave = {
         code: bodyForSave.code || '',
@@ -363,16 +466,16 @@ export async function POST(req: NextRequest) {
           meetingPoint: d.meetingPoint || bodyForSave.meetingPoint || '',
           plate: d.plate || '',
           vehicleType: d.vehicleType || '',
-          isJamonero: (d as any).isJamonero === true,
+          isJamonero: d.isJamonero === true,
         })),
 
         treballadors: [
           ...staffClean.map((s) => ({
             name: s.name,
             meetingPoint: s.meetingPoint || bodyForSave.meetingPoint || '',
-            isJamonero: (s as any).isJamonero === true,
+            isJamonero: s.isJamonero === true,
           })),
-          ...externalWorkersRaw.map((worker: any) => ({
+          ...externalWorkersRaw.map((worker) => ({
             name: worker.name,
             meetingPoint: worker.meetingPoint || bodyForSave.meetingPoint || '',
             startDate: worker.startDate || bodyForSave.startDate,
@@ -407,7 +510,7 @@ export async function POST(req: NextRequest) {
 
       if (Array.isArray(bodyForSave.groups)) {
         if (deptNorm === 'serveis') {
-          toSave.groups = bodyForSave.groups.map((g: any) => ({
+          toSave.groups = bodyForSave.groups.map((g) => ({
             wantsResponsible: g.wantsResponsible !== false,
             id: g.id || null,
             serviceDate: g.serviceDate || null,
@@ -517,13 +620,11 @@ export async function POST(req: NextRequest) {
             )
             const fallbackName =
               firstGroupResponsible?.responsibleName ||
-              [...toSave.conductors, ...toSave.treballadors].find(
-                (person) =>
-                  person?.name &&
-                  person.name !== 'Extra' &&
-                  ((person as any).isExternal !== true) &&
-                  !String(person.name).toLowerCase().startsWith('ett')
-              )?.name ||
+              [...toSave.conductors, ...toSave.treballadors].find((person) => {
+                if (!person?.name || person.name === 'Extra') return false
+                if ('isExternal' in person && person.isExternal === true) return false
+                return !String(person.name).toLowerCase().startsWith('ett')
+              })?.name ||
               null
 
             if (fallbackName) {
@@ -573,7 +674,7 @@ export async function POST(req: NextRequest) {
               })
             })
 
-            const externalWorkerLines = externalWorkersRaw.map((worker: any) => ({
+            const externalWorkerLines = externalWorkersRaw.map((worker) => ({
               name: worker.name,
               meetingPoint: worker.meetingPoint || bodyForSave.meetingPoint || '',
               startDate: worker.startDate || bodyForSave.startDate,
@@ -599,7 +700,6 @@ export async function POST(req: NextRequest) {
             }
 
             toSave.treballadors = [...uniqueWorkers, ...externalWorkerLines]
-            extraCount = uniqueWorkers.filter((worker) => worker.name === 'Extra').length
           }
         }
       }
@@ -642,9 +742,11 @@ export async function POST(req: NextRequest) {
     const normalizePerson = (value?: string | null) =>
       (value || '').toString().trim().toLowerCase()
 
-    let phaseRequests: Array<any> = []
-    let remainingServiceJamoneroAssignments = Array.isArray(body.serviceJamoneroAssignments)
-      ? body.serviceJamoneroAssignments.map((assignment: any, index: number) => ({
+    let phaseRequests: PhaseRequest[] = []
+    let remainingServiceJamoneroAssignments: JamoneroAssignmentNormalized[] = Array.isArray(
+      body.serviceJamoneroAssignments
+    )
+      ? (body.serviceJamoneroAssignments as JamoneroAssignmentRaw[]).map((assignment, index) => ({
           id: String(assignment?.id || `jamonero-${index + 1}`),
           mode: assignment?.mode === 'manual' ? 'manual' : 'auto',
           personnelId: assignment?.personnelId ? String(assignment.personnelId) : null,
@@ -720,15 +822,13 @@ export async function POST(req: NextRequest) {
       }
     } else if (deptNorm === 'serveis' && Array.isArray(body.groups) && body.groups.length > 0) {
       const eventDate = body.startDate
-      const serviceAssignments = Array.isArray(body.serviceJamoneroAssignments)
-        ? body.serviceJamoneroAssignments
+      const serviceAssignments: JamoneroAssignmentRaw[] = Array.isArray(body.serviceJamoneroAssignments)
+        ? (body.serviceJamoneroAssignments as JamoneroAssignmentRaw[])
         : []
       const manualServiceJamonero = serviceAssignments.find(
-        (assignment: any) => assignment?.mode === 'manual' && (assignment?.personnelId || assignment?.personnelName)
+        (assignment) => assignment?.mode === 'manual' && (assignment?.personnelId || assignment?.personnelName)
       )
-      const hasAutoServiceJamonero = serviceAssignments.some(
-        (assignment: any) => assignment?.mode !== 'manual'
-      )
+      const hasAutoServiceJamonero = serviceAssignments.some((assignment) => assignment?.mode !== 'manual')
       const departmentPeople =
         manualServiceJamonero || hasAutoServiceJamonero
           ? await getDepartmentPeople()
@@ -780,7 +880,7 @@ export async function POST(req: NextRequest) {
         })
       }
       const existingGroupMatchesCrew = (
-        groups: any[],
+        groups: ServeisGroupInput[],
         currentIndex: number,
         driverId?: string | null,
         serviceDate?: string
@@ -795,7 +895,7 @@ export async function POST(req: NextRequest) {
           if (norm(candidateLabel) !== 'event') return false
           return Boolean(driverId) && String(candidate?.driverId || '').trim() === String(driverId || '').trim()
         })
-      const existingEventGroupsCount = body.groups.filter((candidate: any) => {
+      const existingEventGroupsCount = body.groups.filter((candidate) => {
         const candidateDate = candidate?.serviceDate || body.startDate
         if (candidateDate !== eventDate) return false
         const candidateLabel =
@@ -806,7 +906,7 @@ export async function POST(req: NextRequest) {
       const canAutoCreateExtraEventGroup =
         existingEventGroupsCount <= 1 && Array.isArray(body.groups) && body.groups.length === 1
 
-      body.groups.forEach((g: any, groupIndex: number) => {
+      body.groups.forEach((g, groupIndex: number) => {
         const serviceDate = g.serviceDate || body.startDate
         const label =
           (g.dateLabel || '').toString().trim() ||
@@ -1037,13 +1137,11 @@ export async function POST(req: NextRequest) {
 
       if (existingEventGroupsCount > 1 && serviceAssignments.length > 0) {
         let remainingManualAssignments = serviceAssignments.filter(
-          (assignment: any) => assignment?.mode === 'manual' && (assignment?.personnelId || assignment?.personnelName)
+          (assignment) => assignment?.mode === 'manual' && (assignment?.personnelId || assignment?.personnelName)
         )
-        let remainingAutoAssignments = serviceAssignments.filter(
-          (assignment: any) => assignment?.mode !== 'manual'
-        )
+        let remainingAutoAssignments = serviceAssignments.filter((assignment) => assignment?.mode !== 'manual')
 
-        const crewForPhase = (phase: any) => {
+        const crewForPhase = (phase: PhaseRequest) => {
           const group = Array.isArray(phase.groupsOverride) ? phase.groupsOverride[0] : null
           if (!group) return null
           const driverId = String(group.driverId || phase.manualDriverId || '').trim()
@@ -1070,7 +1168,7 @@ export async function POST(req: NextRequest) {
           return null
         }
 
-        const assignmentMatchesCrew = (assignment: any, crew: DriverCrewPremise | null) => {
+        const assignmentMatchesCrew = (assignment: JamoneroAssignmentRaw, crew: DriverCrewPremise | null) => {
           if (!assignment || !crew) return false
           const person = findPerson({
             id: assignment.personnelId || null,
@@ -1081,7 +1179,7 @@ export async function POST(req: NextRequest) {
           return crewContainsPerson(crew, { id: person.id, name: person.name })
         }
 
-        const phaseAlreadyRepresentsPerson = (assignment: any) => {
+        const phaseAlreadyRepresentsPerson = (assignment: JamoneroAssignmentRaw) => {
           const person = findPerson({
             id: assignment?.personnelId || null,
             name: assignment?.personnelName || null,
@@ -1098,7 +1196,7 @@ export async function POST(req: NextRequest) {
           })
         }
 
-        const createExtraDriverPhase = (assignment: any) => {
+        const createExtraDriverPhase = (assignment: JamoneroAssignmentRaw) => {
           const person = findPerson({
             id: assignment?.personnelId || null,
             name: assignment?.personnelName || null,
@@ -1270,7 +1368,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const writePhaseDoc = async (phase: any, blockedNames: string[] = []) => {
+    const writePhaseDoc = async (phase: PhaseRequest, blockedNames: string[] = []) => {
       const isPrimaryResponsibleEventGroup =
         deptNorm === 'serveis' &&
         phase.phaseType === 'event' &&
@@ -1298,7 +1396,7 @@ export async function POST(req: NextRequest) {
           : Number(phase.numDrivers || 0)
       const phaseGroupsOverride =
         deptNorm === 'serveis' && Array.isArray(phase.groupsOverride)
-          ? phase.groupsOverride.map((group: any) => ({
+          ? phase.groupsOverride.map((group) => ({
               ...group,
               drivers:
                 phase.phaseType === 'event' && phaseServiceJamoneros.length > 0
@@ -1445,8 +1543,8 @@ export async function POST(req: NextRequest) {
           Array.isArray(body.serviceJamoneroAssignments) &&
           body.serviceJamoneroAssignments.length > 0
         ) {
-          const normalizedServeisJamoneros = body.serviceJamoneroAssignments.map(
-            (assignment: any, index: number) => ({
+          const normalizedServeisJamoneros = (body.serviceJamoneroAssignments as JamoneroAssignmentRaw[]).map(
+            (assignment, index: number) => ({
               id: String(assignment?.id || `jamonero-${index + 1}`),
               mode: assignment?.mode === 'manual' ? ('manual' as const) : ('auto' as const),
               personnelId: assignment?.personnelId ? String(assignment.personnelId) : null,
@@ -1474,10 +1572,10 @@ export async function POST(req: NextRequest) {
         const assignedNames = [
           result?.assignment?.responsible?.name || null,
           ...(Array.isArray(result?.assignment?.drivers)
-            ? result.assignment.drivers.map((driver: any) => driver?.name || null)
+            ? result.assignment.drivers.map((driver) => driver?.name || null)
             : []),
           ...(Array.isArray(result?.assignment?.staff)
-            ? result.assignment.staff.map((person: any) => person?.name || null)
+            ? result.assignment.staff.map((person) => person?.name || null)
             : []),
         ]
         assignedNames

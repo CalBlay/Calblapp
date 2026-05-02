@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
 
     // Distància: sempre recalculada amb l'adreça actual
     const evSnap = await db.collection('stage_verd').doc(String(canonicalEventId)).get()
-    const ev = evSnap.data() as any
+    const ev = evSnap.data() as { Ubicacio?: string; location?: string; address?: string } | undefined
     const destination = ev?.Ubicacio || ev?.location || ev?.address || ''
     const km = await calcDistanceKm(destination)
     if (km) {

@@ -36,6 +36,8 @@ interface UserUpdate {
   opsProjectsConfigurable?: boolean
   opsChannelsConfigurable?: string[]
   canRespondSurveys?: boolean
+  /** Responsable de roba del departament (mòdul Roba personal). */
+  isDepartmentRobaLead?: boolean
   available?: boolean
   isDriver?: boolean
   workerRank?: string

@@ -5,7 +5,8 @@ export function serializeFirestoreDoc<T extends DocumentData>(
   id: string,
   data: T
 ): T & { id: string } {
-  const out: Record<string, unknown> = { id, ...data }
+  /** `id` del document ha de prevaldre: alguns docs dupliquen `id` al payload (buit/erroni). */
+  const out: Record<string, unknown> = { ...(data as Record<string, unknown>), id }
   for (const key of Object.keys(out)) {
     const v = out[key]
     if (

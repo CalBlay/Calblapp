@@ -7,12 +7,13 @@ import Papa from 'papaparse'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
+import {
+  personnelCreateFromRobaCsvLine,
+  personnelPatchFromRobaCsvLine,
+  str,
+} from '@/lib/roba-personal/robaWorkerFromPersonnel'
 
 const COL = DOTACIO_COLLECTIONS.workers
-
-function str(v: unknown): string {
-  return String(v ?? '').trim()
-}
 
 function normKey(k: string): string {
   return k
@@ -30,6 +31,10 @@ function pickCell(row: Record<string, unknown>, keys: string[]): string {
     }
   }
   return ''
+}
+
+function workerCodeFromDoc(data: Record<string, unknown>): string {
+  return str(data.workerCode) || str(data.code)
 }
 
 export async function POST(req: Request) {
@@ -66,7 +71,8 @@ export async function POST(req: Request) {
   const snap = await db.collection(COL).get()
   const byCode = new Map<string, { id: string; ref: DocumentReference }>()
   for (const d of snap.docs) {
-    const c = str((d.data() as { code?: string }).code)
+    const data = d.data() as Record<string, unknown>
+    const c = workerCodeFromDoc(data)
     if (c) byCode.set(c, { id: d.id, ref: d.ref })
   }
 
@@ -76,7 +82,6 @@ export async function POST(req: Request) {
   let skipped = 0
   const errors: string[] = []
 
-  /** Darrera línia vàlida per codi (Firestore: un sol write per doc per batch). */
   const merged = new Map<
     string,
     { name: string; code: string; department: string; sourceLine: number }
@@ -112,32 +117,34 @@ export async function POST(req: Request) {
   for (const { name, code, department } of merged.values()) {
     const existing = byCode.get(code)
     if (existing) {
-      batch.update(existing.ref, {
-        name,
-        code,
-        department,
-        source: 'csv_import',
-        lastImportBatchId: batchId,
-        updatedAt: now,
-      })
+      batch.update(
+        existing.ref,
+        personnelPatchFromRobaCsvLine({
+          name,
+          department,
+          workerCode: code,
+          batchId,
+          updatedAt: now,
+        })
+      )
       updated++
     } else {
       const ref = db.collection(COL).doc()
-      batch.set(ref, {
-        name,
-        code,
-        department,
-        isActive: true,
-        source: 'csv_import',
-        lastImportBatchId: batchId,
-        createdAt: now,
-        updatedAt: now,
-      })
+      batch.set(
+        ref,
+        personnelCreateFromRobaCsvLine({
+          name,
+          department,
+          workerCode: code,
+          batchId,
+          now,
+        })
+      )
       byCode.set(code, { id: ref.id, ref })
       created++
     }
     ops++
-    if (ops >= 400) await flush()
+    if (ops >= 200) await flush()
   }
 
   await flush()

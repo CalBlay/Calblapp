@@ -10,6 +10,7 @@ CREATE TABLE dotacio_products (
   supplier_sku TEXT,
   unit TEXT,
   category TEXT,
+  magatzem TEXT DEFAULT 'Roba personal',
   is_active BOOLEAN DEFAULT TRUE,
   min_stock NUMERIC,
   quantity_on_hand NUMERIC,
@@ -19,6 +20,7 @@ CREATE TABLE dotacio_products (
   updated_at TIMESTAMPTZ
 );
 
+-- Referència històrica: a producció els treballadors de roba viuen a `personnel` (veure DOTACIO_COLLECTIONS.workers).
 CREATE TABLE dotacio_workers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,

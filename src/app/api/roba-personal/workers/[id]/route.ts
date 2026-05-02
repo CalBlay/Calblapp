@@ -8,12 +8,10 @@ import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import { workerCodeTaken } from '@/lib/roba-personal/workerCode'
+import { serializeRobaWorkerRow, str } from '@/lib/roba-personal/robaWorkerFromPersonnel'
+import { isRobaProductDepartmentValue } from '@/data/departments'
 
 const COL = DOTACIO_COLLECTIONS.workers
-
-function str(v: unknown): string {
-  return String(v ?? '').trim()
-}
 
 export async function GET(
   _req: Request,
@@ -27,9 +25,8 @@ export async function GET(
   if (!snap.exists) {
     return NextResponse.json({ error: 'No trobat' }, { status: 404 })
   }
-  return NextResponse.json(
-    serializeFirestoreDoc(snap.id, snap.data() as Record<string, unknown>)
-  )
+  const row = serializeRobaWorkerRow(id, snap.data() as Record<string, unknown>)
+  return NextResponse.json(serializeFirestoreDoc(id, row))
 }
 
 export async function PATCH(
@@ -51,15 +48,32 @@ export async function PATCH(
   const patch: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() }
 
   if (body.name !== undefined) patch.name = str(body.name)
-  if (body.code !== undefined) patch.code = str(body.code)
-  if (body.department !== undefined) patch.department = str(body.department)
+  if (body.code !== undefined) patch.workerCode = str(body.code)
+  if (body.department !== undefined) {
+    const dept = str(body.department)
+    if (!isRobaProductDepartmentValue(dept)) {
+      return NextResponse.json(
+        { error: 'Departament no permès per a roba personal.' },
+        { status: 400 }
+      )
+    }
+    patch.department = dept
+    patch.departmentLower = dept.toLowerCase()
+  }
   if (body.email !== undefined) patch.email = str(body.email) || null
   if (body.phone !== undefined) patch.phone = str(body.phone) || null
-  if (body.isActive !== undefined) patch.isActive = Boolean(body.isActive)
+  if (body.isActive !== undefined) {
+    patch.robaWorkerActive = Boolean(body.isActive)
+  }
   if (body.jobTitle !== undefined) patch.jobTitle = str(body.jobTitle) || null
-  if (body.notes !== undefined) patch.notes = str(body.notes) || null
+  if (body.notes !== undefined) patch.robaNotes = str(body.notes) || null
+  if (body.hasAppUser !== undefined) {
+    patch.robaHasAppUser = Boolean(body.hasAppUser)
+  }
 
-  const nextCode = patch.code !== undefined ? str(patch.code) : str(cur.code)
+  let nextCode =
+    patch.workerCode !== undefined ? str(patch.workerCode) : str(cur.workerCode || cur.code)
+  if (!nextCode) nextCode = id
   if (nextCode && (await workerCodeTaken(nextCode, id))) {
     return NextResponse.json(
       { error: 'Ja existeix un altre treballador amb aquest codi.' },
@@ -67,21 +81,20 @@ export async function PATCH(
     )
   }
 
-  const nextName = patch.name !== undefined ? str(patch.name) : str(cur.name)
-  const nextDept =
-    patch.department !== undefined ? str(patch.department) : str(cur.department)
-  if (!nextName || !nextCode || !nextDept) {
+  const merged = { ...cur, ...patch }
+  const nextName = str(merged.name)
+  const nextDept = str(merged.department)
+  if (!nextName || !nextDept) {
     return NextResponse.json(
-      { error: 'name, code i department són obligatoris.' },
+      { error: 'name, code (workerCode) i department són obligatoris.' },
       { status: 400 }
     )
   }
 
   await ref.update(patch)
   const next = await ref.get()
-  return NextResponse.json(
-    serializeFirestoreDoc(next.id, next.data() as Record<string, unknown>)
-  )
+  const row = serializeRobaWorkerRow(next.id, next.data() as Record<string, unknown>)
+  return NextResponse.json(serializeFirestoreDoc(next.id, row))
 }
 
 export async function DELETE(
@@ -99,7 +112,7 @@ export async function DELETE(
   }
 
   await ref.update({
-    isActive: false,
+    robaWorkerActive: false,
     updatedAt: FieldValue.serverTimestamp(),
   })
   return NextResponse.json({ ok: true })

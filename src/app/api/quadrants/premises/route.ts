@@ -7,6 +7,7 @@ import {
   getStoredPremises,
   normalizePremises,
 } from '@/services/premises'
+import { jwtDepartmentFields, jwtRoleFields, jwtSessionEmail, readAppJwt } from '@/lib/appJwtPayload'
 
 export const runtime = 'nodejs'
 
@@ -34,19 +35,10 @@ async function getSessionContext(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return null
 
-  const role = normalizeRole(
-    String((token as any).userRole ?? (token as any).role ?? '')
-  )
-  const sessionDept = norm(
-    String(
-      (token as any).department ??
-        (token as any).userDepartment ??
-        (token as any).dept ??
-        (token as any).departmentName ??
-        ''
-    )
-  )
-  const email = String((token as any)?.user?.email || (token as any)?.email || '')
+  const t = readAppJwt(token)
+  const role = normalizeRole(jwtRoleFields(t))
+  const sessionDept = norm(jwtDepartmentFields(t))
+  const email = jwtSessionEmail(t)
 
   return { role, sessionDept, email }
 }

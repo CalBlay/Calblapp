@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { respondQuadrantSurvey } from '@/lib/quadrantSurveys'
+import { jwtUserId, jwtUserName } from '@/lib/appJwtPayload'
 
 export const runtime = 'nodejs'
 
@@ -9,8 +10,8 @@ async function getSessionContext(req: NextRequest) {
   if (!token) return null
 
   return {
-    userId: String((token as any).id || (token as any).sub || '').trim(),
-    userName: String((token as any).name || (token as any)?.user?.name || '').trim(),
+    userId: jwtUserId(token),
+    userName: jwtUserName(token),
   }
 }
 

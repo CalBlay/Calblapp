@@ -42,6 +42,22 @@ type TokenLike = {
   email?: string
 }
 
+type StageVerdAddress = { Ubicacio?: string; location?: string; address?: string }
+
+type AssignedUserSrc = {
+  name?: string
+  id?: string
+  userId?: string
+  personId?: string
+  startDate?: string
+  startTime?: string
+  endDate?: string
+  endTime?: string
+  meetingPoint?: string
+  vehicleType?: string
+  plate?: string
+}
+
 /* ------------------ Utils ------------------ */
 const norm = (v?: string) =>
   (v || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
@@ -228,7 +244,7 @@ export async function POST(req: NextRequest) {
 
     // 2) Confirmar
     const now = new Date()
-    const updatePayload: Record<string, any> = {
+    const updatePayload: FirebaseFirestore.DocumentData = {
       status: 'confirmed',
       confirmedAt: now,
       confirmedBy:
@@ -251,7 +267,7 @@ export async function POST(req: NextRequest) {
 
     // Distància: sempre intentem recalcular amb l'adreça actual
     const evSnap = await db.collection('stage_verd').doc(String(eventId)).get()
-    const ev = evSnap.data() as any
+    const ev = evSnap.data() as StageVerdAddress | undefined
     const destination = ev?.Ubicacio || ev?.location || ev?.address || ''
     const km = await calcDistanceKm(destination)
     if (km) {
@@ -282,9 +298,10 @@ export async function POST(req: NextRequest) {
     const extract = (q?: QuadrantDoc) => {
       if (!q) return []
       const arr: AssignedUser[] = []
-      const pushUser = (src: any, fallbackName?: string) => {
-        const name = String(fallbackName || src?.name || '').trim()
-        const id = String(src?.id || src?.userId || src?.personId || '').trim()
+      const pushUser = (src: AssignedUserSrc | undefined, fallbackName?: string) => {
+        if (!src) return
+        const name = String(fallbackName || src.name || '').trim()
+        const id = String(src.id || src.userId || src.personId || '').trim()
         if (!name && !id) return
         arr.push({
           id: id || undefined,

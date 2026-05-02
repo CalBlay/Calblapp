@@ -40,11 +40,9 @@ export async function GET(req: Request) {
 
     const { quadrants } = await getQuadrantsCached(start, end, department)
     return NextResponse.json({ quadrants })
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('[quadrants/get] ERROR:', e)
-    return NextResponse.json(
-      { error: e?.message || 'Error intern' },
-      { status: 500 }
-    )
+    const message = e instanceof Error ? e.message : 'Error intern'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

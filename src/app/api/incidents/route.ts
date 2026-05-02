@@ -13,7 +13,6 @@ import { notifyMarketingManagersFor9xxIncident } from '@/lib/incidentNotificatio
 import { canAccessIncidentsModule, canPostIncident } from '@/lib/incidentPolicy'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { normalizeRole } from '@/lib/roles'
-import { normalizeDept } from '@/lib/accessControl'
 
 interface IncidentDoc {
   id?: string;

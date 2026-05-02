@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { normalizeRole } from '@/lib/roles'
 import { createQuadrantSurvey, listQuadrantSurveys } from '@/lib/quadrantSurveys'
+import { jwtDepartmentFields, jwtRoleFields, jwtUserId, jwtUserName, readAppJwt } from '@/lib/appJwtPayload'
 
 export const runtime = 'nodejs'
 
@@ -16,19 +17,12 @@ async function getSessionContext(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return null
 
+  const t = readAppJwt(token)
   return {
-    userId: String((token as any).id || (token as any).sub || '').trim(),
-    userName: String((token as any).name || (token as any)?.user?.name || '').trim(),
-    role: normalizeRole(String((token as any).userRole ?? (token as any).role ?? '')),
-    department: norm(
-      String(
-        (token as any).department ??
-          (token as any).userDepartment ??
-          (token as any).dept ??
-          (token as any).departmentName ??
-          ''
-      )
-    ),
+    userId: jwtUserId(t),
+    userName: jwtUserName(t),
+    role: normalizeRole(jwtRoleFields(t)),
+    department: norm(jwtDepartmentFields(t)),
   }
 }
 

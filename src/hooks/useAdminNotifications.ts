@@ -124,6 +124,70 @@ export function useTornNotificationCount() {
   }
 }
 
+const normDept = (s?: string) =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+
+/** Tipus de notificació del mòdul roba personal (mateix conjunt que el banner del dashboard). */
+const ROBA_PERSONAL_NOTIFICATION_TYPES = new Set([
+  'roba_personal_request',
+  'roba_personal_ready',
+  'roba_personal_delivery_ack',
+  'roba_personal_delivery_revised',
+  'roba_personal_delivery_dispute',
+])
+
+/**
+ * Comptador de notificacions de roba personal sense llegir per a l’usuari actual.
+ * Inclou «nova sol·licitud» (RRHH/admin), «material preparat» (sol·licitant / caps), entregues, etc.
+ */
+export function useRobaPersonalRequestNotificationCount() {
+  const { data: session, status } = useSession()
+  const isAuth = status === 'authenticated'
+  const userId = (session?.user as { id?: string; department?: string })?.id
+  const dept = normDept((session?.user as { department?: string })?.department)
+  const role = normalizeRole((session?.user as { role?: string })?.role)
+  const isRrhh = dept === 'recursos humans'
+  const showRobaNotif = role === 'admin' || isRrhh
+
+  const url = isAuth && userId ? '/api/notifications?mode=list' : null
+
+  const { data, error, mutate } = useSWR(url, fetcher, {
+    refreshInterval: isAuth ? 15000 : 0,
+  })
+
+  useEffect(() => {
+    if (!isAuth || !userId) return
+
+    const handler = () => {
+      mutate().catch(() => {})
+    }
+
+    return subscribeToAblyEvent({
+      channelName: `user:${userId}:notifications`,
+      eventName: 'created',
+      handler,
+    })
+  }, [isAuth, userId, mutate])
+
+  return {
+    count: (() => {
+      const notifications = Array.isArray(data?.notifications) ? data.notifications : []
+      return notifications.filter(
+        (n: { read?: boolean; type?: string }) =>
+          !n.read && ROBA_PERSONAL_NOTIFICATION_TYPES.has(String(n.type || ''))
+      ).length
+    })(),
+    loading: status === 'loading' || (isAuth && !!userId && !data && !error),
+    error,
+    /** Encara útil si cal diferenciar vista RRHH; el comptador és per a tothom. */
+    isRrhh: showRobaNotif,
+  }
+}
+
 export function useProjectAssignmentCount() {
   const { data: session, status } = useSession()
   const isAuth = status === 'authenticated'

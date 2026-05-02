@@ -8,6 +8,7 @@ import { firestoreAdmin as firestore } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import type { JWT } from 'next-auth/jwt'
 import type { AdapterUser } from 'next-auth/adapters'
+import { resolveRobaPersonnelLinkForUser } from '@/lib/roba-personal/resolvePersonnelLink'
 
 // Helpers
 const normLower = (s?: string) => (s || '').toString().trim().toLowerCase()
@@ -22,6 +23,7 @@ interface FirestoreUser {
   department?: string
   commercialName?: string
   canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
 }
 
 // Extend JWT
@@ -33,6 +35,11 @@ declare module 'next-auth/jwt' {
     deptLower?: string
     commercialName?: string
     canRespondSurveys?: boolean
+    isDepartmentRobaLead?: boolean
+    /** `personnel` id quan el treballador té usuari d’app per a roba personal. */
+    robaLinkedPersonnelId?: string | null
+    robaWorkerDeptNorm?: string | null
+    robaPersonnelLinkResolved?: boolean
   }
 }
 
@@ -47,6 +54,9 @@ declare module 'next-auth' {
       deptLower?: string
       commercialName?: string
       canRespondSurveys?: boolean
+      isDepartmentRobaLead?: boolean
+      robaLinkedPersonnelId?: string | null
+      robaWorkerDeptNorm?: string | null
     } & User
   }
 }
@@ -133,6 +143,7 @@ export const authOptions = {
                 department,
                 deptLower: normLower(department),
                 canRespondSurveys: Boolean(data.canRespondSurveys),
+                isDepartmentRobaLead: Boolean(data.isDepartmentRobaLead),
               }
             } else {
               console.log('[AUTH] Password incorrecte. Input:', passInput, 'Doc:', passDoc)
@@ -158,6 +169,7 @@ export const authOptions = {
           department?: string
           canRespondSurveys?: boolean
           commercialName?: string
+          isDepartmentRobaLead?: boolean
         }
 
         token.sub = u.id
@@ -167,6 +179,8 @@ export const authOptions = {
         token.deptLower = normLower(token.department)
         token.canRespondSurveys = Boolean(u.canRespondSurveys)
         token.commercialName = u.commercialName || ''
+        token.isDepartmentRobaLead = Boolean(u.isDepartmentRobaLead)
+        token.robaPersonnelLinkResolved = false
       }
 
       token.isAdmin = Boolean(token.isAdmin || normalizeRole(String(token.role || '')) === 'admin')
@@ -175,6 +189,19 @@ export const authOptions = {
       }
       if (!token.deptLower && token.department) {
         token.deptLower = normLower(token.department)
+      }
+
+      const uid = String(token.sub || '').trim()
+      if (uid && !token.robaPersonnelLinkResolved) {
+        token.robaPersonnelLinkResolved = true
+        try {
+          const link = await resolveRobaPersonnelLinkForUser(uid)
+          token.robaLinkedPersonnelId = link?.personnelId ?? null
+          token.robaWorkerDeptNorm = link?.workerDeptNorm ?? null
+        } catch {
+          token.robaLinkedPersonnelId = null
+          token.robaWorkerDeptNorm = null
+        }
       }
 
       return token
@@ -192,6 +219,9 @@ export const authOptions = {
           deptLower: token.deptLower,
           canRespondSurveys: Boolean(token.canRespondSurveys),
           commercialName: token.commercialName,
+          isDepartmentRobaLead: Boolean(token.isDepartmentRobaLead),
+          robaLinkedPersonnelId: token.robaLinkedPersonnelId ?? null,
+          robaWorkerDeptNorm: token.robaWorkerDeptNorm ?? null,
         },
         accessToken: token,
       }

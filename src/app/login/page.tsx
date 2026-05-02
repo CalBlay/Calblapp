@@ -33,20 +33,50 @@ function LoginInner() {
     const username = user.trim()
     const password = pass
 
-    const res = await signIn('credentials', {
-      redirect: false,
-      username,
-      password,
-    })
+    let res: Awaited<ReturnType<typeof signIn>>
+    try {
+      res = await signIn('credentials', {
+        redirect: false,
+        username,
+        password,
+      })
+    } catch (err) {
+      console.error('[AUTH] signIn exception', err)
+      setLoading(false)
+      setError('No s’ha pogut contactar amb el servidor. Comproveu la connexió i torneu a provar.')
+      return
+    }
 
-    if (!res || res.error) {
-      const rawError = res?.error || 'unknown_error'
-      const isCreds = rawError === 'CredentialsSignin'
-      const friendly = isCreds
-        ? 'Usuari o contrasenya incorrectes'
-        : `Error iniciant sessio: ${rawError}`
+    // NextAuth v4: cal comprovar `ok`; a vegades `error` ve buit però `ok === false`.
+    if (!res || res.ok === false) {
+      const rawError = (res?.error as string | undefined) || ''
+      const isCreds =
+        rawError === 'CredentialsSignin' ||
+        rawError === 'credentials' ||
+        res?.status === 401
+      const isConfig = rawError === 'Configuration'
 
-      console.error('[AUTH] signIn error', res)
+      let friendly: string
+      if (isCreds) {
+        friendly = 'Usuari o contrasenya incorrectes'
+      } else if (isConfig) {
+        friendly =
+          'Error de configuració del servidor (sessió). Contacteu amb l’administrador.'
+      } else if (rawError) {
+        friendly = `Error iniciant sessió: ${rawError}`
+      } else {
+        friendly =
+          res?.status && res.status >= 500
+            ? 'El servidor ha rebutjat la sessió. Torneu a provar d’aquí una estona.'
+            : 'No s’ha pogut iniciar sessió. Comproveu usuari i contrasenya o torneu a provar.'
+      }
+
+      console.error('[AUTH] signIn failed', {
+        ok: res?.ok,
+        status: res?.status,
+        error: res?.error,
+        url: res?.url,
+      })
       setLoading(false)
       setError(friendly)
       return

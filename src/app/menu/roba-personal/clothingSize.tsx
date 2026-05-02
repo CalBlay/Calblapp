@@ -15,7 +15,7 @@ const selectBaseClass =
 
 function optionsForDisplay(size: string): string[] {
   const v = size.trim()
-  const base = [...CLOTHING_SIZE_PRESETS]
+  const base: string[] = [...CLOTHING_SIZE_PRESETS]
   if (v && !base.includes(v)) base.push(v)
   return base
 }

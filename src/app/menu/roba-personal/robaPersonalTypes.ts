@@ -1,0 +1,98 @@
+export type { RobaProductDepartmentId } from '@/data/departments'
+
+export type TabId = 'productes' | 'treballadors' | 'estoc' | 'sollicituds' | 'entregues' | 'compres'
+
+export type RobaPersonalRequestNotification = {
+  id: string
+  type?: string
+  read?: boolean
+  title?: string
+  body?: string
+  requestId?: string
+  deliveryId?: string
+}
+
+export type ProductRow = {
+  id: string
+  code: string
+  supplier: string
+  supplierId?: string | null
+  supplierSku?: string | null
+  name: string
+  size?: string
+  grup?: string | null
+  familia?: string | null
+  subfamilia?: string | null
+  departments?: string[] | null
+  magatzem?: string
+  quantityOnHand?: number
+  quantityReserved?: number
+  minStock?: number | null
+  isActive?: boolean
+}
+
+export type WorkerRow = {
+  id: string
+  name: string
+  code: string
+  department: string
+  isActive?: boolean
+  hasAppUser?: boolean
+}
+
+export type StockOverviewRow = {
+  productId: string
+  code: string
+  name: string
+  size?: string
+  supplier: string
+  magatzem: string
+  quantityOnHand: number
+  quantityReserved?: number
+  quantityAvailable?: number
+  minStock: number | null
+  gapToMin: number
+  consumption6m: number
+  avgDaily: number
+  daysUntilMin: number | null
+  atOrBelowMin: boolean
+  hasConsumptionHistory: boolean
+  suggestedSemesterQty: number | null
+}
+
+export type RequestRow = {
+  id: string
+  reference?: string
+  requestingDepartment: string
+  requestingDepartmentNorm?: string
+  requestedByWorkerId?: string
+  requestedByWorkerName?: string
+  createdByUserId?: string
+  createdByUserName?: string | null
+  pickupDate?: string
+  pickupAvailabilityMessage?: string | null
+  preparedWithStockReservation?: boolean
+  status: string
+  lines: { productId: string; quantity: number }[]
+  createdAt?: string
+}
+
+export type DeliveryRow = {
+  id: string
+  reference?: string
+  workerId: string
+  lines: { productId: string; quantity: number }[]
+  requestedLines?: { productId: string; quantity: number; notes?: string }[] | null
+  deliveredAt?: string
+  requestId?: string | null
+  requestCreatedByUserName?: string | null
+  requestCreatedByUserEmail?: string | null
+  requestPreparedByName?: string | null
+  requestRequestingDepartment?: string | null
+  deliveryWithoutRequest?: boolean
+  workerReceiptAckExpected?: boolean
+  workerReceiptAckAt?: string | null
+  workerReceiptAckByUserId?: string | null
+  workerReceiptAckSignatureDataUrl?: string | null
+  workerReceiptCorrectionOpen?: boolean
+}

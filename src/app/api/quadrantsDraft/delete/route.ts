@@ -8,6 +8,15 @@ export const runtime = 'nodejs'
 const norm = (v?: string) =>
   (v || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
 
+type LogisticsPhaseRow = { key?: string; label?: string }
+
+type QuadrantDraftSnap = {
+  logisticaPhases?: LogisticsPhaseRow[]
+  phaseKey?: string
+  phaseType?: string
+  phaseLabel?: string
+}
+
 const canonicalCollectionFor = (dept: string) => {
   const key = norm(dept)
   const capitalized = key.charAt(0).toUpperCase() + key.slice(1)
@@ -36,10 +45,10 @@ export async function POST(req: NextRequest) {
 
     if (directSnap.exists) {
       if (phaseKey) {
-        const data = directSnap.data() as any
+        const data = directSnap.data() as QuadrantDraftSnap
         const phases = Array.isArray(data?.logisticaPhases) ? data.logisticaPhases : []
         const target = String(phaseKey).toLowerCase().trim()
-        const next = phases.filter((phase: any) => {
+        const next = phases.filter((phase) => {
           const key = (phase?.key || phase?.label || '').toString().toLowerCase().trim()
           return key !== target
         })
@@ -61,7 +70,7 @@ export async function POST(req: NextRequest) {
     const targetPhase = String(phaseKey || '').toLowerCase().trim()
     const docsToDelete = byEvent.docs.filter((doc) => {
       if (!targetPhase) return true
-      const data = doc.data() as any
+      const data = doc.data() as QuadrantDraftSnap
       const keys = [data?.phaseKey, data?.phaseType, data?.phaseLabel]
         .map((value) => String(value || '').toLowerCase().trim())
         .filter(Boolean)

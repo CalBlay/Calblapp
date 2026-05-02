@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { listUserQuadrantSurveys } from '@/lib/quadrantSurveys'
+import { jwtUserId, readAppJwt } from '@/lib/appJwtPayload'
 
 export const runtime = 'nodejs'
 
 export async function GET(req: NextRequest) {
   try {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    const userId = String((token as any)?.id || (token as any)?.sub || '').trim()
-    const canRespondSurveys = Boolean((token as any)?.canRespondSurveys)
-    const role = String((token as any)?.role || '').trim()
+    const t = readAppJwt(token)
+    const userId = jwtUserId(t)
+    const canRespondSurveys = Boolean(t.canRespondSurveys)
+    const role = String(t.role || '').trim()
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

@@ -1,28 +1,19 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { SUPPLIERS_COLLECTION } from '@/lib/companySuppliers/constants'
+import {
+  filterSuppliersByDepartment,
+  listAllSuppliers,
+  normalizeSupplierDepartmentsInput,
+} from '@/lib/companySuppliers/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const COLLECTION = 'maintenanceSuppliers'
-
 export async function GET() {
   try {
-    const snap = await db.collection(COLLECTION).orderBy('name', 'asc').get()
-    const suppliers = snap.docs.map((doc) => {
-      const data = doc.data() || {}
-      return {
-        id: doc.id,
-        name: String(data.name || '').trim(),
-        email: String(data.email || '').trim(),
-        phone: String(data.phone || '').trim(),
-        specialty: String(data.specialty || '').trim(),
-        notes: String(data.notes || '').trim(),
-        active: data.active !== false,
-        createdAt: data.createdAt || null,
-        updatedAt: data.updatedAt || null,
-      }
-    })
+    const all = await listAllSuppliers(db)
+    const suppliers = filterSuppliersByDepartment(all, 'Manteniment')
     return NextResponse.json({ suppliers })
   } catch (error) {
     console.error('[maintenance/data/suppliers] GET error', error)
@@ -38,6 +29,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Cal informar el nom del proveidor' }, { status: 400 })
     }
     const now = Date.now()
+    const supplierDepartments = normalizeSupplierDepartmentsInput(body?.supplierDepartments, ['Manteniment'])
     const payload = {
       name,
       email: String(body?.email || '').trim(),
@@ -45,10 +37,11 @@ export async function POST(req: Request) {
       specialty: String(body?.specialty || '').trim(),
       notes: String(body?.notes || '').trim(),
       active: body?.active !== false,
+      supplierDepartments,
       createdAt: now,
       updatedAt: now,
     }
-    const ref = await db.collection(COLLECTION).add(payload)
+    const ref = await db.collection(SUPPLIERS_COLLECTION).add(payload)
     return NextResponse.json({ ok: true, id: ref.id })
   } catch (error) {
     console.error('[maintenance/data/suppliers] POST error', error)

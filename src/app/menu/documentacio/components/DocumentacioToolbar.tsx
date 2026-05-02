@@ -128,6 +128,7 @@ export function DocumentacioToolbar() {
                     <Link
                       key={`t-${hit.ambit}-${hit.topicSlug}`}
                       role="option"
+                      aria-selected={false}
                       href={hit.href}
                       onMouseDown={(e) => e.preventDefault()}
                       className={cn(
@@ -146,6 +147,7 @@ export function DocumentacioToolbar() {
                   <a
                     key={`d-${hit.id}`}
                     role="option"
+                    aria-selected={false}
                     href={hit.href}
                     target="_blank"
                     rel="noopener noreferrer"

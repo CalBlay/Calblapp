@@ -2,6 +2,20 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
+type LinkedQuadrantEntry = {
+  dept: string
+  startTime: string
+  responsable: string
+}
+
+function readResponsableName(raw: Record<string, unknown>): string {
+  const r = raw.responsable
+  if (r && typeof r === 'object' && r !== null && 'name' in r) {
+    return String((r as { name?: unknown }).name ?? '')
+  }
+  return ''
+}
+
 export async function GET(req: Request) {
   try {
     console.log('🟢 [linked] Iniciant consulta a Firestore...')
@@ -13,7 +27,7 @@ export async function GET(req: Request) {
     }
 
     const collections = ['quadrantsServeis', 'quadrantsCuina', 'quadrantsLogistica']
-    const linked: Record<string, any[]> = {}
+    const linked: Record<string, LinkedQuadrantEntry[]> = {}
 
     await Promise.all(
       collections.map(async (col) => {
@@ -22,15 +36,20 @@ export async function GET(req: Request) {
         console.log(`📊 [linked] Docs trobats a ${col}:`, snapshot.size)
 
         snapshot.forEach((doc) => {
-          const d = doc.data() as any
-          const code = (d.code || '').toUpperCase()
+          const d = doc.data() as Record<string, unknown>
+          const code = String(d.code ?? '')
+            .trim()
+            .toUpperCase()
           if (!code) return
 
           if (!linked[code]) linked[code] = []
           linked[code].push({
-            dept: d.department?.toLowerCase() || col.replace('quadrants', '').toLowerCase(),
-            startTime: d.startTime || '',
-            responsable: d.responsable?.name || '',
+            dept:
+              String(d.department ?? '')
+                .trim()
+                .toLowerCase() || col.replace('quadrants', '').toLowerCase(),
+            startTime: String(d.startTime ?? ''),
+            responsable: readResponsableName(d),
           })
         })
       })
@@ -41,8 +60,9 @@ export async function GET(req: Request) {
     if (codes.length) console.log('📦 Exemple primer codi:', codes[0], linked[codes[0]])
 
     return NextResponse.json({ ok: true, linked })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('❌ [linked] Error intern:', err)
-    return NextResponse.json({ error: err.message || 'Error intern del servidor' }, { status: 500 })
+    const message = err instanceof Error ? err.message : 'Error intern del servidor'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

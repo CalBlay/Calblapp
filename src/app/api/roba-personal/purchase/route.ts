@@ -7,7 +7,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
 import {
-  buildPurchaseDraft,
+  buildRobaInventoryContext,
   purchaseDraftToText,
 } from '@/lib/roba-personal/purchaseDraft'
 import { listCompresCapRecipients } from '@/lib/roba-personal/purchaseRecipient'
@@ -37,8 +37,9 @@ async function formatSolicitedPurchaseLines(
       size?: string
       supplier?: string
     }
+    const talla = (p.size ?? '').trim()
     parts.push(
-      `${p.code} | ${p.name} | talla ${p.size} | proveïdor ${p.supplier} | quantitat ${line.quantity}\n`
+      `${p.code} | ${p.name}${talla ? ` | talla ${talla}` : ''} | proveïdor ${p.supplier} | quantitat ${line.quantity}\n`
     )
   }
   return parts.join('').trimEnd()
@@ -55,7 +56,7 @@ export async function GET() {
   const auth = await requireRobaPersonalAdmin()
   if (!auth.ok) return auth.res
 
-  const draft = await buildPurchaseDraft()
+  const draft = await buildRobaInventoryContext()
   const text = purchaseDraftToText(draft)
   return NextResponse.json({ draft, text })
 }
@@ -127,7 +128,7 @@ export async function POST(req: Request) {
     )
   }
 
-  const draft = await buildPurchaseDraft()
+  const draft = await buildRobaInventoryContext()
   const solicitedBlock = await formatSolicitedPurchaseLines(lines)
   const draftBlock = purchaseDraftToText(draft)
   let bodyText = [solicitedBlock, draftBlock].filter(Boolean).join('\n\n')

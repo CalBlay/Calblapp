@@ -33,6 +33,7 @@ export interface User {
   opsEventsConfigurable?: boolean
   opsProjectsConfigurable?: boolean
   canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
 }
 
 export interface NewUserPayload {
@@ -46,6 +47,7 @@ export interface NewUserPayload {
   opsEventsConfigurable?: boolean
   opsProjectsConfigurable?: boolean
   canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
   available?: boolean
   isDriver?: boolean
   workerRank?: string
@@ -93,6 +95,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const [opsEventsConfigurable, setOpsEventsConfigurable] = React.useState(false)
   const [opsProjectsConfigurable, setOpsProjectsConfigurable] = React.useState(true)
   const [canRespondSurveys, setCanRespondSurveys] = React.useState(false)
+  const [isDepartmentRobaLead, setIsDepartmentRobaLead] = React.useState(false)
 
   const { data: channelsData } = useSWR('/api/messaging/channels?scope=all', (url: string) =>
     fetch(url).then((r) => r.json())
@@ -132,6 +135,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         setAvailable(data.available ?? true)
         setIsDriver(Boolean(data.driver?.isDriver))
         setWorkerRank(data.workerRank ?? 'equip')
+        setIsDepartmentRobaLead(Boolean((data as { isDepartmentRobaLead?: boolean }).isDepartmentRobaLead))
         setPassword(Math.random().toString(36).slice(-8))
       } catch (err) {
         console.error('Error carregant sollicitud:', err)
@@ -164,6 +168,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       typeof user.opsProjectsConfigurable === 'boolean' ? user.opsProjectsConfigurable : true
     )
     setCanRespondSurveys(Boolean(user.canRespondSurveys))
+    setIsDepartmentRobaLead(Boolean(user.isDepartmentRobaLead))
     if (user.role?.toLowerCase() === 'treballador') {
       setAvailable(user.available ?? true)
       setIsDriver(user.driver?.isDriver ?? false)
@@ -215,6 +220,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         opsEventsConfigurable,
         opsProjectsConfigurable,
         canRespondSurveys,
+        isDepartmentRobaLead,
       }
       if (password.trim()) payload.password = password.trim()
       onSubmit(payload)
@@ -234,6 +240,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       opsEventsConfigurable,
       opsProjectsConfigurable,
       canRespondSurveys,
+      isDepartmentRobaLead,
     }
     if (isWorker) {
       payload.available = available
@@ -314,6 +321,20 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border p-3">
+              <div>
+                <Label className="text-sm">Responsable de roba (departament)</Label>
+                <div className="text-xs text-gray-500">
+                  Al mòdul Roba personal pot marcar la recollida del material preparat per al seu
+                  departament.
+                </div>
+              </div>
+              <Switch
+                checked={isDepartmentRobaLead}
+                onCheckedChange={setIsDepartmentRobaLead}
+              />
             </div>
 
             {normalizeRole(role) === 'comercial' ? (
