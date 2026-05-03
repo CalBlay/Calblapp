@@ -73,6 +73,7 @@ export type RequestRow = {
   pickupAvailabilityMessage?: string | null
   preparedWithStockReservation?: boolean
   status: string
+  originalRequestedLines?: { productId: string; quantity: number; notes?: string }[] | null
   lines: { productId: string; quantity: number }[]
   createdAt?: string
 }
@@ -93,6 +94,7 @@ export type DeliveryRow = {
   workerReceiptAckExpected?: boolean
   workerReceiptAckAt?: string | null
   workerReceiptAckByUserId?: string | null
+  acknowledgmentSignatureDataUrl?: string | null
   workerReceiptAckSignatureDataUrl?: string | null
   workerReceiptCorrectionOpen?: boolean
 }

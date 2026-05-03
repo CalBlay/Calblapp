@@ -27,7 +27,7 @@ export const ROBA_REQUEST_STATUS_LABEL: Record<string, string> = {
   rejected: 'Rebutjada',
 }
 
-export const SOLIC_TABLE_COLS = 8
+export const SOLIC_TABLE_COLS = 9
 
 export const ENTREGUES_TABLE_COLS_LEAD = 9
 export const ENTREGUES_TABLE_COLS_WORKER = 8

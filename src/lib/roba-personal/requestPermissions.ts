@@ -75,7 +75,7 @@ export function workerSelfCanCancelRobaRequest(input: {
   const creator = String(input.request.createdByUserId || '').trim()
   const worker = String(input.request.requestedByWorkerId || '').trim()
   const pid = String(input.linkedPersonnelId || '').trim()
-  return (
+  return Boolean(
     (creator && creator === input.userId) || (worker && worker === pid && pid !== '')
   )
 }

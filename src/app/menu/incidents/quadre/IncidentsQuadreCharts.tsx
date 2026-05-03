@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 
-import { DonutChart } from '@/components/reports/DonutChart'
+import { DonutChart } from '@/components/charts/DonutChart'
 import { typography } from '@/lib/typography'
 
 type NameValueDatum = { name: string; value: number }

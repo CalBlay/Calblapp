@@ -14,12 +14,12 @@ export function UserTable({ users, onEdit, onDelete }: UserTableProps) {
       <table className="min-w-full divide-y divide-gray-200">
         <thead>
           <tr>
-            <th className="px-4 py-2 text-left font-semibold">Name</th>
-            <th className="px-4 py-2 text-left font-semibold">Password</th>
-            <th className="px-4 py-2 text-left font-semibold">Role</th>
-            <th className="px-4 py-2 text-left font-semibold">Department</th>
+            <th className="px-4 py-2 text-left font-semibold">Nom</th>
+            <th className="px-4 py-2 text-left font-semibold">Contrasenya</th>
+            <th className="px-4 py-2 text-left font-semibold">Rol</th>
+            <th className="px-4 py-2 text-left font-semibold">Departament</th>
             <th className="px-4 py-2 text-left font-semibold">Comercial Zoho</th>
-            <th className="px-4 py-2 font-semibold">Actions</th>
+            <th className="px-4 py-2 font-semibold">Accions</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
@@ -35,13 +35,13 @@ export function UserTable({ users, onEdit, onDelete }: UserTableProps) {
                   className="text-blue-600 hover:underline"
                   onClick={() => onEdit(u)}
                 >
-                  Edit
+                  Edita
                 </button>
                 <button
                   className="text-red-600 hover:underline"
                   onClick={() => onDelete(u.id)}
                 >
-                  Delete
+                  Suprimeix
                 </button>
               </td>
             </tr>

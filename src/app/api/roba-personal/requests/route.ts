@@ -54,7 +54,7 @@ async function enrichItemsWithCreatorNames(
     if (name || !uid) return it
     const n = nameById.get(uid)
     if (!n) return it
-    return { ...row, createdByUserName: n } as typeof it
+    return { ...row, createdByUserName: n } as unknown as typeof it
   })
 }
 
@@ -93,7 +93,7 @@ async function enrichFulfilledStatusWithDeliveryAck(
     const ackExpected = del.workerReceiptAckExpected === true
     const ackDone = del.workerReceiptAckAt != null
     if (!ackExpected || ackDone) {
-      return { ...row, status: 'receipt_confirmed' } as typeof it
+      return { ...row, status: 'receipt_confirmed' } as unknown as typeof it
     }
     return it
   })
@@ -311,6 +311,7 @@ export async function POST(req: Request) {
   const doc: Record<string, unknown> = {
     requestingDepartment,
     requestingDepartmentNorm: normDeptLabel(requestingDepartment),
+    originalRequestedLines: lines,
     lines,
     status: String(body.status || 'submitted').trim() || 'submitted',
     requestedByWorkerId,

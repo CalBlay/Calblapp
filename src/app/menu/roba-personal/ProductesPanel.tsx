@@ -27,6 +27,7 @@ import { exportRowsToPdf, exportRowsToXlsx, robaExportFilename } from '@/lib/rob
 import { taulaContentidorScroll, taulaThText } from '@/lib/taules'
 import { cn } from '@/lib/utils'
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
+import { Trash2 } from 'lucide-react'
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -111,6 +112,7 @@ export function ProductesPanel() {
     departments: [] as string[],
   })
   const [productActiveBusyId, setProductActiveBusyId] = useState<string | null>(null)
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editId, setEditId] = useState('')
   const [editForm, setEditForm] = useState({
@@ -407,6 +409,35 @@ export function ProductesPanel() {
         description: e instanceof Error ? e.message : String(e),
         variant: 'destructive',
       })
+    }
+  }
+
+  const deleteProducte = async (row: (typeof rows)[number]) => {
+    const label = `${row.code} · ${row.name}`.trim()
+    const confirmed = window.confirm(
+      `Voleu eliminar definitivament aquest producte?\n\n${label}\n\nAquesta acció no es pot desfer.`
+    )
+    if (!confirmed) return
+
+    setDeleteBusyId(row.id)
+    try {
+      await api(`/api/roba-personal/products/${row.id}`, {
+        method: 'DELETE',
+      })
+      toast({ title: 'Producte eliminat' })
+      if (editId === row.id) {
+        setEditOpen(false)
+        setEditId('')
+      }
+      void loadProducts()
+    } catch (e: unknown) {
+      toast({
+        title: 'No s’ha pogut eliminar',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setDeleteBusyId(null)
     }
   }
 
@@ -778,18 +809,19 @@ export function ProductesPanel() {
                 <TableHead className={taulaThText}>Magatzem</TableHead>
                 <TableHead className={cn(taulaThText, 'text-right')}>Estoc</TableHead>
                 <TableHead className={cn(taulaThText, 'text-center w-[4.5rem]')}>Actiu</TableHead>
+                <TableHead className={cn(taulaThText, 'text-center w-[5rem]')}>Accions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-muted-foreground">
+                  <TableCell colSpan={12} className="text-muted-foreground">
                     Carregant…
                   </TableCell>
                 </TableRow>
               ) : productesTaula.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-muted-foreground text-center py-8 text-sm">
+                  <TableCell colSpan={12} className="text-muted-foreground text-center py-8 text-sm">
                     Encara no hi ha cap article. Creeu-ne un amb el formulari de dalt.
                   </TableCell>
                 </TableRow>
@@ -844,6 +876,23 @@ export function ProductesPanel() {
                             onCheckedChange={(v) => void setProducteActiu(r.id, v)}
                           />
                         </div>
+                      </TableCell>
+                      <TableCell
+                        className="text-center"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          disabled={deleteBusyId === r.id}
+                          aria-label="Eliminar producte"
+                          onClick={() => void deleteProducte(r)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   )
@@ -1030,6 +1079,19 @@ export function ProductesPanel() {
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="destructive"
+              className="sm:mr-auto"
+              disabled={!editId || deleteBusyId === editId}
+              onClick={() => {
+                const row = rows.find((r) => r.id === editId)
+                if (row) void deleteProducte(row)
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {deleteBusyId === editId ? 'Eliminant…' : 'Eliminar producte'}
+            </Button>
             <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
               Cancel·lar
             </Button>

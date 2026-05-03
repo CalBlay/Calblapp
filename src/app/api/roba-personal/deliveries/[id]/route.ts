@@ -530,3 +530,96 @@ export async function PATCH(
     serializeFirestoreDoc(next.id, next.data() as Record<string, unknown>)
   )
 }
+
+export async function DELETE(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  const auth = await resolveRobaAccess()
+  if (!auth.ok) return auth.res
+  const access = auth.access
+  if (access.scope !== 'full' || access.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { id } = await ctx.params
+  const dref = db.collection(DEL).doc(id)
+  const now = FieldValue.serverTimestamp()
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const dsnap = await tx.get(dref)
+      if (!dsnap.exists) throw new Error('No trobat')
+
+      const cur = dsnap.data() as Record<string, unknown>
+      const lines = linesFromStoredDelivery(cur)
+      if (lines.length === 0) {
+        throw new Error('L entrega no te linies valides.')
+      }
+
+      const qtyByProduct = aggregateQuantities(lines)
+      const requestId = String(cur.requestId || '').trim()
+
+      let requestData: Record<string, unknown> | null = null
+      let reqRef: DocumentReference | null = null
+      let restoreReserved = false
+      if (requestId) {
+        reqRef = db.collection(REQ).doc(requestId)
+        const rsnap = await tx.get(reqRef)
+        if (!rsnap.exists) throw new Error('Sollicitud vinculada no trobada.')
+        requestData = rsnap.data() as Record<string, unknown>
+        const fulfillmentDeliveryId = String(requestData.fulfillmentDeliveryId || '').trim()
+        if (fulfillmentDeliveryId && fulfillmentDeliveryId !== id) {
+          throw new Error('La sollicitud ja no esta vinculada a aquesta entrega.')
+        }
+        restoreReserved =
+          (requestData as { preparedWithStockReservation?: boolean }).preparedWithStockReservation !==
+          false
+      }
+
+      for (const [productId, qty] of qtyByProduct) {
+        const pref = db.collection(PROD).doc(productId)
+        const psnap = await tx.get(pref)
+        if (!psnap.exists) throw new Error(`Producte no trobat: ${productId}`)
+        const pdata = psnap.data() as Record<string, unknown>
+        const onHand = Number((pdata as { quantityOnHand?: number }).quantityOnHand ?? 0)
+        const reserved = Number((pdata as { quantityReserved?: number }).quantityReserved ?? 0)
+        tx.update(pref, {
+          quantityOnHand: onHand + qty,
+          quantityReserved: requestId && restoreReserved ? reserved + qty : reserved,
+          updatedAt: now,
+        })
+
+        const mref = db.collection(MOV).doc()
+        tx.set(mref, {
+          productId,
+          quantityDelta: qty,
+          reason: 'delivery_delete',
+          reference: deliveryStockMovementReferenceFromDocId(mref.id),
+          notes: `Eliminacio entrega ${String(cur.reference || `E-${id}`)}`,
+          deliveryId: id,
+          createdByUserId: access.userId,
+          createdAt: now,
+        })
+      }
+
+      if (reqRef && requestData) {
+        tx.update(reqRef, {
+          status: 'picked_up',
+          fulfilledAt: null,
+          fulfillmentDeliveryId: null,
+          receiptConfirmedAt: null,
+          updatedAt: now,
+        })
+      }
+
+      tx.delete(dref)
+    })
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e)
+    const status = message === 'No trobat' ? 404 : 400
+    return NextResponse.json({ error: message }, { status })
+  }
+
+  return NextResponse.json({ ok: true })
+}

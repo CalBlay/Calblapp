@@ -18,10 +18,10 @@ export default function RobaPersonalDashboard() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { data: session } = useSession()
-  const tabParam = searchParams.get('tab')
+  const tabParam = searchParams?.get('tab') ?? null
   const urlTab = parseRobaTab(tabParam)
-  const requestIdFromUrl = String(searchParams.get('requestId') || '').trim()
-  const deliveryIdFromUrl = String(searchParams.get('deliveryId') || '').trim()
+  const requestIdFromUrl = String(searchParams?.get('requestId') || '').trim()
+  const deliveryIdFromUrl = String(searchParams?.get('deliveryId') || '').trim()
 
   const sessionRoleNorm = normalizeRole((session?.user as { role?: string })?.role)
   const sessionDeptNorm = String((session?.user as { department?: string })?.department || '')
@@ -55,7 +55,7 @@ export default function RobaPersonalDashboard() {
     if (isRobaWorkerSelf) {
       if (tab === 'entregues') return
       setTab('entregues')
-      const p = new URLSearchParams(searchParams.toString())
+      const p = new URLSearchParams(searchParams?.toString() || '')
       p.set('tab', 'entregues')
       router.replace(`/menu/roba-personal?${p.toString()}`, { scroll: false })
       return
@@ -63,17 +63,21 @@ export default function RobaPersonalDashboard() {
     if (!isDeptLeadLimited) return
     if (tab === 'sollicituds' || tab === 'entregues') return
     setTab('sollicituds')
-    const p = new URLSearchParams(searchParams.toString())
+    const p = new URLSearchParams(searchParams?.toString() || '')
     p.set('tab', 'sollicituds')
     p.delete('requestId')
+    p.delete('deliveryId')
     router.replace(`/menu/roba-personal?${p.toString()}`, { scroll: false })
   }, [isRobaWorkerSelf, isDeptLeadLimited, tab, router, searchParams])
 
   const setRobaTab = (id: TabId) => {
     setTab(id)
-    const p = new URLSearchParams(searchParams.toString())
+    const p = new URLSearchParams(searchParams?.toString() || '')
     p.set('tab', id)
-    if (id !== 'entregues' && id !== 'sollicituds') p.delete('requestId')
+    if (id !== 'entregues' && id !== 'sollicituds') {
+      p.delete('requestId')
+      p.delete('deliveryId')
+    }
     router.replace(`/menu/roba-personal?${p.toString()}`, { scroll: false })
   }
 

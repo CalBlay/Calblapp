@@ -42,7 +42,14 @@ type TokenLike = {
   email?: string
 }
 
-type StageVerdAddress = { Ubicacio?: string; location?: string; address?: string }
+type StageVerdAddress = {
+  Ubicacio?: string
+  location?: string
+  address?: string
+  eventName?: string
+  Nom?: string
+  name?: string
+}
 
 type AssignedUserSrc = {
   name?: string

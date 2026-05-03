@@ -128,9 +128,19 @@ export async function DELETE(
     return NextResponse.json({ error: 'No trobat' }, { status: 404 })
   }
 
-  await ref.update({
-    isActive: false,
-    updatedAt: FieldValue.serverTimestamp(),
-  })
+  const data = snap.data() as { quantityOnHand?: number; quantityReserved?: number }
+  const onHand = Number(data.quantityOnHand ?? 0)
+  const reserved = Number(data.quantityReserved ?? 0)
+  if (onHand > 0 || reserved > 0) {
+    return NextResponse.json(
+      {
+        error:
+          'No es pot eliminar un producte amb estoc o reserva. Deixeu-lo a zero o desactiveu-lo.',
+      },
+      { status: 409 }
+    )
+  }
+
+  await ref.delete()
   return NextResponse.json({ ok: true })
 }

@@ -38,8 +38,11 @@ export function useRegisterModuleExportMenu(items: ExportMenuItem[] | null) {
   useEffect(() => {
     if (!setItems) return
     setItems(items && items.length ? items : null)
-    return () => {
-      setItems(null)
-    }
   }, [setItems, items])
+
+  useEffect(() => {
+    return () => {
+      setItems?.(null)
+    }
+  }, [setItems])
 }

@@ -29,17 +29,24 @@ import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
 import { useSession } from 'next-auth/react'
 import { DEPARTMENTS, type DepartmentId } from '@/data/departments'
-import { taulaContentidorScroll, taulaThText } from '@/lib/taules'
+import { taulaThText } from '@/lib/taules'
 import { cn } from '@/lib/utils'
 import { normalizeRole } from '@/lib/roles'
 import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
 import { formatDateOnly, formatDateTimeValue } from '@/lib/date-format'
-import { exportRowsToPdf, exportRowsToXlsx, robaExportFilename } from '@/lib/roba-personal/robaExport'
+import {
+  exportRequestReceiptsPdf,
+  exportRowsToXlsx,
+  robaExportFilename,
+} from '@/lib/roba-personal/robaExport'
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
 import { ProductSearchCombobox } from './ProductSearchCombobox'
 import { robaPersonalApi as api } from './robaPersonalApi'
 import type { DeliveryRow, ProductRow, RequestRow, WorkerRow } from './robaPersonalTypes'
-import { deliveredQtyByProductForRequestId, totalDeliveredUnitsForRequest } from './robaDeliveryHelpers'
+import {
+  deliveredQtyByProductForRequestId,
+  totalDeliveredUnitsForRequest,
+} from './robaDeliveryHelpers'
 import { ROBA_REQUEST_STATUS_LABEL, SOLIC_TABLE_COLS } from './robaPersonalConstants'
 import {
   robaRequestCalendarDay,
@@ -53,6 +60,7 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
   const [workers, setWorkers] = useState<WorkerRow[]>([])
+  const [selectedRequestId, setSelectedRequestId] = useState('')
   const [dept, setDept] = useState<DepartmentId>(DEPARTMENTS[0])
   const [workerId, setWorkerId] = useState('')
   const [lines, setLines] = useState<{ productId: string; qty: string }[]>([
@@ -62,6 +70,7 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
   const { data: session } = useSession()
   const sessionUserId = String((session?.user as { id?: string })?.id || '').trim()
   const sessionRoleNorm = normalizeRole((session?.user as { role?: string })?.role)
+  const isRobaAdmin = sessionRoleNorm === 'admin'
   const sessionDeptNorm = String((session?.user as { department?: string })?.department || '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
@@ -152,6 +161,7 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
   const [listFilterStatus, setListFilterStatus] = useState('')
   const [listSearch, setListSearch] = useState('')
   const [listFiltersResetSignal, setListFiltersResetSignal] = useState(0)
+  const [deleteRequestBusyId, setDeleteRequestBusyId] = useState<string | null>(null)
 
   const { setContent, open: filtersSlideOpen } = useFilters()
 
@@ -363,11 +373,11 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
 
   const load = useCallback(async () => {
     try {
-      const [r, p, w, d] = await Promise.all([
+      const [r, d, p, w] = await Promise.all([
         api<RequestRow[]>('/api/roba-personal/requests'),
+        api<DeliveryRow[]>('/api/roba-personal/deliveries'),
         api<ProductRow[]>('/api/roba-personal/products'),
         api<WorkerRow[]>('/api/roba-personal/workers'),
-        api<DeliveryRow[]>('/api/roba-personal/deliveries'),
       ])
       setRows(r)
       setDeliveries(d)
@@ -385,6 +395,71 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
   useEffect(() => {
     void load()
   }, [load])
+
+  const resetNewRequestForm = useCallback(() => {
+    setSelectedRequestId('')
+    if (isDeptLeadLimited) {
+      if (lockedDept) setDept(lockedDept)
+      else if (sessionDeptLabel) setDept(sessionDeptLabel as DepartmentId)
+    } else if (isRobaWorkerSelf) {
+      if (lockedDeptWorkerSelf) setDept(lockedDeptWorkerSelf)
+    } else {
+      setDept(DEPARTMENTS[0])
+    }
+
+    if (isRobaWorkerSelf && robaLinkedPersonnelId) setWorkerId(robaLinkedPersonnelId)
+    else setWorkerId('')
+    setLines([{ productId: '', qty: '1' }])
+  }, [
+    isDeptLeadLimited,
+    lockedDept,
+    sessionDeptLabel,
+    isRobaWorkerSelf,
+    lockedDeptWorkerSelf,
+    robaLinkedPersonnelId,
+  ])
+
+  const deleteRequest = async (r: RequestRow) => {
+    if (!isRobaAdmin) return
+    const ref = String(r.reference || '').trim() || `S-${r.id}`
+    const ok = window.confirm(
+      `Voleu eliminar definitivament aquesta sol·licitud?\n\n${ref}\n\nSi estava preparada amb reserva d'estoc, s'alliberarà. Aquesta acció no es pot desfer.`
+    )
+    if (!ok) return
+    setDeleteRequestBusyId(r.id)
+    try {
+      await api(`/api/roba-personal/requests/${r.id}`, { method: 'DELETE' })
+      toast({ title: 'Sol·licitud eliminada' })
+      if (selectedRequestId === r.id) resetNewRequestForm()
+      void load()
+    } catch (e: unknown) {
+      toast({
+        title: "No s'ha pogut eliminar",
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setDeleteRequestBusyId(null)
+    }
+  }
+
+  const fillFormFromRequest = useCallback((request: RequestRow) => {
+    if (selectedRequestId === request.id) {
+      resetNewRequestForm()
+      return
+    }
+    setSelectedRequestId(request.id)
+    setDept(request.requestingDepartment as DepartmentId)
+    setWorkerId(String(request.requestedByWorkerId || '').trim())
+    setLines(
+      (request.lines || []).length > 0
+        ? request.lines.map((line) => ({
+            productId: line.productId,
+            qty: String(line.quantity),
+          }))
+        : [{ productId: '', qty: '1' }]
+    )
+  }, [resetNewRequestForm, selectedRequestId])
 
   const addLine = () => setLines((l) => [...l, { productId: '', qty: '1' }])
 
@@ -509,16 +584,29 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
   const buildSollicitudsExportRows = useCallback(
     () =>
       filteredListRows.map((r) => {
-        const deliveredByProduct = deliveredQtyByProductForRequestId(deliveries, r.id)
+        const requestedLines = (r.originalRequestedLines || r.lines || []) as Array<{
+          productId: string
+          quantity: number
+        }>
+        const requestedTotal = requestedLines.reduce((a, l) => a + (Number(l.quantity) || 0), 0)
+        const preparedTotal = (r.lines || []).reduce((a, l) => a + (Number(l.quantity) || 0), 0)
+        const hasLinkedDelivery = deliveries.some(
+          (x) => String(x.requestId || '').trim() === r.id
+        )
+        const delByProd = hasLinkedDelivery
+          ? deliveredQtyByProductForRequestId(deliveries, r.id)
+          : null
         const deliveredTotal = totalDeliveredUnitsForRequest(deliveries, r.id)
-        const hasDelivered = deliveredTotal > 0
+        const displayPreparedTotal = hasLinkedDelivery ? deliveredTotal : preparedTotal
         const Linies = (r.lines || [])
           .map((l) => {
-            const reqQ = Number(l.quantity) || 0
-            const delQ = deliveredByProduct.get(l.productId) ?? 0
-            const q = hasDelivered ? delQ : reqQ
-            const base = `${prodLabel(l.productId)} × ${q}`
-            if (hasDelivered && delQ !== reqQ) return `${base} (sol. ${reqQ})`
+            const reqQ =
+              requestedLines.find((x) => x.productId === l.productId)?.quantity ?? l.quantity
+            const qtyShown = delByProd
+              ? delByProd.get(l.productId) ?? 0
+              : Number(l.quantity) || 0
+            const base = `${prodLabel(l.productId)} x ${qtyShown}`
+            if (Number(reqQ) !== Number(qtyShown)) return `${base} (sol. ${reqQ})`
             return base
           })
           .join('; ')
@@ -533,10 +621,12 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
               ? workers.find((w) => w.id === r.requestedByWorkerId)?.name ?? ''
               : ''),
           Estat: ROBA_REQUEST_STATUS_LABEL[r.status] || r.status,
+          QtSollicitada: requestedTotal,
+          QtPreparada: displayPreparedTotal,
           Linies,
         }
       }),
-    [filteredListRows, workers, prodLabel, deliveries]
+    [filteredListRows, deliveries, workers, prodLabel]
   )
 
   const handleSollicitudsExportXlsx = useCallback(async () => {
@@ -556,7 +646,30 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
   const handleSollicitudsExportPdf = useCallback(async () => {
     try {
       const base = robaExportFilename('roba-sollicituds')
-      await exportRowsToPdf(buildSollicitudsExportRows(), 'Roba personal · Sol·licituds', base)
+      await exportRequestReceiptsPdf(
+        filteredListRows.map((r) => {
+          const workerName =
+            r.requestedByWorkerName?.trim() ||
+            (r.requestedByWorkerId
+              ? workers.find((w) => w.id === r.requestedByWorkerId)?.name ?? ''
+              : '') ||
+            '-'
+          return {
+            reference: r.reference ?? `S-${r.id}`,
+            requestedAt: formatDateTimeValue(r.createdAt) || '',
+            workerName,
+            department: r.requestingDepartment || '-',
+            status: ROBA_REQUEST_STATUS_LABEL[r.status] || r.status,
+            createdByName: String(r.createdByUserName || '').trim() || '-',
+            pickupDate: r.pickupDate ? formatDateOnly(r.pickupDate) : undefined,
+            lines: (r.lines || []).map((l) => ({
+              label: prodLabel(l.productId),
+              quantity: l.quantity,
+            })),
+          }
+        }),
+        base
+      )
       toast({ title: 'Exportació PDF completada.' })
     } catch (e: unknown) {
       toast({
@@ -565,7 +678,7 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
         variant: 'destructive',
       })
     }
-  }, [buildSollicitudsExportRows])
+  }, [filteredListRows, workers, prodLabel])
 
   const sollicitudsExportMenuItems = useMemo(
     () => [
@@ -759,9 +872,13 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
                   <TableHead className={cn(taulaThText, 'min-w-[10rem] py-2')}>Producte</TableHead>
                   <TableHead
                     className={cn(taulaThText, 'text-right whitespace-nowrap py-2')}
-                    title="Si hi ha entrega vinculada: unitats lliurades; si no, total sol·licitat."
                   >
-                    Total
+                    Qt. sollicitada
+                  </TableHead>
+                  <TableHead
+                    className={cn(taulaThText, 'text-right whitespace-nowrap py-2')}
+                  >
+                    Qt. preparada
                   </TableHead>
                   <TableHead className={cn(taulaThText, 'py-2')}>Estat</TableHead>
                   <TableHead className={cn(taulaThText, 'whitespace-nowrap w-[1%] py-2')}>Ref.</TableHead>
@@ -777,29 +894,45 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
                       </TableCell>
                     </TableRow>
                     {dayRows.map((r) => {
-                      const deliveredByProduct = deliveredQtyByProductForRequestId(deliveries, r.id)
-                      const deliveredTotal = totalDeliveredUnitsForRequest(deliveries, r.id)
-                      const hasDelivered = deliveredTotal > 0
-                      const requestedTotal = (r.lines || []).reduce(
+                      const requestedLines = (r.originalRequestedLines || r.lines || []) as Array<{
+                        productId: string
+                        quantity: number
+                      }>
+                      const requestedTotal = requestedLines.reduce(
                         (a, l) => a + (Number(l.quantity) || 0),
                         0
                       )
-                      const totalUnits = hasDelivered ? deliveredTotal : requestedTotal
+                      const preparedTotal = (r.lines || []).reduce(
+                        (a, l) => a + (Number(l.quantity) || 0),
+                        0
+                      )
+                      const hasLinkedDelivery = deliveries.some(
+                        (x) => String(x.requestId || '').trim() === r.id
+                      )
+                      const delByProd = hasLinkedDelivery
+                        ? deliveredQtyByProductForRequestId(deliveries, r.id)
+                        : null
+                      const deliveredTotal = totalDeliveredUnitsForRequest(deliveries, r.id)
+                      const displayPreparedTotal = hasLinkedDelivery
+                        ? deliveredTotal
+                        : preparedTotal
                       const requester = String(r.createdByUserName || '').trim() || '—'
                       const hid = highlightRequestId.trim() === r.id
                       return (
                         <TableRow
                           key={r.id}
                           id={`roba-req-${r.id}`}
+                          onClick={() => fillFormFromRequest(r)}
                           className={cn(
-                            'text-xs sm:text-sm hover:bg-emerald-50/60 dark:hover:bg-emerald-950/25 transition-colors',
-                            hid ? 'bg-indigo-500/10 ring-1 ring-indigo-400/40' : undefined
+                            'cursor-pointer text-xs sm:text-sm hover:bg-emerald-50/60 dark:hover:bg-emerald-950/25 transition-colors',
+                            hid ? 'bg-indigo-500/10 ring-1 ring-indigo-400/40' : undefined,
+                            selectedRequestId === r.id ? 'bg-emerald-50 dark:bg-emerald-950/20' : undefined
                           )}
                         >
                           <TableCell
                             className={cn(
                               'text-sm align-top max-w-[9rem] sticky left-0 z-20 bg-card',
-                              hid ? 'bg-indigo-500/10' : 'bg-card'
+                              hid ? 'bg-indigo-500/10' : selectedRequestId === r.id ? 'bg-emerald-50 dark:bg-emerald-950/20' : 'bg-card'
                             )}
                           >
                             <span className="line-clamp-2" title={requester}>
@@ -818,16 +951,19 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
                           <TableCell className="text-xs align-top max-w-[16rem]">
                             <ul className="space-y-1 list-none pl-0 m-0">
                               {(r.lines || []).map((l, idx) => {
-                                const reqQ = Number(l.quantity) || 0
-                                const delQ = deliveredByProduct.get(l.productId) ?? 0
-                                const showQ = hasDelivered ? delQ : reqQ
+                                const reqQ =
+                                  requestedLines.find((x) => x.productId === l.productId)?.quantity ??
+                                  (Number(l.quantity) || 0)
+                                const showQ = delByProd
+                                  ? delByProd.get(l.productId) ?? 0
+                                  : Number(l.quantity) || 0
                                 return (
                                   <li key={`${l.productId}-${idx}`} className="leading-snug">
                                     <span className="text-foreground">{prodLabel(l.productId)}</span>
                                     <span className="text-muted-foreground tabular-nums">
                                       {' '}
                                       × {showQ}
-                                      {hasDelivered && delQ !== reqQ ? (
+                                      {showQ !== reqQ ? (
                                         <span className="text-[10px] font-normal opacity-80">
                                           {' '}
                                           (sol. {reqQ})
@@ -840,12 +976,10 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
                             </ul>
                           </TableCell>
                           <TableCell className="text-sm align-top text-right font-medium tabular-nums whitespace-nowrap">
-                            {totalUnits}
-                            {hasDelivered && deliveredTotal !== requestedTotal ? (
-                              <span className="block text-[10px] font-normal text-muted-foreground">
-                                sol. {requestedTotal}
-                              </span>
-                            ) : null}
+                            {requestedTotal}
+                          </TableCell>
+                          <TableCell className="text-sm align-top text-right font-medium tabular-nums whitespace-nowrap">
+                            {displayPreparedTotal}
                           </TableCell>
                           <TableCell className="text-sm align-top min-w-[7rem]">
                             <span className="font-medium">
@@ -870,7 +1004,7 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
                           <TableCell className="align-top text-[10px] text-muted-foreground font-mono whitespace-nowrap pt-2.5">
                             {r.reference ?? `S-${r.id}`}
                           </TableCell>
-                          <TableCell className="align-top">
+                          <TableCell className="align-top" onClick={(e) => e.stopPropagation()}>
                             <div className="flex flex-wrap gap-1">
                               {r.status === 'submitted' && isRobaAdminOrRrhh ? (
                                 <Button
@@ -903,6 +1037,18 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
                                   onClick={() => void cancelRequest(r.id)}
                                 >
                                   Cancel·lar
+                                </Button>
+                              ) : null}
+                              {isRobaAdmin ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-xs h-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  disabled={deleteRequestBusyId === r.id}
+                                  onClick={() => void deleteRequest(r)}
+                                >
+                                  {deleteRequestBusyId === r.id ? 'Eliminant...' : 'Eliminar'}
                                 </Button>
                               ) : null}
                             </div>
@@ -1074,3 +1220,10 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
     </div>
   )
 }
+
+
+
+
+
+
+

@@ -45,6 +45,8 @@ export function normalizeRole(input?: string | null): Role {
     direccio: 'direccio',
     direccion: 'direccio',
     'cap departament': 'cap',
+    'departament de cap': 'cap',
+    'departament cap': 'cap',
     capdepartament: 'cap',
     cap: 'cap',
     treballador: 'treballador',
@@ -61,6 +63,7 @@ export function normalizeRole(input?: string | null): Role {
   }
 
   if (deAccented in aliasMap) return aliasMap[deAccented]
+  if (deAccented.includes('cap') && deAccented.includes('depart')) return 'cap'
 
   // Si ja ve una clau exacta vàlida
   if (allowedRoles.has(deAccented as Role)) return deAccented as Role

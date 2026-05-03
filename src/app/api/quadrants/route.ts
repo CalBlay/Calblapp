@@ -180,6 +180,23 @@ type ExternalWorkerInput = {
   isExternal?: boolean
 }
 
+type InternalWorkerLine = {
+  name: string
+  meetingPoint: string
+  isJamonero?: boolean
+}
+
+type ExternalWorkerLine = {
+  name: string
+  meetingPoint: string
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  endTime?: string
+  arrivalTime?: string | null
+  isExternal?: boolean
+}
+
 /** Subset of POST body fields consumed by `buildToSave` */
 type QuadrantSaveRequestBody = {
   code?: string
@@ -222,6 +239,12 @@ type JamoneroAssignmentNormalized = {
   personnelName: string | null
 }
 
+type SurveyPreferenceAugmentation = {
+  preferredStaffNames: string[]
+  preferredDriverNames: string[]
+  preferredResponsibleName: string | null
+}
+
 type PhaseRequest = Record<string, unknown> & {
   groupId?: string | null
   label?: string
@@ -248,16 +271,24 @@ async function enrichWithSurveyPreferences<T extends Record<string, unknown>>(
   payload: T,
   department: string,
   surveyPreferred?: { yes: string[]; maybe: string[] }
-): Promise<
-  T & {
-    preferredStaffNames: string[]
-    preferredDriverNames: string[]
-    preferredResponsibleName: string | null
-  }
-> {
+): Promise<T & SurveyPreferenceAugmentation> {
   const eventId = normalizeEventId(String(payload?.eventId || ''))
   const serviceDate = String(payload?.phaseDate || payload?.startDate || '').slice(0, 10)
-  if (!eventId || !serviceDate) return payload
+  if (!eventId || !serviceDate) {
+    return {
+      ...payload,
+      preferredStaffNames: Array.isArray(payload?.preferredStaffNames)
+        ? (payload.preferredStaffNames as string[])
+        : [],
+      preferredDriverNames: Array.isArray(payload?.preferredDriverNames)
+        ? (payload.preferredDriverNames as string[])
+        : [],
+      preferredResponsibleName:
+        typeof payload?.preferredResponsibleName === 'string'
+          ? payload.preferredResponsibleName
+          : null,
+    }
+  }
 
   const resolvedSurveyPreferred =
     surveyPreferred ||
@@ -294,6 +325,16 @@ async function enrichWithSurveyPreferences<T extends Record<string, unknown>>(
     preferredResponsibleName,
   }
 }
+
+const normalizeJamoneroAssignment = (
+  assignment: JamoneroAssignmentRaw,
+  index: number
+): JamoneroAssignmentNormalized => ({
+  id: String(assignment?.id || `jamonero-${index + 1}`),
+  mode: assignment?.mode === 'manual' ? 'manual' : 'auto',
+  personnelId: assignment?.personnelId ? String(assignment.personnelId) : null,
+  personnelName: assignment?.personnelName ? String(assignment.personnelName) : null,
+})
 
 const getDateWindow = (startISODate: string) => {
   const d = new Date(`${startISODate}T00:00:00`)
@@ -434,6 +475,21 @@ export async function POST(req: NextRequest) {
         ? bodyForSave.externalWorkers.filter((s) => s?.name)
         : []
       const staffClean = staffRaw.filter((s) => s.name !== 'Extra')
+      const internalWorkerLines: InternalWorkerLine[] = staffClean.map((s) => ({
+        name: s.name,
+        meetingPoint: s.meetingPoint || bodyForSave.meetingPoint || '',
+        isJamonero: s.isJamonero === true,
+      }))
+      const externalWorkerLines: ExternalWorkerLine[] = externalWorkersRaw.map((worker) => ({
+        name: worker.name || '',
+        meetingPoint: worker.meetingPoint || bodyForSave.meetingPoint || '',
+        startDate: worker.startDate || bodyForSave.startDate || '',
+        endDate: worker.endDate || bodyForSave.endDate || '',
+        startTime: worker.startTime || bodyForSave.startTime || '00:00',
+        endTime: worker.endTime || bodyForSave.endTime || '00:00',
+        arrivalTime: worker.arrivalTime || bodyForSave.arrivalTime || null,
+        isExternal: worker.isExternal === true,
+      }))
 
       const toSave: QuadrantSave = {
         code: bodyForSave.code || '',
@@ -441,9 +497,9 @@ export async function POST(req: NextRequest) {
         eventName: bodyForSave.eventName || '',
         location: bodyForSave.location || '',
         meetingPoint: bodyForSave.meetingPoint || '',
-        startDate: bodyForSave.startDate,
+        startDate: bodyForSave.startDate || '',
         startTime: bodyForSave.startTime || '00:00',
-        endDate: bodyForSave.endDate,
+        endDate: bodyForSave.endDate || '',
         endTime: bodyForSave.endTime || '00:00',
         arrivalTime: bodyForSave.arrivalTime || null,
         department: deptNorm,
@@ -469,23 +525,7 @@ export async function POST(req: NextRequest) {
           isJamonero: d.isJamonero === true,
         })),
 
-        treballadors: [
-          ...staffClean.map((s) => ({
-            name: s.name,
-            meetingPoint: s.meetingPoint || bodyForSave.meetingPoint || '',
-            isJamonero: s.isJamonero === true,
-          })),
-          ...externalWorkersRaw.map((worker) => ({
-            name: worker.name,
-            meetingPoint: worker.meetingPoint || bodyForSave.meetingPoint || '',
-            startDate: worker.startDate || bodyForSave.startDate,
-            endDate: worker.endDate || bodyForSave.endDate,
-            startTime: worker.startTime || bodyForSave.startTime || '00:00',
-            endTime: worker.endTime || bodyForSave.endTime || '00:00',
-            arrivalTime: worker.arrivalTime || bodyForSave.arrivalTime || null,
-            isExternal: worker.isExternal === true,
-          })),
-        ],
+        treballadors: [...internalWorkerLines, ...externalWorkerLines],
 
         needsReview: !!metaForSave.needsReview,
         violations: metaForSave.violations || [],
@@ -674,17 +714,6 @@ export async function POST(req: NextRequest) {
               })
             })
 
-            const externalWorkerLines = externalWorkersRaw.map((worker) => ({
-              name: worker.name,
-              meetingPoint: worker.meetingPoint || bodyForSave.meetingPoint || '',
-              startDate: worker.startDate || bodyForSave.startDate,
-              endDate: worker.endDate || bodyForSave.endDate,
-              startTime: worker.startTime || bodyForSave.startTime || '00:00',
-              endTime: worker.endTime || bodyForSave.endTime || '00:00',
-              arrivalTime: worker.arrivalTime || bodyForSave.arrivalTime || null,
-              isExternal: worker.isExternal === true,
-            }))
-
             const targetWorkers = Math.max(
               Number(bodyForSave.totalWorkers || 0) -
                 Number(bodyForSave.numDrivers || 0) -
@@ -746,12 +775,7 @@ export async function POST(req: NextRequest) {
     let remainingServiceJamoneroAssignments: JamoneroAssignmentNormalized[] = Array.isArray(
       body.serviceJamoneroAssignments
     )
-      ? (body.serviceJamoneroAssignments as JamoneroAssignmentRaw[]).map((assignment, index) => ({
-          id: String(assignment?.id || `jamonero-${index + 1}`),
-          mode: assignment?.mode === 'manual' ? 'manual' : 'auto',
-          personnelId: assignment?.personnelId ? String(assignment.personnelId) : null,
-          personnelName: assignment?.personnelName ? String(assignment.personnelName) : null,
-        }))
+      ? (body.serviceJamoneroAssignments as JamoneroAssignmentRaw[]).map(normalizeJamoneroAssignment)
       : []
     let remainingServiceEventGroups = 0
 
@@ -822,8 +846,8 @@ export async function POST(req: NextRequest) {
       }
     } else if (deptNorm === 'serveis' && Array.isArray(body.groups) && body.groups.length > 0) {
       const eventDate = body.startDate
-      const serviceAssignments: JamoneroAssignmentRaw[] = Array.isArray(body.serviceJamoneroAssignments)
-        ? (body.serviceJamoneroAssignments as JamoneroAssignmentRaw[])
+      const serviceAssignments: JamoneroAssignmentNormalized[] = Array.isArray(body.serviceJamoneroAssignments)
+        ? (body.serviceJamoneroAssignments as JamoneroAssignmentRaw[]).map(normalizeJamoneroAssignment)
         : []
       const manualServiceJamonero = serviceAssignments.find(
         (assignment) => assignment?.mode === 'manual' && (assignment?.personnelId || assignment?.personnelName)
@@ -1025,12 +1049,12 @@ export async function POST(req: NextRequest) {
         if (splitForManualJamonero || splitForAutoJamonero) {
           const selectedJamoneroPerson = jamoneroPerson || autoJamoneroPerson
           const selectedJamoneroCrew = jamoneroCrew || autoJamoneroCrew
-          const selectedJamoneroAssignment = jamoneroPerson
-            ? manualServiceJamonero
+          const selectedJamoneroAssignment: JamoneroAssignmentNormalized | null = jamoneroPerson
+            ? manualServiceJamonero || null
             : autoJamoneroPerson
             ? {
                 id: `auto-jamonero-${autoJamoneroPerson.id}`,
-                mode: 'manual',
+                mode: 'manual' as const,
                 personnelId: autoJamoneroPerson.id,
                 personnelName: autoJamoneroPerson.name,
               }
@@ -1168,7 +1192,10 @@ export async function POST(req: NextRequest) {
           return null
         }
 
-        const assignmentMatchesCrew = (assignment: JamoneroAssignmentRaw, crew: DriverCrewPremise | null) => {
+        const assignmentMatchesCrew = (
+          assignment: JamoneroAssignmentNormalized,
+          crew: DriverCrewPremise | null
+        ) => {
           if (!assignment || !crew) return false
           const person = findPerson({
             id: assignment.personnelId || null,
@@ -1179,7 +1206,7 @@ export async function POST(req: NextRequest) {
           return crewContainsPerson(crew, { id: person.id, name: person.name })
         }
 
-        const phaseAlreadyRepresentsPerson = (assignment: JamoneroAssignmentRaw) => {
+        const phaseAlreadyRepresentsPerson = (assignment: JamoneroAssignmentNormalized) => {
           const person = findPerson({
             id: assignment?.personnelId || null,
             name: assignment?.personnelName || null,
@@ -1196,7 +1223,7 @@ export async function POST(req: NextRequest) {
           })
         }
 
-        const createExtraDriverPhase = (assignment: JamoneroAssignmentRaw) => {
+        const createExtraDriverPhase = (assignment: JamoneroAssignmentNormalized) => {
           const person = findPerson({
             id: assignment?.personnelId || null,
             name: assignment?.personnelName || null,
@@ -1326,11 +1353,14 @@ export async function POST(req: NextRequest) {
           remainingManualAssignments.forEach((assignment, idx) => {
             const target = eventPhaseIndexes[idx % Math.max(eventPhaseIndexes.length, 1)]
             if (!target) return
-            const current = Array.isArray(phaseRequests[target.index].serviceJamoneroAssignmentsOverride)
-              ? phaseRequests[target.index].serviceJamoneroAssignmentsOverride
+            const targetPhase = phaseRequests[target.index]
+            const current: JamoneroAssignmentNormalized[] = Array.isArray(
+              targetPhase?.serviceJamoneroAssignmentsOverride
+            )
+              ? targetPhase.serviceJamoneroAssignmentsOverride
               : []
             phaseRequests[target.index] = {
-              ...phaseRequests[target.index],
+              ...targetPhase,
               serviceJamoneroAssignmentsOverride: [...current, assignment],
             }
           })
@@ -1355,11 +1385,14 @@ export async function POST(req: NextRequest) {
           remainingAutoAssignments.forEach((assignment, idx) => {
             const target = eventPhaseIndexes[idx % Math.max(eventPhaseIndexes.length, 1)]
             if (!target) return
-            const current = Array.isArray(phaseRequests[target.index].serviceJamoneroAssignmentsOverride)
-              ? phaseRequests[target.index].serviceJamoneroAssignmentsOverride
+            const targetPhase = phaseRequests[target.index]
+            const current: JamoneroAssignmentNormalized[] = Array.isArray(
+              targetPhase?.serviceJamoneroAssignmentsOverride
+            )
+              ? targetPhase.serviceJamoneroAssignmentsOverride
               : []
             phaseRequests[target.index] = {
-              ...phaseRequests[target.index],
+              ...targetPhase,
               serviceJamoneroAssignmentsOverride: [...current, assignment],
             }
           })
@@ -1544,12 +1577,7 @@ export async function POST(req: NextRequest) {
           body.serviceJamoneroAssignments.length > 0
         ) {
           const normalizedServeisJamoneros = (body.serviceJamoneroAssignments as JamoneroAssignmentRaw[]).map(
-            (assignment, index: number) => ({
-              id: String(assignment?.id || `jamonero-${index + 1}`),
-              mode: assignment?.mode === 'manual' ? ('manual' as const) : ('auto' as const),
-              personnelId: assignment?.personnelId ? String(assignment.personnelId) : null,
-              personnelName: assignment?.personnelName ? String(assignment.personnelName) : null,
-            })
+            normalizeJamoneroAssignment
           )
           const jamoneroChunks = partitionAssignmentsAcrossPhases(
             normalizedServeisJamoneros,

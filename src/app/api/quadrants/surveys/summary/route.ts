@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
-import { jwtDepartmentFields, jwtRoleFields, readAppJwt } from '@/lib/appJwtPayload'
 
 export const runtime = 'nodejs'
+
+type SurveySummaryToken = {
+  role?: string
+  department?: string
+  userDepartment?: string
+  dept?: string
+  departmentName?: string
+} | null
 
 const norm = (value?: string | null) =>
   String(value ?? '')
@@ -15,14 +22,14 @@ const norm = (value?: string | null) =>
 
 export async function GET(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    const role = normalizeRole(String((token as any)?.role || ''))
+    const token = (await getToken({ req, secret: process.env.NEXTAUTH_SECRET })) as SurveySummaryToken
+    const role = normalizeRole(String(token?.role || ''))
     const department = norm(
       String(
-        (token as any)?.department ??
-          (token as any)?.userDepartment ??
-          (token as any)?.dept ??
-          (token as any)?.departmentName ??
+        token?.department ??
+          token?.userDepartment ??
+          token?.dept ??
+          token?.departmentName ??
           ''
       )
     )

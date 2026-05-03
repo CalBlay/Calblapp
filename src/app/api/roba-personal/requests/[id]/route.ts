@@ -13,7 +13,6 @@ import {
   normDeptLabel,
   userCanMarkRequestPickedUp,
   userCanMarkRequestPrepared,
-  workerSelfCanCancelRobaRequest,
 } from '@/lib/roba-personal/requestPermissions'
 import {
   notifyRobaDepartmentLeadsPickupDate,
@@ -22,6 +21,7 @@ import {
 import { createRobaPickupCalendarEvent } from '@/services/graph/calendar'
 
 const COL = DOTACIO_COLLECTIONS.requests
+const DEL = DOTACIO_COLLECTIONS.deliveries
 const PROD = DOTACIO_COLLECTIONS.products
 const USERS = 'users'
 
@@ -139,7 +139,6 @@ export async function PATCH(
     }
   }
   const curStatus = effectiveRequestStatus(cur)
-  const lines = parseLines(cur)
 
   const body = (await req.json()) as {
     status?: string
@@ -273,6 +272,13 @@ export async function PATCH(
           linesOverride !== null && linesOverride.length > 0 ? linesOverride : parseLines(d)
         if (ls.length === 0) throw new Error('La sol·licitud no té línies.')
         const linesToStore = mergeLineNotesFromDoc(d, ls)
+        const originalRequestedLines =
+          Array.isArray((d as { originalRequestedLines?: unknown[] }).originalRequestedLines) &&
+          ((d as { originalRequestedLines?: unknown[] }).originalRequestedLines?.length ?? 0) > 0
+            ? (d as { originalRequestedLines: unknown[] }).originalRequestedLines
+            : Array.isArray(d.lines)
+              ? d.lines
+              : linesToStore
 
         if (!skipStockReservation) {
           for (const line of ls) {
@@ -294,6 +300,7 @@ export async function PATCH(
         }
 
         tx.update(ref, {
+          originalRequestedLines,
           lines: linesToStore,
           status: 'prepared',
           preparedAt: now,
@@ -419,4 +426,98 @@ export async function PATCH(
   }
 
   return NextResponse.json({ error: 'Transició no implementada.' }, { status: 400 })
+}
+
+/**
+ * Només administradors (mateix criteri que DELETE d’entregues): elimina el document
+ * i allibera reserva d’estoc si la sol·licitud està preparada o recollida amb reserva.
+ */
+export async function DELETE(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  const auth = await resolveRobaAccess()
+  if (!auth.ok) return auth.res
+  const access = auth.access
+  if (access.scope !== 'full' || access.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { id } = await ctx.params
+  const ref = db.collection(COL).doc(id)
+  const now = FieldValue.serverTimestamp()
+
+  const preSnap = await ref.get()
+  if (!preSnap.exists) {
+    return NextResponse.json({ error: 'No trobat' }, { status: 404 })
+  }
+  const pre = preSnap.data() as Record<string, unknown>
+  const preStatus = effectiveRequestStatus(pre)
+  if (preStatus === 'fulfilled' || preStatus === 'receipt_confirmed') {
+    return NextResponse.json(
+      {
+        error:
+          'No es pot eliminar una sol·licitud ja lliurada o confirmada. Elimineu primer l’entrega si escau.',
+      },
+      { status: 400 }
+    )
+  }
+  const fulfillmentDeliveryId = String(
+    (pre as { fulfillmentDeliveryId?: string }).fulfillmentDeliveryId || ''
+  ).trim()
+  if (fulfillmentDeliveryId) {
+    return NextResponse.json(
+      {
+        error:
+          'Aquesta sol·licitud té una entrega de compliment vinculada. Elimineu l’entrega primer.',
+      },
+      { status: 400 }
+    )
+  }
+
+  const linkedDel = await db.collection(DEL).where('requestId', '==', id).limit(1).get()
+  if (!linkedDel.empty) {
+    return NextResponse.json(
+      {
+        error:
+          'Aquesta sol·licitud té entregues vinculades. Elimineu-les abans (pestanya Entregues).',
+      },
+      { status: 400 }
+    )
+  }
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const rs = await tx.get(ref)
+      if (!rs.exists) throw new Error('No trobat')
+      const d = rs.data() as Record<string, unknown>
+      const curStatus = effectiveRequestStatus(d)
+      if (curStatus === 'fulfilled' || curStatus === 'receipt_confirmed') {
+        throw new Error('Estat no permès per eliminar.')
+      }
+      const ls = parseLines(d)
+      const hadStockReservation =
+        (d as { preparedWithStockReservation?: boolean }).preparedWithStockReservation !== false
+      if ((curStatus === 'prepared' || curStatus === 'picked_up') && hadStockReservation) {
+        for (const line of ls) {
+          const pref = db.collection(PROD).doc(line.productId)
+          const ps = await tx.get(pref)
+          if (!ps.exists) continue
+          const { reserved } = readProduct(ps.data() as Record<string, unknown>)
+          const nextRes = Math.max(0, reserved - line.quantity)
+          tx.update(pref, {
+            quantityReserved: nextRes,
+            updatedAt: now,
+          })
+        }
+      }
+      tx.delete(ref)
+    })
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e)
+    const status = message === 'No trobat' ? 404 : 400
+    return NextResponse.json({ error: message }, { status })
+  }
+
+  return NextResponse.json({ ok: true })
 }

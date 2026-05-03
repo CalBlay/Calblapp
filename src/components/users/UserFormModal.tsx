@@ -57,7 +57,7 @@ export interface NewUserPayload {
 
 type Props = {
   user: User | null
-  onSubmit: (data: User | NewUserPayload) => void
+  onSubmit: (data: User | NewUserPayload) => void | Promise<void>
   onClose: () => void
   onAfterAction?: () => void
 }
@@ -223,7 +223,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         isDepartmentRobaLead,
       }
       if (password.trim()) payload.password = password.trim()
-      onSubmit(payload)
+      await onSubmit(payload)
       return
     }
 
@@ -247,7 +247,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       payload.isDriver = isDriver
       payload.workerRank = workerRank
     }
-    onSubmit(payload)
+    await onSubmit(payload)
   }
 
   return (

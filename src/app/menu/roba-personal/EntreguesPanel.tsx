@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React, { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -33,9 +33,13 @@ import { DEPARTMENTS } from '@/data/departments'
 import { normalizeRole } from '@/lib/roles'
 import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
 import { robaRequestDocIdFromInput } from '@/lib/roba-personal/dotacioReferenceCodes'
-import { exportRowsToPdf, exportRowsToXlsx, robaExportFilename } from '@/lib/roba-personal/robaExport'
+import {
+  exportDeliveryReceiptsPdf,
+  exportRowsToXlsx,
+  robaExportFilename,
+} from '@/lib/roba-personal/robaExport'
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
-import { taulaContentidorScroll, taulaThText } from '@/lib/taules'
+import { taulaThText } from '@/lib/taules'
 import { cn } from '@/lib/utils'
 import { ProductSearchCombobox } from './ProductSearchCombobox'
 import { robaPersonalApi as api } from './robaPersonalApi'
@@ -83,6 +87,7 @@ export function EntreguesPanel({
   const [signaturePadKey, setSignaturePadKey] = useState(0)
   const [linkReqDraft, setLinkReqDraft] = useState<Record<string, string>>({})
   const [busyEntrega, setBusyEntrega] = useState(false)
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
   const [applyLinkedBusy, setApplyLinkedBusy] = useState(false)
   const [correctTarget, setCorrectTarget] = useState<DeliveryRow | null>(null)
   const [correctLinesEditor, setCorrectLinesEditor] = useState<{ productId: string; qty: string }[]>(
@@ -106,6 +111,7 @@ export function EntreguesPanel({
     .trim()
   const isRobaAdminOrRrhh =
     sessionRoleNorm === 'admin' || sessionDeptNorm === 'recursos humans'
+  const isRobaAdmin = sessionRoleNorm === 'admin'
   const isDeptLeadLimited =
     Boolean((session?.user as { isDepartmentRobaLead?: boolean })?.isDepartmentRobaLead) &&
     !isRobaAdminOrRrhh
@@ -133,6 +139,7 @@ export function EntreguesPanel({
   const [entListFilterReception, setEntListFilterReception] = useState('')
   const [entListSearch, setEntListSearch] = useState('')
   const [entListFiltersResetSignal, setEntListFiltersResetSignal] = useState(0)
+  const [selectedDeliveryId, setSelectedDeliveryId] = useState('')
 
   const { setContent, open: entFiltersSlideOpen } = useFilters()
 
@@ -174,16 +181,16 @@ export function EntreguesPanel({
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-sm text-gray-600">Estat recepció</label>
+          <label className="text-sm text-gray-600">Estat recepcio</label>
           <select
             className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-900"
             value={entListFilterReception}
             onChange={(e) => setEntListFilterReception(e.target.value)}
           >
             <option value="">Tots</option>
-            <option value="pending">Pendent confirmació treballador</option>
-            <option value="dispute">Incidència / correcció</option>
-            <option value="done">Recepció tancada</option>
+            <option value="pending">Pendent confirmacio treballador</option>
+            <option value="dispute">Incidencia / correccio</option>
+            <option value="done">Recepcio tancada</option>
           </select>
         </div>
         <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
@@ -209,14 +216,15 @@ export function EntreguesPanel({
   const router = useRouter()
   const entreguesSearchParams = useSearchParams()
 
-  /** Després d’omplir el formulari des de l’avís: amaga el banner i treu `requestId` de la URL perquè no torni a aparèixer; manté la vinculació via camp manual / `effectiveRequestId`. */
+  /** Despres d'omplir el formulari des de l'avis: amaga el banner i treu `requestId` de la URL perque no torni a apareixer; mante la vinculacio via camp manual / `effectiveRequestId`. */
   const absorbLinkedRequestIntoManualAndClearUrl = useCallback(
     (req: RequestRow) => {
       const ref = String(req.reference || '').trim()
       setManualRequestId(ref || req.id)
       setLinkedRequest(null)
-      const p = new URLSearchParams(entreguesSearchParams.toString())
+      const p = new URLSearchParams(entreguesSearchParams?.toString() || '')
       p.delete('requestId')
+      p.delete('deliveryId')
       if (!parseRobaTab(p.get('tab'))) p.set('tab', 'entregues')
       router.replace(`/menu/roba-personal?${p.toString()}`, { scroll: false })
     },
@@ -342,7 +350,7 @@ export function EntreguesPanel({
       .map((l) => ({ productId: l.productId, quantity: Number(l.qty) }))
       .filter((l) => l.productId && Number.isFinite(l.quantity) && l.quantity > 0)
     if (parsedLines.length === 0) {
-      toast({ title: 'Cal almenys una línia vàlida', variant: 'destructive' })
+      toast({ title: 'Cal almenys una linia valida', variant: 'destructive' })
       return
     }
     setCorrectBusy(true)
@@ -355,7 +363,7 @@ export function EntreguesPanel({
           note: correctNote.trim() || undefined,
         }),
       })
-      toast({ title: 'Entrega corregida', description: 'S’ha notificat el treballador.' })
+      toast({ title: 'Entrega corregida', description: "S'ha notificat el treballador." })
       setCorrectTarget(null)
       void load()
     } catch (e: unknown) {
@@ -426,8 +434,8 @@ export function EntreguesPanel({
       .filter((l) => l.productId && Number.isFinite(l.quantity) && l.quantity > 0)
     if (payloadLines.length === 0) {
       toast({
-        title: 'Falten línies',
-        description: 'Cal almenys un producte amb quantitat vàlida.',
+        title: 'Falten linies',
+        description: 'Cal almenys un producte amb quantitat valida.',
         variant: 'destructive',
       })
       return
@@ -481,11 +489,11 @@ export function EntreguesPanel({
     if (!linkedRequest?.lines?.length) return
     if (!['prepared', 'picked_up'].includes(linkedRequest.status)) {
       toast({
-        title: 'Sol·licitud no vàlida',
+        title: 'Sollicitud no valida',
         description:
           linkedRequest.status === 'submitted'
-            ? 'La sol·licitud encara no està preparada per roba.'
-            : 'Aquesta sol·licitud no admet registrar una entrega des d’aquí.',
+            ? 'La sollicitud encara no esta preparada per roba.'
+            : "Aquesta sollicitud no admet registrar una entrega des d'aqui.",
         variant: 'destructive',
       })
       return
@@ -510,7 +518,7 @@ export function EntreguesPanel({
         }))
       )
       toast({
-        title: 'Línies carregades',
+        title: 'Linies carregades',
         description: req.reference ?? `S-${req.id}`,
       })
       absorbLinkedRequestIntoManualAndClearUrl(req)
@@ -555,12 +563,12 @@ export function EntreguesPanel({
       return
     }
     if (parsedLines.length === 0) {
-      toast({ title: 'Cal almenys una línia vàlida', variant: 'destructive' })
+      toast({ title: 'Cal almenys una linia valida', variant: 'destructive' })
       return
     }
     if (!deliveryWithoutRequest && !effectiveRequestId) {
       toast({
-        title: 'Cal una sol·licitud o marcar «sense sol·licitud»',
+        title: 'Cal una sollicitud o marcar "sense sollicitud"',
         variant: 'destructive',
       })
       return
@@ -591,8 +599,9 @@ export function EntreguesPanel({
       setLines([{ productId: '', qty: '1' }])
       setSignatureDataUrl(null)
       setSignaturePadKey((k) => k + 1)
-      const p = new URLSearchParams(entreguesSearchParams.toString())
+      const p = new URLSearchParams(entreguesSearchParams?.toString() || '')
       p.delete('requestId')
+      p.delete('deliveryId')
       if (!parseRobaTab(p.get('tab'))) p.set('tab', 'entregues')
       router.replace(`/menu/roba-personal?${p.toString()}`, { scroll: false })
       void load()
@@ -610,7 +619,7 @@ export function EntreguesPanel({
   const vincularEntrega = async (deliveryId: string) => {
     const rid = (linkReqDraft[deliveryId] || '').trim()
     if (!rid) {
-      toast({ title: 'Enganxeu l’ID de la sol·licitud', variant: 'destructive' })
+      toast({ title: "Enganxeu l'ID de la sollicitud", variant: 'destructive' })
       return
     }
     try {
@@ -618,7 +627,7 @@ export function EntreguesPanel({
         method: 'PATCH',
         body: JSON.stringify({ requestId: rid }),
       })
-      toast({ title: 'Sol·licitud vinculada a l’entrega' })
+      toast({ title: "Sollicitud vinculada a l'entrega" })
       setLinkReqDraft((d) => ({ ...d, [deliveryId]: '' }))
       void load()
     } catch (e: unknown) {
@@ -630,11 +639,38 @@ export function EntreguesPanel({
     }
   }
 
+  const deleteEntrega = async (delivery: DeliveryRow) => {
+    if (!isRobaAdmin) return
+    const ref = String(delivery.reference || '').trim() || `E-${delivery.id}`
+    const confirmed = window.confirm(
+      `Voleu eliminar definitivament aquesta entrega?\n\n${ref}\n\nEs restaurara l'estoc i, si hi ha sollicitud vinculada, tornara a l'estat anterior. Aquesta accio no es pot desfer.`
+    )
+    if (!confirmed) return
+
+    setDeleteBusyId(delivery.id)
+    try {
+      await api(`/api/roba-personal/deliveries/${delivery.id}`, { method: 'DELETE' })
+      toast({ title: 'Entrega eliminada' })
+      if (selectedDeliveryId === delivery.id) {
+        resetNewDeliveryForm()
+      }
+      void load()
+    } catch (e: unknown) {
+      toast({
+        title: 'No s ha pogut eliminar',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setDeleteBusyId(null)
+    }
+  }
+
   const prodLabel = useCallback((id: string) => {
     const p = productById(products, id)
     if (!p) return id
     const t = (p.size ?? '').trim()
-    return t ? `${p.code} — ${p.name} · talla ${t}` : `${p.code} — ${p.name}`
+    return t ? `${p.code} - ${p.name} - talla ${t}` : `${p.code} - ${p.name}`
   }, [products])
   const workerLabel = useCallback((id: string) => {
     const w = workers.find((x) => x.id === id)
@@ -644,7 +680,7 @@ export function EntreguesPanel({
   const workerNameOnly = useCallback((id: string) => {
     const w = workers.find((x) => x.id === id)
     const n = w?.name?.trim()
-    return n || '—'
+    return n || '-'
   }, [workers])
 
   const normalizeEntregaFilter = (s: string) =>
@@ -721,44 +757,103 @@ export function EntreguesPanel({
     return entries
   }, [entFilteredRows])
 
+  useEffect(() => {
+    if (entFilteredRows.length === 0) {
+      if (selectedDeliveryId) setSelectedDeliveryId('')
+      return
+    }
+    const preferredId = prefillDeliveryId.trim()
+    if (preferredId && entFilteredRows.some((r) => r.id === preferredId)) {
+      if (selectedDeliveryId !== preferredId) setSelectedDeliveryId(preferredId)
+      return
+    }
+    if (selectedDeliveryId && entFilteredRows.some((r) => r.id === selectedDeliveryId)) return
+    setSelectedDeliveryId(entFilteredRows[0]?.id ?? '')
+  }, [entFilteredRows, prefillDeliveryId, selectedDeliveryId])
+
+  const selectedDelivery = useMemo(
+    () => rows.find((r) => r.id === selectedDeliveryId) ?? null,
+    [rows, selectedDeliveryId]
+  )
+
+  const resetNewDeliveryForm = useCallback(() => {
+    setSelectedDeliveryId('')
+    setLinkedRequest(null)
+    setManualRequestId('')
+    setDeliveryWithoutRequest(false)
+    setLines([{ productId: '', qty: '1' }])
+    setSignatureDataUrl(null)
+    setSignaturePadKey((k) => k + 1)
+    if (isRobaWorkerSelf && robaLinkedPersonnelId) {
+      setWorkerId(robaLinkedPersonnelId)
+      return
+    }
+    setWorkerId('')
+  }, [isRobaWorkerSelf, robaLinkedPersonnelId])
+
+  const fillFormFromDelivery = useCallback((delivery: DeliveryRow) => {
+    if (selectedDeliveryId === delivery.id) {
+      resetNewDeliveryForm()
+      return
+    }
+    const reqId = String(delivery.requestId || '').trim()
+    setSelectedDeliveryId(delivery.id)
+    setLinkedRequest(null)
+    setWorkerId(delivery.workerId)
+    setLines(
+      (delivery.lines || []).length > 0
+        ? delivery.lines.map((line) => ({
+            productId: line.productId,
+            qty: String(line.quantity),
+          }))
+        : [{ productId: '', qty: '1' }]
+    )
+    setDeliveryWithoutRequest(Boolean(delivery.deliveryWithoutRequest) && !reqId)
+    setManualRequestId(reqId)
+    setSignatureDataUrl(
+      delivery.workerReceiptAckSignatureDataUrl || delivery.acknowledgmentSignatureDataUrl || null
+    )
+    setSignaturePadKey((k) => k + 1)
+  }, [resetNewDeliveryForm, selectedDeliveryId])
+
   const buildEntreguesExportRows = useCallback(
     () =>
-      entFilteredRows.map((r) => ({
+      (selectedDelivery ? [selectedDelivery] : entFilteredRows).map((r) => ({
         Data: r.deliveredAt ? new Date(r.deliveredAt).toLocaleString('ca-ES') : '',
         Referencia: r.reference ?? `E-${r.id}`,
-        SenseSol: r.deliveryWithoutRequest && !String(r.requestId || '').trim() ? 'Sí' : 'No',
-        SollicitudId: String(r.requestId || '').trim() || '—',
-        Sollicitant: String(r.requestCreatedByUserName || '').trim() || '—',
-        Email: String(r.requestCreatedByUserEmail || '').trim() || '—',
-        Preparador: String(r.requestPreparedByName || '').trim() || '—',
+        SenseSol: r.deliveryWithoutRequest && !String(r.requestId || '').trim() ? 'Si' : 'No',
+        SollicitudId: String(r.requestId || '').trim() || '-',
+        Sollicitant: String(r.requestCreatedByUserName || '').trim() || '-',
+        Email: String(r.requestCreatedByUserEmail || '').trim() || '-',
+        Preparador: String(r.requestPreparedByName || '').trim() || '-',
         Departament:
           String(r.requestRequestingDepartment || '').trim() ||
           workers.find((w) => w.id === r.workerId)?.department ||
-          '—',
+          '-',
         Treballador: workerNameOnly(r.workerId),
         TotalUnitatsSollicitades: entregaRequestedTotalUnits(r),
         TotalUnitatsLliurades: entregaDeliveredTotalUnits(r),
         ProducteLliurat: (r.lines || [])
-          .map((l) => `${prodLabel(l.productId)} × ${l.quantity}`)
+          .map((l) => `${prodLabel(l.productId)} x ${l.quantity}`)
           .join('; '),
         Sollicitat:
           (r.requestedLines || []).length > 0
             ? (r.requestedLines || [])
-                .map((l) => `${prodLabel(l.productId)} × ${l.quantity}`)
+                .map((l) => `${prodLabel(l.productId)} x ${l.quantity}`)
                 .join('; ')
-            : '—',
+            : '-',
         Lliurat: (r.lines || [])
-          .map((l) => `${prodLabel(l.productId)} × ${l.quantity}`)
+          .map((l) => `${prodLabel(l.productId)} x ${l.quantity}`)
           .join('; '),
       })),
-    [entFilteredRows, workerNameOnly, prodLabel, workers]
+    [selectedDelivery, entFilteredRows, workerNameOnly, prodLabel, workers]
   )
 
   const handleEntreguesExportXlsx = useCallback(async () => {
     try {
       const base = robaExportFilename('roba-entregues')
       await exportRowsToXlsx([{ name: 'Entregues', rows: buildEntreguesExportRows() }], base)
-      toast({ title: 'Exportació XLSX completada.' })
+      toast({ title: 'Exportacio XLSX completada.' })
     } catch (e: unknown) {
       toast({
         title: 'Error exportant XLSX',
@@ -771,8 +866,29 @@ export function EntreguesPanel({
   const handleEntreguesExportPdf = useCallback(async () => {
     try {
       const base = robaExportFilename('roba-entregues')
-      await exportRowsToPdf(buildEntreguesExportRows(), 'Roba personal · Entregues', base)
-      toast({ title: 'Exportació PDF completada.' })
+      const exportRows = selectedDelivery ? [selectedDelivery] : entFilteredRows
+      await exportDeliveryReceiptsPdf(
+        exportRows.map((r) => ({
+          reference: r.reference ?? `E-${r.id}`,
+          deliveredAt: r.deliveredAt ? new Date(r.deliveredAt).toLocaleString('ca-ES') : '',
+          workerName: workerNameOnly(r.workerId),
+          department:
+            String(r.requestRequestingDepartment || '').trim() ||
+            workers.find((w) => w.id === r.workerId)?.department ||
+            '-',
+          requestReference: String(r.requestId || '').trim() || undefined,
+          preparedByName: String(r.requestPreparedByName || '').trim() || undefined,
+          createdByName: String(r.requestCreatedByUserName || '').trim() || undefined,
+          lines: (r.lines || []).map((l) => ({
+            label: prodLabel(l.productId),
+            quantity: l.quantity,
+          })),
+          signatureDataUrl:
+            r.workerReceiptAckSignatureDataUrl || r.acknowledgmentSignatureDataUrl || null,
+        })),
+        base
+      )
+      toast({ title: 'Exportacio PDF completada.' })
     } catch (e: unknown) {
       toast({
         title: 'Error exportant PDF',
@@ -780,7 +896,7 @@ export function EntreguesPanel({
         variant: 'destructive',
       })
     }
-  }, [buildEntreguesExportRows])
+  }, [selectedDelivery, entFilteredRows, prodLabel, workerNameOnly, workers])
 
   const entreguesExportMenuItems = useMemo(
     () =>
@@ -800,7 +916,7 @@ export function EntreguesPanel({
         <>
           <section className="space-y-3 w-full">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold text-sm sm:text-base">Sol·licitud recollida</h2>
+              <h2 className="font-semibold text-sm sm:text-base">Sollicitud recollida</h2>
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums">
                 {pendingReceiptRequests.length}
               </span>
@@ -828,13 +944,13 @@ export function EntreguesPanel({
           {deliveriesAwaitingWorkerCorrection.length > 0 ? (
             <section className="space-y-3 w-full pt-2 border-t border-border">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-semibold text-sm sm:text-base">Incidència en revisió</h2>
+                <h2 className="font-semibold text-sm sm:text-base">Incidencia en revisio</h2>
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums">
                   {deliveriesAwaitingWorkerCorrection.length}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Roba està corregint el registre després de la vostra incidència.
+                Roba esta corregint el registre despres de la vostra incidencia.
               </p>
               <div className="space-y-3">
                 {deliveriesAwaitingWorkerCorrection.map((d) => (
@@ -856,7 +972,7 @@ export function EntreguesPanel({
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Rebeu avís quan roba registri l’entrega; signeu per tancar.
+              Rebeu avis quan roba registri l'entrega; signeu per tancar.
             </p>
             {deliveriesPendingWorkerAck.length === 0 ? (
               <p className="text-sm text-muted-foreground py-2">Cap pendent.</p>
@@ -880,7 +996,7 @@ export function EntreguesPanel({
           {linkedRequest ? (
             <div className="rounded-lg border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 text-sm dark:bg-amber-950/25 dark:border-amber-900/50">
               <p className="font-medium text-amber-950 dark:text-amber-100">
-                Sol·licitud {linkedRequest.reference ?? `S-${linkedRequest.id}`}
+                Sollicitud {linkedRequest.reference ?? `S-${linkedRequest.id}`}
               </p>
               <p className="text-xs text-amber-900/85 dark:text-amber-200/90">
                 {linkedRequest.requestingDepartment}
@@ -890,24 +1006,24 @@ export function EntreguesPanel({
                 {linkedRequest.requestedByWorkerName?.trim() ||
                   (linkedRequest.requestedByWorkerId
                     ? workerLabel(linkedRequest.requestedByWorkerId)
-                    : '—')}
+                    : '-')}
               </p>
               <ul className="mt-1.5 space-y-0.5 text-xs text-amber-950/90 dark:text-amber-100/90 list-disc pl-4">
                 {(linkedRequest.lines || []).map((l, idx) => (
                   <li key={`${l.productId}-${idx}`}>
-                    {prodLabel(l.productId)} × {l.quantity}
+                    {prodLabel(l.productId)} x {l.quantity}
                   </li>
                 ))}
               </ul>
               {linkedRequest.status === 'prepared' ? (
                 <p className="mt-2 text-xs text-amber-900/85 dark:text-amber-200/90">
-                  En prémer el botó es marcarà la sol·licitud com a recollida i s’omplirà el formulari.
+                  En premer el boto es marcara la sollicitud com a recollida i s'omplira el formulari.
                 </p>
               ) : null}
               {linkedRequest.status === 'submitted' && isRobaAdminOrRrhh ? (
                 <p className="mt-2 text-xs text-amber-900/85 dark:text-amber-200/90">
-                  La sol·licitud encara està enviada. Com a RRHH podeu preparar-la aquí i s’omplirà el formulari
-                  d’entrega al confirmar.
+                  La sollicitud encara esta enviada. Com a RRHH podeu preparar-la aqui i s'omplira el formulari
+                  d'entrega al confirmar.
                 </p>
               ) : null}
               {linkedRequest.status === 'submitted' && isRobaAdminOrRrhh ? (
@@ -923,7 +1039,7 @@ export function EntreguesPanel({
                   disabled={applyLinkedBusy}
                   onClick={() => void applyLinkedRequestToForm()}
                 >
-                  {applyLinkedBusy ? 'Actualitzant…' : 'Omplir formulari amb aquestes línies'}
+                  {applyLinkedBusy ? 'Actualitzant...' : 'Omplir formulari amb aquestes linies'}
                 </Button>
               ) : null}
             </div>
@@ -933,9 +1049,9 @@ export function EntreguesPanel({
           linkedRequest.status === 'submitted' &&
           !isRobaAdminOrRrhh ? (
             <div className="rounded-lg border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 text-sm dark:bg-amber-950/25 dark:border-amber-900/50 text-amber-950 dark:text-amber-100">
-              <p className="font-medium">La sol·licitud encara no està preparada.</p>
+              <p className="font-medium">La sollicitud encara no esta preparada.</p>
               <p className="text-xs mt-1 opacity-90">
-                Només Recursos Humans (o administració) pot preparar-la des d’aquí o des de la pestanya Sol·licituds.
+                Nomes Recursos Humans (o administracio) pot preparar-la des d'aqui o des de la pestanya Sollicituds.
               </p>
             </div>
           ) : null}
@@ -943,28 +1059,47 @@ export function EntreguesPanel({
           !deliveryWithoutRequest &&
           !['prepared', 'picked_up', 'submitted'].includes(linkedRequest.status) ? (
             <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
-              <p className="font-medium">Aquesta sol·licitud no es pot vincular a una entrega nova.</p>
+              <p className="font-medium">Aquesta sollicitud no es pot vincular a una entrega nova.</p>
               <p className="text-xs mt-1 opacity-90">
-                Cal una sol·licitud preparada o recollida. Si ja consta com a lliurada o confirmada, reviseu l’historial
-                d’entregues.
+                Cal una sollicitud preparada o recollida. Si ja consta com a lliurada o confirmada, reviseu l'historial
+                d'entregues.
               </p>
             </div>
           ) : null}
           {!linkedRequest && !deliveryWithoutRequest ? (
-            <div className="space-y-1 max-w-xl">
+            <div
+              className={cn(
+                'space-y-1 max-w-xl',
+                !isRobaWorkerSelf && 'xl:grid xl:max-w-none xl:grid-cols-[minmax(0,1fr)_auto] xl:gap-3 xl:items-end xl:space-y-0'
+              )}
+            >
+              <div className="space-y-1 min-w-0">
               <Label htmlFor="ent-req-id" className="text-xs text-muted-foreground">
-                ID sol·licitud (si no veniu des d’un avís)
+                ID sollicitud (si no veniu des d'un avis)
               </Label>
               <Input
                 id="ent-req-id"
                 className="h-9 font-mono text-sm"
-                placeholder="ID Firestore o referència S-… (es normalitza automàticament)"
+                placeholder="ID Firestore o referencia S-... (es normalitza automaticament)"
                 value={manualRequestId}
                 onChange={(e) => setManualRequestId(e.target.value)}
               />
+              </div>
+              {!isRobaWorkerSelf ? (
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2 xl:min-h-9">
+                  <Switch
+                    id="ent-sense-sol"
+                    checked={deliveryWithoutRequest}
+                    onCheckedChange={(v) => setDeliveryWithoutRequest(Boolean(v))}
+                  />
+                  <Label htmlFor="ent-sense-sol" className="text-sm font-normal cursor-pointer">
+                    Entrega sense sollicitud previa (es pot vincular despres)
+                  </Label>
+                </div>
+              ) : null}
             </div>
           ) : null}
-          {!isRobaWorkerSelf ? (
+          {!isRobaWorkerSelf && (linkedRequest || deliveryWithoutRequest) ? (
             <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
               <div className="flex items-center gap-2">
                 <Switch
@@ -973,12 +1108,14 @@ export function EntreguesPanel({
                   onCheckedChange={(v) => setDeliveryWithoutRequest(Boolean(v))}
                 />
                 <Label htmlFor="ent-sense-sol" className="text-sm font-normal cursor-pointer">
-                  Entrega sense sol·licitud prèvia (es pot vincular després)
+                  Entrega sense sollicitud previa (es pot vincular despres)
                 </Label>
               </div>
             </div>
           ) : null}
-          <div className="rounded-lg border border-indigo-200/60 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 px-3 py-3 sm:px-4 min-w-0">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(17rem,0.85fr)] xl:items-start">
+            <div className="space-y-3 min-w-0">
+            <div className="rounded-lg border border-indigo-200/60 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 px-3 py-3 sm:px-4 min-w-0">
             {lines.map((ln, i) => (
               <div
                 key={i}
@@ -999,10 +1136,10 @@ export function EntreguesPanel({
                       onChange={(e) => setWorkerId(e.target.value)}
                       disabled={isRobaWorkerSelf}
                     >
-                      <option value="">— Trieu —</option>
+                      <option value="">- Trieu -</option>
                       {workers.map((w) => (
                         <option key={w.id} value={w.id}>
-                          {w.name.trim() || '—'}
+                          {w.name.trim() || '-'}
                         </option>
                       ))}
                     </select>
@@ -1019,7 +1156,7 @@ export function EntreguesPanel({
                       onChange={(v) =>
                         setLines((L) => L.map((x, j) => (j === i ? { ...x, productId: v } : x)))
                       }
-                      placeholder="Cercar i triar…"
+                      placeholder="Cercar i triar..."
                       showStockHint
                       variant="list"
                       className="h-9 text-sm"
@@ -1045,8 +1182,8 @@ export function EntreguesPanel({
                     size="icon"
                     className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                     disabled={lines.length <= 1}
-                    title={lines.length <= 1 ? 'Mínim una línia' : 'Eliminar línia'}
-                    aria-label="Eliminar línia"
+                    title={lines.length <= 1 ? 'Minim una linia' : 'Eliminar linia'}
+                    aria-label="Eliminar linia"
                     onClick={() => removeLine(i)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -1054,11 +1191,19 @@ export function EntreguesPanel({
                 </div>
               </div>
             ))}
+            </div>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-muted/15 p-3 sm:p-4">
+              <RobaSignaturePad
+                key={signaturePadKey}
+                initialDataUrl={signatureDataUrl}
+                onChange={setSignatureDataUrl}
+              />
+            </div>
           </div>
-          <RobaSignaturePad key={signaturePadKey} onChange={setSignatureDataUrl} />
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={addLine}>
-              + Línia
+              + Linia
             </Button>
             <Button
               type="button"
@@ -1072,7 +1217,7 @@ export function EntreguesPanel({
               }
               onClick={() => void registrar()}
             >
-              {busyEntrega ? 'Registrant…' : 'Registrar entrega'}
+              {busyEntrega ? 'Registrant...' : 'Registrar entrega'}
             </Button>
           </div>
         </div>
@@ -1083,7 +1228,7 @@ export function EntreguesPanel({
           {isRobaWorkerSelf ? 'Entregues registrades' : 'Entregues'}
         </h2>
         {isRobaWorkerSelf ? (
-          <p className="text-xs text-muted-foreground">Historial d’entregues.</p>
+          <p className="text-xs text-muted-foreground">Historial d'entregues.</p>
         ) : null}
         <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
           <SmartFilters
@@ -1108,7 +1253,7 @@ export function EntreguesPanel({
             />
             <Input
               className="h-10 rounded-xl border-gray-300 bg-white pl-9 dark:bg-background"
-              placeholder="Cercar nom, correu, departament, treballador, producte…"
+              placeholder="Cercar nom, correu, departament, treballador, producte..."
               value={entListSearch}
               onChange={(e) => setEntListSearch(e.target.value)}
               aria-label="Cercar entregues"
@@ -1123,7 +1268,7 @@ export function EntreguesPanel({
 
         {entFilteredRows.length === 0 ? (
           <p className="text-center text-muted-foreground py-10 text-sm">
-            Cap entrega en aquest període o amb aquests filtres.
+            Cap entrega en aquest periode o amb aquests filtres.
           </p>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-border shadow-sm bg-card">
@@ -1136,7 +1281,7 @@ export function EntreguesPanel({
                       'py-2 sticky left-0 z-30 bg-emerald-50 dark:bg-emerald-950/50 max-w-[9rem]'
                     )}
                   >
-                    Sol·licitant
+                    Sollicitant
                   </TableHead>
                   <TableHead className={cn(taulaThText, 'py-2 min-w-[7rem] max-w-[9rem]')}>
                     Preparador
@@ -1147,7 +1292,7 @@ export function EntreguesPanel({
                   <TableHead
                     className={cn(taulaThText, 'text-right whitespace-nowrap py-2 w-[1%]')}
                   >
-                    Qt. sol·licitada
+                    Qt. sollicitada
                   </TableHead>
                   <TableHead
                     className={cn(taulaThText, 'text-right whitespace-nowrap py-2 w-[1%]')}
@@ -1183,22 +1328,26 @@ export function EntreguesPanel({
                       const reqDept = String(r.requestRequestingDepartment || '').trim()
                       const wDept = workers.find((w) => w.id === r.workerId)?.department || ''
                       const deptCell = orphan
-                        ? wDept || '—'
-                        : reqDept || wDept || '—'
+                        ? wDept || '-'
+                        : reqDept || wDept || '-'
                       const reqUnits = entregaRequestedTotalUnits(r)
                       const delUnits = entregaDeliveredTotalUnits(r)
                       const rowTitle = [
                         r.reference ? `Entrega ${r.reference}` : `Entrega ${r.id}`,
-                        reqId ? `Sol·licitud ${reqId}` : null,
+                        reqId ? `Sollicitud ${reqId}` : null,
                       ]
                         .filter(Boolean)
-                        .join(' · ')
+                        .join(' - ')
                       return (
                         <TableRow
                           key={r.id}
                           id={`roba-delivery-row-${r.id}`}
                           title={rowTitle}
-                          className="text-xs sm:text-sm hover:bg-emerald-50/60 dark:hover:bg-emerald-950/25 transition-colors"
+                          onClick={() => fillFormFromDelivery(r)}
+                          className={cn(
+                            'cursor-pointer text-xs sm:text-sm transition-colors hover:bg-emerald-50/60 dark:hover:bg-emerald-950/25',
+                            selectedDeliveryId === r.id && 'bg-emerald-50 dark:bg-emerald-950/20'
+                          )}
                         >
                           <TableCell
                             className={cn(
@@ -1207,17 +1356,17 @@ export function EntreguesPanel({
                           >
                             {orphan ? (
                               <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-950 dark:text-amber-100 inline-block">
-                                Sense sol·licitud
+                                Sense sollicitud
                               </span>
                             ) : (
                               <span className="line-clamp-2 font-medium text-foreground">
-                                {solName || '—'}
+                                {solName || '-'}
                               </span>
                             )}
                           </TableCell>
                           <TableCell className="text-sm align-top max-w-[9rem] pt-2.5">
                             <span className="line-clamp-2">
-                              {orphan || !reqId ? '—' : preparer || '—'}
+                              {orphan || !reqId ? '-' : preparer || '-'}
                             </span>
                           </TableCell>
                           <TableCell className="text-sm align-top pt-2.5">{deptCell}</TableCell>
@@ -1228,7 +1377,7 @@ export function EntreguesPanel({
                             <RobaEntregaProducteColumn lines={r.lines} prodLabel={prodLabel} />
                           </TableCell>
                           <TableCell className="text-sm align-top text-right font-medium tabular-nums whitespace-nowrap pt-2.5">
-                            {orphan || !reqId ? '—' : reqUnits}
+                            {orphan || !reqId ? '-' : reqUnits}
                           </TableCell>
                           <TableCell className="text-sm align-top text-right font-medium tabular-nums whitespace-nowrap pt-2.5">
                             {delUnits}
@@ -1242,7 +1391,7 @@ export function EntreguesPanel({
                                   </span>
                                 ) : r.workerReceiptCorrectionOpen ? (
                                   <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-950 dark:text-amber-100 font-medium">
-                                    Revisió roba
+                                    Revisio roba
                                   </span>
                                 ) : (
                                   <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-950 dark:text-amber-100 font-medium">
@@ -1258,13 +1407,16 @@ export function EntreguesPanel({
                               <span className="font-medium">{entregaEstatLabelForLead(r)}</span>
                               {r.workerReceiptCorrectionOpen ? (
                                 <span className="block text-[10px] text-amber-800 dark:text-amber-200 mt-0.5">
-                                  Cal correcció
+                                  Cal correccio
                                 </span>
                               ) : null}
                             </TableCell>
                           )}
                           {!isRobaWorkerSelf ? (
-                            <TableCell className="text-xs align-top pt-2.5">
+                            <TableCell
+                              className="text-xs align-top pt-2.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               <div className="flex flex-wrap gap-1">
                                 {r.workerReceiptCorrectionOpen ? (
                                   <Button
@@ -1281,7 +1433,7 @@ export function EntreguesPanel({
                                   <>
                                     <Input
                                       className="h-8 font-mono text-[11px] max-w-[9rem]"
-                                      placeholder="ID sol·licitud"
+                                      placeholder="ID sollicitud"
                                       value={linkReqDraft[r.id] ?? ''}
                                       onChange={(e) =>
                                         setLinkReqDraft((d) => ({ ...d, [r.id]: e.target.value }))
@@ -1298,8 +1450,20 @@ export function EntreguesPanel({
                                     </Button>
                                   </>
                                 ) : null}
-                                {!r.workerReceiptCorrectionOpen && !orphan ? (
-                                  <span className="text-muted-foreground self-center">—</span>
+                                {isRobaAdmin ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    disabled={deleteBusyId === r.id}
+                                    onClick={() => void deleteEntrega(r)}
+                                  >
+                                    {deleteBusyId === r.id ? 'Eliminant...' : 'Eliminar'}
+                                  </Button>
+                                ) : null}
+                                {!r.workerReceiptCorrectionOpen && !orphan && !isRobaAdmin ? (
+                                  <span className="text-muted-foreground self-center">-</span>
                                 ) : null}
                               </div>
                             </TableCell>
@@ -1323,10 +1487,10 @@ export function EntreguesPanel({
       >
         <DialogContent className="sm:max-w-lg max-h-[min(90vh,720px)] flex flex-col gap-0 p-0">
           <DialogHeader className="px-6 pt-6 pb-3 space-y-1 shrink-0">
-            <DialogTitle>Preparar i registrar entrega (des d’Entregues)</DialogTitle>
+            <DialogTitle>Preparar i registrar entrega (des d'Entregues)</DialogTitle>
             <p className="text-xs text-muted-foreground font-normal leading-relaxed">
-              Es marcarà la sol·licitud com a preparada (amb data de recollida i línies), després com a recollida, i es
-              carregaran les línies al formulari d’avall. Els avisos i el calendari es comporten igual que a Sol·licituds.
+              Es marcara la sol·licitud com a preparada (amb data de recollida i linies), despres com a recollida, i es
+              carregaran les linies al formulari d'avall. Els avisos i el calendari es comporten igual que a Sollicituds.
             </p>
           </DialogHeader>
           <div className="px-6 pb-4 space-y-4 overflow-y-auto min-h-0 flex-1">
@@ -1346,8 +1510,8 @@ export function EntreguesPanel({
                   <span className="font-medium">
                     {linkedRequest.requestedByWorkerName?.trim() ||
                       (linkedRequest.requestedByWorkerId
-                        ? workers.find((w) => w.id === linkedRequest.requestedByWorkerId)?.name ?? '—'
-                        : '—')}
+                        ? workers.find((w) => w.id === linkedRequest.requestedByWorkerId)?.name ?? '-'
+                        : '-')}
                   </span>
                 </p>
                 <p className="text-sm pt-0.5 border-t border-border/60 mt-1">
@@ -1358,7 +1522,7 @@ export function EntreguesPanel({
             ) : null}
 
             <div className="space-y-2">
-              <Label className="text-xs font-semibold text-foreground">Línies</Label>
+              <Label className="text-xs font-semibold text-foreground">Linies</Label>
               <div className="space-y-2">
                 {rrhhPrepareLines.map((ln, i) => (
                   <div
@@ -1373,7 +1537,7 @@ export function EntreguesPanel({
                         onChange={(v) =>
                           setRrhhPrepareLines((L) => L.map((x, j) => (j === i ? { ...x, productId: v } : x)))
                         }
-                        placeholder="Cercar…"
+                        placeholder="Cercar..."
                         showStockHint
                         variant="list"
                         className="h-9 text-sm"
@@ -1399,8 +1563,8 @@ export function EntreguesPanel({
                         size="icon"
                         className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10"
                         disabled={rrhhPrepareLines.length <= 1}
-                        title={rrhhPrepareLines.length <= 1 ? 'Mínim una línia' : 'Eliminar línia'}
-                        aria-label="Eliminar línia"
+                        title={rrhhPrepareLines.length <= 1 ? 'Minim una linia' : 'Eliminar linia'}
+                        aria-label="Eliminar linia"
                         onClick={() =>
                           setRrhhPrepareLines((L) =>
                             L.length <= 1 ? L : L.filter((_, j) => j !== i)
@@ -1420,7 +1584,7 @@ export function EntreguesPanel({
                 className="text-xs"
                 onClick={() => setRrhhPrepareLines((L) => [...L, { productId: '', qty: '1' }])}
               >
-                + Línia
+                + Linia
               </Button>
             </div>
 
@@ -1441,7 +1605,7 @@ export function EntreguesPanel({
               <Textarea
                 id="ent-prep-msg"
                 className="min-h-[64px] text-sm"
-                placeholder="Ex.: material disponible a partir de…"
+                placeholder="Ex.: material disponible a partir de..."
                 value={rrhhPrepareMessage}
                 onChange={(e) => setRrhhPrepareMessage(e.target.value)}
               />
@@ -1453,7 +1617,7 @@ export function EntreguesPanel({
                 onCheckedChange={(v) => setRrhhPrepareWithoutStock(Boolean(v))}
               />
               <Label htmlFor="ent-prep-no-stock" className="text-sm font-normal cursor-pointer leading-snug">
-                Sense reserva d’estoc (material pendent o sense estoc ara)
+                Sense reserva d'estoc (material pendent o sense estoc ara)
               </Label>
             </div>
           </div>
@@ -1462,7 +1626,7 @@ export function EntreguesPanel({
               Tanca
             </Button>
             <Button type="button" disabled={rrhhPrepareBusy} onClick={() => void confirmRrhhPrepareAndFillForm()}>
-              {rrhhPrepareBusy ? 'Processant…' : 'Confirmar i omplir formulari'}
+              {rrhhPrepareBusy ? 'Processant...' : 'Confirmar i omplir formulari'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1479,8 +1643,8 @@ export function EntreguesPanel({
             </p>
           ) : null}
           <p className="text-sm text-muted-foreground">
-            Ajusteu productes i quantitats. L’estoc es mou segons la diferència respecte al registre
-            anterior i el treballador haurà de tornar a confirmar la recepció.
+            Ajusteu productes i quantitats. L'estoc es mou segons la diferencia respecte al registre
+            anterior i el treballador haura de tornar a confirmar la recepcio.
           </p>
           <div className="rounded-lg border border-border bg-muted/20 px-3 py-3 space-y-3">
             {correctLinesEditor.map((ln, i) => (
@@ -1501,7 +1665,7 @@ export function EntreguesPanel({
                         L.map((x, j) => (j === i ? { ...x, productId: v } : x))
                       )
                     }
-                    placeholder="Cercar i triar…"
+                    placeholder="Cercar i triar..."
                     showStockHint
                     variant="list"
                     className="h-9 text-sm"
@@ -1528,7 +1692,7 @@ export function EntreguesPanel({
                     size="icon"
                     className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                     disabled={correctLinesEditor.length <= 1}
-                    aria-label="Eliminar línia"
+                    aria-label="Eliminar linia"
                     onClick={() => removeCorrectLine(i)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -1537,7 +1701,7 @@ export function EntreguesPanel({
               </div>
             ))}
             <Button type="button" variant="outline" size="sm" onClick={addCorrectLine}>
-              + Línia
+              + Linia
             </Button>
           </div>
           <div className="space-y-1">
@@ -1555,7 +1719,7 @@ export function EntreguesPanel({
               Cancel·la
             </Button>
             <Button type="button" disabled={correctBusy} onClick={() => void submitDeliveryCorrection()}>
-              {correctBusy ? 'Desant…' : 'Desar correcció'}
+              {correctBusy ? 'Desant...' : 'Desar correccio'}
             </Button>
           </DialogFooter>
         </DialogContent>

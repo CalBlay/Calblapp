@@ -4,11 +4,12 @@
 import React, { useEffect } from 'react'
 import { withAdmin } from '@/hooks/withAdmin'
 import { useUsers } from '@/hooks/useUsers'
+import { normalizeRole } from '@/lib/roles'
 
 import { Button } from '@/components/ui/button'
 import { UserTable } from '@/components/users/UserTable'
 import UserFormModal from '@/components/users/UserFormModal'
-import { Plus, Trash2, UserCog } from 'lucide-react'
+import { Trash2, UserCog } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import UserFilters, { UserFiltersState } from '@/components/users/UserFilters'
 import FloatingAddButton from '@/components/ui/floating-add-button'
@@ -41,8 +42,43 @@ const normalizeDepartmentLabel = (value?: string) =>
   String(value || '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^\p{Letter}\p{Number}]+/gu, ' ')
     .toLowerCase()
     .trim()
+
+const formatRoleLabel = (role?: string, isAdmin?: boolean) => {
+  if (isAdmin || normalizeRole(role) === 'admin') return 'Admin'
+  switch (normalizeRole(role)) {
+    case 'direccio':
+      return 'Direcció'
+    case 'cap':
+      return 'Cap Departament'
+    case 'treballador':
+      return 'Treballador'
+    case 'comercial':
+      return 'Comercial'
+    case 'observer':
+      return 'Observer'
+    case 'usuari':
+      return 'Usuari'
+    default:
+      return String(role || '').trim() || '-'
+  }
+}
+
+const formatDepartmentLabel = (value?: string) => {
+  const raw = String(value || '').trim()
+  if (!raw) return '-'
+  const key = normalizeDepartmentLabel(raw)
+  const exact = DEPARTMENTS.find((dep) => normalizeDepartmentLabel(dep) === key)
+  if (exact) return exact
+  if (key.includes('recursos') && key.includes('humans')) return 'Recursos Humans'
+  return raw
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ')
+}
 
 function UsersPage() {
   const { users, loading, saveUser, deleteUser, fetchUsers } = useUsers()
@@ -55,7 +91,7 @@ function UsersPage() {
   const roleOptions = ['Admin', 'Direcció', 'Cap Departament', 'Treballador', 'Observer']
 
   const deptOptions = Array.from(
-    [...DEPARTMENTS, ...users.map((u) => u.department).filter(Boolean)].reduce((map, department) => {
+    [...DEPARTMENTS, ...users.map((u) => formatDepartmentLabel(u.department)).filter(Boolean)].reduce((map, department) => {
       const key = normalizeDepartmentLabel(department)
       if (!key || map.has(key)) return map
       map.set(key, department)
@@ -107,15 +143,21 @@ function UsersPage() {
     const okDept =
       !filters.department ||
       filters.department === '__all__' ||
-      u.department === filters.department
+      normalizeDepartmentLabel(u.department) === normalizeDepartmentLabel(filters.department)
 
     const okRole =
       !filters.role ||
       filters.role === '__all__' ||
-      u.role === filters.role
+      formatRoleLabel(u.role, u.isAdmin) === filters.role
 
     return okDept && okRole
   })
+
+  const displayUsers = filteredUsers.map((u) => ({
+    ...u,
+    role: formatRoleLabel(u.role, u.isAdmin),
+    department: formatDepartmentLabel(u.department),
+  }))
 
   return (
     <div className="p-6 space-y-6">
@@ -200,7 +242,11 @@ function UsersPage() {
           setFilters={(f) => setFilters((prev) => ({ ...prev, ...f }))}
           departmentOptions={deptOptions}
           roleOptions={roleOptions}
-          users={users || []}
+          users={users.map((u) => ({
+            ...u,
+            role: formatRoleLabel(u.role, u.isAdmin),
+            department: formatDepartmentLabel(u.department),
+          }))}
         />
 
    <FloatingAddButton
@@ -226,8 +272,11 @@ function UsersPage() {
         <div className="text-center text-gray-500">Carregant usuaris…</div>
       ) : (
         <UserTable
-          users={filteredUsers}
-          onEdit={(u) => setModalUser(u as AppUser)}
+          users={displayUsers}
+          onEdit={(u) => {
+            const original = users.find((item) => item.id === u.id) || u
+            setModalUser(original as AppUser)
+          }}
           onDelete={deleteUser}
         />
       )}
@@ -257,12 +306,12 @@ function UsersPage() {
             canRespondSurveys: Boolean((modalUser as any).canRespondSurveys),
             isDepartmentRobaLead: Boolean(modalUser.isDepartmentRobaLead),
           }}
-          onSubmit={(data) => {
+          onSubmit={async (data) => {
             if (modalUser.personId) {
-              fetchUsers()
-              loadPendingRequests()
+              await fetchUsers()
+              await loadPendingRequests()
             } else {
-              saveUser(modalUser.id, data)
+              await saveUser(modalUser.id, data)
             }
             setModalUser(null)
           }}

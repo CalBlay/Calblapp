@@ -16,8 +16,41 @@ const normLower = (s?: string) =>
   unaccent((s || '').toString().trim()).toLowerCase()
 
 const isTreballador = (role?: string) => normLower(role) === 'treballador'
+const isCapDepartament = (role?: string) => normalizeRole(role) === 'cap'
 const requiresCorporateEmail = (role?: string, isAdmin?: boolean) =>
   Boolean(isAdmin) || ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
+
+const canonicalRoleLabel = (role?: string, isAdmin?: boolean) => {
+  if (Boolean(isAdmin) || normalizeRole(role) === 'admin') return 'Admin'
+  switch (normalizeRole(role)) {
+    case 'direccio':
+      return 'Direccio'
+    case 'cap':
+      return 'Cap Departament'
+    case 'treballador':
+      return 'Treballador'
+    case 'comercial':
+      return 'Comercial'
+    case 'observer':
+      return 'Observer'
+    case 'usuari':
+      return 'Usuari'
+    default:
+      return String(role || '').trim()
+  }
+}
+
+const canonicalDepartmentLabel = (department?: string) => {
+  const raw = String(department || '').trim()
+  const key = normLower(raw).replace(/[^\p{Letter}\p{Number}]+/gu, ' ')
+  if (!raw) return raw
+  if (key.includes('recursos') && key.includes('humans')) return 'Recursos Humans'
+  return raw
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ')
+}
 
 // ──────────────────────────────────────────────────────────────
 // Tipus
@@ -63,7 +96,13 @@ export async function GET(
       return NextResponse.json({ error: 'Not Found' }, { status: 404 })
     }
 
-    return NextResponse.json({ id: snap.id, ...snap.data() })
+    const data = snap.data() as Record<string, unknown>
+    return NextResponse.json({
+      id: snap.id,
+      ...data,
+      role: canonicalRoleLabel(String(data.role || ''), Boolean(data.isAdmin)),
+      department: canonicalDepartmentLabel(String(data.department || '')),
+    })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     return NextResponse.json({ error: message }, { status: 500 })
@@ -133,7 +172,7 @@ export async function PUT(
     }
 
     // 🔹 Si NO és treballador → netegem camps específics de torns
-    if (!isTreballador(rawUpdate.role)) {
+    if (!isTreballador(rawUpdate.role) && !isCapDepartament(rawUpdate.role)) {
       rawUpdate.available = undefined
       rawUpdate.isDriver = undefined
       rawUpdate.workerRank = undefined
@@ -151,10 +190,11 @@ export async function PUT(
       .set({ ...update, userId: id }, { merge: true })
 
     // 🔹 Si és treballador → sincronitzar col·lecció `personnel`
-    if (isTreballador(update.role)) {
+    if (isTreballador(update.role) || isCapDepartament(update.role)) {
       const personRef = db.collection('personnel').doc(id)
       const snap = await personRef.get()
       const snapData = snap.data() || {}
+      const isCap = isCapDepartament(update.role)
 
       const body = {
         id,
@@ -162,10 +202,10 @@ export async function PUT(
         department: update.department ?? snapData.department ?? '',
         departmentLower:
           update.departmentLower ?? snapData.departmentLower ?? '',
-        role: 'treballador',
+        role: isCap ? 'responsable' : 'treballador',
         available: update.available ?? snapData.available ?? true,
         isDriver: update.isDriver ?? snapData.isDriver ?? false,
-        workerRank: update.workerRank ?? snapData.workerRank ?? 'equip',
+        workerRank: isCap ? 'responsable' : update.workerRank ?? snapData.workerRank ?? 'equip',
         email: update.email ?? snapData.email ?? null,
         phone: update.phone ?? snapData.phone ?? null,
         updatedAt: Date.now(),
