@@ -1,9 +1,19 @@
 // ✅ file: src/app/api/calendar/manual/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { normalizeRole } from '@/lib/roles'
 
 
 export const runtime = 'nodejs'
+
+const normalizeDept = (raw?: string | null) =>
+  String(raw || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
 
 const MODAL_OVERRIDE_FIELDS = new Set([
   'LN',
@@ -127,6 +137,26 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
  */
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autoritzat' }, { status: 401 })
+    }
+
+    const role = normalizeRole((session.user as { role?: string })?.role || '')
+    const department = normalizeDept((session.user as { department?: string })?.department || '')
+    const isProductionOperationalWorker = role === 'treballador' && department === 'produccio'
+    const canDelete =
+      role === 'admin' ||
+      role === 'direccio' ||
+      role === 'comercial' ||
+      department === 'produccio' ||
+      (role === 'cap' &&
+        ['casaments', 'empresa', 'restauracio', 'restaurants', 'grups restaurants', 'foodlovers', 'food lover'].includes(department))
+
+    if (!canDelete || isProductionOperationalWorker) {
+      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
+    }
+
     const { id } = await params
     const url = new URL(req.url)
     const collection = url.searchParams.get('collection')

@@ -211,8 +211,11 @@ export default function CalendarPage() {
 
   const role = normalize(String(session?.user?.role || ''))
   const department = normalize(String((session?.user as any)?.department || ''))
+  const isProductionOperationalWorker = role === 'treballador' && department === 'produccio'
   const canManageCodes =
-    role === 'admin' || (role.includes('cap') && department === 'produccio')
+    role === 'admin' ||
+    (role.includes('cap') && department === 'produccio') ||
+    isProductionOperationalWorker
 
   const codeCounts = useMemo(() => {
     const anchor = parseISO(start)

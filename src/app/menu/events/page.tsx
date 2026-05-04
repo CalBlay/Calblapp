@@ -14,6 +14,7 @@ import EventMenuModal from '@/components/events/EventMenuModal'
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
 import EventAvisosReadOnlyModal from '@/components/events/EventAvisosReadOnlyModal'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import { isProductionWorker } from '@/lib/accessControl'
 
 const EventAuditExecutionModal = dynamic(
   () => import('@/components/events/EventAuditExecutionModal'),
@@ -74,9 +75,13 @@ export default function EventsPage() {
   const role = String(session?.user?.role || '').toLowerCase()
   const isAdmin = role === 'admin' || role === 'direccio'
   const userDept = String((session?.user as SessionUser)?.department || 'total').toLowerCase()
+  const productionWorker = isProductionWorker({
+    role: (session?.user as SessionUser)?.role,
+    department: (session?.user as SessionUser)?.department,
+  })
 
-  const scope: 'all' | 'mine' = role === 'treballador' ? 'mine' : 'all'
-  const includeQuadrants = role === 'treballador'
+  const scope: 'all' | 'mine' = role === 'treballador' && !productionWorker ? 'mine' : 'all'
+  const includeQuadrants = role === 'treballador' && !productionWorker
 
   const initial: FiltersState = useMemo(() => {
     const s = startOfWeek(new Date(), { weekStartsOn: 1 })

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { AlertTriangle, FileText } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import {
   Select,
   SelectTrigger,
@@ -25,6 +26,7 @@ import ExportMenu from '@/components/export/ExportMenu'
 import { Button } from '@/components/ui/button'
 import MeetingMinutesDialog from './components/MeetingMinutesDialog'
 import {
+  canDeleteIncident,
   canManageIncidentCategories,
   normalizeIncidentStatus,
 } from '@/lib/incidentPolicy'
@@ -61,8 +63,21 @@ function incidentStatusDisplayLabel(raw?: string | null) {
 
 export default function IncidentsPage() {
   const { data: session, status: sessionStatus } = useSession()
-  const sessionUser = session?.user as { name?: string; email?: string } | undefined
-  const accessUser = (session?.user as { role?: string; department?: string }) || {}
+  const sessionUser = session?.user as {
+    id?: string
+    name?: string
+    email?: string
+    role?: string
+    department?: string
+  } | undefined
+  const accessUser =
+    (session?.user as {
+      id?: string
+      role?: string
+      department?: string
+      name?: string
+      email?: string
+    }) || {}
   const isMarketingUser = MARKETING_DEPARTMENTS.has(normalizeDept(accessUser.department || ''))
   const actaAuthorLabel = sessionUser?.name?.trim() || sessionUser?.email?.trim()
   const canEditTipologies = canManageIncidentCategories(
@@ -87,7 +102,7 @@ export default function IncidentsPage() {
       ? MARKETING_DEFAULT_CATEGORY_FILTER
       : filters.categoryLabel
 
-  const { incidents, rawIncidents, loading, isRefreshing, error, updateIncident } = useIncidents({
+  const { incidents, rawIncidents, loading, isRefreshing, error, updateIncident, deleteIncident } = useIncidents({
     ...filters,
     categoryLabel: effectiveCategoryLabel,
     limit: 800,
@@ -129,6 +144,22 @@ export default function IncidentsPage() {
   }, [sessionStatus])
 
   const totalIncidencies = incidents.length
+
+  const canDeleteRow = React.useCallback(
+    (incident: import('@/hooks/useIncidents').Incident) =>
+      canDeleteIncident(accessUser, incident),
+    [accessUser]
+  )
+
+  const handleDeleteIncident = React.useCallback(
+    async (incident: import('@/hooks/useIncidents').Incident) => {
+      const label = incident.incidentNumber || incident.description || 'aquesta incidència'
+      const confirmed = window.confirm(`Vols eliminar ${label}? Aquesta acció no es pot desfer.`)
+      if (!confirmed) return
+      await deleteIncident(incident.id)
+    },
+    [deleteIncident]
+  )
 
   const handleFilterChange = (f: SmartFiltersChange) => {
     setFilters(prev => ({
@@ -371,13 +402,7 @@ export default function IncidentsPage() {
 
   const handleExportPdfTable = () => {
     const html = buildPdfTableHtml()
-    const win = window.open('', '_blank', 'width=1200,height=900')
-    if (!win) return
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 300)
+    printBrandedHtmlInNewWindow(html)
   }
 
   const handleExportPdfView = () => {
@@ -489,6 +514,8 @@ export default function IncidentsPage() {
           <IncidentsTable
             incidents={incidents}
             onUpdate={updateIncident}
+            onDelete={handleDeleteIncident}
+            canDeleteIncident={canDeleteRow}
           />
         </div>
       )}

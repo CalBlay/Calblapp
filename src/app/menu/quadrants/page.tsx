@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
 import { useSession } from 'next-auth/react'
 import { loadXlsx } from '@/lib/loadXlsx'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
 import ExportMenu from '@/components/export/ExportMenu'
 
@@ -398,13 +399,7 @@ export default function QuadrantsPage() {
 
   const handleExportPdfTable = () => {
     const html = buildPdfTableHtml()
-    const win = window.open('', '_blank', 'width=1200,height=900')
-    if (!win) return
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 300)
+    printBrandedHtmlInNewWindow(html)
   }
 
   const handleExportPdfView = () => {

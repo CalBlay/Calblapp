@@ -18,6 +18,8 @@ import { Button } from '@/components/ui/button'
 import ExportMenu from '@/components/export/ExportMenu'
 import { useSession } from 'next-auth/react'
 import { loadXlsx } from '@/lib/loadXlsx'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
+import { isProductionWorker } from '@/lib/accessControl'
 import {
   Select,
   SelectTrigger,
@@ -28,6 +30,10 @@ import {
 
 export default function ModificationsPage() {
   const { data: session } = useSession()
+  const productionWorker = isProductionWorker({
+    role: (session?.user as { role?: string } | undefined)?.role,
+    department: (session?.user as { department?: string } | undefined)?.department,
+  })
   const initialWeek = useMemo(() => {
     const s = startOfWeek(new Date(), { weekStartsOn: 1 })
     const e = endOfWeek(new Date(), { weekStartsOn: 1 })
@@ -310,13 +316,7 @@ export default function ModificationsPage() {
 
   const handleExportPdfTable = () => {
     const html = buildPdfTableHtml()
-    const win = window.open('', '_blank', 'width=1200,height=900')
-    if (!win) return
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 300)
+    printBrandedHtmlInNewWindow(html)
   }
 
   const handleExportPdfView = () => {
@@ -376,6 +376,7 @@ export default function ModificationsPage() {
             modifications={modifications}
             onUpdate={updateModification}
             onDelete={deleteModification}
+            canDelete={!productionWorker}
             currentUserId={(session?.user as any)?.id}
             currentUserName={(session?.user as any)?.name || (session?.user as any)?.email}
             currentUserEmail={(session?.user as any)?.email}

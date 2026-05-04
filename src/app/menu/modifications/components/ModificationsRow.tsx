@@ -12,6 +12,7 @@ interface Props {
   mod: Modification
   onUpdate: (id: string, data: Partial<Modification>) => Promise<any> | void
   onDelete: (id: string) => Promise<any> | void
+  canDelete?: boolean
   currentUserId?: string
   currentUserName?: string
   currentUserEmail?: string
@@ -21,6 +22,7 @@ export default function ModificationsRow({
   mod,
   onUpdate,
   onDelete,
+  canDelete = true,
   currentUserEmail,
   currentUserId,
   currentUserName,
@@ -39,7 +41,7 @@ export default function ModificationsRow({
     matchesOwner(mod.createdBy, currentUserEmail)
 
   const save = async () => {
-    if (!canEdit) return
+    if (!canEdit || !canDelete) return
     await onUpdate(mod.id, { description: draftDesc })
     setIsEditing(false)
   }
@@ -125,7 +127,7 @@ export default function ModificationsRow({
                   Cancel·la
                 </button>
               </>
-            ) : (
+            ) : canDelete ? (
               <button
                 type="button"
                 className="text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50"
@@ -133,7 +135,7 @@ export default function ModificationsRow({
               >
                 Elimina
               </button>
-            )}
+            ) : null}
           </div>
         )}
       </td>

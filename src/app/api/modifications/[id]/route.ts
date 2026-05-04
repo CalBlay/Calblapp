@@ -4,6 +4,8 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
 import { getToken } from 'next-auth/jwt'
 import type { JWT } from 'next-auth/jwt'
+import { isProductionWorker } from '@/lib/accessControl'
+import { normalizeRole } from '@/lib/roles'
 
 const normalize = (v?: string | null) => (v || '').toLowerCase().trim()
 
@@ -77,6 +79,23 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const token = await getToken({ req })
+    if (!token) {
+      return NextResponse.json({ error: 'No autoritzat' }, { status: 401 })
+    }
+
+    const role = normalizeRole(typeof token.role === 'string' ? token.role : '')
+    const department =
+      typeof token.department === 'string'
+        ? token.department
+        : typeof (token as { dept?: string }).dept === 'string'
+        ? (token as { dept?: string }).dept || ''
+        : ''
+
+    if (isProductionWorker({ role, department })) {
+      return NextResponse.json({ error: 'Sense permisos per eliminar' }, { status: 403 })
+    }
+
     const id = params.id
     const permission = await assertCanEdit(req, id)
     if (!permission.ok) {

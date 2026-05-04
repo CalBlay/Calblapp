@@ -1,4 +1,5 @@
 import { loadXlsx } from '@/lib/loadXlsx'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import type { OpenChatAnswer } from './types'
 
 function escapeHtmlExport(value: string): string {
@@ -226,11 +227,5 @@ export function buildOpenChatInformePdfHtml(
 }
 
 export function printHtmlInNewWindow(html: string): void {
-  const win = window.open('', '_blank', 'width=1200,height=900')
-  if (!win) return
-  win.document.open()
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  setTimeout(() => win.print(), 300)
+  printBrandedHtmlInNewWindow(html)
 }

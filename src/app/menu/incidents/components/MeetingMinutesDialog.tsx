@@ -18,6 +18,7 @@ import {
   buildMeetingFilterSummaryLines,
   type MeetingMinutesFilters,
 } from '@/lib/incidentsMeetingMinutes'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
 
@@ -48,13 +49,7 @@ export default function MeetingMinutesDialog({
       generatedAtIso: new Date().toISOString(),
       generatedByLabel,
     })
-    const win = window.open('', '_blank', 'width=1200,height=900')
-    if (!win) return
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 350)
+    printBrandedHtmlInNewWindow(html)
   }
 
   const handleOpenChange = (next: boolean) => {

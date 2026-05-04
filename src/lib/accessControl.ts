@@ -42,6 +42,11 @@ export const normalizeDept = (raw?: string | null) => {
   return base
 }
 
+export function isProductionWorker(user?: AccessUser): boolean {
+  if (!user) return false
+  return normalizeRole(user.role) === 'treballador' && normalizeDept(user.department) === 'produccio'
+}
+
 export const isMaintenanceCapDepartment = (raw?: string) =>
   MAINTENANCE_CAP_DEPARTMENTS.has(normalizeDept(raw))
 
@@ -297,6 +302,15 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
   const dept = moduleAccessDepartmentFor(role, user.department)
   const matchesDept = (d?: string) => normalizeDept(d) === dept
   const isMaintenanceWorker = role === 'treballador' && dept === 'manteniment'
+  const isProductionOperationalWorker = isProductionWorker(user)
+  const productionWorkerModulePaths = new Set([
+    '/menu/events',
+    '/menu/pissarra',
+    '/menu/incidents',
+    '/menu/modifications',
+    '/menu/calendar',
+    '/menu/spaces',
+  ])
 
   const robaLinked = Boolean(String(user.robaLinkedPersonnelId || '').trim())
 
@@ -334,6 +348,11 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
         return false
       }
 
+      if (isProductionOperationalWorker && productionWorkerModulePaths.has(mod.path)) {
+        if (mod.departments) return mod.departments.some(matchesDept)
+        return true
+      }
+
       if (!mod.roles.includes(role)) return false
 
       if (mod.departments) {
@@ -354,6 +373,10 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
       }
 
       const visibleSubmodules = mod.submodules.filter(sub => {
+        if (isProductionOperationalWorker && mod.path === '/menu/incidents') {
+          return sub.path === '/menu/incidents/quadre'
+        }
+
         if (sub.path === '/menu/allergens/bbdd') {
           return role === 'admin' || dept === 'qualitat'
         }

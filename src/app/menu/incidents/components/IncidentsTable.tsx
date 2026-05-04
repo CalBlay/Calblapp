@@ -4,6 +4,7 @@
 import React, { useState } from 'react'
 import IncidentsEventGroup from './IncidentsEventGroup'
 import IncidentOperationsDialog from './IncidentOperationsDialog'
+import IncidentImagesDialog from './IncidentImagesDialog'
 import { Incident } from '@/hooks/useIncidents'
 import { formatDateString } from '@/lib/formatDate'
 import { groupIncidentsByDayAndEvent } from '@/lib/incidentsMeetingMinutes'
@@ -13,13 +14,16 @@ import { cn } from '@/lib/utils'
 interface Props {
   incidents: Incident[]
   onUpdate: (id: string, data: Partial<Incident>) => Promise<unknown>
+  onDelete: (incident: Incident) => void
+  canDeleteIncident: (incident: Incident) => boolean
 }
 
 const formatDayCountLabel = (count: number) =>
   count === 1 ? '1 incid.' : `${count} inc.`
 
-export default function IncidentsTable({ incidents, onUpdate }: Props) {
+export default function IncidentsTable({ incidents, onUpdate, onDelete, canDeleteIncident }: Props) {
   const [opsIncident, setOpsIncident] = useState<Incident | null>(null)
+  const [imagesIncident, setImagesIncident] = useState<Incident | null>(null)
 
   const dayEntries = groupIncidentsByDayAndEvent(incidents)
 
@@ -30,6 +34,11 @@ export default function IncidentsTable({ incidents, onUpdate }: Props) {
         open={Boolean(opsIncident)}
         onClose={() => setOpsIncident(null)}
         onIncidentPatch={onUpdate}
+      />
+      <IncidentImagesDialog
+        incident={imagesIncident}
+        open={Boolean(imagesIncident)}
+        onClose={() => setImagesIncident(null)}
       />
       {dayEntries.map(({ day, events, totalCount }) => (
         <div key={day}>
@@ -56,7 +65,10 @@ export default function IncidentsTable({ incidents, onUpdate }: Props) {
               key={i}
               event={event}
               onUpdate={onUpdate}
+              onDelete={onDelete}
               onOpenOperations={setOpsIncident}
+              onOpenImages={setImagesIncident}
+              canDeleteIncident={canDeleteIncident}
             />
           ))}
         </div>

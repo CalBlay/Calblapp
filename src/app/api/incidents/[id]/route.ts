@@ -2,9 +2,10 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import { firestoreAdmin, storageAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
-import { canAccessIncidentsModule, normalizeIncidentStatus } from '@/lib/incidentPolicy'
+import { deleteMediaIndexByPath } from '@/lib/media/storageMediaIndex'
+import { canAccessIncidentsModule, canDeleteIncident, normalizeIncidentStatus } from '@/lib/incidentPolicy'
 
 function normalizeTimestamp(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -31,6 +32,99 @@ const PATCHABLE = new Set([
   'status',
   'resolutionNote',
 ])
+
+async function buildIncidentImagePayload(
+  rawImages: Array<{ url?: string | null; path?: string | null; meta?: { size?: number; type?: string } | null }>
+) {
+  const bucket = storageAdmin.bucket()
+
+  return Promise.all(
+    rawImages.map(async (image) => {
+      const path = String(image?.path || '').trim()
+      if (!path) {
+        return {
+          url: image?.url || null,
+          path: image?.path || null,
+          meta: image?.meta || null,
+          missing: false,
+        }
+      }
+
+      try {
+        const [freshUrl] = await bucket.file(path).getSignedUrl({
+          action: 'read',
+          expires: Date.now() + 1000 * 60 * 60 * 24 * 7,
+        })
+
+        return {
+          url: freshUrl,
+          path,
+          meta: image?.meta || null,
+          missing: false,
+        }
+      } catch {
+        return {
+          url: null,
+          path,
+          meta: image?.meta || null,
+          missing: true,
+        }
+      }
+    })
+  )
+}
+
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await getServerSession(authOptions)
+    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
+    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
+    if (!canAccessIncidentsModule(user)) {
+      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
+    }
+
+    const { id } = await ctx.params
+    const incidentId = String(id || '').trim()
+    if (!incidentId) return NextResponse.json({ error: 'Id invalid' }, { status: 400 })
+
+    const snap = await firestoreAdmin.collection('incidents').doc(incidentId).get()
+    if (!snap.exists) {
+      return NextResponse.json({ error: 'Incidencia no trobada' }, { status: 404 })
+    }
+
+    const data = snap.data() || {}
+    const rawImages = Array.isArray(data.images) ? data.images : []
+    const normalizedImages =
+      rawImages.length > 0
+        ? rawImages
+        : data.imageUrl || data.imagePath
+          ? [
+              {
+                url: data.imageUrl || null,
+                path: data.imagePath || null,
+                meta: data.imageMeta || null,
+              },
+            ]
+          : []
+
+    const images = await buildIncidentImagePayload(normalizedImages)
+
+    const incident = {
+      id: snap.id,
+      ...data,
+      images,
+      hasImages: images.length > 0,
+      imageCount: images.length,
+      createdAt: normalizeTimestamp(data.createdAt),
+      updatedAt: normalizeTimestamp(data.updatedAt),
+    }
+
+    return NextResponse.json({ incident }, { status: 200 })
+  } catch (err) {
+    console.error('[incidents GET one] error', err)
+    return NextResponse.json({ error: 'Error intern' }, { status: 500 })
+  }
+}
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -108,6 +202,79 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ incident }, { status: 200 })
   } catch (err) {
     console.error('[incidents PATCH] error', err)
+    return NextResponse.json({ error: 'Error intern' }, { status: 500 })
+  }
+}
+
+export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await getServerSession(authOptions)
+    const user = session?.user as {
+      id?: string
+      role?: string
+      department?: string
+      name?: string | null
+      email?: string | null
+    } | undefined
+
+    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
+
+    const { id } = await ctx.params
+    const incidentId = String(id || '').trim()
+    if (!incidentId) return NextResponse.json({ error: 'Id invalid' }, { status: 400 })
+
+    const ref = firestoreAdmin.collection('incidents').doc(incidentId)
+    const snap = await ref.get()
+    if (!snap.exists) {
+      return NextResponse.json({ error: 'Incidència no trobada' }, { status: 404 })
+    }
+
+    const data = snap.data() || {}
+    if (!canDeleteIncident(user, data as { createdById?: string | null; createdBy?: string | null })) {
+      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
+    }
+
+    const rawImages = Array.isArray(data.images) ? data.images : []
+    const normalizedImages =
+      rawImages.length > 0
+        ? rawImages
+        : data.imageUrl || data.imagePath
+          ? [
+              {
+                url: data.imageUrl || null,
+                path: data.imagePath || null,
+              },
+            ]
+          : []
+
+    const imagePaths = normalizedImages
+      .map((image) => String(image?.path || '').trim())
+      .filter(Boolean)
+
+    const actionsSnap = await firestoreAdmin
+      .collection('incident_actions')
+      .where('incidentId', '==', incidentId)
+      .get()
+
+    const batch = firestoreAdmin.batch()
+    actionsSnap.docs.forEach((doc) => batch.delete(doc.ref))
+    batch.delete(ref)
+    await batch.commit()
+
+    await Promise.all(
+      imagePaths.map(async (path) => {
+        try {
+          await storageAdmin.bucket().file(path).delete({ ignoreNotFound: true })
+        } catch {
+          // ignore missing storage objects
+        }
+        await deleteMediaIndexByPath(path)
+      })
+    )
+
+    return NextResponse.json({ success: true }, { status: 200 })
+  } catch (err) {
+    console.error('[incidents DELETE] error', err)
     return NextResponse.json({ error: 'Error intern' }, { status: 500 })
   }
 }

@@ -11,6 +11,7 @@ interface Props {
   modifications: Modification[]
   onUpdate: (id: string, data: Partial<Modification>) => Promise<any> | void
   onDelete: (id: string) => Promise<any> | void
+  canDelete?: boolean
   currentUserId?: string
   currentUserName?: string
   currentUserEmail?: string
@@ -29,6 +30,7 @@ export default function ModificationsTable({
   modifications,
   onUpdate,
   onDelete,
+  canDelete = true,
   currentUserId,
   currentUserName,
   currentUserEmail,
@@ -88,6 +90,7 @@ export default function ModificationsTable({
               event={event}
               onUpdate={onUpdate}
               onDelete={onDelete}
+              canDelete={canDelete}
               currentUserId={currentUserId}
               currentUserName={currentUserName}
               currentUserEmail={currentUserEmail}

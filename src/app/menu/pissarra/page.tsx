@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import { startOfWeek, endOfWeek } from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { normalizeRole } from '@/lib/roles'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import usePissarra from '@/hooks/usePissarra'
@@ -282,13 +283,7 @@ export default function PissarraPage() {
 
   const handleExportPdfTable = () => {
     const html = buildPdfTableHtml()
-    const win = window.open('', '_blank', 'width=1200,height=900')
-    if (!win) return
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 300)
+    printBrandedHtmlInNewWindow(html)
   }
 
   const handleExportPdfView = () => {

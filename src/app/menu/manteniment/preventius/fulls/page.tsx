@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { addDays, addWeeks, endOfWeek, format, parseISO, startOfWeek, subDays, subWeeks } from 'date-fns'
 import { loadXlsx } from '@/lib/loadXlsx'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { useSession } from 'next-auth/react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
@@ -581,13 +582,7 @@ export default function PreventiusFullsPage() {
 
   const handleExportPdfTable = () => {
     const html = buildPdfTableHtml()
-    const win = window.open('', '_blank', 'width=1200,height=900')
-    if (!win) return
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 300)
+    printBrandedHtmlInNewWindow(html)
   }
 
   const handleExportPdfView = () => {

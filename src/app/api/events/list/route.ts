@@ -219,7 +219,8 @@ const getEventsListCached = unstable_cache(
     sessDept: string
   ): Promise<EventsListCachedPayload> => {
     let deptsToUse: string[] = []
-    if (role === 'cap') {
+    const isProductionOperationalWorker = role === 'treballador' && sessDept === 'produccio'
+    if (role === 'cap' || isProductionOperationalWorker) {
       if (!sessDept) {
         return {
           events: [],
@@ -366,7 +367,7 @@ const getEventsListCached = unstable_cache(
             ...(q?.treballadors || []).map((t) => t.name),
           ].filter(Boolean) as string[]
 
-          if (role === 'treballador' && allNames.some((n) => normalize(n) === userNameNorm)) {
+          if (role === 'treballador' && !isProductionOperationalWorker && allNames.some((n) => normalize(n) === userNameNorm)) {
             if (q?.code) myEvents.add(normCode(String(q.code)))
             if (q?.eventId) myEvents.add(String(q.eventId))
 
@@ -398,7 +399,7 @@ const getEventsListCached = unstable_cache(
     })
 
     let finalEvents = enriched
-    if (role === 'treballador') {
+    if (role === 'treballador' && !isProductionOperationalWorker) {
       finalEvents = enriched
         .filter((ev) => myEvents.has(normCode(ev.eventCode || '')) || myEvents.has(ev.id as string))
         .map((ev) => {
@@ -479,7 +480,7 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const userNameNorm = role === 'treballador' ? normalize(userName) : ''
+    const userNameNorm = role === 'treballador' && sessDept !== 'produccio' ? normalize(userName) : ''
     const cached = await getEventsListCached(start, end, role, userNameNorm, qsDept, sessDept)
     const { _log, ...payload } = cached
 

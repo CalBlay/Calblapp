@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { startOfWeek, endOfWeek, format } from 'date-fns'
 import { Truck } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
@@ -226,13 +227,7 @@ export default function TransportAssignacionsPage() {
 
   const handleExportPdfTable = () => {
     const html = buildPdfTableHtml()
-    const win = window.open('', '_blank', 'width=1200,height=900')
-    if (!win) return
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 300)
+    printBrandedHtmlInNewWindow(html)
   }
 
   const handleExportPdfView = () => {

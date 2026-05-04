@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import ExportMenu from '@/components/export/ExportMenu'
+import { addCalBlayLogoToPdf, fetchCalBlayLogoDataUrl } from '@/lib/exportBranding'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -977,12 +978,21 @@ export default function AllergensBbddPage() {
       }
 
       const { jsPDF } = await import('jspdf')
+      const logoDataUrl = await fetchCalBlayLogoDataUrl()
       const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
       const pageWidth = pdf.internal.pageSize.getWidth()
       const pageHeight = pdf.internal.pageSize.getHeight()
       const margin = 36
       const lineHeight = 12
       let y = margin
+
+      const hasLogo = addCalBlayLogoToPdf(pdf, logoDataUrl, {
+        x: margin,
+        y: y - 4,
+        width: 76,
+        height: 48,
+      })
+      if (hasLogo) y += 52
 
       pdf.setFontSize(12)
       pdf.text('BBDD Allergens', margin, y)

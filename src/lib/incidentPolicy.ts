@@ -1,11 +1,12 @@
 import { normalizeRole } from '@/lib/roles'
-import { normalizeDept } from '@/lib/accessControl'
+import { isProductionWorker, normalizeDept } from '@/lib/accessControl'
 
 /** Mateix criteri que el mòdul Incidències al menú (API / pantalles). */
 export function canAccessIncidentsModule(user: { role?: string | null; department?: string | null }): boolean {
   const role = normalizeRole(user.role || '')
   const dept = normalizeDept(user.department || '')
   const allowedRoles = new Set(['admin', 'direccio', 'cap', 'usuari', 'comercial'])
+  if (role === 'treballador' && dept === 'produccio') return true
   if (!allowedRoles.has(role)) return false
   if (role === 'admin' || role === 'direccio' || role === 'comercial') return true
   const allowedDepts = new Set(['produccio', 'logistica', 'cuina', 'serveis', 'marqueting', 'marketing'])
@@ -38,6 +39,46 @@ export function canManageIncidentCategories(user: { role?: string | null; depart
   if (role === 'admin' || role === 'direccio') return true
   if (role === 'cap' && dept === 'produccio') return true
   return false
+}
+
+function normalizeIdentity(value?: string | null) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+}
+
+export function canDeleteIncident(
+  user: { id?: string | null; role?: string | null; department?: string | null; name?: string | null; email?: string | null },
+  incident: { createdById?: string | null; createdBy?: string | null }
+): boolean {
+  if (
+    isProductionWorker({
+      role: user.role ?? undefined,
+      department: user.department ?? undefined,
+    })
+  ) {
+    return false
+  }
+
+  const role = normalizeRole(user.role || '')
+  const dept = normalizeDept(user.department || '')
+
+  if (role === 'admin') return true
+  if (role === 'cap' && dept === 'produccio') return true
+
+  const userId = String(user.id || '').trim()
+  if (userId && userId === String(incident.createdById || '').trim()) return true
+
+  // Compatibilitat amb incidències antigues sense createdById.
+  const ownerAliases = new Set(
+    [user.name, user.email]
+      .map((value) => normalizeIdentity(value || ''))
+      .filter(Boolean)
+  )
+  const createdBy = normalizeIdentity(incident.createdBy || '')
+  return Boolean(createdBy && ownerAliases.has(createdBy))
 }
 
 export const INCIDENT_STATUS_VALUES = ['obert', 'en_curs', 'resolt', 'tancat'] as const

@@ -20,6 +20,7 @@ export interface Incident {
   priority?: string
   status: string
   createdBy?: string
+  createdById?: string
   category?: { id: string; label: string }
   ln?: string
   pax?: number
@@ -29,6 +30,8 @@ export interface Incident {
   imageUrl?: string | null
   imagePath?: string | null
   imageMeta?: { size?: number; type?: string } | null
+  hasImages?: boolean
+  imageCount?: number
   images?: Array<{
     url?: string | null
     path?: string | null
@@ -54,21 +57,27 @@ const normalizeImportance = (value?: string): string => {
 }
 
 function normalizeIncidentRow(inc: any): Incident {
+  const normalizedImages =
+    Array.isArray(inc.images) && inc.images.length > 0
+      ? inc.images
+      : inc.imageUrl || inc.imagePath
+        ? [
+            {
+              url: inc.imageUrl || null,
+              path: inc.imagePath || null,
+              meta: inc.imageMeta || null,
+            },
+          ]
+        : []
+
   return {
     ...inc,
     importance: normalizeImportance(inc.importance),
-    images:
-      Array.isArray(inc.images) && inc.images.length > 0
-        ? inc.images
-        : inc.imageUrl || inc.imagePath
-          ? [
-              {
-                url: inc.imageUrl || null,
-                path: inc.imagePath || null,
-                meta: inc.imageMeta || null,
-              },
-            ]
-          : [],
+    hasImages:
+      typeof inc.hasImages === 'boolean' ? inc.hasImages : normalizedImages.length > 0,
+    imageCount:
+      typeof inc.imageCount === 'number' ? inc.imageCount : normalizedImages.length,
+    images: normalizedImages,
   } as Incident
 }
 
@@ -277,5 +286,24 @@ export function useIncidents(_filters: {
     }
   }, [])
 
-  return { incidents, rawIncidents, loading, isRefreshing, error, updateIncident }
+  const deleteIncident = useCallback(async (id: string) => {
+    try {
+      setError(null)
+
+      const res = await fetch(`/api/incidents/${id}`, {
+        method: 'DELETE',
+      })
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+      setRawIncidents((prev) => prev.filter((inc) => inc.id !== id))
+      return true
+    } catch (err: any) {
+      const msg = err?.message || 'Error eliminant incidència'
+      setError(msg)
+      return false
+    }
+  }, [])
+
+  return { incidents, rawIncidents, loading, isRefreshing, error, updateIncident, deleteIncident }
 }

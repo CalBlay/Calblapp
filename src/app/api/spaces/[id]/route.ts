@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { isProductionWorker } from '@/lib/accessControl'
 
 export const runtime = 'nodejs'
 
@@ -34,15 +35,15 @@ export async function DELETE(
         (session?.user as { deptLower?: string })?.deptLower ||
         (session?.user as { department?: string })?.department
     )
-    const canEdit =
+    const canDelete =
       role === 'admin' ||
       role === 'direccio' ||
       role === 'comercial' ||
-      dept === 'produccio' ||
+      (dept === 'produccio' && !isProductionWorker({ role, department: dept })) ||
       (role === 'cap' &&
         (dept === 'empresa' || dept === 'casaments' || dept === 'foodlovers'))
 
-    if (!canEdit) {
+    if (!canDelete) {
       return NextResponse.json(
         { error: 'No tens permisos per eliminar espais.' },
         { status: 403 }

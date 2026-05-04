@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { firestoreAdmin } from "@/lib/firebaseAdmin";
+import { firestoreAdmin, storageAdmin } from "@/lib/firebaseAdmin";
 import admin from "firebase-admin";
 import type { Query } from "firebase-admin/firestore";
 import {
@@ -31,6 +31,8 @@ interface IncidentDoc {
   imageUrl?: string | null;
   imagePath?: string | null;
   imageMeta?: { size?: number; type?: string } | null;
+  hasImages?: boolean;
+  imageCount?: number;
   images?: Array<{
     url?: string | null;
     path?: string | null;
@@ -115,6 +117,9 @@ const commercialOwnsEvent = (
 
 /** Resposta més lleugera per llistats (tauler, quadre): sense payloads d’imatges. */
 function projectIncidentLight(inc: Record<string, unknown>): Record<string, unknown> {
+  const rawImages = Array.isArray(inc.images) ? inc.images : [];
+  const fallbackPrimary = inc.imageUrl || inc.imagePath ? 1 : 0;
+  const imageCount = rawImages.length > 0 ? rawImages.length : fallbackPrimary;
   const {
     images: _images,
     imageUrl: _u,
@@ -124,11 +129,79 @@ function projectIncidentLight(inc: Record<string, unknown>): Record<string, unkn
   } = inc;
   return {
     ...rest,
+    hasImages: imageCount > 0,
+    imageCount,
     images: [],
     imageUrl: null,
     imagePath: null,
     imageMeta: null,
   };
+}
+
+async function withFreshIncidentImageUrls(rows: Array<Record<string, unknown>>) {
+  const bucket = storageAdmin.bucket()
+
+  return Promise.all(
+    rows.map(async (row) => {
+      const rawImages = Array.isArray(row.images) ? row.images : []
+      const normalizedImages =
+        rawImages.length > 0
+          ? rawImages
+          : row.imageUrl || row.imagePath
+            ? [
+                {
+                  url: row.imageUrl || null,
+                  path: row.imagePath || null,
+                  meta: row.imageMeta || null,
+                },
+              ]
+            : []
+
+      const images = await Promise.all(
+        normalizedImages.map(async (image) => {
+          const path = String(image?.path || '').trim()
+          if (!path) {
+            return {
+              url: image?.url || null,
+              path: image?.path || null,
+              meta: image?.meta || null,
+              missing: false,
+            }
+          }
+          try {
+            const [freshUrl] = await bucket.file(path).getSignedUrl({
+              action: 'read',
+              expires: Date.now() + 1000 * 60 * 60 * 24 * 7,
+            })
+            return {
+              url: freshUrl,
+              path,
+              meta: image?.meta || null,
+              missing: false,
+            }
+          } catch {
+            return {
+              url: null,
+              path,
+              meta: image?.meta || null,
+              missing: true,
+            }
+          }
+        })
+      )
+
+      const firstImage = images[0] || null
+      return {
+        ...row,
+        imageUrl: firstImage?.url || null,
+        imagePath: firstImage?.path || null,
+        imageMeta: firstImage?.meta || null,
+        hasImages: images.length > 0,
+        imageCount: images.length,
+        images,
+      }
+    })
+  )
 }
 
 /* -------------------------------------------------------
@@ -228,6 +301,7 @@ export async function POST(req: Request) {
       importance: String(importance).trim().toLowerCase(),
       description,
       createdBy: respSala,
+      createdById: user.id,
       status: "obert",
       createdAt: admin.firestore.Timestamp.now(),
 
@@ -515,7 +589,7 @@ export async function GET(req: Request) {
 
     const payload = lightList
       ? filteredIncidents.map((row) => projectIncidentLight(row as Record<string, unknown>))
-      : filteredIncidents
+      : await withFreshIncidentImageUrls(filteredIncidents as Array<Record<string, unknown>>)
 
     return NextResponse.json({ incidents: payload }, { status: 200 });
   } catch (err) {

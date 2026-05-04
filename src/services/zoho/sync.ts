@@ -8,6 +8,11 @@ interface ZohoOwner {
   email?: string
 }
 
+interface ZohoNamedValue {
+  id?: string
+  name?: string
+}
+
 interface ZohoDeal {
   id: string
   Deal_Name: string
@@ -23,6 +28,7 @@ interface ZohoDeal {
   Duraci_n_del_evento?: number | string | null
   C_digo?: string | null
   Owner: ZohoOwner
+  Responsable?: string | ZohoNamedValue | Array<string | ZohoNamedValue> | null
   Fecha_de_petici_n?: string | null
   Precio_Total?: number | string | null
   Amount?: number | string | null
@@ -184,6 +190,30 @@ const parseZohoTime = (raw?: string | null): string | null => {
   return match ? match[1] : null
 }
 
+const extractZohoDisplayName = (
+  value?: string | ZohoNamedValue | Array<string | ZohoNamedValue> | null
+): string | null => {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const extracted = extractZohoDisplayName(item)
+      if (extracted) return extracted
+    }
+    return null
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+
+  if (value && typeof value === 'object') {
+    const trimmed = String(value.name || '').trim()
+    return trimmed || null
+  }
+
+  return null
+}
+
 const isBadCode = (code?: string | null) =>
   code === 'CCB00001' || code === 'CCE00004'
 
@@ -336,7 +366,7 @@ export async function syncZohoDealsToFirestore(): Promise<{
   const todayISO = new Date().toISOString().slice(0, 10)
   const moduleName = process.env.ZOHO_CRM_MODULE || 'Deals'
   const fields =
-  'id,Deal_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description'
+  'id,Deal_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description'
 
 
   // 1️⃣ Llegir oportunitats amb paginació
@@ -584,6 +614,10 @@ const ubicacioLabel = stripCode(ubicacioRaw).trim()
     const fincaId = fincaMatch?.id
     const fincaCode = fincaMatch?.code
     const fincaLN = fincaMatch?.ln
+    const ownerCommercial = d.Owner?.name?.trim() || '—'
+    const responsableCommercial = extractZohoDisplayName(d.Responsable)
+    const comercial =
+      LN === 'Casaments' ? responsableCommercial || ownerCommercial : ownerCommercial
 
     normalized.push({
       idZoho: String(d.id),
@@ -591,7 +625,7 @@ const ubicacioLabel = stripCode(ubicacioRaw).trim()
       Stage: d.Stage,
       LN,
       Servei: d.Servicio_texto || d.Men_texto || '',
-      Comercial: d.Owner?.name || '—',
+      Comercial: comercial,
       DataInici: dateISO,
       DataFi: dataFiISO,
       ObservacionsZoho: d.Description || d.Observacions || null,

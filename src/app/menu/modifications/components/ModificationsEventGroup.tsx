@@ -25,6 +25,7 @@ interface Props {
   }
   onUpdate: (id: string, data: Partial<Modification>) => Promise<any> | void
   onDelete: (id: string) => Promise<any> | void
+  canDelete?: boolean
   currentUserId?: string
   currentUserName?: string
   currentUserEmail?: string
@@ -34,6 +35,7 @@ export default function ModificationsEventGroup({
   event,
   onUpdate,
   onDelete,
+  canDelete = true,
   currentUserEmail,
   currentUserId,
   currentUserName,
@@ -94,6 +96,7 @@ export default function ModificationsEventGroup({
                 mod={mod}
                 onUpdate={onUpdate}
                 onDelete={onDelete}
+                canDelete={canDelete}
                 currentUserId={currentUserId}
                 currentUserName={currentUserName}
                 currentUserEmail={currentUserEmail}
@@ -150,13 +153,15 @@ export default function ModificationsEventGroup({
                   >
                     Edita
                   </button>
-                  <button
-                    type="button"
-                    className="text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50"
-                    onClick={() => onDelete(mod.id)}
-                  >
-                    Elimina
-                  </button>
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      className="text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50"
+                      onClick={() => onDelete(mod.id)}
+                    >
+                      Elimina
+                    </button>
+                  ) : null}
                 </div>
               )}
             </div>

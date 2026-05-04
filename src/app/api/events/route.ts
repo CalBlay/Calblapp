@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestore as db } from '@/services/db'
 import { normalizeRole } from '@/lib/roles'
+import { isProductionWorker } from '@/lib/accessControl'
 
 interface SessionUser {
   id?: string
@@ -65,6 +66,7 @@ export async function GET(request: Request) {
   const user = session.user as SessionUser
   const role = normalizeRole(user.role)
   const userName = (user.name || user.email || '').toString().trim()
+  const productionWorker = isProductionWorker(user)
 
   const { searchParams } = new URL(request.url)
   const fromStr = searchParams.get('from')
@@ -135,7 +137,7 @@ export async function GET(request: Request) {
 
   // 🔹 3. Filtre per Treballador (si cal)
   let events = built
-  if (role === 'treballador') {
+  if (role === 'treballador' && !productionWorker) {
     const needle = norm(userName)
     events = built.filter(e => needle && norm(e.summary).includes(needle))
   }

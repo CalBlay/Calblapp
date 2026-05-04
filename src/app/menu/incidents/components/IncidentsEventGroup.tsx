@@ -12,10 +12,20 @@ import { cn } from '@/lib/utils'
 interface Props {
   event: any
   onUpdate: (id: string, d: Partial<Incident>) => Promise<unknown>
+  onDelete: (inc: Incident) => void
   onOpenOperations: (inc: Incident) => void
+  onOpenImages: (inc: Incident) => void
+  canDeleteIncident: (inc: Incident) => boolean
 }
 
-export default function IncidentsEventGroup({ event, onUpdate, onOpenOperations }: Props) {
+export default function IncidentsEventGroup({
+  event,
+  onUpdate,
+  onDelete,
+  onOpenOperations,
+  onOpenImages,
+  canDeleteIncident,
+}: Props) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<any>({})
   const [openFincaModal, setOpenFincaModal] = useState(false)
@@ -84,6 +94,7 @@ export default function IncidentsEventGroup({ event, onUpdate, onOpenOperations 
         <thead>
           <tr className="bg-slate-50 text-slate-600">
             <th className={cn('w-12 p-2 text-left font-semibold', typography('bodySm'))}>Seg.</th>
+            <th className={cn('w-20 p-2 text-left font-semibold', typography('bodySm'))}>Fotos</th>
             <th className={cn('w-20 p-2 text-left font-semibold', typography('bodySm'))}>Nº</th>
             <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Autor</th>
             <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Dept</th>
@@ -93,6 +104,7 @@ export default function IncidentsEventGroup({ event, onUpdate, onOpenOperations 
             <th className={cn('w-36 p-2 text-left font-semibold', typography('bodySm'))}>Categoria</th>
             <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Origen</th>
             <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Prioritat</th>
+            <th className={cn('w-14 p-2 text-left font-semibold', typography('bodySm'))}>Del.</th>
           </tr>
         </thead>
 
@@ -104,7 +116,10 @@ export default function IncidentsEventGroup({ event, onUpdate, onOpenOperations 
               isEditing={editingId === inc.id}
               beginEdit={beginEdit}
               applyPatch={applyPatch}
+              onDelete={onDelete}
               openOps={onOpenOperations}
+              openImages={onOpenImages}
+              canDelete={canDeleteIncident(inc)}
               editValues={editValues}
               setEditValues={setEditValues}
             />

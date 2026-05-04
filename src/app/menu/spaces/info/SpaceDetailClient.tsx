@@ -6,7 +6,7 @@ import { motion } from 'framer-motion'
 import { useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { canEditFinca } from '@/lib/accessControl'
+import { canEditFinca, isProductionWorker } from '@/lib/accessControl'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
 import { Trash2 } from 'lucide-react'
 
@@ -67,6 +67,12 @@ export default function SpaceDetailClient({
     role: session?.user?.role,
     department: (session?.user as any)?.departmentLower ?? (session?.user as any)?.department,
   })
+  const canDeleteRole =
+    canEditRole &&
+    !isProductionWorker({
+      role: session?.user?.role,
+      department: (session?.user as any)?.departmentLower ?? (session?.user as any)?.department,
+    })
   const canEdit = !forceReadOnly && canEditRole
   const readOnly = !canEdit
   const isNew = !espai.id
@@ -338,7 +344,7 @@ const checkCodeAvailability = async (rawCode: string) => {
 }
 
 const handleDelete = async () => {
-  if (!canEdit || deleting) return
+  if (!canDeleteRole || deleting) return
 
   const confirmDelete = window.confirm(
     `Vols eliminar l'espai "${nom || espai.nom}"? Aquesta accio no es pot desfer.`
@@ -401,7 +407,7 @@ const handleDelete = async () => {
           )}
           {canEdit && (
             <>
-              {!isNew && (
+              {!isNew && canDeleteRole && (
                 <button
                   type="button"
                   disabled={saving || deleting}

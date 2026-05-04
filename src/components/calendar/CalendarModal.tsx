@@ -121,6 +121,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   const isComercial = department === 'comercial'
   const isComercialRole = role === 'comercial'
   const isCap = role.includes('cap')
+  const isProductionOperationalWorker = role === 'treballador' && department === 'produccio'
   const isCapCalendarDept =
     isCap &&
     [
@@ -152,6 +153,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     !readonly && (isZohoVerd || isManual) && (isAdmin || isProduccio || isOwnCommercialEvent)
   const canManageDocuments = !readonly && (canEdit || isOwnCommercialEvent)
   const canSave = canEdit || canEditCode
+  const canDeleteEvent = canEdit && !isProductionOperationalWorker
 
   const allowedDepartments = useMemo(() => {
     const bucket = normalizeDeptForLnBucket(editData.LN)
@@ -444,7 +446,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   // 🗑️ Elimina TOT l’esdeveniment
   const handleDeleteEvent = async (e?: React.MouseEvent) => {
     e?.stopPropagation()
-    if (!canEdit) return
+    if (!canDeleteEvent) return
     if (!confirm('Vols eliminar aquest esdeveniment?')) return
 
     try {
@@ -820,7 +822,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
                   🔄 Restaurar
                 </Button>
               )}
-              {canEdit && (
+              {canDeleteEvent && (
                 <Button
                   onClick={handleDeleteEvent}
                   variant="default"

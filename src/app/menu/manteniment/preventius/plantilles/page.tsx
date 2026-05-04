@@ -11,6 +11,7 @@ import ImportTemplatesCard from './components/ImportTemplatesCard'
 import TemplatesFiltersCard from './components/TemplatesFiltersCard'
 import EmbeddedTemplatesLayout from './components/EmbeddedTemplatesLayout'
 import TemplatesListCard from './components/TemplatesListCard'
+import { addCalBlayLogoToPdf, fetchCalBlayLogoDataUrl } from '@/lib/exportBranding'
 import { displayMaintenanceTemplateName } from '@/lib/maintenanceTemplateDisplay'
 import { loadXlsx } from '@/lib/loadXlsx'
 import {
@@ -331,6 +332,7 @@ export function PreventiusTemplatesContent({
   const exportTemplatePdf = (template: Template) => {
     void (async () => {
       const { jsPDF } = await import('jspdf')
+      const logoDataUrl = await fetchCalBlayLogoDataUrl()
       const rows = buildTemplateRows(template)
       const exportDate = formatExportDate()
       const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
@@ -347,6 +349,14 @@ export function PreventiusTemplatesContent({
       }
 
       let y = margin
+      const hasLogo = addCalBlayLogoToPdf(pdf, logoDataUrl, {
+        x: margin,
+        y: y - 8,
+        width: 82,
+        height: 52,
+      })
+      if (hasLogo) y += 50
+
       pdf.setFontSize(15)
       pdf.setFont('helvetica', 'bold')
       pdf.text('Document de plantilla preventiu', margin, y)

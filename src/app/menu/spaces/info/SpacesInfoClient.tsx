@@ -8,6 +8,7 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import ExportMenu from '@/components/export/ExportMenu'
 import { Map } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import FloatingAddButton from '@/components/ui/floating-add-button'
 
 type Espai = {
@@ -121,13 +122,7 @@ export default function SpacesInfoClient({ espais, lnOptions }: Props) {
 
   const handleExportPdfTable = () => {
     const html = buildPdfTableHtml()
-    const win = window.open('', '_blank', 'width=1200,height=900')
-    if (!win) return
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 300)
+    printBrandedHtmlInNewWindow(html)
   }
 
   const exportItems = [

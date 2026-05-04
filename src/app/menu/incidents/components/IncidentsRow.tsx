@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 import { Incident } from '@/hooks/useIncidents'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
-import { ListChecks } from 'lucide-react'
+import { Camera, ListChecks, Trash2 } from 'lucide-react'
 
 interface Props {
   inc: Incident
@@ -21,6 +21,9 @@ interface Props {
   beginEdit: (row: Incident) => void
   applyPatch: (id: string, d: Partial<Incident>) => void | Promise<unknown>
   openOps: (row: Incident) => void
+  openImages: (row: Incident) => void
+  canDelete: boolean
+  onDelete: (row: Incident) => void
   editValues: {
     description?: string
     originDepartment?: string
@@ -39,6 +42,9 @@ function IncidentsRow({
   beginEdit,
   applyPatch,
   openOps,
+  openImages,
+  canDelete,
+  onDelete,
   editValues,
   setEditValues,
 }: Props) {
@@ -95,6 +101,28 @@ function IncidentsRow({
         </Button>
       </td>
       {/* Nº */}
+      <td className="p-1 align-middle">
+        {inc.hasImages ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 px-2 text-slate-600"
+            title={`Obrir fotos${inc.imageCount ? ` (${inc.imageCount})` : ''}`}
+            aria-label={`Obrir fotos${inc.imageCount ? ` (${inc.imageCount})` : ''}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              openImages(inc)
+            }}
+          >
+            <Camera className="h-4 w-4" />
+            <span className={typography('bodyXs')}>{inc.imageCount || 1}</span>
+          </Button>
+        ) : (
+          <span className={cn(typography('bodyXs'), 'block px-2 text-slate-300')}>—</span>
+        )}
+      </td>
+      {/* NÂº */}
       <td className={cell}>
   <span className={cn(typography('bodyXs'), 'font-mono tracking-tight block max-w-[80px] truncate')}>
     {inc.incidentNumber || '—'}
@@ -225,6 +253,26 @@ function IncidentsRow({
           </Select>
         ) : (
           inc.priority || '—'
+        )}
+      </td>
+      <td className="p-1 align-middle">
+        {canDelete ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-rose-600 hover:text-rose-700"
+            title="Eliminar incidència"
+            aria-label="Eliminar incidència"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(inc)
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        ) : (
+          <span className={cn(typography('bodyXs'), 'block px-2 text-slate-300')}>—</span>
         )}
       </td>
     </tr>

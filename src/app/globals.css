@@ -234,3 +234,16 @@ body {
     outline-offset: 1px;
   }
 }
+
+@media print {
+  [id$='-print-root']::before {
+    content: "";
+    display: block;
+    width: 170px;
+    height: 54px;
+    margin: 0 0 16px;
+    background: url('/logo.png') no-repeat left center / contain;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

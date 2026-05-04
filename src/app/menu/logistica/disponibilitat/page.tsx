@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { Clock, Filter, MapPin, RefreshCw, Truck } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
@@ -271,13 +272,7 @@ export default function DisponibilitatLogisticaPage() {
 
   const handleExportPdfTable = () => {
     const html = buildPdfTableHtml()
-    const win = window.open('', '_blank', 'width=1200,height=900')
-    if (!win) return
-    win.document.open()
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    setTimeout(() => win.print(), 300)
+    printBrandedHtmlInNewWindow(html)
   }
 
   const handleExportPdfView = () => {
@@ -408,13 +403,7 @@ export default function DisponibilitatLogisticaPage() {
   </body>
 </html>`
 
-      const win = window.open('', '_blank', 'width=1200,height=900')
-      if (!win) return
-      win.document.open()
-      win.document.write(html)
-      win.document.close()
-      win.focus()
-      setTimeout(() => win.print(), 300)
+      printBrandedHtmlInNewWindow(html)
     } catch (err) {
       console.error(err)
       alert('No s ha pogut exportar les assignacions.')
@@ -714,7 +703,6 @@ export default function DisponibilitatLogisticaPage() {
     </main>
   )
 }
-
 
 
 
