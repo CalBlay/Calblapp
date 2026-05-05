@@ -5,7 +5,7 @@
 
 export type InformesDataSourceKind = 'app' | 'mcp_file' | 'erp' | 'hybrid'
 
-export type InformesDomainId = 'rrhh' | 'finances' | 'compres' | 'events'
+export type InformesDomainId = 'rrhh' | 'transports' | 'finances' | 'compres' | 'events'
 
 export type InformesDomainMeta = {
   id: InformesDomainId

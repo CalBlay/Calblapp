@@ -1,9 +1,10 @@
 ﻿//file: src/app/menu/logistica/transports/page.tsx
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import TransportList from '@/components/transports/TransportList'
 import NewTransportModal from '@/components/transports/NewTransportModal'
+import TransportReviewNotificationsBanner from './TransportReviewNotificationsBanner'
 import { useTransports } from '@/hooks/useTransports'
 import type { Transport } from '@/hooks/useTransports'
 import ModuleHeader from '@/components/layout/ModuleHeader'
@@ -27,6 +28,7 @@ export default function LogisticsTransportsPage() {
   const { data: transports = [], refetch } = useTransports()
   const [isModalOpen, setModalOpen] = useState(false)
   const [editingTransport, setEditingTransport] = useState<Transport | null>(null)
+  const [notificationsRefreshSignal, setNotificationsRefreshSignal] = useState(0)
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<TransportFiltersState>({
@@ -44,6 +46,16 @@ export default function LogisticsTransportsPage() {
       }, {} as Record<string, number>),
     []
   )
+
+  useEffect(() => {
+    void fetch('/api/transports/review-alerts', { method: 'POST' })
+      .then(() => {
+        setNotificationsRefreshSignal(Date.now())
+      })
+      .catch((error) => {
+        console.error('Error comprovant revisions pendents de transports:', error)
+      })
+  }, [])
 
   const handleSaved = () => {
     setModalOpen(false)
@@ -227,6 +239,7 @@ export default function LogisticsTransportsPage() {
       </div>
 
       <div id="transports-print-root">
+        <TransportReviewNotificationsBanner refreshSignal={notificationsRefreshSignal} />
         <TransportList
           transports={filteredTransports}
           onEdit={handleEdit}

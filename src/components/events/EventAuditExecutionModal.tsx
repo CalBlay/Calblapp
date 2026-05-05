@@ -7,10 +7,12 @@ import {
   Camera,
   CheckCircle2,
   ClipboardCheck,
+  Circle,
   Paperclip,
   RotateCcw,
   Save,
   X,
+  XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -76,6 +78,12 @@ const MAX_AUDIT_PHOTOS_TOTAL = 10
 type AuditExecutionPayload = {
   execution?: ExistingExecution | null
   visibleTemplate?: VisibleTemplate
+}
+
+const nextChecklistValue = (current: unknown) => {
+  if (current === true) return false
+  if (current === false) return null
+  return true
 }
 
 export default function EventAuditExecutionModal({ open, onClose, event, user }: Props) {
@@ -451,21 +459,56 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                     </div>
                                   ) : null}
                                   {type === 'checklist' && (
-                                    <label className="mt-1 inline-flex min-h-10 items-center gap-2 text-sm text-slate-700">
-                                      <input
-                                        type="checkbox"
-                                        checked={Boolean(current?.value)}
+                                    <div className="mt-1 flex items-center gap-3">
+                                      <button
+                                        type="button"
                                         disabled={isLocked}
-                                        onChange={(e) =>
+                                        onClick={() =>
                                           setAnswer(itemId, {
                                             blockId: String(block.id || ''),
                                             type: 'checklist',
-                                            value: e.target.checked,
+                                            value: nextChecklistValue(current?.value),
                                           })
                                         }
-                                      />
-                                      <span>{item.label || `Item ${itemIdx + 1}`}</span>
-                                    </label>
+                                        className={[
+                                          'inline-flex h-10 w-10 items-center justify-center rounded-full border transition',
+                                          current?.value === true
+                                            ? 'border-emerald-300 bg-emerald-50 text-emerald-600'
+                                            : current?.value === false
+                                            ? 'border-red-300 bg-red-50 text-red-600'
+                                            : 'border-slate-300 bg-white text-slate-400',
+                                          isLocked ? 'cursor-default opacity-70' : 'hover:bg-slate-50',
+                                        ].join(' ')}
+                                        aria-label={`Checklist ${item.label || `Item ${itemIdx + 1}`}`}
+                                        title={
+                                          current?.value === true
+                                            ? 'Correcte'
+                                            : current?.value === false
+                                            ? 'Incorrecte'
+                                            : 'Sense marcar'
+                                        }
+                                      >
+                                        {current?.value === true ? (
+                                          <CheckCircle2 className="h-5 w-5" />
+                                        ) : current?.value === false ? (
+                                          <XCircle className="h-5 w-5" />
+                                        ) : (
+                                          <Circle className="h-5 w-5" />
+                                        )}
+                                      </button>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="text-sm text-slate-700">
+                                          {item.label || `Item ${itemIdx + 1}`}
+                                        </div>
+                                        <div className="text-[11px] text-slate-500">
+                                          {current?.value === true
+                                            ? 'Verd: correcte'
+                                            : current?.value === false
+                                            ? 'Vermell: incorrecte'
+                                            : 'Blanc: sense marcar'}
+                                        </div>
+                                      </div>
+                                    </div>
                                   )}
                                   {type === 'rating' && (
                                     <select

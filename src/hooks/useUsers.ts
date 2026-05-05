@@ -21,6 +21,7 @@ export type User = {
   opsProjectsConfigurable?: boolean
   canRespondSurveys?: boolean
   isDepartmentRobaLead?: boolean
+  isTransportLead?: boolean
 }
 
 export function useUsers() {
@@ -69,6 +70,7 @@ export function useUsers() {
       opsProjectsConfigurable: data.opsProjectsConfigurable,
       canRespondSurveys: data.canRespondSurveys,
       isDepartmentRobaLead: data.isDepartmentRobaLead,
+      isTransportLead: data.isTransportLead,
     }
 
     let res: Response

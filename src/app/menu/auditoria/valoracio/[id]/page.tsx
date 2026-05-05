@@ -66,6 +66,12 @@ const formatDate = (ts?: number) => {
   return `${dd}/${mm}/${yyyy} ${hh}:${min}`
 }
 
+const formatChecklistValue = (value: unknown) => {
+  if (value === true) return 'Check verd'
+  if (value === false) return 'Creu vermella'
+  return 'Desmarcat'
+}
+
 export default function AuditoriaValoracioDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -337,9 +343,7 @@ export default function AuditoriaValoracioDetailPage() {
 
                         const value =
                           type === 'checklist'
-                            ? answer?.value === true
-                              ? 'Si'
-                              : 'No'
+                            ? formatChecklistValue(answer?.value)
                             : String(answer?.value ?? '-')
 
                         return (

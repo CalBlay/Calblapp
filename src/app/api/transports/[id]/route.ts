@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { processTransportReviewNotifications } from '@/lib/transportReviewNotifications'
 
 
 const COLLECTION = 'transports'
@@ -19,6 +20,12 @@ export async function PUT(
     const { id } = await context.params // 👈 fem await abans d’usar id
     const body = await req.json()
     await db.collection(COLLECTION).doc(id).update(body)
+    try {
+      const origin = new URL(req.url).origin
+      await processTransportReviewNotifications(origin)
+    } catch (notifyError) {
+      console.error('Error enviant notificacions de revisio transport:', notifyError)
+    }
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
     console.error('Error actualitzant transport:', error)

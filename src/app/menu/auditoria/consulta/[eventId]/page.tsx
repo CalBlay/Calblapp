@@ -75,6 +75,12 @@ const statusLabel = (status?: string) => {
   return 'pendent'
 }
 
+const formatChecklistValue = (value: unknown) => {
+  if (value === true) return 'Check verd'
+  if (value === false) return 'Creu vermella'
+  return 'Desmarcat'
+}
+
 export default function AuditoriaConsultaEventPage() {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -234,9 +240,7 @@ export default function AuditoriaConsultaEventPage() {
                         {type !== 'photo' ? (
                           <div className="text-sm text-gray-700">
                             {type === 'checklist'
-                              ? answer?.value === true
-                                ? 'Si'
-                                : 'No'
+                              ? formatChecklistValue(answer?.value)
                               : String(answer?.value ?? '-')}
                           </div>
                         ) : Array.isArray(answer?.photos) && answer.photos.length > 0 ? (

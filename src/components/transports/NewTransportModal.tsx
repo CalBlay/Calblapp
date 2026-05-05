@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { ChevronDown } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -12,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCreateTransport } from '@/hooks/useCreateTransport'
 import { usePersonnel } from '@/hooks/usePersonnel'
-import type { Transport } from '@/hooks/useTransports'
+import type { Transport, TransportMonthlyMileageEntry } from '@/hooks/useTransports'
 import { storage } from '@/lib/firebaseClient'
 import {
   TRANSPORT_TYPE_OPTIONS,
@@ -45,8 +46,35 @@ type TransportPayload = {
   itvDate?: string | null
   itvExpiry?: string | null
   lastService?: string | null
+  lastServiceKm?: number | null
   nextService?: string | null
-  documents: string[]
+  documents: TransportDocument[]
+  monthlyMileage: TransportMonthlyMileageEntry[]
+}
+
+const MONTH_OPTIONS = [
+  { value: '01', label: 'Gen' },
+  { value: '02', label: 'Feb' },
+  { value: '03', label: 'Mar' },
+  { value: '04', label: 'Abr' },
+  { value: '05', label: 'Mai' },
+  { value: '06', label: 'Jun' },
+  { value: '07', label: 'Jul' },
+  { value: '08', label: 'Ago' },
+  { value: '09', label: 'Set' },
+  { value: '10', label: 'Oct' },
+  { value: '11', label: 'Nov' },
+  { value: '12', label: 'Des' },
+] as const
+
+const CURRENT_YEAR = new Date().getFullYear()
+
+function addOneYear(dateValue: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) return ''
+  const date = new Date(`${dateValue}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return ''
+  date.setFullYear(date.getFullYear() + 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 export default function NewTransportModal({
@@ -65,8 +93,12 @@ export default function NewTransportModal({
   const [itvDate, setItvDate] = useState('')
   const [itvExpiry, setItvExpiry] = useState('')
   const [lastService, setLastService] = useState('')
+  const [lastServiceKm, setLastServiceKm] = useState('')
   const [nextService, setNextService] = useState('')
   const [documents, setDocuments] = useState<TransportDocument[]>([])
+  const [selectedMileageYear, setSelectedMileageYear] = useState(String(CURRENT_YEAR))
+  const [monthlyMileage, setMonthlyMileage] = useState<TransportMonthlyMileageEntry[]>([])
+  const [isMileageExpanded, setIsMileageExpanded] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -74,14 +106,29 @@ export default function NewTransportModal({
     if (!isOpen) return
 
     if (isEditMode && defaultValues) {
+      const existingMileage = Array.isArray(defaultValues.monthlyMileage)
+        ? [...defaultValues.monthlyMileage].sort((a, b) => a.month.localeCompare(b.month))
+        : []
+      const initialYear =
+        existingMileage.length > 0
+          ? existingMileage[existingMileage.length - 1]?.month.slice(0, 4) || String(CURRENT_YEAR)
+          : String(CURRENT_YEAR)
       setPlate(defaultValues.plate || '')
       setType(defaultValues.type || 'comercial')
       setConductorId(defaultValues.conductorId || '')
       setItvDate(defaultValues.itvDate || '')
       setItvExpiry(defaultValues.itvExpiry || '')
       setLastService(defaultValues.lastService || '')
+      setLastServiceKm(
+        typeof defaultValues.lastServiceKm === 'number' && Number.isFinite(defaultValues.lastServiceKm)
+          ? String(defaultValues.lastServiceKm)
+          : ''
+      )
       setNextService(defaultValues.nextService || '')
       setDocuments(defaultValues.documents || [])
+      setMonthlyMileage(existingMileage)
+      setSelectedMileageYear(initialYear)
+      setIsMileageExpanded(existingMileage.length > 0)
       return
     }
 
@@ -91,9 +138,22 @@ export default function NewTransportModal({
     setItvDate('')
     setItvExpiry('')
     setLastService('')
+    setLastServiceKm('')
     setNextService('')
     setDocuments([])
+    setMonthlyMileage([])
+    setSelectedMileageYear(String(CURRENT_YEAR))
+    setIsMileageExpanded(false)
   }, [defaultValues, isEditMode, isOpen])
+
+  useEffect(() => {
+    if (!isOpen || !lastService) return
+    const suggestedNextService = addOneYear(lastService)
+    if (!suggestedNextService) return
+    if (!nextService || nextService <= lastService) {
+      setNextService(suggestedNextService)
+    }
+  }, [isOpen, lastService, nextService])
 
   const availableDrivers = useMemo(() => {
     if (!personnel) return []
@@ -106,6 +166,23 @@ export default function NewTransportModal({
       return person.driver.camioPetit === true
     })
   }, [personnel, type])
+
+  const mileageYearOptions = useMemo(() => {
+    const years = new Set<string>([String(CURRENT_YEAR)])
+    monthlyMileage.forEach((entry) => {
+      const year = String(entry.month || '').slice(0, 4)
+      if (/^\d{4}$/.test(year)) years.add(year)
+    })
+    return Array.from(years).sort((a, b) => Number(b) - Number(a))
+  }, [monthlyMileage])
+
+  const monthlyMileageMap = useMemo(() => {
+    const map = new Map<string, TransportMonthlyMileageEntry>()
+    monthlyMileage.forEach((entry) => {
+      map.set(entry.month, entry)
+    })
+    return map
+  }, [monthlyMileage])
 
   const handleOpenFileDialog = () => {
     fileInputRef.current?.click()
@@ -177,6 +254,27 @@ export default function NewTransportModal({
     setDocuments((prev) => prev.filter((item) => item.id !== doc.id))
   }
 
+  const handleMileageChange = (monthValue: string, rawValue: string) => {
+    const monthKey = `${selectedMileageYear}-${monthValue}`
+    setMonthlyMileage((prev) => {
+      const next = prev.filter((entry) => entry.month !== monthKey)
+      const trimmed = rawValue.trim()
+      if (!trimmed) return next.sort((a, b) => a.month.localeCompare(b.month))
+
+      const km = Number(trimmed)
+      if (!Number.isFinite(km) || km < 0) return prev
+
+      return [
+        ...next,
+        {
+          month: monthKey,
+          km,
+          updatedAt: new Date().toISOString(),
+        },
+      ].sort((a, b) => a.month.localeCompare(b.month))
+    })
+  }
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
@@ -187,8 +285,13 @@ export default function NewTransportModal({
       itvDate: itvDate || null,
       itvExpiry: itvExpiry || null,
       lastService: lastService || null,
+      lastServiceKm:
+        lastServiceKm.trim() !== '' && Number.isFinite(Number(lastServiceKm)) && Number(lastServiceKm) >= 0
+          ? Number(lastServiceKm)
+          : null,
       nextService: nextService || null,
-      documents: documents.map((doc) => doc.url),
+      documents,
+      monthlyMileage,
     }
 
     try {
@@ -213,7 +316,7 @@ export default function NewTransportModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg" lockDismissOnOutside>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl" lockDismissOnOutside>
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">
             {isEditMode ? 'Editar transport' : 'Nou transport'}
@@ -221,7 +324,7 @@ export default function NewTransportModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="plate">Matricula</Label>
               <Input
@@ -252,7 +355,7 @@ export default function NewTransportModal({
               </select>
             </div>
 
-            <div className="space-y-1.5 sm:col-span-2">
+            <div className="space-y-1.5 lg:col-span-1">
               <Label htmlFor="conductorId">Conductor (opcional)</Label>
               <select
                 id="conductorId"
@@ -319,7 +422,88 @@ export default function NewTransportModal({
                   onChange={(e) => setNextService(e.target.value)}
                 />
               </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="lastServiceKm">Km ultima revisio</Label>
+                <Input
+                  id="lastServiceKm"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={lastServiceKm}
+                  onChange={(e) => setLastServiceKm(e.target.value)}
+                  placeholder="Ex: 128540"
+                />
+              </div>
             </div>
+          </div>
+
+          <div className="space-y-3 rounded-xl border bg-slate-50 p-3">
+            <button
+              type="button"
+              onClick={() => setIsMileageExpanded((prev) => !prev)}
+              className="flex w-full items-start justify-between gap-3 text-left"
+            >
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Quilometratge mensual
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Introdueix el km acumulat que marca el vehicle cada mes.
+                </p>
+              </div>
+              <ChevronDown
+                className={`mt-0.5 h-4 w-4 shrink-0 text-slate-500 transition-transform ${
+                  isMileageExpanded ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+
+            {isMileageExpanded ? (
+              <>
+                <div className="w-full sm:w-28">
+                  <Label htmlFor="mileageYear" className="text-xs text-slate-500">
+                    Any
+                  </Label>
+                  <select
+                    id="mileageYear"
+                    value={selectedMileageYear}
+                    onChange={(e) => setSelectedMileageYear(e.target.value)}
+                    className="mt-1 w-full rounded-md border px-2 py-2 text-sm"
+                  >
+                    {mileageYearOptions.map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+                  {MONTH_OPTIONS.map((month) => {
+                    const monthKey = `${selectedMileageYear}-${month.value}`
+                    const currentEntry = monthlyMileageMap.get(monthKey)
+                    return (
+                      <div key={monthKey} className="space-y-1.5 rounded-lg border bg-white p-2">
+                        <Label htmlFor={`mileage-${monthKey}`} className="text-xs text-slate-600">
+                          {month.label}
+                        </Label>
+                        <Input
+                          id={`mileage-${monthKey}`}
+                          type="number"
+                          min="0"
+                          step="1"
+                          inputMode="numeric"
+                          value={currentEntry ? String(currentEntry.km) : ''}
+                          onChange={(e) => handleMileageChange(month.value, e.target.value)}
+                          placeholder="Km"
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            ) : null}
           </div>
 
           <div className="space-y-3 rounded-xl border bg-slate-50 p-3">

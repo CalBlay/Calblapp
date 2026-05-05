@@ -7,6 +7,7 @@ import { INFORMES_DOMAINS } from '@/lib/informes/domains'
 import type { InformesDomainId } from '@/lib/informes/types'
 import { cn } from '@/lib/utils'
 import { RrhhInformesPanel } from './domains/RrhhInformesPanel'
+import { TransportsInformesPanel } from './domains/TransportsInformesPanel'
 import { ModuleExportMenuActions } from '@/components/export/ModuleExportMenuContext'
 
 function ComingSoonPanel({ label }: { label: string }) {
@@ -68,6 +69,7 @@ export function InformesModule() {
 
         <main className="flex-1 min-w-0">
           {active === 'rrhh' ? <RrhhInformesPanel /> : null}
+          {active === 'transports' ? <TransportsInformesPanel /> : null}
           {active === 'finances' ? <ComingSoonPanel label="Finances" /> : null}
           {active === 'compres' ? <ComingSoonPanel label="Compres" /> : null}
           {active === 'events' ? <ComingSoonPanel label="Esdeveniments" /> : null}

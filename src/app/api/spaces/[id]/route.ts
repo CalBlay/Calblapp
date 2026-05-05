@@ -37,11 +37,9 @@ export async function DELETE(
     )
     const canDelete =
       role === 'admin' ||
-      role === 'direccio' ||
-      role === 'comercial' ||
-      (dept === 'produccio' && !isProductionWorker({ role, department: dept })) ||
       (role === 'cap' &&
-        (dept === 'empresa' || dept === 'casaments' || dept === 'foodlovers'))
+        dept === 'produccio' &&
+        !isProductionWorker({ role, department: dept }))
 
     if (!canDelete) {
       return NextResponse.json(

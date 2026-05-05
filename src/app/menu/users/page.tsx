@@ -32,6 +32,7 @@ export interface AppUser {
   opsEventsConfigurable?: boolean
   canRespondSurveys?: boolean
   isDepartmentRobaLead?: boolean
+  isTransportLead?: boolean
 
   available?: boolean
   isDriver?: boolean
@@ -305,6 +306,7 @@ function UsersPage() {
                 : true,
             canRespondSurveys: Boolean((modalUser as any).canRespondSurveys),
             isDepartmentRobaLead: Boolean(modalUser.isDepartmentRobaLead),
+            isTransportLead: Boolean((modalUser as any).isTransportLead),
           }}
           onSubmit={async (data) => {
             if (modalUser.personId) {

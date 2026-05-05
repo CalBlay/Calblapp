@@ -31,7 +31,7 @@ export default function SondeigsPage() {
   const { data: session, status } = useSession()
   const role = normalizeRole(String((session?.user as any)?.role || ''))
   const canRespondSurveys = Boolean((session?.user as any)?.canRespondSurveys)
-  const canAccess = canRespondSurveys || ['admin', 'direccio', 'cap'].includes(role)
+  const canAccess = canRespondSurveys || ['admin', 'direccio'].includes(role)
   const [justSubmittedSurveyId, setJustSubmittedSurveyId] = useState<string | null>(null)
 
   const { data, mutate, isLoading } = useSWR(

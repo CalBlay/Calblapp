@@ -598,6 +598,151 @@ export async function createRobaPickupCalendarEvent(
   }
 }
 
+type CreateTransportReviewCalendarEventInput = {
+  assigneeEmail: string
+  plate: string
+  vehicleType?: string
+  reviewDate: string
+  reviewReason: 'annual' | 'km'
+  notes?: string
+}
+
+function buildTransportReviewEventHtml(input: CreateTransportReviewCalendarEventInput): string {
+  const plate = escapeHtml(input.plate || 'Vehicle')
+  const type = escapeHtml(input.vehicleType || '')
+  const date = escapeHtml(formatBarcelonaDate(input.reviewDate))
+  const reason =
+    input.reviewReason === 'km'
+      ? 'Revisió pendent per quilometratge'
+      : 'Revisió anual pendent'
+  const note = String(input.notes || '').trim()
+  const noteHtml = note ? `<p><b>Detall:</b> ${escapeHtml(note).replace(/\n/g, '<br/>')}</p>` : ''
+
+  return `<p>${escapeHtml(reason)}.</p><p><b>Vehicle:</b> ${plate}${type ? `<br/><b>Tipus:</b> ${type}` : ''}<br/><b>Data prevista:</b> ${date}</p>${noteHtml}<p>Reviseu el vehicle al mòdul de Transports.</p>`
+}
+
+export async function createTransportReviewCalendarEvent(
+  input: CreateTransportReviewCalendarEventInput
+): Promise<{ id: string; webLink: string }> {
+  const reviewDate = String(input.reviewDate || '').trim()
+  const assigneeEmail = String(input.assigneeEmail || '').trim()
+  if (!reviewDate || !assigneeEmail) {
+    return { id: '', webLink: '' }
+  }
+
+  const accessToken = await getAccessToken()
+  const endDate = addOneDay(reviewDate)
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        subject: `Revisio transport · ${input.plate || 'Vehicle'}`,
+        body: {
+          contentType: 'HTML',
+          content: buildTransportReviewEventHtml(input),
+        },
+        start: {
+          dateTime: `${reviewDate}T00:00:00`,
+          timeZone: 'Europe/Madrid',
+        },
+        end: {
+          dateTime: `${endDate}T00:00:00`,
+          timeZone: 'Europe/Madrid',
+        },
+        isAllDay: true,
+        isReminderOn: true,
+      }),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`No s'ha pogut crear la revisio al calendari: ${response.status} ${text}`)
+  }
+
+  const data = (await response.json()) as GraphEventResponse
+  return {
+    id: data.id || '',
+    webLink: data.webLink || '',
+  }
+}
+
+type CreateTransportItvCalendarEventInput = {
+  assigneeEmail: string
+  plate: string
+  vehicleType?: string
+  reminderDate: string
+  expiryDate: string
+}
+
+function buildTransportItvEventHtml(input: CreateTransportItvCalendarEventInput): string {
+  const plate = escapeHtml(input.plate || 'Vehicle')
+  const type = escapeHtml(input.vehicleType || '')
+  const reminderDate = escapeHtml(formatBarcelonaDate(input.reminderDate))
+  const expiryDate = escapeHtml(formatBarcelonaDate(input.expiryDate))
+
+  return `<p>Recordatori d'ITV pendent.</p><p><b>Vehicle:</b> ${plate}${type ? `<br/><b>Tipus:</b> ${type}` : ''}<br/><b>Recordatori:</b> ${reminderDate}<br/><b>Caducitat ITV:</b> ${expiryDate}</p><p>Reviseu el vehicle al mòdul de Transports.</p>`
+}
+
+export async function createTransportItvCalendarEvent(
+  input: CreateTransportItvCalendarEventInput
+): Promise<{ id: string; webLink: string }> {
+  const reminderDate = String(input.reminderDate || '').trim()
+  const expiryDate = String(input.expiryDate || '').trim()
+  const assigneeEmail = String(input.assigneeEmail || '').trim()
+  if (!reminderDate || !expiryDate || !assigneeEmail) {
+    return { id: '', webLink: '' }
+  }
+
+  const accessToken = await getAccessToken()
+  const endDate = addOneDay(reminderDate)
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        subject: `ITV transport · ${input.plate || 'Vehicle'}`,
+        body: {
+          contentType: 'HTML',
+          content: buildTransportItvEventHtml(input),
+        },
+        start: {
+          dateTime: `${reminderDate}T00:00:00`,
+          timeZone: 'Europe/Madrid',
+        },
+        end: {
+          dateTime: `${endDate}T00:00:00`,
+          timeZone: 'Europe/Madrid',
+        },
+        isAllDay: true,
+        isReminderOn: true,
+      }),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`No s'ha pogut crear l'avís d'ITV al calendari: ${response.status} ${text}`)
+  }
+
+  const data = (await response.json()) as GraphEventResponse
+  return {
+    id: data.id || '',
+    webLink: data.webLink || '',
+  }
+}
+
 export async function sendTaskAssignmentEmail(input: SendTaskAssignmentEmailInput) {
   const recipientEmail = String(input.recipient.email || '').trim()
   const senderEmail = String(input.senderEmail || '').trim()

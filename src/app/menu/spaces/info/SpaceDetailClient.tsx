@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { canEditFinca, isProductionWorker } from '@/lib/accessControl'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
 import { Trash2 } from 'lucide-react'
+import { normalizeRole } from '@/lib/roles'
 
 
 
@@ -67,12 +68,22 @@ export default function SpaceDetailClient({
     role: session?.user?.role,
     department: (session?.user as any)?.departmentLower ?? (session?.user as any)?.department,
   })
+  const normalizedRole = normalizeRole(session?.user?.role)
+  const normalizedDepartment = String(
+    (session?.user as any)?.departmentLower ?? (session?.user as any)?.department ?? ''
+  )
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
   const canDeleteRole =
-    canEditRole &&
-    !isProductionWorker({
-      role: session?.user?.role,
-      department: (session?.user as any)?.departmentLower ?? (session?.user as any)?.department,
-    })
+    normalizedRole === 'admin' ||
+    (normalizedRole === 'cap' &&
+      normalizedDepartment === 'produccio' &&
+      !isProductionWorker({
+        role: session?.user?.role,
+        department: (session?.user as any)?.departmentLower ?? (session?.user as any)?.department,
+      }))
   const canEdit = !forceReadOnly && canEditRole
   const readOnly = !canEdit
   const isNew = !espai.id
@@ -638,7 +649,7 @@ const handleDelete = async () => {
             <h2 className="text-sm font-semibold text-gray-700">
               Informació de producció
             </h2>
-            {canEdit && (
+            {canDeleteRole && (
               <div className="flex items-center gap-2">
                 <input
                   value={newSideSection}
@@ -675,7 +686,7 @@ const handleDelete = async () => {
                 <label className="block text-xs text-gray-500">
                   Cuina / Office
                 </label>
-                {canEdit && (
+                {canDeleteRole && (
                   <button
                     type="button"
                     onClick={() => setOfficeText('')}
@@ -701,7 +712,7 @@ const handleDelete = async () => {
                 <label className="block text-xs text-gray-500">
                   Aperitiu / Sala / Begudes
                 </label>
-                {canEdit && (
+                {canDeleteRole && (
                   <button
                     type="button"
                     onClick={() => setAperitiuText('')}
@@ -727,7 +738,7 @@ const handleDelete = async () => {
                 <label className="block text-xs text-gray-500">
                   Observacions
                 </label>
-                {canEdit && (
+                {canDeleteRole && (
                   <button
                     type="button"
                     onClick={() => setObsText('')}
@@ -758,7 +769,7 @@ const handleDelete = async () => {
                     <label className="block text-xs text-gray-500">
                       {key}
                     </label>
-                    {canEdit && (
+                    {canDeleteRole && (
                       <button
                         type="button"
                         onClick={() => {

@@ -22,6 +22,17 @@ function formatDate(d?: string | null): string {
   return dt.toLocaleDateString('ca-ES')
 }
 
+function formatKm(value?: number | null): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  return `${new Intl.NumberFormat('ca-ES', { maximumFractionDigits: 0 }).format(value)} km`
+}
+
+function addYears(date: Date, years: number): Date {
+  const next = new Date(date)
+  next.setFullYear(next.getFullYear() + years)
+  return next
+}
+
 export function TransportCard({ transport, driverName, onEdit, onDelete }: Props) {
   const [available, setAvailable] = useState(transport.available)
 
@@ -84,30 +95,78 @@ export function TransportCard({ transport, driverName, onEdit, onDelete }: Props
     }
   }, [transport.itvExpiry, today])
 
+  const latestMileage = useMemo(() => {
+    if (!transport.monthlyMileage?.length) return null
+    return transport.monthlyMileage.reduce<number | null>((maxKm, entry) => {
+      if (typeof entry.km !== 'number' || !Number.isFinite(entry.km)) return maxKm
+      return maxKm == null ? entry.km : Math.max(maxKm, entry.km)
+    }, null)
+  }, [transport.monthlyMileage])
   const serviceInfo = useMemo(() => {
-    if (!transport.nextService) {
-      return { label: 'Sense propera revisio', color: 'text-slate-500' }
-    }
-    const next = new Date(transport.nextService)
-    if (Number.isNaN(next.getTime())) {
-      return { label: 'Data revisio invalida', color: 'text-red-600' }
+    if (!transport.lastService) {
+      return {
+        label: 'Sense ultima revisio',
+        color: 'text-slate-500',
+      }
     }
 
-    const diffMs = next.getTime() - today.getTime()
-    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24))
+    const lastServiceDate = new Date(transport.lastService)
+    if (Number.isNaN(lastServiceDate.getTime())) {
+      return {
+        label: 'Data ultima revisio invalida',
+        color: 'text-red-600',
+      }
+    }
 
-    if (diffDays < 0) {
-      return { label: 'Revisio vencuda', color: 'text-red-600' }
+    const annualDueDate = addYears(lastServiceDate, 1)
+    const annualDiffDays = Math.round((annualDueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    const isLargeTruck = transport.type === 'camioGran' || transport.type === 'camioGranFred'
+    const kmThreshold = isLargeTruck ? 40000 : 20000
+    const lastServiceKm =
+      typeof transport.lastServiceKm === 'number' && Number.isFinite(transport.lastServiceKm)
+        ? transport.lastServiceKm
+        : null
+    const hasValidServiceKm =
+      typeof lastServiceKm === 'number' && lastServiceKm >= 0
+    const kmSinceService =
+      hasValidServiceKm && typeof latestMileage === 'number' && latestMileage >= lastServiceKm
+        ? latestMileage - lastServiceKm
+        : null
+    const kmRemaining = typeof kmSinceService === 'number' ? kmThreshold - kmSinceService : null
+
+    if (typeof kmSinceService === 'number' && kmSinceService >= kmThreshold) {
+      return {
+        label: `Revisio per km vencuda (${formatKm(kmSinceService)})`,
+        color: 'text-red-600',
+      }
     }
-    if (diffDays <= 30) {
-      return { label: `Revisio en ${diffDays} dies`, color: 'text-amber-600' }
+
+    if (annualDiffDays < 0) {
+      return {
+        label: 'Revisio anual vencuda',
+        color: 'text-red-600',
+      }
     }
+
+    if (typeof kmRemaining === 'number' && kmRemaining <= Math.round(kmThreshold * 0.1)) {
+      return {
+        label: `Revisio propera per km (${formatKm(kmRemaining)} restants)`,
+        color: 'text-amber-600',
+      }
+    }
+
+    if (annualDiffDays <= 30) {
+      return {
+        label: `Revisio anual en ${annualDiffDays} dies`,
+        color: 'text-amber-600',
+      }
+    }
+
     return {
-      label: `Propera revisio: ${formatDate(transport.nextService)}`,
+      label: 'Revisio al dia',
       color: 'text-green-600',
     }
-  }, [transport.nextService, today])
-
+  }, [latestMileage, today, transport.lastService, transport.lastServiceKm, transport.type])
   const documentsCount = transport.documents?.length ?? 0
 
   return (

@@ -71,7 +71,7 @@ export const MODULES: ModuleDef[] = [
   { label: 'Torns', path: '/menu/torns', roles: ['admin','direccio','cap','treballador'] },
 
   { label: 'Esdeveniments', path: '/menu/events',
-    roles: ['admin','direccio','cap','comercial','usuari'] },
+    roles: ['admin','direccio','cap','treballador','comercial','usuari','observer'] },
 
   {
     label: 'Auditoria',
@@ -161,7 +161,7 @@ export const MODULES: ModuleDef[] = [
   {
     label: 'Sondeigs',
     path: '/menu/sondeigs',
-    roles: ['admin','direccio','cap','treballador','usuari','comercial','observer'],
+    roles: ['admin','direccio','treballador','usuari','comercial','observer'],
   },
 
   {
@@ -264,8 +264,7 @@ export const MODULES: ModuleDef[] = [
   {
     label: 'Calendar',
     path: '/menu/calendar',
-    roles: ['admin','direccio','cap','comercial','usuari'],
-    departments: ['produccio','empresa','casaments','foodlovers','food lover', 'logistica', 'cuina','serveis'],
+    roles: ['admin','direccio','cap','treballador','comercial','usuari','observer'],
   },
 
   {
@@ -335,7 +334,7 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
       }
 
       if (mod.path === '/menu/sondeigs') {
-        if (role === 'admin' || role === 'direccio' || role === 'cap') return true
+        if (role === 'admin' || role === 'direccio') return true
         return Boolean(user.canRespondSurveys)
       }
 

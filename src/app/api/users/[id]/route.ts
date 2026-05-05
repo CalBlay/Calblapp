@@ -71,6 +71,8 @@ interface UserUpdate {
   canRespondSurveys?: boolean
   /** Responsable de roba del departament (mòdul Roba personal). */
   isDepartmentRobaLead?: boolean
+  /** Responsable de transports dins logística. */
+  isTransportLead?: boolean
   available?: boolean
   isDriver?: boolean
   workerRank?: string
@@ -170,6 +172,14 @@ export async function PUT(
       rawUpdate.commercialName = rawUpdate.commercialName.trim()
       rawUpdate.commercialNameFold = rawUpdate.commercialName ? normLower(rawUpdate.commercialName) : ''
     }
+
+    const finalRole =
+      typeof rawUpdate.role === 'string' ? rawUpdate.role : String(currentData.role || '')
+    const finalDepartment =
+      typeof rawUpdate.department === 'string' ? rawUpdate.department : String(currentData.department || '')
+    const canKeepTransportLead =
+      isCapDepartament(finalRole) && normLower(finalDepartment) === 'logistica'
+    rawUpdate.isTransportLead = canKeepTransportLead ? Boolean(rawUpdate.isTransportLead) : false
 
     // 🔹 Si NO és treballador → netegem camps específics de torns
     if (!isTreballador(rawUpdate.role) && !isCapDepartament(rawUpdate.role)) {

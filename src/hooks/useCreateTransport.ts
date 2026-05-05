@@ -1,8 +1,15 @@
-// file: src/hooks/useCreateTransport.ts
 'use client'
 
 import { useState } from 'react'
+import type { TransportMonthlyMileageEntry } from '@/hooks/useTransports'
 import type { TransportType } from '@/lib/transportTypes'
+
+type TransportDocumentPayload = {
+  id: string
+  name: string
+  url: string
+  uploadedAt: string
+}
 
 export function useCreateTransport() {
   const [loading, setLoading] = useState(false)
@@ -11,7 +18,14 @@ export function useCreateTransport() {
   async function mutateAsync(payload: {
     plate: string
     type: TransportType
-    conductorId?: string | null   // ✅ coherent amb API i Firestore
+    conductorId?: string | null
+    itvDate?: string | null
+    itvExpiry?: string | null
+    lastService?: string | null
+    lastServiceKm?: number | null
+    nextService?: string | null
+    documents?: TransportDocumentPayload[]
+    monthlyMileage?: TransportMonthlyMileageEntry[]
   }) {
     setLoading(true)
     setError(null)

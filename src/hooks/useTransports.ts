@@ -14,6 +14,12 @@ interface TransportDocument {
   uploadedAt: string
 }
 
+export interface TransportMonthlyMileageEntry {
+  month: string
+  km: number
+  updatedAt?: string | null
+}
+
 interface TransportApiItem {
   id?: string
   plate?: string
@@ -26,8 +32,10 @@ interface TransportApiItem {
   itvDate?: string | null
   itvExpiry?: string | null
   lastService?: string | null
+  lastServiceKm?: number | null
   nextService?: string | null
-  documents?: TransportDocument[]
+  documents?: Array<TransportDocument | string>
+  monthlyMileage?: TransportMonthlyMileageEntry[]
 }
 
 export interface Transport {
@@ -44,9 +52,11 @@ export interface Transport {
   itvDate?: string | null          // Data ITV feta
   itvExpiry?: string | null        // Caducitat ITV
   lastService?: string | null      // Última revisió
+  lastServiceKm?: number | null
   nextService?: string | null      // Properà revisió
 
   documents?: TransportDocument[]
+  monthlyMileage?: TransportMonthlyMileageEntry[]
 }
 
 interface UseTransportsResult {
@@ -96,8 +106,52 @@ export function useTransports(): UseTransportsResult {
         itvDate: t.itvDate ?? null,
         itvExpiry: t.itvExpiry ?? null,
         lastService: t.lastService ?? null,
+        lastServiceKm:
+          typeof t.lastServiceKm === 'number' && Number.isFinite(t.lastServiceKm)
+            ? t.lastServiceKm
+            : null,
         nextService: t.nextService ?? null,
-        documents: Array.isArray(t.documents) ? t.documents : [],
+        documents: Array.isArray(t.documents)
+          ? t.documents
+              .map((doc, docIndex) => {
+                if (typeof doc === 'string') {
+                  const url = doc.trim()
+                  if (!url) return null
+                  const fallbackName = url.split('/').pop()?.split('?')[0] || `Document ${docIndex + 1}`
+                  return {
+                    id: `legacy-${docIndex}`,
+                    name: decodeURIComponent(fallbackName),
+                    url,
+                    uploadedAt: '',
+                  }
+                }
+
+                const url = String(doc?.url || '').trim()
+                if (!url) return null
+                return {
+                  id: String(doc?.id || `doc-${docIndex}`),
+                  name: String(doc?.name || url.split('/').pop()?.split('?')[0] || `Document ${docIndex + 1}`),
+                  url,
+                  uploadedAt: String(doc?.uploadedAt || ''),
+                }
+              })
+              .filter((doc): doc is TransportDocument => Boolean(doc))
+          : [],
+        monthlyMileage: Array.isArray(t.monthlyMileage)
+          ? t.monthlyMileage
+              .map<TransportMonthlyMileageEntry | null>((entry) => {
+                const month = String(entry?.month || '').trim()
+                const km = Number(entry?.km)
+                if (!/^\d{4}-\d{2}$/.test(month) || !Number.isFinite(km) || km < 0) return null
+                return {
+                  month,
+                  km,
+                  updatedAt: entry?.updatedAt ?? null,
+                }
+              })
+              .filter((entry): entry is TransportMonthlyMileageEntry => entry !== null)
+              .sort((a, b) => a.month.localeCompare(b.month))
+          : [],
       }))
 
       setData(mapped)

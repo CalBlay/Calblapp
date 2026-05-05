@@ -24,6 +24,7 @@ interface FirestoreUser {
   commercialName?: string
   canRespondSurveys?: boolean
   isDepartmentRobaLead?: boolean
+  isTransportLead?: boolean
 }
 
 // Extend JWT
@@ -36,6 +37,7 @@ declare module 'next-auth/jwt' {
     commercialName?: string
     canRespondSurveys?: boolean
     isDepartmentRobaLead?: boolean
+    isTransportLead?: boolean
     /** `personnel` id quan el treballador té usuari d’app per a roba personal. */
     robaLinkedPersonnelId?: string | null
     robaWorkerDeptNorm?: string | null
@@ -55,6 +57,7 @@ declare module 'next-auth' {
       commercialName?: string
       canRespondSurveys?: boolean
       isDepartmentRobaLead?: boolean
+      isTransportLead?: boolean
       robaLinkedPersonnelId?: string | null
       robaWorkerDeptNorm?: string | null
     } & User
@@ -144,6 +147,7 @@ export const authOptions = {
                 deptLower: normLower(department),
                 canRespondSurveys: Boolean(data.canRespondSurveys),
                 isDepartmentRobaLead: Boolean(data.isDepartmentRobaLead),
+                isTransportLead: Boolean(data.isTransportLead),
               }
             } else {
               console.log('[AUTH] Password incorrecte. Input:', passInput, 'Doc:', passDoc)
@@ -170,6 +174,7 @@ export const authOptions = {
           canRespondSurveys?: boolean
           commercialName?: string
           isDepartmentRobaLead?: boolean
+          isTransportLead?: boolean
         }
 
         token.sub = u.id
@@ -180,6 +185,7 @@ export const authOptions = {
         token.canRespondSurveys = Boolean(u.canRespondSurveys)
         token.commercialName = u.commercialName || ''
         token.isDepartmentRobaLead = Boolean(u.isDepartmentRobaLead)
+        ;(token as JWT & { isTransportLead?: boolean }).isTransportLead = Boolean(u.isTransportLead)
         token.robaPersonnelLinkResolved = false
       }
 
@@ -220,6 +226,7 @@ export const authOptions = {
           canRespondSurveys: Boolean(token.canRespondSurveys),
           commercialName: token.commercialName,
           isDepartmentRobaLead: Boolean(token.isDepartmentRobaLead),
+          isTransportLead: Boolean((token as JWT & { isTransportLead?: boolean }).isTransportLead),
           robaLinkedPersonnelId: token.robaLinkedPersonnelId ?? null,
           robaWorkerDeptNorm: token.robaWorkerDeptNorm ?? null,
         },

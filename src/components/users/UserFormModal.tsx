@@ -34,6 +34,7 @@ export interface User {
   opsProjectsConfigurable?: boolean
   canRespondSurveys?: boolean
   isDepartmentRobaLead?: boolean
+  isTransportLead?: boolean
 }
 
 export interface NewUserPayload {
@@ -48,6 +49,7 @@ export interface NewUserPayload {
   opsProjectsConfigurable?: boolean
   canRespondSurveys?: boolean
   isDepartmentRobaLead?: boolean
+  isTransportLead?: boolean
   available?: boolean
   isDriver?: boolean
   workerRank?: string
@@ -96,6 +98,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const [opsProjectsConfigurable, setOpsProjectsConfigurable] = React.useState(true)
   const [canRespondSurveys, setCanRespondSurveys] = React.useState(false)
   const [isDepartmentRobaLead, setIsDepartmentRobaLead] = React.useState(false)
+  const [isTransportLead, setIsTransportLead] = React.useState(false)
 
   const { data: channelsData } = useSWR('/api/messaging/channels?scope=all', (url: string) =>
     fetch(url).then((r) => r.json())
@@ -114,6 +117,13 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     role?.toLowerCase().trim() === 'treballador' ||
     role?.toLowerCase().trim() === 'cap departament'
   const requiresCorporateEmail = isAdmin || ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
+  const canBeTransportLead =
+    normalizeRole(role) === 'cap' &&
+    department
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim() === 'logistica'
 
   React.useEffect(() => {
     let active = true
@@ -136,6 +146,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         setIsDriver(Boolean(data.driver?.isDriver))
         setWorkerRank(data.workerRank ?? 'equip')
         setIsDepartmentRobaLead(Boolean((data as { isDepartmentRobaLead?: boolean }).isDepartmentRobaLead))
+        setIsTransportLead(Boolean((data as { isTransportLead?: boolean }).isTransportLead))
         setPassword(Math.random().toString(36).slice(-8))
       } catch (err) {
         console.error('Error carregant sollicitud:', err)
@@ -169,12 +180,19 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     )
     setCanRespondSurveys(Boolean(user.canRespondSurveys))
     setIsDepartmentRobaLead(Boolean(user.isDepartmentRobaLead))
+    setIsTransportLead(Boolean(user.isTransportLead))
     if (user.role?.toLowerCase() === 'treballador') {
       setAvailable(user.available ?? true)
       setIsDriver(user.driver?.isDriver ?? false)
       setWorkerRank(user.workerRank ?? 'equip')
     }
   }, [user])
+
+  React.useEffect(() => {
+    if (!canBeTransportLead && isTransportLead) {
+      setIsTransportLead(false)
+    }
+  }, [canBeTransportLead, isTransportLead])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -221,6 +239,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         opsProjectsConfigurable,
         canRespondSurveys,
         isDepartmentRobaLead,
+        isTransportLead,
       }
       if (password.trim()) payload.password = password.trim()
       await onSubmit(payload)
@@ -241,6 +260,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       opsProjectsConfigurable,
       canRespondSurveys,
       isDepartmentRobaLead,
+      isTransportLead,
     }
     if (isWorker) {
       payload.available = available
@@ -336,6 +356,21 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                 onCheckedChange={setIsDepartmentRobaLead}
               />
             </div>
+
+            {canBeTransportLead ? (
+              <div className="flex items-center justify-between rounded-xl border p-3">
+                <div>
+                  <Label className="text-sm">Responsable de transports</Label>
+                  <div className="text-xs text-gray-500">
+                    Rebrà notificacions i push quan un vehicle tingui la revisió vençuda.
+                  </div>
+                </div>
+                <Switch
+                  checked={isTransportLead}
+                  onCheckedChange={setIsTransportLead}
+                />
+              </div>
+            ) : null}
 
             {normalizeRole(role) === 'comercial' ? (
               <div>
