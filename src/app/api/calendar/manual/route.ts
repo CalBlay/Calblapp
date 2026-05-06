@@ -27,6 +27,7 @@ export async function POST(req: Request) {
       NomEvent: body.NomEvent,
       Servei: body.Servei || '',
       Comercial: body.Comercial || '',
+      Responsable: String(body.Responsable || '').trim(),
       LN: body.LN || 'Altres',
       DataInici: body.DataInici,
       DataFi: body.DataFi || body.DataInici,

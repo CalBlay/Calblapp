@@ -75,6 +75,9 @@ export default function EventsPage() {
   const role = String(session?.user?.role || '').toLowerCase()
   const isAdmin = role === 'admin' || role === 'direccio'
   const userDept = String((session?.user as SessionUser)?.department || 'total').toLowerCase()
+  const isCasamentsCommercialDept = normalize(
+    String((session?.user as SessionUser)?.department || '')
+  ).includes('casament')
   const productionWorker = isProductionWorker({
     role: (session?.user as SessionUser)?.role,
     department: (session?.user as SessionUser)?.department,
@@ -263,11 +266,23 @@ export default function EventsPage() {
     if (commercialFilterInitialized) return
     if (role !== 'comercial') return
     const user = session?.user as SessionUser | undefined
-    const commercialName = String(user?.commercialName || user?.name || '').trim()
-    if (!commercialName) return
-    setFilters((prev) => ({ ...prev, commercial: commercialName }))
+    const displayName = String(user?.commercialName || user?.name || '').trim()
+    if (!displayName) return
+    if (isCasamentsCommercialDept) {
+      setFilters((prev) => ({
+        ...prev,
+        responsable: displayName,
+        commercial: '__all__',
+      }))
+    } else {
+      setFilters((prev) => ({
+        ...prev,
+        commercial: displayName,
+        responsable: '__all__',
+      }))
+    }
     setCommercialFilterInitialized(true)
-  }, [commercialFilterInitialized, role, session?.user])
+  }, [commercialFilterInitialized, role, session?.user, isCasamentsCommercialDept])
 
   useEffect(() => {
     setAvisosState(prev => {
@@ -341,6 +356,22 @@ export default function EventsPage() {
     queueMicrotask(() => setAuditOpen(true))
   }, [selectedEvent])
 
+  const responsablesForFilter = useMemo(() => {
+    const fromApi = responsablesDetailed?.map((r) => r.name).filter(Boolean) ?? []
+    const fromEvents = new Set<string>()
+    for (const ev of events) {
+      const raw = String(ev.responsableName || '').trim()
+      if (!raw) continue
+      for (const part of raw.split(',')) {
+        const t = part.trim()
+        if (t) fromEvents.add(t)
+      }
+    }
+    return Array.from(new Set([...fromApi, ...fromEvents])).sort((a, b) =>
+      a.localeCompare(b, 'ca')
+    )
+  }, [events, responsablesDetailed])
+
   return (
     <div className={`space-y-5 px-4 pb-8 ${suppressMenuInteraction ? 'pointer-events-none select-none' : ''}`}>
       <ModuleHeader
@@ -354,6 +385,7 @@ export default function EventsPage() {
         setFilters={f => setFilters(prev => ({ ...prev, ...f }))}
         visibleFilters={[]}
         hiddenFilters={['ln', 'responsable', 'location']}
+        showResponsableFilter
         lnOptions={Array.from(
           new Set(
             filteredEvents
@@ -361,7 +393,7 @@ export default function EventsPage() {
               .filter((value): value is LnKey => Boolean(value))
           )
         ).sort()}
-        responsables={responsablesDetailed?.map(r => r.name).filter(Boolean) ?? []}
+        responsables={responsablesForFilter}
         commercials={Array.from(
           new Set(
             events

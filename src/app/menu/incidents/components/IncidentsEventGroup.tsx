@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import IncidentsRow from './IncidentsRow'
+import IncidentsMobileCard from './IncidentsMobileCard'
 import IncidentsEventHeader from './IncidentsEventHeader'
 import { Incident } from '@/hooks/useIncidents'
 import FincaModal from '@/components/spaces/FincaModal'
@@ -58,7 +59,7 @@ export default function IncidentsEventGroup({
 
   return (
     <div
-      className="border-b last:border-0 px-4 py-3"
+      className="border-b last:border-0 px-3 py-3 sm:px-4"
       style={
         {
           contentVisibility: 'auto',
@@ -90,42 +91,62 @@ export default function IncidentsEventGroup({
         eventCode={selectedEventCode}
       />
 
-      <table className={cn('mt-3 w-full table-fixed', typography('bodySm'))}>
-        <thead>
-          <tr className="bg-slate-50 text-slate-600">
-            <th className={cn('w-12 p-2 text-left font-semibold', typography('bodySm'))}>Seg.</th>
-            <th className={cn('w-20 p-2 text-left font-semibold', typography('bodySm'))}>Fotos</th>
-            <th className={cn('w-20 p-2 text-left font-semibold', typography('bodySm'))}>Nº</th>
-            <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Autor</th>
-            <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Dept</th>
-            <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Importància</th>
-            <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Estat</th>
-            <th className={cn('w-auto p-2 text-left font-semibold', typography('bodySm'))}>Incidència</th>
-            <th className={cn('w-36 p-2 text-left font-semibold', typography('bodySm'))}>Categoria</th>
-            <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Origen</th>
-            <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Prioritat</th>
-            <th className={cn('w-14 p-2 text-left font-semibold', typography('bodySm'))}>Del.</th>
-          </tr>
-        </thead>
+      <div className="mt-3 space-y-3 md:hidden">
+        {event.rows.map((inc: Incident) => (
+          <IncidentsMobileCard
+            key={inc.id}
+            inc={inc}
+            isEditing={editingId === inc.id}
+            beginEdit={beginEdit}
+            applyPatch={applyPatch}
+            onDelete={onDelete}
+            openOps={onOpenOperations}
+            openImages={onOpenImages}
+            canDelete={canDeleteIncident(inc)}
+            editValues={editValues}
+            setEditValues={setEditValues}
+          />
+        ))}
+      </div>
 
-        <tbody>
-          {event.rows.map((inc: Incident) => (
-            <IncidentsRow
-              key={inc.id}
-              inc={inc}
-              isEditing={editingId === inc.id}
-              beginEdit={beginEdit}
-              applyPatch={applyPatch}
-              onDelete={onDelete}
-              openOps={onOpenOperations}
-              openImages={onOpenImages}
-              canDelete={canDeleteIncident(inc)}
-              editValues={editValues}
-              setEditValues={setEditValues}
-            />
-          ))}
-        </tbody>
-      </table>
+      <div className="mt-3 hidden overflow-x-auto md:block">
+        <table className={cn('w-full min-w-[1140px] table-fixed', typography('bodySm'))}>
+          <thead>
+            <tr className="bg-slate-50 text-slate-600">
+              <th className={cn('w-12 p-2 text-left font-semibold', typography('bodySm'))}>Seg.</th>
+              <th className={cn('w-20 p-2 text-left font-semibold', typography('bodySm'))}>Fotos</th>
+              <th className={cn('w-20 p-2 text-left font-semibold', typography('bodySm'))}>Nº</th>
+              <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Autor</th>
+              <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Dept</th>
+              <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Importància</th>
+              <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Estat</th>
+              <th className={cn('w-auto p-2 text-left font-semibold', typography('bodySm'))}>Incidència</th>
+              <th className={cn('w-36 p-2 text-left font-semibold', typography('bodySm'))}>Categoria</th>
+              <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Origen</th>
+              <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Prioritat</th>
+              <th className={cn('w-14 p-2 text-left font-semibold', typography('bodySm'))}>Del.</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {event.rows.map((inc: Incident) => (
+              <IncidentsRow
+                key={inc.id}
+                inc={inc}
+                isEditing={editingId === inc.id}
+                beginEdit={beginEdit}
+                applyPatch={applyPatch}
+                onDelete={onDelete}
+                openOps={onOpenOperations}
+                openImages={onOpenImages}
+                canDelete={canDeleteIncident(inc)}
+                editValues={editValues}
+                setEditValues={setEditValues}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

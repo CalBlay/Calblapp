@@ -39,6 +39,8 @@ export type FiltersBarProps = {
   statusLabel?: string
   priorityOptions?: { value: string; label: string }[]
   priorityLabel?: string
+  /** Si és cert, es mostra el filtre Responsable al panell encara que no hi hagi opcions (només «Tots»). */
+  showResponsableFilter?: boolean
 }
 
 export default function FiltersBar({
@@ -56,6 +58,7 @@ export default function FiltersBar({
   statusLabel = 'Estat',
   priorityOptions = [],
   priorityLabel = 'Prioritat',
+  showResponsableFilter = false,
 }: FiltersBarProps) {
   const pathname = usePathname()
   const isQuadrants = pathname?.startsWith('/menu/quadrants')
@@ -234,7 +237,8 @@ export default function FiltersBar({
                   </div>
                 )}
 
-                {responsables && responsables.length > 0 && (
+                {(showResponsableFilter ||
+                  (responsables && responsables.length > 0)) && (
                   <div className="flex flex-col gap-1">
                     <label className="text-sm text-gray-600">Responsable</label>
                     <select

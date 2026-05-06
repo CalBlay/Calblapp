@@ -77,7 +77,8 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     NumPax: get(deal, 'NumPax', 'numPax', 'pax') ?? '',
     Ubicacio: get(deal, 'Ubicacio', 'ubicacio', 'location') || '',
     Servei: get(deal, 'Servei', 'servei', 'service') || '',
-    Comercial: get(deal, 'Comercial', 'comercial', 'responsable') || '',
+    Comercial: get(deal, 'Comercial', 'comercial') || '',
+    Responsable: get(deal, 'Responsable', 'responsable') || '',
   }))
 
   // Guarda una còpia per poder fer reset si cal
@@ -280,10 +281,11 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
         deal,
         'Comercial',
         'comercial',
-        'responsable',
         'salesperson',
         'Salesperson'
       ) || ''
+    const Responsable =
+      get(deal, 'Responsable', 'responsable', 'ResponsableZoho') || ''
     const NumPax =
       get(
         deal,
@@ -326,6 +328,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
       Ubicacio,
       Servei,
       Comercial,
+      Responsable,
     }
 
     setEditData(next as any)
@@ -725,9 +728,12 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
             )}
           </div>
 
-          {/* Comercial */}
+          {/* Comercial (propietari oportunitat / venda — Zoho Owner) */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Comercial</label>
+            <label className="block text-xs text-gray-500 mb-1">
+              Comercial
+              <span className="text-gray-400 font-normal"> (oportunitat)</span>
+            </label>
             {isManual && !readonly ? (
               <select
                 value={editData.Comercial}
@@ -746,6 +752,23 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
               </select>
             ) : (
               <p>{editData.Comercial || '—'}</p>
+            )}
+          </div>
+
+          {/* Responsable (seguiment operatiu — Zoho Responsable) */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">
+              Responsable
+              <span className="text-gray-400 font-normal"> (seguiment)</span>
+            </label>
+            {isManual && !readonly ? (
+              <Input
+                value={editData.Responsable}
+                onChange={(e) => handleChange('Responsable', e.target.value)}
+                placeholder="Nom del responsable de seguiment"
+              />
+            ) : (
+              <p>{editData.Responsable || '—'}</p>
             )}
           </div>
 

@@ -44,6 +44,8 @@ interface NormalizedDeal {
   LN: string
   Servei: string
   Comercial: string
+  /** Responsable operatiu (Zoho), independent del comercial de venda (Owner). */
+  Responsable: string
   DataInici: string | null
   DataFi: string | null
   HoraInici?: string | null
@@ -190,6 +192,11 @@ const parseZohoTime = (raw?: string | null): string | null => {
   return match ? match[1] : null
 }
 
+/** Si el Responsable operatiu és un camp API diferent del `Responsable` principal, definir-lo al `.env`. */
+const ZOHO_EXTRA_RESPONSABLE_FIELD = String(
+  process.env.ZOHO_DEAL_FIELD_RESPONSABLE_OPERATIU || ''
+).trim()
+
 const extractZohoDisplayName = (
   value?: string | ZohoNamedValue | Array<string | ZohoNamedValue> | null
 ): string | null => {
@@ -212,6 +219,26 @@ const extractZohoDisplayName = (
   }
 
   return null
+}
+
+function operativeResponsableFromZohoDeal(
+  d: ZohoDeal & Record<string, unknown>
+): string {
+  const primary = extractZohoDisplayName(d.Responsable)
+  if (primary) return primary
+  if (ZOHO_EXTRA_RESPONSABLE_FIELD) {
+    const raw = d[ZOHO_EXTRA_RESPONSABLE_FIELD]
+    return (
+      extractZohoDisplayName(
+        raw as
+          | string
+          | ZohoNamedValue
+          | Array<string | ZohoNamedValue>
+          | null
+      ) || ''
+    )
+  }
+  return ''
 }
 
 const isBadCode = (code?: string | null) =>
@@ -365,8 +392,11 @@ export async function syncZohoDealsToFirestore(): Promise<{
 
   const todayISO = new Date().toISOString().slice(0, 10)
   const moduleName = process.env.ZOHO_CRM_MODULE || 'Deals'
-  const fields =
-  'id,Deal_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description'
+  const baseFields =
+    'id,Deal_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description'
+  const fields = ZOHO_EXTRA_RESPONSABLE_FIELD
+    ? `${baseFields},${ZOHO_EXTRA_RESPONSABLE_FIELD}`
+    : baseFields
 
 
   // 1️⃣ Llegir oportunitats amb paginació
@@ -615,9 +645,10 @@ const ubicacioLabel = stripCode(ubicacioRaw).trim()
     const fincaCode = fincaMatch?.code
     const fincaLN = fincaMatch?.ln
     const ownerCommercial = d.Owner?.name?.trim() || '—'
-    const responsableCommercial = extractZohoDisplayName(d.Responsable)
-    const comercial =
-      LN === 'Casaments' ? responsableCommercial || ownerCommercial : ownerCommercial
+    const comercial = ownerCommercial
+    const responsableZoho = operativeResponsableFromZohoDeal(
+      d as ZohoDeal & Record<string, unknown>
+    )
 
     normalized.push({
       idZoho: String(d.id),
@@ -626,6 +657,7 @@ const ubicacioLabel = stripCode(ubicacioRaw).trim()
       LN,
       Servei: d.Servicio_texto || d.Men_texto || '',
       Comercial: comercial,
+      Responsable: responsableZoho,
       DataInici: dateISO,
       DataFi: dataFiISO,
       ObservacionsZoho: d.Description || d.Observacions || null,

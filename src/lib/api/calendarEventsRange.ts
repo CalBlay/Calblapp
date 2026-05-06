@@ -100,7 +100,10 @@ export async function computeCalendarEventsInRange(
           typeof d.codeMatchScore === 'number' ? d.codeMatchScore : undefined,
 
         comercial: d.Comercial || d.comercial || '',
+        Responsable: d.Responsable || d.responsable || '',
         servei: d.Servei || d.servei || '',
+
+        origen: d.origen || 'zoho',
 
         numPax:
           d.NumPax ??

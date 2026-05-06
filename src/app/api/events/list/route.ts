@@ -301,6 +301,8 @@ const getEventsListCached = unstable_cache(
       const horaInici =
         typeof rawHora === 'string' ? rawHora.trim().slice(0, 5) : ''
       const lnValue = d?.LN != null && d.LN !== '' ? String(d.LN) : 'Altres'
+      const responsableZoho =
+        firstDocString(d, ['Responsable', 'RESPONSABLE', 'responsable']) || ''
 
       return {
         id: doc.id,
@@ -313,6 +315,7 @@ const getEventsListCached = unstable_cache(
         importAmount,
         eventCode,
         commercial,
+        responsableZoho,
         codeConfirmed,
         codeMatchScore,
         htmlLink: null,
@@ -392,11 +395,25 @@ const getEventsListCached = unstable_cache(
     const enriched = filteredByRange.map((ev) => {
       const keyByCode = normCode(ev.eventCode || '')
       const responsablesForCode = Array.from(responsablesMap.get(keyByCode) || [])
-      const responsableName = responsablesForCode.join(', ')
+      const fromZoho = String((ev as { responsableZoho?: string }).responsableZoho || '').trim()
+      const merged = [...new Set([fromZoho, ...responsablesForCode].filter(Boolean))]
+      const responsableName = merged.join(', ')
       const state = stateMap.get(keyByCode) || 'pending'
       const aviso = ev.eventCode ? avisoMap.get(String(ev.eventCode).trim()) ?? null : null
       return { ...ev, responsableName, state, lastAviso: aviso }
     })
+
+    for (const ev of enriched) {
+      const z = String((ev as { responsableZoho?: string }).responsableZoho || '').trim()
+      if (!z) continue
+      responsablesSet.add(z)
+      responsablesDetailedSet.add(
+        JSON.stringify({
+          name: z,
+          department: String(ev.lnLabel || ev.lnKey || '').toLowerCase(),
+        })
+      )
+    }
 
     let finalEvents = enriched
     if (role === 'treballador' && !isProductionOperationalWorker) {
@@ -424,7 +441,7 @@ const getEventsListCached = unstable_cache(
       },
     }
   },
-  ['api-events-list-v1'],
+  ['api-events-list-v2'],
   { revalidate: EVENTS_LIST_REVALIDATE_SEC }
 )
 

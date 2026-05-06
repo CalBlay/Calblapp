@@ -6,6 +6,7 @@ export interface Deal {
   id: string
   NomEvent: string
   Comercial: string
+  Responsable?: string
   LN?: string
   Servei?: string
   StageGroup: string
@@ -133,6 +134,7 @@ export function useCalendarData(filters?: {
           id: ev.id,
           NomEvent: ev.summary || '(Sense titol)',
           Comercial: ev.Comercial || ev.comercial || '',
+          Responsable: ev.Responsable || ev.responsable || '',
           LN: ev.LN || ev.lnLabel || 'Altres',
           Servei: ev.Servei || ev.servei || '',
           StageGroup: ev.StageGroup || '',
@@ -166,7 +168,7 @@ export function useCalendarData(filters?: {
           codeConfirmed,
           codeMatchScore,
           codeStatus,
-          origen: ev.origen || 'firestore',
+          origen: ev.origen || 'zoho',
           files: fileEntries,
         }
       })
