@@ -16,12 +16,14 @@ type SpaceRow = {
   }>
 }
 
+type RawSpaceEvent = Record<string, unknown>
+
 /**
  * ðŸ” Adapter
  * - NomÃ©s per pintar la celÂ·la (SpaceCell)
  * - NO sâ€™utilitza per passar dades al modal
  */
-function adaptEventForCell(ev: any) {
+function adaptEventForCell(ev: RawSpaceEvent) {
   return {
     NomEvent: ev.NomEvent ?? ev.eventName ?? '',
     Comercial: ev.Comercial ?? ev.commercial ?? '',
@@ -42,7 +44,8 @@ interface SpaceGridProps {
  * El modal rep SEMPRE lâ€™event original (sense perdre camps).
  */
 export default function SpaceGrid({ data, totals = [], baseDate }: SpaceGridProps) {
-  const [selectedEvent, setSelectedEvent] = useState<any | null>(null)
+  void totals
+  const [selectedEvent, setSelectedEvent] = useState<RawSpaceEvent | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
   const openInNewTab = (url: string) => {
@@ -66,7 +69,7 @@ export default function SpaceGrid({ data, totals = [], baseDate }: SpaceGridProp
     }
   }
 
-  const handleEventClick = (ev: any) => {
+  const handleEventClick = (ev: RawSpaceEvent) => {
     if (typeof window !== 'undefined') {
       const isMobile = window.innerWidth < 768
       const targetCode = ev?.code || ev?.Code || ev?.id
@@ -135,13 +138,13 @@ export default function SpaceGrid({ data, totals = [], baseDate }: SpaceGridProp
                 const cell = row?.dies?.[i]
                 if (!cell?.events) continue
 
-                const verds = cell.events.filter((e: any) => {
+                const verds = cell.events.filter((e: RawSpaceEvent) => {
                   const s = String(e.stage ?? e.StageGroup ?? '').toLowerCase()
                   return s === 'verd' || s.includes('confirmat')
                 })
 
                 totalPaxVerd += verds.reduce(
-                  (a: number, e: any) => a + Number(e.numPax ?? 0),
+                  (a: number, e: RawSpaceEvent) => a + Number(e.numPax ?? 0),
                   0
                 )
                 totalEventsVerd += verds.length
@@ -213,7 +216,7 @@ export default function SpaceGrid({ data, totals = [], baseDate }: SpaceGridProp
                     key={`cell-${rIdx}-${cIdx}`}
                     className="p-1 space-y-1 w-[150px] min-w-[150px] max-w-[150px]"
                   >
-                    {(cell?.events ?? []).map((ev: any, eIdx: number) => {
+                    {(cell?.events ?? []).map((ev: RawSpaceEvent, eIdx: number) => {
                       const cellEvent = adaptEventForCell(ev)
 
                       return (

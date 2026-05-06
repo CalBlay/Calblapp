@@ -31,6 +31,55 @@ type ComercialCandidate = {
   departmentBucket: string
 }
 
+type SessionUserShape = {
+  role?: string
+  department?: string
+  name?: string
+  commercialName?: string
+}
+
+type CalendarEditData = {
+  LN: string
+  code: string
+  NomEvent: string
+  DataInici: string
+  DataFi: string
+  HoraInici: string
+  HoraFi: string
+  NumPax: number | string | null
+  Ubicacio: string
+  Servei: string
+  Comercial: string
+  Responsable: string
+}
+
+type CalendarDealRecord = Deal & Record<string, unknown>
+
+const normalizeLoose = (value?: string | null) =>
+  (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+
+const normalizeDept = (value?: string | null) => {
+  const base = normalizeLoose(value)
+  const compact = base.replace(/\s+/g, '')
+  if (compact === 'foodlover' || compact === 'foodlovers') return 'foodlovers'
+  if (compact === 'grupsrestaurants') return 'grups restaurants'
+  return base
+}
+
+const normalizeDeptForLnBucket = (value?: string | null) => {
+  const base = normalizeDept(value)
+  if (!base) return ''
+  const compact = base.replace(/\s+/g, '')
+  if (compact === 'restauracio' || compact === 'restaurants') return 'grups restaurants'
+  if (base === 'altres') return ''
+  if (base.includes('menjar')) return 'foodlovers'
+  return base
+}
+
 /**
  * CalendarModal (consulta i enllaços SharePoint)
  * - No puja fitxers. Guarda enllaços (file1, file2, ...)
@@ -46,15 +95,8 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   const [comercialLoading, setComercialLoading] = useState(false)
   const [codeDirty, setCodeDirty] = useState(false)
 
-  const norm = (s?: string | null) =>
-    (s || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .trim()
-
   // Helper per recuperar camps sense importar majúscules/minúscules
-  const get = (obj: any, ...keys: string[]) => {
+  const get = (obj: Record<string, unknown> | null | undefined, ...keys: string[]) => {
     for (const k of keys) {
       const foundKey = Object.keys(obj || {}).find(
         (key) => key.toLowerCase() === k.toLowerCase()
@@ -65,7 +107,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   }
 
   // ✅ Dades del formulari de l’esdeveniment (estat inicial)
-  const [editData, setEditData] = useState(() => ({
+  const [editData, setEditData] = useState<CalendarEditData>(() => ({
     // 🔧 FIX: abans hi havia get('ev.code'...) amb string literal. Ara és get(deal,...)
     LN: get(deal, 'LN', 'ln', 'liniaNegoci') || 'Altres',
     code: get(deal, 'code', 'codi', 'eventcode', 'codigo', 'C_digo') || '',
@@ -94,28 +136,11 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     deal.origen === 'zoho'
   const isManual = deal.origen !== 'zoho'
 
-  const normalizeDept = (value?: string | null) => {
-    const base = norm(value)
-    const compact = base.replace(/\s+/g, '')
-    if (compact === 'foodlover' || compact === 'foodlovers') return 'foodlovers'
-    if (compact === 'grupsrestaurants') return 'grups restaurants'
-    return base
-  }
-
-  const normalizeDeptForLnBucket = (value?: string | null) => {
-    const base = normalizeDept(value)
-    if (!base) return ''
-    const compact = base.replace(/\s+/g, '')
-    if (compact === 'restauracio' || compact === 'restaurants') return 'grups restaurants'
-    if (base === 'altres') return ''
-    if (base.includes('menjar')) return 'foodlovers'
-    return base
-  }
-
-  const role = norm((session?.user as any)?.role)
-  const department = normalizeDept((session?.user as any)?.department)
-  const sessionName = String((session?.user as any)?.name || '').trim()
-  const sessionCommercialName = String((session?.user as any)?.commercialName || '').trim()
+  const sessionUser = (session?.user ?? null) as SessionUserShape | null
+  const role = normalizeLoose(sessionUser?.role)
+  const department = normalizeDept(sessionUser?.department)
+  const sessionName = String(sessionUser?.name || '').trim()
+  const sessionCommercialName = String(sessionUser?.commercialName || '').trim()
   const isAdmin = role === 'admin'
   const isDireccio = role === 'direccio' || role === 'direccion'
   const isProduccio = department === 'produccio'
@@ -145,9 +170,9 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   const canEdit = !readonly && (canEditStageVerd || canEditManual)
   const isOwnCommercialEvent = useMemo(() => {
     if (!isComercialRole) return false
-    const eventCommercial = norm(editData.Comercial)
+    const eventCommercial = normalizeLoose(editData.Comercial)
     if (!eventCommercial) return false
-    const aliases = [sessionCommercialName, sessionName].map(norm).filter(Boolean)
+    const aliases = [sessionCommercialName, sessionName].map(normalizeLoose).filter(Boolean)
     return aliases.includes(eventCommercial)
   }, [editData.Comercial, isComercialRole, sessionCommercialName, sessionName])
   const canEditCode =
@@ -175,7 +200,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     const current = String(editData.Comercial || '').trim()
     if (!current) return filteredComercialOptions
     const exists = filteredComercialOptions.some(
-      (n) => norm(n) === norm(current)
+      (n) => normalizeLoose(n) === normalizeLoose(current)
     )
     return exists ? filteredComercialOptions : [current, ...filteredComercialOptions]
   }, [filteredComercialOptions, editData.Comercial])
@@ -193,9 +218,9 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
         if (!Array.isArray(data)) return
 
         const candidates: ComercialCandidate[] = data
-          .filter((u: any) => {
+          .filter((u: { role?: string }) => {
             const roleRaw = u?.role ?? ''
-            const r = norm(String(roleRaw))
+            const r = normalizeLoose(String(roleRaw))
             return (
               r === 'comercial' ||
               r === 'cap' ||
@@ -203,7 +228,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
               r === 'capdepartament'
             )
           })
-          .map((u: any) => ({
+          .map((u: { name?: string; department?: string }) => ({
             name: String(u?.name || '').trim(),
             departmentBucket: normalizeDeptForLnBucket(u?.department),
           }))
@@ -211,7 +236,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
 
         const uniq = Array.from(
           new Map<string, ComercialCandidate>(
-            candidates.map((candidate) => [norm(candidate.name), candidate])
+            candidates.map((candidate) => [normalizeLoose(candidate.name), candidate])
           ).values()
         ).sort((a, b) => a.name.localeCompare(b.name, 'ca'))
 
@@ -313,7 +338,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
       LN: deal.LN,
       origen: deal.origen,
       collection: deal.collection,
-      ObservacionsZoho: (deal as any)?.ObservacionsZoho,
+      ObservacionsZoho: (deal as CalendarDealRecord)?.ObservacionsZoho,
     })
 
     const next = {
@@ -331,15 +356,15 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
       Responsable,
     }
 
-    setEditData(next as any)
-    setInitialData(next as any)
+    setEditData(next)
+    setInitialData(next)
     setMultiDay(Boolean(DataFi && DataFi !== DataInici))
     setCodeDirty(false)
   }, [deal])
 
   // 🔄 Quan canviï el deal, carregar directament els adjunts estructurats
   useEffect(() => {
-    const anyDeal = deal as any
+    const anyDeal = deal as CalendarDealRecord
     const nextFiles = Array.isArray(anyDeal?.files) ? anyDeal.files : []
     setFiles(nextFiles)
   }, [deal])
@@ -382,7 +407,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
       const normalizedDataFi = multiDay
         ? endDate || startDate || null
         : startDate || null
-      const payload: Record<string, any> = {
+      const payload: Record<string, unknown> = {
         ...editData,
         DataFi: normalizedDataFi,
         // 🔧 FIX: si ve buit, deixem null (igual que abans però més robust)
@@ -428,7 +453,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     if (!confirm('Vols eliminar aquest enllaç del document?')) return
 
     try {
-      const payload: Record<string, any> = { collection: COLLECTION }
+      const payload: Record<string, unknown> = { collection: COLLECTION }
       payload[key] = null
       const res = await fetch(`/api/calendar/manual/${deal.id}`, {
         method: 'PUT',
@@ -715,7 +740,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
               <div className="relative">
                 <Input
                   type="number"
-                  value={editData.NumPax as any}
+                  value={editData.NumPax ?? ''}
                   onChange={(e) => handleChange('NumPax', e.target.value)}
                   className="pr-12"
                 />

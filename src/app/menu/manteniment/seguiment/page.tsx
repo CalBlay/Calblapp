@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { differenceInCalendarDays, format, parseISO } from 'date-fns'
-import { ca } from 'date-fns/locale'
-import { ChevronDown, ChevronUp, ExternalLink, Filter, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, X } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useFilters } from '@/context/FiltersContext'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
@@ -34,6 +33,34 @@ type Preventiu = {
   recordId?: string | null
   history: Array<{ status: MaintenanceStatus; at: number; byName?: string; startTime?: string | null; endTime?: string | null; note?: string | null }>
 }
+
+type CompletedRecord = {
+  id?: string
+  plannedId?: string
+  status?: string
+  completedAt?: string | number | null
+  updatedAt?: string | number | null
+  statusHistory?: WorkHistoryEntry[]
+}
+
+type PlannedPreventiuApiItem = {
+  id?: string | number
+  title?: string
+  location?: string
+  workerNames?: unknown[]
+  lastStatus?: string
+  lastProgress?: number | null
+  date?: string | null
+  startTime?: string | null
+  endTime?: string | null
+  createdAt?: number | string | null
+  lastUpdatedAt?: number | string | null
+  updatedAt?: number | string | null
+  lastCompletedAt?: number | string | null
+  lastRecordId?: string | null
+}
+
+type SeguimentRow = Ticket | Preventiu
 
 const STATUSES: MaintenanceStatus[] = ['nou', 'assignat', 'en_curs', 'espera', 'fet', 'no_fet', 'validat']
 const STATUS_LABELS: Record<MaintenanceStatus, string> = {
@@ -170,10 +197,10 @@ function buildSeguimentRows(ticketsJson: unknown, plannedJson: unknown, complete
       }))
     : []
   const records = Array.isArray((completedJson as { records?: unknown })?.records)
-    ? (completedJson as { records: any[] }).records
+    ? (completedJson as { records: CompletedRecord[] }).records
     : []
-  const latestByPlannedId = new Map<string, any>()
-  records.forEach((record: any) => {
+  const latestByPlannedId = new Map<string, CompletedRecord>()
+  records.forEach((record) => {
     const plannedId = String(record.plannedId || '').trim()
     if (!plannedId) return
     const current = latestByPlannedId.get(plannedId)
@@ -182,12 +209,12 @@ function buildSeguimentRows(ticketsJson: unknown, plannedJson: unknown, complete
     if (!current || nextTime >= currentTime) latestByPlannedId.set(plannedId, record)
   })
   const items = Array.isArray((plannedJson as { items?: unknown })?.items)
-    ? (plannedJson as { items: any[] }).items
+    ? (plannedJson as { items: PlannedPreventiuApiItem[] }).items
     : []
-  const nextPreventius: Preventiu[] = items.map((item: any) => {
+  const nextPreventius: Preventiu[] = items.map((item) => {
     const record = latestByPlannedId.get(String(item.id)) || null
     const history = Array.isArray(record?.statusHistory)
-      ? record.statusHistory.map((entry: any) => ({ ...entry, status: normalizeStatus(entry.status) }))
+      ? record.statusHistory.map((entry) => ({ ...entry, status: normalizeStatus(entry.status) }))
       : []
     return {
       id: String(item.id || ''),
@@ -360,10 +387,10 @@ export default function MaintenanceSeguimentPage() {
   }).sort((a, b) => (parseDate(b.updatedAt || b.createdAt)?.getTime() || 0) - (parseDate(a.updatedAt || a.createdAt)?.getTime() || 0)), [applyDateFilter, dateMode, locationFilter, pendingValidationOnly, preventius, search, stalledOnly, statusFilter, workerFilter])
 
   const currentRows = tab === 'tickets' ? ticketRows : preventiuRows
-  const statusCounts = useMemo(() => Object.fromEntries(STATUSES.map((status) => [status, currentRows.filter((row: any) => normalizeStatus(row.status) === status).length])) as Record<MaintenanceStatus, number>, [currentRows])
+  const statusCounts = useMemo(() => Object.fromEntries(STATUSES.map((status) => [status, currentRows.filter((row: SeguimentRow) => normalizeStatus(row.status) === status).length])) as Record<MaintenanceStatus, number>, [currentRows])
   const summaryStatuses = useMemo(() => STATUSES.filter((status) => status !== 'fet'), [])
-  const pendingValidationCount = currentRows.filter((row: any) => normalizeStatus(row.status) === 'fet').length
-  const averageDays = currentRows.length ? Math.round(currentRows.reduce((sum: number, row: any) => sum + (getDaysOpen(row.createdAt) || 0), 0) / currentRows.length) : 0
+  const pendingValidationCount = currentRows.filter((row: SeguimentRow) => normalizeStatus(row.status) === 'fet').length
+  const averageDays = currentRows.length ? Math.round(currentRows.reduce((sum: number, row: SeguimentRow) => sum + (getDaysOpen(row.createdAt) || 0), 0) / currentRows.length) : 0
   const totalTrackedMinutes = useMemo(() => tab === 'tickets' ? ticketRows.reduce((sum, row) => sum + getTrackedMinutes(row.statusHistory), 0) : preventiuRows.reduce((sum, row) => sum + getTrackedMinutes(row.history), 0), [preventiuRows, tab, ticketRows])
   const totalPlannedMinutes = useMemo(() => tab === 'tickets' ? ticketRows.reduce((sum, row) => sum + getPlannedMinutes(parseDate(row.plannedStart) ? format(parseDate(row.plannedStart) as Date, 'HH:mm') : null, parseDate(row.plannedEnd) ? format(parseDate(row.plannedEnd) as Date, 'HH:mm') : null, row.estimatedMinutes || null), 0) : preventiuRows.reduce((sum, row) => sum + getPlannedMinutes(row.plannedStart, row.plannedEnd), 0), [preventiuRows, tab, ticketRows])
   const machineNameMap = useMemo(() => new Map(machines.map((machine) => [String(machine.code || '').trim(), String(machine.name || '').trim()])), [machines])
@@ -461,5 +488,4 @@ export default function MaintenanceSeguimentPage() {
     </RoleGuard>
   )
 }
-
 

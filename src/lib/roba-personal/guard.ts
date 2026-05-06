@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/server/apiAuth'
-import { normalizeRole, type Role } from '@/lib/roles'
+import { type Role } from '@/lib/roles'
 import { normDeptLabel } from '@/lib/roba-personal/deptScope'
 import {
   getUserDoc,

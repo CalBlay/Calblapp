@@ -7,6 +7,8 @@ type Options = {
   ticketType?: TicketType
 }
 
+type MaintenanceTicket = { id?: string }
+
 export function useMaintenanceNewCount(options: Options = {}) {
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -28,7 +30,7 @@ export function useMaintenanceNewCount(options: Options = {}) {
         const data = await res.json()
         const tickets = Array.isArray(data?.tickets) ? data.tickets : []
         const seen = readSeenTickets(ticketType)
-        const pending = tickets.filter((t: any) => !seen.has(String(t?.id || '')))
+        const pending = tickets.filter((t: MaintenanceTicket) => !seen.has(String(t?.id || '')))
         if (active) setCount(pending.length)
       } catch {
         if (active) setCount(0)

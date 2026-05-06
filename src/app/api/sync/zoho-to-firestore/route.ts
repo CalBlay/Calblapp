@@ -6,6 +6,10 @@ import { syncZohoDealsToFirestore } from '@/services/zoho/sync'
 
 export const runtime = 'nodejs'
 
+type SessionUser = {
+  department?: string
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url)
@@ -24,10 +28,11 @@ export async function GET(req: Request) {
 
     // Si no es cron, es manual: validar permisos
     const session = await getServerSession(authOptions)
+    const sessionUser = session?.user as SessionUser | undefined
     const normalize = (value: string) =>
       value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
     const role = normalize(String(session?.user?.role || ''))
-    const department = normalize(String((session?.user as any)?.department || ''))
+    const department = normalize(String(sessionUser?.department || ''))
     const canManualSync =
       role === 'admin' || (role.includes('cap') && department === 'produccio')
 

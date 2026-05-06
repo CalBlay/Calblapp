@@ -7,6 +7,12 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { getVisibleModules } from '@/lib/accessControl'
 
+type HubCardConfig = {
+  label: string
+  className: string
+  Icon: typeof FileText
+}
+
 export default function AuditoriaHubPage() {
   const { data: session } = useSession()
   const user = session?.user
@@ -26,7 +32,7 @@ export default function AuditoriaHubPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {submodules.map((sub) => {
             const key = sub.path.split('/').pop() || ''
-            const map: Record<string, { label: string; className: string; Icon: any }> = {
+            const map: Record<string, HubCardConfig> = {
               plantilles: {
                 label: 'Plantilles',
                 className: 'from-cyan-50 to-teal-100 text-cyan-800',

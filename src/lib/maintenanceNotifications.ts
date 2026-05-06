@@ -17,14 +17,6 @@ type NotificationPayload = {
   source?: string | null
 }
 
-const normLower = (value?: string) =>
-  (value || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-
 export async function notifyMaintenanceManagers(params: {
   payload: NotificationPayload
   excludeIds?: string[]
@@ -32,7 +24,7 @@ export async function notifyMaintenanceManagers(params: {
   const { payload, excludeIds = [] } = params
   const snap = await db.collection('users').where('departmentLower', '==', 'manteniment').get()
   const targets = snap.docs
-    .filter((doc) => normalizeRole((doc.data() as any)?.role) === 'cap')
+    .filter((doc) => normalizeRole(String((doc.data() as { role?: string })?.role || '')) === 'cap')
     .map((doc) => doc.id)
     .filter((id) => !excludeIds.includes(id))
 

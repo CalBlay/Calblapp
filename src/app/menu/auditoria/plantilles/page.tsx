@@ -14,6 +14,11 @@ import type { AuditDepartment, AuditTemplatePreview } from '@/types/auditoria'
 import { normalizeRole } from '@/lib/roles'
 import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
 
+type SessionUser = {
+  role?: string
+  department?: string
+}
+
 const DEFAULT_TEMPLATE_NAME = 'Escriure nom de la nova plantilla'
 
 type DepartmentMeta = {
@@ -43,8 +48,9 @@ const normalizeText = (raw?: string) =>
 export default function AuditoriaPlantillesPage() {
   const router = useRouter()
   const { data: session } = useSession()
-  const userRole = normalizeRole((session?.user as any)?.role || '')
-  const userDepartment = resolveAuditDepartmentForUser((session?.user as any)?.department || '')
+  const sessionUser = session?.user as SessionUser | undefined
+  const userRole = normalizeRole(sessionUser?.role || '')
+  const userDepartment = resolveAuditDepartmentForUser(sessionUser?.department || '')
   const forcedDepartment = userRole === 'cap' ? userDepartment : null
   const initialDepartment: AuditDepartment = forcedDepartment || 'comercial'
 

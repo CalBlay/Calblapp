@@ -193,7 +193,7 @@ function EditorFields({
   isServeisDept = false,
   allowExternalWorkerName = false,
   canEditMeetingPoint = true,
-  groupHasDriverController = false,
+  groupHasDriverController: _groupHasDriverController = false,
   canEditArrivalTime = true,
   onPatch,
   isLocked,

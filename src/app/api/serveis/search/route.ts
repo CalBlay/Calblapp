@@ -13,11 +13,12 @@ export async function GET(req: Request) {
   try {
     // ✅ correcte: utilitza la instància "db" de firebase-admin
     const snap = await db.collection('serveis').get()
-    const all = snap.docs.map((d) => d.data() as any)
+    type ServeiDoc = { nom?: string; searchable?: string; codi?: string }
+    const all = snap.docs.map((d) => d.data() as ServeiDoc)
 
     const filtered = all.filter((s) => {
-      const nom = (s.nom || '').toLowerCase()
-      const searchable = (s.searchable || '').toLowerCase()
+      const nom = String(s.nom || '').toLowerCase()
+      const searchable = String(s.searchable || '').toLowerCase()
       return nom.includes(q) || searchable.includes(q)
     })
 

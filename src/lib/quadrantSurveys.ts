@@ -96,6 +96,24 @@ type SurveyNotificationPayload = {
   serviceDate: string
 }
 
+type FirestoreDoc = Record<string, unknown>
+
+/** Fila de `quadrantPremises.surveyGroups` (estructura flexible al magatzem). */
+export type SurveyGroupRow = {
+  id?: unknown
+  name?: unknown
+  workerIds?: unknown
+}
+
+type SurveyResponseData = FirestoreDoc & {
+  surveyId?: unknown
+  workerId?: unknown
+  workerName?: unknown
+  response?: unknown
+  respondedAt?: unknown
+  userId?: unknown
+}
+
 function parseSurveyNoResponseDefault(value: unknown): SurveyNoResponseDefault {
   const v = String(value ?? '')
     .toLowerCase()
@@ -103,17 +121,20 @@ function parseSurveyNoResponseDefault(value: unknown): SurveyNoResponseDefault {
   return v === 'yes' ? 'yes' : 'no'
 }
 
-export async function loadDepartmentSurveyGroups(department: string) {
+export async function loadDepartmentSurveyGroups(department: string): Promise<SurveyGroupRow[]> {
   const snap = await db.collection('quadrantPremises').doc(norm(department)).get()
   if (!snap.exists) return []
-  const data = snap.data() as any
-  return Array.isArray(data?.surveyGroups) ? data.surveyGroups : []
+  const data = snap.data() as FirestoreDoc | undefined
+  const raw = data?.surveyGroups
+  return Array.isArray(raw) ? (raw as SurveyGroupRow[]) : []
 }
 
 export async function loadSurveyNoResponseDefault(department: string): Promise<SurveyNoResponseDefault> {
   const snap = await db.collection('quadrantPremises').doc(norm(department)).get()
   if (!snap.exists) return 'no'
-  return parseSurveyNoResponseDefault((snap.data() as any)?.surveyNoResponseDefault)
+  return parseSurveyNoResponseDefault(
+    (snap.data() as FirestoreDoc | undefined)?.surveyNoResponseDefault
+  )
 }
 
 async function lookupUserIdByPersonnelId(personnelId: string) {
@@ -133,7 +154,7 @@ async function canUserRespondSurveys(userId: string | null) {
   if (!userId) return false
   const userSnap = await db.collection('users').doc(userId).get()
   if (!userSnap.exists) return false
-  const data = userSnap.data() as any
+  const data = userSnap.data() as FirestoreDoc
   return Boolean(data?.canRespondSurveys)
 }
 
@@ -147,9 +168,11 @@ export async function resolveSurveyTargetWorkers(input: {
   const targetGroupIds = Array.isArray(input.targetGroupIds) ? input.targetGroupIds : []
   const groups = await loadDepartmentSurveyGroups(department)
   const groupWorkerIds = groups
-    .filter((group: any) => targetGroupIds.includes(String(group?.id || '')))
-    .flatMap((group: any) =>
-      Array.isArray(group?.workerIds) ? group.workerIds.map((id: unknown) => String(id || '').trim()) : []
+    .filter((group) => targetGroupIds.includes(String(group.id || '')))
+    .flatMap((group) =>
+      Array.isArray(group.workerIds)
+        ? group.workerIds.map((id: unknown) => String(id || '').trim())
+        : []
     )
 
   const uniquePersonnelIds = Array.from(
@@ -165,12 +188,12 @@ export async function resolveSurveyTargetWorkers(input: {
     personnelDocs
       .filter((doc) => doc.exists)
       .map(async (doc) => {
-        const data = doc.data() as any
+        const data = doc.data() as FirestoreDoc
         return {
           personnelId: doc.id,
           userId: await lookupUserIdByPersonnelId(doc.id),
           name: String(data?.name || '').trim(),
-          department: norm(data?.department || department),
+          department: norm(String(data?.department ?? department ?? '')),
         } satisfies SurveyTargetWorker
       })
   )
@@ -189,7 +212,7 @@ async function ensureChannelMembership(channelId: string, targets: SurveyTargetW
     .where('channelId', '==', channelId)
     .get()
   const existingUserIds = new Set(
-    existingSnap.docs.map((doc) => String((doc.data() as any)?.userId || '').trim()).filter(Boolean)
+    existingSnap.docs.map((doc) => String((doc.data() as FirestoreDoc).userId || '').trim()).filter(Boolean)
   )
   const needUserIds = Array.from(
     new Set(
@@ -206,7 +229,7 @@ async function ensureChannelMembership(channelId: string, targets: SurveyTargetW
     const snaps = await db.getAll(...refs)
     snaps.forEach((doc) => {
       if (!doc.exists) return
-      const data = doc.data() as any
+      const data = doc.data() as FirestoreDoc
       if (data?.name) userNameMap.set(doc.id, String(data.name))
     })
   }
@@ -247,13 +270,24 @@ async function publishSurveyMessages(params: {
   if (targets.length === 0) return
 
   const channelSnap = await db.collection(CHANNELS_COLLECTION).doc(channelId).get()
-  const channelData = channelSnap.exists ? (channelSnap.data() as any) : null
+  const channelData = channelSnap.exists ? (channelSnap.data() as FirestoreDoc) : null
   const channelName = String(channelData?.name || channelData?.eventTitle || 'Ops').trim()
 
   const now = Date.now()
   const batch = db.batch()
   const memberSnap = await db.collection(CHANNEL_MEMBERS_COLLECTION).where('channelId', '==', channelId).get()
-  const members = memberSnap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as any) }))
+  type ChannelMemberRow = FirestoreDoc & {
+    id: string
+    userId?: unknown
+    hidden?: unknown
+    notify?: unknown
+    unreadCount?: unknown
+    muted?: unknown
+  }
+  const members: ChannelMemberRow[] = memberSnap.docs.map((doc) => ({
+    id: doc.id,
+    ...(doc.data() as FirestoreDoc),
+  }))
   const pushRecipients: string[] = []
 
   targets.forEach((target) => {
@@ -469,7 +503,9 @@ export async function listQuadrantSurveys(params: {
   if (!eventId) return []
 
   const snap = await db.collection(SURVEYS_COLLECTION).where('eventId', '==', eventId).get()
-  let surveys = snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as any) })) as QuadrantSurvey[]
+  let surveys = snap.docs.map(
+    (doc) => ({ id: doc.id, ...(doc.data() as FirestoreDoc) }) as QuadrantSurvey
+  )
 
   if (params.department) {
     const department = norm(params.department)
@@ -486,11 +522,13 @@ export async function listQuadrantSurveys(params: {
     .where('surveyId', 'in', surveys.map((s) => s.id).slice(0, 10))
     .get()
     .catch(() => null)
-  const responses = responseSnap ? responseSnap.docs.map((doc) => doc.data() as any) : []
+  const responses: SurveyResponseData[] = responseSnap
+    ? responseSnap.docs.map((doc) => doc.data() as SurveyResponseData)
+    : []
 
   const premisesMetaByDept = new Map<
     string,
-    { groups: any[]; noResponseDefault: SurveyNoResponseDefault }
+    { groups: SurveyGroupRow[]; noResponseDefault: SurveyNoResponseDefault }
   >()
 
   async function getPremisesMeta(dept: string) {
@@ -498,7 +536,7 @@ export async function listQuadrantSurveys(params: {
     const hit = premisesMetaByDept.get(key)
     if (hit) return hit
     const snap = await db.collection('quadrantPremises').doc(key).get()
-    const data = snap.exists ? (snap.data() as any) : null
+    const data = snap.exists ? (snap.data() as FirestoreDoc) : null
     const meta = {
       groups: Array.isArray(data?.surveyGroups) ? data.surveyGroups : [],
       noResponseDefault: parseSurveyNoResponseDefault(data?.surveyNoResponseDefault),
@@ -514,8 +552,12 @@ export async function listQuadrantSurveys(params: {
         const { groups: availableGroups, noResponseDefault: noResponsePolicy } =
           await getPremisesMeta(surveyDepartment)
         const targetGroupNames = availableGroups
-          .filter((group: any) => Array.isArray(survey.targetGroupIds) && survey.targetGroupIds.includes(String(group?.id || '')))
-          .map((group: any) => String(group?.name || '').trim())
+          .filter(
+            (group) =>
+              Array.isArray(survey.targetGroupIds) &&
+              survey.targetGroupIds.includes(String(group.id || ''))
+          )
+          .map((group) => String(group.name || '').trim())
           .filter(Boolean)
         const targetWorkerNames = (Array.isArray(survey.resolvedTargets) ? survey.resolvedTargets : [])
           .filter(
@@ -656,9 +698,10 @@ export async function respondQuadrantSurvey(input: {
     throw new Error('Sondeig no trobat')
   }
 
-  const survey = surveySnap.data() as any
-  const target = Array.isArray(survey?.resolvedTargets)
-    ? survey.resolvedTargets.find((item: any) => String(item?.userId || '') === input.userId)
+  const survey = surveySnap.data() as FirestoreDoc
+  const resolved = survey.resolvedTargets
+  const target = Array.isArray(resolved)
+    ? (resolved as SurveyTargetWorker[]).find((item) => String(item?.userId || '') === input.userId)
     : null
   if (!target) {
     throw new Error('Aquest usuari no forma part del sondeig')
@@ -669,7 +712,7 @@ export async function respondQuadrantSurvey(input: {
     surveyId: input.surveyId,
     workerId: target.personnelId,
     workerName: target.name || input.userName,
-    department: survey.department || target.department,
+    department: String(survey.department || target.department || ''),
     response: input.response,
     respondedAt: Date.now(),
     userId: input.userId,
@@ -681,7 +724,7 @@ export async function respondQuadrantSurvey(input: {
     .get()
   const batch = db.batch()
   surveyMessages.docs.forEach((doc) => {
-    const data = doc.data() as any
+    const data = doc.data() as FirestoreDoc
     const targets = Array.isArray(data?.targetUserIds) ? data.targetUserIds.map((item: unknown) => String(item || '')) : []
     if (!targets.includes(input.userId)) return
     batch.set(
@@ -713,29 +756,27 @@ export async function getSurveyPreferredCandidates(params: {
     .collection(RESPONSES_COLLECTION)
     .where('surveyId', '==', activeSurvey.id)
     .get()
-  let responses = responseSnap.docs.map((doc) => doc.data() as any)
+  let responses: SurveyResponseData[] = responseSnap.docs.map(
+    (doc) => doc.data() as SurveyResponseData
+  )
 
   const respondedWorkerIds = new Set(
     responses.map((item) => String(item?.workerId || '').trim()).filter(Boolean)
   )
 
-  const deadlineMs = Number((activeSurvey as any).deadlineAt || 0)
+  const deadlineMs = Number(activeSurvey.deadlineAt || 0)
   const deadlinePassed = deadlineMs > 0 && Date.now() >= deadlineMs
 
-  if (
-    noResponsePolicy === 'yes' &&
-    deadlinePassed &&
-    Array.isArray((activeSurvey as any).resolvedTargets)
-  ) {
-    const synthetic = (activeSurvey as any).resolvedTargets
-      .filter((t: any) => {
+  if (noResponsePolicy === 'yes' && deadlinePassed && Array.isArray(activeSurvey.resolvedTargets)) {
+    const synthetic = activeSurvey.resolvedTargets
+      .filter((t: SurveyTargetWorker) => {
         const pid = String(t?.personnelId || '').trim()
-        return pid && !respondedWorkerIds.has(pid)
+        return Boolean(pid && !respondedWorkerIds.has(pid))
       })
-      .map((t: any) => ({
+      .map((t: SurveyTargetWorker) => ({
         workerId: String(t.personnelId || ''),
         workerName: String(t.name || '').trim(),
-        response: 'yes',
+        response: 'yes' as const,
         respondedAt: 0,
       }))
       .filter((r: { workerId: string; workerName: string }) => r.workerId && r.workerName)
@@ -754,24 +795,34 @@ export async function getSurveyPreferredCandidates(params: {
       ? await db.getAll(...personnelIds.map((id) => db.collection('personnel').doc(id)))
       : []
   const personnelMap = new Map(
-    personnelDocs.filter((doc) => doc.exists).map((doc) => [doc.id, doc.data() as any])
+    personnelDocs
+      .filter((doc) => doc.exists)
+      .map((doc) => [doc.id, doc.data() as FirestoreDoc])
   )
 
-  const sortByPriority = (a: any, b: any) => {
+  const sortByPriority = (a: SurveyResponseData, b: SurveyResponseData) => {
     const aPersonnel = personnelMap.get(String(a.workerId || '')) || {}
     const bPersonnel = personnelMap.get(String(b.workerId || '')) || {}
-    const aContracted = Number(aPersonnel?.contractHours || aPersonnel?.hoursContracted || Infinity)
-    const bContracted = Number(bPersonnel?.contractHours || bPersonnel?.hoursContracted || Infinity)
+    const aContracted = Number(aPersonnel.contractHours || aPersonnel.hoursContracted || Infinity)
+    const bContracted = Number(bPersonnel.contractHours || bPersonnel.hoursContracted || Infinity)
     if (aContracted !== bContracted) return aContracted - bContracted
-    const aMonth = Number(aPersonnel?.monthHrs || aPersonnel?.workedHoursMonth || Infinity)
-    const bMonth = Number(bPersonnel?.monthHrs || bPersonnel?.workedHoursMonth || Infinity)
+    const aMonth = Number(aPersonnel.monthHrs || aPersonnel.workedHoursMonth || Infinity)
+    const bMonth = Number(bPersonnel.monthHrs || bPersonnel.workedHoursMonth || Infinity)
     if (aMonth !== bMonth) return aMonth - bMonth
     return Number(a.respondedAt || 0) - Number(b.respondedAt || 0)
   }
 
   return {
-    yes: responses.filter((item) => item.response === 'yes').sort(sortByPriority).map((item) => item.workerName),
-    maybe: responses.filter((item) => item.response === 'maybe').sort(sortByPriority).map((item) => item.workerName),
+    yes: responses
+      .filter((item) => item.response === 'yes')
+      .sort(sortByPriority)
+      .map((item) => String(item.workerName || '').trim())
+      .filter(Boolean),
+    maybe: responses
+      .filter((item) => item.response === 'maybe')
+      .sort(sortByPriority)
+      .map((item) => String(item.workerName || '').trim())
+      .filter(Boolean),
   }
 }
 
@@ -779,32 +830,40 @@ export async function listUserQuadrantSurveys(userId: string) {
   const now = Date.now()
   const allSurveysSnap = await db.collection(SURVEYS_COLLECTION).get()
   const allSurveys = allSurveysSnap.docs
-    .map((doc) => ({ id: doc.id, ...(doc.data() as any) }))
-    .filter((survey: any) =>
-      Array.isArray(survey?.resolvedTargets) &&
-      survey.resolvedTargets.some((target: any) => String(target?.userId || '') === userId) &&
-      Number(survey?.deadlineAt || 0) > now
+    .map((doc) => ({ id: doc.id, ...(doc.data() as FirestoreDoc) } as QuadrantSurvey))
+    .filter(
+      (survey) =>
+        Array.isArray(survey.resolvedTargets) &&
+        survey.resolvedTargets.some((target) => String(target?.userId || '') === userId) &&
+        Number(survey.deadlineAt || 0) > now
     )
 
   if (allSurveys.length === 0) return []
 
   const responseSnaps = await Promise.all(
-    allSurveys.map(async (survey: any) => {
-      const target = survey.resolvedTargets.find((item: any) => String(item?.userId || '') === userId)
+    allSurveys.map(async (survey) => {
+      const target = survey.resolvedTargets.find(
+        (item) => String(item?.userId || '') === userId
+      )
       if (!target?.personnelId) return null
-      const snap = await db.collection(RESPONSES_COLLECTION).doc(`${survey.id}__${target.personnelId}`).get()
-      return snap.exists ? { surveyId: survey.id, ...(snap.data() as any) } : { surveyId: survey.id, response: null, respondedAt: null }
+      const snap = await db
+        .collection(RESPONSES_COLLECTION)
+        .doc(`${survey.id}__${target.personnelId}`)
+        .get()
+      return snap.exists
+        ? { surveyId: survey.id, ...(snap.data() as SurveyResponseData) }
+        : { surveyId: survey.id, response: null, respondedAt: null }
     })
   )
 
   return allSurveys
-    .map((survey: any) => {
+    .map((survey) => {
       const myResponse = responseSnaps.find((item) => item?.surveyId === survey.id) || null
       return {
         ...survey,
-        myResponse: myResponse?.response || null,
-        respondedAt: myResponse?.respondedAt || null,
+        myResponse: myResponse?.response ?? null,
+        respondedAt: myResponse?.respondedAt ?? null,
       }
     })
-    .sort((a: any, b: any) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
 }

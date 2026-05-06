@@ -90,10 +90,9 @@ export function useQuadrantsDraft(params?: { department?: string }) {
     { revalidateOnFocus: true }
   )
 
-  const allDrafts: Draft[] = data || []
-
   // Apliquem filtres extra al client (persona)
   const filteredDrafts = useMemo(() => {
+    const allDrafts: Draft[] = data || []
     if (!personFilter) return allDrafts
 
     const pf = personFilter.toLowerCase()
@@ -107,7 +106,7 @@ export function useQuadrantsDraft(params?: { department?: string }) {
       const r = String(d.responsableName || '').toLowerCase().includes(pf)
       return w || c || r
     })
-  }, [allDrafts, personFilter])
+  }, [data, personFilter])
 
   // Ordenació i agrupació per dia (dl → dg)
   const drafts = useMemo(() => {

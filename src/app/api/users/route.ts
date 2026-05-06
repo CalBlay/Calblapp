@@ -79,6 +79,10 @@ interface UserPayload {
   updatedAt: number
 }
 
+type PersonnelDoc = {
+  createdAt?: number
+}
+
 // ──────────────────────────────────────────────────────────────
 // GET: retorna tots els usuaris
 // ──────────────────────────────────────────────────────────────
@@ -234,7 +238,9 @@ export async function POST(req: Request) {
         workerRank: isCap ? 'responsable' : userPayload.workerRank || 'equip',
         email: userPayload.email,
         phone: userPayload.phone,
-        createdAt: snap.exists ? (snap.data() as any).createdAt ?? Date.now() : Date.now(),
+        createdAt: snap.exists
+          ? ((snap.data() as PersonnelDoc | undefined)?.createdAt ?? Date.now())
+          : Date.now(),
         updatedAt: Date.now(),
       }
 

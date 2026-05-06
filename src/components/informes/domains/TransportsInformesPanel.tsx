@@ -53,7 +53,6 @@ export function TransportsInformesPanel() {
   const [customData, setCustomData] = useState<TransportsOverview | null>(null)
   const [customLoading, setCustomLoading] = useState(false)
   const [customError, setCustomError] = useState<string | null>(null)
-  const [customReady, setCustomReady] = useState(false)
   const [customOptions, setCustomOptions] = useState<TransportsOverview['filterOptions'] | null>(null)
   const [chartMountReady, setChartMountReady] = useState(false)
 
@@ -86,7 +85,6 @@ export function TransportsInformesPanel() {
   }, [loadKpis])
 
   useEffect(() => {
-    setCustomReady(false)
     setCustomData(null)
   }, [customYear, customMonth, customPlate, customConductor, customVehicleType, customEventQuery])
 

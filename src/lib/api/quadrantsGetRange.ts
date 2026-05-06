@@ -15,9 +15,36 @@ const normalizeEventId = (value?: string | null): string =>
     .split('__')[0]
     .trim()
 
+const hasFirestoreToDate = (v: unknown): v is { toDate: () => Date } =>
+  typeof v === 'object' &&
+  v !== null &&
+  'toDate' in v &&
+  typeof (v as { toDate?: unknown }).toDate === 'function'
+
+const formatDayField = (primary: unknown, ...fallbacks: unknown[]): string => {
+  if (hasFirestoreToDate(primary)) return primary.toDate().toISOString().slice(0, 10)
+  if (typeof primary === 'string' && primary) return primary
+  for (const f of fallbacks) {
+    if (hasFirestoreToDate(f)) return f.toDate().toISOString().slice(0, 10)
+    if (typeof f === 'string' && f) return f
+  }
+  return ''
+}
+
 const readCollectionCache = new Map<string, string>()
 
-const expandLegacyExternalWorkers = (entries: any[] = []) =>
+type LegacyExternalEntry = {
+  workers?: unknown
+  name?: unknown
+  meetingPoint?: unknown
+  startDate?: unknown
+  startTime?: unknown
+  endDate?: unknown
+  endTime?: unknown
+  arrivalTime?: unknown
+}
+
+const expandLegacyExternalWorkers = (entries: LegacyExternalEntry[] = []) =>
   entries.flatMap((entry) => {
     const count = Math.max(1, Number(entry?.workers || 0))
     const baseName = String(entry?.name || 'ETT').trim() || 'ETT'
@@ -95,7 +122,7 @@ export async function computeQuadrantsGet(
 
   const results = rangeDocs
     .map((doc) => {
-      const d = doc.data() as any
+      const d = doc.data() as Record<string, unknown>
 
       const legacyExternalWorkers = expandLegacyExternalWorkers(
         readLegacyExternalWorkersFromDoc(d)
@@ -105,27 +132,38 @@ export async function computeQuadrantsGet(
         ...legacyExternalWorkers,
       ]
 
-      const allRows = [
+      const allRows: unknown[] = [
         d.responsable ? d.responsable : null,
         ...(Array.isArray(d.conductors) ? d.conductors : []),
         ...treballadors,
       ].filter(Boolean)
 
+      const rowTime = (r: unknown, key: 'startTime' | 'endTime') => {
+        if (typeof r === 'object' && r !== null && key in r) {
+          const v = (r as Record<string, unknown>)[key]
+          return typeof v === 'string' ? v : v != null ? String(v) : ''
+        }
+        return ''
+      }
+
       const startTimes = allRows
-        .map((r) => r.startTime)
+        .map((r) => rowTime(r, 'startTime'))
         .filter(Boolean)
         .sort()
 
       const endTimes = allRows
-        .map((r) => r.endTime)
+        .map((r) => rowTime(r, 'endTime'))
         .filter(Boolean)
         .sort()
 
       const derivedStartTime = startTimes.length > 0 ? startTimes[0] : null
       const derivedEndTime = endTimes.length > 0 ? endTimes[endTimes.length - 1] : null
 
-      const code = d.code || d.eventCode || d.eventId || doc.id
-      const eventId = normalizeEventId(d.eventId || code || doc.id)
+      const codeRaw = d.code ?? d.eventCode ?? d.eventId ?? doc.id
+      const code = typeof codeRaw === 'string' ? codeRaw : String(codeRaw ?? '')
+      const eventId = normalizeEventId(
+        (typeof d.eventId === 'string' ? d.eventId : String(d.eventId ?? '')) || code || doc.id
+      )
 
       return {
         id: doc.id,
@@ -136,12 +174,8 @@ export async function computeQuadrantsGet(
         location: d.location || d.finca || '',
         meetingPoint: d.meetingPoint || '',
         arrivalTime: d.arrivalTime || '',
-        startDate: d.startDate?.toDate
-          ? d.startDate.toDate().toISOString().slice(0, 10)
-          : d.startDate || d.phaseDate || '',
-        endDate: d.endDate?.toDate
-          ? d.endDate.toDate().toISOString().slice(0, 10)
-          : d.endDate || d.phaseDate || d.startDate || '',
+        startDate: formatDayField(d.startDate, d.phaseDate),
+        endDate: formatDayField(d.endDate, d.phaseDate, d.startDate),
         startTime: derivedStartTime || d.startTime || '',
         endTime: derivedEndTime || d.endTime || '',
         responsables: Array.isArray(d.responsables) ? d.responsables : [],
@@ -149,8 +183,9 @@ export async function computeQuadrantsGet(
         treballadors,
         responsableName:
           Array.isArray(d.responsables) && d.responsables.length > 0
-            ? d.responsables.map((r: any) => r.name).join(', ')
-            : d.responsableName || d.responsable?.name || '',
+            ? (d.responsables as Array<{ name?: string }>).map((r) => r.name).join(', ')
+            : String(d.responsableName || '') ||
+              String((d.responsable as { name?: string } | undefined)?.name || ''),
         pax: d.pax || d.numPax || 0,
         dressCode: d.dressCode || '',
         vestimentModel:
@@ -168,7 +203,22 @@ export async function computeQuadrantsGet(
         totalWorkers: Number(d.totalWorkers || 0),
         numDrivers: Number(d.numDrivers || 0),
         groups: Array.isArray(d.groups)
-          ? d.groups.map((g: any) => ({
+          ? d.groups.map(
+              (g: {
+                serviceDate?: string
+                dateLabel?: string
+                meetingPoint?: string
+                startTime?: string
+                arrivalTime?: string | null
+                endTime?: string
+                workers?: unknown
+                drivers?: unknown
+                needsDriver?: boolean
+                driverId?: string | null
+                driverName?: string | null
+                responsibleId?: string | null
+                responsibleName?: string | null
+              }) => ({
               serviceDate: g.serviceDate || '',
               dateLabel: g.dateLabel || '',
               meetingPoint: g.meetingPoint || '',

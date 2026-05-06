@@ -1,7 +1,5 @@
 //file: src/services/googleCalendar.ts
 import { google, calendar_v3 } from 'googleapis'
-import path from 'path'
-import fs from 'fs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipus d'esdeveniment del Calendar
@@ -44,7 +42,7 @@ async function authenticate() {
       // Intentem parsejar el JSON
       try {
         creds = JSON.parse(raw)
-      } catch (err) {
+      } catch {
         console.warn('[googleCalendar] WARN: GOOGLE_SHEETS_CREDENTIALS no és JSON vàlid.')
         creds = null
       }
@@ -93,7 +91,7 @@ export async function getCalendarEvents(from: string, to: string): Promise<Calen
   if (!calendarId) throw new Error('Falta NEXT_PUBLIC_GOOGLE_CALENDAR_ID')
 
   const auth = await authenticate()
-  const calendar = (google as any).calendar({ version: 'v3', auth })
+  const calendar = google.calendar({ version: 'v3', auth })
 
   const events: CalendarEvent[] = []
   let pageToken: string | undefined
@@ -125,7 +123,7 @@ export async function fetchGoogleEventById(id: string): Promise<CalendarEvent | 
   if (!calendarId) throw new Error('Falta NEXT_PUBLIC_GOOGLE_CALENDAR_ID')
 
   const auth = await authenticate()
-  const calendar = (google as any).calendar({ version: 'v3', auth })
+  const calendar = google.calendar({ version: 'v3', auth })
 
   try {
     const resp = await calendar.events.get({

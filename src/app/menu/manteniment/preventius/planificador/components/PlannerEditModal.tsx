@@ -85,7 +85,7 @@ const statusLabel = (value?: string) => {
 
 export default function PlannerEditModal({
   draft,
-  days,
+  days: _days,
   dayCount,
   machines,
   users,
@@ -98,10 +98,10 @@ export default function PlannerEditModal({
   setScheduledItems,
   resolveWorkerIds,
   weekStart,
-  persistTicketPlanning,
+  persistTicketPlanning: _persistTicketPlanning,
   loadWeekSchedule,
   onUnplanPreventiu,
-  onUnplanTicket,
+  onUnplanTicket: _onUnplanTicket,
 }: Props) {
   const [infoOpen, setInfoOpen] = useState(true)
   const [jobDetailsOpen, setJobDetailsOpen] = useState(true)

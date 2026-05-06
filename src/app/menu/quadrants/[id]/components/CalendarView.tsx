@@ -25,6 +25,8 @@ export default function CalendarView({
   start,
   end,
 }: CalendarViewProps) {
+  const getPersonName = (person: string | { id?: string; name?: string }) =>
+    typeof person === 'string' ? person : person?.name || ''
 
   // 📅 Carrega quadrants del rang correcte
   const { quadrants, loading: loadingQuadrants, reload } = useQuadrants(
@@ -79,9 +81,9 @@ export default function CalendarView({
     for (const e of events) {
       if (e.responsable) people.add(e.responsable)
       if (Array.isArray(e.conductors))
-        e.conductors.forEach((c: any) => people.add(c?.name || c))
+        e.conductors.forEach((c) => people.add(getPersonName(c)))
       if (Array.isArray(e.treballadors))
-        e.treballadors.forEach((t: any) => people.add(t?.name || t))
+        e.treballadors.forEach((t) => people.add(getPersonName(t)))
     }
     return people.size
   }, [events])

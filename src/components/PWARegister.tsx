@@ -3,17 +3,25 @@
 import { useEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
 
+type CapacitorWindow = Window & {
+  Capacitor?: {
+    isNativePlatform?: () => boolean
+    getPlatform?: () => string
+  }
+}
+
 export default function PWARegister() {
   useEffect(() => {
+    const windowWithCapacitor = typeof window !== 'undefined' ? (window as CapacitorWindow) : null
     const isNativeParam =
       typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).get('native') === '1'
     const isNative =
       Capacitor.isNativePlatform?.() ||
-      (typeof window !== 'undefined' &&
-        ((window as any)?.Capacitor?.isNativePlatform?.() ||
-          (window as any)?.Capacitor?.getPlatform?.() === 'android' ||
-          (window as any)?.Capacitor?.getPlatform?.() === 'ios' ||
+      (windowWithCapacitor &&
+        (windowWithCapacitor.Capacitor?.isNativePlatform?.() ||
+          windowWithCapacitor.Capacitor?.getPlatform?.() === 'android' ||
+          windowWithCapacitor.Capacitor?.getPlatform?.() === 'ios' ||
           navigator.userAgent.includes('Capacitor')))
     if (isNative || isNativeParam) return
     if ('serviceWorker' in navigator) {

@@ -12,11 +12,12 @@ import {
   collectMessagingRefs,
   collectSpaceRefs,
   extractOwnedStoragePath,
+  type MediaSource,
 } from '@/lib/media/collectMediaRefs'
 import {
   deleteMediaIndexByPath,
   isMediaIndexEmpty,
-  loadAllMediaFromIndex,
+  loadMediaIndexPage,
 } from '@/lib/media/storageMediaIndex'
 
 export const runtime = 'nodejs'
@@ -29,6 +30,13 @@ type SessionUser = {
 
 function requireAdmin(role?: string) {
   return normalizeRole(role || '') === 'admin'
+}
+
+const MEDIA_SOURCES: MediaSource[] = ['incidents', 'maintenance', 'messaging', 'audits', 'spaces']
+
+function parseMediaSource(raw: string | null): MediaSource | null {
+  const v = cleanText(raw || '')
+  return MEDIA_SOURCES.includes(v as MediaSource) ? (v as MediaSource) : null
 }
 
 async function loadLegacyMediaAggregated() {
@@ -148,7 +156,10 @@ export async function GET(req: Request) {
 
     if (forceLegacy) {
       const media = await loadLegacyMediaAggregated()
-      return NextResponse.json({ media, fromIndex: false, indexEmpty: false }, { status: 200 })
+      return NextResponse.json(
+        { media, fromIndex: false, indexEmpty: false, nextCursor: null, hasMore: false },
+        { status: 200 }
+      )
     }
 
     const empty = await isMediaIndexEmpty()
@@ -159,14 +170,38 @@ export async function GET(req: Request) {
           media,
           fromIndex: false,
           indexEmpty: true,
+          nextCursor: null,
+          hasMore: false,
           hint: 'Executa POST /api/media/reindex per crear l index i alleugerir properes carregues.',
         },
         { status: 200 }
       )
     }
 
-    const media = await loadAllMediaFromIndex()
-    return NextResponse.json({ media, fromIndex: true, indexEmpty: false }, { status: 200 })
+    const limit = Math.min(Math.max(Number(searchParams.get('limit')) || 60, 1), 200)
+    const cursor = cleanText(searchParams.get('cursor'))
+    const source = parseMediaSource(searchParams.get('source'))
+    const auditEventId = cleanText(searchParams.get('auditEventId'))
+    const incidentEventId = cleanText(searchParams.get('incidentEventId'))
+
+    const { items, nextCursor } = await loadMediaIndexPage({
+      limit,
+      cursor: cursor || null,
+      source,
+      auditEventId: auditEventId || null,
+      incidentEventId: incidentEventId || null,
+    })
+
+    return NextResponse.json(
+      {
+        media: items,
+        fromIndex: true,
+        indexEmpty: false,
+        nextCursor,
+        hasMore: Boolean(nextCursor),
+      },
+      { status: 200 }
+    )
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })

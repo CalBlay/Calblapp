@@ -26,6 +26,23 @@ type SessionUser = {
   role?: string
 }
 
+type MessagingChannel = {
+  id: string
+  source?: string
+  subscribed?: boolean
+  projectName?: string
+  roomName?: string
+  location?: string
+  name?: string
+}
+
+type MessagingSubscriptionsResponse = {
+  channels?: MessagingChannel[]
+  eventsConfigurable?: boolean
+  eventsEnabled?: boolean
+  projectsConfigurable?: boolean
+}
+
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export default function ConfiguracioPage() {
@@ -51,7 +68,11 @@ export default function ConfiguracioPage() {
     user?.id ? `/api/messaging/subscriptions` : null,
     fetcher
   )
-  const channels = Array.isArray(subsData?.channels) ? subsData.channels : []
+  const subscriptions = subsData as MessagingSubscriptionsResponse | undefined
+  const channels = useMemo(
+    () => (Array.isArray(subscriptions?.channels) ? subscriptions.channels : []),
+    [subscriptions?.channels]
+  )
   const eventsConfigurable = Boolean(subsData?.eventsConfigurable)
   const eventsEnabled = Boolean(subsData?.eventsEnabled)
   const projectsConfigurable = Boolean(subsData?.projectsConfigurable)
@@ -68,14 +89,14 @@ export default function ConfiguracioPage() {
 
     return defs.map((def) => {
       const ids = channels
-        .filter((ch: any) => ch?.source === def.key)
-        .map((ch: any) => ch.id)
+        .filter((ch) => ch?.source === def.key)
+        .map((ch) => ch.id)
       return { ...def, ids }
     })
   }, [channels])
 
   const subscribedIds = useMemo(
-    () => channels.filter((c: any) => c.subscribed).map((c: any) => c.id),
+    () => channels.filter((c) => c.subscribed).map((c) => c.id),
     [channels]
   )
 
@@ -166,7 +187,11 @@ export default function ConfiguracioPage() {
         body: JSON.stringify(payload),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error((data as any).error || 'Error desant perfil')
+      if (!res.ok) {
+        const message =
+          typeof data === 'object' && data && 'error' in data ? String(data.error) : 'Error desant perfil'
+        throw new Error(message)
+      }
 
       setSuccess('Canvis desats correctament')
       setPassword('')
@@ -389,7 +414,7 @@ export default function ConfiguracioPage() {
                       ) : group.key !== 'events' ? (
                         <div className="mt-2 space-y-2">
                           {group.ids.map((id) => {
-                            const ch = channels.find((c: any) => c.id === id)
+                            const ch = channels.find((c) => c.id === id)
                             if (!ch) return null
                             const label =
                               ch.source === 'projects'

@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import type { MachineItem, TicketPriority } from '../types'
 
 type Props = {
@@ -35,11 +36,11 @@ export default function CreateTicketModal({
   setCreatePriority,
   locationQuery,
   setLocationQuery,
-  createLocation,
+  createLocation: _createLocation,
   setCreateLocation,
   machineQuery,
   setMachineQuery,
-  createMachine,
+  createMachine: _createMachine,
   setCreateMachine,
   createDescription,
   setCreateDescription,
@@ -238,11 +239,14 @@ export default function CreateTicketModal({
             </div>
 
             {imagePreview && (
-              <img
-                src={imagePreview}
-                alt="Previsualitzacio"
-                className="max-h-56 w-full rounded-2xl object-cover"
-              />
+              <div className="relative h-56 w-full overflow-hidden rounded-2xl">
+                <Image
+                  src={imagePreview}
+                  alt="Previsualitzacio"
+                  fill
+                  className="object-cover"
+                />
+              </div>
             )}
           </div>
         </div>

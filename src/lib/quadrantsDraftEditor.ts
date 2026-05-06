@@ -42,6 +42,8 @@ export type EditorGroup = {
   driverName?: string | null
   responsibleId?: string | null
   responsibleName?: string | null
+  /** Serveis: si és `false`, no es fa fallback de responsable des del primer conductor. */
+  wantsResponsible?: boolean
 }
 
 export type EditorDraftInput = {
@@ -240,8 +242,8 @@ const buildGroupedRows = ({
   )
 
   if (isServeisDept && Array.isArray(draft.groups)) {
-    draft.groups.forEach((g: any) => {
-      const dn = normalizeDraftText(g?.driverName)
+    draft.groups.forEach((g) => {
+      const dn = normalizeDraftText(g.driverName ?? undefined)
       if (dn) driverNameSet.add(dn)
     })
   }
@@ -258,9 +260,9 @@ const buildGroupedRows = ({
   let missingWorkersNeeded = 0
   const usedNames = new Set<string>()
 
-  const takePreferredServiceDriver = (group: any) => {
+  const takePreferredServiceDriver = (group: EditorGroup) => {
     const preferredId = String(group?.driverId || '').trim()
-    const preferredName = normalizeDraftText(group?.driverName)
+    const preferredName = normalizeDraftText(group.driverName ?? undefined)
 
     const preferredIdx = driversPool.findIndex((driver) => {
       const driverId = String(driver?.id || '').trim()
@@ -279,7 +281,7 @@ const buildGroupedRows = ({
   }
 
   const takePreferredWorker = (groupId: string, allowFallback = true) => {
-    const preferredIdx = workersPool.findIndex((worker) => String((worker as any)?.groupId || '') === groupId)
+    const preferredIdx = workersPool.findIndex((worker) => String(worker?.groupId || '') === groupId)
     if (preferredIdx >= 0) {
       const [preferred] = workersPool.splice(preferredIdx, 1)
       return preferred || null
@@ -347,8 +349,8 @@ const buildGroupedRows = ({
         driverName = next?.name || ''
         if (!driverName) {
           driverName =
-            (group as any).driverName ||
-            resolveDraftNameById(draft, (group as any).driverId || '') ||
+            group.driverName ||
+            resolveDraftNameById(draft, group.driverId || '') ||
             ''
         }
         if (!driverName) driverName = 'Extra'
@@ -369,7 +371,7 @@ const buildGroupedRows = ({
 
         if (!samePersonAsResponsible) {
           rows.push({
-            id: (group as any).driverId || '',
+            id: group.driverId || '',
             name: driverName,
             role: 'conductor',
             isJamonero: next?.isJamonero === true,
@@ -494,7 +496,7 @@ const buildGroupedRows = ({
     isExternal: isExternalEttName(worker?.name),
     externalType: getExternalWorkerTypeFromName(worker?.name) || undefined,
     groupId:
-      String((worker as any)?.groupId || '').trim() ||
+      String(worker?.groupId || '').trim() ||
       findBestGroupIdForRow(
         {
           startDate: worker?.startDate || draft.startDate,
@@ -742,7 +744,7 @@ export const buildGroupedDraftPersistence = ({
 }: {
   groups?: EditorGroup[]
   existingGroups?: EditorGroup[]
-  existingDoc?: Record<string, any> | null
+  existingDoc?: Record<string, unknown> | null
   rows: EditorRow[]
 }) => {
   const submittedGroups = Array.isArray(groups)

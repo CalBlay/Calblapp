@@ -30,7 +30,6 @@ export default async function EventDetailPage({ params }: Params) {
   }
 
   // 🔎 Comprovació server-side de responsable
-  let isResponsible = false
   if (user?.department) {
     const deptNorm =
       user.department.charAt(0).toUpperCase() +
@@ -42,19 +41,9 @@ export default async function EventDetailPage({ params }: Params) {
       const data = snap.data() || {}
       const respName = String(data?.responsable?.name || '').toLowerCase().trim()
       const userName = String(user.name || '').toLowerCase().trim()
-      if (respName && userName && respName === userName) {
-        isResponsible = true
-      }
+      void (respName && userName && respName === userName)
     }
   }
-
-  // Rol global
-  const role = (user?.role || '').toLowerCase()
-  const isPrivileged =
-    role === 'admin' ||
-    role === 'direccio' ||
-    (role.includes('cap') && role.includes('depart')) ||
-    isResponsible
 
   return (
     <div className="p-6">

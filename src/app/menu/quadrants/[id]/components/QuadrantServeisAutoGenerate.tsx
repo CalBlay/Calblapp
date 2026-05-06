@@ -38,7 +38,7 @@ export default function QuadrantServeisAutoGenerate({
   removeGroup,
   updateGroup,
   eventStartDate,
-  meetingPoint,
+  meetingPoint: _meetingPoint,
   availableConductors,
 }: Props) {
   return (

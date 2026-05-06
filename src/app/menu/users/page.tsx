@@ -37,7 +37,24 @@ export interface AppUser {
   available?: boolean
   isDriver?: boolean
   workerRank?: string
+  opsProjectsConfigurable?: boolean
 }
+
+type PendingUserRequest = {
+  id: string
+  personId?: string
+  name?: string
+  role?: string
+  isAdmin?: boolean
+  department?: string
+  phone?: string
+  email?: string
+  available?: boolean
+  driver?: { isDriver?: boolean }
+  workerRank?: string
+}
+
+type RejectRequestResponse = { error?: string }
 
 const normalizeDepartmentLabel = (value?: string) =>
   String(value || '')
@@ -86,7 +103,7 @@ function UsersPage() {
 
   const [modalUser, setModalUser] = React.useState<AppUser | null>(null)
   const [filters, setFilters] = React.useState<UserFiltersState>({})
-  const [pendingRequests, setPendingRequests] = React.useState<any[]>([])
+  const [pendingRequests, setPendingRequests] = React.useState<PendingUserRequest[]>([])
   const [loadingRequests, setLoadingRequests] = React.useState(false)
 
   const roleOptions = ['Admin', 'Direcció', 'Cap Departament', 'Treballador', 'Observer']
@@ -124,8 +141,8 @@ function UsersPage() {
         body: JSON.stringify({ reason }),
       })
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        alert((data as any)?.error || "No s'ha pogut rebutjar la sol·licitud")
+        const data = (await res.json().catch(() => ({}))) as RejectRequestResponse
+        alert(data.error || "No s'ha pogut rebutjar la sol·licitud")
         return
       }
       await loadPendingRequests()
@@ -298,15 +315,15 @@ function UsersPage() {
             available: modalUser.available ?? true,
             driver: { isDriver: modalUser.isDriver ?? false },
             workerRank: modalUser.workerRank ?? 'equip',
-            opsChannelsConfigurable: (modalUser as any).opsChannelsConfigurable ?? [],
-            opsEventsConfigurable: (modalUser as any).opsEventsConfigurable ?? false,
+            opsChannelsConfigurable: modalUser.opsChannelsConfigurable ?? [],
+            opsEventsConfigurable: modalUser.opsEventsConfigurable ?? false,
             opsProjectsConfigurable:
-              typeof (modalUser as any).opsProjectsConfigurable === 'boolean'
-                ? (modalUser as any).opsProjectsConfigurable
+              typeof modalUser.opsProjectsConfigurable === 'boolean'
+                ? modalUser.opsProjectsConfigurable
                 : true,
-            canRespondSurveys: Boolean((modalUser as any).canRespondSurveys),
+            canRespondSurveys: Boolean(modalUser.canRespondSurveys),
             isDepartmentRobaLead: Boolean(modalUser.isDepartmentRobaLead),
-            isTransportLead: Boolean((modalUser as any).isTransportLead),
+            isTransportLead: Boolean(modalUser.isTransportLead),
           }}
           onSubmit={async (data) => {
             if (modalUser.personId) {

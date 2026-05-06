@@ -119,7 +119,7 @@ export function useServicePhasesState({
   const defaultMeetingPoint = meetingPoint || location || event.eventLocation || ''
   const defaultServiceDate = extractDate(event.start)
 
-  const createServiceGroup = (phaseKey: ServicePhaseKey, seed: Partial<ServeiGroup> = {}) => ({
+  const createServiceGroup = useCallback((phaseKey: ServicePhaseKey, seed: Partial<ServeiGroup> = {}) => ({
     id: seed.id || makeGroupId(),
     phaseKey,
     serviceDate: seed.serviceDate || defaultServiceDate,
@@ -133,10 +133,13 @@ export function useServicePhasesState({
     responsibleId: seed.responsibleId || '',
     needsDriver: seed.needsDriver ?? false,
     driverId: seed.driverId || '',
-  })
+  }), [defaultMeetingPoint, defaultServiceDate, endTime, startTime])
 
-  const createServicePhaseGroups = (overrides: Partial<ServeiGroup>[] = []) =>
-    servicePhaseOptions.map((phase, idx) => createServiceGroup(phase.key, overrides[idx] || {}))
+  const createServicePhaseGroups = useCallback(
+    (overrides: Partial<ServeiGroup>[] = []) =>
+      servicePhaseOptions.map((phase, idx) => createServiceGroup(phase.key, overrides[idx] || {})),
+    [createServiceGroup]
+  )
 
   const [servicePhaseGroups, setServicePhaseGroups] = useState<ServeiGroup[]>(() => [createServiceGroup('event')])
   const [serviceJamoneroAssignments, setServiceJamoneroAssignments] = useState<ServiceJamoneroAssignment[]>([])
@@ -172,7 +175,7 @@ export function useServicePhasesState({
         endTime: endTime || '',
       })
     )
-  }, [department, defaultMeetingPoint, defaultServiceDate, startTime, endTime, totalWorkers, modalOpen])
+  }, [createServicePhaseGroups, department, defaultMeetingPoint, defaultServiceDate, startTime, endTime, totalWorkers, modalOpen])
 
   const addServiceGroup = (phaseKey: ServicePhaseKey) => {
     setServicePhaseGroups((prev) => [...prev, createServiceGroup(phaseKey)])
@@ -241,7 +244,7 @@ export function useServicePhasesState({
       drivers: activeServiceGroups.filter((group) => group.needsDriver).length,
       responsables: activeResponsiblePhases.size,
     }
-  }, [activeServiceGroups, servicePhaseSettings, serviceJamoneroAssignments])
+  }, [activeServiceGroups, serviceJamoneroAssignments])
 
   const setServiceJamoneroCount = useCallback((count: number) => {
     const safeCount = Math.max(0, Number.isNaN(Number(count)) ? 0 : Number(count))

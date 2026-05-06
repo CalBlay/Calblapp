@@ -12,7 +12,7 @@ interface WeeklyFiltersProps {
   onChange: (filters: SmartFiltersChange) => void
   fixedDepartment?: string
   role?: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
-  quadrants?: any[]
+  quadrants?: Array<{ responsable?: string; location?: string }>
 }
 
 /**

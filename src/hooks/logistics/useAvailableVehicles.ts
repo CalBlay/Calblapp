@@ -32,15 +32,6 @@ export function invalidateAvailableVehiclesCache() {
   vehiclesCache.clear()
 }
 
-const buildKey = (opts: UseAvailableVehiclesOptions) =>
-  [
-    opts.startDate || '',
-    opts.startTime || '',
-    opts.endDate || '',
-    opts.endTime || '',
-    opts.department || '',
-  ].join('|')
-
 async function fetchVehicles(opts: Required<Pick<UseAvailableVehiclesOptions, 'startDate' | 'startTime' | 'endDate' | 'endTime'>> & Pick<UseAvailableVehiclesOptions, 'department'>) {
   const res = await fetch('/api/transports/available', {
     method: 'POST',
@@ -88,8 +79,12 @@ async function loadVehicles(key: string, opts: Required<Pick<UseAvailableVehicle
 }
 
 export function useAvailableVehicles(opts: UseAvailableVehiclesOptions) {
+  const { startDate, startTime, endDate, endTime, department } = opts
   const enabled = opts.enabled ?? true
-  const key = useMemo(() => buildKey(opts), [opts.startDate, opts.startTime, opts.endDate, opts.endTime, opts.department])
+  const key = useMemo(
+    () => [startDate || '', startTime || '', endDate || '', endTime || '', department || ''].join('|'),
+    [startDate, startTime, endDate, endTime, department]
+  )
   const initialData = useMemo(() => (enabled ? getCachedVehicles(key) || [] : []), [enabled, key])
 
   const [vehicles, setVehicles] = useState<AvailableVehicle[]>(initialData)
@@ -98,7 +93,7 @@ export function useAvailableVehicles(opts: UseAvailableVehiclesOptions) {
 
   const canFetch =
     enabled &&
-    Boolean(opts.startDate && opts.startTime && opts.endDate && opts.endTime)
+    Boolean(startDate && startTime && endDate && endTime)
 
   const refetch = useCallback(async (force = false) => {
     if (!canFetch) {
@@ -118,11 +113,11 @@ export function useAvailableVehicles(opts: UseAvailableVehiclesOptions) {
       setLoading(true)
       setError(null)
       const data = await loadVehicles(key, {
-        startDate: opts.startDate!,
-        startTime: opts.startTime!,
-        endDate: opts.endDate!,
-        endTime: opts.endTime!,
-        department: opts.department,
+        startDate: startDate!,
+        startTime: startTime!,
+        endDate: endDate!,
+        endTime: endTime!,
+        department,
       })
       setVehicles(data)
     } catch (err) {
@@ -131,7 +126,7 @@ export function useAvailableVehicles(opts: UseAvailableVehiclesOptions) {
     } finally {
       setLoading(false)
     }
-  }, [canFetch, key, opts.startDate, opts.startTime, opts.endDate, opts.endTime, opts.department])
+  }, [canFetch, key, startDate, startTime, endDate, endTime, department])
 
   useEffect(() => {
     setVehicles(initialData)

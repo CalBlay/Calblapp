@@ -6,6 +6,10 @@ import { syncAdaEventsToFirestore } from '@/services/sync/adaSync'
 
 export const runtime = 'nodejs'
 
+type SessionUser = {
+  department?: string
+}
+
 const isIsoDate = (value: string | null) =>
   !!value && /^\d{4}-\d{2}-\d{2}$/.test(value)
 
@@ -30,10 +34,11 @@ export async function GET(req: Request) {
     }
 
     const session = await getServerSession(authOptions)
+    const sessionUser = session?.user as SessionUser | undefined
     const normalize = (value: string) =>
       value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
     const role = normalize(String(session?.user?.role || ''))
-    const department = normalize(String((session?.user as any)?.department || ''))
+    const department = normalize(String(sessionUser?.department || ''))
     const canManualSync =
       role === 'admin' || (role.includes('cap') && department === 'produccio')
 

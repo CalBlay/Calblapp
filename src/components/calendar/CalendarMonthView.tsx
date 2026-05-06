@@ -44,8 +44,9 @@ const diffDays = (a: Date, b: Date) =>
   Math.floor((a.getTime() - b.getTime()) / (24 * 60 * 60 * 1000))
 
 const pickDateIso = (ev: Deal, keys: string[]) => {
+  const rawEvent = ev as Deal & Record<string, unknown>
   for (const k of keys) {
-    const v = (ev as any)?.[k]
+    const v = rawEvent?.[k]
     if (typeof v === 'string' && v.length >= 10) return v.slice(0, 10)
   }
   return ''

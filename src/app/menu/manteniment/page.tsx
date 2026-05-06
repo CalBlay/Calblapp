@@ -16,7 +16,6 @@ import {
 import { useSession } from 'next-auth/react'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { normalizeRole } from '@/lib/roles'
-import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useMaintenanceAssignedCount } from '@/hooks/useMaintenanceAssignedCount'
 import { getAblyClient } from '@/lib/ablyClient'
@@ -41,6 +40,24 @@ type MaintenanceNotification = {
   ticketCode?: string | null
   location?: string | null
   machine?: string | null
+}
+
+type SessionUser = {
+  id?: string
+  role?: string
+  department?: string
+}
+
+type TicketStatusHistoryItem = {
+  status?: string | null
+  at?: number | null
+}
+
+type MaintenanceTicketResponse = {
+  statusHistory?: TicketStatusHistoryItem[]
+  plannedStart?: number | string | null
+  assignedAt?: number | string | null
+  createdAt?: number | string | null
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -83,11 +100,11 @@ const normalizeNotificationText = (value?: string | null) =>
 export default function MantenimentIndexPage() {
   const { data: session } = useSession()
   const router = useRouter()
-  const userRole = normalizeRole((session?.user as any)?.role || '')
-  const userDepartment = normalizeDept((session?.user as any)?.department || '')
-  const userId = String((session?.user as any)?.id || '').trim()
+  const sessionUser = session?.user as SessionUser | undefined
+  const userRole = normalizeRole(sessionUser?.role || '')
+  const userDepartment = normalizeDept(sessionUser?.department || '')
+  const userId = String(sessionUser?.id || '').trim()
   const isMaintenanceWorker = userRole === 'treballador' && userDepartment === 'manteniment'
-  const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(userDepartment)
   const isAdmin = userRole === 'admin' || userRole === 'direccio'
   const isProductionWorker = userRole === 'treballador' && userDepartment === 'produccio'
   const isCommercial = userRole === 'comercial'
@@ -173,18 +190,18 @@ export default function MantenimentIndexPage() {
       return
     }
 
-    let query = new URLSearchParams({ ticketId })
+    const query = new URLSearchParams({ ticketId })
     try {
       const res = await fetch(`/api/maintenance/tickets/${encodeURIComponent(ticketId)}`, {
         cache: 'no-store',
       })
       if (res.ok) {
         const json = await res.json()
-        const ticket = json?.ticket || null
+        const ticket = (json?.ticket || null) as MaintenanceTicketResponse | null
         const validationAt = Array.isArray(ticket?.statusHistory)
           ? [...ticket.statusHistory]
-              .filter((item: any) => item?.status === 'validat' || item?.status === 'resolut')
-              .sort((a: any, b: any) => Number(b?.at || 0) - Number(a?.at || 0))[0]?.at
+              .filter((item) => item?.status === 'validat' || item?.status === 'resolut')
+              .sort((a, b) => Number(b?.at || 0) - Number(a?.at || 0))[0]?.at
           : null
         const baseDate =
           notification.type === 'maintenance_ticket_validated'

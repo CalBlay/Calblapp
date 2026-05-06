@@ -27,6 +27,12 @@ type CompletedRecord = {
   checklist?: Record<string, boolean>
 }
 
+const toCompletedAtDate = (value?: string | number) => {
+  if (value == null || value === '') return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 export default function PreventiuCompletatPage() {
   const params = useParams()
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string)
@@ -85,7 +91,7 @@ export default function PreventiuCompletatPage() {
             <div className="px-4 py-4 sm:px-6 sm:py-6 overflow-y-auto border-b xl:border-b-0 xl:border-r">
               <div className="grid grid-cols-1 gap-4 text-sm pb-24 xl:pb-6">
                 <div className="text-xs text-gray-600">
-                  Data: {record.completedAt ? format(new Date(record.completedAt as any), 'dd/MM/yyyy HH:mm') : ''}
+                  Data: {toCompletedAtDate(record.completedAt) ? format(toCompletedAtDate(record.completedAt) as Date, 'dd/MM/yyyy HH:mm') : ''}
                 </div>
                 <div className="text-xs text-gray-600">Operari: {record.worker || '-'}</div>
                 <div className="text-xs text-gray-600">Estat: {record.status || 'pendent'}</div>

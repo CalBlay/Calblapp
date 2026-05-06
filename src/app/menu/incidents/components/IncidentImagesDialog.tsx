@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import Image from 'next/image'
 import { Camera, ImageOff } from 'lucide-react'
 import {
   Dialog,
@@ -105,11 +106,13 @@ export default function IncidentImagesDialog({ incident, open, onClose }: Props)
                 <div className="aspect-[4/3] bg-slate-100">
                   {image.url ? (
                     <a href={image.url} target="_blank" rel="noreferrer" className="block h-full w-full">
-                      <img
+                      <Image
                         src={image.url}
                         alt={`Foto incidència ${index + 1}`}
                         className="h-full w-full object-cover"
-                        loading="lazy"
+                        width={800}
+                        height={600}
+                        unoptimized
                       />
                     </a>
                   ) : (

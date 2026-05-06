@@ -47,6 +47,39 @@ type PlannerTicketLike = Partial<Ticket> & {
   priority?: TicketCard['priority']
 }
 
+type TemplateApiItem = {
+  id?: string | number
+  name?: string
+  title?: string
+  periodicity?: Template['periodicity']
+  lastDone?: string | null
+  location?: string
+  primaryOperator?: string
+  backupOperator?: string
+  autoPlanExcludedWeeks?: unknown[]
+}
+
+type UserApiItem = {
+  id?: string | number
+  name?: string
+  departmentLower?: string
+  department?: string
+}
+
+type PlannedApiItem = {
+  id?: string | number
+  date?: string
+  startTime?: string
+  endTime?: string
+  workerNames?: unknown[]
+  title?: string
+  priority?: ScheduledItem['priority']
+  location?: string
+  templateId?: string | null
+  lastStatus?: string
+  lastProgress?: number | string | null
+}
+
 function normalizePlannerTicketStatus(value?: unknown) {
   const v = String(value || '')
     .trim()
@@ -62,10 +95,10 @@ function normalizePlannerTicketStatus(value?: unknown) {
 
 function mapPendingTickets(list: PlannerTicketLike[]) {
   return list
-    .filter((t: any) => !t.externalized)
-    .filter((t: any) => !t.plannedStart && !t.plannedEnd)
-    .filter((t: any) => ['nou', 'no_fet'].includes(normalizePlannerTicketStatus(t.status)))
-    .map((t: any) => {
+    .filter((t) => !t.externalized)
+    .filter((t) => !t.plannedStart && !t.plannedEnd)
+    .filter((t) => ['nou', 'no_fet'].includes(normalizePlannerTicketStatus(t.status)))
+    .map((t) => {
       const code = t.ticketCode || t.incidentNumber || 'TIC'
       const title = t.operatorTitle || t.description || t.machine || t.location || ''
       const minutes = Number(t.estimatedMinutes || 60)
@@ -102,9 +135,9 @@ function mapPlannedTickets(
   endStr: string
 ) {
   return ticketList
-    .filter((t: any) => !t.externalized)
-    .filter((t: any) => t.plannedStart && t.plannedEnd)
-    .map((t: any) => {
+    .filter((t) => !t.externalized)
+    .filter((t) => t.plannedStart && t.plannedEnd)
+    .map((t) => {
       const start = new Date(Number(t.plannedStart))
       const end = new Date(Number(t.plannedEnd))
       const date = format(start, 'yyyy-MM-dd')
@@ -242,8 +275,8 @@ export default function usePlannerData({
         const templateList = Array.isArray(templatesJson?.templates) ? templatesJson.templates : []
         setTemplates(
           templateList
-            .filter((t: any) => t?.id && (t?.name || t?.title))
-            .map((t: any) => ({
+            .filter((t: TemplateApiItem) => t?.id && (t?.name || t?.title))
+            .map((t: TemplateApiItem) => ({
               id: String(t.id),
               name: String(t.name || t.title || ''),
               periodicity: t.periodicity,
@@ -267,8 +300,8 @@ export default function usePlannerData({
         const usersList = Array.isArray(usersJson?.data) ? usersJson.data : []
         setUsers(
           usersList
-            .filter((u: any) => u?.id && u?.name)
-            .map((u: any) => ({
+            .filter((u: UserApiItem) => u?.id && u?.name)
+            .map((u: UserApiItem) => ({
               id: String(u.id),
               name: String(u.name),
               department: (u.departmentLower || u.department || '').toString(),
@@ -327,7 +360,7 @@ export default function usePlannerData({
       const plannedJson = plannedRes.ok ? await plannedRes.json() : { items: [] }
       const plannedList = Array.isArray(plannedJson?.items) ? plannedJson.items : []
       const plannedMapped: ScheduledItem[] = plannedList
-        .map((p: any) => {
+        .map((p: PlannedApiItem) => {
           const date = parseISO(String(p.date || ''))
           const dayIndex = Math.round((date.getTime() - weekStart.getTime()) / 86400000)
           if (dayIndex < 0 || dayIndex >= dayCount) return null
@@ -371,7 +404,7 @@ export default function usePlannerData({
       const templateMap = new Map(templates.map((template) => [template.id, template]))
       const alreadyPlannedTemplateIds = new Set(
         plannedList
-          .map((item: any) => String(item?.templateId || ''))
+          .map((item: PlannedApiItem) => String(item?.templateId || ''))
           .filter(Boolean)
       )
 

@@ -27,10 +27,16 @@ type SurveyItem = {
   myResponse?: 'yes' | 'no' | 'maybe' | null
 }
 
+type SessionUser = {
+  role?: string
+  canRespondSurveys?: boolean
+}
+
 export default function SondeigsPage() {
   const { data: session, status } = useSession()
-  const role = normalizeRole(String((session?.user as any)?.role || ''))
-  const canRespondSurveys = Boolean((session?.user as any)?.canRespondSurveys)
+  const sessionUser = session?.user as SessionUser | undefined
+  const role = normalizeRole(String(sessionUser?.role || ''))
+  const canRespondSurveys = Boolean(sessionUser?.canRespondSurveys)
   const canAccess = canRespondSurveys || ['admin', 'direccio'].includes(role)
   const [justSubmittedSurveyId, setJustSubmittedSurveyId] = useState<string | null>(null)
 
@@ -39,7 +45,10 @@ export default function SondeigsPage() {
     fetcher
   )
 
-  const surveys: SurveyItem[] = Array.isArray(data?.surveys) ? data.surveys : []
+  const surveys = useMemo<SurveyItem[]>(
+    () => (Array.isArray(data?.surveys) ? data.surveys : []),
+    [data?.surveys]
+  )
   const pendingSurveys = useMemo(
     () => surveys.filter((survey) => !survey.myResponse),
     [surveys]

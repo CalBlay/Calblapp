@@ -1,6 +1,5 @@
 import {
   Blocks,
-  CalendarDays,
   CalendarRange,
   FileText,
   FolderOpen,

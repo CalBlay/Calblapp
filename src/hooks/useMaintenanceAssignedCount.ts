@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 
+type SessionUser = { id?: string }
+
 export function useMaintenanceAssignedCount() {
   const { data: session, status } = useSession()
-  const userId = (session?.user as any)?.id as string | undefined
+  const userId = (session?.user as SessionUser | undefined)?.id
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
 

@@ -75,12 +75,12 @@ export async function POST(req: Request) {
       )
     }
 
-    const cleanArray = (arr: any) =>
+    const cleanArray = (arr: unknown): string[] =>
       Array.isArray(arr)
         ? arr.map((x) => String(x).trim()).filter(Boolean)
         : []
 
-    const produccioFormatted: Record<string, any> = {}
+    const produccioFormatted: Record<string, unknown> = {}
 
     for (const key of Object.keys(produccio)) {
       const value = produccio[key]

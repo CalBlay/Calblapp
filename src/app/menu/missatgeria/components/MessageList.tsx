@@ -1,10 +1,15 @@
 'use client'
 
 import React from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { Trash2 } from 'lucide-react'
-import { Message } from '../types'
+import type { Message } from '../types'
 import { initials, timeLabel } from '../utils'
+
+type MessageWithReadCount = Message & {
+  readCount?: number
+}
 
 type Props = {
   messages: Message[]
@@ -34,27 +39,29 @@ export default function MessageList({
       {messages
         .slice()
         .reverse()
-        .map((m) => {
-          const isMine = userId && m.senderId === userId
-          const ticks = isMine && (m as any)?.readCount > 0 ? '✓✓' : isMine ? '✓' : ''
+        .map((message) => {
+          const isMine = Boolean(userId) && message.senderId === userId
+          const readCount = (message as MessageWithReadCount).readCount ?? 0
+          const ticks = isMine && readCount > 0 ? 'âœ“âœ“' : isMine ? 'âœ“' : ''
+
           return (
-            <div key={m.id} className={`space-y-1 ${isMine ? 'flex flex-col items-end' : ''}`}>
+            <div key={message.id} className={`space-y-1 ${isMine ? 'flex flex-col items-end' : ''}`}>
               <div className="text-xs text-gray-500 dark:text-slate-400 flex items-center gap-2">
                 {!isMine && (
                   <span className="w-6 h-6 rounded-full bg-gray-200 text-gray-700 dark:bg-slate-700 dark:text-slate-100 flex items-center justify-center text-[10px] font-semibold">
-                    {initials(m.senderName)}
+                    {initials(message.senderName)}
                   </span>
                 )}
                 <span>
-                  {isMine ? 'Tu' : m.senderName || 'Usuari'} · {timeLabel(m.createdAt)}
-                  {m.visibility === 'direct' ? ' · Directe' : ''}
+                  {isMine ? 'Tu' : message.senderName || 'Usuari'} Â· {timeLabel(message.createdAt)}
+                  {message.visibility === 'direct' ? ' Â· Directe' : ''}
                 </span>
                 {ticks && <span className="text-[10px] text-gray-400">{ticks}</span>}
                 {isMine && (
                   <button
                     type="button"
                     className="text-gray-400 hover:text-red-600"
-                    onClick={() => onDelete(m.id)}
+                    onClick={() => onDelete(message.id)}
                     title="Esborrar missatge"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -68,29 +75,27 @@ export default function MessageList({
                     : 'bg-gray-100 text-gray-900 dark:bg-slate-800 dark:text-slate-100'
                 }`}
               >
-                {m.surveyType === 'quadrant-availability' && m.surveyId ? (
+                {message.surveyType === 'quadrant-availability' && message.surveyId ? (
                   <div className={`space-y-2 ${isMine ? 'text-white' : ''}`}>
-                    <div className="font-semibold">
-                      Sondeig de disponibilitat
+                    <div className="font-semibold">Sondeig de disponibilitat</div>
+                    <div className="text-xs opacity-90">
+                      {message.surveyPayload?.eventName || 'Servei'} Â· {message.surveyPayload?.serviceDate || '-'}
                     </div>
                     <div className="text-xs opacity-90">
-                      {m.surveyPayload?.eventName || 'Servei'} · {m.surveyPayload?.serviceDate || '-'}
-                    </div>
-                    <div className="text-xs opacity-90">
-                      {m.surveyPayload?.startTime || '--:--'} - {m.surveyPayload?.endTime || '--:--'}
+                      {message.surveyPayload?.startTime || '--:--'} - {message.surveyPayload?.endTime || '--:--'}
                     </div>
                     <div className="flex flex-wrap gap-2 pt-1">
                       {[
-                        ['yes', 'Sí'],
+                        ['yes', 'SÃ­'],
                         ['no', 'No'],
                         ['maybe', 'Potser'],
                       ].map(([value, label]) => {
-                        const active = m.surveyState === value
+                        const active = message.surveyState === value
                         return (
                           <button
                             key={value}
                             type="button"
-                            onClick={() => onRespondSurvey(m.surveyId as string, value as 'yes' | 'no' | 'maybe')}
+                            onClick={() => onRespondSurvey(message.surveyId as string, value as 'yes' | 'no' | 'maybe')}
                             className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
                               active
                                 ? isMine
@@ -108,55 +113,58 @@ export default function MessageList({
                     </div>
                   </div>
                 ) : null}
-                {m.body && <div>{m.body}</div>}
-                {m.imageUrl && (
-                  <a href={m.imageUrl} target="_blank" rel="noopener noreferrer">
-                    <img
-                      src={m.imageUrl}
-                      alt="Imatge"
-                      className="max-h-64 rounded border dark:border-slate-700"
-                    />
+                {message.body && <div>{message.body}</div>}
+                {message.imageUrl && (
+                  <a href={message.imageUrl} target="_blank" rel="noopener noreferrer">
+                    <div className="relative h-64 w-64 max-w-full overflow-hidden rounded border dark:border-slate-700">
+                      <Image
+                        src={message.imageUrl}
+                        alt="Imatge"
+                        fill
+                        className="object-contain"
+                      />
+                    </div>
                   </a>
                 )}
-                {m.fileUrl && (
+                {message.fileUrl && (
                   <a
-                    href={m.fileUrl}
+                    href={message.fileUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`inline-block underline ${
                       isMine ? 'text-white' : 'text-emerald-700 dark:text-emerald-300'
                     }`}
                   >
-                    {m.fileName || 'Descarregar fitxer'}
+                    {message.fileName || 'Descarregar fitxer'}
                   </a>
                 )}
               </div>
-              {((canCreateTicket && m.visibility === 'channel') || m.ticketId) && (
+              {((canCreateTicket && message.visibility === 'channel') || message.ticketId) && (
                 <div className="text-xs text-gray-600 dark:text-slate-300">
-                  {m.ticketId ? (
+                  {message.ticketId ? (
                     <Link
                       href={`/menu/manteniment/${
-                        m.ticketType === 'deco' ? 'tickets-deco' : 'tickets'
-                      }?ticket=${m.ticketId}`}
+                        message.ticketType === 'deco' ? 'tickets-deco' : 'tickets'
+                      }?ticket=${message.ticketId}`}
                       className="underline hover:text-emerald-600"
                     >
-                      Veure ticket {m.ticketCode ? `· ${m.ticketCode}` : ''}
+                      Veure ticket {message.ticketCode ? `Â· ${message.ticketCode}` : ''}
                     </Link>
-                  ) : ticketTypePickerId === m.id ? (
+                  ) : ticketTypePickerId === message.id ? (
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => onCreateTicket(m, 'maquinaria')}
-                        disabled={creatingTicketId === m.id}
+                        onClick={() => onCreateTicket(message, 'maquinaria')}
+                        disabled={creatingTicketId === message.id}
                         className="underline hover:text-emerald-600"
                       >
-                        Maquinària
+                        MaquinÃ ria
                       </button>
-                      <span className="text-gray-300">·</span>
+                      <span className="text-gray-300">Â·</span>
                       <button
                         type="button"
-                        onClick={() => onCreateTicket(m, 'deco')}
-                        disabled={creatingTicketId === m.id}
+                        onClick={() => onCreateTicket(message, 'deco')}
+                        disabled={creatingTicketId === message.id}
                         className="underline hover:text-emerald-600"
                       >
                         Deco
@@ -167,17 +175,17 @@ export default function MessageList({
                         className="ml-2 text-gray-400 hover:text-gray-600"
                         aria-label="Cancel"
                       >
-                        ✕
+                        âœ•
                       </button>
                     </div>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => onPickTicketType(m.id)}
-                      disabled={creatingTicketId === m.id}
+                      onClick={() => onPickTicketType(message.id)}
+                      disabled={creatingTicketId === message.id}
                       className="underline hover:text-emerald-600"
                     >
-                      {creatingTicketId === m.id ? 'Creant ticket…' : 'Crear ticket'}
+                      {creatingTicketId === message.id ? 'Creant ticketâ€¦' : 'Crear ticket'}
                     </button>
                   )}
                 </div>

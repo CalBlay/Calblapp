@@ -51,7 +51,18 @@ const formatTime = (t: string) => (t ? t.substring(0, 5) : '--:--')
    Component principal
 ────────────────────────────── */
 export default function QuadrantTable({ eventId, initialData }) {
-  const draft = initialData || {}
+  void eventId
+  const draft = (initialData || {}) as {
+    responsableId?: string
+    responsable?: { id?: string; name?: string; meetingPoint?: string }
+    startDate?: string
+    startTime?: string
+    endDate?: string
+    endTime?: string
+    meetingPoint?: string
+    conductors?: Array<{ id: string; name: string; meetingPoint?: string }>
+    treballadors?: Array<{ id: string; name: string; meetingPoint?: string }>
+  }
 
   /* ---------- Tipus ---------- */
   interface WorkerRow {
@@ -83,7 +94,7 @@ export default function QuadrantTable({ eventId, initialData }) {
         ]
       : []),
     ...(Array.isArray(draft.conductors)
-      ? draft.conductors.map((c: any) => ({
+      ? draft.conductors.map((c) => ({
           role: 'conductor',
           id: c.id,
           name: c.name,
@@ -95,7 +106,7 @@ export default function QuadrantTable({ eventId, initialData }) {
         }))
       : []),
     ...(Array.isArray(draft.treballadors)
-      ? draft.treballadors.map((t: any) => ({
+      ? draft.treballadors.map((t) => ({
           role: 'treballador',
           id: t.id,
           name: t.name,

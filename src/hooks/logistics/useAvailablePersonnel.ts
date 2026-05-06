@@ -49,17 +49,6 @@ export function invalidateAvailablePersonnelCache() {
 
 const normalize = (value?: string) => String(value || '').toLowerCase().trim()
 
-const buildKey = (opts: UseAvailablePersonnelOptions) =>
-  [
-    opts.departament || '',
-    opts.startDate || '',
-    opts.endDate || '',
-    opts.startTime || '',
-    opts.endTime || '',
-    opts.excludeEventId || '',
-    opts.vehicleType || '',
-  ].join('|')
-
 const cleanList = (
   arr: Array<Omit<PersonnelOption, 'status'> & { status?: string }>,
   excludeIds: Set<string>,
@@ -143,28 +132,43 @@ async function loadPersonnel(
 }
 
 export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
+  const {
+    departament,
+    startDate,
+    endDate,
+    startTime,
+    endTime,
+    excludeIds: rawExcludeIds,
+    excludeNames: rawExcludeNames,
+    excludeEventId,
+    vehicleType,
+  } = opts
   const enabled = opts.enabled ?? true
-  const key = useMemo(() => buildKey(opts), [
-    opts.departament,
-    opts.startDate,
-    opts.endDate,
-    opts.startTime,
-    opts.endTime,
-    opts.excludeEventId,
-    opts.vehicleType,
-  ])
+  const key = useMemo(
+    () =>
+      [
+        departament || '',
+        startDate || '',
+        endDate || '',
+        startTime || '',
+        endTime || '',
+        excludeEventId || '',
+        vehicleType || '',
+      ].join('|'),
+    [departament, startDate, endDate, startTime, endTime, excludeEventId, vehicleType]
+  )
   const initialPayload = useMemo(
     () => (enabled ? getCachedPayload(key) : null),
     [enabled, key]
   )
 
   const excludeIds = useMemo(
-    () => new Set((opts.excludeIds ?? []).map((value) => normalize(value))),
-    [opts.excludeIds]
+    () => new Set((rawExcludeIds ?? []).map((value) => normalize(value))),
+    [rawExcludeIds]
   )
   const excludeNames = useMemo(
-    () => new Set((opts.excludeNames ?? []).map((value) => normalize(value))),
-    [opts.excludeNames]
+    () => new Set((rawExcludeNames ?? []).map((value) => normalize(value))),
+    [rawExcludeNames]
   )
 
   const [payload, setPayload] = useState<PersonnelPayload>(
@@ -201,13 +205,13 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
       setLoading(true)
       setError(null)
       const data = await loadPersonnel(key, {
-        departament: opts.departament!,
-        startDate: opts.startDate!,
-        endDate: opts.endDate!,
-        startTime: opts.startTime!,
-        endTime: opts.endTime!,
-        excludeEventId: opts.excludeEventId,
-        vehicleType: opts.vehicleType,
+        departament: departament!,
+        startDate: startDate!,
+        endDate: endDate!,
+        startTime: startTime!,
+        endTime: endTime!,
+        excludeEventId,
+        vehicleType,
       })
       setPayload(data)
     } catch (err) {
@@ -219,13 +223,13 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
   }, [
     canFetch,
     key,
-    opts.departament,
-    opts.startDate,
-    opts.endDate,
-    opts.startTime,
-    opts.endTime,
-    opts.excludeEventId,
-    opts.vehicleType,
+    departament,
+    startDate,
+    endDate,
+    startTime,
+    endTime,
+    excludeEventId,
+    vehicleType,
   ])
 
   useEffect(() => {

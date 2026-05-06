@@ -8,6 +8,8 @@ import { RoleGuard } from '@/lib/withRoleGuard'
 
 type TemplateSection = { location: string; items: { label: string }[] }
 type EditableSection = { id: string; location: string; items: { id: string; label: string }[] }
+type PersonnelApiItem = { name?: string }
+type CompletedRecord = { status?: string; completedAt?: string | number | null }
 type Template = {
   id: string
   name: string
@@ -107,7 +109,7 @@ export default function PlantillaDetailPage() {
         const json = await res.json()
         const list = Array.isArray(json?.data) ? json.data : []
         const names = list
-          .map((item: any) => String(item?.name || '').trim())
+          .map((item: PersonnelApiItem) => String(item?.name || '').trim())
           .filter(Boolean)
           .sort((a: string, b: string) => a.localeCompare(b))
         setOperators(Array.from(new Set(names)))
@@ -128,7 +130,9 @@ export default function PlantillaDetailPage() {
         if (!res.ok) return
         const json = await res.json()
         const list = Array.isArray(json?.records) ? json.records : []
-        const resolved = list.find((r: any) => r.status === 'validat' || r.status === 'resolut')
+        const resolved = list.find(
+          (r: CompletedRecord) => r.status === 'validat' || r.status === 'resolut'
+        )
         if (resolved?.completedAt) {
           const date = new Date(resolved.completedAt)
           const yyyy = date.getFullYear()

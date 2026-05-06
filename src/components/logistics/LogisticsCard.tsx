@@ -5,7 +5,14 @@ import { format } from 'date-fns'
 import { ca } from 'date-fns/locale'
 
 interface LogisticsCardProps {
-  event: any
+  event: {
+    id: string
+    DataInici?: string
+    NomEvent?: string
+    Ubicacio?: string
+    PreparacioData?: string
+    PreparacioHora?: string
+  }
   role: string
   onChangeData?: (id: string, value: string) => void
   onChangeHora?: (id: string, value: string) => void

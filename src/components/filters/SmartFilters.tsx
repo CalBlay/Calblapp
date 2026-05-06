@@ -2,9 +2,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { CalendarRange, AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '../ui/calendar' // 🔹 Ruta relativa (no '@/') segons la teva config actual
 import {
@@ -99,7 +98,6 @@ export interface SmartFiltersProps {
 /* ==================== Utils ==================== */
 const toIso = (d: Date) => format(d, 'yyyy-MM-dd')
 const human = (d: Date) => format(d, 'd MMM yyyy', { locale: es })
-const humanSm = (d: Date) => format(d, 'd MMM', { locale: es })
 const unaccent = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const normDept = (s?: string) => unaccent((s || '').toLowerCase().trim())
 const normStr = (s?: string) => unaccent(String(s ?? '').toLowerCase().trim())
@@ -246,6 +244,10 @@ useEffect(() => {
 
 /* Si l’usuari cancel·la la selecció o surt del picker → tornar a "Setmana" */
 useEffect(() => {
+  const dayInput = dayInputRef.current
+  const rangeEndInput = rangeEndRef.current
+  const rangeStartInput = rangeStartRef.current
+
   const handleBlur = () => {
     if (
       (mode === 'day' && !dayStr) ||
@@ -259,14 +261,14 @@ useEffect(() => {
     }
   }
 
-  dayInputRef.current?.addEventListener('blur', handleBlur)
-  rangeEndRef.current?.addEventListener('blur', handleBlur)
-  rangeStartRef.current?.addEventListener('blur', handleBlur)
+  dayInput?.addEventListener('blur', handleBlur)
+  rangeEndInput?.addEventListener('blur', handleBlur)
+  rangeStartInput?.addEventListener('blur', handleBlur)
 
   return () => {
-    dayInputRef.current?.removeEventListener('blur', handleBlur)
-    rangeEndRef.current?.removeEventListener('blur', handleBlur)
-    rangeStartRef.current?.removeEventListener('blur', handleBlur)
+    dayInput?.removeEventListener('blur', handleBlur)
+    rangeEndInput?.removeEventListener('blur', handleBlur)
+    rangeStartInput?.removeEventListener('blur', handleBlur)
   }
 }, [mode, dayStr, rangeStartStr, rangeEndStr])
 
@@ -422,7 +424,9 @@ if (key !== lastPayloadRef.current) {
     showStatus,
     showImportance,
     showCommercial,
-    onChange
+    onChange,
+    onLabelChange,
+    headerLabel,
   ])
 
   useEffect(() => {

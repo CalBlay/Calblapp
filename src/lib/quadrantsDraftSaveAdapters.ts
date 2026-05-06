@@ -55,6 +55,28 @@ const toLine = (p: EditorRow): Line => ({
   plate: p?.plate || '',
 })
 
+const firstGroupIdFromDoc = (data: Record<string, unknown>): string => {
+  const groups = data.groups
+  if (!Array.isArray(groups) || groups.length === 0) return ''
+  const first = groups[0]
+  if (typeof first !== 'object' || first === null) return ''
+  return String((first as Record<string, unknown>).id || '').trim()
+}
+
+const coerceDocDate = (raw: unknown, fallback: Date): Date => {
+  if (
+    raw &&
+    typeof raw === 'object' &&
+    'toDate' in raw &&
+    typeof (raw as { toDate?: () => Date }).toDate === 'function'
+  ) {
+    return (raw as { toDate: () => Date }).toDate()
+  }
+  if (raw instanceof Date) return raw
+  if (typeof raw === 'number' && Number.isFinite(raw)) return new Date(raw)
+  return fallback
+}
+
 const normalizePersonKey = (value?: string | null) =>
   String(value || '')
     .trim()
@@ -134,13 +156,13 @@ const persistServeisDraft = async ({
 
   const eventDocsSnap = await db.collection(coll).where('eventId', '==', canonicalEventId).get()
   const existingDocs = eventDocsSnap.docs
-  const baseDoc = existingDocs[0]?.data() || {}
+  const baseDoc: Record<string, unknown> = existingDocs[0]?.data() || {}
   const existingByGroup = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
 
   existingDocs.forEach((doc) => {
-    const data = doc.data() as any
+    const data = doc.data() as Record<string, unknown>
     const groupId =
-      data?.groups?.[0]?.id ||
+      firstGroupIdFromDoc(data) ||
       doc.id.split('__').pop() ||
       ''
     if (groupId) existingByGroup.set(String(groupId), doc)
@@ -180,7 +202,7 @@ const persistServeisDraft = async ({
     const treballadorsRows = byRole('treballador')
     const fallbackResponsible =
       explicitResponsables[0] ??
-      ((group as any).wantsResponsible !== false ? conductorsRows[0] ?? null : null)
+      (group.wantsResponsible !== false ? conductorsRows[0] ?? null : null)
     const responsables = fallbackResponsible ? [fallbackResponsible] : []
     const mainResponsable = fallbackResponsible
     const responsibleActsAsDriver = !!mainResponsable?.isDriver
@@ -197,7 +219,7 @@ const persistServeisDraft = async ({
 
     const extraCount = treballadorsRows.filter((row) => row.name === 'Extra').length
     const baseGroupDoc = existingByGroup.get(groupId)
-    const previous = (baseGroupDoc?.data() as any) || baseDoc
+    const previous: Record<string, unknown> = (baseGroupDoc?.data() as Record<string, unknown>) || baseDoc
     const timingAnchor =
       conductorsForSave[0] ||
       mainResponsable ||
@@ -270,8 +292,7 @@ const persistServeisDraft = async ({
             responsibleName: mainResponsable?.name || null,
           },
         ],
-        createdAt:
-          previous?.createdAt?.toDate?.() ? previous.createdAt.toDate() : previous?.createdAt || new Date(),
+        createdAt: coerceDocDate(previous?.createdAt, new Date()),
       },
       { merge: true }
     )
@@ -301,13 +322,11 @@ const persistGenericGroupedDraft = async ({
   const ref = db.collection(coll).doc(sourceDocId || canonicalEventId)
   const snap = await ref.get()
   let createdAt = new Date()
-  const existing = snap.exists ? (snap.data() as any) : null
+  const existing = snap.exists ? (snap.data() as Record<string, unknown>) : null
 
   if (snap.exists) {
-    const old = snap.data() as any
-    createdAt = old?.createdAt?.toDate
-      ? old.createdAt.toDate()
-      : old?.createdAt || createdAt
+    const old = snap.data() as Record<string, unknown>
+    createdAt = coerceDocDate(old?.createdAt, createdAt)
   }
 
   const { normalizedRows, updateData } = buildBaseUpdateData({
@@ -329,8 +348,14 @@ const persistGenericGroupedDraft = async ({
       rows: normalizedRows,
     })
 
-    const totalWorkers = persistedGroups.reduce((sum: number, group: any) => sum + Number(group.workers || 0), 0)
-    const totalDrivers = persistedGroups.reduce((sum: number, group: any) => sum + Number(group.drivers || 0), 0)
+    const totalWorkers = persistedGroups.reduce(
+      (sum, group) => sum + Number(group.workers || 0),
+      0
+    )
+    const totalDrivers = persistedGroups.reduce(
+      (sum, group) => sum + Number(group.drivers || 0),
+      0
+    )
     nextUpdateData.groups = persistedGroups
     nextUpdateData.totalWorkers = totalWorkers
     nextUpdateData.numDrivers = totalDrivers
@@ -364,13 +389,11 @@ const persistCuinaDraft = async ({
   const ref = db.collection(coll).doc(sourceDocId || canonicalEventId)
   const snap = await ref.get()
   let createdAt = new Date()
-  const existing = snap.exists ? (snap.data() as any) : null
+  const existing = snap.exists ? (snap.data() as Record<string, unknown>) : null
 
   if (snap.exists) {
-    const old = snap.data() as any
-    createdAt = old?.createdAt?.toDate
-      ? old.createdAt.toDate()
-      : old?.createdAt || createdAt
+    const old = snap.data() as Record<string, unknown>
+    createdAt = coerceDocDate(old?.createdAt, createdAt)
   }
 
   const { normalizedRows, updateData } = buildBaseUpdateData({
@@ -399,11 +422,14 @@ const persistCuinaDraft = async ({
         id: String(group?.id || `group-${index + 1}`),
       }))
     : []
-  const existingGroups = Array.isArray(existing?.groups)
-    ? existing.groups.map((group: any, index: number) => ({
-        ...group,
-        id: String(group?.id || `group-${index + 1}`),
-      }))
+  const existingGroups: EditorGroup[] = Array.isArray(existing?.groups)
+    ? (existing.groups as unknown[]).map((raw, index: number) => {
+        const group = typeof raw === 'object' && raw !== null ? (raw as EditorGroup) : ({} as EditorGroup)
+        return {
+          ...group,
+          id: String(group?.id || `group-${index + 1}`),
+        }
+      })
     : []
 
   const submittedGroupIds = submittedGroups
@@ -420,7 +446,7 @@ const persistCuinaDraft = async ({
     if (!groupId) return
     groupMetaById.set(groupId, group)
   })
-  existingGroups.forEach((group: any) => {
+  existingGroups.forEach((group) => {
     const groupId = String(group.id || '').trim()
     if (!groupId || groupMetaById.has(groupId)) return
     groupMetaById.set(groupId, group)
@@ -431,7 +457,8 @@ const persistCuinaDraft = async ({
     const first = groupRows[0]
     const groupMeta = groupMetaById.get(groupId) || {}
     const previousGroup =
-      existingGroups.find((candidate: any) => String(candidate?.id || '').trim() === groupId) || {}
+      existingGroups.find((candidate) => String(candidate?.id || '').trim() === groupId) ||
+      ({} as EditorGroup)
     const responsables = groupRows.filter((row) => row.role === 'responsable')
     const conductors = groupRows.filter((row) => row.role === 'conductor')
     const treballadors = groupRows.filter((row) => row.role === 'treballador')
@@ -486,11 +513,11 @@ const persistCuinaDraft = async ({
 
   nextUpdateData.groups = persistedGroups
   nextUpdateData.totalWorkers = persistedGroups.reduce(
-    (sum: number, group: any) => sum + Number(group.workers || 0),
+    (sum, group) => sum + Number(group.workers || 0),
     0
   )
   nextUpdateData.numDrivers = persistedGroups.reduce(
-    (sum: number, group: any) => sum + Number(group.drivers || 0),
+    (sum, group) => sum + Number(group.drivers || 0),
     0
   )
   nextUpdateData.responsableName = persistedGroups[0]?.responsibleName || ''

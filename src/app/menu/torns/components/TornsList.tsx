@@ -20,6 +20,12 @@ type Props = {
   }
 }
 
+type ExtendedTornCardItem = TornCardItem & {
+  eventId?: string
+  phaseLabel?: string
+  vestimentModel?: string
+}
+
 const formatDate = (iso: string) => {
   if (!iso || iso.length < 10) return iso || ''
   const [y, m, d] = iso.slice(0, 10).split('-')
@@ -49,7 +55,7 @@ function mergeGroup(arr: TornCardItem[]): TornCardItem {
 
   const byKey = new Map<string, MergeWorker>()
 
-  const pushWorker = (w?: any) => {
+  const pushWorker = (w?: MergeWorker | null) => {
     if (!w) return
     const key = w.id ? String(w.id) : (w.name ? w.name.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '') : '')
     if (!key) return
@@ -111,8 +117,9 @@ function mergeGroup(arr: TornCardItem[]): TornCardItem {
   const vestimentSet = new Set<string>()
   arr.forEach((t) => {
     if (t.dayNote) noteSet.add(t.dayNote)
-    if ((t as any).phaseLabel) phaseSet.add((t as any).phaseLabel)
-    const vm = String((t as any).vestimentModel || '').trim()
+    const extended = t as ExtendedTornCardItem
+    if (extended.phaseLabel) phaseSet.add(extended.phaseLabel)
+    const vm = String(extended.vestimentModel || '').trim()
     if (vm) vestimentSet.add(vm)
   })
   const dayNote =
@@ -165,8 +172,9 @@ export default function TornsList({
         const byEvent = new Map<string, TornCardItem[]>()
 
         for (const t of arr) {
+          const extended = t as ExtendedTornCardItem
           const key =
-            (t as any).eventId || `${t.code || ''}|${t.eventName || ''}|${t.location || ''}`
+            extended.eventId || `${t.code || ''}|${t.eventName || ''}|${t.location || ''}`
 
           if (!byEvent.has(key)) byEvent.set(key, [])
           byEvent.get(key)!.push(t)

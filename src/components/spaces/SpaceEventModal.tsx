@@ -5,10 +5,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge'
 import { COLORS_LN } from '@/lib/colors'
 
+type SpaceEvent = Record<string, unknown>
+
 interface SpaceEventModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  event: any | null
+  event: SpaceEvent | null
 }
 
 /**

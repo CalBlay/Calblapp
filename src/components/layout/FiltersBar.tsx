@@ -60,6 +60,8 @@ export default function FiltersBar({
   priorityLabel = 'Prioritat',
   showResponsableFilter = false,
 }: FiltersBarProps) {
+  void hiddenFilters
+  void collapseOnMobile
   const pathname = usePathname()
   const isQuadrants = pathname?.startsWith('/menu/quadrants')
   const { setOpen, setContent } = useFilters()
@@ -82,7 +84,7 @@ export default function FiltersBar({
     [setFilters]
   )
 
-  const SelectsInline = memo(() => {
+  const SelectsInline = memo(function SelectsInline() {
     const base = 'h-10 rounded-xl border bg-white text-gray-900 px-3'
     return (
       <>

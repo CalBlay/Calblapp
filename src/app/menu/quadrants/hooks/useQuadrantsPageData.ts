@@ -6,8 +6,65 @@ import type { QuadrantStatus, UnifiedEvent } from '@/app/menu/quadrants/types'
 
 interface UseQuadrantsPageDataParams {
   events: QuadrantEvent[]
-  quadrants: any[]
+  quadrants: QuadrantDraft[]
   filters: FiltersState
+}
+
+type QuadrantPerson = {
+  id?: string | null
+  name?: string | null
+  meetingPoint?: string | null
+  plate?: string | null
+  vehicleType?: string | null
+  arrivalTime?: string | null
+}
+
+type QuadrantGroup = {
+  id?: string | null
+  serviceDate?: string | null
+  meetingPoint?: string | null
+  startTime?: string | null
+  endTime?: string | null
+  workers?: number | null
+  drivers?: number | null
+  needsDriver?: boolean | null
+  driverId?: string | null
+  driverName?: string | null
+  responsibleId?: string | null
+  responsibleName?: string | null
+}
+
+type QuadrantDraft = {
+  id?: string
+  eventId?: string
+  eventCode?: string
+  code?: string
+  eventName?: string
+  eventDate?: string
+  eventStartDate?: string
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  endTime?: string
+  status?: string
+  phaseType?: string
+  phaseLabel?: string
+  phaseDate?: string
+  department?: string
+  location?: unknown
+  ln?: unknown
+  service?: unknown
+  commercial?: string | null
+  numPax?: number | null
+  responsableId?: string | null
+  responsableName?: string | null
+  totalWorkers?: number | null
+  numDrivers?: number | null
+  meetingPoint?: string | null
+  groups?: QuadrantGroup[]
+  conductors?: QuadrantPerson[]
+  treballadors?: QuadrantPerson[]
+  vestimentModel?: string | null
 }
 
 export interface QuadrantsPageCounts {
@@ -49,7 +106,7 @@ const cleanText = (value?: unknown) => {
   return bad.has(s) ? '' : s
 }
 
-const getEventKey = (item: any) =>
+const getEventKey = (item: QuadrantDraft) =>
   String(item?.id || item?.eventId || item?.eventCode || item?.code || '').trim()
 
 const normalizeNameKey = (value?: unknown) =>
@@ -96,8 +153,8 @@ const pickEdgeTime = (
   return bestText
 }
 
-const mergePeople = (groups: any[][]) => {
-  const merged: any[] = []
+const mergePeople = (groups: QuadrantPerson[][]) => {
+  const merged: QuadrantPerson[] = []
   const seen = new Set<string>()
   groups.flat().forEach((person) => {
     if (!person?.name) return
@@ -115,7 +172,7 @@ const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
   items.forEach((item) => {
     const isServiceDraft =
       item.draft &&
-      normalizeNameKey((item.draft as any)?.department || item.department) === 'serveis' &&
+      normalizeNameKey((item.draft as QuadrantDraft | undefined)?.department || item.department) === 'serveis' &&
       normalizeNameKey(item.phaseKey || item.phaseType || item.phaseLabel || 'event') === 'event'
 
     if (!isServiceDraft) {
@@ -147,10 +204,10 @@ const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
         : entries.some((entry) => entry.quadrantStatus === 'confirmed')
         ? 'draft'
         : 'pending'
-    const mergedGroups = drafts.flatMap((draft: any) => {
+    const mergedGroups = drafts.flatMap((draft) => {
       const groups = Array.isArray(draft?.groups) ? draft.groups : []
       if (groups.length > 0) {
-        return groups.map((group: any) => ({
+        return groups.map((group) => ({
           ...group,
           driverName:
             group?.driverName ||
@@ -186,17 +243,17 @@ const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
       id: String(base.eventId || base.id || ''),
       startTime: startTime || base.draft?.startTime || '',
       endTime: endTime || base.draft?.endTime || '',
-      conductors: mergePeople(drafts.map((draft: any) => (Array.isArray(draft?.conductors) ? draft.conductors : []))),
-      treballadors: mergePeople(drafts.map((draft: any) => (Array.isArray(draft?.treballadors) ? draft.treballadors : []))),
+      conductors: mergePeople(drafts.map((draft) => (Array.isArray(draft?.conductors) ? draft.conductors : []))),
+      treballadors: mergePeople(drafts.map((draft) => (Array.isArray(draft?.treballadors) ? draft.treballadors : []))),
       groups: mergedGroups,
-      totalWorkers: drafts.reduce((sum: number, draft: any) => sum + Number(draft?.totalWorkers || 0), 0),
-      numDrivers: drafts.reduce((sum: number, draft: any) => sum + Number(draft?.numDrivers || 0), 0),
+      totalWorkers: drafts.reduce((sum: number, draft) => sum + Number(draft?.totalWorkers || 0), 0),
+      numDrivers: drafts.reduce((sum: number, draft) => sum + Number(draft?.numDrivers || 0), 0),
       responsableId:
-        drafts.find((draft: any) => String(draft?.responsableId || '').trim())?.responsableId ||
+        drafts.find((draft) => String(draft?.responsableId || '').trim())?.responsableId ||
         base.draft?.responsableId ||
         '',
       responsableName:
-        drafts.find((draft: any) => String(draft?.responsableName || '').trim())?.responsableName ||
+        drafts.find((draft) => String(draft?.responsableName || '').trim())?.responsableName ||
         base.draft?.responsableName ||
         '',
     }
@@ -214,7 +271,7 @@ const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
   })
 }
 
-const buildWorkersSummary = (q: any) => {
+const buildWorkersSummary = (q: QuadrantDraft) => {
   const normalizeName = (value?: unknown) =>
     (value || '').toString().trim().toLowerCase()
       .normalize('NFD')
@@ -226,7 +283,7 @@ const buildWorkersSummary = (q: any) => {
   const seen = new Set<string>()
   if (Array.isArray(q?.conductors)) {
     q.conductors
-      .map((c: any) => c?.name)
+      .map((c) => c?.name)
       .filter(Boolean)
       .forEach((name: string) => {
         const key = normalizeName(name)
@@ -237,8 +294,8 @@ const buildWorkersSummary = (q: any) => {
   }
   if (Array.isArray(q?.treballadors)) {
     q.treballadors
-      .map((t: any) => t?.name)
-      .filter((n: any) => Boolean(n) && String(n) !== 'Extra')
+      .map((t) => t?.name)
+      .filter((n) => Boolean(n) && String(n) !== 'Extra')
       .forEach((name: string) => {
         const key = normalizeName(name)
         if (!key || key === responsibleName || seen.has(key)) return
@@ -256,18 +313,18 @@ export function useQuadrantsPageData({
 }: UseQuadrantsPageDataParams): UseQuadrantsPageDataResult {
   const eventsWithStatus = useMemo<UnifiedEvent[]>(() => {
     const out: UnifiedEvent[] = []
-    const eventsById = new Map<string, any>()
-    const eventsByCode = new Map<string, any>()
-    const quadrantsByEvent = new Map<string, any[]>()
+    const eventsById = new Map<string, QuadrantEvent>()
+    const eventsByCode = new Map<string, QuadrantEvent>()
+    const quadrantsByEvent = new Map<string, QuadrantDraft[]>()
 
-    ;(events as any[]).forEach((ev) => {
+    events.forEach((ev) => {
       const id = String(ev.id || ev.eventId || ev.code || '').trim()
       if (id) eventsById.set(id, ev)
       const code = normalize(ev.code || ev.eventCode || '')
       if (code) eventsByCode.set(code, ev)
     })
 
-    ;(quadrants as any[]).forEach((q) => {
+    quadrants.forEach((q) => {
       const id = String(q.eventId || q.code || q.eventCode || '').trim()
       if (!id) return
       const list = quadrantsByEvent.get(id) || []
@@ -275,7 +332,7 @@ export function useQuadrantsPageData({
       quadrantsByEvent.set(id, list)
     })
 
-    ;(quadrants as any[]).forEach((q) => {
+    quadrants.forEach((q) => {
       const ev =
         (q.eventId && eventsById.get(String(q.eventId))) ||
         eventsById.get(getEventKey(q)) ||
@@ -359,7 +416,7 @@ export function useQuadrantsPageData({
       })
     })
 
-    ;(events as any[]).forEach((ev) => {
+    events.forEach((ev) => {
       const eventId = String(ev.id || ev.eventId || ev.code || '').trim()
       if (!eventId) return
       const existing = quadrantsByEvent.get(eventId) || []

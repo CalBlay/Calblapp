@@ -10,6 +10,7 @@ import WeeklyTable from '@/components/quadrants/WeeklyTable'
 import { ClipboardList } from 'lucide-react'
 import { SlidersHorizontal } from 'lucide-react'
 
+type SessionUser = { department?: string }
 
 export default function QuadrantsOperativaPage() {
   // 🧩 Sessió usuari i departament
@@ -17,7 +18,7 @@ export default function QuadrantsOperativaPage() {
 
   let userDept = 'serveis'
   if (session && typeof session.user === 'object' && session.user) {
-    const u: any = session.user
+    const u = session.user as SessionUser
     if (typeof u.department === 'string') {
       userDept = u.department.toLowerCase()
     }
@@ -93,7 +94,7 @@ export default function QuadrantsOperativaPage() {
     setFilters((prev) => ({ ...prev, start: date, end: date }))
   }
 
-  const setRange = (start: string, end: string) => {
+  const _setRange = (start: string, end: string) => {
     setFilters((prev) => ({ ...prev, start, end }))
   }
 

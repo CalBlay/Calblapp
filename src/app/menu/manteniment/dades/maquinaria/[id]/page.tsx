@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
@@ -24,7 +24,7 @@ export default function MachineDetailPage({ params }: { params: Promise<{ id: st
     void params.then((value) => setMachineId(value.id))
   }, [params])
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
       const [machinesRes, suppliersRes, ticketsRes] = await Promise.all([
@@ -48,12 +48,12 @@ export default function MachineDetailPage({ params }: { params: Promise<{ id: st
     } finally {
       setLoading(false)
     }
-  }
+  }, [machineId])
 
   useEffect(() => {
     if (!machineId) return
     void loadData()
-  }, [machineId])
+  }, [loadData, machineId])
 
   const selectedMachine = useMemo(
     () => machines.find((item) => item.id === machineId) || null,

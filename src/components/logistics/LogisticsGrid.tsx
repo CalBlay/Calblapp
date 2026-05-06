@@ -11,8 +11,18 @@ import { formatDayMonthValue } from '@/lib/date-format'
 
 export type EditedMap = Record<string, { PreparacioData?: string; PreparacioHora?: string }>
 
+type LogisticsRow = {
+  id: string
+  PreparacioData?: string
+  PreparacioHora?: string
+  DataInici?: string
+  NomEvent?: string
+  NumPax?: number | string | null
+  Ubicacio?: string
+}
+
 interface LogisticsGridProps {
-  rows: any[]
+  rows: LogisticsRow[]
   loading: boolean
   isWorker: boolean
   isManager: boolean
@@ -107,9 +117,9 @@ export default function LogisticsGrid({
   )
 }
 
-function WorkerGroupedView({ events, loading }: { events: any[]; loading: boolean }) {
+function WorkerGroupedView({ events, loading }: { events: LogisticsRow[]; loading: boolean }) {
   const groups = useMemo(() => {
-    const map = new Map<string, any[]>()
+    const map = new Map<string, LogisticsRow[]>()
     events.forEach(ev => {
       const key = ev.PreparacioData || ev.DataInici?.toString() || 'sense-data'
       if (!map.has(key)) map.set(key, [])
@@ -236,7 +246,7 @@ function EditableTable({
   isManager,
   loading,
 }: {
-  rows: any[]
+  rows: LogisticsRow[]
   edited: EditedMap
   setEdited: React.Dispatch<React.SetStateAction<EditedMap>>
   isManager: boolean

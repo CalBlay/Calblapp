@@ -102,8 +102,8 @@ export function useMaintenanceTicketComposer({ refreshTickets }: Params) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       resetCreateState()
       await refreshTickets()
-    } catch (err: any) {
-      alert(err?.message || 'Error creant ticket')
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Error creant ticket')
     } finally {
       setCreateBusy(false)
     }

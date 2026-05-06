@@ -268,8 +268,6 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
   const {
     createSprint,
     handleTabChange,
-    hasPendingBlockDraft,
-    hasPendingTaskDraft,
   } = useProjectTabWorkflow({
     activeTab,
     addTaskToBlock,

@@ -17,6 +17,11 @@ import type {
 } from '@/app/menu/manteniment/tickets/types'
 import { minutesFromTime, normalizeName, timeFromMinutes } from '../utils'
 
+type SessionUser = {
+  role?: string
+  department?: string
+}
+
 type Props = {
   ticketId: string
   initialDate: string
@@ -80,8 +85,9 @@ export default function PlannerTicketModal({
   onRefresh,
 }: Props) {
   const { data: session } = useSession()
-  const role = normalizeRole((session?.user as any)?.role || '')
-  const department = normalizeDept((session?.user as any)?.department || '')
+  const sessionUser = (session?.user || {}) as SessionUser
+  const role = normalizeRole(sessionUser.role || '')
+  const department = normalizeDept(sessionUser.department || '')
   const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
   const canReopen = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
   const canExternalize =
@@ -250,8 +256,8 @@ export default function PlannerTicketModal({
       if (json?.ticket) applyTicketState(json.ticket as Ticket)
       await onRefresh()
       onClose()
-    } catch (err: any) {
-      alert(err?.message || 'Error assignant')
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Error assignant')
     } finally {
       setAssignBusy(false)
     }
@@ -281,8 +287,8 @@ export default function PlannerTicketModal({
       } else {
         await loadTicket()
       }
-    } catch (err: any) {
-      alert(err?.message || 'No s ha pogut guardar')
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'No s ha pogut guardar')
     }
   }
 
@@ -304,8 +310,8 @@ export default function PlannerTicketModal({
       const json = await res.json().catch(() => null)
       if (json?.ticket) applyTicketState(json.ticket as Ticket)
       await onRefresh()
-    } catch (err: any) {
-      alert(err?.message || 'No s han pogut desar els canvis')
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'No s han pogut desar els canvis')
     }
   }
 
@@ -320,8 +326,8 @@ export default function PlannerTicketModal({
       const json = await res.json().catch(() => null)
       if (json?.ticket) applyTicketState(json.ticket as Ticket)
       await onRefresh()
-    } catch (err: any) {
-      alert(err?.message || 'No s ha pogut reobrir')
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'No s ha pogut reobrir')
     }
   }
 
@@ -344,8 +350,8 @@ export default function PlannerTicketModal({
       const json = await res.json().catch(() => null)
       if (json?.ticket) applyTicketState(json.ticket as Ticket)
       await onRefresh()
-    } catch (err: any) {
-      alert(err?.message || 'No s ha pogut actualitzar')
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'No s ha pogut actualitzar')
     }
   }
 
@@ -375,8 +381,8 @@ export default function PlannerTicketModal({
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
       if (json?.ticket) applyTicketState(json.ticket as Ticket)
       await onRefresh()
-    } catch (err: any) {
-      alert(err?.message || 'No s ha pogut enviar al proveidor')
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'No s ha pogut enviar al proveidor')
     } finally {
       setExternalizeBusy(false)
     }

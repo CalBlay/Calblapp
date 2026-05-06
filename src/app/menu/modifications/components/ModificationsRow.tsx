@@ -10,8 +10,8 @@ import { formatDateString } from '@/lib/formatDate'
 
 interface Props {
   mod: Modification
-  onUpdate: (id: string, data: Partial<Modification>) => Promise<any> | void
-  onDelete: (id: string) => Promise<any> | void
+  onUpdate: (id: string, data: Partial<Modification>) => Promise<unknown> | void
+  onDelete: (id: string) => Promise<unknown> | void
   canDelete?: boolean
   currentUserId?: string
   currentUserName?: string

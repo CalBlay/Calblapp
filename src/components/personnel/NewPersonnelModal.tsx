@@ -523,7 +523,7 @@ export default function NewPersonnelModal({
                   id="unavailableUntil"
                   type="date"
                   value={form.unavailableUntil || ''}
-                  onChange={(e) => handleChange('unavailableUntil', e.target.value as any)}
+                  onChange={(e) => handleChange('unavailableUntil', e.target.value)}
                   disabled={form.unavailableIndefinite === true}
                   min={computeMinUnavailableUntil(form.unavailableFrom || '')}
                 />

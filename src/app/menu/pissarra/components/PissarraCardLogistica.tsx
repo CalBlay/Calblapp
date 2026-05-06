@@ -2,7 +2,7 @@
 'use client'
 
 import type { PissarraItem } from '@/hooks/usePissarra'
-import { MapPin, Clock, Users, User, Truck, UtensilsCrossed, ChefHat } from 'lucide-react'
+import { MapPin, Clock, Users, User, Truck, ChefHat } from 'lucide-react'
 
 type Props = {
   item: PissarraItem

@@ -1,8 +1,9 @@
 // file: src/components/events/EventMenuModal.tsx
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import type { LucideIcon } from 'lucide-react'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -108,6 +109,15 @@ function firstFiniteNumber(obj: Record<string, unknown> | null | undefined, keys
 
 type Tone = 'warning' | 'info' | 'success' | 'neutral' | 'purple'
 
+type MenuActionItem = {
+  key: string
+  label: string
+  badge: string
+  icon: LucideIcon
+  tone: Tone
+  onClick: () => void
+}
+
 function toneIconClass(tone: Tone) {
   // Color només a la icona (no al botó)
   if (tone === 'warning') return 'text-orange-600'
@@ -141,7 +151,7 @@ function ActionRow({
   onClick,
   disabled,
 }: {
-  icon: any
+  icon: LucideIcon
   label: string
   badge?: string
   tone: Tone
@@ -321,10 +331,13 @@ const treballadorsPersons =
     isProduccio ||
     (isCapDept && ['logistica', 'cuina'].includes(norm(deptN)))
 
-  const navigateTo = (path: string) => {
-    onClose()
-    router.push(path)
-  }
+  const navigateTo = useCallback(
+    (path: string) => {
+      onClose()
+      router.push(path)
+    },
+    [onClose, router]
+  )
 
   const dateStr = useMemo(() => event?.start?.substring(0, 10) || '-', [event?.start])
   const eventRecord = (event ?? {}) as Record<string, unknown>
@@ -416,7 +429,7 @@ const operativa = useMemo(
           }
         : null,
 
-    ].filter(Boolean) as any[],
+    ].filter(Boolean) as MenuActionItem[],
   [
     canCreateIncident,
     canSeeIncidents,
@@ -478,8 +491,8 @@ const recursos = useMemo(
             onClick: () => setShowKitchenDocs(true),
           }
         : null,
-    ].filter(Boolean) as any[],
-  [event, navigateTo, canSeeKitchenDocs]
+    ].filter(Boolean) as MenuActionItem[],
+  [event, canSeeKitchenDocs]
 )
 
   const economic = useMemo(
@@ -509,8 +522,8 @@ const recursos = useMemo(
               onClick: () => setShowBudget(true),
             }
           : null,
-      ].filter(Boolean) as any[],
-    [canSeeBudgetContract, event?.id, navigateTo, event]
+      ].filter(Boolean) as MenuActionItem[],
+    [canSeeBudgetContract, event, navigateTo]
   )
 
   if (!event || !event.id) return null
@@ -577,7 +590,7 @@ const recursos = useMemo(
               <>
                 <SectionTitle>Operativa</SectionTitle>
                 <div className="space-y-2">
-                  {operativa.map((a: any) => (
+                  {operativa.map((a) => (
                     <ActionRow
                       key={a.key}
                       icon={a.icon}
@@ -596,7 +609,7 @@ const recursos = useMemo(
               <>
                 <SectionTitle>Recursos</SectionTitle>
                 <div className="space-y-2">
-                  {recursos.map((a: any) => (
+                  {recursos.map((a) => (
                     <ActionRow
                       key={a.key}
                       icon={a.icon}
@@ -615,7 +628,7 @@ const recursos = useMemo(
               <>
                 <SectionTitle>Econòmic</SectionTitle>
                 <div className="space-y-2">
-                  {economic.map((a: any) => (
+                  {economic.map((a) => (
                     <ActionRow
                       key={a.key}
                       icon={a.icon}
@@ -734,7 +747,11 @@ treballadors={treballadorsPersons}
         onClose={() => setShowClosing(false)}
         eventId={String(event.id)}
         eventName={event.summary}
-        user={user as any}
+        user={{
+          role: user.role,
+          department: user.department,
+          id: user.id != null ? String(user.id) : undefined,
+        }}
       />
       
 

@@ -4,10 +4,14 @@
 import { useEffect, useState } from 'react'
 import { SpacesFilterState } from '@/components/spaces/SpacesFilters'
 
+type SpaceEventRow = Record<string, unknown>
+type SpaceDayRow = { date?: string; events?: SpaceEventRow[] }
+type SpaceApiRow = { finca?: string; dies?: SpaceDayRow[]; fincaId?: string }
+
 export function useSpaces(
   filters: SpacesFilterState & { baseDate: string; month?: number; year?: number }
 ) {
-  const [spaces, setSpaces] = useState<any[]>([])
+  const [spaces, setSpaces] = useState<SpaceApiRow[]>([])
   const [totals, setTotals] = useState<number[]>([])
   const [fincas, setFincas] = useState<string[]>([])
   const [comercials, setComercials] = useState<string[]>([])
@@ -39,7 +43,7 @@ export function useSpaces(
 
         const json = await res.json()
 
-        const rows: any[] = Array.isArray(json.data) ? json.data : []
+        const rows: SpaceApiRow[] = Array.isArray(json.data) ? json.data : []
         const totalsArr: number[] = Array.isArray(json.totalPaxPerDia)
           ? json.totalPaxPerDia
           : []
@@ -116,7 +120,7 @@ setLns(
   )
 )
 
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error carregant espais:', err)
         setError('No s’han pogut carregar les dades')
         setSpaces([])
@@ -132,7 +136,15 @@ setLns(
 
     fetchData()
     // Trigger NOMÉS quan realment canvien filtres
-  }, [JSON.stringify(filters)])
+  }, [
+    filters.baseDate,
+    filters.comercial,
+    filters.finca,
+    filters.ln,
+    filters.month,
+    filters.stage,
+    filters.year,
+  ])
 
   return {
     spaces,

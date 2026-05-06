@@ -3,13 +3,24 @@ export const dynamic = 'force-dynamic'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import SpacesInfoClient from './SpacesInfoClient'
 
+type FincaDoc = {
+  code?: string
+  codi?: string
+  tipus?: string
+  nom?: string
+  ln?: string
+  LN?: string
+  comercial?: Record<string, unknown>
+  produccio?: Record<string, unknown>
+}
+
 export default async function SpacesInfoPage() {
   // Llegim totes les finques de Firestore
   const snap = await firestoreAdmin.collection('finques').get()
 
   // Normalitzem dades base
   const espais = snap.docs.map((doc) => {
-    const d = doc.data() as any
+    const d = doc.data() as FincaDoc
     const rawCode = d.code || d.codi || ''
     const rawTipus = d.tipus || ''
     return {

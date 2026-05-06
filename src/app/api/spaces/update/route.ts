@@ -7,6 +7,17 @@ import { registerFinquesProduccioImagesInIndex } from '@/lib/media/storageMediaI
 
 export const runtime = 'nodejs'
 
+type SessionUser = {
+  departmentLower?: string
+  deptLower?: string
+  department?: string
+}
+
+type ProduccioPayload = Record<
+  string,
+  string | string[] | number | boolean | null | undefined
+>
+
 const normalizeDept = (raw?: string) => {
   const base = (raw || '')
     .normalize('NFD')
@@ -40,15 +51,10 @@ async function codeAlreadyExists(code: string, currentId?: string): Promise<bool
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions)
+    const sessionUser = session?.user as SessionUser | undefined
     const role = normalizeRole(session?.user?.role)
     const dept = normalizeDept(
-      (session?.user as {
-        departmentLower?: string
-        deptLower?: string
-        department?: string
-      })?.departmentLower ||
-        (session?.user as { deptLower?: string })?.deptLower ||
-        (session?.user as { department?: string })?.department
+      sessionUser?.departmentLower || sessionUser?.deptLower || sessionUser?.department
     )
     const canEdit =
       role === 'admin' ||
@@ -66,7 +72,12 @@ export async function POST(req: Request) {
       )
     }
 
-    const body = await req.json()
+    const body = (await req.json()) as {
+      id?: string
+      produccio?: Record<string, unknown>
+      comercial?: Record<string, unknown>
+      [key: string]: unknown
+    }
     const { id, produccio = {}, comercial = {}, ...rest } = body
 
     if (!id) {
@@ -79,13 +90,13 @@ export async function POST(req: Request) {
     const ref = db.collection('finques').doc(id)
 
     // Helper netejar arrays
-    const cleanArray = (arr: any) =>
+    const cleanArray = (arr: unknown) =>
       Array.isArray(arr)
-        ? arr.map(x => String(x).trim()).filter(Boolean)
+        ? arr.map((x) => String(x).trim()).filter(Boolean)
         : []
 
     // Formatem producció
-    const produccioFormatted: Record<string, any> = {}
+    const produccioFormatted: ProduccioPayload = {}
 
     for (const key of Object.keys(produccio)) {
       const value = produccio[key]

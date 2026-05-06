@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { CheckCircle2, ChevronLeft, ChevronRight, Circle, RotateCcw, Save, XCircle } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
@@ -97,7 +98,7 @@ export default function AuditoriaValoracioDetailPage() {
 
   const [navIds, setNavIds] = useState<string[]>([])
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
@@ -138,12 +139,12 @@ export default function AuditoriaValoracioDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [executionId])
 
   useEffect(() => {
     if (!executionId) return
-    load()
-  }, [executionId])
+    void load()
+  }, [executionId, load])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -380,7 +381,14 @@ export default function AuditoriaValoracioDetailPage() {
                               <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
                                 {photos.map((p, pIdx) => (
                                   <a key={`${blockId}-${iIdx}-${pIdx}`} href={String(p.url)} target="_blank" rel="noreferrer" className="block overflow-hidden hover:opacity-90">
-                                    <img src={String(p.url)} alt={`Evidencia ${pIdx + 1}`} className="h-28 w-full object-cover rounded-md" />
+                                  <Image
+                                    src={String(p.url)}
+                                    alt={`Evidencia ${pIdx + 1}`}
+                                    className="h-28 w-full object-cover rounded-md"
+                                    width={480}
+                                    height={320}
+                                    unoptimized
+                                  />
                                   </a>
                                 ))}
                               </div>

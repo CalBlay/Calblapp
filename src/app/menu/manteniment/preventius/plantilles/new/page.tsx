@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useState } from 'react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
 
+type PersonnelApiItem = { name?: string }
+
 export default function PlantillaNewPage() {
   const [operators, setOperators] = useState<string[]>([])
   const [name, setName] = useState('')
@@ -25,7 +27,7 @@ export default function PlantillaNewPage() {
         const json = await res.json()
         const list = Array.isArray(json?.data) ? json.data : []
         const names = list
-          .map((item: any) => String(item?.name || '').trim())
+          .map((item: PersonnelApiItem) => String(item?.name || '').trim())
           .filter(Boolean)
           .sort((a: string, b: string) => a.localeCompare(b))
         setOperators(Array.from(new Set(names)))

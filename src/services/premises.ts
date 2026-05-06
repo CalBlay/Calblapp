@@ -105,10 +105,26 @@ export async function loadDepartmentPersonnel(
     exactSnap.docs.forEach((doc) => byId.set(doc.id, doc))
   } catch {}
 
+  type PersonnelDoc = {
+    department?: string
+    departmentLower?: string
+    name?: string
+    role?: string
+    available?: boolean
+    isDriver?: boolean
+    isJamonero?: boolean
+    isResponsible?: boolean
+    driver?: {
+      isDriver?: boolean
+      camioGran?: boolean
+      camioPetit?: boolean
+    }
+  }
+
   if (byId.size === 0) {
     const fallbackSnap = await db.collection('personnel').get()
     fallbackSnap.docs.forEach((doc) => {
-      const data = doc.data() as any
+      const data = doc.data() as PersonnelDoc
       if (norm(data?.department || data?.departmentLower || '') === dept) {
         byId.set(doc.id, doc)
       }
@@ -117,7 +133,7 @@ export async function loadDepartmentPersonnel(
 
   return Array.from(byId.values())
     .map((doc) => {
-      const data = doc.data() as any
+      const data = doc.data() as PersonnelDoc
       return {
         id: doc.id,
         name: String(data?.name || '').trim(),

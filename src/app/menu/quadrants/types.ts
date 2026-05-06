@@ -18,7 +18,7 @@ export interface UnifiedEvent extends QuadrantEvent {
   displayStartTime?: string | null
   displayEndTime?: string | null
   quadrantStatus?: QuadrantStatus
-  draft?: any
+  draft?: unknown
   horariLabel?: string
   phaseType?: string
   phaseLabel?: string

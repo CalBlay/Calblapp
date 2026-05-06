@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
 import type { PluginListenerHandle } from '@capacitor/core'
@@ -8,9 +8,16 @@ import type { PluginListenerHandle } from '@capacitor/core'
 export function usePushNotifications() {
   const [permission, setPermission] = useState<NotificationPermission>('default')
   const [error, setError] = useState<string | null>(null)
-  const getIsNative = () => {
+  type CapacitorWindow = Window & {
+    Capacitor?: {
+      getPlatform?: () => string
+      Plugins?: { PushNotifications?: unknown }
+    }
+  }
+
+  const getIsNative = useCallback(() => {
     if (typeof window === 'undefined') return false
-    const cap = (window as any)?.Capacitor
+    const cap = (window as CapacitorWindow).Capacitor
     const platform = cap?.getPlatform?.() ?? Capacitor.getPlatform?.()
     if (platform === 'android' || platform === 'ios') return true
     if (platform === 'web') return false
@@ -18,7 +25,7 @@ export function usePushNotifications() {
     if (platform === 'android' || platform === 'ios') return true
     if (cap?.Plugins?.PushNotifications) return true
     return false
-  }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -31,7 +38,7 @@ export function usePushNotifications() {
       return
     }
     setPermission(Notification.permission)
-  }, [])
+  }, [getIsNative])
 
   const requestPermission = async () => {
     try {
@@ -51,13 +58,13 @@ export function usePushNotifications() {
         setError('Has de permetre les notificacions al navegador')
       }
       return result
-    } catch (err: any) {
-      const msg = String(err?.message || '')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err || '')
       if (msg.toLowerCase().includes('not implemented')) {
         setError('Push no disponible: cal actualitzar l’app')
         return 'denied'
       }
-      setError(err?.message || 'No s’ha pogut demanar permís')
+      setError(err instanceof Error ? err.message : 'No s’ha pogut demanar permís')
       return 'denied'
     }
   }
@@ -148,13 +155,13 @@ export function usePushNotifications() {
         throw new Error('Error enviant subscripció')
       }
       return true
-    } catch (err: any) {
-      const msg = String(err?.message || '')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err || '')
       if (msg.toLowerCase().includes('not implemented')) {
         setError('Push no disponible: cal actualitzar l’app')
         return false
       }
-      setError(err?.message || 'Error activant notificacions')
+      setError(err instanceof Error ? err.message : 'Error activant notificacions')
       return false
     }
   }
@@ -172,5 +179,4 @@ function urlBase64ToUint8Array(base64String: string) {
   }
   return outputArray
 }
-
 

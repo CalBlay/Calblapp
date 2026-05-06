@@ -26,26 +26,36 @@ const isValidEventCode = (code?: string | null) => {
   return Boolean(c)
 }
 
-const extractCommercialName = (data: any): string => {
-  return (
-    data?.Comercial ||
-    data?.COMERCIAL ||
-    data?.comercial ||
-    data?.comercialNom ||
-    data?.Comercial_nom ||
-    data?.Commercial ||
-    data?.Sales ||
-    data?.ResponsableComercial ||
-    data?.ComercialName ||
-    data?.ComercialNom ||
-    ''
-  )
+const hasFirestoreToDate = (v: unknown): v is { toDate: () => Date } =>
+  typeof v === 'object' &&
+  v !== null &&
+  'toDate' in v &&
+  typeof (v as { toDate?: unknown }).toDate === 'function'
+
+const extractCommercialName = (data: Record<string, unknown>): string => {
+  const keys = [
+    'Comercial',
+    'COMERCIAL',
+    'comercial',
+    'comercialNom',
+    'Comercial_nom',
+    'Commercial',
+    'Sales',
+    'ResponsableComercial',
+    'ComercialName',
+    'ComercialNom',
+  ] as const
+  for (const k of keys) {
+    const v = data[k]
+    if (v != null && String(v).trim()) return String(v).trim()
+  }
+  return ''
 }
 
 async function fetchEventInfo(eventId: string): Promise<EventInfo | null> {
   const snap = await db.collection('stage_verd').doc(String(eventId)).get()
   if (!snap.exists) return null
-  const data = snap.data() as any
+  const data = snap.data() as Record<string, unknown>
 
   const code =
     data?.code ||
@@ -54,7 +64,7 @@ async function fetchEventInfo(eventId: string): Promise<EventInfo | null> {
     data?.codi ||
     data?.Codi ||
     ''
-  if (!isValidEventCode(code)) return null
+  if (!isValidEventCode(String(code ?? ''))) return null
 
   const name = data?.NomEvent || data?.eventName || data?.name || ''
   const startDate = data?.DataInici || data?.startDate || ''
@@ -115,7 +125,7 @@ async function lookupUidByNameLoose(name?: string | null): Promise<string | null
 
   const usersSnap = await db.collection('users').get()
   for (const doc of usersSnap.docs) {
-    const data = doc.data() as any
+    const data = doc.data() as Record<string, unknown>
     const candidates = [
       data?.name,
       data?.fullName,
@@ -124,15 +134,15 @@ async function lookupUidByNameLoose(name?: string | null): Promise<string | null
       data?.Nom,
     ]
     for (const c of candidates) {
-      if (norm(c) === target) return doc.id
+      if (norm(String(c ?? '')) === target) return doc.id
     }
   }
 
   const personnelSnap = await db.collection('personnel').get()
   for (const doc of personnelSnap.docs) {
-    const data = doc.data() as any
+    const data = doc.data() as Record<string, unknown>
     const candidates = [data?.name, data?.fullName, data?.displayName, data?.nom, data?.Nom]
-    if (candidates.some((c) => norm(c) === target)) {
+    if (candidates.some((c) => norm(String(c ?? '')) === target)) {
       const userDoc = await db.collection('users').doc(doc.id).get()
       if (userDoc.exists) return userDoc.id
     }
@@ -153,23 +163,27 @@ async function resolveUids(users: AssignedUser[]): Promise<string[]> {
   return Array.from(new Set(raw.filter(Boolean) as string[]))
 }
 
-function extractAssignedUsers(q: any): AssignedUser[] {
+function extractAssignedUsers(q: Record<string, unknown>): AssignedUser[] {
   const out: AssignedUser[] = []
   const push = (u?: AssignedUser | null) => {
     if (!u) return
     if (!u.id && !u.name) return
     out.push({ id: u.id, name: u.name })
   }
-  const pushArr = (arr?: any[] | null) => {
+  const pushArr = (arr: unknown) => {
     if (!Array.isArray(arr)) return
     arr.forEach((item) => {
       if (typeof item === 'string') push({ name: item })
-      else push({ id: item?.id || item?.userId, name: item?.name })
+      else if (item && typeof item === 'object') {
+        const o = item as { id?: string; userId?: string; name?: string }
+        push({ id: o.id || o.userId, name: o.name })
+      }
     })
   }
 
-  if (q?.responsableName) push({ name: q.responsableName })
-  if (q?.responsable?.name) push({ name: q.responsable.name })
+  if (q?.responsableName) push({ name: String(q.responsableName) })
+  const responsable = q?.responsable as { name?: string } | undefined
+  if (responsable?.name) push({ name: responsable.name })
   pushArr(q?.responsables)
   pushArr(q?.treballadors)
   pushArr(q?.workers)
@@ -178,13 +192,12 @@ function extractAssignedUsers(q: any): AssignedUser[] {
   return out
 }
 
-function isConfirmedQuadrant(data: any): boolean {
+function isConfirmedQuadrant(data: Record<string, unknown>): boolean {
   const status = String(data?.status ?? '').toLowerCase()
   const confirmedAtVal = data?.confirmedAt
-  const confirmedAt =
-    typeof confirmedAtVal === 'object' && confirmedAtVal?.toDate
-      ? confirmedAtVal.toDate()
-      : confirmedAtVal
+  const confirmedAt = hasFirestoreToDate(confirmedAtVal)
+    ? confirmedAtVal.toDate()
+    : confirmedAtVal
   return (
     status === 'confirmed' ||
     Boolean(confirmedAt) ||
@@ -217,7 +230,7 @@ async function collectQuadrantAssigned(eventId: string, eventCode: string, dateK
     const pushDocs = (snap: FirebaseFirestore.QuerySnapshot | null) => {
       if (!snap || snap.empty) return
       snap.forEach((doc) => {
-        const data = doc.data()
+        const data = doc.data() as Record<string, unknown>
         if (!isConfirmedQuadrant(data)) return
         users.push(...extractAssignedUsers(data))
       })
@@ -241,8 +254,8 @@ async function collectProductionUids() {
   const snap = await db.collection('users').get()
   const out: string[] = []
   snap.forEach((doc) => {
-    const data = doc.data() as any
-    const dept = norm(data.department || data.departmentLower)
+    const data = doc.data() as Record<string, unknown>
+    const dept = norm(String(data.department || data.departmentLower || ''))
     if (dept === 'produccio') out.push(doc.id)
   })
   return out
@@ -272,9 +285,9 @@ async function collectAdminUids() {
 
   const snap = await db.collection('users').get()
   snap.forEach((doc) => {
-    const data = doc.data() as any
+    const data = doc.data() as Record<string, unknown>
     const role = normalizeRole(
-      data?.role || data?.rol || data?.nivell || data?.nivel || data?.level || ''
+      String(data?.role || data?.rol || data?.nivell || data?.nivel || data?.level || '')
     )
     if (role === 'admin' || role === 'direccio') ids.add(doc.id)
   })
@@ -291,7 +304,7 @@ async function fetchUserDisplayNames(uids: string[]) {
     const snaps = await db.getAll(...refs)
     snaps.forEach((doc) => {
       if (!doc.exists) return
-      const data = doc.data() as any
+      const data = doc.data() as Record<string, unknown>
       const name = String(data?.name || '').trim()
       if (name) map.set(doc.id, name)
     })
@@ -307,7 +320,7 @@ async function filterEnabledEventUids(uids: string[], adminUids: string[]) {
   const out: string[] = []
   snaps.forEach((doc) => {
     if (!doc.exists) return
-    const data = doc.data() as any
+    const data = doc.data() as Record<string, unknown>
     if (adminSet.has(doc.id)) {
       out.push(doc.id)
       return
@@ -390,11 +403,11 @@ export async function ensureEventChatChannel(eventId: string) {
     .where('channelId', '==', channelId)
     .get()
   const existing = new Set(
-    existingSnap.docs.map((d) => (d.data() as any)?.userId).filter(Boolean)
+    existingSnap.docs.map((d) => String((d.data() as { userId?: string })?.userId || '')).filter(Boolean)
   )
   const existingDocs = new Map(
     existingSnap.docs
-      .map((d) => [String((d.data() as any)?.userId || ''), d] as const)
+      .map((d) => [String((d.data() as { userId?: string })?.userId || ''), d] as const)
       .filter(([uid]) => uid)
   )
 

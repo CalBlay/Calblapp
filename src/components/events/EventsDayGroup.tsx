@@ -79,12 +79,12 @@ export default function EventsDayGroup({ date, events, onEventClick, onEventChat
               onOpenAvisos={() => onEventClick?.(event, 'avisos')}
               onOpenChat={() => onEventChat?.(event)}
               showChat={(() => {
-                const code = String((event as any).eventCode || '').trim()
-                const commercial = String((event as any).commercial || '').trim()
+                const code = String(event.eventCode || '').trim()
+                const commercial = String(event.commercial || '').trim()
                 if (!code || !commercial) return false
                 if (isAdmin) return true
                 if (!event.canChat) return false
-                const endRaw = String((event as any).end || (event as any).start || '').trim()
+                const endRaw = String(event.end || event.start || '').trim()
                 if (!endRaw) return true
                 const endDate = parseISO(endRaw)
                 if (Number.isNaN(endDate.getTime())) return true

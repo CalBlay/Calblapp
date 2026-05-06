@@ -6,6 +6,11 @@ import { Button } from '@/components/ui/button'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
+type UserRequestResultNotification = {
+  read?: boolean
+  body?: string
+}
+
 export function UserRequestResultsList({ onAfterAction }: { onAfterAction?: () => void }) {
   const { data, error, mutate } = useSWR(
     '/api/notifications?mode=list&type=user_request_result',
@@ -13,7 +18,7 @@ export function UserRequestResultsList({ onAfterAction }: { onAfterAction?: () =
   )
 
   const notifications = Array.isArray(data?.notifications) ? data.notifications : []
-  const pending = notifications.filter((n: any) => !n.read)
+  const pending = notifications.filter((n: UserRequestResultNotification) => !n.read)
   const first = pending[0]
 
   const markAllRead = async () => {

@@ -1,20 +1,11 @@
 // ✅ file: src/services/spaces/spaces.ts
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { AlertTriangle } from 'lucide-react'
-import {
-  startOfWeek,
-  endOfWeek,
-  parseISO,
-  format,
-  isValid,
-  addDays,
-  differenceInHours,
-} from 'date-fns'
+import { startOfWeek, endOfWeek, parseISO, format, addDays } from 'date-fns'
 
 // ──────────────────────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────────────────────
-function normalizeText(t: any): string {
+function normalizeText(t: unknown): string {
   return (t || '').toString().trim()
 }
 
@@ -87,21 +78,6 @@ export interface SpacesResult {
 }
 
 // ──────────────────────────────────────────────────────────────
-// Log de conflictes per avisar comercials
-// ──────────────────────────────────────────────────────────────
-async function logConflict(ev: RawEvent, reason: string) {
-  try {
-    await db.collection('spaces_conflicts').add({
-      ...ev,
-      reason,
-      createdAt: new Date().toISOString(),
-    })
-  } catch (e) {
-    console.error('⚠️ Error guardant conflict:', e)
-  }
-}
-
-// ──────────────────────────────────────────────────────────────
 // Consulta principal
 // ──────────────────────────────────────────────────────────────
 export async function getSpacesByWeek(
@@ -152,8 +128,8 @@ switch (stage) {
 const finquesSnap = await db.collection('finques').get()
 const fincaIdMap = new Map<string, string>()
 
-finquesSnap.forEach(doc => {
-  const d = doc.data() as any
+finquesSnap.forEach((doc) => {
+  const d = doc.data() as { nom?: string }
   const nom = normalizeText(d.nom || doc.id)
   if (nom) {
     fincaIdMap.set(nom.toLowerCase(), doc.id)
@@ -180,7 +156,7 @@ finquesSnap.forEach(doc => {
         const d = doc.data()
         const id = doc.id
         let start = d.DataInici
-        let endRaw = d.DataFinal || d.DataFi || d.DataInici
+        const endRaw = d.DataFinal || d.DataFi || d.DataInici
         const observacions = normalizeText(
   d.ObservacionsZoho ||
   d.observacionsZoho ||

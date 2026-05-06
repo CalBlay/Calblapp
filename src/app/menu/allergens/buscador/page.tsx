@@ -76,11 +76,11 @@ export default function AllergensSearchPage() {
   const user = session?.user
 
   const allowed = useMemo(() => {
-    const module = getVisibleModules({
+    const visibleModule = getVisibleModules({
       role: user?.role,
       department: user?.department,
     }).find(mod => mod.path === '/menu/allergens')
-    return module?.submodules?.some(sub => sub.path === '/menu/allergens/buscador')
+    return visibleModule?.submodules?.some(sub => sub.path === '/menu/allergens/buscador')
   }, [user?.role, user?.department])
 
   const [plats, setPlats] = useState<Plat[]>([])

@@ -281,6 +281,8 @@ export async function POST(req: Request) {
         templateName: visibleTemplate?.name || null,
         eventTitle: eventSummary || null,
         createdAt: now,
+        eventId,
+        department,
       })
 
       return NextResponse.json(
@@ -312,6 +314,8 @@ export async function POST(req: Request) {
       templateName: visibleTemplate?.name || null,
       eventTitle: eventSummary || null,
       createdAt: now,
+      eventId,
+      department,
     })
 
     return NextResponse.json(

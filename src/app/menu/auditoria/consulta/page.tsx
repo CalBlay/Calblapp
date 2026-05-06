@@ -86,7 +86,7 @@ export default function AuditoriaConsultaPage() {
   const [error, setError] = useState('')
   const [events, setEvents] = useState<EventRow[]>([])
 
-  const load = async (opts?: { fromTs?: number; toTs?: number }) => {
+  const load = useCallback(async (opts?: { fromTs?: number; toTs?: number }) => {
     setLoading(true)
     setError('')
     try {
@@ -107,11 +107,11 @@ export default function AuditoriaConsultaPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [fromDate, toDate])
 
   useEffect(() => {
-    load()
-  }, [])
+    void load()
+  }, [load])
 
   const lnOptions = useMemo(() => {
     return Array.from(new Set(events.map((e) => e.eventLn || lnFromCode(e.eventCode)).filter(Boolean))).sort((a, b) => a.localeCompare(b))
@@ -206,9 +206,9 @@ export default function AuditoriaConsultaPage() {
       <div className="w-full max-w-6xl mx-auto p-3 sm:p-4 space-y-4">
         <div className="w-full bg-gradient-to-r from-cyan-100 to-teal-100 border-b border-gray-200 px-4 py-3">
           <div className="text-sm font-semibold text-gray-800">
-            <a href="/menu/auditoria" className="hover:underline">Auditoria</a>
+            <Link href="/menu/auditoria" className="hover:underline">Auditoria</Link>
             <span className="mx-1 text-gray-500">/</span>
-            <a href="/menu/auditoria/consulta" className="hover:underline">Consulta</a>
+            <Link href="/menu/auditoria/consulta" className="hover:underline">Consulta</Link>
           </div>
           <div className="text-xs italic text-gray-600">Llistat d'auditories validades</div>
         </div>

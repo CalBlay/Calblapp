@@ -32,6 +32,8 @@ interface FincaData {
   observacionsProduccio?: string
 }
 
+type FincaFirestoreDoc = Omit<FincaData, 'id'> & Record<string, unknown>
+
 export default function FincaModal({ fincaId, open, onOpenChange }: Props) {
   const [loading, setLoading] = useState(true)
   const [finca, setFinca] = useState<FincaData | null>(null)
@@ -45,7 +47,7 @@ export default function FincaModal({ fincaId, open, onOpenChange }: Props) {
         const ref = doc(db, 'finques', fincaId)
         const snap = await getDoc(ref)
 
-        if (snap.exists()) setFinca({ id: snap.id, ...(snap.data() as any) })
+        if (snap.exists()) setFinca({ id: snap.id, ...(snap.data() as FincaFirestoreDoc) })
       } catch (err) {
         console.error('❌ Error carregant finca:', err)
       } finally {

@@ -3,22 +3,31 @@
 import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
+
+type TornNotification = {
+  id: string
+  read?: boolean
+  type?: string
+  eventDate?: string
+  eventId?: string
+  title?: string
+  body?: string
+}
 
 export default function TornNotificationsBanner() {
   const router = useRouter()
   const { data, mutate } = useSWR('/api/notifications?mode=list', fetcher)
 
   const notifications = Array.isArray(data?.notifications) ? data.notifications : []
-  const unread = notifications.filter((n: any) =>
+  const unread = notifications.filter((n: TornNotification) =>
     !n.read && (n.type === 'torn' || n.type === 'NEW_SHIFTS')
   )
 
   if (!unread.length) return null
 
-  const openNotification = async (n: any) => {
+  const openNotification = async (n: TornNotification) => {
     const date = n.eventDate || ''
     const eventId = n.eventId || ''
     await fetch('/api/notifications', {
@@ -64,7 +73,7 @@ export default function TornNotificationsBanner() {
         </Button>
       </div>
       <div className="space-y-2">
-        {unread.map((n: any) => (
+        {unread.map((n: TornNotification) => (
           <div
             key={n.id}
             className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-slate-200 bg-white px-3 py-3"

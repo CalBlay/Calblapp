@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import RowEditor from './RowEditor'
 import { buildDisplayItems } from './draftsTableDisplayUtils'
 import type { GroupDef, Role, Row } from './types'
+import type { PersonnelOption } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
 
 type DraftsTableMobileProps = {
   currentEditingRow: Row | null
@@ -14,9 +15,9 @@ type DraftsTableMobileProps = {
   rows: Row[]
   defaultGroupId?: string
   availableForEditor: {
-    responsables: any[]
-    conductors: any[]
-    treballadors: any[]
+    responsables: PersonnelOption[]
+    conductors: PersonnelOption[]
+    treballadors: PersonnelOption[]
   }
   renderDisplayItemsMobile: (items: ReturnType<typeof buildDisplayItems>) => ReactNode
   canEditMeetingPoint: (row: Row | null) => boolean
@@ -63,8 +64,8 @@ export default function DraftsTableMobile({
   groupHeaderToggleIcon,
   removeGroup,
   addGroup,
-  startEdit,
-  deleteRow,
+  startEdit: _startEdit,
+  deleteRow: _deleteRow,
   patchRow,
   endEdit,
   revertRow,

@@ -10,7 +10,6 @@ import {
   Presentation,
   File,
   Image as ImgIcon,
-  X,
 } from 'lucide-react'
 import useEventDocuments, { EventDoc } from '@/hooks/events/useEventDocuments'
 
@@ -118,7 +117,8 @@ export default function EventDocumentsSheet({
     if (typeof window === 'undefined') return false
     return (
       window.matchMedia?.('(display-mode: standalone)')?.matches ||
-      (window.navigator as any).standalone === true
+      ('standalone' in window.navigator &&
+        Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone))
     )
   }, [])
 
@@ -147,26 +147,6 @@ export default function EventDocumentsSheet({
   const linkRel = linkTarget === '_blank' ? 'noopener noreferrer' : undefined
 
   if (!open) return null
-
-  const content = (
-    <div className="relative w-full h-full">
-      <div className="absolute inset-0 flex items-center justify-center px-4 py-6">
-        <div
-          className="relative z-20 w-full max-w-[480px] max-h-[90vh] overflow-hidden bg-white rounded-[32px] shadow-2xl flex flex-col"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <ModalContent
-            docs={docs}
-            loading={loading}
-            error={error}
-            onOpenChange={onOpenChange}
-            linkTarget={linkTarget}
-            linkRel={linkRel}
-          />
-        </div>
-      </div>
-    </div>
-  )
 
   if (embedded) {
     return (
@@ -219,7 +199,7 @@ function ModalContent({
   docs,
   loading,
   error,
-  onOpenChange,
+  onOpenChange: _onOpenChange,
   linkTarget,
   linkRel,
 }: {

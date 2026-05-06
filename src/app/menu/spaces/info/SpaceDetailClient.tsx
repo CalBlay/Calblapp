@@ -1,7 +1,7 @@
 // file: src/app/menu/spaces/info/SpaceDetailClient.tsx
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -40,8 +40,14 @@ export type EspaiDetall = {
     fitxaUrl?: string
     images?: string[]
     // Altres seccions laterals: "EVENTS GRANS", "CAIXA DE POTÈNCIES", etc.
-    [clau: string]: any
+    [clau: string]: unknown
   }
+}
+
+type SessionUser = {
+  role?: string
+  department?: string
+  departmentLower?: string
 }
 
 type Props = {
@@ -58,19 +64,21 @@ export default function SpaceDetailClient({
   onSave,
   forceReadOnly = false,
 }: Props) {
+  void onSave
   // ─────────────────────────────────────────────
   // 1) Estat local (còpia editable de la finca)
   // ─────────────────────────────────────────────
   const router = useRouter()
   const { data: session } = useSession()
+  const sessionUser = session?.user as SessionUser | undefined
 
   const canEditRole = canEditFinca({
     role: session?.user?.role,
-    department: (session?.user as any)?.departmentLower ?? (session?.user as any)?.department,
+    department: sessionUser?.departmentLower ?? sessionUser?.department,
   })
   const normalizedRole = normalizeRole(session?.user?.role)
   const normalizedDepartment = String(
-    (session?.user as any)?.departmentLower ?? (session?.user as any)?.department ?? ''
+    sessionUser?.departmentLower ?? sessionUser?.department ?? ''
   )
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
@@ -82,10 +90,9 @@ export default function SpaceDetailClient({
       normalizedDepartment === 'produccio' &&
       !isProductionWorker({
         role: session?.user?.role,
-        department: (session?.user as any)?.departmentLower ?? (session?.user as any)?.department,
+        department: sessionUser?.departmentLower ?? sessionUser?.department,
       }))
   const canEdit = !forceReadOnly && canEditRole
-  const readOnly = !canEdit
   const isNew = !espai.id
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -135,7 +142,7 @@ export default function SpaceDetailClient({
     (produccio.observacions || []).join('\n')
   )
 
-  const [fitxaUrl, setFitxaUrl] = useState(produccio.fitxaUrl || '')
+  const fitxaUrl = produccio.fitxaUrl || ''
 
   // Seccions laterals (Events grans, Caixa de potències, etc.)
   // Agafem totes les claus de produccio que no siguin les principals
@@ -159,26 +166,18 @@ export default function SpaceDetailClient({
         } else {
           initial[key] = ''
         }
-      }
+  }
       return initial
     }
   )
 
   // Imatges (llista d’URLs)
   const [images, setImages] = useState<string[]>(produccio.images || [])
-  const [newImageUrl, setNewImageUrl] = useState('')
-
-  const addImage = () => {
-    const url = newImageUrl.trim()
-    if (!url) return
-    setImages((prev) => [...prev, url])
-    setNewImageUrl('')
-  }
 
   const removeImage = (idx: number) => {
     setImages((prev) => prev.filter((_, i) => i !== idx))
   }
-async function uploadImage(file: File) {
+const uploadImage = useCallback(async (file: File) => {
   if (!espai.id) {
     setError("Desa l'espai abans de pujar imatges.")
     return
@@ -207,7 +206,7 @@ async function uploadImage(file: File) {
   }
 
   setImages(prev => [...prev, data.url])
-}
+}, [espai.id])
 useEffect(() => {
   function handlePaste(e: ClipboardEvent) {
     const item = e.clipboardData?.items?.[0]
@@ -220,7 +219,7 @@ useEffect(() => {
 
   window.addEventListener('paste', handlePaste)
   return () => window.removeEventListener('paste', handlePaste)
-}, [])
+}, [uploadImage])
 
   // ─────────────────────────────────────────────
   // 2) Preparar payload per desar

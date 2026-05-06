@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import Image from 'next/image'
 import { Paperclip, Send } from 'lucide-react'
 import { Member, PendingImage } from '../types'
 
@@ -62,11 +63,14 @@ export default function Composer({
       )}
       {pendingImage && (
         <div className="flex items-center gap-3 text-sm">
-          <img
-            src={pendingImage.url}
-            alt="Imatge adjunta"
-            className="h-16 w-16 object-cover rounded border dark:border-slate-700"
-          />
+          <div className="relative h-16 w-16 overflow-hidden rounded border dark:border-slate-700">
+            <Image
+              src={pendingImage.url}
+              alt="Imatge adjunta"
+              fill
+              className="object-cover"
+            />
+          </div>
           <button
             type="button"
             className="text-red-600 text-xs"

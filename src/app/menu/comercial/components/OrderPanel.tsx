@@ -42,10 +42,7 @@ interface Props {
 
 export default function OrderPanel({
   orderSummary,
-  showAllGroups,
   setShowAllGroups,
-  actionLog,
-  exportItems,
   duplicateSources,
   handleDuplicateFrom,
   orderSearch,
@@ -53,7 +50,6 @@ export default function OrderPanel({
   filteredGroupedLines,
   activeGroup,
   showActiveOnly,
-  setActiveGroupKey,
   groupRefs,
   editingLineId,
   editingQty,

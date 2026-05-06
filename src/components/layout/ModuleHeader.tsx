@@ -18,7 +18,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
   const segments = pathname.split('/').filter(Boolean)
 
   // Identifiquem el mòdul (spaces, torns, quadrants, etc.)
-  const module = segments[1] || ''
+  const moduleKey = segments[1] || ''
   const submodule = segments[2] || ''
   const subsubmodule = segments[3] || ''
 
@@ -39,7 +39,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     reports: 'from-cyan-100 to-indigo-50',
   }
 
-  const color = colorMap[module] ?? 'from-gray-50 to-gray-100'
+  const color = colorMap[moduleKey] ?? 'from-gray-50 to-gray-100'
 
   // Traducció Ã¢â‚¬Å“mòdul Ã¢â€ â€™ nom visibleÃ¢â‚¬Â
   const moduleLabels: Record<string, string> = {
@@ -59,8 +59,8 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     reports: 'Informes',
   }
 
-  const mainLabel = title || moduleLabels[module] || module
-  const resolvedMainHref = mainHref || (module ? `/menu/${module}` : '')
+  const mainLabel = title || moduleLabels[moduleKey] || moduleKey
+  const resolvedMainHref = mainHref || (moduleKey ? `/menu/${moduleKey}` : '')
 
   // Traducció Ã¢â‚¬Å“submòdul Ã¢â€ â€™ nom visibleÃ¢â‚¬Â
   const subLabels: Record<string, string> = {
@@ -91,9 +91,9 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
   const subLabel = subtitle || subLabels[subKey] || ''
   const subHref =
     subLabel && subKey === subsubmodule && submodule && subsubmodule
-      ? `/menu/${module}/${submodule}/${subsubmodule}`
+      ? `/menu/${moduleKey}/${submodule}/${subsubmodule}`
       : subLabel
-        ? `/menu/${module}/${submodule}`
+        ? `/menu/${moduleKey}/${submodule}`
         : ''
 
   return (
@@ -119,7 +119,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
                   <span className="text-gray-800">{mainLabel}</span>
                 )
               ) : (
-                <a href={`/menu/${module}`} className="text-gray-800 hover:underline">
+                <a href={`/menu/${moduleKey}`} className="text-gray-800 hover:underline">
                   {mainLabel}
                 </a>
               )}

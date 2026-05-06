@@ -19,10 +19,17 @@ import { compressRasterImageWithMeta, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/l
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
+type SessionUser = {
+  id?: string
+  role?: string
+  name?: string
+}
+
 export default function MissatgeriaPage() {
   const { data: session } = useSession()
-  const userId = (session?.user as any)?.id as string | undefined
-  const userRole = normalizeRole((session?.user as any)?.role || '')
+  const sessionUser = (session?.user || {}) as SessionUser
+  const userId = sessionUser.id
+  const userRole = normalizeRole(sessionUser.role || '')
   const searchParams = useSearchParams()
   const eventMode = searchParams?.get('event') === '1'
   const returnTo = useMemo(() => {
@@ -79,9 +86,10 @@ export default function MissatgeriaPage() {
     { refreshInterval: 10000 }
   )
 
-  const channels: Channel[] = Array.isArray(channelsData?.channels)
-    ? channelsData.channels
-    : []
+  const channels = useMemo<Channel[]>(
+    () => (Array.isArray(channelsData?.channels) ? channelsData.channels : []),
+    [channelsData?.channels]
+  )
 
   useEffect(() => {
     const rawEventId = String(searchParams?.get('eventId') || '').trim()
@@ -227,9 +235,10 @@ export default function MissatgeriaPage() {
     { refreshInterval: 0 }
   )
 
-  const messages: Message[] = Array.isArray(messagesData?.messages)
-    ? messagesData.messages
-    : []
+  const messages = useMemo<Message[]>(
+    () => (Array.isArray(messagesData?.messages) ? messagesData.messages : []),
+    [messagesData?.messages]
+  )
 
   const { data: membersData, mutate: refreshMembers } = useSWR(
     selectedChannelId
@@ -238,9 +247,10 @@ export default function MissatgeriaPage() {
     fetcher
   )
 
-  const members: Member[] = Array.isArray(membersData?.members)
-    ? membersData.members
-    : []
+  const members = useMemo<Member[]>(
+    () => (Array.isArray(membersData?.members) ? membersData.members : []),
+    [membersData?.members]
+  )
 
   const selfMember = useMemo(
     () => members.find((m) => m.userId === userId) || null,
@@ -291,7 +301,7 @@ export default function MissatgeriaPage() {
       }
       await refreshMessages()
       await refreshChannels()
-    } catch (err: any) {
+    } catch (err: unknown) {
       alert(err?.message || 'No s’ha pogut crear el ticket')
     } finally {
       setCreatingTicketId(null)
@@ -304,7 +314,7 @@ export default function MissatgeriaPage() {
     if (selectedChannelId) {
       messagesCache.current.set(selectedChannelId, messages)
     }
-  }, [messagesData?.messages, selectedChannelId])
+  }, [messages, selectedChannelId])
 
   useEffect(() => {
     if (!selectedChannelId) return
@@ -350,7 +360,7 @@ export default function MissatgeriaPage() {
     const channel = client.channels.get(`chat:${selectedChannelId}`)
     const direct = userId ? client.channels.get(`user:${userId}:direct`) : null
 
-    const handleMessage = (msg: any) => {
+    const handleMessage = (msg: { data?: Message }) => {
       const data = msg?.data as Message | undefined
       if (!data) return
       if (data.channelId !== selectedChannelId) return
@@ -460,7 +470,7 @@ export default function MissatgeriaPage() {
         id: String(sendData.messageId),
         channelId: selectedChannelId,
         senderId: userId || '',
-        senderName: String((session?.user as any)?.name || ''),
+        senderName: String(sessionUser.name || ''),
         body: hasText ? messageText.trim() : '',
         createdAt,
         visibility: finalVisibility,
@@ -526,7 +536,7 @@ export default function MissatgeriaPage() {
     typingThrottleRef.current = now
     const client = getAblyClient()
     const channel = client.channels.get(`chat:${selectedChannelId}`)
-    channel.publish('typing', { userId, userName: (session?.user as any)?.name || '' })
+    channel.publish('typing', { userId, userName: sessionUser.name || '' })
   }
 
   useEffect(() => {
@@ -854,8 +864,5 @@ export default function MissatgeriaPage() {
     </RoleGuard>
   )
 }
-
-
-
 
 

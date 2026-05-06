@@ -42,8 +42,9 @@ export async function GET(req: NextRequest) {
         'Content-Disposition': 'inline',
       },
     })
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('Proxy error', e)
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    const message = e instanceof Error ? e.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

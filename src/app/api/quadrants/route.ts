@@ -312,8 +312,10 @@ async function enrichWithSurveyPreferences<T extends Record<string, unknown>>(
       ...resolvedSurveyPreferred.maybe,
     ].filter(Boolean))
   )
-  const preferredResponsibleName =
-    payload?.preferredResponsibleName ||
+  const preferredResponsibleName: string | null =
+    (typeof payload?.preferredResponsibleName === 'string'
+      ? payload.preferredResponsibleName
+      : null) ||
     resolvedSurveyPreferred.yes[0] ||
     resolvedSurveyPreferred.maybe[0] ||
     null

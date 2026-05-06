@@ -28,11 +28,35 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
+type SessionUser = {
+  id?: string
+  name?: string
+  email?: string
+  department?: string
+}
+
+type ModificationExportRow = {
+  DataEvent: string
+  Event: string
+  Codi: string
+  Ubicacio: string
+  Comercial: string
+  Departament: string
+  Importancia: string
+  Categoria: string
+  Tipus: string
+  Descripcio: string
+  Creada: string
+  Creador: string
+  Correu: string
+}
+
 export default function ModificationsPage() {
   const { data: session } = useSession()
+  const sessionUser = (session?.user || {}) as SessionUser
   const productionWorker = isProductionWorker({
     role: (session?.user as { role?: string } | undefined)?.role,
-    department: (session?.user as { department?: string } | undefined)?.department,
+    department: sessionUser.department,
   })
   const initialWeek = useMemo(() => {
     const s = startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -225,7 +249,7 @@ export default function ModificationsPage() {
 
   const exportRows = useMemo(
     () =>
-      modifications.map((m) => ({
+      modifications.map((m): ModificationExportRow => ({
         DataEvent: (m.eventDate || '').slice(0, 10),
         Event: m.eventTitle || '',
         Codi: m.eventCode || '',
@@ -280,7 +304,7 @@ export default function ModificationsPage() {
     const body = exportRows
       .map((row) => {
         const cells = cols
-          .map((key) => `<td>${escapeHtml(String((row as any)[key] ?? ''))}</td>`)
+          .map((key) => `<td>${escapeHtml(String(row[key as keyof ModificationExportRow] ?? ''))}</td>`)
           .join('')
         return `<tr>${cells}</tr>`
       })
@@ -377,9 +401,9 @@ export default function ModificationsPage() {
             onUpdate={updateModification}
             onDelete={deleteModification}
             canDelete={!productionWorker}
-            currentUserId={(session?.user as any)?.id}
-            currentUserName={(session?.user as any)?.name || (session?.user as any)?.email}
-            currentUserEmail={(session?.user as any)?.email}
+            currentUserId={sessionUser.id}
+            currentUserName={sessionUser.name || sessionUser.email}
+            currentUserEmail={sessionUser.email}
           />
         </div>
       )}
@@ -438,8 +462,8 @@ export default function ModificationsPage() {
         <CreateModificationModal
           event={{ id: selectedEvent.id, summary: selectedEvent.summary }}
           user={{
-            name: (session?.user as any)?.name || (session?.user as any)?.email || 'Usuari',
-            department: (session?.user as any)?.department || filters.department || 'desconegut',
+            name: sessionUser.name || sessionUser.email || 'Usuari',
+            department: sessionUser.department || filters.department || 'desconegut',
           }}
           onClose={() => setSelectedEventId(null)}
           onCreated={async () => {

@@ -132,17 +132,6 @@ const blockStatusTone = (status: string) => {
   return 'bg-slate-100 text-slate-700'
 }
 
-const deadlineTone = (deadline?: string) => {
-  if (!deadline) return 'bg-slate-100 text-slate-700'
-  const today = new Date()
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-  const diffMs = new Date(deadline).getTime() - new Date(todayKey).getTime()
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-  if (diffDays < 0) return 'bg-rose-100 text-rose-700'
-  if (diffDays <= 2) return 'bg-amber-100 text-amber-800'
-  return 'bg-emerald-100 text-emerald-700'
-}
-
 const blockStatusAccentClass = (status?: string) => {
   if (status === 'done') return 'bg-emerald-500/85'
   if (status === 'in_progress') return 'bg-sky-500/85'

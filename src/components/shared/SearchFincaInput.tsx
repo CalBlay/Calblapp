@@ -37,7 +37,7 @@ export default function SearchFincaInput({ value = '', onChange }: Props) {
     if (!selectingRef.current && value !== query) {
       setQuery(value)
     }
-  }, [value])
+  }, [value, query])
   useEffect(() => setMounted(true), [])
 
   // 🔍 Cerca amb debounce

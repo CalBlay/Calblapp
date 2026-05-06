@@ -106,9 +106,9 @@ export default function EventClosingModal({ open, onClose, eventId, eventName, u
 
       alert('Hores reals desades correctament')
       onClose()
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[EventClosingModal] save error', err)
-      alert(err?.message || 'No s’ha pogut desar')
+      alert(err instanceof Error ? err.message : 'No s’ha pogut desar')
     } finally {
       setSaving(false)
     }

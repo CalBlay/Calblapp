@@ -26,6 +26,13 @@ export interface QuadrantData {
   displayDate?: string
 }
 
+type RawQuadrant = Omit<QuadrantData, 'service' | 'code' | 'displayDate'> & {
+  code?: string
+  eventCode?: string
+  service?: string
+  servei?: string
+}
+
 /**
  * 🔹 Carrega quadrants d’una setmana segons departament
  */
@@ -63,7 +70,7 @@ export default function useQuadrantsByDept(
         // -------------------------------
         // 🧠 FORMATEM RESULTATS
         // -------------------------------
-        const formatted: QuadrantData[] = (json.quadrants || []).map((q: any) => {
+        const formatted: QuadrantData[] = (json.quadrants || []).map((q: RawQuadrant) => {
           const d = q.startDate ? new Date(q.startDate) : null
 
           const dayName = d
@@ -92,9 +99,9 @@ export default function useQuadrantsByDept(
 
         console.log('✅ Quadrants carregats:', formatted.length)
         setData(formatted)
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('⚠️ Error useQuadrantsByDept:', err)
-        setError(err.message || 'Error carregant quadrants')
+        setError(err instanceof Error ? err.message : 'Error carregant quadrants')
       } finally {
         setLoading(false)
       }

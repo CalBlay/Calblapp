@@ -5,7 +5,6 @@ import { useServicePhasesState } from '@/app/menu/quadrants/[id]/hooks/useServic
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import {
   logisticPhaseOptions,
-  servicePhaseOptions,
   LogisticPhaseForm,
   LogisticPhaseSetting,
   ServicePhaseSetting,
@@ -267,14 +266,9 @@ export function useQuadrantFormState({
     phaseVehicleAssignments,
     updatePhaseVehicleAssignment,
     availableVehicles,
-    loadingVehicles,
-    normalizeVehicleType,
-    isVehicleIdAssigned,
-    availableVehicleCount,
     buildVehiclesPayload,
     buildVehiclesPayloadForPhase,
     selectedLogisticPhaseKeys,
-    totalDriverCount,
   } = logistics
 
   const {
@@ -367,7 +361,6 @@ export function useQuadrantFormState({
       buildTimetablesForPhase,
       defaultPhaseForm,
       event.eventLocation,
-      event.phaseKey,
       location,
       meetingPoint,
       phaseForms,

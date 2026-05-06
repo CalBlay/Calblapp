@@ -1,4 +1,4 @@
-import { format, parseISO } from 'date-fns'
+import { parseISO } from 'date-fns'
 import { formatDayMonthValue } from '@/lib/date-format'
 import type { ScheduledItem, TicketCard } from './types'
 

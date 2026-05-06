@@ -49,11 +49,9 @@ export async function GET(req: Request) {
         'Cache-Control': 'no-store',
       },
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('❌ Error /api/sharepoint/file:', err)
-    return NextResponse.json(
-      { error: err.message || 'Unknown error' },
-      { status: 500 }
-    )
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

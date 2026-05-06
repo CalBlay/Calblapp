@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ text: translated })
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: 'Translation error.' }, { status: 500 })
   }
 }

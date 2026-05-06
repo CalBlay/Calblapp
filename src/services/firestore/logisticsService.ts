@@ -26,7 +26,7 @@ export async function getLogisticsEvents(start: Date, end: Date) {
 export async function updatePreparation(id: string, data?: string, hora?: string) {
   if (!id) return
 
-  const updateFields: Record<string, any> = {}
+  const updateFields: Record<string, string> = {}
   if (data) updateFields.PreparacioData = data
   if (hora) updateFields.PreparacioHora = hora
 

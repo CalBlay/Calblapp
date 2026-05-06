@@ -27,8 +27,11 @@ export interface Modification {
 
 const modificationsCache: Record<string, Modification[]> = {}
 
-const normalizeTimestamp = (ts: any): string => {
-  if (ts && typeof ts.toDate === 'function') return ts.toDate().toISOString()
+type FirestoreTimestampLike = { toDate?: () => Date }
+
+const normalizeTimestamp = (ts: unknown): string => {
+  const maybeTimestamp = ts as FirestoreTimestampLike
+  if (maybeTimestamp && typeof maybeTimestamp.toDate === 'function') return maybeTimestamp.toDate().toISOString()
   if (typeof ts === 'string') return ts
   return ''
 }

@@ -16,12 +16,10 @@ export async function GET(req: Request) {
     const items = await listChildren(path)
 
     return NextResponse.json({ items })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ Error GET /api/sharepoint/browse:', error)
-    return NextResponse.json(
-      { items: [], error: error.message || 'Unknown error' },
-      { status: 500 }
-    )
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ items: [], error: message }, { status: 500 })
   }
 }
 
@@ -41,11 +39,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ url: publicUrl })
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ Error POST /api/sharepoint/browse:', error)
-    return NextResponse.json(
-      { error: error.message || 'Unknown error' },
-      { status: 500 }
-    )
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

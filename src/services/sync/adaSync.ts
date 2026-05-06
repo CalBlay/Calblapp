@@ -315,6 +315,7 @@ export async function syncAdaEventsToFirestore(opts?: {
     noMatch,
     skippedManual,
     skippedConfirmed,
+    skippedConfirmedCode,
     adaCount: adaEvents.length,
   }
 }

@@ -24,6 +24,8 @@ export interface EventData {
   responsableName?: string
   lnKey?: 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
   lnLabel?: string
+  fincaId?: string | null
+  fincaCode?: string | null
   isResponsible?: boolean
   responsable?: string
   conductors?: string[]
@@ -65,6 +67,8 @@ interface EventPayload {
     department: string
     createdAt: string
   } | null
+  fincaId?: string | null
+  fincaCode?: string | null
   [key: string]: unknown
 }
 
@@ -141,9 +145,15 @@ export default function useEvents(
           }
 
           const pax = Number(ev.pax ?? 0)
+          const lnRaw = String(ev.LN || ev.lnKey || 'altres').toLowerCase()
+          const lnKeys = ['empresa', 'casaments', 'foodlovers', 'agenda', 'altres'] as const
+          const lnKey = (lnKeys.includes(lnRaw as (typeof lnKeys)[number])
+            ? lnRaw
+            : 'altres') as NonNullable<EventData['lnKey']>
 
           return {
-            ...(ev as any),
+            ...ev,
+            name: ev.summary,
             pax,
             location,
             day: ev.start.slice(0, 10),
@@ -151,27 +161,22 @@ export default function useEvents(
             mapsUrl: computeMapsUrl(location),
             state: normalizeStatus(ev.state || ev.status),
             eventCode: eventCode ? normalizeCode(eventCode) : null,
-            commercial: (ev as any).commercial ?? null,
-            lastAviso: (ev as any).lastAviso ?? null,
-            codeConfirmed: (ev as any).codeConfirmed ?? undefined,
-            codeMatchScore: (ev as any).codeMatchScore ?? undefined,
-            responsable: (ev as any).responsableName || ev.responsable?.name,
-            responsableName: (ev as any).responsableName || ev.responsable?.name || '',
+            commercial: ev.commercial ?? null,
+            lastAviso: ev.lastAviso ?? null,
+            codeConfirmed: ev.codeConfirmed ?? undefined,
+            codeMatchScore: ev.codeMatchScore ?? undefined,
+            responsable: ev.responsableName || ev.responsable?.name,
+            responsableName: ev.responsableName || ev.responsable?.name || '',
             conductors: [],
             treballadors: [],
-            lnKey: String((ev as any).LN || (ev as any).lnKey || 'altres').toLowerCase() as any,
-            lnLabel: String((ev as any).LN || (ev as any).lnLabel || 'Altres'),
-            fincaId: (ev as any).fincaId ?? null,
-            fincaCode: (ev as any).fincaCode ?? null,
+            lnKey,
+            lnLabel: String(ev.LN || ev.lnLabel || 'Altres'),
+            fincaId: ev.fincaId ?? null,
+            fincaCode: ev.fincaCode ?? null,
             horaInici:
-              String(
-                (ev as any).HoraInici ||
-                  (ev as any).horaInici ||
-                  (ev as any).Hora ||
-                  (ev as any).hora ||
-                  ''
-              ).slice(0, 5) || undefined,
-          }
+              String(ev.HoraInici || ev.horaInici || ev.Hora || ev.hora || '').slice(0, 5) ||
+              undefined,
+          } as EventData
         })
 
         const totals: TotalPerDay = {}
@@ -188,10 +193,11 @@ export default function useEvents(
         setGroupedEvents(grouped)
         setResponsables(payload?.responsables || [])
         setResponsablesDetailed(payload?.responsablesDetailed || [])
-      } catch (err: any) {
-        if (err?.name !== 'AbortError') {
-          setError(err?.message || 'Error carregant esdeveniments')
-        }
+      } catch (err: unknown) {
+        const aborted =
+          (err instanceof DOMException || err instanceof Error) && err.name === 'AbortError'
+        if (aborted) return
+        setError(err instanceof Error ? err.message : 'Error carregant esdeveniments')
       } finally {
         setLoading(false)
       }

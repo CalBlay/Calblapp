@@ -20,6 +20,8 @@ interface QuadrantEvent {
   code?: string
   lnLabel?: string
   HoraInici?: string
+  horaInici?: string
+  quadrantStatus?: 'confirmed' | 'draft' | null
 }
 
 function getQuadrantColor(status?: string | null) {
@@ -35,7 +37,7 @@ export default function EventTile({ event, onClick }: {
 }) {
 
   // 🔵 AQUI LA CLAU → l’estat real enviat des de CalendarView
-  const quadrantStatus = (event as any).quadrantStatus || null
+  const quadrantStatus = event.quadrantStatus || null
 
   // Color LN
   const lnColor = colorByLN(event.lnLabel)
@@ -45,7 +47,7 @@ export default function EventTile({ event, onClick }: {
     (event.location?.split(/[|,\.]/)[0]?.trim()) || ''
 
   const startTime =
-    (event as any).HoraInici || (event as any).horaInici || null
+    event.HoraInici || event.horaInici || null
 
   return (
     <Tooltip>

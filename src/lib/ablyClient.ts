@@ -18,7 +18,7 @@ export function getAblyClient() {
 export function subscribeToAblyEvent(params: {
   channelName: string
   eventName: string
-  handler: (...args: any[]) => void
+  handler: (...args: unknown[]) => void
 }) {
   const realtime = getAblyClient()
   const name = params.channelName

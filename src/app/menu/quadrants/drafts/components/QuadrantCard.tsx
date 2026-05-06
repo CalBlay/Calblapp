@@ -11,6 +11,12 @@ interface Props {
   onCreatePhase?: (phaseKey: string) => void
 }
 
+type DraftWithMeta = Draft & {
+  phaseType?: string | null
+  phaseLabel?: string | null
+  attentionNotes?: string[]
+}
+
 export default function QuadrantCard({
   quadrant,
   autoExpand = false,
@@ -19,11 +25,12 @@ export default function QuadrantCard({
 }: Props) {
   // Mantingut per compatibilitat amb props existents.
   void autoExpand
+  const draftWithMeta = quadrant as DraftWithMeta
   const draftRenderKey = `${quadrant.id}-${quadrant.updatedAt || 'nou'}-${quadrant.status || 'draft'}`
 
   return (
     <div className="space-y-3">
-      {((quadrant as any).phaseType || (quadrant as any).phaseLabel || '')
+      {(draftWithMeta.phaseType || draftWithMeta.phaseLabel || '')
         .toString()
         .toLowerCase()
         .trim() === 'event' &&
@@ -48,15 +55,15 @@ export default function QuadrantCard({
           </div>
         )}
 
-      {Array.isArray((quadrant as any).attentionNotes) &&
-        (quadrant as any).attentionNotes.length > 0 && (
+      {Array.isArray(draftWithMeta.attentionNotes) &&
+        draftWithMeta.attentionNotes.length > 0 && (
           <div
             className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950"
             role="alert"
           >
             <div className="font-semibold text-amber-900">Avisos d’assignació</div>
             <ul className="mt-1 list-inside list-disc space-y-0.5">
-              {(quadrant as any).attentionNotes.map((line: string, i: number) => (
+              {draftWithMeta.attentionNotes.map((line, i) => (
                 <li key={i}>{line}</li>
               ))}
             </ul>

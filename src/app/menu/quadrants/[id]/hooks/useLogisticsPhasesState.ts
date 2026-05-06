@@ -129,7 +129,7 @@ export function useLogisticsPhasesState({
   startTime,
   endTime,
   meetingPoint,
-  location,
+  location: _location,
   totalWorkers,
   numDrivers,
   availableConductors,
@@ -215,7 +215,19 @@ export function useLogisticsPhasesState({
     setPhaseSettings(createPhaseSettings(requestedPhaseKey))
     setPhaseResponsibles(createPhaseResponsibles())
     setPhaseVehicleAssignments(createPhaseVehicleAssignments())
-  }, [event.id, event.phaseKey, event.phaseType, event.phaseLabel])
+  }, [
+    baseMeetingPoint,
+    endTime,
+    event.id,
+    event.phaseKey,
+    event.phaseLabel,
+    event.phaseType,
+    event.start,
+    numDrivers,
+    requestedPhaseKey,
+    startTime,
+    totalWorkers,
+  ])
 
   useEffect(() => {
     setPhaseVehicleAssignments((prev) =>

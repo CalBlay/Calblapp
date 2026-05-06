@@ -17,6 +17,64 @@ import { normalizeRole } from '@/lib/roles'
 import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
 type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
 
+type SessionUser = {
+  id?: string
+  role?: string
+}
+
+type PreventiuPlannedItem = {
+  id: string
+  kind: 'preventiu'
+  title: string
+  date: string
+  startTime: string
+  endTime: string
+  location?: string
+  worker?: string
+  machine?: string
+  vehicleId?: string | null
+  vehiclePlate?: string | null
+  hasMedia?: boolean
+  templateId?: string | null
+  lastRecordId?: string | null
+  lastStatus?: string | null
+  lastProgress?: number | null
+}
+
+type TicketJourneyItem = {
+  id: string
+  kind: 'ticket'
+  title: string
+  code?: string
+  status?: MaintenanceStatus
+  ticketType?: 'maquinaria' | 'deco'
+  date: string
+  startTime: string
+  endTime: string
+  location?: string
+  worker?: string
+  machine?: string
+  vehicleId?: string | null
+  vehiclePlate?: string | null
+  hasMedia?: boolean
+  templateId?: string
+}
+
+type WorkItem = PreventiuPlannedItem | TicketJourneyItem
+
+type WorkExportRow = {
+  Data: string
+  Tipus: string
+  Codi: string
+  Titol: string
+  HoraInici: string
+  HoraFi: string
+  Ubicacio: string
+  Operari: string
+  Estat: string
+  Progres: string
+}
+
 const WORKER_VISIBLE_JOURNEY_STATUSES = new Set<MaintenanceStatus>(['assignat', 'en_curs', 'espera', 'fet'])
 const PROGRESS_VISIBLE_STATUSES = new Set<MaintenanceStatus>(['en_curs', 'espera', 'fet', 'validat'])
 
@@ -62,13 +120,14 @@ const getStatusLabel = (status?: string | null, fallback = 'assignat') => {
 
 export default function PreventiusFullsPage() {
   const { data: session } = useSession()
+  const sessionUser = (session?.user || {}) as SessionUser
   const { data: transports } = useTransports()
   const { setContent } = useFilters()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const role = normalizeRole((session?.user as any)?.role || '')
-  const userId = String((session?.user as any)?.id || '').trim()
+  const role = normalizeRole(sessionUser.role || '')
+  const userId = String(sessionUser.id || '').trim()
   const canFilterByWorker = role === 'admin' || role === 'direccio' || role === 'cap'
   const [filters, setFiltersState] = useState<{ start: string; end: string; mode: 'day' | 'week' }>(() => {
     const value = format(new Date(), 'yyyy-MM-dd')
@@ -77,46 +136,8 @@ export default function PreventiusFullsPage() {
   const [workerFilter, setWorkerFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [kindFilter, setKindFilter] = useState<'all' | 'preventiu' | 'ticket'>('all')
-  const [plannedItems, setPlannedItems] = useState<
-    Array<{
-      id: string
-      kind: 'preventiu'
-      title: string
-      date: string
-      startTime: string
-      endTime: string
-      location?: string
-      worker?: string
-      machine?: string
-      vehicleId?: string | null
-      vehiclePlate?: string | null
-      hasMedia?: boolean
-      templateId?: string | null
-      lastRecordId?: string | null
-      lastStatus?: string | null
-      lastProgress?: number | null
-    }>
-  >([])
-  const [ticketItems, setTicketItems] = useState<
-    Array<{
-      id: string
-      kind: 'ticket'
-      title: string
-      code?: string
-      status?: MaintenanceStatus
-      ticketType?: 'maquinaria' | 'deco'
-      date: string
-      startTime: string
-      endTime: string
-      location?: string
-      worker?: string
-      machine?: string
-      vehicleId?: string | null
-      vehiclePlate?: string | null
-      hasMedia?: boolean
-      templateId?: string
-    }>
-  >([])
+  const [plannedItems, setPlannedItems] = useState<PreventiuPlannedItem[]>([])
+  const [ticketItems, setTicketItems] = useState<TicketJourneyItem[]>([])
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
   const [statusDraft, setStatusDraft] = useState<{
     status?: MaintenanceStatus
@@ -165,7 +186,7 @@ export default function PreventiusFullsPage() {
       const json = await res.json()
       const list = Array.isArray(json?.items) ? json.items : []
       const mapped = list
-        .map((item: any) => {
+        .map((item: Record<string, unknown>) => {
           if (!item?.date || !item?.startTime || !item?.endTime) return null
           return {
             id: String(item.id || ''),
@@ -187,7 +208,7 @@ export default function PreventiusFullsPage() {
           }
         })
         .filter(Boolean)
-      setPlannedItems(mapped as any)
+      setPlannedItems(mapped as PreventiuPlannedItem[])
     } catch {
       setPlannedItems([])
     }
@@ -215,13 +236,13 @@ export default function PreventiusFullsPage() {
         const json = await res.json()
         const list = Array.isArray(json?.tickets) ? json.tickets : []
         const mapped = list
-          .filter((t: any) => t.plannedStart && t.plannedEnd)
-          .filter((t: any) =>
+          .filter((t: Record<string, unknown>) => t.plannedStart && t.plannedEnd)
+          .filter((t: Record<string, unknown>) =>
             role === 'treballador'
               ? WORKER_VISIBLE_JOURNEY_STATUSES.has(normalizeMaintenanceStatus(t.status))
               : true
           )
-          .map((t: any) => {
+          .map((t: Record<string, unknown>) => {
             const start = new Date(Number(t.plannedStart))
             const end = new Date(Number(t.plannedEnd))
             const code = t.ticketCode || t.incidentNumber || 'TIC'
@@ -298,7 +319,7 @@ export default function PreventiusFullsPage() {
       endTime: '',
       note: '',
     })
-  }, [selectedTicket?.id])
+  }, [selectedTicket])
 
   const currentStart = useMemo(() => parseISO(filters.start), [filters.start])
   const currentEnd = useMemo(() => parseISO(filters.end), [filters.end])
@@ -368,8 +389,8 @@ export default function PreventiusFullsPage() {
     filteredByDate.forEach((item) => {
       const raw =
         item.kind === 'ticket'
-          ? normalizeMaintenanceStatus((item as any).status)
-          : normalizeMaintenanceStatus((item as any).lastStatus)
+          ? normalizeMaintenanceStatus((item as TicketJourneyItem).status)
+          : normalizeMaintenanceStatus((item as PreventiuPlannedItem).lastStatus)
       if (role === 'treballador' && !WORKER_VISIBLE_JOURNEY_STATUSES.has(raw)) return
       if (!raw) return
       values.add(raw)
@@ -401,8 +422,8 @@ export default function PreventiusFullsPage() {
 
       const itemStatus =
         item.kind === 'ticket'
-          ? normalizeMaintenanceStatus((item as any).status)
-          : normalizeMaintenanceStatus((item as any).lastStatus)
+          ? normalizeMaintenanceStatus((item as TicketJourneyItem).status)
+          : normalizeMaintenanceStatus((item as PreventiuPlannedItem).lastStatus)
       const matchesWorkerStatus =
         role === 'treballador' ? WORKER_VISIBLE_JOURNEY_STATUSES.has(itemStatus) : true
       const matchesStatus = statusFilter === 'all' ? true : itemStatus === statusFilter
@@ -487,18 +508,18 @@ export default function PreventiusFullsPage() {
         items.map((item) => {
           const isTicket = item.kind === 'ticket'
           const status = isTicket
-            ? normalizeMaintenanceStatus((item as any).status)
-            : normalizeMaintenanceStatus((item as any).lastStatus)
+            ? normalizeMaintenanceStatus((item as TicketJourneyItem).status)
+            : normalizeMaintenanceStatus((item as PreventiuPlannedItem).lastStatus)
           const progress =
             !isTicket &&
             PROGRESS_VISIBLE_STATUSES.has(status) &&
-            typeof (item as any).lastProgress === 'number'
-              ? `${(item as any).lastProgress}%`
+            typeof (item as PreventiuPlannedItem).lastProgress === 'number'
+              ? `${(item as PreventiuPlannedItem).lastProgress}%`
               : ''
           return {
             Data: format(parseISO(day), 'dd/MM/yyyy'),
             Tipus: isTicket ? 'Ticket' : 'Preventiu',
-            Codi: isTicket ? (item as any).code || '' : '',
+            Codi: isTicket ? (item as TicketJourneyItem).code || '' : '',
             Titol: item.title || '',
             HoraInici: item.startTime || '',
             HoraFi: item.endTime || '',
@@ -546,7 +567,7 @@ export default function PreventiusFullsPage() {
     const body = exportRows
       .map((row) => {
         const cells = cols
-          .map((key) => `<td>${escapeHtml(String((row as any)[key] ?? ''))}</td>`)
+          .map((key) => `<td>${escapeHtml(String(row[key as keyof WorkExportRow] ?? ''))}</td>`)
           .join('')
         return `<tr>${cells}</tr>`
       })
@@ -768,27 +789,27 @@ export default function PreventiusFullsPage() {
                     (() => {
                       const isTicket = item.kind === 'ticket'
                       const itemStatus = isTicket
-                        ? normalizeMaintenanceStatus((item as any).status)
-                        : normalizeMaintenanceStatus((item as any).lastStatus)
+                        ? normalizeMaintenanceStatus((item as TicketJourneyItem).status)
+                        : normalizeMaintenanceStatus((item as PreventiuPlannedItem).lastStatus)
                       const assignedTransport =
-                        isTicket && (item as any).vehicleId
-                          ? transportById.get(String((item as any).vehicleId || ''))
+                        isTicket && (item as TicketJourneyItem).vehicleId
+                          ? transportById.get(String((item as TicketJourneyItem).vehicleId || ''))
                           : null
                       const vehicleLabel =
-                        isTicket || (item as any).vehicleId || (item as any).vehiclePlate
+                        isTicket || (item as WorkItem).vehicleId || (item as WorkItem).vehiclePlate
                           ? [
                               assignedTransport?.type
                                 ? TRANSPORT_TYPE_LABELS[String(assignedTransport.type)] ||
                                   String(assignedTransport.type)
                                 : '',
-                              String((item as any).vehiclePlate || '').trim(),
+                              String((item as WorkItem).vehiclePlate || '').trim(),
                             ]
                               .filter(Boolean)
                               .join(' · ')
                           : ''
                       const machineLabel =
-                        typeof (item as any).machine === 'string' ? String((item as any).machine || '').trim() : ''
-                      const hasMedia = Boolean((item as any).hasMedia)
+                        typeof (item as WorkItem).machine === 'string' ? String((item as WorkItem).machine || '').trim() : ''
+                      const hasMedia = Boolean((item as WorkItem).hasMedia)
                       const typeLabel = isTicket ? 'Ticket' : 'Preventiu'
 
                       return (
@@ -809,8 +830,8 @@ export default function PreventiusFullsPage() {
                               </span>
                               <div className="min-w-0 text-base font-semibold text-gray-900">
                                 {isTicket
-                                  ? (item as any).code
-                                    ? `${(item as any).code} - ${item.title}`
+                                  ? (item as TicketJourneyItem).code
+                                    ? `${(item as TicketJourneyItem).code} - ${item.title}`
                                     : item.title
                                   : item.title}
                               </div>
@@ -832,7 +853,7 @@ export default function PreventiusFullsPage() {
                                 <span
                                   className={`rounded-full px-3 py-1.5 text-xs font-semibold ${statusClasses[itemStatus]}`}
                                 >
-                                  {getStatusLabel((item as any).status, 'assignat')}
+                                  {getStatusLabel((item as TicketJourneyItem).status, 'assignat')}
                                 </span>
                               )}
                               {!isTicket && (
@@ -841,11 +862,11 @@ export default function PreventiusFullsPage() {
                                     statusClasses[itemStatus] || 'bg-slate-100 text-slate-700'
                                   }`}
                                 >
-                                  {getStatusLabel((item as any).lastStatus, 'assignat')}
+                                  {getStatusLabel((item as PreventiuPlannedItem).lastStatus, 'assignat')}
                                   {PROGRESS_VISIBLE_STATUSES.has(
                                     itemStatus
-                                  ) && typeof (item as any).lastProgress === 'number'
-                                    ? ` · ${(item as any).lastProgress}%`
+                                  ) && typeof (item as PreventiuPlannedItem).lastProgress === 'number'
+                                    ? ` · ${(item as PreventiuPlannedItem).lastProgress}%`
                                     : ''}
                                 </span>
                               )}
@@ -857,10 +878,10 @@ export default function PreventiusFullsPage() {
                                 item.kind === 'ticket'
                                   ? openTicket(
                                       item.id,
-                                      (item as any).code,
-                                      (item as any).ticketType
+                                      (item as TicketJourneyItem).code,
+                                      (item as TicketJourneyItem).ticketType
                                     )
-                                  : openFitxa(item.id, (item as any).lastRecordId || null)
+                                  : openFitxa(item.id, (item as PreventiuPlannedItem).lastRecordId || null)
                               }
                             >
                               {item.kind === 'ticket' ? 'Obrir ticket' : 'Obrir fitxa'}

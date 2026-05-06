@@ -107,7 +107,10 @@ export interface Draft {
   service?: string | null
   vestimentModel?: string | null
   numPax?: number | null
-  commercial?: string | null  
+  commercial?: string | null
+  phaseType?: string | null
+  phaseLabel?: string | null
+  attentionNotes?: string | null
 }
 
 /* ──────────────────────────────
@@ -187,7 +190,7 @@ export default function DraftsPage() {
   const userDept = norm(session?.user?.department)
   const canSelectDepartment = ['admin', 'direccio', 'direccion'].includes(role)
 
-  const [department, setDepartment] = useState<string>(
+  const [department] = useState<string>(
     canSelectDepartment ? '' : userDept || ''
   )
   const [status, setStatus] = useState<'all' | 'draft' | 'confirmed'>('all')
@@ -370,19 +373,16 @@ export default function DraftsPage() {
                     const responsable =
                       typeof q.responsableName === 'string'
                         ? q.responsableName
-                        : (q.responsableName as any)?.name || '—'
+                        : q.responsableName &&
+                            typeof q.responsableName === 'object' &&
+                            typeof q.responsableName.name === 'string'
+                          ? q.responsableName.name
+                          : '—'
 
                     const loc = normalizeLocation(q.location)
                     const workers = (q.treballadors || []).map((t) => t.name)
                     const drivers = (q.conductors || []).map((c) => c.name)
                     const people = [...workers, ...drivers]
-
-                    const labelEstat =
-                      q.status === 'confirmed' ? 'Confirmat' : 'Esborrany'
-                    const estatClass =
-                      q.status === 'confirmed'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-amber-100 text-amber-700'
 
                     const serviceTimetables = Array.isArray(q.timetables)
                       ? q.timetables
@@ -491,4 +491,3 @@ export default function DraftsPage() {
     </div>
   )
 }
-

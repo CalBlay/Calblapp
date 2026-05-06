@@ -478,7 +478,7 @@ export default function IncidentsPage() {
       </div>
 
       {/* Barra compacta: només dates + botó filtres */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm mb-2 flex items-center gap-3 flex-nowrap">
+      <div className="mb-2 flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:flex-nowrap">
 
         <SmartFilters
           modeDefault="week"
@@ -497,7 +497,7 @@ export default function IncidentsPage() {
           initialEnd={filters.to}
           resetSignal={dateResetSignal}
         />
-        <div className="flex-1 min-w-[8px]" />
+        <div className="min-w-[8px] flex-1" />
         <FilterButton onClick={openFiltersPanel} />
       </div>
 

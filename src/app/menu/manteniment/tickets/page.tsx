@@ -99,7 +99,6 @@ export default function MaintenanceTicketsPage() {
   const userRole = normalizeRole(sessionUser.role || '')
   const isMaintenance = department === 'manteniment'
   const isMaintenanceWorker = userRole === 'treballador' && isMaintenance
-  const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(department)
   const canManageAllTickets =
     userRole === 'admin' ||
     userRole === 'direccio' ||
@@ -375,7 +374,7 @@ export default function MaintenanceTicketsPage() {
 
       setSelected(ticket)
     },
-    [canManageAllTickets, markTicketSeen, setSelected]
+    [canManageAllTickets, setSelected]
   )
 
   if (!hasAccess && status !== 'loading') return null

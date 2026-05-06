@@ -143,8 +143,10 @@ export default function ProjectDocumentsTab({
   const [fileInputKey, setFileInputKey] = useState(0)
   const previousPendingFile = useRef<File | null>(null)
   const [kickoffMinutesUrl, setKickoffMinutesUrl] = useState('')
-  const sectionCategories =
-    activeSection === 'initial' ? ['initial', 'kickoff'] : ['general', 'block', 'other']
+  const sectionCategories = useMemo(
+    () => (activeSection === 'initial' ? ['initial', 'kickoff'] : ['general', 'block', 'other']),
+    [activeSection]
+  )
   const defaultCategory = activeSection === 'initial' ? 'initial' : 'general'
 
   useEffect(() => {
@@ -153,7 +155,7 @@ export default function ProjectDocumentsTab({
       ...current,
       category: sectionCategories.includes(current.category) ? current.category : defaultCategory,
     }))
-  }, [activeSection, defaultCategory, documentDraft.category, onDocumentDraftChange])
+  }, [defaultCategory, documentDraft.category, onDocumentDraftChange, sectionCategories])
 
   useEffect(() => {
     if (previousPendingFile.current && !pendingDocumentFile) {
@@ -166,7 +168,6 @@ export default function ProjectDocumentsTab({
     const minutes = String(project.kickoff?.minutes || '').trim()
     if (!minutes) return ''
     const attendees = project.kickoff?.attendees || []
-    const allAttendees = attendees.map((item) => item.name)
     const absentAttendees = attendees.filter((item) => item.attended === false).map((item) => item.name)
     const presentAttendees = attendees
       .filter((item) => item.attended !== false)
@@ -195,6 +196,7 @@ export default function ProjectDocumentsTab({
     project.kickoff?.minutesClosedAt,
     project.kickoff?.minutesUpdatedAt,
     project.kickoff?.startTime,
+    project.kickoff?.attendees,
     project.name,
   ])
 

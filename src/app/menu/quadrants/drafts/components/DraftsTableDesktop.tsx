@@ -2,6 +2,7 @@ import React, { type ReactNode } from 'react'
 import RowEditor from './RowEditor'
 import { buildDisplayItems } from './draftsTableDisplayUtils'
 import type { GroupDef, Role, Row } from './types'
+import type { PersonnelOption } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
 
 type DraftsTableDesktopProps = {
   hasInlineEditor: boolean
@@ -12,11 +13,10 @@ type DraftsTableDesktopProps = {
   canManageGroups: boolean
   showStructuredGroups: boolean
   rows: Row[]
-  renderRow: (row: Row, index: number) => ReactNode
   availableForEditor: {
-    responsables: any[]
-    conductors: any[]
-    treballadors: any[]
+    responsables: PersonnelOption[]
+    conductors: PersonnelOption[]
+    treballadors: PersonnelOption[]
   }
   renderDisplayItems: (items: ReturnType<typeof buildDisplayItems>) => ReactNode
   canEditMeetingPoint: (row: Row | null) => boolean
@@ -47,7 +47,6 @@ export default function DraftsTableDesktop({
   canManageGroups,
   showStructuredGroups,
   rows,
-  renderRow,
   availableForEditor,
   renderDisplayItems,
   canEditMeetingPoint,

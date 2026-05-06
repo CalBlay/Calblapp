@@ -38,7 +38,7 @@ type Props = {
 }
 
 export default function AssignTicketPlanningSection({
-  isAssignedStage,
+  isAssignedStage: _isAssignedStage,
   isValidated,
   assignDate,
   setAssignDate,

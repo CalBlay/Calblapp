@@ -274,9 +274,7 @@ export async function GET(req: NextRequest) {
 
     if (workerSearch) {
       data = data.filter((t) => {
-        const combined = norm(
-          `${(t as any).workerName || ''} ${(t as any).workerId || ''}`
-        )
+        const combined = norm(`${t.workerName || ''} ${t.workerId || ''}`)
         return combined.includes(workerSearch)
       })
     }
@@ -285,8 +283,8 @@ export async function GET(req: NextRequest) {
     // 9. Mapegem a DTO per al front
     // ─────────────────────────────────────────────
     const toTimeRange = (t: WorkerExpanded): string | undefined => {
-      const s = (t as any).startTime as string | undefined
-      const e = (t as any).endTime as string | undefined
+      const s = t.startTime
+      const e = t.endTime
       if (s && e) return `${s} - ${e}`
       if (s) return s
       if (e) return e
@@ -299,20 +297,20 @@ export async function GET(req: NextRequest) {
       eventId: t.eventId,
       eventName: t.eventName,
       date: t.date,
-      dayNote: (t as any).dayNote,
-      phaseLabel: (t as any).phaseLabel,
+      dayNote: t.dayNote,
+      phaseLabel: t.phaseLabel,
       time: toTimeRange(t),
-      arrivalTime: (t as any).arrivalTime,
+      arrivalTime: t.arrivalTime,
       location: t.location,
       meetingPoint: t.meetingPoint,
       department: t.department,
-      workerId: (t as any).workerId,
-      workerName: (t as any).workerName,
-      workerRole: (t as any).workerRole as any,
-      workerPlate: (t as any).workerPlate,
-      startTime: (t as any).startTime,
-      endTime: (t as any).endTime,
-      vestimentModel: (t as any).vestimentModel,
+      workerId: t.workerId,
+      workerName: t.workerName,
+      workerRole: t.workerRole as ApiTorn['workerRole'],
+      workerPlate: t.workerPlate,
+      startTime: t.startTime,
+      endTime: t.endTime,
+      vestimentModel: t.vestimentModel,
       __rawWorkers: t.__rawWorkers as NormalizedWorker[] | undefined,
     }))
 

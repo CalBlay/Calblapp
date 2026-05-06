@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import Image from 'next/image'
 import {
   Dialog,
   DialogContent,
@@ -91,10 +92,13 @@ export default function EventIncidentsModal({ open, onClose, eventId, eventSumma
                           rel="noreferrer"
                           className="block overflow-hidden rounded-xl border border-slate-200"
                         >
-                          <img
+                          <Image
                             src={image.url}
                             alt={`Incidencia ${index + 1}`}
+                            width={512}
+                            height={256}
                             className="h-32 w-full object-cover"
+                            unoptimized
                           />
                         </a>
                       ) : null

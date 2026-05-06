@@ -5,6 +5,8 @@ import { useSession } from 'next-auth/react'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
+type MessagingChannel = { unreadCount?: number | string | null }
+
 export function useMessagingUnreadCount() {
   const { status } = useSession()
   const isAuth = status === 'authenticated'
@@ -16,7 +18,7 @@ export function useMessagingUnreadCount() {
   )
 
   const channels = Array.isArray(data?.channels) ? data.channels : []
-  const count = channels.reduce((acc: number, c: any) => {
+  const count = channels.reduce((acc: number, c: MessagingChannel) => {
     const n = Number(c?.unreadCount || 0)
     return acc + (Number.isNaN(n) ? 0 : n)
   }, 0)

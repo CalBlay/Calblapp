@@ -64,6 +64,18 @@ type Props = {
   onAfterAction?: () => void
 }
 
+type MessagingChannel = {
+  id: string
+  source?: string
+  location?: string
+  name?: string
+}
+
+type ApproveUserRequestResponse = {
+  error?: string
+  user?: User
+}
+
 const ROLES = [
   'Admin',
   'Direccio',
@@ -104,13 +116,13 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     fetch(url).then((r) => r.json())
   )
 
-  const allChannels = Array.isArray(channelsData?.channels) ? channelsData.channels : []
+  const allChannels: MessagingChannel[] = Array.isArray(channelsData?.channels) ? channelsData.channels : []
   const opsChannels = allChannels.filter(
-    (ch: any) => ch?.source === 'finques' || ch?.source === 'restaurants' || ch?.source === 'events'
+    (ch) => ch?.source === 'finques' || ch?.source === 'restaurants' || ch?.source === 'events'
   )
   const opsByGroup = {
-    finques: opsChannels.filter((ch: any) => ch?.source === 'finques'),
-    restaurants: opsChannels.filter((ch: any) => ch?.source === 'restaurants'),
+    finques: opsChannels.filter((ch) => ch?.source === 'finques'),
+    restaurants: opsChannels.filter((ch) => ch?.source === 'restaurants'),
   }
 
   const isWorker =
@@ -204,13 +216,13 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password }),
         })
-        const data = await res.json()
+        const data = (await res.json()) as ApproveUserRequestResponse
         if (!res.ok) {
-          const msg = (data && (data as any).error) || "No s'ha pogut aprovar la sollicitud"
+          const msg = data.error || "No s'ha pogut aprovar la sollicitud"
           alert(msg)
           return
         }
-        onSubmit((data as any).user || { id: user.personId })
+        onSubmit(data.user || { id: user.personId })
         onAfterAction?.()
       } catch (err) {
         console.error('Error cridant approve:', err)
@@ -465,7 +477,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                 <details className="border rounded-lg px-3 py-2">
                   <summary className="cursor-pointer text-sm font-medium">Finques</summary>
                   <div className="mt-2 space-y-2">
-                    {opsByGroup.finques.map((ch: any) => {
+                    {opsByGroup.finques.map((ch) => {
                       const id = String(ch.id)
                       const text = ch.location || ch.name || id
                       return (
@@ -489,7 +501,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                 <details className="border rounded-lg px-3 py-2">
                   <summary className="cursor-pointer text-sm font-medium">Restaurants</summary>
                   <div className="mt-2 space-y-2">
-                    {opsByGroup.restaurants.map((ch: any) => {
+                    {opsByGroup.restaurants.map((ch) => {
                       const id = String(ch.id)
                       const text = ch.location || ch.name || id
                       return (

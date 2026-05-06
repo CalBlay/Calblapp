@@ -74,6 +74,13 @@ type ApiResp = {
   }
 }
 
+type SessionUser = {
+  id?: string
+  role?: string
+  department?: string
+  name?: string
+}
+
 const norm = (s?: string | null) =>
   String(s ?? '')
     .normalize('NFD')
@@ -142,14 +149,14 @@ export default function TornsPage() {
     mode: 'week',
     start: defaultStart,
     end: defaultEnd,
-    roleType: 'all' as any,
+    roleType: 'all',
   })
   const [pendingOpenId, setPendingOpenId] = useState<string | null>(null)
 
   // ============================
   // 🟦 CONTEXT SLIDE FILTERS
   // ============================
-  const { setOpen, setContent } = useFilters()
+  const { setOpen: _setOpen, setContent } = useFilters()
 
   // ============================
   // 🔵 FETCH TURNS
@@ -210,7 +217,7 @@ export default function TornsPage() {
         }))
         setWorkerOptions(workers)
       } catch (err: unknown) {
-        if ((err as any)?.name === 'AbortError') return
+        if (err instanceof Error && err.name === 'AbortError') return
         console.error('[torns] fetch error', err)
         setError('Error de connexió')
       } finally {
@@ -321,11 +328,12 @@ export default function TornsPage() {
     router.push(url)
   }
 
+  const sessionUser = session?.user as SessionUser | undefined
   const userForEventMenu = {
-    id: (session?.user as any)?.id,
-    role: (session?.user as any)?.role,
-    department: (session?.user as any)?.department,
-    name: (session?.user as any)?.name,
+    id: sessionUser?.id,
+    role: sessionUser?.role,
+    department: sessionUser?.department,
+    name: sessionUser?.name,
   }
 
   if (status === 'loading') return <p className="p-6">Carregant sessió…</p>

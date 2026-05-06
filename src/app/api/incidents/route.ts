@@ -333,6 +333,7 @@ export async function POST(req: Request) {
           .filter(Boolean)
           .join(" · "),
         createdAt: createdAtMs,
+        incidentEventId: String(eventId),
       });
     }
 
@@ -442,6 +443,7 @@ export async function POST(req: Request) {
             .filter(Boolean)
             .join(" · "),
           createdAt: now,
+          incidentEventId: String(eventId),
         });
       }
     }

@@ -17,8 +17,8 @@ type Espai = {
   nom: string
   ln?: string
   tipus?: string
-  comercial?: any
-  produccio?: any
+  comercial?: Record<string, unknown>
+  produccio?: Record<string, unknown>
 }
 
 type Props = {

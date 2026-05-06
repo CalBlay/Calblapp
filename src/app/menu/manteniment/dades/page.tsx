@@ -178,11 +178,6 @@ export default function MaintenanceDataPage() {
     }
   }, [machines, tickets])
 
-  const machineTickets = useMemo(() => {
-    if (!selectedMachine) return []
-    return machineDataIndex.ticketsByMachineId.get(selectedMachine.id) || []
-  }, [machineDataIndex, selectedMachine])
-
   const machineStats = useMemo(() => {
     if (!selectedMachine) {
       return {

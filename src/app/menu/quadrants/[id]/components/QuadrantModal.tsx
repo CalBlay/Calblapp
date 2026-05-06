@@ -1,7 +1,7 @@
 'use client'
 
 import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
@@ -24,7 +23,6 @@ import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import { useQuadrantFormState } from '../hooks/useQuadrantFormState'
 import LogisticsPhasePanel from './LogisticsPhasePanel'
 import ServicePhasePanel from './ServicePhasePanel'
-import { normalizeTransportType } from '@/lib/transportTypes'
 import { normalizeRole } from '@/lib/roles'
 import GenerationScopeToggle from './GenerationScopeToggle'
 import SurveyLaunchPanel from './SurveyLaunchPanel'
@@ -97,6 +95,47 @@ type TimetableEntry = {
 
 type GenerationScope = 'day' | 'event'
 
+type SessionUserInfo = {
+  role?: string
+  department?: string
+  dept?: string
+}
+
+type GroupPayload = Record<string, unknown> & {
+  serviceDate?: string
+}
+
+type ExternalWorkerPayload = {
+  name?: string
+  isExternal?: boolean
+  meetingPoint?: string
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  endTime?: string
+}
+
+type SurveyPersonApi = {
+  id?: unknown
+  name?: unknown
+}
+
+type SubmitQuadrantResponse = {
+  ok?: boolean
+  success?: boolean
+  error?: string
+  proposal?: {
+    responsible?: { name?: string | null } | null
+    drivers?: Array<{ name?: string | null }>
+    staff?: Array<{ name?: string | null }>
+  }
+  meta?: {
+    needsReview?: boolean
+    violations?: string[]
+    notes?: string[]
+  }
+}
+
 const getDateRange = (startIso?: string, endIso?: string) => {
   const safeStart = extractDate(startIso || '')
   if (!safeStart) return []
@@ -134,14 +173,16 @@ const clonePayloadForDate = (
   }
 
   if (Array.isArray(payload.groups)) {
-    nextPayload.groups = payload.groups.map((group: any) => ({
+    nextPayload.groups = payload.groups.map((group) => ({
+      ...(group as GroupPayload),
       ...group,
-      serviceDate: department === 'serveis' ? date : group?.serviceDate ?? date,
+      serviceDate:
+        department === 'serveis' ? date : (group as GroupPayload)?.serviceDate ?? date,
     }))
   }
 
   if (Array.isArray(payload.externalWorkers)) {
-    nextPayload.externalWorkers = payload.externalWorkers.map((worker: any) => ({
+    nextPayload.externalWorkers = payload.externalWorkers.map((worker) => ({
       ...worker,
       startDate: date,
       endDate: date,
@@ -149,7 +190,7 @@ const clonePayloadForDate = (
   }
 
   if (Array.isArray(payload.logisticaPhases)) {
-    nextPayload.logisticaPhases = payload.logisticaPhases.map((phase: any) => ({
+    nextPayload.logisticaPhases = payload.logisticaPhases.map((phase) => ({
       ...phase,
       date,
       endDate: date,
@@ -190,24 +231,13 @@ const submitQuadrantPayload = async (payload: Record<string, unknown>) => {
     body: JSON.stringify(payload),
   })
   const text = await res.text()
-  const data = JSON.parse(text)
+  const data = JSON.parse(text) as SubmitQuadrantResponse
 
-  if (!res.ok || (data as any)?.ok === false || (data as any)?.success === false) {
-    throw new Error((data as any)?.error || 'Error desant el quadrant')
+  if (!res.ok || data.ok === false || data.success === false) {
+    throw new Error(data.error || 'Error desant el quadrant')
   }
 
-  return data as {
-    proposal?: {
-      responsible?: { name?: string | null } | null
-      drivers?: Array<{ name?: string | null }>
-      staff?: Array<{ name?: string | null }>
-    }
-    meta?: {
-      needsReview?: boolean
-      violations?: string[]
-      notes?: string[]
-    }
-  }
+  return data
 }
 
 const toastAutoAssignDoubleBookingWarnings = (data: {
@@ -244,11 +274,11 @@ type CuinaEttState = {
 
 export default function QuadrantModal({ open, onOpenChange, event }: QuadrantModalProps) {
   const { data: session } = useSession()
-  const userRole = normalizeRole(String((session?.user as any)?.role || ''))
+  const sessionUser = session?.user as SessionUserInfo | undefined
+  const userRole = normalizeRole(String(sessionUser?.role || ''))
   const department = (
-    session?.user?.department ||
-    (session as any)?.department ||
-    (session as any)?.dept ||
+    sessionUser?.department ||
+    sessionUser?.dept ||
     'serveis'
   )
     .toString()
@@ -256,7 +286,6 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
   const isCuina = department === 'cuina'
   const isServeis = department === 'serveis'
   const isLogistica = department === 'logistica'
-  const isGroupDept = isCuina || isServeis
 
   const {
     startDate,
@@ -270,15 +299,15 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     arrivalTime,
     setArrivalTime,
     location,
-    setLocation,
+    setLocation: _setLocation,
     meetingPoint,
     setMeetingPoint,
     manualResp,
     setManualResp,
     totalWorkers,
-    setTotalWorkers,
+    setTotalWorkers: _setTotalWorkers,
     numDrivers,
-    setNumDrivers,
+    setNumDrivers: _setNumDrivers,
     phaseForms,
     updatePhaseForm,
     phaseVisibility,
@@ -311,7 +340,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     setServiceJamoneroCount,
     updateServiceJamoneroAssignment,
     buildServiceGroupsPayload,
-    vehiclesPayload,
+    vehiclesPayload: _vehiclesPayload,
     buildLogisticaPhases,
     ettEntry,
     availableResponsables,
@@ -321,7 +350,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
 
   const rawTitle = event.summary || event.title || ''
   const { name: eventName, code: parsedCode } = splitTitle(rawTitle)
-  const eventCode = parsedCode || (rawTitle.match(/[A-Z]\d{6,}/)?.[0] ?? '').toUpperCase()
+  const _eventCode = parsedCode || (rawTitle.match(/[A-Z]\d{6,}/)?.[0] ?? '').toUpperCase()
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -329,7 +358,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
   const [generationScope, setGenerationScope] = useState<GenerationScope>('day')
   const [surveyGroupsLoading, setSurveyGroupsLoading] = useState(false)
   const [surveyPeopleLoading, setSurveyPeopleLoading] = useState(false)
-  const [surveyLoading, setSurveyLoading] = useState(false)
+  const [_surveyLoading, setSurveyLoading] = useState(false)
   const [surveySubmitting, setSurveySubmitting] = useState(false)
   const [surveyGroups, setSurveyGroups] = useState<Array<{ id: string; name: string; workerIds: string[] }>>([])
   const [surveyPeople, setSurveyPeople] = useState<Array<{ id: string; name: string }>>([])
@@ -377,15 +406,15 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
   const [surveyDeadlineDate, setSurveyDeadlineDate] = useState('')
   const [serveisVestimentModels, setServeisVestimentModels] = useState<string[]>([])
   const [vestimentModelChoice, setVestimentModelChoice] = useState<string>('__none__')
-  const eventRangeStart = extractDate(event.originalStart || event.start)
-  const eventRangeEnd = extractDate(event.originalEnd || event.end || event.start)
+  const _eventRangeStart = extractDate(event.originalStart || event.start)
+  const _eventRangeEnd = extractDate(event.originalEnd || event.end || event.start)
   const multiDayDates = useMemo(
     () => getDateRange(event.originalStart || event.start, event.originalEnd || event.end || event.start),
     [event.end, event.originalEnd, event.originalStart, event.start]
   )
   const isMultiDayEvent = multiDayDates.length > 1
   const canLaunchSurvey = userRole === 'admin' || userRole === 'direccio' || userRole === 'cap'
-  const createCuinaGroup = (seed: Partial<CuinaGroup> = {}): CuinaGroup => {
+  const createCuinaGroup = useCallback((seed: Partial<CuinaGroup> = {}): CuinaGroup => {
     const seedDrivers = Math.max(0, (seed.drivers ?? Number(numDrivers)) || 0)
     const needsDriver = seed.needsDriver ?? seedDrivers > 0
 
@@ -403,7 +432,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
       driverMode: seed.driverMode ?? '__auto__',
       vehicleType: seed.vehicleType ?? '',
     }
-  }
+  }, [arrivalTime, meetingPoint, numDrivers, startTime, endTime, totalWorkers])
 
   const [cuinaGroups, setCuinaGroups] = useState<CuinaGroup[]>(() => [createCuinaGroup()])
   const [cuinaEtt, setCuinaEtt] = useState<CuinaEttState>(() => ({
@@ -478,6 +507,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     })
     cuinaTotalsRef.current = { workers: targetWorkers, drivers: targetDrivers }
   }, [
+    createCuinaGroup,
     isCuina,
     totalWorkers,
     numDrivers,
@@ -537,7 +567,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     return () => {
       cancelled = true
     }
-  }, [open, isServeis])
+  }, [event, open, isServeis])
 
   useEffect(() => {
     if (!open || !canLaunchSurvey) return
@@ -609,7 +639,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           .then((res) => res.json().catch(() => ({})))
           .then((peopleJson) =>
             Array.isArray(peopleJson?.people)
-              ? peopleJson.people.map((person: any) => ({
+              ? peopleJson.people.map((person: SurveyPersonApi) => ({
                   id: String(person?.id || ''),
                   name: String(person?.name || ''),
                 }))
@@ -889,7 +919,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
         if (ettEntry) {
           const externalWorkers = [
             ...(Array.isArray(baseLogisticaPayload.externalWorkers)
-              ? (baseLogisticaPayload.externalWorkers as any[])
+              ? (baseLogisticaPayload.externalWorkers as ExternalWorkerPayload[])
               : []),
             ...Array.from({ length: Number(ettEntry.workers || 0) }, () => ({
               name: 'ETT',
@@ -980,7 +1010,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
 
       if (ettEntries.length) {
         const existingExternalWorkers = Array.isArray(payload.externalWorkers)
-          ? (payload.externalWorkers as any[])
+          ? (payload.externalWorkers as ExternalWorkerPayload[])
           : []
         payload.externalWorkers = [...existingExternalWorkers, ...ettEntries]
         ettEntries.forEach((entry) => addTimetable({ startTime: entry.startTime, endTime: entry.endTime }))

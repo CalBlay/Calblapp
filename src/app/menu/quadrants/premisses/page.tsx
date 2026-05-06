@@ -14,8 +14,12 @@ import type {
   DriverCrewPremise,
   Premises,
   SurveyGroupPremise,
-  SurveyNoResponseDefault,
 } from '@/services/premises'
+
+type SessionUserData = {
+  role?: string
+  department?: string
+}
 
 type MetaState = {
   source: 'firestore' | 'fallback'
@@ -160,8 +164,9 @@ const toEditableSurveyGroups = (premises: Premises): EditableSurveyGroup[] =>
 export default function QuadrantPremisesPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
-  const role = normalizeRole(String((session?.user as any)?.role || ''))
-  const rawSessionDept = norm(String((session?.user as any)?.department || ''))
+  const sessionUser = session?.user as SessionUserData | undefined
+  const role = normalizeRole(String(sessionUser?.role || ''))
+  const rawSessionDept = norm(String(sessionUser?.department || ''))
   const sessionDept = ALLOWED_DEPARTMENTS.has(rawSessionDept) ? rawSessionDept : 'serveis'
   const canSelectDepartment = role === 'admin' || role === 'direccio'
   const lastSavedSnapshotRef = useRef('')
@@ -181,7 +186,7 @@ export default function QuadrantPremisesPage() {
     'Treballador, Responsable, Conductor'
   )
   const [vestimentModelsText, setVestimentModelsText] = useState('')
-  const [meta, setMeta] = useState<MetaState | null>(null)
+  const [, setMeta] = useState<MetaState | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -305,7 +310,7 @@ export default function QuadrantPremisesPage() {
           })
           hydratingDepartmentRef.current = false
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setPeople([])
           setDriverCrews([])
@@ -317,7 +322,16 @@ export default function QuadrantPremisesPage() {
     return () => {
       cancelled = true
     }
-  }, [status, department])
+  }, [
+    conditions,
+    defaultCharacteristicsText,
+    department,
+    driverCrews,
+    premises,
+    status,
+    surveyGroups,
+    vestimentModelsText,
+  ])
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -334,9 +348,9 @@ export default function QuadrantPremisesPage() {
         if (!cancelled) {
           setFinques(Array.isArray(json?.finques) ? (json.finques as FincaOption[]) : [])
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
-          console.error(err)
+          console.error('No s’han pogut carregar les finques')
         }
       }
     }

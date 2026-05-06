@@ -23,16 +23,16 @@ export async function GET() {
     const rawLocations: string[] = []
 
     finquesSnap.docs.forEach((doc) => {
-      const d = doc.data() as any
-      const rawCode = d.code || d.codi || ''
-      const rawTipus = d.tipus || ''
+      const d = doc.data() as Record<string, unknown>
+      const rawCode = String(d.code ?? d.codi ?? '')
+      const rawTipus = String(d.tipus ?? '')
       const tipus = rawTipus || (rawCode.startsWith('CC') ? 'Propi' : 'Extern')
-      if (tipus === 'Propi') rawLocations.push(d.nom || doc.id)
+      if (tipus === 'Propi') rawLocations.push(String(d.nom ?? doc.id))
     })
 
     channelsSnap.docs.forEach((doc) => {
-      const d = doc.data() as any
-      rawLocations.push(d.location || d.name || doc.id)
+      const d = doc.data() as Record<string, unknown>
+      rawLocations.push(String(d.location ?? d.name ?? doc.id))
     })
 
     rawLocations.push('CENTRAL')

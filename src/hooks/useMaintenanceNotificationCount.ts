@@ -13,10 +13,13 @@ const MAINTENANCE_NOTIFICATION_TYPES = new Set([
   'maintenance_ticket_validated',
 ])
 
+type SessionUser = { id?: string }
+type MaintenanceNotification = { read?: boolean; type?: string }
+
 export function useMaintenanceNotificationCount() {
   const { data: session, status } = useSession()
   const isAuth = status === 'authenticated'
-  const userId = String((session?.user as any)?.id || '').trim()
+  const userId = String((session?.user as SessionUser | undefined)?.id || '').trim()
 
   const { data, error, mutate } = useSWR(isAuth ? '/api/notifications?mode=list' : null, fetcher, {
     refreshInterval: isAuth ? 15000 : 0,
@@ -38,7 +41,7 @@ export function useMaintenanceNotificationCount() {
 
   const notifications = Array.isArray(data?.notifications) ? data.notifications : []
   const count = notifications.filter(
-    (notification: any) =>
+    (notification: MaintenanceNotification) =>
       !notification?.read && MAINTENANCE_NOTIFICATION_TYPES.has(String(notification?.type || ''))
   ).length
 

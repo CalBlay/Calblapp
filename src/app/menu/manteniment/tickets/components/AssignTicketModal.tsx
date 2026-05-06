@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import Image from 'next/image'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { formatDateOnly, formatDateTimeValue, formatTimeValue } from '@/lib/date-format'
 import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
@@ -298,6 +299,7 @@ export default function AssignTicketModal({
     setProviderOpen(false)
     setCreateSupplierOpen(false)
   }, [
+    ticket,
     ticket.id,
     ticket.location,
     ticket.machine,
@@ -513,11 +515,14 @@ export default function AssignTicketModal({
                           rel="noreferrer"
                           className="block overflow-hidden rounded-2xl border border-slate-200"
                         >
-                          <img
-                            src={imageUrl}
-                            alt={`Imatge del ticket ${index + 1}`}
-                            className="h-40 w-full object-cover"
-                          />
+                          <div className="relative h-40 w-full">
+                            <Image
+                              src={imageUrl}
+                              alt={`Imatge del ticket ${index + 1}`}
+                              fill
+                              className="object-cover"
+                            />
+                          </div>
                         </a>
                       ))}
                     </div>

@@ -49,7 +49,7 @@ export default function PersonnelFilters({ filters, onFiltersChange }: Props) {
         <select
           className="h-10 rounded-xl border bg-white px-3"
           value={filters.isDriver}
-          onChange={(e) => update({ isDriver: e.target.value as any })}
+          onChange={(e) => update({ isDriver: e.target.value as FilterState['isDriver'] })}
         >
           <option value="all">🌐 Tots</option>
           <option value="yes">✅ Sí</option>

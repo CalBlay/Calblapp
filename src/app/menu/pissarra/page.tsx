@@ -1,7 +1,7 @@
 // filename: src/app/menu/pissarra/page.tsx
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { startOfWeek, endOfWeek } from 'date-fns'
 import { Loader2 } from 'lucide-react'
@@ -16,6 +16,31 @@ import { Button } from '@/components/ui/button'
 import FilterButton from '@/components/ui/filter-button'
 import ExportMenu from '@/components/export/ExportMenu'
 import { useFilters } from '@/context/FiltersContext'
+
+type PissarraExportRow = {
+  Data: string
+  Hora: string
+  Arribada?: string
+  Esdeveniment: string
+  Ubicacio: string
+  LN?: string
+  Servei: string
+  Comercial?: string
+  Responsable?: string
+  Pax: number | string
+  Vehicles?: string
+  Treballadors?: string
+  'G1 Responsable'?: string
+  'G1 Conductors'?: string
+  'G1 Treballadors'?: string
+  'G1 Meeting point'?: string
+  'G1 Hora inici'?: string
+  'G2 Responsable'?: string
+  'G2 Conductors'?: string
+  'G2 Treballadors'?: string
+  'G2 Meeting point'?: string
+  'G2 Hora inici'?: string
+}
 
 export default function PissarraPage() {
   const { data: session, status } = useSession()
@@ -40,7 +65,7 @@ export default function PissarraPage() {
     endISO: defaultWeekEnd.toISOString().slice(0, 10),
   })
 
-  const { dataByDay, flat, loading, error, canEdit, updateField } = usePissarra(
+  const { flat, loading, error, canEdit, updateField } = usePissarra(
     week.startISO,
     week.endISO,
     role,
@@ -85,7 +110,7 @@ export default function PissarraPage() {
 
   const exportBase = `pissarra-${mode}-${week.startISO}-${week.endISO}`
 
-  const formatVehicles = (vehicles: typeof flat[number]['vehicles']) => {
+  const formatVehicles = useCallback((vehicles: typeof flat[number]['vehicles']) => {
     if (!Array.isArray(vehicles) || vehicles.length === 0) return ''
     return vehicles
       .map((v) => {
@@ -96,16 +121,16 @@ export default function PissarraPage() {
       })
       .filter(Boolean)
       .join(' | ')
-  }
+  }, [])
 
-  const formatWorkers = (workers: typeof flat[number]['workers']) => {
+  const formatWorkers = useCallback((workers: typeof flat[number]['workers']) => {
     if (!Array.isArray(workers) || workers.length === 0) return ''
     return workers.filter(Boolean).join(', ')
-  }
+  }, [])
 
   const exportRows = useMemo(
     () =>
-      filteredFlat.map((ev) => {
+      filteredFlat.map((ev): PissarraExportRow => {
         if (mode === 'cuina') {
           return {
             Data: ev.startDate || '',
@@ -141,7 +166,7 @@ export default function PissarraPage() {
           Treballadors: formatWorkers(ev.workers),
         }
       }),
-    [filteredFlat, mode]
+    [filteredFlat, formatVehicles, formatWorkers, mode]
   )
 
   const handleExportExcel = async () => {
@@ -247,7 +272,7 @@ export default function PissarraPage() {
                 Treballadors: formatWorkers(ev.workers),
               }
         const cells = cols
-          .map((key) => `<td>${escapeHtml(String((base as any)[key] ?? ''))}</td>`)
+          .map((key) => `<td>${escapeHtml(String(base[key as keyof PissarraExportRow] ?? ''))}</td>`)
           .join('')
         return `<tr>${cells}</tr>`
       })

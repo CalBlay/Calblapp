@@ -2,12 +2,11 @@
 'use client'
 
 import React, { useState } from 'react'
-import { RotateCcw } from 'lucide-react'
-import { startOfWeek, endOfWeek, format } from 'date-fns'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
+import type { SmartFiltersChange } from '@/components/filters/SmartFilters'
 
 type Props = {
-  setFilters: (f: any) => void
+  setFilters: React.Dispatch<React.SetStateAction<SmartFiltersChange>>
   deptOptions?: string[]
   workerOptions?: { id: string; name: string }[]
   role: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
@@ -21,11 +20,11 @@ export default function TornFilters({
   setFilters,
   deptOptions = [],
   workerOptions = [],
-  role,
+  role: _role,
   sessionDept,
-  userName,
+  userName: _userName,
   isAdminOrDireccio,
-  isWorker,
+  isWorker: _isWorker,
 }: Props) {
 
   const [localRoleType, setLocalRoleType] = useState('all')
@@ -38,9 +37,6 @@ export default function TornFilters({
      RESET (igual que Esdeveniments)
   ───────────────────────────────────────────── */
   const resetFilters = () => {
-    const monday = startOfWeek(new Date(), { weekStartsOn: 1 })
-    const sunday = endOfWeek(new Date(), { weekStartsOn: 1 })
-
     setLocalRoleType('all')
     setLocalDepartment(isAdminOrDireccio ? '' : sessionDept || '')
     setLocalWorker('')

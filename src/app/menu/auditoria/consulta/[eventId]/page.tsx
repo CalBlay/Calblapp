@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import { useParams, useSearchParams } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
@@ -96,7 +97,7 @@ export default function AuditoriaConsultaEventPage() {
   const fromTs = String(searchParams?.get('fromTs') || '').trim()
   const toTs = String(searchParams?.get('toTs') || '').trim()
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
@@ -114,12 +115,12 @@ export default function AuditoriaConsultaEventPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [eventId, fromTs, toTs])
 
   useEffect(() => {
     if (!eventId) return
-    load()
-  }, [eventId, fromTs, toTs])
+    void load()
+  }, [eventId, load])
 
   const auditsByDept = useMemo(() => {
     const map: Record<Department, ExecutionRow[]> = {
@@ -144,7 +145,7 @@ export default function AuditoriaConsultaEventPage() {
   useEffect(() => {
     const first = DEPARTMENTS.find((d) => auditsByDept[d.id].length > 0)?.id
     if (first) setActiveDept(first)
-  }, [rows])
+  }, [auditsByDept])
 
   const activeAudit = auditsByDept[activeDept][0] || null
 
@@ -249,7 +250,14 @@ export default function AuditoriaConsultaEventPage() {
                               .filter((p) => String(p?.url || '').trim())
                               .map((p, pIdx) => (
                                 <a key={`${iIdx}-${pIdx}`} href={String(p.url)} target="_blank" rel="noreferrer" className="block overflow-hidden hover:opacity-90">
-                                  <img src={String(p.url)} alt={`Evidencia ${pIdx + 1}`} className="h-28 w-full object-cover rounded-md" />
+                                  <Image
+                                    src={String(p.url)}
+                                    alt={`Evidencia ${pIdx + 1}`}
+                                    className="h-28 w-full object-cover rounded-md"
+                                    width={480}
+                                    height={320}
+                                    unoptimized
+                                  />
                                 </a>
                               ))}
                           </div>

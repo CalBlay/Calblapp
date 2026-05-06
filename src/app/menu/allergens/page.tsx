@@ -7,6 +7,13 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import { ClipboardList, Search } from 'lucide-react'
 import { getVisibleModules } from '@/lib/accessControl'
 
+type HubCardStyle = {
+  bg: string
+  text: string
+  border: string
+  Icon: typeof ClipboardList
+}
+
 export default function AllergensHubPage() {
   const { data: session } = useSession()
   const user = session?.user
@@ -27,10 +34,7 @@ export default function AllergensHubPage() {
           {submodules.map(sub => {
             const key = sub.path.split('/').pop() || sub.path
 
-            const styleMap: Record<
-              string,
-              { bg: string; text: string; border: string; Icon: any }
-            > = {
+            const styleMap: Record<string, HubCardStyle> = {
               bbdd: {
                 bg: 'bg-[#fff7e6]',
                 text: 'text-[#9a3412]',

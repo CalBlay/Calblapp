@@ -1,7 +1,7 @@
 // file: src/app/menu/quadrants/page.tsx
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
 import { useSession } from 'next-auth/react'
@@ -19,6 +19,46 @@ import QuadrantModal from './[id]/components/QuadrantModal'
 import QuadrantCard from './drafts/components/QuadrantCard'
 import { useQuadrantsPageData } from './hooks/useQuadrantsPageData'
 import type { UnifiedEvent } from './types'
+
+type SessionDepartmentSource = {
+  department?: string
+  dept?: string
+}
+
+type QuadrantDraftDetails = {
+  id?: string
+  vestimentModel?: string | null
+  attentionNotes?: string[]
+  violations?: string[]
+}
+
+type ExportRow = {
+  Data: string
+  Responsable: string
+  Fase: string
+  Esdeveniment: string
+  LN: string
+  PAX: number | ''
+  Ubicacio: string
+  Servei: string
+  Vestimenta: string
+  Treballadors: string
+  Horari: string
+  Estat: string
+}
+
+const LOGISTIC_PHASE_OPTIONS = [
+  { key: 'entrega', label: 'Entrega' },
+  { key: 'event', label: 'Event' },
+  { key: 'recollida', label: 'Recollida' },
+]
+
+const SERVICE_PHASE_OPTIONS = [
+  { key: 'muntatge', label: 'Muntatge' },
+  { key: 'event', label: 'Event' },
+]
+
+const CUINA_PHASE_OPTIONS = [{ key: 'event', label: 'Event' }]
 
 
 export default function QuadrantsPage() {
@@ -43,11 +83,11 @@ export default function QuadrantsPage() {
   const events = eventsData as QuadrantEvent[]
 
   const { data: session } = useSession()
+  const sessionUser = session?.user as SessionDepartmentSource | undefined
   const department =
     (
-      session?.user?.department ||
-      (session as any)?.department ||
-      (session as any)?.dept ||
+      sessionUser?.department ||
+      sessionUser?.dept ||
       'serveis'
     )
       .toString()
@@ -125,11 +165,11 @@ export default function QuadrantsPage() {
       .replace(/[\u0300-\u036f]/g, '')
       .trim()
 
-  const shouldHideCuinaEvent = (ev: UnifiedEvent) => {
+  const shouldHideCuinaEvent = useCallback((ev: UnifiedEvent) => {
     if (!isCuinaDepartment || !hideCuinaMinorServices) return false
 
-    const service = normalizeForFilter((ev as any).service)
-    const pax = Number(ev.numPax ?? (ev as any).pax ?? NaN)
+    const service = normalizeForFilter(ev.service)
+    const pax = Number(ev.numPax ?? NaN)
 
     const isCoffee = service.includes('coffee')
     const isMenuEntregues =
@@ -138,11 +178,11 @@ export default function QuadrantsPage() {
       service.includes('cheers') && Number.isFinite(pax) && pax < 200
 
     return isCoffee || isMenuEntregues || isCheersLowPax
-  }
+  }, [hideCuinaMinorServices, isCuinaDepartment])
 
   const visibleFilteredEvents = useMemo(
     () => filteredEvents.filter((ev) => !shouldHideCuinaEvent(ev)),
-    [filteredEvents, hideCuinaMinorServices, isCuinaDepartment]
+    [filteredEvents, shouldHideCuinaEvent]
   )
 
   const visibleGrouped = useMemo<[string, UnifiedEvent[]][]>(() => {
@@ -205,7 +245,7 @@ export default function QuadrantsPage() {
   
   const lnOptions = useMemo(() => {
     const set = new Set<string>()
-    events.forEach((ev: any) => {
+    events.forEach((ev) => {
       if (ev.ln || ev.lnLabel) {
         set.add((ev.ln || ev.lnLabel).toString().trim().toLowerCase())
       }
@@ -215,7 +255,7 @@ export default function QuadrantsPage() {
 
   const responsables = useMemo(() => {
     const set = new Set<string>()
-    events.forEach((ev: any) => {
+    events.forEach((ev) => {
       if (ev.responsable) {
         set.add(ev.responsable.toString().trim().toLowerCase())
       }
@@ -225,7 +265,7 @@ export default function QuadrantsPage() {
 
   const locations = useMemo(() => {
     const set = new Set<string>()
-    events.forEach((ev: any) => {
+    events.forEach((ev) => {
       if (ev.location) {
         set.add(ev.location.toString().trim().toLowerCase())
       }
@@ -234,18 +274,6 @@ export default function QuadrantsPage() {
   }, [events])
 
   
-  const LOGISTIC_PHASE_OPTIONS = [
-    { key: 'entrega', label: 'Entrega' },
-    { key: 'event', label: 'Event' },
-    { key: 'recollida', label: 'Recollida' },
-  ]
-
-  const SERVICE_PHASE_OPTIONS = [
-    { key: 'muntatge', label: 'Muntatge' },
-    { key: 'event', label: 'Event' },
-  ]
-  const CUINA_PHASE_OPTIONS = [{ key: 'event', label: 'Event' }]
-
   const phaseOptions = useMemo(
     () => {
       if (department === 'cuina') {
@@ -285,7 +313,7 @@ export default function QuadrantsPage() {
 
   const exportRows = useMemo(
     () =>
-      visibleFilteredEvents.map((ev) => {
+      visibleFilteredEvents.map((ev): ExportRow => {
         const startDate = String(ev.start || '').slice(0, 10)
         const startTime = ev.displayStartTime || ''
         const endTime = ev.displayEndTime || ''
@@ -315,10 +343,10 @@ export default function QuadrantsPage() {
           LN: ev.ln || '',
           PAX: ev.numPax ?? '',
           Ubicacio: ev.location || '',
-          Servei: (ev as any).service || '',
+          Servei: ev.service || '',
           Vestimenta:
-            String((ev as any).vestimentModel || '').trim() ||
-            String((ev as any)?.draft?.vestimentModel || '').trim(),
+            String(ev.vestimentModel || '').trim() ||
+            String((ev.draft as QuadrantDraftDetails | undefined)?.vestimentModel || '').trim(),
           Treballadors: ev.workersSummary || '',
           Horari: horariLabel,
           Estat: statusLabel(ev.quadrantStatus),
@@ -363,7 +391,7 @@ export default function QuadrantsPage() {
     const body = exportRows
       .map((row) => {
         const cells = cols
-          .map((key) => `<td>${escapeHtml(String((row as any)[key] ?? ''))}</td>`)
+          .map((key) => `<td>${escapeHtml(String(row[key as keyof ExportRow] ?? ''))}</td>`)
           .join('')
         return `<tr>${cells}</tr>`
       })
@@ -522,7 +550,7 @@ export default function QuadrantsPage() {
 
                   {/* Files per esdeveniment */}
                   {evs.map((ev, evIdx) => {
-                    const draft = (ev as any).draft
+                    const draft = ev.draft as QuadrantDraftDetails | undefined
 
                     const dotClass =
                       ev.quadrantStatus === 'confirmed'
@@ -571,19 +599,19 @@ export default function QuadrantsPage() {
                       ev.phaseKey || ev.phaseType || ev.phaseLabel || 'event'
                     }__${ev.phaseDate || ev.start || ''}__${ev.id || 'row'}__${evIdx}`
                     const isExpanded = Boolean(draft && draft.id && expandedId === draft.id)
-                    const draftAttention = draft && Array.isArray((draft as any).attentionNotes)
-                      ? ((draft as any).attentionNotes as string[])
+                    const draftAttention = draft && Array.isArray(draft.attentionNotes)
+                      ? draft.attentionNotes
                       : []
                     const draftViolations =
-                      draft && Array.isArray((draft as any).violations)
-                        ? ((draft as any).violations as string[])
+                      draft && Array.isArray(draft.violations)
+                        ? draft.violations
                         : []
                     const hasOverlapWarning =
                       draftAttention.some((n) => n.includes('ja està assignat')) ||
                       draftViolations.includes('person_double_booked')
                     const vestimentModel =
-                      String((ev as any).vestimentModel || '').trim() ||
-                      String((draft as any)?.vestimentModel || '').trim() ||
+                      String(ev.vestimentModel || '').trim() ||
+                      String(draft?.vestimentModel || '').trim() ||
                       '-'
                     return (
                       <React.Fragment key={fragmentKey}>

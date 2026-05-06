@@ -6,8 +6,9 @@ import {
   extractOwnedStoragePath,
   mediaIndexDocId,
   mediaRefKey,
+  mergeContextField,
 } from '@/lib/media/collectMediaRefs'
-import type { QueryDocumentSnapshot } from 'firebase-admin/firestore'
+import type { Query, QueryDocumentSnapshot } from 'firebase-admin/firestore'
 
 const COLLECTION = 'media_storage_index'
 
@@ -22,6 +23,32 @@ type IndexDoc = {
   sourceKinds: MediaSource[]
   referenceCount: number
   refMap: Record<string, boolean>
+  auditEventId: string | null
+  auditDepartment: string | null
+  auditItemId: string | null
+  auditRunId: string | null
+  incidentEventId: string | null
+}
+
+function indexDocToAggregated(d: QueryDocumentSnapshot): AggregatedMediaItem {
+  const x = d.data() as Partial<IndexDoc>
+  return {
+    id: x.path || d.id,
+    indexDocId: d.id,
+    path: x.path || '',
+    url: x.url ?? null,
+    createdAt: x.createdAt || 0,
+    size: x.size ?? null,
+    type: x.contentType ?? null,
+    sourceKinds: (x.sourceKinds || []) as MediaSource[],
+    referenceCount: x.referenceCount || 0,
+    title: x.title || x.path || '',
+    auditEventId: x.auditEventId ?? null,
+    auditDepartment: x.auditDepartment ?? null,
+    auditItemId: x.auditItemId ?? null,
+    auditRunId: x.auditRunId ?? null,
+    incidentEventId: x.incidentEventId ?? null,
+  }
 }
 
 function pickBetterSize(a: number | null | undefined, b: number | null | undefined): number | null {
@@ -40,6 +67,11 @@ export async function registerMediaRef(params: {
   contentType?: string | null
   title?: string
   createdAt?: number
+  auditEventId?: string | null
+  auditDepartment?: string | null
+  auditItemId?: string | null
+  auditRunId?: string | null
+  incidentEventId?: string | null
 }): Promise<void> {
   const path = String(params.path || '').trim()
   if (!path) return
@@ -77,6 +109,11 @@ export async function registerMediaRef(params: {
       sourceKinds: Array.from(kinds),
       referenceCount,
       refMap,
+      auditEventId: mergeContextField(prev?.auditEventId, params.auditEventId),
+      auditDepartment: mergeContextField(prev?.auditDepartment, params.auditDepartment),
+      auditItemId: mergeContextField(prev?.auditItemId, params.auditItemId),
+      auditRunId: mergeContextField(prev?.auditRunId, params.auditRunId),
+      incidentEventId: mergeContextField(prev?.incidentEventId, params.incidentEventId),
     }
     tx.set(refDoc, next)
   })
@@ -116,6 +153,11 @@ export async function rebuildMediaIndexFromFirestore(): Promise<{ entries: numbe
       createdAt: number
       refMap: Record<string, boolean>
       kinds: Set<MediaSource>
+      auditEventId: string | null
+      auditDepartment: string | null
+      auditItemId: string | null
+      auditRunId: string | null
+      incidentEventId: string | null
     }
   >()
 
@@ -132,6 +174,11 @@ export async function rebuildMediaIndexFromFirestore(): Promise<{ entries: numbe
         createdAt: r.createdAt,
         refMap: {},
         kinds: new Set(),
+        auditEventId: null,
+        auditDepartment: null,
+        auditItemId: null,
+        auditRunId: null,
+        incidentEventId: null,
       }
       byPath.set(r.path, row)
     }
@@ -142,6 +189,11 @@ export async function rebuildMediaIndexFromFirestore(): Promise<{ entries: numbe
     if (!row.contentType && r.type) row.contentType = r.type
     if (r.createdAt > row.createdAt) row.createdAt = r.createdAt
     if (r.title) row.title = r.title
+    row.auditEventId = mergeContextField(row.auditEventId, r.auditEventId)
+    row.auditDepartment = mergeContextField(row.auditDepartment, r.auditDepartment)
+    row.auditItemId = mergeContextField(row.auditItemId, r.auditItemId)
+    row.auditRunId = mergeContextField(row.auditRunId, r.auditRunId)
+    row.incidentEventId = mergeContextField(row.incidentEventId, r.incidentEventId)
   }
 
   const now = Date.now()
@@ -162,6 +214,11 @@ export async function rebuildMediaIndexFromFirestore(): Promise<{ entries: numbe
         sourceKinds: Array.from(row.kinds),
         referenceCount: Object.keys(row.refMap).length,
         refMap: row.refMap,
+        auditEventId: row.auditEventId,
+        auditDepartment: row.auditDepartment,
+        auditItemId: row.auditItemId,
+        auditRunId: row.auditRunId,
+        incidentEventId: row.incidentEventId,
       }
       batch.set(docRef, payload)
     }
@@ -182,24 +239,59 @@ export async function loadAllMediaFromIndex(maxDocs = 8000): Promise<AggregatedM
     const snap = await q.get()
     if (snap.empty) break
     for (const d of snap.docs) {
-      const x = d.data() as IndexDoc
-      out.push({
-        id: x.path,
-        path: x.path,
-        url: x.url,
-        createdAt: x.createdAt || 0,
-        size: x.size,
-        type: x.contentType,
-        sourceKinds: (x.sourceKinds || []) as MediaSource[],
-        referenceCount: x.referenceCount || 0,
-        title: x.title || x.path,
-      })
+      out.push(indexDocToAggregated(d))
     }
     last = snap.docs[snap.docs.length - 1]
     if (snap.size < 500) break
   }
 
   return out.sort((a, b) => b.createdAt - a.createdAt)
+}
+
+const DEFAULT_PAGE_SIZE = 60
+const MAX_PAGE_SIZE = 200
+
+export async function loadMediaIndexPage(params: {
+  limit?: number
+  cursor?: string | null
+  source?: MediaSource | null
+  auditEventId?: string | null
+  incidentEventId?: string | null
+}): Promise<{ items: AggregatedMediaItem[]; nextCursor: string | null }> {
+  const coll = db.collection(COLLECTION)
+  const limit = Math.min(
+    Math.max(typeof params.limit === 'number' && Number.isFinite(params.limit) ? params.limit : DEFAULT_PAGE_SIZE, 1),
+    MAX_PAGE_SIZE
+  )
+  const auditEv = cleanText(params.auditEventId)
+  const incidentEv = cleanText(params.incidentEventId)
+  const source = params.source
+
+  let q: Query = coll
+  if (auditEv) {
+    q = q.where('auditEventId', '==', auditEv)
+  } else if (incidentEv) {
+    q = q.where('incidentEventId', '==', incidentEv)
+  } else if (source) {
+    q = q.where('sourceKinds', 'array-contains', source)
+  }
+
+  q = q.orderBy('createdAt', 'desc').limit(limit + 1)
+
+  const cursor = cleanText(params.cursor)
+  if (cursor) {
+    const cur = await coll.doc(cursor).get()
+    if (cur.exists) q = q.startAfter(cur)
+  }
+
+  const snap = await q.get()
+  const docs = snap.docs
+  const hasMore = docs.length > limit
+  const pageDocs = hasMore ? docs.slice(0, limit) : docs
+  const items = pageDocs.map((d) => indexDocToAggregated(d))
+  const nextCursor = hasMore && pageDocs.length > 0 ? pageDocs[pageDocs.length - 1].id : null
+
+  return { items, nextCursor }
 }
 
 /** Si l’índex està buit, retorna false. */
@@ -215,12 +307,20 @@ export async function registerAuditAnswersInIndex(
     itemId?: string
     photos?: Array<{ url?: string; path?: string; size?: number; type?: string }>
   }>,
-  meta: { templateName?: string | null; eventTitle?: string | null; createdAt?: number }
+  meta: {
+    templateName?: string | null
+    eventTitle?: string | null
+    createdAt?: number
+    eventId?: string | null
+    department?: string | null
+  }
 ): Promise<void> {
   const templateName = cleanText(meta.templateName)
   const eventTitle = cleanText(meta.eventTitle)
   const createdAt = meta.createdAt ?? Date.now()
   const titleBase = [templateName, eventTitle].filter(Boolean).join(' · ')
+  const auditEventId = cleanText(meta.eventId)
+  const auditDepartment = cleanText(meta.department)
 
   for (const answer of answers) {
     const itemId = cleanText(answer.itemId)
@@ -242,6 +342,10 @@ export async function registerAuditAnswersInIndex(
         contentType,
         title,
         createdAt,
+        auditEventId: auditEventId || null,
+        auditDepartment: auditDepartment || null,
+        auditItemId: itemId || null,
+        auditRunId: runId,
       })
     })
   }

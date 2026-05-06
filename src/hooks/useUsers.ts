@@ -24,6 +24,11 @@ export type User = {
   isTransportLead?: boolean
 }
 
+/** Form/API payloads may use `workerRank` as a plain string. */
+export type SaveUserInput = Partial<Omit<User, 'workerRank'>> & {
+  workerRank?: User['workerRank'] | string
+}
+
 export function useUsers() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(false)
@@ -51,7 +56,10 @@ export function useUsers() {
 
   useEffect(() => { fetchUsers() }, [])
 
- async function saveUser(id: string | undefined, data: any) {
+ async function saveUser(id: string | undefined, data: SaveUserInput) {
+    const rankRaw = data.workerRank
+    const workerRank: User['workerRank'] | undefined =
+      rankRaw === 'equip' || rankRaw === 'responsable' ? rankRaw : undefined
 
     const payload: Partial<User> = {
       name:       data.name,
@@ -64,7 +72,7 @@ export function useUsers() {
       phone:      data.phone,
       available:  data.available,
       isDriver:   data.isDriver,
-      workerRank: data.workerRank,
+      workerRank,
       opsChannelsConfigurable: data.opsChannelsConfigurable,
       opsEventsConfigurable: data.opsEventsConfigurable,
       opsProjectsConfigurable: data.opsProjectsConfigurable,

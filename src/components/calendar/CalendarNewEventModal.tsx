@@ -38,6 +38,39 @@ interface EventFormData {
   Comercial: string
 }
 
+const normLN = (s?: string | null) =>
+  (s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+
+const mapDepartmentToLN = (dep?: string) => {
+  const d = normLN(dep || '')
+  if (d === 'empresa') return 'Empresa'
+  if (d === 'casaments') return 'Casaments'
+  if (d === 'food lover' || d === 'foodlover' || d === 'foodlovers') return 'Foodlovers'
+  return ''
+}
+
+const mapLNToDepartment = (ln?: string) => {
+  const l = normLN(ln || '')
+  if (l === 'empresa') return 'empresa'
+  if (l === 'casaments') return 'casaments'
+  if (l === 'foodlovers' || l === 'food lover' || l === 'foodlover') return 'food lover'
+  return ''
+}
+
+type SessionUserFields = {
+  role?: string
+  department?: string
+  name?: string
+}
+
+type ComercialUserRow = Record<string, unknown>
+
+type ComercialCandidate = { name: string; department: string; roleBucket: string }
+
 /**
  * CalendarNewEventModal
  * - Crea un nou esdeveniment a la col·leccio stage_verd
@@ -57,33 +90,11 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
   const [comercialOptions, setComercialOptions] = useState<string[]>([])
   const [comercialLoading, setComercialLoading] = useState(false)
 
-  const norm = (s?: string | null) =>
-    (s || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .trim()
-
-  const mapDepartmentToLN = (dep?: string) => {
-    const d = norm(dep || '')
-    if (d === 'empresa') return 'Empresa'
-    if (d === 'casaments') return 'Casaments'
-    if (d === 'food lover' || d === 'foodlover' || d === 'foodlovers') return 'Foodlovers'
-    return ''
-  }
-
-  const mapLNToDepartment = (ln?: string) => {
-    const l = norm(ln || '')
-    if (l === 'empresa') return 'empresa'
-    if (l === 'casaments') return 'casaments'
-    if (l === 'foodlovers' || l === 'food lover' || l === 'foodlover') return 'food lover'
-    return ''
-  }
-
-  const role = norm((session?.user as any)?.role)
-  const department = norm((session?.user as any)?.department)
-  const userName = String((session?.user as any)?.name || '').trim()
-  const defaultLN = mapDepartmentToLN((session?.user as any)?.department)
+  const sessionUser = session?.user as SessionUserFields | undefined
+  const role = normLN(sessionUser?.role)
+  const department = normLN(sessionUser?.department)
+  const userName = String(sessionUser?.name || '').trim()
+  const defaultLN = mapDepartmentToLN(sessionUser?.department)
   const isAdmin = role === 'admin'
   const isDireccio = role === 'direccio' || role === 'direccion'
   const isProduccio = department === 'produccio'
@@ -122,7 +133,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
 
   const hasCurrentComercialOption = useMemo(() => {
     if (!currentComercial) return false
-    return comercialOptions.some((n) => norm(n) === norm(currentComercial))
+    return comercialOptions.some((n) => normLN(n) === normLN(currentComercial))
   }, [comercialOptions, currentComercial])
 
   useEffect(() => {
@@ -138,7 +149,8 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
         if (!Array.isArray(data)) return
 
         const candidates = data
-          .map((u: any) => {
+          .map((raw: unknown) => {
+            const u = (raw && typeof raw === 'object' ? raw : {}) as ComercialUserRow
             const name = String(u?.name || '').trim()
             const roleRaw =
               u?.role ??
@@ -159,21 +171,21 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
               u?.Departament ??
               ''
 
-            const roleText = norm(String(roleRaw))
-            const categoryText = norm(String(categoryRaw))
+            const roleText = normLN(String(roleRaw))
+            const categoryText = normLN(String(categoryRaw))
             const roleBucket = `${roleText} ${categoryText}`.trim()
 
             return {
               name,
-              department: norm(String(depRaw)),
+              department: normLN(String(depRaw)),
               roleBucket,
-            }
+            } satisfies ComercialCandidate
           })
-          .filter((c: any) => {
+          .filter((c): c is ComercialCandidate => {
             if (!c.name) return false
             return c.roleBucket.includes('comercial') || c.roleBucket.includes('cap')
           })
-          .map((c: any) => ({ name: c.name, department: c.department }))
+          .map((c) => ({ name: c.name, department: c.department }))
 
         if (active) setComercialCandidates(candidates)
       } catch (err) {
@@ -200,7 +212,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
       .filter((n) => n && String(n).trim().length > 0)
 
     const uniq = Array.from(
-      new Map(names.map((n: string) => [norm(n), n])).values()
+      new Map(names.map((n: string) => [normLN(n), n])).values()
     ).sort((a, b) => a.localeCompare(b, 'ca'))
 
     setComercialOptions(uniq)
@@ -231,7 +243,12 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
     try {
       const searchRes = await fetch(`/api/${collection}/search?q=${encodeURIComponent(clean)}`)
       const json = await searchRes.json()
-      const exists = Array.isArray(json.data) && json.data.some((i: any) => i.nom === clean)
+      const exists =
+        Array.isArray(json.data) &&
+        json.data.some((i: unknown) => {
+          if (!i || typeof i !== 'object') return false
+          return (i as { nom?: string }).nom === clean
+        })
       if (!exists) {
         await fetch(`/api/${collection}/add`, {
           method: 'POST',
@@ -272,7 +289,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
       await ensureExists('finques', ubicacioValue)
       await ensureExists('serveis', serveiValue)
 
-      const payload: Record<string, any> = {
+      const payload: Record<string, unknown> = {
         code: formData.code || '',
         NomEvent: formData.NomEvent || 'Sense nom',
         DataInici: formData.DataInici || new Date().toISOString().slice(0, 10),

@@ -13,8 +13,6 @@ export default function ComercialPage() {
   const { status } = useSession()
 
   const {
-    servicesLoading,
-    servicesError,
     eventsLoading,
     eventsError,
     commercialOptions,
@@ -31,7 +29,6 @@ export default function ComercialPage() {
     setCommercialFilter,
     query,
     setQuery,
-    selectedEventId,
     setSelectedEventId,
     selectedEvent,
     serviceSearch,
@@ -65,7 +62,6 @@ export default function ComercialPage() {
     handleArticleClick,
     currentOrder,
     filteredGroupedLines,
-    activeGroupKey,
     setActiveGroupKey,
     activeGroup,
     groupRefs,

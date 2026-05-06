@@ -16,8 +16,8 @@ import RowEditor from './RowEditor'
 import type { Role } from './types'
 import type { DraftInput, Row } from './types'
 import {
-  normalizeDraftText,
   pruneEditorGroups,
+  type EditorGroup,
 } from '@/lib/quadrantsDraftEditor'
 import { mapDraftToEditorModel } from '@/lib/quadrantsDraftAdapters'
 import {
@@ -27,7 +27,6 @@ import {
   unconfirmDraftTable,
 } from './draftsTableActions'
 import {
-  buildDisplayItems,
   getMergedPresentation,
   renderMergedToggle,
   roleIconMap,
@@ -71,8 +70,6 @@ export default function DraftsTable({
   const { groups: structuredGroups, rows: initialRows, isServeisDept, defaultMeetingPoint } = editorModel
   const [groupDefs, setGroupDefs] = useState(structuredGroups)
   const hasStructuredGroups = groupDefs.length > 0
-
-  const norm = normalizeDraftText
 
   const [rows, setRows] = useState<Row[]>(initialRows)
   const rowsRef = useRef<Row[]>(initialRows)
@@ -152,14 +149,14 @@ export default function DraftsTable({
           x?.id,
           x?.name,
         ]),
-        rid: (draft as Record<string, unknown>).responsableId,
-        rname: (draft as Record<string, unknown>).responsableName,
+        rid: draft.responsableId,
+        rname: draft.responsableName,
       }),
     [
       draft.conductors,
       draft.treballadors,
-      (draft as Record<string, unknown>).responsableId,
-      (draft as Record<string, unknown>).responsableName,
+      draft.responsableId,
+      draft.responsableName,
     ]
   )
 
@@ -727,6 +724,9 @@ export default function DraftsTable({
     return controlsArrivalTime || !groupHasDriverController(row.groupId)
   }
 
+  const getGroupServiceDate = (group?: EditorGroup) =>
+    group?.serviceDate || draft.startDate
+
   const addRowToGroup = (role: Role, groupId?: string) => {
     if (groupId) {
       setCollapsedGroups((prev) => {
@@ -742,7 +742,7 @@ export default function DraftsTable({
     const groupEnd = group?.endTime || defaultGroupEndTime || ''
     const groupArrival = group?.arrivalTime || defaultGroupArrivalTime || ''
     const groupMeeting = group?.meetingPoint || defaultGroupMeetingPoint
-    const groupDate = (group as any)?.serviceDate || draft.startDate
+    const groupDate = getGroupServiceDate(group)
 
     setRowsState([
       ...rows,
@@ -778,7 +778,7 @@ export default function DraftsTable({
     const groupEnd = group?.endTime || defaultGroupEndTime || ''
     const groupArrival = group?.arrivalTime || defaultGroupArrivalTime || ''
     const groupMeeting = group?.meetingPoint || defaultGroupMeetingPoint
-    const groupDate = (group as any)?.serviceDate || draft.startDate
+    const groupDate = getGroupServiceDate(group)
 
     setRowsState([
       ...rows,
@@ -840,7 +840,7 @@ export default function DraftsTable({
     const groupEnd = group?.endTime || defaultGroupEndTime || ''
     const groupArrival = group?.arrivalTime || defaultGroupArrivalTime || ''
     const groupMeeting = eventLocationText || group?.meetingPoint || defaultGroupMeetingPoint
-    const groupDate = (group as any)?.serviceDate || draft.startDate
+    const groupDate = getGroupServiceDate(group)
 
     setRowsState([
       ...rows,

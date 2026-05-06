@@ -13,8 +13,8 @@ type FiltersContextValue = {
   // 🔥 ALIASES PER A TornsPage (sense trencar res)
   filtersOpen: boolean
   setFiltersOpen: (v: boolean) => void
-  slideFilters: Record<string, any>
-  setSlideFilters: (f: Record<string, any>) => void
+  slideFilters: Record<string, unknown>
+  setSlideFilters: (f: Record<string, unknown>) => void
 }
 
 const FiltersContext = createContext<FiltersContextValue | undefined>(
@@ -26,7 +26,7 @@ export function FiltersProvider({ children }: { children: React.ReactNode }) {
   const [content, setContent] = useState<React.ReactNode | null>(null)
 
   // 🔥 NOU ESTAT (exclusiu per Torns)
-  const [slideFilters, setSlideFilters] = useState<Record<string, any>>({})
+  const [slideFilters, setSlideFilters] = useState<Record<string, unknown>>({})
 
   return (
     <FiltersContext.Provider

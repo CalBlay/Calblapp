@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { addDays, addMonths } from 'date-fns'
+import Image from 'next/image'
 import { useParams, useSearchParams } from 'next/navigation'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
@@ -55,6 +56,12 @@ type CompletedRecord = {
   }>
 }
 
+type SessionUser = {
+  role?: string
+  department?: string
+  name?: string
+}
+
 const STATUS_LABELS: Record<MaintenanceStatus, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
@@ -106,8 +113,9 @@ export default function PreventiusFullsFitxaPage() {
   const [lastRecord, setLastRecord] = useState<CompletedRecord | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [activeRecordId, setActiveRecordId] = useState<string | null>(recordId)
-  const role = normalizeRole((session?.user as any)?.role || '')
-  const department = ((session?.user as any)?.department || '')
+  const sessionUser = session?.user as SessionUser | undefined
+  const role = normalizeRole(sessionUser?.role || '')
+  const department = (sessionUser?.department || '')
     .toString()
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
@@ -128,11 +136,11 @@ export default function PreventiusFullsFitxaPage() {
     return [] as MaintenanceStatus[]
   }, [canValidate, draft])
 
-  const applyRecordToDraft = (record: any) => {
+  const applyRecordToDraft = useCallback((record: CompletedRecord | null) => {
     if (!record) return
     const normalizedStatus = normalizePreventiuStatus(record.status)
     const history = Array.isArray(record.statusHistory)
-      ? record.statusHistory.map((item: any) => ({
+      ? record.statusHistory.map((item) => ({
           ...item,
           status: normalizePreventiuStatus(item?.status),
         }))
@@ -150,7 +158,7 @@ export default function PreventiusFullsFitxaPage() {
       worker: String(record.worker || ''),
     })
     if (record.id) setActiveRecordId(String(record.id))
-  }
+  }, [plannedId])
 
   useEffect(() => {
     const cacheKey = 'maintenance.templates.cache'
@@ -258,7 +266,7 @@ export default function PreventiusFullsFitxaPage() {
 
     if (recordId) return
     loadFromPlanned()
-  }, [plannedId, recordId])
+  }, [applyRecordToDraft, plannedId, recordId])
 
   useEffect(() => {
     if (!recordId) return
@@ -278,7 +286,7 @@ export default function PreventiusFullsFitxaPage() {
       }
     }
     loadRecord()
-  }, [recordId, plannedId])
+  }, [applyRecordToDraft, recordId, plannedId])
 
   const selectedTemplate = useMemo(() => {
     if (!draft?.templateId) return null
@@ -374,7 +382,7 @@ export default function PreventiusFullsFitxaPage() {
             {
               status: draft.status,
               at: Date.now(),
-              byName: String((session?.user as any)?.name || ''),
+              byName: String(sessionUser?.name || ''),
               startTime: isCompletionOnlyStatus(draft.status) ? null : draft.startTime || null,
               endTime: isCompletionOnlyStatus(draft.status) ? draft.endTime || null : null,
               note: draft.notes || '',
@@ -384,13 +392,13 @@ export default function PreventiusFullsFitxaPage() {
             {
               status: draft.status,
               at: Date.now(),
-              byName: String((session?.user as any)?.name || ''),
+              byName: String(sessionUser?.name || ''),
               startTime: isCompletionOnlyStatus(draft.status) ? null : draft.startTime || null,
               endTime: isCompletionOnlyStatus(draft.status) ? draft.endTime || null : null,
               note: draft.notes || '',
             },
           ]
-      setLastRecord({ ...(record as any), id: docId, statusHistory: nextHistory })
+      setLastRecord({ ...record, id: docId, statusHistory: nextHistory })
       setActiveRecordId(docId)
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
@@ -653,10 +661,13 @@ export default function PreventiusFullsFitxaPage() {
                     </label>
                   </div>
                   {imagePreview && (
-                    <img
+                    <Image
                       src={imagePreview}
                       alt="Previsualitzacio"
                       className="w-full max-h-48 object-cover rounded-xl border"
+                      width={1200}
+                      height={800}
+                      unoptimized
                     />
                   )}
                 </div>

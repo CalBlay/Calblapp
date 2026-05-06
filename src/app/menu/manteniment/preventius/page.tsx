@@ -8,6 +8,11 @@ import { RoleGuard } from '@/lib/withRoleGuard'
 import { normalizeRole } from '@/lib/roles'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 
+type SessionUser = {
+  role?: string
+  department?: string
+}
+
 const normalizeDept = (raw?: string) =>
   (raw || '')
     .toString()
@@ -18,8 +23,9 @@ const normalizeDept = (raw?: string) =>
 
 export default function PreventiusIndexPage() {
   const { data: session } = useSession()
-  const userRole = normalizeRole((session?.user as any)?.role || '')
-  const userDepartment = normalizeDept((session?.user as any)?.department || '')
+  const sessionUser = (session?.user || {}) as SessionUser
+  const userRole = normalizeRole(sessionUser.role || '')
+  const userDepartment = normalizeDept(sessionUser.department || '')
 
   const isMaintenanceWorker = userRole === 'treballador' && userDepartment === 'manteniment'
   const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(userDepartment)

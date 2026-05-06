@@ -35,6 +35,7 @@ function addYears(date: Date, years: number): Date {
 
 export function TransportCard({ transport, driverName, onEdit, onDelete }: Props) {
   const [available, setAvailable] = useState(transport.available)
+  const today = useMemo(() => new Date(), [])
 
   const handleToggle = async (newStatus: boolean) => {
     setAvailable(newStatus)
@@ -50,7 +51,6 @@ export function TransportCard({ transport, driverName, onEdit, onDelete }: Props
     }
   }
 
-  const today = new Date()
   const itvInfo = useMemo(() => {
     if (!transport.itvExpiry) {
       return {

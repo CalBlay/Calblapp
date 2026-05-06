@@ -37,9 +37,9 @@ export default function useLinkedDepartmentsWeek(start?: string, end?: string) {
 
         if (!res.ok) throw new Error(json.error || 'Error carregant dades')
         setLinkedData(json.linked || {})
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[useLinkedDepartmentsWeek] Error:', err)
-        setError(err.message || 'Error desconegut')
+        setError(err instanceof Error ? err.message : 'Error desconegut')
       } finally {
         setLoading(false)
       }

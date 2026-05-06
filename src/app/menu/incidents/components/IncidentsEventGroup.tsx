@@ -4,14 +4,23 @@ import React, { useState, useEffect, useCallback } from 'react'
 import IncidentsRow from './IncidentsRow'
 import IncidentsMobileCard from './IncidentsMobileCard'
 import IncidentsEventHeader from './IncidentsEventHeader'
+import type { GroupedIncidentEvent } from '@/lib/incidentsMeetingMinutes'
 import { Incident } from '@/hooks/useIncidents'
 import FincaModal from '@/components/spaces/FincaModal'
 import UserEventInfoModal from '@/components/incidents/UserEventInfoModal'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
 
+type IncidentEditValues = {
+  description?: string
+  originDepartment?: string
+  priority?: string
+}
+
+type WindowWithEventModal = Window & { openEventModal?: (code: string) => void }
+
 interface Props {
-  event: any
+  event: GroupedIncidentEvent
   onUpdate: (id: string, d: Partial<Incident>) => Promise<unknown>
   onDelete: (inc: Incident) => void
   onOpenOperations: (inc: Incident) => void
@@ -28,15 +37,19 @@ export default function IncidentsEventGroup({
   canDeleteIncident,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState<any>({})
+  const [editValues, setEditValues] = useState<IncidentEditValues>({})
   const [openFincaModal, setOpenFincaModal] = useState(false)
   const [openEventModal, setOpenEventModal] = useState(false)
   const [selectedEventCode, setSelectedEventCode] = useState<string | null>(null)
 
   useEffect(() => {
-    ;(window as any).openEventModal = (code: string) => {
+    const w = window as WindowWithEventModal
+    w.openEventModal = (code: string) => {
       setSelectedEventCode(code)
       setOpenEventModal(true)
+    }
+    return () => {
+      delete w.openEventModal
     }
   }, [])
 
@@ -68,13 +81,13 @@ export default function IncidentsEventGroup({
       }
     >
       <IncidentsEventHeader
-        title={event.eventTitle}
-        code={event.eventCode}
-        ln={event.ln}
-        location={event.location}
+        title={event.eventTitle ?? ''}
+        code={event.eventCode ?? ''}
+        ln={event.ln ?? ''}
+        location={event.location ?? ''}
         commercial={event.commercial}
-        service={event.serviceType}
-        pax={event.pax}
+        service={event.serviceType ?? ''}
+        pax={Number(event.pax ?? 0)}
         count={event.rows.length}
         onLocationClick={() => setOpenFincaModal(true)}
       />

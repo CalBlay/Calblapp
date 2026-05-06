@@ -35,7 +35,7 @@ export default function SpacesFilters({
   // 🔁 Propagar canvis al pare
   useEffect(() => {
     onChange(filters)
-  }, [filters])
+  }, [filters, onChange])
 
   // 🔄 Reset
   const resetAll = () => {

@@ -1,4 +1,4 @@
-// file: src/app/api/sharepoint/file/route.ts
+// file: src/app/api/sharepoint/proxy/route.ts
 import { NextResponse } from 'next/server'
 import { downloadFileContent } from '@/services/sharepoint/graph'
 
@@ -31,11 +31,9 @@ export async function GET(req: Request) {
         'Access-Control-Allow-Origin': '*',
       },
     })
-  } catch (err: any) {
-    console.error('❌ Error GET /api/sharepoint/file:', err)
-    return NextResponse.json(
-      { error: err.message || 'Unknown error' },
-      { status: 500 }
-    )
+  } catch (err: unknown) {
+    console.error('❌ Error GET /api/sharepoint/proxy:', err)
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

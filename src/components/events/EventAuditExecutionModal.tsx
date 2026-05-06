@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import useSWR from 'swr'
 import {
   AlertTriangle,
@@ -56,7 +57,7 @@ type ExistingExecution = {
     itemId?: string
     blockId?: string | null
     type?: string
-    value?: any
+    value?: unknown
     photos?: Array<{ url?: string; path?: string; size?: number; type?: string }>
   }>
 }
@@ -98,7 +99,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const [answers, setAnswers] = useState<
     Record<
       string,
-      { blockId: string; type: string; value: any; photos: Array<{ url: string; path: string; size?: number; type?: string }> }
+      { blockId: string; type: string; value: unknown; photos: Array<{ url: string; path: string; size?: number; type?: string }> }
     >
   >({})
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null)
@@ -171,7 +172,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     const existingAnswers = Array.isArray(execution?.auditAnswers) ? execution?.auditAnswers : []
     const mapped: Record<
       string,
-      { blockId: string; type: string; value: any; photos: Array<{ url: string; path: string; size?: number; type?: string }> }
+      { blockId: string; type: string; value: unknown; photos: Array<{ url: string; path: string; size?: number; type?: string }> }
     > = {}
     existingAnswers.forEach((a) => {
       const itemId = String(a?.itemId || '').trim()
@@ -287,7 +288,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     patch: Partial<{
       blockId: string
       type: string
-      value: any
+      value: unknown
       photos: Array<{ url: string; path: string; size?: number; type?: string }>
     }>
   ) => {
@@ -587,10 +588,13 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                               rel="noreferrer"
                                               className="block overflow-hidden rounded-md border border-slate-200"
                                             >
-                                              <img
+                                              <Image
                                                 src={photo.url}
                                                 alt={`Foto ${pIdx + 1}`}
+                                                width={256}
+                                                height={64}
                                                 className="h-16 w-full object-cover"
+                                                unoptimized
                                               />
                                             </a>
                                           ))}

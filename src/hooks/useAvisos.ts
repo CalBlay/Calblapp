@@ -1,7 +1,7 @@
 // file: src/hooks/useAvisos.ts
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 /* ───────────────────────── TIPUS ───────────────────────── */
 
@@ -24,7 +24,7 @@ export function useAvisos(eventCode: string | null) {
   const [error, setError] = useState<string | null>(null)
 
   /* ================= LOAD ================= */
-  const loadAvisos = async () => {
+  const loadAvisos = useCallback(async () => {
     const code = (eventCode || '').toString().trim()
     if (!code) {
       setAvisos([])
@@ -41,12 +41,12 @@ export function useAvisos(eventCode: string | null) {
 
       const data = await res.json()
       setAvisos(data.avisos || [])
-    } catch (err: any) {
-      setError(err.message || 'Error desconegut')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error desconegut')
     } finally {
       setLoading(false)
     }
-  }
+  }, [eventCode])
 
   /* ================= CREATE ================= */
 const createAviso = async (payload: {
@@ -110,8 +110,8 @@ const updateAviso = async (id: string, content: string) => {
 
   /* ================= INIT ================= */
   useEffect(() => {
-    loadAvisos()
-  }, [eventCode])
+    void loadAvisos()
+  }, [loadAvisos])
 
   return {
     avisos,

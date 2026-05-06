@@ -103,6 +103,30 @@
         { "fieldPath": "createdByUserId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "media_storage_index",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sourceKinds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "media_storage_index",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "auditEventId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "media_storage_index",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "incidentEventId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

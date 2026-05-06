@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
@@ -17,12 +17,12 @@ export default function AuditoriaPlantillaViewPage() {
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<AuditTemplateDetail | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const res = await fetch(`/api/auditoria/templates/${templateId}`, { cache: 'no-store' })
     const json = await res.json()
     if (!res.ok) throw new Error(String(json?.error || 'No s ha pogut carregar la plantilla'))
     setData(json as AuditTemplateDetail)
-  }
+  }, [templateId])
 
   useEffect(() => {
     if (!templateId) return
@@ -42,7 +42,7 @@ export default function AuditoriaPlantillaViewPage() {
     return () => {
       cancelled = true
     }
-  }, [templateId])
+  }, [load, templateId])
 
   const weightTotal = useMemo(() => {
     if (!data?.blocks) return 0

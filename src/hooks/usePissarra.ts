@@ -66,8 +66,8 @@ export default function usePissarra(
         const res = await fetch(endpoint, { cache: 'no-store' })
         const data = await res.json()
         if (active) setFlat(data.items || [])
-      } catch (err: any) {
-        if (active) setError(err.message)
+      } catch (err: unknown) {
+        if (active) setError(err instanceof Error ? err.message : String(err))
       } finally {
         if (active) setLoading(false)
       }

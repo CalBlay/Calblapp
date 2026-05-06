@@ -41,8 +41,14 @@ export interface Incident {
 
 const CATEGORY_PREFIX_9XX = '9XX'
 
-const normalizeTimestamp = (ts: any): string => {
-  if (ts && typeof ts.toDate === 'function') return ts.toDate().toISOString()
+type FirestoreTimestampLike = { toDate?: () => Date }
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback
+
+const normalizeTimestamp = (ts: unknown): string => {
+  const maybeTimestamp = ts as FirestoreTimestampLike
+  if (maybeTimestamp && typeof maybeTimestamp.toDate === 'function') return maybeTimestamp.toDate().toISOString()
   if (typeof ts === 'string') return ts
   return ''
 }
@@ -56,7 +62,7 @@ const normalizeImportance = (value?: string): string => {
   return v || 'normal'
 }
 
-function normalizeIncidentRow(inc: any): Incident {
+function normalizeIncidentRow(inc: Record<string, unknown>): Incident {
   const normalizedImages =
     Array.isArray(inc.images) && inc.images.length > 0
       ? inc.images
@@ -206,12 +212,14 @@ export function useIncidents(_filters: {
             : []
 
         if (!cancel) {
-          const normalized = raw.map((inc: any) => normalizeIncidentRow(inc)) as Incident[]
+          const normalized = raw.map((inc: unknown) =>
+            normalizeIncidentRow((inc && typeof inc === 'object' ? inc : {}) as Record<string, unknown>)
+          ) as Incident[]
           setRawIncidents(normalized)
           hadDataRef.current = normalized.length > 0
         }
-      } catch (err: any) {
-        if (!cancel) setError(err.message || 'Error carregant incidències')
+      } catch (err: unknown) {
+        if (!cancel) setError(getErrorMessage(err, 'Error carregant incidències'))
       } finally {
         if (!cancel) {
           setLoading(false)
@@ -279,8 +287,8 @@ export function useIncidents(_filters: {
       }
 
       return updated
-    } catch (err: any) {
-      const msg = err?.message || 'Error actualitzant incidència'
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err, 'Error actualitzant incidència')
       setError(msg)
       return null
     }
@@ -298,8 +306,8 @@ export function useIncidents(_filters: {
 
       setRawIncidents((prev) => prev.filter((inc) => inc.id !== id))
       return true
-    } catch (err: any) {
-      const msg = err?.message || 'Error eliminant incidència'
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err, 'Error eliminant incidència')
       setError(msg)
       return false
     }

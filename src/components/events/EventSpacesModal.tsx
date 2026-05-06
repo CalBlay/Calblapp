@@ -42,6 +42,8 @@ interface FincaData {
   produccio?: ProduccioRecord
 }
 
+type FincaFirestoreDoc = Omit<FincaData, 'id'> & Record<string, unknown>
+
 /** Claus principals de producció (mateixes que `SpaceDetailClient`) */
 const PRODUCCIO_BASE_KEYS = [
   'office',
@@ -114,7 +116,7 @@ export default function EventSpacesModal({
         const snap = await getDoc(ref)
 
         if (snap.exists()) {
-          setFinca({ id: snap.id, ...(snap.data() as any) })
+          setFinca({ id: snap.id, ...(snap.data() as FincaFirestoreDoc) })
         } else {
           setFinca(null)
         }

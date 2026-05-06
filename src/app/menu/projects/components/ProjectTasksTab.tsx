@@ -22,7 +22,6 @@ import {
 import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { useFilters } from '@/context/FiltersContext'
 import { colorByDepartment } from '@/lib/colors'
 import { cn } from '@/lib/utils'
@@ -196,6 +195,7 @@ export default function ProjectTasksTab({
   onCreateSprint,
   onOpenTaskMeeting,
 }: Props) {
+  void onResetTaskDraft
   const router = useRouter()
   const { setContent, setOpen } = useFilters()
   const [draggingTaskKey, setDraggingTaskKey] = useState<string | null>(null)

@@ -17,6 +17,13 @@ export type MediaRef = {
   size: number | null
   type: string | null
   title: string
+  /** Context d’auditoria (per índex / consultes). */
+  auditEventId?: string | null
+  auditDepartment?: string | null
+  auditItemId?: string | null
+  auditRunId?: string | null
+  /** Esdeveniment vinculat a incidències (prefix path incidents/{id}/). */
+  incidentEventId?: string | null
 }
 
 export type AggregatedMediaItem = {
@@ -29,6 +36,13 @@ export type AggregatedMediaItem = {
   sourceKinds: MediaSource[]
   referenceCount: number
   title: string
+  auditEventId?: string | null
+  auditDepartment?: string | null
+  auditItemId?: string | null
+  auditRunId?: string | null
+  incidentEventId?: string | null
+  /** Id del document Firestore a media_storage_index (paginació). */
+  indexDocId?: string
 }
 
 function isNonNull<T>(value: T | null): value is T {
@@ -80,6 +94,21 @@ function photoTypeFromDoc(photo: Record<string, unknown>): string | null {
   return t || null
 }
 
+function incidentEventIdFromPath(path: string): string | null {
+  const m = /^incidents\/([^/]+)\//.exec(cleanText(path))
+  return m ? m[1] : null
+}
+
+export function mergeContextField(
+  prev: string | null | undefined,
+  next: string | null | undefined
+): string | null {
+  const n = cleanText(next)
+  if (n) return n
+  const p = cleanText(prev)
+  return p || null
+}
+
 export async function collectIncidentRefs(): Promise<MediaRef[]> {
   const snap = await db.collection('incidents').get()
   return snap.docs
@@ -104,6 +133,7 @@ export async function collectIncidentRefs(): Promise<MediaRef[]> {
             : null,
         type: cleanText((data.imageMeta as { type?: unknown } | null)?.type) || null,
         title: titleBits.join(' · ') || `Incidencia ${doc.id}`,
+        incidentEventId: incidentEventIdFromPath(path),
       }
     })
     .filter(isNonNull)
@@ -173,6 +203,8 @@ export async function collectAuditRefs(): Promise<MediaRef[]> {
     const answers = Array.isArray(data.auditAnswers)
       ? (data.auditAnswers as Array<Record<string, unknown>>)
       : []
+    const auditEventId = cleanText(data.eventId) || null
+    const auditDepartment = cleanText(data.department) || null
 
     answers.forEach((answer) => {
       const itemId = cleanText(answer.itemId)
@@ -197,6 +229,10 @@ export async function collectAuditRefs(): Promise<MediaRef[]> {
             [cleanText(data.templateName), cleanText(data.eventTitle), `Foto ${index + 1}`]
               .filter(Boolean)
               .join(' · ') || `Auditoria ${doc.id}`,
+          auditEventId,
+          auditDepartment,
+          auditItemId: itemId || null,
+          auditRunId: doc.id,
         })
       })
     })
@@ -284,6 +320,11 @@ export function aggregateMedia(refs: MediaRef[]): AggregatedMediaItem[] {
         sourceKinds: [ref.source],
         referenceCount: 1,
         title: ref.title,
+        auditEventId: ref.auditEventId ?? null,
+        auditDepartment: ref.auditDepartment ?? null,
+        auditItemId: ref.auditItemId ?? null,
+        auditRunId: ref.auditRunId ?? null,
+        incidentEventId: ref.incidentEventId ?? null,
       })
       return
     }
@@ -295,6 +336,11 @@ export function aggregateMedia(refs: MediaRef[]): AggregatedMediaItem[] {
     if (!current.type && ref.type) current.type = ref.type
     if (ref.createdAt > current.createdAt) current.createdAt = ref.createdAt
     if (!current.title && ref.title) current.title = ref.title
+    current.auditEventId = mergeContextField(current.auditEventId, ref.auditEventId)
+    current.auditDepartment = mergeContextField(current.auditDepartment, ref.auditDepartment)
+    current.auditItemId = mergeContextField(current.auditItemId, ref.auditItemId)
+    current.auditRunId = mergeContextField(current.auditRunId, ref.auditRunId)
+    current.incidentEventId = mergeContextField(current.incidentEventId, ref.incidentEventId)
   })
 
   return Array.from(byPath.values()).sort((a, b) => b.createdAt - a.createdAt)

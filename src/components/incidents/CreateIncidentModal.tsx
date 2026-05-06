@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import Image from 'next/image'
 import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import {
@@ -381,10 +382,13 @@ export default function CreateIncidentModal({
               <div className="grid grid-cols-3 gap-2">
                 {images.map((image, index) => (
                   <div key={`${image.preview}-${index}`} className="relative overflow-hidden rounded-2xl border">
-                    <img
+                    <Image
                       src={image.preview}
                       alt={`Previsualitzacio ${index + 1}`}
+                      width={448}
+                      height={112}
                       className="h-28 w-full object-cover"
+                      unoptimized
                     />
                     <button
                       type="button"

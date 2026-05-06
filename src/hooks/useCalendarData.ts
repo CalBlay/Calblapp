@@ -67,7 +67,10 @@ export function useCalendarData(filters?: {
   ): 'stage_verd' | 'stage_taronja' | 'stage_groc' | '' => {
     const n = normalize(c || '')
     if (!n) return ''
-    if (n.startsWith('stage_')) return n as any
+    if (n.startsWith('stage_')) {
+      if (n === 'stage_verd' || n === 'stage_taronja' || n === 'stage_groc') return n
+      return ''
+    }
     if (n === 'verd') return 'stage_verd'
     if (n === 'taronja') return 'stage_taronja'
     if (n === 'groc') return 'stage_groc'
@@ -93,8 +96,9 @@ export function useCalendarData(filters?: {
         return
       }
 
-      let data: Deal[] = json.events.map((ev: any) => {
-        const fileEntries = Object.entries(ev || {})
+      let data: Deal[] = json.events.map((raw: unknown) => {
+        const ev = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+        const fileEntries = Object.entries(ev)
           .filter(
             ([k, v]) =>
               k.toLowerCase().startsWith('file') &&
@@ -104,7 +108,7 @@ export function useCalendarData(filters?: {
           .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
           .map(([key, url]) => ({ key, url: url as string }))
 
-        const codeValue = String(ev.code || '').trim()
+        const codeValue = String(ev.code ?? '').trim()
         const codeMatchScore =
           typeof ev.codeMatchScore === 'number' ? ev.codeMatchScore : null
         const codeConfirmed =
@@ -121,30 +125,37 @@ export function useCalendarData(filters?: {
         }
 
         const horaRaw =
-          ev.HoraInici || ev.horaInici || ev.Hora || ev.hora || ''
+          (ev.HoraInici ??
+            ev.horaInici ??
+            ev.Hora ??
+            ev.hora ??
+            '') as string
         const horaInici =
           typeof horaRaw === 'string' ? horaRaw.trim().slice(0, 5) : ''
 
-        const horaFiRaw =
-          ev.HoraFi || ev.horaFi || ''
+        const horaFiRaw = (ev.HoraFi ?? ev.horaFi ?? '') as string
         const horaFi =
           typeof horaFiRaw === 'string' ? horaFiRaw.trim().slice(0, 5) : ''
 
+        const startStr = typeof ev.start === 'string' ? ev.start : ''
+        const endStr = typeof ev.end === 'string' ? ev.end : ''
         return {
-          id: ev.id,
-          NomEvent: ev.summary || '(Sense titol)',
-          Comercial: ev.Comercial || ev.comercial || '',
-          Responsable: ev.Responsable || ev.responsable || '',
-          LN: ev.LN || ev.lnLabel || 'Altres',
-          Servei: ev.Servei || ev.servei || '',
-          StageGroup: ev.StageGroup || '',
-          collection: normalizeCollection(ev.collection) || undefined,
+          id: String(ev.id ?? ''),
+          NomEvent: String(ev.summary ?? '(Sense titol)'),
+          Comercial: String(ev.Comercial ?? ev.comercial ?? ''),
+          Responsable: String(ev.Responsable ?? ev.responsable ?? ''),
+          LN: String(ev.LN ?? ev.lnLabel ?? 'Altres'),
+          Servei: String(ev.Servei ?? ev.servei ?? ''),
+          StageGroup: String(ev.StageGroup ?? ''),
+          collection: normalizeCollection(String(ev.collection ?? '')) || undefined,
 
-          DataInici: ev.start?.slice(0, 10),
-          DataFi: ev.end?.slice(0, 10),
-          Ubicacio: ev.Ubicacio || ev.ubicacio || ev.location || ev.Location || '',
-          Color: ev.Color || '',
-          StageDot: ev.StageDot || '',
+          DataInici: startStr.slice(0, 10),
+          DataFi: endStr.slice(0, 10),
+          Ubicacio: String(
+            ev.Ubicacio ?? ev.ubicacio ?? ev.location ?? ev.Location ?? ''
+          ),
+          Color: String(ev.Color ?? ''),
+          StageDot: String(ev.StageDot ?? ''),
           HoraInici: horaInici,
           HoraFi: horaFi || undefined,
 
@@ -168,7 +179,9 @@ export function useCalendarData(filters?: {
           codeConfirmed,
           codeMatchScore,
           codeStatus,
-          origen: ev.origen || 'zoho',
+          origen: (ev.origen === 'manual' || ev.origen === 'firestore' || ev.origen === 'zoho'
+            ? ev.origen
+            : 'zoho') as Deal['origen'],
           files: fileEntries,
         }
       })
@@ -207,10 +220,10 @@ export function useCalendarData(filters?: {
 
       setDeals(data)
       setError(null)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e)
       setDeals([])
-      setError(String(e))
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }

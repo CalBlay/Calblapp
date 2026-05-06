@@ -28,6 +28,23 @@ interface WeeklyTableProps {
   end?: string
 }
 
+type LinkedDepartmentDetail = {
+  dept?: string
+  startTime?: string
+  responsable?: string
+  conductors?: Array<{ name?: string }>
+  treballadors?: Array<{ name?: string }>
+}
+
+type QuadrantDetails = {
+  stage?: {
+    comercial?: string
+    servei?: string
+    stageColor?: string
+  }
+  departaments?: Record<string, LinkedDepartmentDetail>
+}
+
 /**
  * 🧩 WeeklyTable
  * Vista operativa setmanal agrupada per dia
@@ -43,7 +60,7 @@ export default function WeeklyTable({
   end,
 }: WeeklyTableProps) {
   const [selected, setSelected] = useState<QuadrantData | null>(null)
-  const [details, setDetails] = useState<any>(null)
+  const [details, setDetails] = useState<QuadrantDetails | null>(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
   const { linkedData, loading: loadingLinks } = useLinkedDepartmentsWeek(start, end)
 
@@ -249,7 +266,7 @@ export default function WeeklyTable({
                         Altres departaments
                       </p>
                       {Object.entries(details.departaments).map(
-                        ([dept, data]: any) => (
+                        ([dept, data]: [string, LinkedDepartmentDetail]) => (
                           <div key={dept} className="mt-2">
                             <p className="font-semibold capitalize">{dept}</p>
                             <p>
@@ -263,13 +280,13 @@ export default function WeeklyTable({
                             <p>
                               <strong>Conductors:</strong>{' '}
                               {(data.conductors || [])
-                                .map((c: any) => c.name)
+                                .map((c) => c.name)
                                 .join(', ') || '—'}
                             </p>
                             <p>
                               <strong>Treballadors:</strong>{' '}
                               {(data.treballadors || [])
-                                .map((t: any) => t.name)
+                                .map((t) => t.name)
                                 .join(', ') || '—'}
                             </p>
                           </div>

@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { storageAdmin } from '@/lib/firebaseAdmin'
+import { processUploadedImageFile } from '@/lib/media/uploadImagePipeline'
+import { MAX_UPLOAD_IMAGE_BYTES } from '@/lib/media/uploadLimits'
 
 export const runtime = 'nodejs'
-
-const MAX_SIZE = 2 * 1024 * 1024
 type SessionUser = { id?: string }
 
 export async function POST(req: Request) {
@@ -24,18 +24,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing data' }, { status: 400 })
     }
 
-    if (file.size > MAX_SIZE) {
+    if (!file.type.startsWith('image/')) {
+      return NextResponse.json({ error: 'Only images are allowed' }, { status: 400 })
+    }
+
+    if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
       return NextResponse.json({ error: 'Image too large' }, { status: 400 })
     }
 
-    const bytes = Buffer.from(await file.arrayBuffer())
-    const ext = file.type.includes('png') ? 'png' : 'jpg'
-    const path = `maintenance/${userId}/${Date.now()}.${ext}`
+    const processed = await processUploadedImageFile(file)
+    const path = `maintenance/${userId}/${Date.now()}.${processed.extension}`
 
     const bucket = storageAdmin.bucket()
     const fileRef = bucket.file(path)
-    await fileRef.save(bytes, {
-      contentType: file.type || 'image/jpeg',
+    await fileRef.save(processed.buffer, {
+      contentType: processed.contentType,
       resumable: false,
     })
 
@@ -47,7 +50,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       url,
       path,
-      meta: { size: file.size, type: file.type || 'image/jpeg' },
+      meta: processed.meta,
     })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'

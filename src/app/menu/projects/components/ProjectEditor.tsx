@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Flag, Layers3, Paperclip, UsersRound } from 'lucide-react'
@@ -349,7 +349,7 @@ export default function ProjectEditor() {
     setProject((current) => ({ ...current, [field]: value }))
   }
 
-  const buildForm = (status: '' | 'draft') => {
+  const buildForm = useCallback((status: '' | 'draft') => {
     const form = new FormData()
     form.set('name', project.name)
     form.set('sponsor', project.sponsor)
@@ -373,9 +373,9 @@ export default function ProjectEditor() {
       form.set('fileLabel', 'Document inicial')
     }
     return form
-  }
+  }, [pendingFile, project])
 
-  const applyStoredDocument = (document?: ProjectData['document']) => {
+  const applyStoredDocument = useCallback((document?: ProjectData['document']) => {
     if (!document) return
     setProject((current) => {
       const alreadyExists = current.documents.some((item) => item?.id && item.id === document?.id)
@@ -385,9 +385,9 @@ export default function ProjectEditor() {
         documents: alreadyExists ? current.documents : [...current.documents, document],
       }
     })
-  }
+  }, [])
 
-  const persistProject = async (status: '' | 'draft', existingId?: string) => {
+  const persistProject = useCallback(async (status: '' | 'draft', existingId?: string) => {
     const res = await fetch(existingId ? `/api/projects/${existingId}` : '/api/projects', {
       method: existingId ? 'PATCH' : 'POST',
       body: buildForm(status),
@@ -405,7 +405,7 @@ export default function ProjectEditor() {
       setPendingFile(null)
     }
     return { id: existingId || payload.id || '', document: payload.document || null }
-  }
+  }, [applyStoredDocument, buildForm])
 
   const sendKickoffForProject = async (projectId: string) => {
     const res = await fetch(`/api/projects/${projectId}/kickoff`, {
@@ -567,6 +567,7 @@ export default function ProjectEditor() {
     draftId,
     hasMeaningfulContent,
     pendingFile,
+    persistProject,
     project,
     saving,
     sendingKickoff,

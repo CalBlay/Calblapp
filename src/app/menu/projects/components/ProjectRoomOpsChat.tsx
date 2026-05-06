@@ -28,6 +28,9 @@ type Props = {
   }) => void
 }
 
+type RealtimeMessage = { data?: Message }
+type TypingRealtimeMessage = { data?: { userId?: string } }
+
 export default function ProjectRoomOpsChat({
   channelId,
   userId,
@@ -66,23 +69,32 @@ export default function ProjectRoomOpsChat({
     fetcher
   )
 
-  const members: Member[] = Array.isArray(membersData?.members) ? membersData.members : []
-  const messages: Message[] = Array.isArray(messagesData?.messages) ? messagesData.messages : []
+  const members = useMemo<Member[]>(
+    () => (Array.isArray(membersData?.members) ? membersData.members : []),
+    [membersData?.members]
+  )
+  const messages = useMemo<Message[]>(
+    () => (Array.isArray(messagesData?.messages) ? messagesData.messages : []),
+    [messagesData?.messages]
+  )
   const isReadOnly = String(channelData?.channel?.status || '').toLowerCase() === 'archived'
 
-  const notifyOperationalDocument = (message: Partial<Message> | null | undefined) => {
-    if (!message?.fileUrl) return
-    onOperationalDocumentCreated?.({
-      id: message.id || `room-doc-${Date.now()}`,
-      name: message.fileName || '',
-      label: message.fileName || 'Document operatiu',
-      category: 'other',
-      path: message.filePath || '',
-      url: message.fileUrl || '',
-      size: message.fileMeta?.size || 0,
-      type: message.fileMeta?.type || '',
-    })
-  }
+  const notifyOperationalDocument = useMemo(
+    () => (message: Partial<Message> | null | undefined) => {
+      if (!message?.fileUrl) return
+      onOperationalDocumentCreated?.({
+        id: message.id || `room-doc-${Date.now()}`,
+        name: message.fileName || '',
+        label: message.fileName || 'Document operatiu',
+        category: 'other',
+        path: message.filePath || '',
+        url: message.fileUrl || '',
+        size: message.fileMeta?.size || 0,
+        type: message.fileMeta?.type || '',
+      })
+    },
+    [onOperationalDocumentCreated]
+  )
 
   const sameMessages = (left: Message[], right: Message[]) => {
     if (left === right) return true
@@ -105,7 +117,7 @@ export default function ProjectRoomOpsChat({
     if (channelId) {
       messagesCache.current.set(channelId, messages)
     }
-  }, [messagesData?.messages, channelId])
+  }, [messages, channelId])
 
   useEffect(() => {
     if (!channelId) return
@@ -132,15 +144,15 @@ export default function ProjectRoomOpsChat({
     const client = getAblyClient()
     const channel = client.channels.get(`chat:${channelId}`)
 
-    const handleMessage = (msg: any) => {
-      const data = msg?.data as Message | undefined
+    const handleMessage = (msg: RealtimeMessage) => {
+      const data = msg?.data
       if (!data || data.channelId !== channelId) return
       notifyOperationalDocument(data)
       refreshMessages()
     }
 
-    const handleTyping = (msg: any) => {
-      const data = msg?.data as { userId?: string } | undefined
+    const handleTyping = (msg: TypingRealtimeMessage) => {
+      const data = msg?.data
       if (!data?.userId || data.userId === userId) return
       setTypingUsers((prev) => ({ ...prev, [data.userId!]: Date.now() }))
     }
@@ -152,7 +164,7 @@ export default function ProjectRoomOpsChat({
       channel.unsubscribe('message', handleMessage)
       channel.unsubscribe('typing', handleTyping)
     }
-  }, [channelId, refreshMessages, userId])
+  }, [channelId, notifyOperationalDocument, refreshMessages, userId])
 
   useEffect(() => {
     const now = Date.now()

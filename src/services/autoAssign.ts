@@ -5,8 +5,8 @@ import {
   type DriverCrewPremise,
   type DepartmentPersonnelRef,
 } from './premises'
-import { buildLedger } from './workloadLedger'
-import { isEligibleByName } from './eligibility'
+import { buildLedger, type Ledger } from './workloadLedger'
+import { isEligibleByName, type EligibilityCtx } from './eligibility'
 import {
   calculatePersonalNeeded,
   calculateServeisStaffSlots,
@@ -75,14 +75,6 @@ interface PremisesConfig {
   requireResponsible?: boolean
 }
 
-interface Ledger {
-  assignmentsCountByUser: Map<string, number>
-  weeklyHoursByUser: Map<string, number>
-  monthlyHoursByUser: Map<string, number>
-  lastAssignedAtByUser: Map<string, string | null>
-  busyAssignments: Array<{ startISO: string; endISO: string; name: string }>
-}
-
 const RESPONSABLE_ROLES = new Set(['responsable', 'cap departament', 'supervisor'])
 const EQUIP_ROLES = new Set([
   'equip',
@@ -135,8 +127,12 @@ function tieBreakOrder(a: RankedPersonnel, b: RankedPersonnel) {
   return da - db
 }
 
-const buildEligibilityCtx = (premises: PremisesConfig, dept: string, busyAssignments: any[]) => ({
-  busyAssignments,
+const buildEligibilityCtx = (
+  premises: PremisesConfig,
+  dept: string,
+  busyAssignments: Ledger['busyAssignments']
+): EligibilityCtx => ({
+  busyAssignments: busyAssignments as EligibilityCtx['busyAssignments'],
   restHours: premises.restHours,
   allowMultipleEventsSameDay:
     dept === 'cuina' ? false : !!premises.allowMultipleEventsSameDay,
@@ -146,7 +142,7 @@ const getEligibility = (
   name: string,
   startISO: string,
   endISO: string,
-  ctx: ReturnType<typeof buildEligibilityCtx>
+  ctx: EligibilityCtx
 ) => isEligibleByName(name, startISO, endISO, ctx)
 
 export async function autoAssign(payload: {
@@ -239,9 +235,11 @@ export async function autoAssign(payload: {
 
   // 3) Ledger
   // 3️⃣ Ledger
-  const ledger = preloadedLedger || ((await buildLedger(dept, ws, we, ms, me, {
-    includeAllDepartmentsForBusy: true,
-  })) as any)
+  const ledger =
+    preloadedLedger ||
+    (await buildLedger(dept, ws, we, ms, me, {
+      includeAllDepartmentsForBusy: true,
+    }))
 
 
 
@@ -254,7 +252,7 @@ export async function autoAssign(payload: {
     department: person.department,
     isDriver: person.isDriver,
     isJamonero: person.isJamonero,
-    isResponsible: (person as any).isResponsible === true,
+    isResponsible: person.isResponsible === true,
     camioPetit: person.camioPetit,
     camioGran: person.camioGran,
     available: person.available,
@@ -375,8 +373,8 @@ export async function autoAssign(payload: {
           lastAssignedAt: ledger.lastAssignedAtByUser.get(p.name) || null
         }))
         .sort(tieBreakOrder)
-      const eligibleCtx = {
-        busyAssignments: ledger.busyAssignments,
+      const eligibleCtx: EligibilityCtx = {
+        busyAssignments: ledger.busyAssignments as EligibilityCtx['busyAssignments'],
         restHours: premises.restHours,
         allowMultipleEventsSameDay: false,
       }
@@ -398,7 +396,7 @@ export async function autoAssign(payload: {
         .sort(tieBreakOrder)
       const fallback = fallbackPool.find((entry) =>
         isEligibleByName(entry.p.name, startISO, endISO, {
-          busyAssignments: ledger.busyAssignments,
+          busyAssignments: ledger.busyAssignments as EligibilityCtx['busyAssignments'],
           restHours: premises.restHours,
           allowMultipleEventsSameDay: false,
         }).eligible

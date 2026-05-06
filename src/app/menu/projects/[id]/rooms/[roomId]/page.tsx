@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { FileText, MessageSquare, Paperclip, Plus, Save, Trash2, Users2 } from 'lucide-react'
@@ -50,6 +50,12 @@ type RoomDetailResponse = {
   users: UserOption[]
 }
 
+type SessionUser = {
+  id?: string
+  name?: string
+  role?: string
+}
+
 type ResolvedRoom = NonNullable<ProjectResponse['rooms'][number]>
 type ProjectDocumentItem = NonNullable<ProjectData['documents']>[number]
 
@@ -64,9 +70,10 @@ const appendProjectDocument = (
 export default function ProjectRoomDetailPage() {
   const params = useParams<{ id: string; roomId: string }>()
   const { data: session } = useSession()
-  const sessionUserId = String((session?.user as any)?.id || '').trim()
-  const sessionUserName = String((session?.user as any)?.name || '').trim()
-  const sessionRole = normalizeRole(String((session?.user as any)?.role || '').trim())
+  const sessionUser = (session?.user || {}) as SessionUser
+  const sessionUserId = String(sessionUser.id || '').trim()
+  const sessionUserName = String(sessionUser.name || '').trim()
+  const sessionRole = normalizeRole(String(sessionUser.role || '').trim())
   const [project, setProject] = useState<ProjectResponse | null>(null)
   const [users, setUsers] = useState<UserOption[]>([])
   const [error, setError] = useState('')
@@ -329,7 +336,7 @@ export default function ProjectRoomDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [params?.id, params?.roomId, currentRoom?.id, currentRoom?.opsChannelId])
+  }, [currentRoom, params?.id, params?.roomId, updateRoomLocal])
 
   const persistRoom = async (
     nextRoom: ResolvedRoom,
@@ -360,7 +367,7 @@ export default function ProjectRoomDetailPage() {
     }
   }
 
-  const updateRoomLocal = (updater: (currentRoom: ResolvedRoom) => ResolvedRoom) => {
+  const updateRoomLocal = useCallback((updater: (currentRoom: ResolvedRoom) => ResolvedRoom) => {
     setProject((current) => {
       if (!current) return current
       const exists = (current.rooms || []).some((item) => item.id === params?.roomId)
@@ -374,7 +381,7 @@ export default function ProjectRoomDetailPage() {
           : [...(current.rooms || []), updated],
       }
     })
-  }
+  }, [fallbackRoom, params?.roomId])
 
   const updateBlockTasksLocal = (tasks: NonNullable<typeof linkedBlock>['tasks']) => {
     setProject((current) => {
@@ -965,7 +972,7 @@ export default function ProjectRoomDetailPage() {
                 {currentRoom.opsChannelId ? (
                   <ProjectRoomOpsChat
                     channelId={currentRoom.opsChannelId}
-                    userId={String((session?.user as any)?.id || '')}
+                    userId={sessionUserId}
                     canCreateTaskFromHash={canCreateTaskFromChat}
                     onCreateTaskFromHash={createTaskFromChat}
                     onOperationalDocumentCreated={(document) => {
@@ -1200,4 +1207,3 @@ export default function ProjectRoomDetailPage() {
     </RoleGuard>
   )
 }
-

@@ -16,6 +16,30 @@ import { useUpdatePersonnel } from '@/hooks/useUpdatePersonnel'
 import { usePersonnel, Personnel } from '@/hooks/usePersonnel'
 import { checkNameExists, generateSuggestions } from '@/lib/validateName'
 
+type UpdatePersonnelPayload = {
+  id?: string
+  name?: string
+  role: string
+  department?: string
+  isJamonero: boolean
+  available: boolean
+  isDriver: boolean
+  driver: {
+    isDriver: boolean
+    camioGran: boolean
+    camioPetit: boolean
+  }
+  email: string | null
+  phone: string | null
+  maxHoursWeek: number
+  updatedAt: number
+  unavailableFrom: string | null
+  unavailableUntil: string | null
+  unavailableIndefinite: boolean
+  unavailableNotifiedFor: null
+  unavailableNotifiedAt: null
+}
+
 // Opcions de rol
 const ROLE_OPTIONS = [
   { value: 'equip', label: 'Equip' },
@@ -201,7 +225,7 @@ export default function EditPersonnelModal({
       ...availabilityPayload,
     }
 
-    await mutateAsync(payload as any)
+    await mutateAsync(payload as UpdatePersonnelPayload)
 
     onSaved()
     onOpenChange(false)
@@ -344,7 +368,7 @@ export default function EditPersonnelModal({
                   id="unavailableUntil"
                   type="date"
                   value={form.unavailableUntil || ''}
-                  onChange={(e) => handleChange('unavailableUntil', e.target.value as any)}
+                  onChange={(e) => handleChange('unavailableUntil', e.target.value)}
                   disabled={form.unavailableIndefinite === true}
                   min={computeMinUnavailableUntil(form.unavailableFrom || '')}
                 />

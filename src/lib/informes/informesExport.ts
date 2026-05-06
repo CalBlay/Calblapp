@@ -512,7 +512,7 @@ export async function exportRrhhRobaInformePdf(
     pdf.setFontSize(13)
     pdf.setTextColor(...PDF_THEME.text)
     const titleBlockH = ttlLines.length * 15
-    let ty = y + stripH / 2 - titleBlockH / 2 + 12
+    const ty = y + stripH / 2 - titleBlockH / 2 + 12
     pdf.text(ttlLines, titleX, ty)
     y += stripH + 14
   }

@@ -5,7 +5,6 @@ import React from 'react'
 import { Calendar, Users } from 'lucide-react'
 import QuadrantCard from './QuadrantCard'
 import type { Draft } from '@/app/menu/quadrants/drafts/page'
-import { useRouter } from 'next/navigation'
 
 interface Props {
   date: string
@@ -13,8 +12,6 @@ interface Props {
 }
 
 export default function QuadrantsDayGroup({ date, quadrants }: Props) {
-  const router = useRouter()
-
   const totalQuadrants = quadrants.length
   const totalPeople = quadrants.reduce((sum, q) => {
     const resp = q.responsableName ? 1 : 0

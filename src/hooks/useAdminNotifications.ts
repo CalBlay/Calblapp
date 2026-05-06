@@ -8,10 +8,13 @@ import { subscribeToAblyEvent } from '@/lib/ablyClient'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
+type SessionUser = { id?: string; role?: string; department?: string }
+type NotificationListItem = { read?: boolean; type?: string }
+
 export function useAdminUserRequestCount() {
   const { data: session, status } = useSession()
   const isAuth = status === 'authenticated'
-  const role = normalizeRole((session?.user as any)?.role || '')
+  const role = normalizeRole((session?.user as SessionUser | undefined)?.role || '')
   const isAdmin = role === 'admin'
 
   const url = isAuth && isAdmin
@@ -56,7 +59,7 @@ export async function markAdminUserRequestsRead() {
 export function useUserRequestResultCount() {
   const { data: session, status } = useSession()
   const isAuth = status === 'authenticated'
-  const userId = (session?.user as any)?.id
+  const userId = (session?.user as SessionUser | undefined)?.id
 
   const url = isAuth
     ? '/api/notifications?mode=count&type=user_request_result'
@@ -90,7 +93,7 @@ export function useUserRequestResultCount() {
 export function useTornNotificationCount() {
   const { data: session, status } = useSession()
   const isAuth = status === 'authenticated'
-  const userId = (session?.user as any)?.id
+  const userId = (session?.user as SessionUser | undefined)?.id
 
   const url = isAuth ? '/api/notifications?mode=list' : null
 
@@ -115,7 +118,7 @@ export function useTornNotificationCount() {
   return {
     count: (() => {
       const notifications = Array.isArray(data?.notifications) ? data.notifications : []
-      return notifications.filter((n: any) =>
+      return notifications.filter((n: NotificationListItem) =>
         !n.read && (n.type === 'torn' || n.type === 'NEW_SHIFTS')
       ).length
     })(),
@@ -191,7 +194,7 @@ export function useRobaPersonalRequestNotificationCount() {
 export function useProjectAssignmentCount() {
   const { data: session, status } = useSession()
   const isAuth = status === 'authenticated'
-  const userId = (session?.user as any)?.id
+  const userId = (session?.user as SessionUser | undefined)?.id
 
   const url = isAuth
     ? '/api/notifications?mode=list'
@@ -218,7 +221,7 @@ export function useProjectAssignmentCount() {
   return {
     count: (() => {
       const notifications = Array.isArray(data?.notifications) ? data.notifications : []
-      return notifications.filter((n: any) =>
+      return notifications.filter((n: NotificationListItem) =>
         !n.read &&
         (
           n.type === 'project_assignment' ||
