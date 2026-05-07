@@ -19,11 +19,9 @@ export function canAccessIncidentsModule(user: { role?: string | null; departmen
  */
 export function canPostIncident(user: { role?: string | null; department?: string | null }): boolean {
   const role = normalizeRole(user.role)
-  const dept = normalizeDept(user.department || '')
   if (role === 'admin' || role === 'direccio' || role === 'comercial') return true
   if (role === 'treballador') return true
-  const capDepts = new Set(['foodlovers', 'logistica', 'cuina', 'serveis'])
-  if (role === 'cap' && capDepts.has(dept)) return true
+  if (role === 'cap') return true
   return false
 }
 

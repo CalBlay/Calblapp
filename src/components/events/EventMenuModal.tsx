@@ -303,7 +303,7 @@ const treballadorsPersons =
     isAdmin ||
     isDireccio ||
     roleN === 'comercial' ||
-    (isCapDept && ['foodlovers', 'logistica', 'cuina', 'serveis'].includes(norm(deptN))) ||
+    isCapDept ||
       isWorkerResponsible
 
   const DEPT_TO_LN: Record<string, LnKey> = {
