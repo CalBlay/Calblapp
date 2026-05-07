@@ -63,12 +63,18 @@ function buildBrandHeaderHtml(): string {
 
 export function brandPrintDocumentHtml(html: string): string {
   let branded = html
+  let insertedDefaultHeader = false
 
   if (!/calblay-print-brand/.test(branded)) {
     branded = branded.replace(/<body([^>]*)>/i, `<body$1>${buildBrandHeaderHtml()}`)
+    insertedDefaultHeader = true
   }
 
   if (!/calblay-print-brand__logo/.test(branded)) {
+    return branded
+  }
+
+  if (!insertedDefaultHeader) {
     return branded
   }
 
