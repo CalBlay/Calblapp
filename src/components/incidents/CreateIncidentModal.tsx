@@ -25,7 +25,7 @@ interface CreateIncidentModalProps {
     location?: string
   }
   onClose: () => void
-  onCreated: () => void
+  onCreated: (incidentId?: string) => void
 }
 
 const IMPORTANCIES = ['Urgent', 'Alta', 'Normal', 'Baixa']
@@ -240,7 +240,8 @@ export default function CreateIncidentModal({
         throw new Error(msg || 'Error creant la incidencia')
       }
 
-      onCreated()
+      const json = await res.json().catch(() => ({}))
+      onCreated(typeof json?.id === 'string' ? json.id : undefined)
       onClose()
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'No s ha pogut crear la incidencia'

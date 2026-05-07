@@ -89,6 +89,7 @@ const nextChecklistValue = (current: unknown) => {
 
 export default function EventAuditExecutionModal({ open, onClose, event, user }: Props) {
   const [hasIncidents, setHasIncidents] = useState(true)
+  const [localIncidentIds, setLocalIncidentIds] = useState<string[]>([])
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -127,7 +128,18 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     enabled: open && Boolean(eventId),
   })
 
-  const incidentIds = useMemo(() => incidents.map((i) => i.id).filter(Boolean), [incidents])
+  const incidentIds = useMemo(() => {
+    const ids = new Set<string>()
+    incidents.forEach((incident) => {
+      const id = String(incident.id || '').trim()
+      if (id) ids.add(id)
+    })
+    localIncidentIds.forEach((id) => {
+      const normalizedId = String(id || '').trim()
+      if (normalizedId) ids.add(normalizedId)
+    })
+    return Array.from(ids)
+  }, [incidents, localIncidentIds])
   const canFinalize = !hasIncidents || (hasIncidents && incidentIds.length > 0)
   const isLocked = executionStatus !== 'draft'
   const totalAuditPhotos = useMemo(
@@ -140,6 +152,12 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   )
 
   const loadingExecution = Boolean(executionUrl) && isLoading && data === undefined
+
+  useEffect(() => {
+    if (!open) {
+      setLocalIncidentIds([])
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -167,6 +185,11 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     if (status === 'completed' || status === 'validated' || status === 'rejected') setExecutionStatus(status)
     else setExecutionStatus('draft')
     setHasIncidents((execution?.incidentOutcome || 'reported') === 'reported')
+    setLocalIncidentIds(
+      Array.isArray(execution?.incidentIds)
+        ? execution.incidentIds.map((id) => String(id || '').trim()).filter(Boolean)
+        : []
+    )
     setNotes(String(execution?.notes || ''))
     setVisibleTemplate((data.visibleTemplate || null) as VisibleTemplate)
     const existingAnswers = Array.isArray(execution?.auditAnswers) ? execution?.auditAnswers : []
@@ -679,9 +702,14 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
         open={showCreateIncident}
         event={event}
         onClose={() => setShowCreateIncident(false)}
-        onCreated={() => {
+        onCreated={(incidentId) => {
           setShowCreateIncident(false)
           setHasIncidents(true)
+          if (incidentId) {
+            setLocalIncidentIds((current) =>
+              current.includes(incidentId) ? current : [...current, incidentId]
+            )
+          }
           setIncidentsRefresh((n) => n + 1)
         }}
       />
