@@ -31,6 +31,12 @@ type EventSummaryRow = {
   lastAt: number
 }
 
+function isoDayToComparableNumber(isoDay?: string) {
+  const value = String(isoDay || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 0
+  return Number(value.replace(/-/g, ''))
+}
+
 function lnFromCode(code?: string) {
   const s = String(code || '').trim().toUpperCase()
   if (!s) return ''
@@ -87,8 +93,8 @@ export async function GET(req: Request) {
 
     ref = ref.where('status', '==', 'validated')
     const fallbackRef = ref
-    if (fromTs > 0) ref = ref.where('completedAt', '>=', fromTs)
-    if (toTs > 0) ref = ref.where('completedAt', '<=', toTs)
+    const fromDay = fromTs > 0 ? Number(new Date(fromTs).toISOString().slice(0, 10).replace(/-/g, '')) : 0
+    const toDay = toTs > 0 ? Number(new Date(toTs).toISOString().slice(0, 10).replace(/-/g, '')) : 0
 
     const mapRows = (snap: FirebaseFirestore.QuerySnapshot): ExecutionRow[] =>
       snap.docs.map((docSnap) => {
@@ -110,15 +116,31 @@ export async function GET(req: Request) {
     let rows: ExecutionRow[] = []
     try {
       const snap = await ref.orderBy('completedAt', 'desc').limit(Math.max(limit * 4, 500)).get()
-      rows = mapRows(snap)
+      rows = mapRows(snap).filter((row) => {
+        const rowDay = isoDayToComparableNumber(row.eventDay)
+        if (rowDay > 0) {
+          if (fromDay > 0 && rowDay < fromDay) return false
+          if (toDay > 0 && rowDay > toDay) return false
+          return true
+        }
+        if (fromTs > 0 && row.completedAt < fromTs) return false
+        if (toTs > 0 && row.completedAt > toTs) return false
+        return true
+      })
     } catch (queryErr: unknown) {
       const message = queryErr instanceof Error ? queryErr.message : ''
       const needsIndex = message.toLowerCase().includes('index')
       if (!needsIndex) throw queryErr
       const fallbackSnap = await fallbackRef.orderBy('completedAt', 'desc').limit(Math.max(limit * 4, 500)).get()
       rows = mapRows(fallbackSnap).filter((row) => {
-        if (fromTs > 0 && row.completedAt < fromTs) return false
-        if (toTs > 0 && row.completedAt > toTs) return false
+        const rowDay = isoDayToComparableNumber(row.eventDay)
+        if (rowDay > 0) {
+          if (fromDay > 0 && rowDay < fromDay) return false
+          if (toDay > 0 && rowDay > toDay) return false
+        } else {
+          if (fromTs > 0 && row.completedAt < fromTs) return false
+          if (toTs > 0 && row.completedAt > toTs) return false
+        }
         return row.status === 'validated'
       })
     }
@@ -137,15 +159,17 @@ export async function GET(req: Request) {
     rows.forEach((row) => {
       const currentEventId = String(row.eventId || '').trim()
       if (!currentEventId) return
+      const currentEventDay = /^\d{4}-\d{2}-\d{2}$/.test(String(row.eventDay || '')) ? String(row.eventDay) : ''
+      const eventKey = `${currentEventId}__${currentEventDay || 'sense-dia'}`
 
-      const existing = byEvent.get(currentEventId)
+      const existing = byEvent.get(eventKey)
       if (!existing) {
-        byEvent.set(currentEventId, {
+        byEvent.set(eventKey, {
           eventId: currentEventId,
           eventSummary: row.eventSummary || `Event ${currentEventId}`,
           eventCode: row.eventCode || '',
           eventLocation: row.eventLocation || '-',
-          eventDay: /^\d{4}-\d{2}-\d{2}$/.test(row.eventDay) ? row.eventDay : '',
+          eventDay: currentEventDay,
           eventLn: lnFromCode(row.eventCode),
           audits: 1,
           lastAt: Number(row.completedAt || 0),

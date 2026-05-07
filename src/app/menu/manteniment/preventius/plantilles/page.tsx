@@ -345,6 +345,7 @@ export function PreventiusTemplatesContent({
         weekly: 'Setmanal',
         monthly: 'Mensual',
         quarterly: 'Trimestral',
+        semestral: 'Semestral',
         yearly: 'Anual',
       }
 

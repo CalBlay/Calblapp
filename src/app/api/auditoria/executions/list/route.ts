@@ -24,6 +24,12 @@ function normalizeDept(raw?: string): Department | null {
   return null
 }
 
+function isoDayToComparableNumber(isoDay?: string) {
+  const value = String(isoDay || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 0
+  return Number(value.replace(/-/g, ''))
+}
+
 async function loadCommercialUserIdsForGroup(group: string) {
   const snap = await firestoreAdmin.collection('users').get()
   const ids = new Set<string>()
@@ -54,6 +60,7 @@ export async function GET(req: Request) {
       .trim()
       .toLowerCase()
     const eventId = String(searchParams.get('eventId') || '').trim()
+    const eventDay = String(searchParams.get('eventDay') || '').trim()
     const department = normalizeDept(searchParams.get('department') || '')
     let fromTs = Number(searchParams.get('fromTs') || 0)
     let toTs = Number(searchParams.get('toTs') || 0)
@@ -77,9 +84,10 @@ export async function GET(req: Request) {
     if (department && role !== 'cap') ref = ref.where('department', '==', department)
     if (status) ref = ref.where('status', '==', status)
     if (eventId) ref = ref.where('eventId', '==', eventId)
+    if (eventDay) ref = ref.where('eventDay', '==', eventDay)
     const fallbackRef = ref
-    if (fromTs > 0) ref = ref.where('completedAt', '>=', fromTs)
-    if (toTs > 0) ref = ref.where('completedAt', '<=', toTs)
+    const fromDay = fromTs > 0 ? Number(new Date(fromTs).toISOString().slice(0, 10).replace(/-/g, '')) : 0
+    const toDay = toTs > 0 ? Number(new Date(toTs).toISOString().slice(0, 10).replace(/-/g, '')) : 0
 
     const mapRows = (snap: FirebaseFirestore.QuerySnapshot) =>
       snap.docs.map((d) => {
@@ -140,15 +148,22 @@ export async function GET(req: Request) {
       if (status && row.status !== status) return false
       if (department && row.department !== department) return false
       if (eventId && row.eventId !== eventId) return false
-      if (fromTs > 0 && row.completedAt < fromTs) return false
-      if (toTs > 0 && row.completedAt > toTs) return false
+      if (eventDay && row.eventDay !== eventDay) return false
+      const rowDay = isoDayToComparableNumber(row.eventDay)
+      if (rowDay > 0) {
+        if (fromDay > 0 && rowDay < fromDay) return false
+        if (toDay > 0 && rowDay > toDay) return false
+      } else {
+        if (fromTs > 0 && row.completedAt < fromTs) return false
+        if (toTs > 0 && row.completedAt > toTs) return false
+      }
       if (cursorTs > 0 && row.completedAt >= cursorTs) return false
       if (allowedCommercialUserIds) {
         const rowGroup = normalizeCommercialAuditGroup(row.completedByDepartment || '')
         if (rowGroup !== commercialGroup && !allowedCommercialUserIds.has(row.completedById)) return false
       }
       if (!q) return true
-      const text = `${row.eventId} ${row.eventSummary} ${row.department} ${row.templateName} ${row.completedByName} ${row.status}`.toLowerCase()
+      const text = `${row.eventId} ${row.eventSummary} ${row.eventDay} ${row.department} ${row.templateName} ${row.completedByName} ${row.status}`.toLowerCase()
       return text.includes(q)
     })
 
@@ -162,6 +177,7 @@ export async function GET(req: Request) {
       status: status || 'all',
       department: department || (role === 'cap' ? userDept || '' : ''),
       eventId: eventId || '',
+      eventDay: eventDay || '',
       q: q ? 'yes' : 'no',
       fromTs,
       toTs,

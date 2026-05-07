@@ -50,9 +50,18 @@ const formatTime = (t: string) => (t ? t.substring(0, 5) : '--:--')
 /* ──────────────────────────────
    Component principal
 ────────────────────────────── */
-export default function QuadrantTable({ eventId, initialData }) {
+export default function QuadrantTable({
+  eventId,
+  initialData,
+}: {
+  eventId?: string
+  initialData?: unknown
+}) {
   void eventId
   const draft = (initialData || {}) as {
+    code?: string
+    eventName?: string
+    location?: string
     responsableId?: string
     responsable?: { id?: string; name?: string; meetingPoint?: string }
     startDate?: string
@@ -77,24 +86,25 @@ export default function QuadrantTable({ eventId, initialData }) {
   }
 
   /* ---------- Estat inicial ---------- */
-  const [rows, setRows] = useState<WorkerRow[]>([
-    ...(draft.responsableId
-      ? [
-          {
-            role: 'responsable',
-            id: draft.responsable?.id ?? '',
-            name: draft.responsable?.name ?? '',
-            startDate: draft.startDate ?? '',
-            startTime: draft.startTime ?? '',
-            endDate: draft.endDate ?? '',
-            endTime: draft.endTime ?? '',
-            meetingPoint:
-              draft.responsable?.meetingPoint || draft.meetingPoint || '',
-          },
-        ]
-      : []),
-    ...(Array.isArray(draft.conductors)
-      ? draft.conductors.map((c) => ({
+  const [rows, setRows] = useState<WorkerRow[]>(() => {
+    const initialRows: WorkerRow[] = []
+
+    if (draft.responsableId) {
+      initialRows.push({
+        role: 'responsable',
+        id: draft.responsable?.id ?? '',
+        name: draft.responsable?.name ?? '',
+        startDate: draft.startDate ?? '',
+        startTime: draft.startTime ?? '',
+        endDate: draft.endDate ?? '',
+        endTime: draft.endTime ?? '',
+        meetingPoint: draft.responsable?.meetingPoint || draft.meetingPoint || '',
+      })
+    }
+
+    if (Array.isArray(draft.conductors)) {
+      initialRows.push(
+        ...draft.conductors.map((c): WorkerRow => ({
           role: 'conductor',
           id: c.id,
           name: c.name,
@@ -104,9 +114,12 @@ export default function QuadrantTable({ eventId, initialData }) {
           endTime: draft.endTime ?? '',
           meetingPoint: c.meetingPoint || draft.meetingPoint || '',
         }))
-      : []),
-    ...(Array.isArray(draft.treballadors)
-      ? draft.treballadors.map((t) => ({
+      )
+    }
+
+    if (Array.isArray(draft.treballadors)) {
+      initialRows.push(
+        ...draft.treballadors.map((t): WorkerRow => ({
           role: 'treballador',
           id: t.id,
           name: t.name,
@@ -116,8 +129,11 @@ export default function QuadrantTable({ eventId, initialData }) {
           endTime: draft.endTime ?? '',
           meetingPoint: t.meetingPoint || draft.meetingPoint || '',
         }))
-      : []),
-  ])
+      )
+    }
+
+    return initialRows
+  })
 
   /* ---------- Estats i accions ---------- */
   const [editIdx, setEditIdx] = useState<number | null>(null)

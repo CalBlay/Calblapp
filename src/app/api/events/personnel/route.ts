@@ -10,11 +10,6 @@ const unaccent = (s?: string | null) =>
   (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const norm = (s?: string | null) => unaccent(String(s || '')).toLowerCase().trim()
 const dayKey = (iso?: string | null) => (iso || '').slice(0, 10)
-const uniqBy = <T, K extends string | number>(arr: T[], key: (x: T) => K) => {
-  const m = new Map<K, T>()
-  for (const it of arr) m.set(key(it), it)
-  return Array.from(m.values())
-}
 const chunk = <T>(arr: T[], size = 10) => {
   const out: T[][] = []
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
@@ -27,10 +22,14 @@ type QRow = {
   code?: string
   eventId?: string
   eventName?: string
+  status?: string
   startDate?: string
   meetingPoint?: string
   startTime?: string
   endTime?: string
+  updatedAt?: unknown
+  confirmedAt?: unknown
+  createdAt?: unknown
   hour?: string
   convocatoria?: string
   responsableName?: string
@@ -107,6 +106,28 @@ type PersonnelListEntry = {
   noShow?: boolean
   leftEarly?: boolean
   plate?: string
+  sourceUpdatedAt: number
+}
+
+const rolePriority = (role?: string) => {
+  if (role === 'responsable') return 3
+  if (role === 'conductor') return 2
+  return 1
+}
+
+const toMillis = (value: unknown) => {
+  if (!value) return 0
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (value instanceof Date) return value.getTime()
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'toDate' in value &&
+    typeof (value as { toDate?: () => Date }).toDate === 'function'
+  ) {
+    return (value as { toDate: () => Date }).toDate().getTime()
+  }
+  return 0
 }
 
 export async function GET(req: NextRequest) {
@@ -174,7 +195,15 @@ export async function GET(req: NextRequest) {
 
       const push = (snap: QuerySnapshot | null) => {
         if (snap && !snap.empty) {
-          snap.forEach((d) => rows.push(d.data() as QRow))
+          snap.forEach((d) =>
+            rows.push({
+              ...(d.data() as QRow),
+              status: String((d.data() as QRow)?.status || ''),
+              updatedAt: (d.data() as QRow)?.updatedAt,
+              confirmedAt: (d.data() as QRow)?.confirmedAt,
+              createdAt: (d.data() as QRow)?.createdAt,
+            })
+          )
         }
       }
 
@@ -189,12 +218,18 @@ export async function GET(req: NextRequest) {
     const normCode = (s?: string | null) =>
       (s ? unaccent(String(s)).toLowerCase().trim().replace(/\s+/g, '') : '')
 
-    const filtered = rows.filter((r) => {
+    const filtered = rows
+      .filter((r) => {
       if (r.eventId === eventId) return true
       if (code && r.code && normCode(r.code) === normCode(code)) return true
       if (r.eventName && norm(r.eventName) === eventNameNorm) return true
       return false
-    })
+      })
+      .sort((a, b) => {
+        const aTs = toMillis(a.updatedAt) || toMillis(a.confirmedAt) || toMillis(a.createdAt)
+        const bTs = toMillis(b.updatedAt) || toMillis(b.confirmedAt) || toMillis(b.createdAt)
+        return bTs - aTs
+      })
 
     /* ────────────────────────────────────────────────
        4) GENERAR PERSONES (responsables / conductors / treballadors)
@@ -205,6 +240,8 @@ export async function GET(req: NextRequest) {
       const dept = q.department
       const qMeeting = q.meetingPoint
       const qTime = q.startTime || q.hour || q.convocatoria
+      const sourceUpdatedAt =
+        toMillis(q.updatedAt) || toMillis(q.confirmedAt) || toMillis(q.createdAt)
 
       if (q.responsableName) {
         people.push({
@@ -213,6 +250,7 @@ export async function GET(req: NextRequest) {
           department: dept,
           meetingPoint: qMeeting,
           time: qTime,
+          sourceUpdatedAt,
         })
       }
 
@@ -236,6 +274,7 @@ export async function GET(req: NextRequest) {
             notes: p.sortidaNotes || '',
             noShow: !!p.noShow,
             leftEarly: !!p.leftEarly,
+            sourceUpdatedAt,
             ...(plate ? { plate: String(plate) } : {}),
           })
         }
@@ -246,7 +285,29 @@ export async function GET(req: NextRequest) {
       each(q.workers, 'treballador')
     }
 
-    const dedup = uniqBy(people, (p) => `${p.name}|${p.role}`)
+    const dedupMap = new Map<string, PersonnelListEntry>()
+    people.forEach((person) => {
+      const key = `${norm(person.department)}|${norm(person.name)}`
+      const existing = dedupMap.get(key)
+      if (!existing) {
+        dedupMap.set(key, person)
+        return
+      }
+
+      if (person.sourceUpdatedAt > existing.sourceUpdatedAt) {
+        dedupMap.set(key, person)
+        return
+      }
+
+      if (
+        person.sourceUpdatedAt === existing.sourceUpdatedAt &&
+        rolePriority(person.role) > rolePriority(existing.role)
+      ) {
+        dedupMap.set(key, person)
+      }
+    })
+
+    const dedup = Array.from(dedupMap.values())
 
     /* ────────────────────────────────────────────────
        5) OBTENIR TELÈFONS (personnel > users)

@@ -239,7 +239,7 @@ export default function PreventiusFullsPage() {
           .filter((t: Record<string, unknown>) => t.plannedStart && t.plannedEnd)
           .filter((t: Record<string, unknown>) =>
             role === 'treballador'
-              ? WORKER_VISIBLE_JOURNEY_STATUSES.has(normalizeMaintenanceStatus(t.status))
+              ? WORKER_VISIBLE_JOURNEY_STATUSES.has(normalizeMaintenanceStatus(typeof t.status === 'string' ? t.status : null))
               : true
           )
           .map((t: Record<string, unknown>) => {
@@ -252,7 +252,7 @@ export default function PreventiusFullsPage() {
               kind: 'ticket' as const,
               title,
               code,
-              status: normalizeMaintenanceStatus(t.status),
+              status: normalizeMaintenanceStatus(typeof t.status === 'string' ? t.status : null),
               ticketType: t.ticketType === 'deco' ? 'deco' : 'maquinaria',
               date: format(start, 'yyyy-MM-dd'),
               startTime: format(start, 'HH:mm'),

@@ -1,7 +1,7 @@
 export type Template = {
   id: string
   name: string
-  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'
+  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'semestral' | 'yearly'
   lastDone?: string | null
   location?: string
   primaryOperator?: string

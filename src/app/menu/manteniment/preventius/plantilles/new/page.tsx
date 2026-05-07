@@ -105,6 +105,7 @@ export default function PlantillaNewPage() {
                 <option value="weekly">Setmanal</option>
                 <option value="monthly">Mensual</option>
                 <option value="quarterly">Trimestral</option>
+                <option value="semestral">Semestral</option>
                 <option value="yearly">Anual</option>
               </select>
             </label>

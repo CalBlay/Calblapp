@@ -16,7 +16,14 @@ import PlannerTicketModal from '@/app/menu/manteniment/preventius/planificador/c
 type TabKey = 'tickets' | 'preventius'
 type DateMode = 'all' | 'planned' | 'created' | 'updated' | 'completed'
 type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
-type WorkHistoryEntry = { status?: string | null; at?: number | string | null; startTime?: string | null; endTime?: string | null }
+type WorkHistoryEntry = {
+  status?: string | null
+  at?: number | string | null
+  byName?: string
+  startTime?: string | null
+  endTime?: string | null
+  note?: string | null
+}
 type Preventiu = {
   id: string
   title: string
@@ -214,7 +221,11 @@ function buildSeguimentRows(ticketsJson: unknown, plannedJson: unknown, complete
   const nextPreventius: Preventiu[] = items.map((item) => {
     const record = latestByPlannedId.get(String(item.id)) || null
     const history = Array.isArray(record?.statusHistory)
-      ? record.statusHistory.map((entry) => ({ ...entry, status: normalizeStatus(entry.status) }))
+      ? record.statusHistory.map((entry) => ({
+          ...entry,
+          status: normalizeStatus(entry.status),
+          at: parseDate(entry.at)?.getTime() || 0,
+        }))
       : []
     return {
       id: String(item.id || ''),
@@ -488,4 +499,3 @@ export default function MaintenanceSeguimentPage() {
     </RoleGuard>
   )
 }
-

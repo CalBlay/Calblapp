@@ -14,7 +14,7 @@ type Template = {
   id: string
   name: string
   source: string
-  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'
+  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'semestral' | 'yearly'
   lastDone?: string | null
   location?: string
   primaryOperator?: string
@@ -28,6 +28,7 @@ const PERIODICITY_OPTIONS: { value: string; label: string }[] = [
   { value: 'weekly', label: 'Setmanal' },
   { value: 'monthly', label: 'Mensual' },
   { value: 'quarterly', label: 'Trimestral' },
+  { value: 'semestral', label: 'Semestral' },
   { value: 'yearly', label: 'Anual' },
 ]
 

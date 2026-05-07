@@ -20,6 +20,7 @@ type ExecutionRow = {
   id: string
   eventId: string
   eventSummary?: string
+  eventDay?: string
   department: string
   templateName: string
   status: string
@@ -99,6 +100,13 @@ const formatDate = (ts?: number) => {
   return `${dd}/${mm}/${yyyy} ${hh}:${min}`
 }
 
+const formatIsoDay = (iso?: string) => {
+  const raw = String(iso || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return 'Sense dia'
+  const [yyyy, mm, dd] = raw.split('-')
+  return `${dd}/${mm}/${yyyy}`
+}
+
 const formatPct = (value: number) => `${Math.round(value * 100)}%`
 const formatEur = (value: number) =>
   new Intl.NumberFormat('ca-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(
@@ -118,6 +126,17 @@ const statusClass = (status?: string) => {
   if (s === 'rejected') return 'bg-red-100 text-red-700'
   return 'bg-amber-100 text-amber-700'
 }
+
+const FILTER_STATUS_OPTIONS: Array<{
+  value: 'all' | 'completed' | 'validated' | 'rejected'
+  label: string
+  activeClass: string
+}> = [
+  { value: 'all', label: 'Tots', activeClass: 'bg-slate-900 text-white border-slate-900' },
+  { value: 'completed', label: 'Pendents', activeClass: 'bg-amber-100 text-amber-800 border-amber-300' },
+  { value: 'validated', label: 'Validades', activeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+  { value: 'rejected', label: 'No validades', activeClass: 'bg-red-100 text-red-800 border-red-300' },
+]
 
 const toIsoDay = (d: Date) => format(d, 'yyyy-MM-dd')
 const monthLabel = (d: Date) =>
@@ -192,15 +211,16 @@ export default function AuditoriaValoracioPage() {
           enabled: true,
         }
 
-  const parseStatus = (value: string): 'all' | 'completed' | 'validated' | 'rejected' => {
-    if (value === 'completed' || value === 'validated' || value === 'rejected') return value
-    return 'all'
-  }
-
   const fromTs = useMemo(() => toStartTs(fromDate), [fromDate])
   const toTs = useMemo(() => toEndTs(toDate), [toDate])
 
-  const load = async (opts?: { fromTs?: number; toTs?: number; append?: boolean; cursorTs?: number }) => {
+  const load = async (opts?: {
+    fromTs?: number
+    toTs?: number
+    append?: boolean
+    cursorTs?: number
+    status?: 'all' | 'completed' | 'validated' | 'rejected'
+  }) => {
     const append = Boolean(opts?.append)
     if (append) setLoadingMoreRows(true)
     else setLoading(true)
@@ -215,7 +235,8 @@ export default function AuditoriaValoracioPage() {
       }
 
       const qs = new URLSearchParams({ limit: String(VALIDATION_PAGE_SIZE) })
-      if (statusFilter !== 'all') qs.set('status', statusFilter)
+      const effectiveStatus = opts?.status || statusFilter
+      if (effectiveStatus !== 'all') qs.set('status', effectiveStatus)
       if (departmentFilter !== 'all') qs.set('department', departmentFilter)
       if (query.trim()) qs.set('q', query.trim())
       if (start > 0) qs.set('fromTs', String(start))
@@ -351,20 +372,6 @@ export default function AuditoriaValoracioPage() {
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-sm text-gray-600">Estat</label>
-          <select
-            defaultValue={statusFilter}
-            onChange={(e) => setStatusFilter(parseStatus(e.target.value))}
-            className="h-10 rounded-xl border bg-white px-3 text-sm"
-          >
-            <option value="all">Tots</option>
-            <option value="completed">Pendents</option>
-            <option value="validated">Validades</option>
-            <option value="rejected">No validades</option>
-          </select>
-        </div>
-
         {isGlobalViewer ? (
           <div className="flex flex-col gap-1">
             <label className="text-sm text-gray-600">Departament</label>
@@ -403,7 +410,7 @@ export default function AuditoriaValoracioPage() {
         </div>
       </div>
     )
-  }, [query, statusFilter, departmentFilter, isGlobalViewer, setContent, setOpen])
+  }, [query, departmentFilter, isGlobalViewer, setContent, setOpen])
 
   const onDatesChange = (f: SmartFiltersChange) => {
     if (!f.start || !f.end) return
@@ -526,6 +533,27 @@ export default function AuditoriaValoracioPage() {
     return { ...base, maxPossible, percentOfMax }
   }, [valuationRows])
 
+  const validationRowsByDay = useMemo(() => {
+    const grouped = new Map<string, ExecutionRow[]>()
+
+    rows.forEach((row) => {
+      const rawDay = String(row.eventDay || '').trim()
+      const key =
+        /^\d{4}-\d{2}-\d{2}$/.test(rawDay)
+          ? rawDay
+          : (Number(row.completedAt || 0) > 0 ? format(new Date(row.completedAt), 'yyyy-MM-dd') : 'sense-dia')
+      const list = grouped.get(key) || []
+      list.push(row)
+      grouped.set(key, list)
+    })
+
+    return Array.from(grouped.entries()).sort(([a], [b]) => {
+      if (a === 'sense-dia' && b !== 'sense-dia') return 1
+      if (b === 'sense-dia' && a !== 'sense-dia') return -1
+      return a.localeCompare(b)
+    })
+  }, [rows])
+
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
       <div className="w-full max-w-7xl 2xl:max-w-[1600px] mx-auto p-3 sm:p-4 space-y-4">
@@ -539,7 +567,7 @@ export default function AuditoriaValoracioPage() {
         </div>
 
         <Card className="space-y-4">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setActiveTab('validacio')}
@@ -570,30 +598,55 @@ export default function AuditoriaValoracioPage() {
 
           {activeTab === 'validacio' || !canSeeValoracio ? (
             <>
-              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 whitespace-nowrap">
-                  <div className="text-base font-semibold text-gray-900">Validacio d'auditories</div>
-                  <div className="text-sm text-gray-700">
-                    Mostrant: {rows.length}{hasMoreRows ? '+' : ''}
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 whitespace-nowrap">
+                    <div className="text-base font-semibold text-gray-900">Validacio d'auditories</div>
+                    <div className="text-sm text-gray-700">
+                      Mostrant: {rows.length}{hasMoreRows ? '+' : ''}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
+                    <SmartFilters
+                      modeDefault="week"
+                      role="Admin"
+                      showDepartment={false}
+                      showWorker={false}
+                      showLocation={false}
+                      showStatus={false}
+                      showCommercial={false}
+                      showImportance={false}
+                      compact
+                      showAdvanced={false}
+                      initialStart={fromDate}
+                      initialEnd={toDate}
+                      onChange={onDatesChange}
+                    />
+                    <FilterButton onClick={openAdvancedFilters} />
                   </div>
                 </div>
-                <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
-                  <SmartFilters
-                    modeDefault="week"
-                    role="Admin"
-                    showDepartment={false}
-                    showWorker={false}
-                    showLocation={false}
-                    showStatus={false}
-                    showCommercial={false}
-                    showImportance={false}
-                    compact
-                    showAdvanced={false}
-                    initialStart={fromDate}
-                    initialEnd={toDate}
-                    onChange={onDatesChange}
-                  />
-                  <FilterButton onClick={openAdvancedFilters} />
+                <div className="flex flex-wrap items-center gap-2">
+                  {FILTER_STATUS_OPTIONS.map((option) => {
+                    const isActive = statusFilter === option.value
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setStatusFilter(option.value)
+                          void load({ status: option.value })
+                        }}
+                        className={[
+                          'rounded-full border px-3 py-1 text-xs font-semibold transition',
+                          isActive
+                            ? option.activeClass
+                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
+                        ].join(' ')}
+                      >
+                        {option.label}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
@@ -604,45 +657,57 @@ export default function AuditoriaValoracioPage() {
               ) : rows.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-600">No hi ha auditories amb aquests filtres.</div>
               ) : (
-                <div className="space-y-2">
-                  {rows.map((r) => (
-                    <div key={r.id} className="rounded-xl border bg-white p-3 flex items-center justify-between gap-3">
-                      <Link
-                        href={`/menu/auditoria/valoracio/${r.id}?${new URLSearchParams({
-                          fromTs: String(fromTs),
-                          toTs: String(toTs),
-                          ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-                          ...(departmentFilter !== 'all' ? { department: departmentFilter } : {}),
-                          ...(query.trim() ? { q: query.trim() } : {}),
-                        }).toString()}`}
-                        className="min-w-0 flex-1"
-                        onClick={() => {
-                          if (typeof window === 'undefined') return
-                          const orderedIds = rows.map((row) => row.id).filter(Boolean)
-                          window.sessionStorage.setItem(VALUATION_NAV_STORAGE_KEY, JSON.stringify(orderedIds))
-                        }}
-                      >
-                        <div className="text-sm font-semibold text-gray-900 truncate">{r.eventSummary || `Event ${r.eventId}`} - {r.department}</div>
-                        <div className="text-xs text-gray-600 truncate">{r.templateName || 'Sense plantilla'} - {formatDate(r.completedAt)} - {r.completedByName}</div>
-                      </Link>
-                      <div className="flex items-center gap-2">
-                        <span className={['text-xs rounded-full px-2 py-1', statusClass(r.status)].join(' ')}>{statusLabel(r.status)}</span>
-                        {isAdmin ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-600 hover:text-red-700"
-                            aria-label="Eliminar auditoria"
-                            title="Eliminar auditoria"
-                            disabled={deletingId === r.id}
-                            onClick={() => deleteExecution(r.id)}
+                <div className="space-y-3">
+                  {validationRowsByDay.map(([day, dayRows]) => (
+                    <section key={day} className="space-y-2">
+                      <header className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 shadow-sm">
+                        <h2 className="text-sm font-semibold text-gray-800">
+                          {day === 'sense-dia' ? 'Sense dia' : formatIsoDay(day)}
+                        </h2>
+                        <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-[3px] text-xs font-semibold text-indigo-700">
+                          {dayRows.length} auditories
+                        </span>
+                      </header>
+                      {dayRows.map((r) => (
+                        <div key={r.id} className="rounded-xl border bg-white p-3 flex items-center justify-between gap-3">
+                          <Link
+                            href={`/menu/auditoria/valoracio/${r.id}?${new URLSearchParams({
+                              fromTs: String(fromTs),
+                              toTs: String(toTs),
+                              ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+                              ...(departmentFilter !== 'all' ? { department: departmentFilter } : {}),
+                              ...(query.trim() ? { q: query.trim() } : {}),
+                            }).toString()}`}
+                            className="min-w-0 flex-1"
+                            onClick={() => {
+                              if (typeof window === 'undefined') return
+                              const orderedIds = rows.map((row) => row.id).filter(Boolean)
+                              window.sessionStorage.setItem(VALUATION_NAV_STORAGE_KEY, JSON.stringify(orderedIds))
+                            }}
                           >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
+                            <div className="text-sm font-semibold text-gray-900 truncate">{r.eventSummary || `Event ${r.eventId}`} - {r.department}</div>
+                            <div className="text-xs text-gray-600 truncate">{r.templateName || 'Sense plantilla'} - {formatDate(r.completedAt)} - {r.completedByName}</div>
+                          </Link>
+                          <div className="flex items-center gap-2">
+                            <span className={['text-xs rounded-full px-2 py-1', statusClass(r.status)].join(' ')}>{statusLabel(r.status)}</span>
+                            {isAdmin ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-red-600 hover:text-red-700"
+                                aria-label="Eliminar auditoria"
+                                title="Eliminar auditoria"
+                                disabled={deletingId === r.id}
+                                onClick={() => deleteExecution(r.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </section>
                   ))}
                   {hasMoreRows ? (
                     <div className="flex justify-center pt-2">
@@ -888,4 +953,3 @@ export default function AuditoriaValoracioPage() {
     </RoleGuard>
   )
 }
-

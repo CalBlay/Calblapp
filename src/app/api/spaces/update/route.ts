@@ -103,10 +103,16 @@ export async function POST(req: Request) {
 
       if (Array.isArray(value)) {
         produccioFormatted[key] = cleanArray(value)
-      } else if (typeof value === "string") {
+      } else if (typeof value === 'string') {
         produccioFormatted[key] = value.trim()
-      } else {
+      } else if (
+        typeof value === 'number' ||
+        typeof value === 'boolean' ||
+        value == null
+      ) {
         produccioFormatted[key] = value
+      } else {
+        produccioFormatted[key] = String(value)
       }
     }
 

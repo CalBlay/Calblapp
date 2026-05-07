@@ -141,6 +141,23 @@ type SendMaintenanceSupplierEmailInput = {
   }>
 }
 
+type SendMaintenanceHistoryEmailInput = {
+  senderEmail: string
+  recipient: ProjectRecipient
+  subject: string
+  templateName: string
+  periodicity?: string | null
+  location?: string | null
+  recordsCount: number
+  validatedCount: number
+  message?: string
+  attachments?: Array<{
+    name: string
+    path: string
+    contentType?: string | null
+  }>
+}
+
 async function getAccessToken() {
   const tokenData = await getGraphToken()
   return typeof tokenData === 'string' ? tokenData : tokenData.access_token
@@ -913,6 +930,84 @@ export async function sendMaintenanceSupplierEmail(input: SendMaintenanceSupplie
     const text = await response.text()
     throw new Error(`No s ha pogut enviar el correu al proveidor: ${response.status} ${text}`)
   }
+}
+
+export async function sendMaintenanceHistoryEmail(input: SendMaintenanceHistoryEmailInput) {
+  const recipientEmail = String(input.recipient.email || '').trim()
+  const senderEmail = String(input.senderEmail || '').trim()
+  const subject = String(input.subject || '').trim()
+  if (!recipientEmail || !senderEmail || !subject) return
+
+  const attachments = await buildMailAttachments(input.attachments || [])
+
+  const accessToken = await getAccessToken()
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(senderEmail)}/sendMail`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: {
+            contentType: 'HTML',
+            content: buildMaintenanceHistoryEmailHtml(input),
+          },
+          toRecipients: [
+            {
+              emailAddress: {
+                address: recipientEmail,
+                name: input.recipient.name || recipientEmail,
+              },
+            },
+          ],
+          attachments,
+        },
+        saveToSentItems: true,
+      }),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`No s ha pogut enviar el correu de l historial: ${response.status} ${text}`)
+  }
+}
+
+function buildMaintenanceHistoryEmailHtml(input: SendMaintenanceHistoryEmailInput) {
+  const details = [
+    ['Plantilla', input.templateName || '-'],
+    ['Periodicitat', input.periodicity || '-'],
+    ['Ubicacio', input.location || '-'],
+    ['Registres', String(input.recordsCount || 0)],
+    ['Validats', String(input.validatedCount || 0)],
+  ]
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:6px 10px;border:1px solid #dbe4dc;background:#f8fbf8;font-weight:600">${escapeHtml(
+          label
+        )}</td><td style="padding:6px 10px;border:1px solid #dbe4dc">${escapeHtml(value)}</td></tr>`
+    )
+    .join('')
+
+  const extra = String(input.message || '').trim()
+    ? `<p><strong>Missatge:</strong><br/>${escapeHtml(String(input.message || '')).replace(/\n/g, '<br/>')}</p>`
+    : ''
+
+  return `
+    <div style="font-family:Segoe UI,Arial,sans-serif;color:#0f172a;line-height:1.5">
+      <p>S adjunta el PDF de l historial de manteniment per a la seva revisio.</p>
+      <table style="border-collapse:collapse;margin:12px 0 16px;min-width:420px">
+        ${details}
+      </table>
+      ${extra}
+      <p>Document adjunt: <strong>${escapeHtml(input.templateName || 'Historial de manteniment')}</strong>.</p>
+    </div>
+  `
 }
 
 function buildKickoffHtml(projectName: string, notes?: string) {

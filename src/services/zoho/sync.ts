@@ -192,6 +192,16 @@ const parseZohoTime = (raw?: string | null): string | null => {
   return match ? match[1] : null
 }
 
+const normalizeCommercialName = (value?: string | null) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+
+const isForcedGrupsRestaurantsCommercial = (value?: string | null) =>
+  normalizeCommercialName(value) === 'marta granato'
+
 /** Si el Responsable operatiu és un camp API diferent del `Responsable` principal, definir-lo al `.env`. */
 const ZOHO_EXTRA_RESPONSABLE_FIELD = String(
   process.env.ZOHO_DEAL_FIELD_RESPONSABLE_OPERATIU || ''
@@ -613,8 +623,13 @@ export async function syncZohoDealsToFirestore(): Promise<{
       dataFiISO = fi.toISOString().slice(0, 10)
     }
 
+    const ownerCommercial = d.Owner?.name?.trim() || '—'
+
     // LN base segons comercial (Owner)
     let LN = await getLN(d.Owner?.id)
+    if (isForcedGrupsRestaurantsCommercial(ownerCommercial)) {
+      LN = 'Grups Restaurants'
+    }
 
     // Ubicacions que venen de Zoho
     const ubicacions = [...(d.Espai_2 || []), ...(d.Finca_2 || [])]
@@ -644,7 +659,6 @@ const ubicacioLabel = stripCode(ubicacioRaw).trim()
     const fincaId = fincaMatch?.id
     const fincaCode = fincaMatch?.code
     const fincaLN = fincaMatch?.ln
-    const ownerCommercial = d.Owner?.name?.trim() || '—'
     const comercial = ownerCommercial
     const responsableZoho = operativeResponsableFromZohoDeal(
       d as ZohoDeal & Record<string, unknown>

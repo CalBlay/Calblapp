@@ -96,6 +96,7 @@ export default function AuditoriaConsultaEventPage() {
 
   const fromTs = String(searchParams?.get('fromTs') || '').trim()
   const toTs = String(searchParams?.get('toTs') || '').trim()
+  const eventDay = String(searchParams?.get('eventDay') || '').trim()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -104,6 +105,7 @@ export default function AuditoriaConsultaEventPage() {
       const qs = new URLSearchParams({ limit: '100', status: 'validated', eventId })
       if (fromTs) qs.set('fromTs', fromTs)
       if (toTs) qs.set('toTs', toTs)
+      if (eventDay) qs.set('eventDay', eventDay)
 
       const res = await fetch(`/api/auditoria/executions/list?${qs.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
@@ -189,7 +191,10 @@ export default function AuditoriaConsultaEventPage() {
         <ModuleHeader subtitle="Consulta" />
 
         <Card className="space-y-4">
-          <div className="text-base font-semibold text-gray-900">{eventSummary}</div>
+          <div className="text-base font-semibold text-gray-900">
+            {eventSummary}
+            {eventDay ? ` · ${formatIsoDay(eventDay)}` : ''}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {DEPARTMENTS.map((d) => (

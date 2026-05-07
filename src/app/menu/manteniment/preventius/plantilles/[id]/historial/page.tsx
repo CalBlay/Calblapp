@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation'
 import { format } from 'date-fns'
 import ExportMenu from '@/components/export/ExportMenu'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
+import { addCalBlayLogoToPdf, fetchCalBlayLogoDataUrl, printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { maintenanceStatusBadge } from '@/lib/colors'
 import { RoleGuard } from '@/lib/withRoleGuard'
@@ -89,6 +89,7 @@ export default function PlantillaHistorialPage() {
   const [records, setRecords] = useState<CompletedRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -176,6 +177,143 @@ export default function PlantillaHistorialPage() {
     XLSX.writeFile(wb, `${exportBase}.xlsx`)
   }
 
+  const buildHistoryPdfDocument = async () => {
+    const { jsPDF } = await import('jspdf')
+    const logoDataUrl = await fetchCalBlayLogoDataUrl()
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
+    const margin = 40
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+    const tableWidth = pageWidth - margin * 2
+    const colDate = 88
+    const colStatus = 64
+    const colWorker = 78
+    const colTime = 76
+    const colChecklist = 66
+    const colTitle = tableWidth - colDate - colStatus - colWorker - colTime - colChecklist
+
+    let y = margin
+    const hasLogo = addCalBlayLogoToPdf(pdf, logoDataUrl, {
+      x: margin,
+      y: y - 8,
+      width: 82,
+      height: 52,
+    })
+    if (hasLogo) y += 50
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(15)
+    pdf.text('Historial de manteniment preventiu', margin, y)
+    y += 16
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(10)
+    pdf.text(template?.name || 'Plantilla', margin, y)
+    y += 10
+    pdf.setDrawColor(190)
+    pdf.line(margin, y, pageWidth - margin, y)
+    y += 14
+
+    const metaRows: Array<[string, string]> = [
+      ['Periodicitat', PERIODICITY_LABELS[String(template?.periodicity || '')] || '-'],
+      ['Ubicacio', template?.location || '-'],
+      ['Operari principal', template?.primaryOperator || '-'],
+      ['Backup', template?.backupOperator || '-'],
+      ['Registres', String(records.length)],
+      ['Validats', String(validatedCount)],
+    ]
+
+    const metaLabelW = 110
+    const metaLineH = 11
+    const metaMinRowH = 18
+    pdf.setFontSize(10)
+    metaRows.forEach(([label, value]) => {
+      const wrapped = pdf.splitTextToSize(String(value || '-'), tableWidth - metaLabelW - 16) as string[]
+      const rowH = Math.max(metaMinRowH, wrapped.length * metaLineH + 8)
+      const top = y - 12
+      pdf.setDrawColor(220)
+      pdf.rect(margin, top, tableWidth, rowH)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text(`${label}:`, margin + 6, y)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(wrapped, margin + metaLabelW, y)
+      y += rowH
+    })
+
+    y += 10
+    const xTitle = margin
+    const xDate = xTitle + colTitle
+    const xStatus = xDate + colDate
+    const xWorker = xStatus + colStatus
+    const xTime = xWorker + colWorker
+    const xChecklist = xTime + colTime
+
+    const drawHeader = () => {
+      pdf.setFillColor(245, 248, 246)
+      pdf.rect(margin, y - 11, tableWidth, 20, 'F')
+      pdf.setDrawColor(200)
+      pdf.rect(margin, y - 11, tableWidth, 20)
+      pdf.line(xDate, y - 11, xDate, y + 9)
+      pdf.line(xStatus, y - 11, xStatus, y + 9)
+      pdf.line(xWorker, y - 11, xWorker, y + 9)
+      pdf.line(xTime, y - 11, xTime, y + 9)
+      pdf.line(xChecklist, y - 11, xChecklist, y + 9)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(9)
+      pdf.text('Titol', xTitle + 6, y + 2)
+      pdf.text('Data', xDate + 6, y + 2)
+      pdf.text('Estat', xStatus + 6, y + 2)
+      pdf.text('Operari', xWorker + 6, y + 2)
+      pdf.text('Hora', xTime + 6, y + 2)
+      pdf.text('Checklist', xChecklist + 6, y + 2)
+      pdf.setFont('helvetica', 'normal')
+      y += 20
+    }
+
+    drawHeader()
+    const safeRows = exportRows.length > 0 ? exportRows : [{
+      Titol: template?.name || 'Preventiu',
+      Data: '-',
+      Estat: '-',
+      Operari: '-',
+      HoraInici: '--:--',
+      HoraFi: '--:--',
+      Checklist: 'Sense registres',
+      Observacions: '',
+      CreatPer: '-',
+    }]
+
+    for (const row of safeRows) {
+      const titleLines = pdf.splitTextToSize(String(row.Titol || '-'), colTitle - 10) as string[]
+      const checklistLines = pdf.splitTextToSize(String(row.Checklist || '-'), colChecklist - 10) as string[]
+      const rowH = Math.max(24, titleLines.length * 11 + 8, checklistLines.length * 11 + 8)
+      if (y + rowH > pageHeight - margin) {
+        pdf.addPage()
+        y = margin
+        drawHeader()
+      }
+
+      const top = y - 11
+      pdf.setDrawColor(220)
+      pdf.rect(margin, top, tableWidth, rowH)
+      pdf.line(xDate, top, xDate, top + rowH)
+      pdf.line(xStatus, top, xStatus, top + rowH)
+      pdf.line(xWorker, top, xWorker, top + rowH)
+      pdf.line(xTime, top, xTime, top + rowH)
+      pdf.line(xChecklist, top, xChecklist, top + rowH)
+
+      pdf.setFontSize(8.5)
+      pdf.text(titleLines, xTitle + 6, y + 1)
+      pdf.text(pdf.splitTextToSize(String(row.Data || '-'), colDate - 10) as string[], xDate + 6, y + 1)
+      pdf.text(pdf.splitTextToSize(String(row.Estat || '-'), colStatus - 10) as string[], xStatus + 6, y + 1)
+      pdf.text(pdf.splitTextToSize(String(row.Operari || '-'), colWorker - 10) as string[], xWorker + 6, y + 1)
+      pdf.text(`${row.HoraInici || '--:--'} - ${row.HoraFi || '--:--'}`, xTime + 6, y + 1)
+      pdf.text(checklistLines, xChecklist + 6, y + 1)
+      y += rowH
+    }
+
+    return pdf
+  }
+
   const buildPdfTableHtml = () => {
     const rows = exportRows
       .map(
@@ -239,10 +377,81 @@ export default function PlantillaHistorialPage() {
     window.print()
   }
 
+  const handleSendEmail = async () => {
+    if (!template || records.length === 0) return
+    const recipientEmail = window.prompt('Email destinatari', '')
+    if (!recipientEmail) return
+    if (!recipientEmail.includes('@')) {
+      window.alert('L email destinatari no es valid.')
+      return
+    }
+    const subject = window.prompt(
+      'Assumpte del correu',
+      `Historial preventiu - ${template.name || 'Plantilla'}`
+    )
+    if (!subject) return
+    const message = window.prompt(
+      'Missatge opcional',
+      `Adjunto el PDF de l historial del preventiu ${template.name || ''}.`
+    )
+
+    try {
+      setSendingEmail(true)
+      const pdf = await buildHistoryPdfDocument()
+      const blob = pdf.output('blob')
+      const file = new File([blob], `${exportBase}.pdf`, { type: 'application/pdf' })
+      const form = new FormData()
+      form.append('file', file)
+      form.append('ticketId', id)
+      const uploadRes = await fetch('/api/maintenance/upload-email-attachment', {
+        method: 'POST',
+        body: form,
+      })
+      const uploadJson = await uploadRes.json().catch(() => ({}))
+      if (!uploadRes.ok) {
+        throw new Error(uploadJson?.error || 'No s ha pogut pujar el PDF adjunt')
+      }
+
+      const emailRes = await fetch(
+        `/api/maintenance/preventius/plantilles/${encodeURIComponent(id)}/historial/email`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipientEmail,
+            recipientName: recipientEmail,
+            subject,
+            message: message || '',
+            templateName: template.name || 'Plantilla',
+            periodicity: PERIODICITY_LABELS[String(template.periodicity || '')] || '-',
+            location: template.location || '-',
+            recordsCount: records.length,
+            validatedCount,
+            attachment: {
+              name: String(uploadJson?.name || `${exportBase}.pdf`),
+              path: String(uploadJson?.path || ''),
+              contentType: 'application/pdf',
+            },
+          }),
+        }
+      )
+      const emailJson = await emailRes.json().catch(() => ({}))
+      if (!emailRes.ok) {
+        throw new Error(emailJson?.error || 'No s ha pogut enviar el correu')
+      }
+      window.alert('Correu enviat amb el PDF adjunt.')
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'No s ha pogut enviar el correu')
+    } finally {
+      setSendingEmail(false)
+    }
+  }
+
   const exportItems = [
     { label: 'Excel (.xlsx)', onClick: handleExportExcel, disabled: records.length === 0 },
     { label: 'PDF (vista)', onClick: handleExportPdfView, disabled: records.length === 0 },
     { label: 'PDF (taula)', onClick: handleExportPdfTable, disabled: records.length === 0 },
+    { label: sendingEmail ? 'Enviant email...' : 'Enviar per email', onClick: handleSendEmail, disabled: records.length === 0 || sendingEmail },
   ]
 
   return (

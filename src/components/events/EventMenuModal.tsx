@@ -224,16 +224,15 @@ export default function EventMenuModal({
   const [showEspais, setShowEspais] = useState(false)
 
   const { data: personnelData, loading: personnelLoading } = useEventPersonnel(event?.id)
-  const responsablePerson = personnelData?.responsables?.[0]
-  ? {
-      id: personnelData.responsables[0].id,
-      name: personnelData.responsables[0].name,
-      phone: personnelData.responsables[0].phone,
-      department: personnelData.responsables[0].department,
-      meetingPoint: personnelData.responsables[0].meetingPoint,
-      time: personnelData.responsables[0].time,
-    }
-  : null
+  const responsablesPersons =
+    personnelData?.responsables?.map((responsable) => ({
+      id: responsable.id,
+      name: responsable.name,
+      phone: responsable.phone,
+      department: responsable.department,
+      meetingPoint: responsable.meetingPoint,
+      time: responsable.time,
+    })) ?? []
 
 const conductorsPersons =
   personnelData?.conductors?.map(c => ({
@@ -269,6 +268,8 @@ const treballadorsPersons =
       const dept = normalizeAuditDepartment(user.department)
       if (dept) {
         const auditQs = new URLSearchParams({ eventId, department: dept })
+        const eventDay = String(event?.start || '').slice(0, 10)
+        if (eventDay) auditQs.set('eventDay', eventDay)
         void fetch(`/api/auditoria/executions?${auditQs}`, { cache: 'no-store' }).catch(() => {})
       }
     }
@@ -692,9 +693,9 @@ const recursos = useMemo(
   onClose={() => setShowPersonnel(false)}
   eventName={event.summary}
   code={String(event.id)}
-  responsable={responsablePerson}
-conductors={conductorsPersons}
-treballadors={treballadorsPersons}
+  responsables={responsablesPersons}
+  conductors={conductorsPersons}
+  treballadors={treballadorsPersons}
 
   loading={personnelLoading}
 />

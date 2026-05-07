@@ -55,7 +55,21 @@ function mergeGroup(arr: TornCardItem[]): TornCardItem {
 
   const byKey = new Map<string, MergeWorker>()
 
-  const pushWorker = (w?: MergeWorker | null) => {
+  const pushWorker = (
+    w:
+      | {
+          id?: string
+          name?: string
+          role?: 'responsable' | 'conductor' | 'treballador' | null
+          startTime?: string
+          endTime?: string
+          meetingPoint?: string
+          department?: string
+          plate?: string
+        }
+      | null
+      | undefined
+  ) => {
     if (!w) return
     const key = w.id ? String(w.id) : (w.name ? w.name.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '') : '')
     if (!key) return
@@ -63,7 +77,7 @@ function mergeGroup(arr: TornCardItem[]): TornCardItem {
     const roleNorm = (w.role || 'treballador') as MergeWorker['role']
     const nw: MergeWorker = {
       id: w.id,
-      name: w.name,
+      name: w.name || '',
       role: roleNorm,
       startTime: w.startTime,
       endTime: w.endTime,
@@ -102,6 +116,10 @@ function mergeGroup(arr: TornCardItem[]): TornCardItem {
   }
 
   const workers = Array.from(byKey.values())
+  const primaryWorker =
+    workers.find((worker) => worker.role === 'responsable') ||
+    workers.find((worker) => worker.role === 'conductor') ||
+    workers[0]
 
   const parseStart = (s?: string) => (s || '').split('-')[0]?.trim() || ''
   const parseEnd = (s?: string) => (s || '').split('-')[1]?.trim() || ''
@@ -140,8 +158,8 @@ function mergeGroup(arr: TornCardItem[]): TornCardItem {
     dayNote,
     phaseLabel,
     vestimentModel,
-    workerName: workers.length === 1 ? workers[0].name : undefined,
-    workerRole: workers.length === 1 ? workers[0].role : null,
+    workerName: primaryWorker?.name,
+    workerRole: primaryWorker?.role ?? null,
     __rawWorkers: workers,
   }
 }

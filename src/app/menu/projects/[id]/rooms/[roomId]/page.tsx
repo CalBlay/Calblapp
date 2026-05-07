@@ -309,35 +309,6 @@ export default function ProjectRoomDetailPage() {
     return Array.from(byName.values())
   }, [currentBlock, project?.owner, users])
 
-  useEffect(() => {
-    if (!params?.id || !params?.roomId || !currentRoom || currentRoom.opsChannelId) return
-
-    let cancelled = false
-
-    ;(async () => {
-      try {
-        const res = await fetch(`/api/projects/${params.id}/rooms/${params.roomId}`, {
-          method: 'PUT',
-        })
-        const payload = (await res.json().catch(() => ({}))) as {
-          error?: string
-          room?: NonNullable<typeof currentRoom>
-        }
-        if (!res.ok || !payload.room || cancelled) return
-
-        updateRoomLocal(() => payload.room!)
-      } catch {
-        if (!cancelled) {
-          setError((current) => current || 'No s ha pogut enllacar la sala amb Ops')
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [currentRoom, params?.id, params?.roomId, updateRoomLocal])
-
   const persistRoom = async (
     nextRoom: ResolvedRoom,
     nextTasks?: typeof linkedTasks
@@ -382,6 +353,35 @@ export default function ProjectRoomDetailPage() {
       }
     })
   }, [fallbackRoom, params?.roomId])
+
+  useEffect(() => {
+    if (!params?.id || !params?.roomId || !currentRoom || currentRoom.opsChannelId) return
+
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/projects/${params.id}/rooms/${params.roomId}`, {
+          method: 'PUT',
+        })
+        const payload = (await res.json().catch(() => ({}))) as {
+          error?: string
+          room?: NonNullable<typeof currentRoom>
+        }
+        if (!res.ok || !payload.room || cancelled) return
+
+        updateRoomLocal(() => payload.room!)
+      } catch {
+        if (!cancelled) {
+          setError((current) => current || 'No s ha pogut enllacar la sala amb Ops')
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentRoom, params?.id, params?.roomId, updateRoomLocal])
 
   const updateBlockTasksLocal = (tasks: NonNullable<typeof linkedBlock>['tasks']) => {
     setProject((current) => {

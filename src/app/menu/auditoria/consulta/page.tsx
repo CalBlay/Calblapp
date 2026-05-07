@@ -263,7 +263,7 @@ export default function AuditoriaConsultaPage() {
                     return (
                       <Link
                         key={event.eventId}
-                        href={`/menu/auditoria/consulta/${encodeURIComponent(event.eventId)}?fromTs=${toStartTs(fromDate)}&toTs=${toEndTs(toDate)}`}
+                        href={`/menu/auditoria/consulta/${encodeURIComponent(event.eventId)}?fromTs=${toStartTs(fromDate)}&toTs=${toEndTs(toDate)}&eventDay=${encodeURIComponent(event.eventDay || '')}`}
                         className="block rounded-xl border bg-white p-3 hover:bg-cyan-50"
                       >
                         <div className="flex items-start justify-between gap-3">

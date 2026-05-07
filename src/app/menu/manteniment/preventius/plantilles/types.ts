@@ -5,7 +5,7 @@ export type TemplateSection = { location: string; items: { label: string }[] }
 export type Template = {
   id: string
   name: string
-  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | null
+  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'semestral' | 'yearly' | null
   lastDone?: string | null
   location?: string
   primaryOperator?: string
@@ -37,5 +37,6 @@ export const PERIODICITY_OPTIONS: { value: string; label: string }[] = [
   { value: 'weekly', label: 'Setmanal' },
   { value: 'monthly', label: 'Mensual' },
   { value: 'quarterly', label: 'Trimestral' },
+  { value: 'semestral', label: 'Semestral' },
   { value: 'yearly', label: 'Anual' },
 ]

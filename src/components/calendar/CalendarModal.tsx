@@ -559,7 +559,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
             <label className="block text-xs text-gray-500 mb-1">
               Línia de negoci
             </label>
-            {isManual && !readonly ? (
+            {canEdit ? (
               <select
                 value={editData.LN}
                 onChange={(e) => handleChange('LN', e.target.value)}
@@ -580,7 +580,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
           {/* Nom */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">Nom</label>
-            {isManual && !readonly ? (
+            {canEdit ? (
               <Input
                 value={editData.NomEvent}
                 onChange={(e) => handleChange('NomEvent', e.target.value)}
@@ -703,7 +703,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
           {/* Ubicació */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">Ubicació</label>
-            {isManual && !readonly ? (
+            {canEdit ? (
               <SearchFincaInput
                 value={editData.Ubicacio}
                 onChange={(val) => {
@@ -721,7 +721,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
             <label className="block text-xs text-gray-500 mb-1">
               Tipus de Servei
             </label>
-            {isManual && !readonly ? (
+            {canEdit ? (
               <SearchServeiInput
                 value={editData.Servei}
                 onChange={(val) => handleChange('Servei', val)}
@@ -736,7 +736,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
             <label className="block text-xs text-gray-500 mb-1">
               Nombre de Pax
             </label>
-            {isManual && !readonly ? (
+            {canEdit ? (
               <div className="relative">
                 <Input
                   type="number"
@@ -759,7 +759,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
               Comercial
               <span className="text-gray-400 font-normal"> (oportunitat)</span>
             </label>
-            {isManual && !readonly ? (
+            {canEdit ? (
               <select
                 value={editData.Comercial}
                 onChange={(e) => handleChange('Comercial', e.target.value)}
@@ -786,7 +786,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
               Responsable
               <span className="text-gray-400 font-normal"> (seguiment)</span>
             </label>
-            {isManual && !readonly ? (
+            {canEdit ? (
               <Input
                 value={editData.Responsable}
                 onChange={(e) => handleChange('Responsable', e.target.value)}

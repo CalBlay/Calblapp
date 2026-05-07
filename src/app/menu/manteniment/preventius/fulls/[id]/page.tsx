@@ -16,7 +16,7 @@ type TemplateSection = { location: string; items: { label: string }[] }
 type Template = {
   id: string
   name: string
-  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'
+  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'semestral' | 'yearly'
   sections: TemplateSection[]
 }
 
@@ -327,6 +327,7 @@ export default function PreventiusFullsFitxaPage() {
     if (!periodicity) return null
     if (periodicity === 'monthly') return addMonths(date, 1)
     if (periodicity === 'quarterly') return addMonths(date, 3)
+    if (periodicity === 'semestral') return addMonths(date, 6)
     if (periodicity === 'yearly') return addMonths(date, 12)
     if (periodicity === 'weekly') return addDays(date, 7)
     if (periodicity === 'daily') return addDays(date, 1)

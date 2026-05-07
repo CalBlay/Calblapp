@@ -302,6 +302,7 @@ export default function MissatgeriaPage() {
       await refreshMessages()
       await refreshChannels()
     } catch (err: unknown) {
+      // @ts-ignore narrow runtime error message access
       alert(err?.message || 'No s’ha pogut crear el ticket')
     } finally {
       setCreatingTicketId(null)
@@ -864,5 +865,4 @@ export default function MissatgeriaPage() {
     </RoleGuard>
   )
 }
-
 

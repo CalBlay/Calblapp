@@ -152,7 +152,7 @@ export const parseStoredDate = (value?: string | null) => {
 
 export const calculateNextDue = (
   lastDone: Date,
-  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'
+  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'semestral' | 'yearly'
 ) => {
   if (!periodicity) return null
   const next = new Date(lastDone)
@@ -160,6 +160,7 @@ export const calculateNextDue = (
   if (periodicity === 'weekly') next.setDate(next.getDate() + 7)
   if (periodicity === 'monthly') next.setMonth(next.getMonth() + 1)
   if (periodicity === 'quarterly') next.setMonth(next.getMonth() + 3)
+  if (periodicity === 'semestral') next.setMonth(next.getMonth() + 6)
   if (periodicity === 'yearly') next.setFullYear(next.getFullYear() + 1)
   next.setHours(23, 59, 59, 999)
   return next

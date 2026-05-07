@@ -38,7 +38,6 @@ export function useEventPersonnel(eventId?: string | number) {
     if (!eventId) {
       setData(null)
       setLoading(false)
-      return
     }
 
     const key = String(eventId)

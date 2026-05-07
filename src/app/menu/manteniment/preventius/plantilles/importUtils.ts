@@ -16,7 +16,7 @@ export const SHEET_PERIODICITY: Record<string, NonNullable<Template['periodicity
   SETMANALS: 'weekly',
   MENSUALS: 'monthly',
   TRIMESTRALS: 'quarterly',
-  SEMESTRALS: 'quarterly',
+  SEMESTRALS: 'semestral',
   ANUALS: 'yearly',
 }
 
@@ -139,7 +139,8 @@ export const periodFromLabel = (value: string): Template['periodicity'] => {
   if (normalized.startsWith('DIARI')) return 'daily'
   if (normalized.startsWith('SETMANAL')) return 'weekly'
   if (normalized.startsWith('MENSUAL')) return 'monthly'
-  if (normalized.startsWith('TRIMESTRAL') || normalized.startsWith('SEMESTRAL')) return 'quarterly'
+  if (normalized.startsWith('TRIMESTRAL')) return 'quarterly'
+  if (normalized.startsWith('SEMESTRAL')) return 'semestral'
   if (normalized.startsWith('ANUAL')) return 'yearly'
   return null
 }

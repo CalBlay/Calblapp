@@ -37,6 +37,11 @@ type PendingImage = {
   preview: string
 }
 
+const mobileFieldClass =
+  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm leading-5 text-slate-800 shadow-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100'
+
+const mobileSelectClass = `${mobileFieldClass} appearance-none bg-[linear-gradient(45deg,transparent_50%,#64748b_50%),linear-gradient(135deg,#64748b_50%,transparent_50%)] bg-[position:calc(100%-18px)_calc(50%-2px),calc(100%-12px)_calc(50%-2px)] bg-[size:6px_6px,6px_6px] bg-no-repeat pr-10`
+
 export default function CreateIncidentModal({
   open,
   event,
@@ -253,19 +258,19 @@ export default function CreateIncidentModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="w-[92vw] max-w-sm rounded-2xl" lockDismissOnOutside>
+      <DialogContent className="w-[94vw] max-w-sm rounded-2xl p-0 overflow-hidden" lockDismissOnOutside>
         <DialogHeader>
-          <DialogTitle>Nova incidencia</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="px-4 pt-4 text-base font-semibold text-slate-900">Nova incidencia</DialogTitle>
+          <DialogDescription className="px-4 pb-3 text-xs leading-5 text-slate-500">
             {event.summary.replace(/#.*$/, '').trim()} · {event.start.substring(0, 10)}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className={cn('space-y-4', typography('bodySm'))}>
-          <div>
-            <label className={cn('mb-1 block', typography('label'))}>Departament *</label>
+        <form onSubmit={handleSubmit} className={cn('space-y-4 px-4 pb-4', typography('bodySm'))}>
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Departament *</label>
             <select
-              className="w-full rounded border p-2"
+              className={mobileSelectClass}
               value={department}
               onChange={(e) => {
                 if (canPickDepartment) setDepartment(e.target.value)
@@ -281,10 +286,10 @@ export default function CreateIncidentModal({
             </select>
           </div>
 
-          <div>
-            <label className={cn('mb-1 block', typography('label'))}>Categoria *</label>
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Categoria *</label>
             <select
-              className="w-full rounded border p-2"
+              className={mobileSelectClass}
               value={category?.id || ''}
               onChange={(e) => {
                 const selected = categories.find((c) => c.id === e.target.value)
@@ -300,17 +305,22 @@ export default function CreateIncidentModal({
               ) : (
                 categories.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.id} - {c.label}
+                    {c.label}
                   </option>
                 ))
               )}
             </select>
+            {category?.label ? (
+              <p className="text-[11px] leading-4 text-slate-500">
+                Seleccionada: <span className="font-medium text-slate-700">{category.label}</span>
+              </p>
+            ) : null}
           </div>
 
-          <div>
-            <label className={cn('mb-1 block', typography('label'))}>Importancia *</label>
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Importancia *</label>
             <select
-              className="w-full rounded border p-2"
+              className={mobileSelectClass}
               value={importance}
               onChange={(e) => setImportance(e.target.value)}
               required
@@ -323,11 +333,11 @@ export default function CreateIncidentModal({
             </select>
           </div>
 
-          <div>
-            <label className={cn('mb-1 block', typography('label'))}>Descripcio *</label>
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Descripcio *</label>
             <textarea
-              className="w-full rounded border p-2"
-              rows={3}
+              className={cn(mobileFieldClass, 'min-h-[108px] resize-none')}
+              rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               required

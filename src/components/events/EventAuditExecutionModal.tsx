@@ -110,11 +110,14 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const department =
     userRole === 'comercial' ? 'comercial' : normalizeAuditDepartment(user.department || '') || ''
   const eventId = String(event.id || '')
+  const eventDay = String(event.start || '').slice(0, 10)
 
   const executionUrl = useMemo(() => {
     if (!open || !eventId || !department) return null
-    return `/api/auditoria/executions?${new URLSearchParams({ eventId, department }).toString()}`
-  }, [open, eventId, department])
+    const qs = new URLSearchParams({ eventId, department })
+    if (eventDay) qs.set('eventDay', eventDay)
+    return `/api/auditoria/executions?${qs.toString()}`
+  }, [open, eventId, department, eventDay])
 
   const { data, error: swrError, isLoading, mutate } = useSWR<AuditExecutionPayload>(executionUrl, {
     revalidateOnFocus: false,
@@ -258,7 +261,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
           eventSummary: String(event.summary || '').replace(/#.*$/, '').trim(),
           eventCode: String(event.eventCode || '').trim() || null,
           eventLocation: String(event.location || '').trim() || null,
-          eventDay: String(event.start || '').slice(0, 10) || null,
+          eventDay: eventDay || null,
           department,
           incidentOutcome: outcome,
           incidentIds: hasIncidents ? incidentIds : [],
@@ -291,6 +294,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
         body: JSON.stringify({
           mode: 'reopen',
           eventId,
+          eventDay: eventDay || null,
           department,
         }),
       })

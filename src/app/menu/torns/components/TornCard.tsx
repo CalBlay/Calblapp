@@ -195,8 +195,12 @@ export default function TornCard({ item, onClick, onEventClick, onAvisosClick, o
   const totalAssignats = Object.values(grouped).reduce((a, n) => a + n.length, 0)
 
   const names = uniqueWorkerNames(item.__rawWorkers)
-  const namesPreview = names.slice(0, 3).join(', ')
-  const rest = Math.max(0, names.length - 3)
+  const primaryName = String(item.workerName || '').trim()
+  const secondaryNames = primaryName
+    ? names.filter((name) => name.trim().toLowerCase() !== primaryName.toLowerCase())
+    : names
+  const namesPreview = secondaryNames.slice(0, 2).join(', ')
+  const rest = Math.max(0, secondaryNames.length - 2)
 
   const effectiveRole: 'responsable' | 'conductor' | 'treballador' | null | undefined =
     item.workerRole ||
@@ -255,10 +259,15 @@ export default function TornCard({ item, onClick, onEventClick, onAvisosClick, o
 
       <div className="text-base font-semibold text-gray-900 mb-2 flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
         {item.workerName ? (
-          <span className="text-[1.05rem] sm:text-lg font-bold text-gray-800 break-words">{item.workerName}</span>
+          <span className="text-[1.05rem] sm:text-lg font-bold text-gray-800 break-words">
+            {item.workerName}
+            {namesPreview ? `, ${namesPreview}` : ''}
+            {rest ? ` +${rest} més` : ''}
+          </span>
         ) : names.length ? (
           <span className="text-sm text-gray-700 break-words">
-            {namesPreview}{rest ? ` +${rest} més` : ''}
+            {names.slice(0, 3).join(', ')}
+            {Math.max(0, names.length - 3) ? ` +${Math.max(0, names.length - 3)} més` : ''}
           </span>
         ) : null}
 

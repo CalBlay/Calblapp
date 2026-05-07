@@ -168,12 +168,14 @@ type TornDoc = {
   vestimentModel?: string
 }
 
-function isConfirmed(data: FirestoreData): boolean {
+function isVisibleInTorns(data: FirestoreData): boolean {
   const st = String(data.status ?? data.estat ?? '')
     .toLowerCase()
     .trim()
   const hasMark = !!(data.confirmedAt ?? data.confirmada ?? data.confirmed)
   return (
+    st === 'draft' ||
+    st === 'esborrany' ||
     st === 'confirmed' ||
     st === 'confirmada' ||
     st === 'confirmat' ||
@@ -313,7 +315,6 @@ async function fetchDeptCollectionRange(
   try {
     snap = await db
       .collection(collName)
-      .where('status', '==', 'confirmed')
       .where('startDate', '>=', startISO)
       .where('startDate', '<=', endISO)
       .get()
@@ -323,7 +324,7 @@ async function fetchDeptCollectionRange(
 
   snap.forEach((doc) => {
     const data = doc.data() as FirestoreData
-    if (!isConfirmed(data)) return
+    if (!isVisibleInTorns(data)) return
 
     const t = mapDocToTorn(doc.id, data, dep)
     if (!t.startDate && !t.endDate) return
@@ -529,14 +530,13 @@ export async function fetchAllTorns(
 
       const collRef = db.collection('quadrants')
       const snap2 = await collRef
-        .where('status', '==', 'confirmed')
         .where('startDate', '>=', startISO)
         .where('startDate', '<=', endISO)
         .get()
 
       snap2.forEach((doc) => {
         const data = doc.data() as FirestoreData
-        if (!isConfirmed(data)) return
+        if (!isVisibleInTorns(data)) return
         const t = mapDocToTorn(doc.id, data, dep)
         if (!t.startDate && !t.endDate) return
 

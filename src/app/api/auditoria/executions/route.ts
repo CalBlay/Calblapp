@@ -27,6 +27,59 @@ type TemplateBlock = {
   items?: Array<{ id?: string; label?: string; type?: string; weight?: number }>
 }
 
+function normalizeEventDay(raw?: string | null) {
+  const value = String(raw || '').trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : ''
+}
+
+function buildExecutionDocId(eventId: string, department: Department, eventDay?: string | null) {
+  const normalizedDay = normalizeEventDay(eventDay)
+  return normalizedDay ? `${eventId}_${department}_${normalizedDay}` : `${eventId}_${department}`
+}
+
+async function findExistingExecutionRef(
+  eventId: string,
+  department: Department,
+  eventDay?: string | null
+) {
+  const normalizedDay = normalizeEventDay(eventDay)
+  const docId = buildExecutionDocId(eventId, department, normalizedDay)
+  const directRef = firestoreAdmin.collection('audit_runs').doc(docId)
+  const directSnap = await directRef.get()
+  if (directSnap.exists) {
+    return { ref: directRef, snap: directSnap, docId }
+  }
+
+  if (normalizedDay) {
+    const byFieldsSnap = await firestoreAdmin
+      .collection('audit_runs')
+      .where('eventId', '==', eventId)
+      .where('department', '==', department)
+      .where('eventDay', '==', normalizedDay)
+      .limit(1)
+      .get()
+
+    if (!byFieldsSnap.empty) {
+      const legacyDoc = byFieldsSnap.docs[0]
+      return {
+        ref: legacyDoc.ref,
+        snap: legacyDoc,
+        docId: legacyDoc.id,
+      }
+    }
+  }
+
+  if (!normalizedDay) {
+    const legacyRef = firestoreAdmin.collection('audit_runs').doc(`${eventId}_${department}`)
+    const legacySnap = await legacyRef.get()
+    if (legacySnap.exists) {
+      return { ref: legacyRef, snap: legacySnap, docId: legacyRef.id }
+    }
+  }
+
+  return { ref: directRef, snap: directSnap, docId }
+}
+
 function normalizeDept(raw?: string): Department | null {
   const value = (raw || '')
     .toString()
@@ -79,6 +132,7 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url)
     const eventId = String(searchParams.get('eventId') || '').trim()
+    const eventDay = normalizeEventDay(searchParams.get('eventDay'))
     const department = normalizeDept(searchParams.get('department') || '')
     if (!eventId || !department) {
       return NextResponse.json({ error: 'eventId i department son obligatoris' }, { status: 400 })
@@ -90,12 +144,8 @@ export async function GET(req: Request) {
       }
     }
 
-    const docId = `${eventId}_${department}`
-    const runRef = firestoreAdmin.collection('audit_runs').doc(docId)
-    const [executionSnap, visibleTemplate] = await Promise.all([
-      runRef.get(),
-      getVisibleTemplate(department),
-    ])
+    const { snap: executionSnap } = await findExistingExecutionRef(eventId, department, eventDay)
+    const visibleTemplate = await getVisibleTemplate(department)
     const execution = executionSnap.exists ? { id: executionSnap.id, ...executionSnap.data() } : null
 
     return NextResponse.json({ execution, visibleTemplate }, { status: 200 })
@@ -134,7 +184,7 @@ export async function POST(req: Request) {
     const eventSummary = String(body.eventSummary || '').replace(/#.*$/, '').trim()
     const eventCode = String(body.eventCode || '').trim()
     const eventLocation = String(body.eventLocation || '').trim()
-    const eventDay = String(body.eventDay || '').trim()
+    const eventDay = normalizeEventDay(String(body.eventDay || '').trim())
     const mode = body.mode === 'save' || body.mode === 'reopen' ? body.mode : 'finalize'
     const department = normalizeDept(body.department || '')
     const incidentOutcome = body.incidentOutcome
@@ -206,9 +256,11 @@ export async function POST(req: Request) {
 
     const visibleTemplate = await getVisibleTemplate(department)
     const now = Date.now()
-    const docId = `${eventId}_${department}`
-    const runRef = firestoreAdmin.collection('audit_runs').doc(docId)
-    const existingSnap = await runRef.get()
+    const { ref: runRef, snap: existingSnap, docId } = await findExistingExecutionRef(
+      eventId,
+      department,
+      eventDay
+    )
 
     if (mode === 'reopen') {
       if (!existingSnap.exists) {
