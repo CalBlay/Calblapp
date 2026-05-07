@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import {
   AvailableVehicle,
@@ -43,6 +43,8 @@ const createPhaseForms = (params: PhaseFormParams) =>
       workers: params.workers,
       drivers: params.drivers,
       meetingPoint: params.meetingPoint,
+      workerIds: [],
+      workerDetails: {},
     }
     return acc
   }, {} as Record<LogisticPhaseKey, LogisticPhaseForm>)
@@ -96,6 +98,7 @@ type UseLogisticsPhasesStateOptions = {
   totalWorkers: number
   numDrivers: number
   availableConductors: AvailableConductor[]
+  quadrantMode?: 'auto' | 'semi' | 'manual'
 }
 
 export type UseLogisticsPhasesStateResult = {
@@ -133,6 +136,7 @@ export function useLogisticsPhasesState({
   totalWorkers,
   numDrivers,
   availableConductors,
+  quadrantMode = 'semi',
 }: UseLogisticsPhasesStateOptions): UseLogisticsPhasesStateResult {
   const requestedPhaseKey = normalizePhaseKey(event.phaseKey || event.phaseType || event.phaseLabel)
   const baseMeetingPoint = meetingPoint || 'CENTRAL'
@@ -175,6 +179,9 @@ export function useLogisticsPhasesState({
       Boolean(startDate && startTime && endDate && endTime) &&
       !Number.isNaN(totalWorkers),
   })
+
+  /** Evita falsos fotogrames durant salts de semi/auto manual. */
+  const prevQuadrantModeRef = useRef(quadrantMode)
 
   useEffect(() => {
     setPhaseForms((prev) => {
@@ -229,22 +236,104 @@ export function useLogisticsPhasesState({
     totalWorkers,
   ])
 
+  const phaseDriversFingerprint = useMemo(
+    () => logisticPhaseOptions.map((p) => String(phaseForms[p.key]?.drivers ?? '')).join('|'),
+    [phaseForms]
+  )
+
   useEffect(() => {
     setPhaseVehicleAssignments((prev) =>
       logisticPhaseOptions.reduce((acc, phase) => {
-        const desired = Number(phaseForms[phase.key]?.drivers || 0)
+        const desired = Math.max(0, Number(phaseForms[phase.key]?.drivers ?? 0) || 0)
         const existing = prev[phase.key] || []
         acc[phase.key] = Array.from({ length: desired }).map((_, idx) => ({
           vehicleType: existing[idx]?.vehicleType || '',
           vehicleId: existing[idx]?.vehicleId || '',
           plate: existing[idx]?.plate || '',
-          conductorId: existing[idx]?.conductorId || null,
+          conductorId: existing[idx]?.conductorId ?? null,
           arrivalTime: existing[idx]?.arrivalTime || '',
         }))
         return acc
       }, {} as Record<LogisticPhaseKey, VehicleAssignment[]>)
     )
-  }, [phaseForms])
+  }, [phaseDriversFingerprint])
+
+  const logisticWorkersFingerprint = useMemo(
+    () => logisticPhaseOptions.map((p) => String(phaseForms[p.key]?.workers ?? '')).join('|'),
+    [phaseForms]
+  )
+
+  useEffect(() => {
+    setPhaseResponsibles((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const phase of logisticPhaseOptions) {
+        const v = next[phase.key]
+        if (quadrantMode === 'manual') {
+          if (v === '__auto__') {
+            next[phase.key] = '__manual_pick__'
+            changed = true
+          }
+        } else if (v === '__manual_pick__' || v === '') {
+          next[phase.key] = '__auto__'
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [quadrantMode])
+
+  useEffect(() => {
+    const enteringManual = quadrantMode === 'manual' && prevQuadrantModeRef.current !== 'manual'
+    prevQuadrantModeRef.current = quadrantMode
+
+    if (quadrantMode !== 'manual') return
+
+    setPhaseForms((prev) => {
+      let changed = false
+      const next = { ...prev }
+
+      for (const phase of logisticPhaseOptions) {
+        const f = next[phase.key]
+        let raw = Number(f.workers)
+        if (!Number.isFinite(raw)) raw = 0
+
+        /**
+         * Primer pic en manual: totals d’auto/semi (PAX…) no són “slots” manuals.
+         * Evita generar fins a 90 files (30×fases) i el gel de la pantalla.
+         */
+        let w = Math.max(0, Math.min(30, raw))
+        let forceResetDetails = false
+        if (enteringManual && raw > 30) {
+          w = 0
+          forceResetDetails = true
+        }
+
+        let ids = Array.isArray(f.workerIds) ? [...f.workerIds] : []
+        let details = { ...(f.workerDetails || {}) }
+        if (forceResetDetails) {
+          ids = []
+          details = {}
+        }
+
+        const workersSynced = ids.length === w && Number(f.workers) === w
+        if (workersSynced) continue
+
+        changed = true
+        if (!forceResetDetails && ids.length > w) {
+          ids.slice(w).filter(Boolean).forEach((id) => {
+            delete details[id]
+          })
+          ids = ids.slice(0, w)
+        } else if (!forceResetDetails) {
+          while (ids.length < w) ids.push('')
+        }
+        next[phase.key] = { ...f, workers: w, workerIds: ids, workerDetails: details }
+      }
+
+      return changed ? next : prev
+    })
+  }, [quadrantMode, logisticWorkersFingerprint])
 
   const updatePhaseForm = (key: LogisticPhaseKey, patch: Partial<LogisticPhaseForm>) => {
     setPhaseForms((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }))
@@ -330,7 +419,7 @@ export function useLogisticsPhasesState({
       .filter((phase) => phaseSettings[phase.key]?.selected ?? true)
       .map((phase) => phase.key)
     if (keys.length) return keys
-    return ['entrega'] as LogisticPhaseKey[]
+    return ['event'] as LogisticPhaseKey[]
   }, [phaseSettings])
 
   const totalDriverCount = useMemo(

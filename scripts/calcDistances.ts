@@ -1,6 +1,6 @@
 // Script: scripts/calcDistances.ts
-// Calcula distàncies (anada+tornada) des de l'origen fix fins a cada esdeveniment
-// i desa distanceKm al document de quadrants*. Necessita xarxa i la clau GOOGLE.
+// ⚠️ OBOLET: la web ja no calcula ni desa distàncies amb Google Maps.
+// Aquest script només existeix si algú vol una migració manual puntual amb xarxa + clau.
 //
 // Execució (un cop amb xarxa habilitada):
 //   npx ts-node scripts/calcDistances.ts 2025-01-01 2025-12-31

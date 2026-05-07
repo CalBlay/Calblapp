@@ -11,8 +11,6 @@ import { saveDraftByDepartment } from '@/lib/quadrantsDraftSaveAdapters'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 
 export const runtime = 'nodejs'
-const ORIGIN = 'Molí Vinyals, 11, 08776 Sant Pere de Riudebitlles, Barcelona'
-const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
 
 const norm = normalizeDepartmentKey
 
@@ -48,28 +46,6 @@ async function resolveDeptCollection(dept: string): Promise<string> {
   return canonicalCollectionFor(dept)
 }
 
-async function calcDistanceKm(destination: string): Promise<number | null> {
-  if (!GOOGLE_KEY || !destination) return null
-  try {
-    const url = new URL('https://maps.googleapis.com/maps/api/distancematrix/json')
-    url.searchParams.set('origins', ORIGIN)
-    url.searchParams.set('destinations', destination)
-    url.searchParams.set('key', GOOGLE_KEY)
-    url.searchParams.set('mode', 'driving')
-    const res = await fetch(url.toString())
-    if (!res.ok) return null
-    const json = await res.json()
-    const el = json?.rows?.[0]?.elements?.[0]
-    if (el?.status !== 'OK') return null
-    const meters = el.distance?.value
-    if (!meters) return null
-    return (meters / 1000) * 2 // anada+tornada
-  } catch (err) {
-    console.warn('[quadrantsDraft/save] distance error', err)
-    return null
-  }
-}
-
 export async function POST(req: NextRequest) {
   try {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
@@ -98,7 +74,6 @@ export async function POST(req: NextRequest) {
     const coll = await resolveDeptCollection(department)
     const sourceDocId = String(eventId || '').trim()
     const canonicalEventId = normalizeEventId(eventId)
-    const ref = db.collection(coll).doc(sourceDocId || canonicalEventId)
     await saveDraftByDepartment({
       db,
       coll,
@@ -109,15 +84,6 @@ export async function POST(req: NextRequest) {
       groups,
       vestimentModel,
     })
-
-    // Distància: sempre recalculada amb l'adreça actual
-    const evSnap = await db.collection('stage_verd').doc(String(canonicalEventId)).get()
-    const ev = evSnap.data() as { Ubicacio?: string; location?: string; address?: string } | undefined
-    const destination = ev?.Ubicacio || ev?.location || ev?.address || ''
-    const km = await calcDistanceKm(destination)
-    if (km) {
-      await ref.set({ distanceKm: km, distanceCalcAt: new Date() }, { merge: true })
-    }
 
     revalidateQuadrantsListCache()
     return NextResponse.json({ ok: true })

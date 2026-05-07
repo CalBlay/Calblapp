@@ -1,16 +1,18 @@
 export type LogisticPhaseKey = 'entrega' | 'event' | 'recollida'
 
+/** Ordre de pintat / payload: Event primer (fase principal), després Entrega i Recollida. */
 export const logisticPhaseOptions: Array<{ key: LogisticPhaseKey; label: string }> = [
-  { key: 'entrega', label: 'Entrega' },
   { key: 'event', label: 'Event' },
+  { key: 'entrega', label: 'Entrega' },
   { key: 'recollida', label: 'Recollida' },
 ]
 
 export type ServicePhaseKey = 'muntatge' | 'event'
 
+/** Ordre de pintat / payload: Event primer (fase principal), després Muntatge. */
 export const servicePhaseOptions: Array<{ key: ServicePhaseKey; label: string }> = [
-  { key: 'muntatge', label: 'Muntatge' },
   { key: 'event', label: 'Event' },
+  { key: 'muntatge', label: 'Muntatge' },
 ]
 
 export type LogisticPhaseForm = {
@@ -21,6 +23,19 @@ export type LogisticPhaseForm = {
   workers: number
   drivers: number
   meetingPoint: string
+  /** Mode manual: slots de treballadors (parity Serveis/Cuina). */
+  workerIds?: string[]
+  workerDetails?: Record<
+    string,
+    {
+      id: string
+      name?: string
+      serviceDate?: string
+      meetingPoint?: string
+      startTime?: string
+      endTime?: string
+    }
+  >
 }
 
 export type LogisticPhaseSetting = {
@@ -65,6 +80,23 @@ export type ServeiGroup = {
   startTime: string
   endTime: string
   workers: number
+  /** Mode manual: IDs de treballadors triats explícitament. */
+  workerIds?: string[]
+  /**
+   * Mode manual: detalls per treballador (override del grup).
+   * Si falta algun camp, s'interpreta que hereta del grup.
+   */
+  workerDetails?: Record<
+    string,
+    {
+      id: string
+      name?: string
+      serviceDate?: string
+      meetingPoint?: string
+      startTime?: string
+      endTime?: string
+    }
+  >
   jamoneros: number
   wantsResponsible: boolean
   responsibleId: string

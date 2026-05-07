@@ -48,14 +48,14 @@ type ExportRow = {
 }
 
 const LOGISTIC_PHASE_OPTIONS = [
-  { key: 'entrega', label: 'Entrega' },
   { key: 'event', label: 'Event' },
+  { key: 'entrega', label: 'Entrega' },
   { key: 'recollida', label: 'Recollida' },
 ]
 
 const SERVICE_PHASE_OPTIONS = [
-  { key: 'muntatge', label: 'Muntatge' },
   { key: 'event', label: 'Event' },
+  { key: 'muntatge', label: 'Muntatge' },
 ]
 
 const CUINA_PHASE_OPTIONS = [{ key: 'event', label: 'Event' }]
@@ -741,6 +741,7 @@ export default function QuadrantsPage() {
         <QuadrantModal
           open
           event={selected}
+          onSaved={reload}
           onOpenChange={(open) => {
             if (!open) setSelected(null)
           }}

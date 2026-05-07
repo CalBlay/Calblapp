@@ -71,6 +71,8 @@ type QuadrantModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   event: QuadrantEvent
+  /** Després de desar correctament: refrescar llista de quadrants abans de tancar (punt blau / comptadors). */
+  onSaved?: () => Promise<void>
 }
 
 type CuinaGroup = {
@@ -86,6 +88,19 @@ type CuinaGroup = {
   responsibleId: string
   driverMode: string
   vehicleType: string
+  /** Mode manual: igual que Serveis — IDs de slots de treballadors */
+  workerIds?: string[]
+  workerDetails?: Record<
+    string,
+    {
+      id: string
+      name?: string
+      serviceDate?: string
+      meetingPoint?: string
+      startTime?: string
+      endTime?: string
+    }
+  >
 }
 
 type TimetableEntry = {
@@ -94,6 +109,7 @@ type TimetableEntry = {
 }
 
 type GenerationScope = 'day' | 'event'
+type QuadrantMode = 'auto' | 'semi' | 'manual'
 
 type SessionUserInfo = {
   role?: string
@@ -124,6 +140,9 @@ type SubmitQuadrantResponse = {
   ok?: boolean
   success?: boolean
   error?: string
+  docIds?: string[]
+  /** True quan el POST ha confirmat al mateix desament (manual Serveis/Cuina/Logística + confirmImmediately). */
+  confirmInlineApplied?: boolean
   proposal?: {
     responsible?: { name?: string | null } | null
     drivers?: Array<{ name?: string | null }>
@@ -173,12 +192,21 @@ const clonePayloadForDate = (
   }
 
   if (Array.isArray(payload.groups)) {
-    nextPayload.groups = payload.groups.map((group) => ({
-      ...(group as GroupPayload),
-      ...group,
-      serviceDate:
-        department === 'serveis' ? date : (group as GroupPayload)?.serviceDate ?? date,
-    }))
+    nextPayload.groups = payload.groups.map((group) => {
+      const merged = {
+        ...(group as GroupPayload),
+        ...group,
+        serviceDate:
+          department === 'serveis' ? date : (group as GroupPayload)?.serviceDate ?? date,
+      } as Record<string, unknown>
+      if (Array.isArray(merged.manualWorkers)) {
+        merged.manualWorkers = (merged.manualWorkers as Array<Record<string, unknown>>).map((mw) => ({
+          ...mw,
+          serviceDate: date,
+        }))
+      }
+      return merged
+    })
   }
 
   if (Array.isArray(payload.externalWorkers)) {
@@ -190,10 +218,13 @@ const clonePayloadForDate = (
   }
 
   if (Array.isArray(payload.logisticaPhases)) {
-    nextPayload.logisticaPhases = payload.logisticaPhases.map((phase) => ({
+    nextPayload.logisticaPhases = payload.logisticaPhases.map((phase: Record<string, unknown>) => ({
       ...phase,
       date,
       endDate: date,
+      manualWorkers: Array.isArray(phase.manualWorkers)
+        ? phase.manualWorkers.map((mw: Record<string, unknown>) => ({ ...mw, serviceDate: date }))
+        : phase.manualWorkers,
     }))
   }
 
@@ -231,13 +262,45 @@ const submitQuadrantPayload = async (payload: Record<string, unknown>) => {
     body: JSON.stringify(payload),
   })
   const text = await res.text()
-  const data = JSON.parse(text) as SubmitQuadrantResponse
+  let data: SubmitQuadrantResponse
+  try {
+    data = text ? (JSON.parse(text) as SubmitQuadrantResponse) : {}
+  } catch {
+    throw new Error('Resposta invàlida del servidor')
+  }
 
   if (!res.ok || data.ok === false || data.success === false) {
     throw new Error(data.error || 'Error desant el quadrant')
   }
 
   return data
+}
+
+const confirmSavedQuadrants = async (params: {
+  department: string
+  eventId: string
+  docIds: string[]
+}) => {
+  const res = await fetch('/api/quadrants/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      department: params.department,
+      eventId: params.eventId,
+      docIds: params.docIds,
+    }),
+  })
+  const text = await res.text()
+  let data: { ok?: boolean; error?: string }
+  try {
+    data = text ? (JSON.parse(text) as { ok?: boolean; error?: string }) : {}
+  } catch {
+    return { ok: false as const, error: 'Resposta invàlida del servidor' }
+  }
+  if (!res.ok || data.ok === false) {
+    return { ok: false as const, error: data.error || `Error ${res.status}` }
+  }
+  return { ok: true as const }
 }
 
 const toastAutoAssignDoubleBookingWarnings = (data: {
@@ -272,7 +335,7 @@ type CuinaEttState = {
   }
 }
 
-export default function QuadrantModal({ open, onOpenChange, event }: QuadrantModalProps) {
+export default function QuadrantModal({ open, onOpenChange, event, onSaved }: QuadrantModalProps) {
   const { data: session } = useSession()
   const sessionUser = session?.user as SessionUserInfo | undefined
   const userRole = normalizeRole(String(sessionUser?.role || ''))
@@ -286,6 +349,9 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
   const isCuina = department === 'cuina'
   const isServeis = department === 'serveis'
   const isLogistica = department === 'logistica'
+  /** Serveis, Cuina, Logística: mateix comportament de modes, training i guardar+confirmar. */
+  const isQuadrantCoreDept = isServeis || isCuina || isLogistica
+  const [mode, setMode] = useState<QuadrantMode>('semi')
 
   const {
     startDate,
@@ -346,7 +412,8 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     availableResponsables,
     availableConductors,
     availableJamoneros,
-  } = useQuadrantFormState({ event, department, modalOpen: open })
+    availableTreballadors,
+  } = useQuadrantFormState({ event, department, modalOpen: open, mode })
 
   const rawTitle = event.summary || event.title || ''
   const { name: eventName, code: parsedCode } = splitTitle(rawTitle)
@@ -356,6 +423,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [generationScope, setGenerationScope] = useState<GenerationScope>('day')
+  const [showJamoneroDetails, setShowJamoneroDetails] = useState(true)
   const [surveyGroupsLoading, setSurveyGroupsLoading] = useState(false)
   const [surveyPeopleLoading, setSurveyPeopleLoading] = useState(false)
   const [_surveyLoading, setSurveyLoading] = useState(false)
@@ -431,6 +499,8 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
       responsibleId: seed.responsibleId ?? '',
       driverMode: seed.driverMode ?? '__auto__',
       vehicleType: seed.vehicleType ?? '',
+      workerIds: Array.isArray(seed.workerIds) ? [...seed.workerIds] : [],
+      workerDetails: seed.workerDetails ? { ...seed.workerDetails } : {},
     }
   }, [arrivalTime, meetingPoint, numDrivers, startTime, endTime, totalWorkers])
 
@@ -517,6 +587,29 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     endTime,
   ])
 
+  /** Cuina manual: sincronitza slots de treballadors amb el nombre (mateix patró que Serveis). */
+  useEffect(() => {
+    if (!isCuina || mode !== 'manual') return
+    setCuinaGroups((prev) => {
+      let changed = false
+      const next = prev.map((g) => {
+        const w = Math.max(0, Number(g.workers) || 0)
+        let ids = Array.isArray(g.workerIds) ? [...g.workerIds] : []
+        const details = { ...(g.workerDetails || {}) }
+        if (ids.length === w) return g
+        changed = true
+        if (ids.length > w) {
+          ids.slice(w).filter(Boolean).forEach((id) => delete details[id])
+          ids = ids.slice(0, w)
+        } else {
+          ids = [...ids, ...Array.from({ length: w - ids.length }, () => '')]
+        }
+        return { ...g, workerIds: ids, workerDetails: details }
+      })
+      return changed ? next : prev
+    })
+  }, [isCuina, mode])
+
   useEffect(() => {
     if (!isCuina) return
     setCuinaEtt({
@@ -543,6 +636,13 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     latestAllowedSurveyDeadlineDate,
     latestAllowedSurveyDeadlineTime,
   ])
+
+  useEffect(() => {
+    if (mode !== 'manual') return
+    if (manualResp === '__auto__') {
+      setManualResp('')
+    }
+  }, [manualResp, mode, setManualResp])
 
   useEffect(() => {
     if (!open || !isServeis) return
@@ -791,11 +891,12 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
     }
   }
 
-  const handleAutoGenAndSave = async () => {
+  const handleAutoGenAndSave = async (confirmAfterSave = false) => {
     if (!canAutoGen) return
     setLoading(true)
     setError(null)
     setSuccess(false)
+    let shouldClose = false
 
     const manualResponsibleIdValue = manualResp && manualResp !== '__auto__' ? manualResp : null
     const manualResponsibleNameValue = manualResponsibleIdValue
@@ -820,6 +921,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
         service: event.service || null,
         numPax: event.numPax ?? null,
         commercial: event.commercial ?? null,
+        mode,
       }
 
       const timetables: TimetableEntry[] = []
@@ -839,12 +941,28 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           const selectedDriverId =
             group.driverMode === '__responsable__'
               ? selectedRespId || manualResponsibleIdValue || ''
-              : group.driverMode !== '__auto__'
+              : group.driverMode && group.driverMode !== '__auto__'
               ? group.driverMode
               : ''
           const selectedDriver =
             selectedDriverId && selectedDriverId !== '__auto__'
               ? availableConductors.find((conductor) => conductor.id === selectedDriverId) || null
+              : null
+          const resolvedWorkerIds = Array.isArray(group.workerIds) ? group.workerIds.filter(Boolean) : []
+          const resolvedWorkerDetails = group.workerDetails || {}
+          const manualWorkers =
+            mode === 'manual' && resolvedWorkerIds.length > 0
+              ? resolvedWorkerIds.map((id) => {
+                  const d = resolvedWorkerDetails[id] || { id }
+                  return {
+                    id,
+                    name: d.name,
+                    serviceDate: d.serviceDate || startDate,
+                    meetingPoint: d.meetingPoint || group.meetingPoint || meetingPoint,
+                    startTime: d.startTime || group.startTime,
+                    endTime: d.endTime || group.endTime,
+                  }
+                })
               : null
           const responsibleActsAsDriver =
             group.driverMode === '__responsable__' &&
@@ -867,6 +985,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               (singleGroup && responsibleActsAsDriver ? manualResponsibleNameValue || null : null),
             driverId:
               selectedDriverId && selectedDriverId !== '__auto__' ? selectedDriverId : null,
+            ...(manualWorkers ? { manualWorkers } : {}),
           }
         })
 
@@ -935,12 +1054,21 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           addTimetable(ettEntry)
         }
 
+        if (confirmAfterSave && mode === 'manual' && isQuadrantCoreDept) {
+          baseLogisticaPayload.confirmImmediately = true
+        }
+
         const payloads =
           isMultiDayEvent && generationScope === 'event'
             ? multiDayDates.map((date) => clonePayloadForDate(baseLogisticaPayload, department, date))
             : [baseLogisticaPayload]
 
+        const expectConfirmInlineEachLog =
+          Boolean(confirmAfterSave && mode === 'manual' && isQuadrantCoreDept)
+
         let preferredAssignments: ReturnType<typeof buildPreferredAssignments> = null
+        const createdDocIds: string[] = []
+        let allResponsesConfirmInlineOkLog = expectConfirmInlineEachLog
         for (const payloadToSend of payloads) {
           const response = await submitQuadrantPayload({
             ...payloadToSend,
@@ -948,15 +1076,63 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           })
           toastAutoAssignDoubleBookingWarnings(response)
           preferredAssignments = buildPreferredAssignments(response?.proposal)
+          if (Array.isArray(response?.docIds)) createdDocIds.push(...response.docIds)
+          if (expectConfirmInlineEachLog && !response.confirmInlineApplied) {
+            allResponsesConfirmInlineOkLog = false
+          }
         }
 
+        if (confirmAfterSave && createdDocIds.length > 0) {
+          if (expectConfirmInlineEachLog && allResponsesConfirmInlineOkLog) {
+            toast.success(
+              isMultiDayEvent && generationScope === 'event'
+                ? 'Quadrants confirmats per tots els dies!'
+                : 'Quadrant confirmat correctament!'
+            )
+            window.dispatchEvent(new CustomEvent('quadrant:updated'))
+            window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'confirmed' } }))
+          } else {
+            const confirmResult = await confirmSavedQuadrants({
+              department,
+              eventId: event.id,
+              docIds: Array.from(new Set(createdDocIds)),
+            })
+            if (confirmResult.ok) {
+              toast.success(
+                isMultiDayEvent && generationScope === 'event'
+                  ? 'Quadrants confirmats per tots els dies!'
+                  : 'Quadrant confirmat correctament!'
+              )
+              window.dispatchEvent(new CustomEvent('quadrant:updated'))
+              window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'confirmed' } }))
+            } else {
+              toast.warning(
+                `S’ha desat el borrador; no s’ha pogut confirmar: ${confirmResult.error || 'error desconegut'}`
+              )
+              window.dispatchEvent(new CustomEvent('quadrant:updated'))
+              window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'draft' } }))
+            }
+          }
+        } else {
+          toast.success(
+            isMultiDayEvent && generationScope === 'event'
+              ? 'Borradors creats per tots els dies de l’esdeveniment!'
+              : 'Borrador creat correctament!'
+          )
+          window.dispatchEvent(new CustomEvent('quadrant:updated'))
+          window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'draft' } }))
+        }
+
+        try {
+          void onSaved?.().catch(() => {
+            /* la llista s’actualitza en segon pla */
+          })
+        } catch {
+          /* ignorar */
+        }
+        shouldClose = true
         setSuccess(true)
-        toast.success(
-          isMultiDayEvent && generationScope === 'event'
-            ? 'Borradors creats per tots els dies de l’esdeveniment!'
-            : 'Borrador creat correctament!'
-        )
-        window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'draft' } }))
+        setLoading(false)
         onOpenChange(false)
         return
       }
@@ -964,6 +1140,8 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
       if (timetables.length) {
         payload.timetables = timetables
       }
+
+      // Mode manual: la selecció de noms es fa al lloc natural (grups/fases)
 
       const ettEntries: Array<{
         name: string
@@ -1016,12 +1194,21 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
         ettEntries.forEach((entry) => addTimetable({ startTime: entry.startTime, endTime: entry.endTime }))
       }
 
+      if (confirmAfterSave && mode === 'manual' && isQuadrantCoreDept) {
+        payload.confirmImmediately = true
+      }
+
       const payloads =
         isMultiDayEvent && generationScope === 'event'
           ? multiDayDates.map((date) => clonePayloadForDate(payload, department, date))
           : [payload]
 
+      const expectConfirmInlineEach =
+        Boolean(confirmAfterSave && mode === 'manual' && isQuadrantCoreDept)
+
       let preferredAssignments: ReturnType<typeof buildPreferredAssignments> = null
+      const createdDocIds: string[] = []
+      let allResponsesConfirmInlineOk = expectConfirmInlineEach
       for (const payloadToSend of payloads) {
         const response = await submitQuadrantPayload({
           ...payloadToSend,
@@ -1029,40 +1216,154 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
         })
         toastAutoAssignDoubleBookingWarnings(response)
         preferredAssignments = buildPreferredAssignments(response?.proposal)
+        if (Array.isArray(response?.docIds)) createdDocIds.push(...response.docIds)
+        if (expectConfirmInlineEach && !response.confirmInlineApplied) {
+          allResponsesConfirmInlineOk = false
+        }
       }
 
+      if (confirmAfterSave && createdDocIds.length > 0) {
+        if (expectConfirmInlineEach && allResponsesConfirmInlineOk) {
+          toast.success(
+            isMultiDayEvent && generationScope === 'event'
+              ? 'Quadrants confirmats per tots els dies!'
+              : 'Quadrant confirmat correctament!'
+          )
+          window.dispatchEvent(new CustomEvent('quadrant:updated'))
+          window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'confirmed' } }))
+        } else {
+          const confirmResult = await confirmSavedQuadrants({
+            department,
+            eventId: event.id,
+            docIds: Array.from(new Set(createdDocIds)),
+          })
+          if (confirmResult.ok) {
+            toast.success(
+              isMultiDayEvent && generationScope === 'event'
+                ? 'Quadrants confirmats per tots els dies!'
+                : 'Quadrant confirmat correctament!'
+            )
+            window.dispatchEvent(new CustomEvent('quadrant:updated'))
+            window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'confirmed' } }))
+          } else {
+            toast.warning(
+              `S’ha desat el borrador; no s’ha pogut confirmar: ${confirmResult.error || 'error desconegut'}`
+            )
+            window.dispatchEvent(new CustomEvent('quadrant:updated'))
+            window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'draft' } }))
+          }
+        }
+      } else {
+        toast.success(
+          isMultiDayEvent && generationScope === 'event'
+            ? 'Borradors creats per tots els dies de l’esdeveniment!'
+            : 'Borrador creat correctament!'
+        )
+        window.dispatchEvent(new CustomEvent('quadrant:updated'))
+        window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'draft' } }))
+      }
+
+      try {
+        void onSaved?.().catch(() => {
+          /* la llista s’actualitza en segon pla */
+        })
+      } catch {
+        /* ignorar */
+      }
+      shouldClose = true
       setSuccess(true)
-      toast.success(
-        isMultiDayEvent && generationScope === 'event'
-          ? 'Borradors creats per tots els dies de l’esdeveniment!'
-          : 'Borrador creat correctament!'
-      )
-      window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'draft' } }))
+      setLoading(false)
       onOpenChange(false)
     } catch (err: unknown) {
       const error = err as Error
       setError(error.message)
       toast.error(error.message)
     } finally {
-      setLoading(false)
+      if (!shouldClose) setLoading(false)
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[97vw] !max-w-[1700px] max-h-[92vh] overflow-y-auto rounded-2xl p-3 sm:p-4"
+        className="w-[97vw] !max-w-[1700px] max-h-[92vh] overflow-hidden rounded-2xl p-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <DialogHeader className="gap-1">
-          <DialogTitle className="text-lg font-bold">{eventName}</DialogTitle>
-          <DialogDescription>
-            Servei {event.service || '—'} · PAX {event.numPax ?? '—'} · Hora inici {event.startTime || startTime || '—:—'}
-            {location ? ` · Ubicació ${location}` : ''}
-          </DialogDescription>
-        </DialogHeader>
+        <div className="flex max-h-[92vh] flex-col">
+          <div className="relative border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white px-3 py-3 sm:px-4">
+            <DialogHeader className="gap-1 pr-10">
+              <DialogTitle className="text-lg font-bold text-slate-900">{eventName}</DialogTitle>
+              <DialogDescription className="text-slate-600">
+                Servei {event.service || '—'} · PAX {event.numPax ?? '—'} · Hora inici{' '}
+                {event.startTime || startTime || '—:—'}
+                {location ? ` · Ubicació ${location}` : ''}
+              </DialogDescription>
+            </DialogHeader>
 
-        <div className="mt-2 space-y-3">
+            <DialogClose className="absolute right-3 top-3 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-sm text-slate-600 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900">
+              ✕
+            </DialogClose>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="grid gap-3 md:grid-cols-[220px_1fr] md:items-end">
+                  <div>
+                    <Label>Mode</Label>
+                    <div className="grid grid-cols-3 gap-2 max-w-[520px]">
+                      <Button
+                        type="button"
+                        variant={mode === 'auto' ? 'default' : 'secondary'}
+                        className="h-9 rounded-full px-4 w-full justify-center whitespace-nowrap"
+                        onClick={() => setMode('auto')}
+                      >
+                        Auto
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={mode === 'semi' ? 'default' : 'secondary'}
+                        className="h-9 rounded-full px-4 w-full justify-center whitespace-nowrap"
+                        onClick={() => setMode('semi')}
+                      >
+                        Semi-auto
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={mode === 'manual' ? 'default' : 'secondary'}
+                        className="h-9 rounded-full px-4 w-full justify-center whitespace-nowrap"
+                        onClick={() => setMode('manual')}
+                      >
+                        Manual
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+          <SurveyLaunchPanel
+            canLaunchSurvey={canLaunchSurvey}
+            visibleDate={visibleDate}
+            latestAllowedDeadlineDate={latestAllowedSurveyDeadlineDate}
+            latestAllowedDeadlineTime={latestAllowedSurveyDeadlineTime}
+            surveys={surveys}
+            surveyGroupsLoading={surveyGroupsLoading}
+            surveyPeopleLoading={surveyPeopleLoading}
+            surveyGroups={surveyGroups}
+            surveyPeople={surveyPeople}
+            selectedSurveyGroupIds={selectedSurveyGroupIds}
+            setSelectedSurveyGroupIds={setSelectedSurveyGroupIds}
+            selectedSurveyWorkerIds={selectedSurveyWorkerIds}
+            setSelectedSurveyWorkerIds={setSelectedSurveyWorkerIds}
+            surveyDeadlineDate={surveyDeadlineDate}
+            setSurveyDeadlineDate={setSurveyDeadlineDate}
+            surveyDeadlineTime={surveyDeadlineTime}
+            setSurveyDeadlineTime={setSurveyDeadlineTime}
+            handleLaunchSurvey={handleLaunchSurvey}
+            ensureSurveyPeopleLoaded={ensureSurveyPeopleLoaded}
+            surveySubmitting={surveySubmitting}
+          />
+
           {!isLogistica && !isCuina && (
             <div className={`grid gap-4 ${isServeis ? 'lg:grid-cols-3' : 'grid-cols-2'}`}>
               {!isServeis && (
@@ -1093,42 +1394,8 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
           )}
 
           {!isLogistica && !isServeis && isCuina && (
-            <div className="grid gap-4 xl:grid-cols-[180px_180px_minmax(320px,1fr)_auto] items-end">
-              <div>
-                <Label>Hora Inici</Label>
-                <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-              </div>
-              <div>
-                <Label>Hora Fi</Label>
-                <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-              </div>
-              <div>
-                <Label>Responsable principal (esdeveniment)</Label>
-                <Select value={manualResp} onValueChange={setManualResp}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Selecciona un responsable…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__auto__">— Automàtic —</SelectItem>
-                    {availableResponsables.map((resp) => (
-                      <SelectItem key={resp.id} value={resp.id}>
-                        {resp.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <GenerationScopeToggle
-                isMultiDayEvent={isMultiDayEvent}
-                generationScope={generationScope}
-                setGenerationScope={setGenerationScope}
-              />
-            </div>
-          )}
-
-          {isServeis && (
-            <div className="space-y-2">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,140px)_minmax(0,140px)_minmax(0,1.25fr)_minmax(0,1fr)_auto] xl:items-end">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,140px)_minmax(0,140px)_minmax(0,260px)_1fr_auto] xl:items-end">
                 <div className="min-w-0">
                   <Label>Hora Inici</Label>
                   <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
@@ -1138,9 +1405,9 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                   <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
                 </div>
                 <div className="min-w-0 sm:col-span-2 xl:col-span-1">
-                  <Label>Responsable (manual)</Label>
+                  <Label>Responsable principal (esdeveniment)</Label>
                   <Select value={manualResp} onValueChange={setManualResp}>
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="h-10 w-full max-w-full xl:max-w-[260px]">
                       <SelectValue placeholder="Selecciona un responsable…" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1154,25 +1421,15 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                   </Select>
                 </div>
                 <div className="min-w-0 sm:col-span-2 xl:col-span-1">
-                  <Label>Model de vestimenta</Label>
-                  <Select value={vestimentModelChoice} onValueChange={setVestimentModelChoice}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Selecciona…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">— Cap —</SelectItem>
-                      {vestimentModelChoice !== '__none__' && !serveisVestimentModels.includes(vestimentModelChoice) ? (
-                        <SelectItem value={vestimentModelChoice}>{vestimentModelChoice}</SelectItem>
-                      ) : null}
-                      {serveisVestimentModels.map((model) => (
-                        <SelectItem key={model} value={model}>
-                          {model}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="text-left leading-tight sm:text-right xl:mr-1">
+                    <div className="text-xs font-semibold text-slate-700">Fase cuina</div>
+                    <div className="text-[11px] text-slate-500">
+                      Treballadors {cuinaTotals.workers} · Conductors {cuinaTotals.drivers} · Grups{' '}
+                      {cuinaTotals.responsables}
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-end sm:col-span-2 xl:col-span-1 xl:justify-end">
+                <div className="flex items-end justify-end sm:col-span-2 xl:col-span-1">
                   <GenerationScopeToggle
                     isMultiDayEvent={isMultiDayEvent}
                     generationScope={generationScope}
@@ -1180,6 +1437,141 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
                   />
                 </div>
               </div>
+            </div>
+          )}
+
+          {isServeis && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,148px)_minmax(0,120px)_minmax(0,120px)_minmax(0,170px)_minmax(0,1fr)_auto] md:items-end md:justify-items-stretch md:gap-x-3 md:gap-y-0">
+                <div className="min-w-0">
+                  <Label>Responsable</Label>
+                  <Select value={manualResp} onValueChange={setManualResp}>
+                    <SelectTrigger className="h-10 w-full max-w-full">
+                      <SelectValue
+                        placeholder={mode === 'manual' ? 'Selecciona un responsable…' : 'Automàtic'}
+                        className="min-w-0 truncate text-left [&>span]:truncate"
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {mode !== 'manual' && <SelectItem value="__auto__">Automàtic</SelectItem>}
+                      {availableResponsables.map((resp) => (
+                        <SelectItem key={resp.id} value={resp.id}>
+                          {resp.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="min-w-0">
+                  <Label>Hora Inici</Label>
+                  <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                </div>
+                <div className="min-w-0">
+                  <Label>Hora Fi</Label>
+                  <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                </div>
+                <div className="min-w-0">
+                  <Label>Jamoneros</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      className="w-[88px] text-center tabular-nums"
+                      value={serviceJamoneroAssignments.length}
+                      onChange={(e) =>
+                        setServiceJamoneroCount(
+                          Number.isNaN(Number(e.target.value)) ? 0 : Math.max(0, Number(e.target.value))
+                        )
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-10 px-3"
+                      disabled={serviceJamoneroAssignments.length === 0 || (mode !== 'semi' && mode !== 'manual')}
+                      onClick={() => setShowJamoneroDetails((prev) => !prev)}
+                    >
+                      {showJamoneroDetails ? 'Amaga' : 'Detall'}
+                    </Button>
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <Label htmlFor="vestiment-model-serveis">Model de vestimenta</Label>
+                  <div className="mt-1 flex flex-col gap-1.5 md:mt-0 md:flex-row md:items-end md:gap-2">
+                    <Select value={vestimentModelChoice} onValueChange={setVestimentModelChoice}>
+                      <SelectTrigger id="vestiment-model-serveis" className="h-10 w-full shrink-0 md:w-[168px]">
+                        <SelectValue
+                          placeholder="Selecciona…"
+                          className="min-w-0 flex-1 truncate text-left [&>span]:truncate"
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— Cap —</SelectItem>
+                        {vestimentModelChoice !== '__none__' &&
+                        !serveisVestimentModels.includes(vestimentModelChoice) ? (
+                          <SelectItem value={vestimentModelChoice}>{vestimentModelChoice}</SelectItem>
+                        ) : null}
+                        {serveisVestimentModels.map((model) => (
+                          <SelectItem key={model} value={model}>
+                            {model}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="min-w-0 flex-1 text-[11px] leading-snug text-slate-600 md:pb-px">
+                      <span className="font-semibold text-slate-700">Fase serveis</span>{' '}
+                      <span className="text-slate-500">
+                        · Treballadors {serviceTotals.workers} · Conductors {serviceTotals.drivers} · Fases{' '}
+                        {serviceTotals.responsables}
+                        {serviceTotals.jamoneros > 0 ? ` · Jamoneros ${serviceTotals.jamoneros}` : ''}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <div className="flex min-w-0 shrink-0 items-end justify-end md:justify-self-end">
+                  <GenerationScopeToggle
+                    isMultiDayEvent={isMultiDayEvent}
+                    generationScope={generationScope}
+                    setGenerationScope={setGenerationScope}
+                  />
+                </div>
+              </div>
+              {showJamoneroDetails && (mode === 'semi' || mode === 'manual') && serviceJamoneroAssignments.length > 0 && (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {serviceJamoneroAssignments.map((assignment, index) => (
+                      <div key={assignment.id}>
+                        <Label>Jamonero {index + 1}</Label>
+                        <Select
+                          value={
+                            assignment.mode === 'manual' && assignment.personnelId
+                              ? assignment.personnelId
+                              : '__auto__'
+                          }
+                          onValueChange={(value) =>
+                            updateServiceJamoneroAssignment(assignment.id, {
+                              mode: value === '__auto__' ? 'auto' : 'manual',
+                              personnelId: value === '__auto__' ? '' : value,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Automàtic" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__auto__">Automàtic</SelectItem>
+                            {availableJamoneros.map((person) => (
+                              <SelectItem key={person.id} value={person.id}>
+                                {person.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {serveisVestimentModels.length === 0 && (
                 <p className="text-xs text-amber-700">
                   No hi ha models definits. Defineix-los a Premisses (Serveis).
@@ -1206,35 +1598,13 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
             </div>
           )}
 
-          <SurveyLaunchPanel
-            canLaunchSurvey={canLaunchSurvey}
-            visibleDate={visibleDate}
-            latestAllowedDeadlineDate={latestAllowedSurveyDeadlineDate}
-            latestAllowedDeadlineTime={latestAllowedSurveyDeadlineTime}
-            surveys={surveys}
-            surveyGroupsLoading={surveyGroupsLoading}
-            surveyPeopleLoading={surveyPeopleLoading}
-            surveyGroups={surveyGroups}
-            surveyPeople={surveyPeople}
-            selectedSurveyGroupIds={selectedSurveyGroupIds}
-            setSelectedSurveyGroupIds={setSelectedSurveyGroupIds}
-            selectedSurveyWorkerIds={selectedSurveyWorkerIds}
-            setSelectedSurveyWorkerIds={setSelectedSurveyWorkerIds}
-            surveyDeadlineDate={surveyDeadlineDate}
-            setSurveyDeadlineDate={setSurveyDeadlineDate}
-            surveyDeadlineTime={surveyDeadlineTime}
-            setSurveyDeadlineTime={setSurveyDeadlineTime}
-            handleLaunchSurvey={handleLaunchSurvey}
-            ensureSurveyPeopleLoaded={ensureSurveyPeopleLoaded}
-            surveySubmitting={surveySubmitting}
-          />
-
           {isServeis && (
             <ServicePhasePanel
               groups={servicePhaseGroups}
               totals={serviceTotals}
               meetingPoint={meetingPoint}
               eventStartDate={startDate}
+              mode={mode}
               settings={servicePhaseSettings}
               visibility={servicePhaseVisibility}
               ettState={servicePhaseEtt}
@@ -1242,6 +1612,7 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               availableResponsables={availableResponsables}
               availableConductors={availableConductors}
               availableJamoneros={availableJamoneros}
+              availableTreballadors={availableTreballadors}
               jamoneroAssignments={serviceJamoneroAssignments}
               setJamoneroCount={setServiceJamoneroCount}
               updateJamoneroAssignment={updateServiceJamoneroAssignment}
@@ -1267,6 +1638,8 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               availableVehicles={availableVehicles}
               availableConductors={availableConductors}
               availableResponsables={availableResponsables}
+              mode={mode}
+              availableTreballadors={availableTreballadors}
               togglePhaseVisibility={togglePhaseVisibility}
               updatePhaseForm={updatePhaseForm}
               updatePhaseSetting={updatePhaseSetting}
@@ -1281,11 +1654,13 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
 
           {isCuina && (
             <CuinaSection
-              cuinaTotals={cuinaTotals}
+              mode={mode}
               cuinaGroups={cuinaGroups}
               removeCuinaGroup={removeCuinaGroup}
               updateCuinaGroup={updateCuinaGroup}
               manualResp={manualResp}
+              serviceDate={startDate}
+              availableTreballadors={availableTreballadors}
               availableResponsables={availableResponsables}
               availableConductors={availableConductors}
               addCuinaGroup={addCuinaGroup}
@@ -1306,23 +1681,50 @@ export default function QuadrantModal({ open, onOpenChange, event }: QuadrantMod
               </motion.div>
             )}
           </AnimatePresence>
+            </div>
+          </div>
+
+          <div className="sticky bottom-0 border-t border-slate-200 bg-white/80 px-3 py-3 backdrop-blur sm:px-4">
+            <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+              <Button variant="outline" onClick={() => onOpenChange(false)} className="sm:min-w-[140px]">
+                Cancel·la
+              </Button>
+              {mode === 'manual' ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 border-emerald-200 text-emerald-800 hover:bg-emerald-50 sm:min-w-[200px]"
+                  onClick={() => handleAutoGenAndSave(true)}
+                  disabled={!canAutoGen || loading}
+                  title="Desa el borrador i el confirma alhora, sense editar-lo a la taula de borradors."
+                >
+                  {loading ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+                  {loading ? 'Processant…' : 'Guardar directament'}
+                </Button>
+              ) : null}
+              <Button
+                className="bg-blue-600 text-white gap-2 hover:bg-blue-700 sm:min-w-[220px]"
+                type="button"
+                onClick={() => handleAutoGenAndSave(false)}
+                disabled={!canAutoGen || loading}
+              >
+                {loading ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+                {loading
+                  ? 'Processant…'
+                  : mode === 'manual'
+                    ? 'Desar borrador'
+                    : 'Auto generar i desa'}
+              </Button>
+            </DialogFooter>
+            {!canAutoGen ? (
+              <p className="mt-2 text-[11px] text-slate-500">
+                {mode === 'manual'
+                  ? 'Omple com a mínim dates i hores per poder desar el borrador.'
+                  : 'Omple com a mínim dates i hores per poder auto-generar.'}
+              </p>
+            ) : null}
+          </div>
         </div>
-
-        <DialogFooter className="mt-3 flex justify-end gap-2">
-          <Button
-            className="bg-blue-600 text-white gap-2"
-            onClick={handleAutoGenAndSave}
-            disabled={!canAutoGen || loading}
-          >
-            {loading ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
-            {loading ? 'Processant…' : 'Auto generar i desa'}
-          </Button>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel·la
-          </Button>
-        </DialogFooter>
-
-        <DialogClose className="absolute top-3 right-3 text-gray-500 hover:text-gray-800">×</DialogClose>
       </DialogContent>
     </Dialog>
   )

@@ -1,86 +1,62 @@
 // file: src/app/api/quadrants/confirm/route.ts
-import { NextResponse, type NextRequest } from 'next/server'
+import { after, NextResponse, type NextRequest } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { getToken } from 'next-auth/jwt'
 import { Timestamp } from 'firebase-admin/firestore'
-import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
+import {
+  commitQuadrantConfirmedFirestoreBatch,
+  deferQuadrantConfirmSideEffects,
+  quadrantConfirmTrim,
+  extractAssignedNamesFromQuadrant,
+  computeQuadrantProposalDiff,
+  type QuadrantConfirmDoc,
+  qcNorm,
+} from '@/lib/quadrantsConfirmDeferred'
 
 export const runtime = 'nodejs'
 
-interface QuadrantDoc {
-  status?: string
-  treballadors?: Array<{ name: string }>
-  conductors?: Array<{ name: string }>
-  responsable?: { name: string }
-  startDate?: string
-  startTime?: string
-  endDate?: string
-  endTime?: string
-  [key: string]: unknown
-}
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+/** Evita `listCollections` a cada confirmació */
+const deptCollectionResolved = new Map<string, string>()
 
 interface TokenWithUser {
   email?: string
   user?: { email?: string }
 }
 
-type ValidUser = {
-  userId: string
-  name: string
-}
+async function resolveWriteCollectionForDepartment(department: string) {
+  const lookupKey = qcNorm(department)
+  const cached = deptCollectionResolved.get(lookupKey)
+  if (cached) return cached
 
-const norm = (v?: string) =>
-  (v || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
+  const d = capitalize(qcNorm(department))
+  const plural = `quadrants${d}`
+  const singular = `quadrant${d}`
 
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+  const all = await db.listCollections()
+  const names = all.map((c) => c.id.toLowerCase())
 
-async function resolveValidUsers(doc: QuadrantDoc | null): Promise<ValidUser[]> {
-  if (!doc) return []
+  let resolved: string
+  if (names.includes(singular.toLowerCase())) resolved = singular
+  else if (names.includes(plural.toLowerCase())) resolved = plural
+  else resolved = plural
 
-  const assignedNames = [
-    doc.responsable?.name,
-    ...(doc.conductors || []).map((person) => person.name),
-    ...(doc.treballadors || []).map((person) => person.name),
-  ]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-
-  if (assignedNames.length === 0) return []
-
-  const wanted = new Set(assignedNames.map((value) => norm(value)))
-  const usersSnap = await db.collection('users').get()
-
-  return usersSnap.docs
-    .map((userDoc) => {
-      const data = userDoc.data() as { name?: string }
-      const name = String(data.name || '').trim()
-      if (!name || !wanted.has(norm(name))) return null
-      return { userId: userDoc.id, name }
-    })
-    .filter((item): item is ValidUser => item !== null)
+  deptCollectionResolved.set(lookupKey, resolved)
+  return resolved
 }
 
 export async function POST(req: NextRequest) {
   try {
-    // -------------------------------------------------------
-    // 1) Validació sessió
-    // -------------------------------------------------------
     const token = (await getToken({ req, secret: process.env.NEXTAUTH_SECRET })) as TokenWithUser | null
     if (!token) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    // -------------------------------------------------------
-    // 2) Validació paràmetres
-    // -------------------------------------------------------
     const body = await req.json()
     const deptRaw = body?.department || body?.dept || ''
     const eventId = body?.eventId || body?.id || ''
+    const docIdsIn = Array.isArray(body?.docIds) ? body.docIds : null
 
     if (!deptRaw || !eventId) {
       return NextResponse.json(
@@ -89,81 +65,53 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const dept = norm(deptRaw)
-    const colName = `quadrants${capitalize(dept)}`
-    const ref = db.collection(colName).doc(String(eventId))
+    const dept = qcNorm(deptRaw)
+    const docIds =
+      docIdsIn && docIdsIn.length
+        ? Array.from(new Set(docIdsIn.map((x: unknown) => String(x || '').trim()).filter(Boolean)))
+        : [String(eventId)]
 
-    // -------------------------------------------------------
-    // 3) Obtenir informació extres (event code + quadrant data)
-    // -------------------------------------------------------
-    const stageSnap = await db.collection('stage_verd').doc(String(eventId)).get()
-    const stageData = stageSnap.exists ? stageSnap.data() : null
+    const colName = await resolveWriteCollectionForDepartment(deptRaw)
+    const firstRef = db.collection(colName).doc(docIds[0])
+    const [stageSnap, firstSnap] = await Promise.all([
+      db.collection('stage_verd').doc(String(eventId)).get(),
+      firstRef.get(),
+    ])
+    const stageData = stageSnap.exists ? (stageSnap.data() as Record<string, unknown>) : null
+    const firstPrev = firstSnap.exists ? (firstSnap.data() as QuadrantConfirmDoc) : null
+    const already = firstPrev?.status === 'confirmed'
+    const assigned = extractAssignedNamesFromQuadrant(firstPrev)
+    const diff = computeQuadrantProposalDiff({ proposal: firstPrev?.autoProposal || null, finalAssigned: assigned })
 
-    const snap = await ref.get()
-    const prev = snap.exists ? (snap.data() as QuadrantDoc) : null
-    const already = prev?.status === 'confirmed'
-    const validUsers = await resolveValidUsers(prev)
+    const confirmedAt = Timestamp.fromDate(new Date())
+    const confirmedBy = token.user?.email || token.email || 'system'
 
-    // -------------------------------------------------------
-    // 4) Confirmar quadrant
-    // -------------------------------------------------------
-    await ref.set(
-      {
+    await commitQuadrantConfirmedFirestoreBatch({
+      colName,
+      docIds,
+      confirmPatch: {
         status: 'confirmed',
-        confirmedAt: Timestamp.fromDate(new Date()),
-        confirmedBy: token.user?.email || token.email || 'system',
-        code: stageData?.code || stageData?.C_digo || '',
+        confirmedAt,
+        confirmedBy,
+        code: quadrantConfirmTrim(stageData?.code ?? stageData?.C_digo ?? ''),
       },
-      { merge: true }
-    )
+    })
 
-    try {
-      await ensureEventChatChannel(String(eventId))
-    } catch {
-      // ignore chat creation errors
-    }
-
-    // Crear notificacions + push
-    const eventName = stageData?.eventName || stageData?.Nom || 'Nou esdeveniment'
-    const pushTitle = 'Tens un nou torn assignat'
-    const pushBody = `${eventName} – ${prev?.startDate} ${prev?.startTime}`
-
-    if (validUsers.length > 0) {
-      const batch = db.batch()
-      const now = Date.now()
-      for (const u of validUsers) {
-        const notifRef = db
-          .collection('users')
-          .doc(u.userId)
-          .collection('notifications')
-          .doc()
-        batch.set(notifRef, {
-          title: pushTitle,
-          body: pushBody,
-          createdAt: now,
-          read: false,
-          type: 'torn',
-          eventId: String(eventId),
-          eventDate: prev?.startDate || null,
-        })
-      }
-      await batch.commit()
-
-      await Promise.all(
-        validUsers.map(u =>
-          fetch(`${req.nextUrl.origin}/api/push/send`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: u.userId,
-              title: pushTitle,
-              body: pushBody,
-              url: `/menu/torns?open=${eventId}`,
-            }),
-          }).catch(() => {})
-        )
-      )
-    }
+    const requestOrigin = req.nextUrl.origin
+    after(async () => {
+      await deferQuadrantConfirmSideEffects({
+        requestOrigin,
+        dept,
+        colName,
+        eventId: String(eventId),
+        confirmedAtIso: confirmedAt.toDate().toISOString(),
+        confirmedBy,
+        firstPrev,
+        stageData,
+        assigned,
+        diff,
+      })
+    })
 
     return NextResponse.json({ ok: true, already })
   } catch (e) {

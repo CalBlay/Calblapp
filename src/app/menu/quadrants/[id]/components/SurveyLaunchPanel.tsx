@@ -94,7 +94,7 @@ export default function SurveyLaunchPanel({
   surveySubmitting,
 }: Props) {
   const [manualPeopleOpen, setManualPeopleOpen] = useState(false)
-  const [panelOpen, setPanelOpen] = useState(true)
+  const [panelOpen, setPanelOpen] = useState(false)
   const [responsesOpen, setResponsesOpen] = useState(false)
   const [responseTab, setResponseTab] = useState<'yes' | 'maybe' | 'no' | 'withoutAnswer'>('yes')
   const selectedManualPeople = useMemo(

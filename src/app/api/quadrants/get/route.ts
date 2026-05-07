@@ -38,7 +38,11 @@ export async function GET(req: Request) {
       )
     }
 
-    const { quadrants } = await getQuadrantsCached(start, end, department)
+    const skipCache = searchParams.get('skipCache') === '1'
+
+    const { quadrants } = skipCache
+      ? await computeQuadrantsGet(start, end, department)
+      : await getQuadrantsCached(start, end, department)
     return NextResponse.json({ quadrants })
   } catch (e: unknown) {
     console.error('[quadrants/get] ERROR:', e)

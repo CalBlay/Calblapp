@@ -1,20 +1,30 @@
 // src/app/api/quadrants/route.ts
-import { NextResponse, type NextRequest } from 'next/server'
+import { after, NextResponse, type NextRequest } from 'next/server'
+import { Timestamp, type DocumentData, type DocumentSnapshot } from 'firebase-admin/firestore'
+import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import {
+  commitQuadrantConfirmedFirestoreBatch,
+  deferQuadrantConfirmSideEffects,
+  computeQuadrantProposalDiff,
+  extractAssignedNamesFromQuadrant,
+  quadrantConfirmTrim,
+  type QuadrantConfirmDoc,
+} from '@/lib/quadrantsConfirmDeferred'
 import { autoAssign } from '@/services/autoAssign'
 import { loadDepartmentPersonnel, loadPremises, type DriverCrewPremise } from '@/services/premises'
 import { getSurveyPreferredCandidates } from '@/lib/quadrantSurveys'
 import { buildLedger } from '@/services/workloadLedger'
 
 export const runtime = 'nodejs'
-const ORIGIN = 'MolÃ­ Vinyals, 11, 08776 Sant Pere de Riudebitlles, Barcelona'
-const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
-
-// Helpers
 const unaccent = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const norm = (v?: string | null) => unaccent((v || '').toString().trim().toLowerCase())
 const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+
+/** Serveis, Cuina i Logística: mateix sistema de modes, training i confirmació inline en manual. */
+const QUADRANT_CORE_DEPARTMENTS = new Set(['serveis', 'cuina', 'logistica'])
+const isQuadrantCoreDepartment = (deptNorm: string) => QUADRANT_CORE_DEPARTMENTS.has(norm(deptNorm))
 const normalizeEventId = (value?: string | null) =>
   String(value || '')
     .trim()
@@ -37,46 +47,32 @@ function partitionAssignmentsAcrossPhases<T>(items: T[], phaseCount: number): T[
   }
   return result
 }
-const calcDistanceKm = async (destination: string): Promise<number | null> => {
-  if (!GOOGLE_KEY || !destination) return null
-  try {
-    const url = new URL('https://maps.googleapis.com/maps/api/distancematrix/json')
-    url.searchParams.set('origins', ORIGIN)
-    url.searchParams.set('destinations', destination)
-    url.searchParams.set('key', GOOGLE_KEY)
-    url.searchParams.set('mode', 'driving')
 
-    const res = await fetch(url.toString())
-    if (!res.ok) return null
-    const json = await res.json()
-    const el = json?.rows?.[0]?.elements?.[0]
-    if (el?.status !== 'OK') return null
-    const meters = el.distance?.value
-    if (!meters) return null
-    return (meters / 1000) * 2 // anada + tornada
-  } catch (err) {
-    console.warn('[quadrants/route] distance error', err)
-    return null
-  }
-}
+/** Evita `listCollections()` a cada POST (costós); el nom efectiu canvia molt rarament. */
+const quadrantWriteCollectionCache = new Map<string, string>()
 
 /** Construeix el nom de colÂ·lecciÃ³ per departament: quadrantsLogistica, quadrantsServeis, ... */
 /** Retorna el nom de colÂ·lecciÃ³ existent per al departament (singular o plural). */
 async function resolveWriteCollectionForDepartment(department: string) {
+  const deptKey = capitalize(norm(department)).toLowerCase()
+  const hit = quadrantWriteCollectionCache.get(deptKey)
+  if (hit) return hit
+
   const d = capitalize(norm(department))
   const plural = `quadrants${d}`
   const singular = `quadrant${d}`
 
   // Comprova si existeix el singular
   const all = await db.listCollections()
-  const names = all.map(c => c.id.toLowerCase())
+  const names = all.map((c) => c.id.toLowerCase())
 
   // Prioritza la que existeixi (singular en el teu cas actual)
-  if (names.includes(singular.toLowerCase())) return singular
-  if (names.includes(plural.toLowerCase())) return plural
+  let resolved = plural
+  if (names.includes(singular.toLowerCase())) resolved = singular
+  else if (names.includes(plural.toLowerCase())) resolved = plural
 
-  // Si no existeix cap, crea/escriu al plural per estandarditzar
-  return plural
+  quadrantWriteCollectionCache.set(deptKey, resolved)
+  return resolved
 }
 
 
@@ -149,6 +145,21 @@ interface QuadrantSave {
   phaseDate?: string | null
   /** Model de vestimenta triat en crear el quadrant (Serveis). */
   vestimentModel?: string | null
+  /**
+   * Snapshot de l'assignació vigent al desament (auto, semi o manual).
+   * Serveix per calcular diff en confirmar i per mostres d'entrenament (ML).
+   */
+  autoProposal?: {
+    createdAt: string
+    /** Com s'ha generat la fila desada: auto | semi | manual */
+    generationMode?: 'auto' | 'semi' | 'manual'
+    responsibleName: string | null
+    driverNames: string[]
+    staffNames: string[]
+    needsReview?: boolean
+    violations?: string[]
+    notes?: string[]
+  }
 }
 
 type ServeisGroupInput = Record<string, unknown> & {
@@ -167,6 +178,7 @@ type ServeisGroupInput = Record<string, unknown> & {
   driverName?: string | null
   responsibleId?: string | null
   responsibleName?: string | null
+  manualWorkers?: unknown
 }
 
 type ExternalWorkerInput = {
@@ -223,6 +235,12 @@ type QuadrantSaveRequestBody = {
   groups?: ServeisGroupInput[]
   jamoneroCount?: number | string
   cuinaGroupCount?: number | string
+  mode?: 'auto' | 'semi' | 'manual'
+  manualAssignment?: {
+    responsibleName?: string | null
+    driverNames?: string[]
+    staffNames?: string[]
+  }
 }
 
 type JamoneroAssignmentRaw = {
@@ -353,6 +371,452 @@ const getDateWindow = (startISODate: string) => {
   return { ws, we, ms, me }
 }
 
+type DepartmentPersonLite = {
+  id?: string
+  name?: string
+  isJamonero?: boolean
+  isDriver?: boolean
+}
+
+/** Cerca per id i nom normalitzat sense recórrer la llista a cada crida (manual fast path). */
+function makeDepartmentPersonFinder(people: DepartmentPersonLite[]) {
+  const byId = new Map<string, DepartmentPersonLite>()
+  const byNormName = new Map<string, DepartmentPersonLite>()
+  for (const person of people) {
+    const idStr = String(person.id || '').trim()
+    if (idStr && !byId.has(idStr)) byId.set(idStr, person)
+    const nameKey = norm(String(person.name || ''))
+    if (nameKey && !byNormName.has(nameKey)) byNormName.set(nameKey, person)
+  }
+  return (id?: string | null, nameHint?: string | null): DepartmentPersonLite | null => {
+    const idStr = id ? String(id).trim() : ''
+    if (idStr) {
+      const hit = byId.get(idStr)
+      if (hit?.name) return hit
+    }
+    if (nameHint) {
+      const nh = norm(String(nameHint))
+      if (!nh) return null
+      return byNormName.get(nh) || null
+    }
+    return null
+  }
+}
+
+/** Mode manual Serveis després d’autoAssign: sense treballadors “auto”, només triats manualment + auto jamoneros. */
+function applyManualServeisStaffPolicy(
+  assignment: {
+    responsible?: { name: string } | null
+    drivers?: Array<{
+      name: string
+      meetingPoint?: string
+      plate?: string
+      vehicleType?: string
+      isJamonero?: boolean
+    }>
+    staff?: Array<{ name: string; meetingPoint?: string; isJamonero?: boolean }>
+  },
+  groups: ServeisGroupInput[],
+  departmentPeople: DepartmentPersonLite[],
+  phaseServiceJamoneros: JamoneroAssignmentNormalized[],
+  fallbackMeetingPoint: string
+) {
+  const meeting = fallbackMeetingPoint
+  const findPerson = makeDepartmentPersonFinder(departmentPeople)
+
+  const isJamoneroPerson = (p: DepartmentPersonLite | null, displayName: string) => {
+    if (p?.isJamonero === true) return true
+    const nn = norm(displayName)
+    return phaseServiceJamoneros.some(
+      (j) =>
+        j.mode === 'manual' &&
+        ((j.personnelId && p?.id && String(j.personnelId) === String(p.id)) ||
+          (j.personnelName && norm(String(j.personnelName)) === nn))
+    )
+  }
+
+  const manualStaff: Array<{ name: string; meetingPoint?: string; isJamonero?: boolean }> = []
+  const seenManualNorm = new Set<string>()
+
+  for (const g of groups) {
+    const gMp = String(g.meetingPoint || meeting || '')
+    const mw = g.manualWorkers
+    if (!Array.isArray(mw)) continue
+    for (const w of mw as Array<{ id?: string; name?: string; meetingPoint?: string }>) {
+      const p = findPerson(w?.id ? String(w.id) : null, w?.name ? String(w.name) : null)
+      const name = String((p?.name || w?.name || '').trim())
+      if (!name) continue
+      const nn = norm(name)
+      if (seenManualNorm.has(nn)) continue
+      seenManualNorm.add(nn)
+      manualStaff.push({
+        name,
+        meetingPoint: String(w?.meetingPoint || gMp || meeting),
+        isJamonero: isJamoneroPerson(p, name) || undefined,
+      })
+    }
+  }
+
+  const jamoneroAutoStaff = (assignment.staff || []).filter(
+    (s) => s?.name && String(s.name).trim() && s.isJamonero === true
+  )
+
+  const merged: Array<{ name: string; meetingPoint?: string; isJamonero?: boolean }> = [...manualStaff]
+  const seenNorm = new Set(seenManualNorm)
+  for (const row of jamoneroAutoStaff) {
+    const nn = norm(String(row.name))
+    if (!nn || seenNorm.has(nn)) continue
+    seenNorm.add(nn)
+    merged.push(row)
+  }
+
+  return {
+    ...assignment,
+    staff: merged,
+  }
+}
+
+/** Sense autoAssign ni ledger: només camps del formulari per Serveis manual (sense slots jamonero auto). */
+function buildServeisManualAssignmentOnly(
+  phaseAssignBody: Record<string, unknown>,
+  departmentPeople: DepartmentPersonLite[],
+  phaseServiceJamoneros: JamoneroAssignmentNormalized[]
+): {
+  assignment: {
+    responsible?: { name: string } | null
+    drivers: Array<{ name: string; meetingPoint?: string; isJamonero?: boolean }>
+    staff: Array<{ name: string; meetingPoint?: string; isJamonero?: boolean }>
+  }
+  meta: { needsReview: boolean; violations: string[]; notes: string[] }
+} {
+  const meeting = String(phaseAssignBody.meetingPoint || '')
+  const skipResponsible = phaseAssignBody.skipResponsible === true
+
+  const findPerson = makeDepartmentPersonFinder(departmentPeople)
+
+  const isJamoneroPerson = (p: DepartmentPersonLite | null, displayName: string) => {
+    if (p?.isJamonero === true) return true
+    const nn = norm(displayName)
+    return phaseServiceJamoneros.some(
+      (j) =>
+        j.mode === 'manual' &&
+        ((j.personnelId && p?.id && String(j.personnelId) === String(p.id)) ||
+          (j.personnelName && norm(String(j.personnelName)) === nn))
+    )
+  }
+
+  let responsible: { name: string } | null = null
+  const drivers: Array<{ name: string; meetingPoint?: string; isJamonero?: boolean }> = []
+  const staff: Array<{ name: string; meetingPoint?: string; isJamonero?: boolean }> = []
+  const seenDriverNorm = new Set<string>()
+  const seenStaffNorm = new Set<string>()
+  const groups = Array.isArray(phaseAssignBody.groups)
+    ? (phaseAssignBody.groups as ServeisGroupInput[])
+    : []
+
+  for (const g of groups) {
+    const gMp = String(g.meetingPoint || meeting || '')
+    if (!skipResponsible && g.wantsResponsible !== false && g.responsibleId) {
+      const p = findPerson(
+        String(g.responsibleId),
+        typeof g.responsibleName === 'string' ? g.responsibleName : null
+      )
+      if (p?.name && !responsible) responsible = { name: String(p.name) }
+    }
+    if (g.needsDriver && g.driverId) {
+      const p = findPerson(
+        String(g.driverId),
+        typeof g.driverName === 'string' ? g.driverName : null
+      )
+      if (p?.name) {
+        const dn = norm(String(p.name))
+        if (!seenDriverNorm.has(dn)) {
+          seenDriverNorm.add(dn)
+          drivers.push({
+            name: String(p.name),
+            meetingPoint: gMp,
+            isJamonero: isJamoneroPerson(p, String(p.name)) || undefined,
+          })
+        }
+      }
+    }
+    const mw = g.manualWorkers
+    if (!Array.isArray(mw)) continue
+    for (const w of mw as Array<{ id?: string; name?: string; meetingPoint?: string }>) {
+      const p = findPerson(w?.id ? String(w.id) : null, w?.name ? String(w.name) : null)
+      const name = String((p?.name || w?.name || '').trim())
+      if (!name) continue
+      const nn = norm(name)
+      if (seenStaffNorm.has(nn)) continue
+      seenStaffNorm.add(nn)
+      staff.push({
+        name,
+        meetingPoint: String(w?.meetingPoint || gMp || meeting),
+        isJamonero: isJamoneroPerson(p, name) || undefined,
+      })
+    }
+  }
+
+  const topRespId =
+    typeof phaseAssignBody.manualResponsibleId === 'string'
+      ? phaseAssignBody.manualResponsibleId.trim()
+      : ''
+  if (!skipResponsible && !responsible && topRespId) {
+    const p = findPerson(topRespId, null)
+    if (p?.name) responsible = { name: String(p.name) }
+  }
+
+  const manualDriverId =
+    typeof phaseAssignBody.manualDriverId === 'string' ? String(phaseAssignBody.manualDriverId).trim() : ''
+  if (manualDriverId) {
+    const p = findPerson(manualDriverId, null)
+    if (p?.name) {
+      const dn = norm(String(p.name))
+      if (!seenDriverNorm.has(dn)) {
+        seenDriverNorm.add(dn)
+        drivers.push({
+          name: String(p.name),
+          meetingPoint: meeting,
+          isJamonero: isJamoneroPerson(p, String(p.name)) || undefined,
+        })
+      }
+    }
+  }
+
+  for (const j of phaseServiceJamoneros) {
+    if (j.mode !== 'manual') continue
+    const p = j.personnelId
+      ? findPerson(String(j.personnelId), j.personnelName ? String(j.personnelName) : null)
+      : findPerson(null, j.personnelName ? String(j.personnelName) : null)
+    const name = String((p?.name || j.personnelName || '').trim())
+    if (!name) continue
+    const nn = norm(name)
+
+    const existingDriver = drivers.find((d) => norm(d.name) === nn)
+    const existingStaff = staff.find((s) => norm(s.name) === nn)
+    if (existingDriver) {
+      existingDriver.isJamonero = true
+      continue
+    }
+    if (existingStaff) {
+      existingStaff.isJamonero = true
+      continue
+    }
+
+    if (p?.isDriver === true) {
+      if (!seenDriverNorm.has(nn)) {
+        seenDriverNorm.add(nn)
+        drivers.push({ name, meetingPoint: meeting, isJamonero: true })
+      }
+    } else {
+      if (!seenStaffNorm.has(nn)) {
+        seenStaffNorm.add(nn)
+        staff.push({ name, meetingPoint: meeting, isJamonero: true })
+      }
+    }
+  }
+
+  return {
+    assignment: { responsible, drivers, staff },
+    meta: { needsReview: false, violations: [], notes: [] },
+  }
+}
+
+/** Manual Cuina: IDs i noms dels grups → assignació sense autoAssign ni ledger. */
+function buildCuinaManualAssignmentOnly(
+  phaseAssignBody: Record<string, unknown>,
+  departmentPeople: DepartmentPersonLite[]
+): {
+  assignment: {
+    responsible?: { name: string } | null
+    drivers: Array<{ name: string; meetingPoint?: string; plate?: string; vehicleType?: string }>
+    staff: Array<{ name: string; meetingPoint?: string }>
+  }
+  meta: { needsReview: boolean; violations: string[]; notes: string[] }
+} {
+  const meeting = String(phaseAssignBody.meetingPoint || '')
+
+  const findPerson = makeDepartmentPersonFinder(departmentPeople)
+
+  let responsible: { name: string } | null = null
+  const drivers: Array<{ name: string; meetingPoint?: string }> = []
+  const staff: Array<{ name: string; meetingPoint?: string }> = []
+  const seenDriverNorm = new Set<string>()
+  const seenStaffNorm = new Set<string>()
+  const groups = Array.isArray(phaseAssignBody.groups)
+    ? (phaseAssignBody.groups as ServeisGroupInput[])
+    : []
+
+  for (const g of groups) {
+    const gMp = String(g.meetingPoint || meeting || '')
+    if (g.wantsResponsible !== false) {
+      const rid = String(g.responsibleId || '').trim()
+      const p = findPerson(rid || null, typeof g.responsibleName === 'string' ? g.responsibleName : null)
+      if (p?.name && !responsible) responsible = { name: String(p.name) }
+    }
+    const nd = Number(g.drivers || 0)
+    const needsDriver = g.needsDriver === true || nd > 0
+    if (needsDriver) {
+      const did = String(g.driverId || '').trim()
+      const p = findPerson(did || null, typeof g.driverName === 'string' ? g.driverName : null)
+      if (p?.name) {
+        const dn = norm(String(p.name))
+        if (!seenDriverNorm.has(dn)) {
+          seenDriverNorm.add(dn)
+          drivers.push({ name: String(p.name), meetingPoint: gMp })
+        }
+      }
+    }
+
+    const mw = g.manualWorkers
+    if (Array.isArray(mw)) {
+      for (const w of mw as Array<{ id?: string; name?: string; meetingPoint?: string }>) {
+        const p = findPerson(w?.id ? String(w.id) : null, w?.name ? String(w.name) : null)
+        const name = String((p?.name || w?.name || '').trim())
+        if (!name) continue
+        const nn = norm(name)
+        if (seenStaffNorm.has(nn)) continue
+        seenStaffNorm.add(nn)
+        staff.push({
+          name,
+          meetingPoint: String(w?.meetingPoint || gMp || meeting),
+        })
+      }
+    }
+  }
+
+  const topRespId =
+    typeof phaseAssignBody.manualResponsibleId === 'string'
+      ? phaseAssignBody.manualResponsibleId.trim()
+      : ''
+  if (!responsible && topRespId) {
+    const p = findPerson(topRespId, null)
+    if (p?.name) responsible = { name: String(p.name) }
+  }
+
+  return {
+    assignment: { responsible, drivers, staff },
+    meta: { needsReview: false, violations: [], notes: [] },
+  }
+}
+
+/** Manual Logística: responsable + conductors per vehicle; personal extra co omple amb buildToSave. */
+function buildLogisticaManualAssignmentOnly(
+  phaseAssignBody: Record<string, unknown>,
+  departmentPeople: DepartmentPersonLite[]
+): {
+  assignment: {
+    responsible?: { name: string } | null
+    drivers: Array<{ name: string; meetingPoint?: string; plate?: string; vehicleType?: string }>
+    staff: Array<{ name: string; meetingPoint?: string }>
+  }
+  meta: { needsReview: boolean; violations: string[]; notes: string[] }
+} {
+  const meeting = String(phaseAssignBody.meetingPoint || '')
+  const skipResponsible = phaseAssignBody.skipResponsible === true
+
+  const findPerson = makeDepartmentPersonFinder(departmentPeople)
+
+  let responsible: { name: string } | null = null
+  if (!skipResponsible) {
+    const rid = String(phaseAssignBody.manualResponsibleId || '').trim()
+    if (rid) {
+      const p = findPerson(rid, null)
+      if (p?.name) responsible = { name: String(p.name) }
+    }
+  }
+
+  const drivers: Array<{
+    name: string
+    meetingPoint?: string
+    plate?: string
+    vehicleType?: string
+  }> = []
+  const seenDriverNorm = new Set<string>()
+  const vehicles = Array.isArray(phaseAssignBody.vehicles)
+    ? (phaseAssignBody.vehicles as Array<{
+        conductorId?: string | null
+        plate?: unknown
+        vehicleType?: unknown
+      }>)
+    : []
+  for (const v of vehicles) {
+    const cid = v.conductorId ? String(v.conductorId).trim() : ''
+    if (!cid) continue
+    const p = findPerson(cid, null)
+    if (!p?.name) continue
+    const dn = norm(String(p.name))
+    if (seenDriverNorm.has(dn)) continue
+    seenDriverNorm.add(dn)
+    drivers.push({
+      name: String(p.name),
+      meetingPoint: meeting,
+      plate: String(v.plate || ''),
+      vehicleType: String(v.vehicleType || ''),
+    })
+  }
+
+  const manualDriverId = String(phaseAssignBody.manualDriverId || '').trim()
+  if (manualDriverId) {
+    const p = findPerson(manualDriverId, null)
+    if (p?.name) {
+      const dn = norm(String(p.name))
+      if (!seenDriverNorm.has(dn)) {
+        seenDriverNorm.add(dn)
+        drivers.push({
+          name: String(p.name),
+          meetingPoint: meeting,
+          plate: '',
+          vehicleType: '',
+        })
+      }
+    }
+  }
+
+  const tw = Number(phaseAssignBody.totalWorkers || 0)
+  const nd = Number(phaseAssignBody.numDrivers || 0)
+  const driverSlots = Math.max(nd, drivers.length)
+  const respDeduction = !skipResponsible && responsible ? 1 : 0
+  const staffCount = Math.max(tw - driverSlots - respDeduction, 0)
+
+  const rawManualWorkers = Array.isArray(phaseAssignBody.manualWorkers)
+    ? (
+        phaseAssignBody.manualWorkers as Array<{
+          id?: string
+          name?: string
+          meetingPoint?: string
+        }>
+      )
+    : []
+
+  const namedStaff: Array<{ name: string; meetingPoint?: string }> = []
+  const namedNorm = new Set<string>()
+  for (const w of rawManualWorkers) {
+    if (namedStaff.length >= staffCount) break
+    const p = findPerson(w?.id ? String(w.id) : null, w?.name ? String(w.name) : null)
+    const name = String((p?.name || w?.name || '').trim())
+    if (!name || name === 'Extra') continue
+    const nn = norm(name)
+    if (namedNorm.has(nn)) continue
+    namedNorm.add(nn)
+    namedStaff.push({
+      name,
+      meetingPoint: String(w?.meetingPoint || meeting),
+    })
+  }
+
+  const extraSlots = Math.max(0, staffCount - namedStaff.length)
+  const staff = [...namedStaff, ...Array.from({ length: extraSlots }, () => ({
+    name: 'Extra',
+    meetingPoint: meeting,
+  }))]
+
+  return {
+    assignment: { responsible, drivers, staff },
+    meta: { needsReview: false, violations: [], notes: [] },
+  }
+}
+
 /* ================= Handler ================= */
 export async function POST(req: NextRequest) {
   try {
@@ -367,6 +831,20 @@ export async function POST(req: NextRequest) {
     const surveyPreferredCache = new Map<string, Awaited<ReturnType<typeof getSurveyPreferredCandidates>>>()
     const ledgerCache = new Map<string, Awaited<ReturnType<typeof buildLedger>>>()
 
+    /** Una sola lectura Firestore per esdeveniment (abans era per cada fase). */
+    const stageVerdPayloadCache = new Map<string, Record<string, unknown> | null>()
+    const getStageVerdCached = async (stageDocId: string): Promise<Record<string, unknown> | null> => {
+      const id = String(stageDocId || '').trim()
+      if (!id) return null
+      if (stageVerdPayloadCache.has(id)) {
+        return stageVerdPayloadCache.get(id) ?? null
+      }
+      const snap = await db.collection('stage_verd').doc(id).get()
+      const payload = snap.exists ? ((snap.data() || {}) as Record<string, unknown>) : null
+      stageVerdPayloadCache.set(id, payload)
+      return payload
+    }
+
     const required = ['eventId', 'department', 'startDate', 'endDate']
     for (const k of required) {
       if (!body?.[k]) {
@@ -377,6 +855,37 @@ export async function POST(req: NextRequest) {
     const deptNorm = norm(String(body.department || ''))
     const collectionName = await resolveWriteCollectionForDepartment(deptNorm)
     console.log('[quadrants/route] Escriurà a col·lecció:', collectionName)
+
+    const mode: 'auto' | 'semi' | 'manual' =
+      body?.mode === 'auto' || body?.mode === 'semi' || body?.mode === 'manual'
+        ? body.mode
+        : 'semi'
+
+    const confirmImmediatelyRequested = Boolean(body?.confirmImmediately === true)
+    let jwtSessionForInlineConfirm: { user?: { email?: string }; email?: string } | null = null
+
+    if (confirmImmediatelyRequested && (mode !== 'manual' || !isQuadrantCoreDepartment(deptNorm))) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'confirmImmediately només és vàlid en mode manual per a departaments Serveis, Cuina o Logística',
+        },
+        { status: 400 }
+      )
+    }
+    if (confirmImmediatelyRequested && mode === 'manual' && isQuadrantCoreDepartment(deptNorm)) {
+      jwtSessionForInlineConfirm = (await getToken({ req, secret: process.env.NEXTAUTH_SECRET })) as {
+        user?: { email?: string }
+        email?: string
+      } | null
+      if (!jwtSessionForInlineConfirm) {
+        return NextResponse.json(
+          { success: false, error: 'Cal sessió per confirmar en el mateix desament' },
+          { status: 401 }
+        )
+      }
+    }
 
     const getDepartmentPeople = async () => {
       if (!cachedDepartmentPeople) {
@@ -540,6 +1049,20 @@ export async function POST(req: NextRequest) {
                 ? bodyForSave.vestimentModel.trim() || null
                 : null)
             : null,
+        autoProposal: {
+          createdAt: new Date().toISOString(),
+          generationMode: mode,
+          responsibleName: assignmentForSave.responsible?.name || null,
+          driverNames: (assignmentForSave.drivers || [])
+            .map((d) => String(d?.name || '').trim())
+            .filter((n) => Boolean(n) && n !== 'Extra'),
+          staffNames: (assignmentForSave.staff || [])
+            .map((s) => String(s?.name || '').trim())
+            .filter((n) => Boolean(n) && n !== 'Extra'),
+          needsReview: !!metaForSave.needsReview,
+          violations: metaForSave.violations || [],
+          notes: metaForSave.notes || [],
+        },
       }
 
       if (!toSave.responsableName && bodyForSave.manualResponsibleName) {
@@ -571,6 +1094,9 @@ export async function POST(req: NextRequest) {
                 idx < Math.max(1, Number(g.drivers || 0))
               )?.name ||
               null,
+            ...(Array.isArray((g as { manualWorkers?: unknown })?.manualWorkers)
+              ? { manualWorkers: (g as { manualWorkers?: unknown }).manualWorkers }
+              : {}),
             responsibleId: g.responsibleId || null,
             responsibleName:
               (g.wantsResponsible !== false
@@ -748,25 +1274,13 @@ export async function POST(req: NextRequest) {
     const applyStageData = async (toSave: QuadrantSave) => {
       const baseEventId = normalizeEventId(String(body.eventId || ''))
       const stageDocId = baseEventId || canonicalEventId
-      const stageSnap = await db.collection('stage_verd').doc(stageDocId).get()
-      const stageData = stageSnap.exists ? stageSnap.data() : null
+      const stageData = await getStageVerdCached(stageDocId)
 
       if (!toSave.code) {
-        toSave.code = stageData?.code || stageData?.C_digo || ''
+        toSave.code = String(stageData?.code || stageData?.C_digo || '')
       }
       if (baseEventId) {
         toSave.eventId = baseEventId
-      }
-
-      const destination =
-        stageData?.Ubicacio ||
-        stageData?.location ||
-        stageData?.address ||
-        toSave.location
-      const km = await calcDistanceKm(destination || '')
-      if (km) {
-        toSave.distanceKm = km
-        toSave.distanceCalcAt = new Date().toISOString()
       }
     }
 
@@ -774,12 +1288,24 @@ export async function POST(req: NextRequest) {
       (value || '').toString().trim().toLowerCase()
 
     let phaseRequests: PhaseRequest[] = []
+    const createdDocIds: string[] = []
+    /** Snapshot del darrer `toSave` per docId; evita un `get()` de Firestore abans de confirmar inline. */
+    const savedDraftSnapshotByDocId = new Map<string, QuadrantSave>()
+    let confirmInlineApplied = false
     let remainingServiceJamoneroAssignments: JamoneroAssignmentNormalized[] = Array.isArray(
       body.serviceJamoneroAssignments
     )
       ? (body.serviceJamoneroAssignments as JamoneroAssignmentRaw[]).map(normalizeJamoneroAssignment)
       : []
     let remainingServiceEventGroups = 0
+
+    const normalizedBodyJamForFirestoreBatch = Array.isArray(body.serviceJamoneroAssignments)
+      ? (body.serviceJamoneroAssignments as JamoneroAssignmentRaw[]).map(normalizeJamoneroAssignment)
+      : []
+    /** Amb slots jamonero auto cal mantenir escritures per fase (ordre in-memory dels jameners). */
+    const jamAssignmentsAllowServeisFirestoreBatch =
+      normalizedBodyJamForFirestoreBatch.length === 0 ||
+      !normalizedBodyJamForFirestoreBatch.some((j) => j.mode === 'auto')
 
     const consumeServiceJamoneros = (
       assignment: {
@@ -844,6 +1370,10 @@ export async function POST(req: NextRequest) {
           responsableId: p.responsableId || null,
           meetingPoint: p.meetingPoint || body.meetingPoint || '',
           vehicles: Array.isArray(p.vehicles) ? p.vehicles : [],
+          ...(Array.isArray((p as { manualWorkers?: unknown }).manualWorkers) &&
+          ((p as { manualWorkers: unknown[] }).manualWorkers ?? []).length > 0
+            ? { manualWorkers: (p as { manualWorkers: unknown[] }).manualWorkers }
+            : {}),
         })
       }
     } else if (deptNorm === 'serveis' && Array.isArray(body.groups) && body.groups.length > 0) {
@@ -855,12 +1385,12 @@ export async function POST(req: NextRequest) {
         (assignment) => assignment?.mode === 'manual' && (assignment?.personnelId || assignment?.personnelName)
       )
       const hasAutoServiceJamonero = serviceAssignments.some((assignment) => assignment?.mode !== 'manual')
+      /** Mode manual: no es resolen jameners “auto” ni es fan splits per equip (estalvia premises + recorreguts). */
+      const effectiveHasAutoServiceJamonero = hasAutoServiceJamonero && mode !== 'manual'
       const departmentPeople =
-        manualServiceJamonero || hasAutoServiceJamonero
-          ? await getDepartmentPeople()
-          : []
+        manualServiceJamonero || effectiveHasAutoServiceJamonero ? await getDepartmentPeople() : []
       const premisesData =
-        manualServiceJamonero || hasAutoServiceJamonero
+        manualServiceJamonero || effectiveHasAutoServiceJamonero
           ? await getPremisesData()
           : { premises: { driverCrews: [] as DriverCrewPremise[] } }
       const driverCrews = Array.isArray(premisesData?.premises?.driverCrews)
@@ -981,7 +1511,7 @@ export async function POST(req: NextRequest) {
           groupIndex === 0 &&
           serviceDate === eventDate &&
           responsibleCrew &&
-          hasAutoServiceJamonero
+          effectiveHasAutoServiceJamonero
         ) {
           const inResponsibleCrew = departmentPeople.find((person) => {
             if (person.isJamonero !== true) return false
@@ -1161,7 +1691,7 @@ export async function POST(req: NextRequest) {
         if (norm(label) === 'event') remainingServiceEventGroups += 1
       })
 
-      if (existingEventGroupsCount > 1 && serviceAssignments.length > 0) {
+      if (existingEventGroupsCount > 1 && serviceAssignments.length > 0 && mode !== 'manual') {
         let remainingManualAssignments = serviceAssignments.filter(
           (assignment) => assignment?.mode === 'manual' && (assignment?.personnelId || assignment?.personnelName)
         )
@@ -1403,7 +1933,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const writePhaseDoc = async (phase: PhaseRequest, blockedNames: string[] = []) => {
+    const writePhaseDoc = async (
+      phase: PhaseRequest,
+      blockedNames: string[] = [],
+      phaseFirestoreQueue?: Array<{ docId: string; toSave: QuadrantSave }>
+    ) => {
       const isPrimaryResponsibleEventGroup =
         deptNorm === 'serveis' &&
         phase.phaseType === 'event' &&
@@ -1474,34 +2008,58 @@ export async function POST(req: NextRequest) {
         phaseDate: phase.date || null,
         timetables: phaseTimetables,
         serviceJamoneroAssignments: phaseServiceJamoneros,
+        manualWorkers:
+          Array.isArray((phase as { manualWorkers?: unknown[] }).manualWorkers) &&
+          ((phase as { manualWorkers: unknown[] }).manualWorkers ?? []).length > 0
+            ? (phase as { manualWorkers: unknown[] }).manualWorkers
+            : undefined,
       }
-      const phaseSurveyPreferred = await getSurveyPreferred(
-        String(phase.date || body.startDate || '').slice(0, 10)
-      )
-      const phaseAssignBody = await enrichWithSurveyPreferences(phaseBody, deptNorm, phaseSurveyPreferred)
+      /** Manual Serveis / Logística: sense autoAssign, ledger ni enriquiments de quota per fase. */
+      const phaseManualServeis = mode === 'manual' && deptNorm === 'serveis'
+      const phaseManualLogistica = mode === 'manual' && deptNorm === 'logistica'
+      const phaseSkipHeavyPipeline = phaseManualServeis || phaseManualLogistica
+
+      let phaseAssignBody: Record<string, unknown>
+      if (phaseSkipHeavyPipeline) {
+        phaseAssignBody = {
+          ...phaseBody,
+          preferredStaffNames: Array.isArray(phaseBody.preferredStaffNames)
+            ? (phaseBody.preferredStaffNames as string[])
+            : [],
+          preferredDriverNames: Array.isArray(phaseBody.preferredDriverNames)
+            ? (phaseBody.preferredDriverNames as string[])
+            : [],
+          preferredResponsibleName:
+            typeof phaseBody.preferredResponsibleName === 'string'
+              ? phaseBody.preferredResponsibleName
+              : null,
+        }
+      } else {
+        const phaseSurveyPreferred = await getSurveyPreferred(
+          String(phase.date || body.startDate || '').slice(0, 10)
+        )
+        phaseAssignBody = (await enrichWithSurveyPreferences(
+          phaseBody,
+          deptNorm,
+          phaseSurveyPreferred
+        )) as Record<string, unknown>
+      }
       const departmentPeople = await getDepartmentPeople()
-      const premisesData = await getPremisesData()
-      const ledger = await getLedgerForDate(String(phase.date || body.startDate || '').slice(0, 10))
-      const phaseKeyForBusy = norm(phase.label || phase.phaseType || 'fase')
-      const phaseDateForBusy = String(phase.date || body.startDate)
-      const groupKeyForBusy = String(phase.groupId || phase.groupsOverride?.[0]?.id || 'group')
-        .trim()
-        .replace(/[^a-zA-Z0-9_-]/g, '')
-      const phaseDocIdForBusy = `${canonicalEventId}__${phaseKeyForBusy}__${phaseDateForBusy}__${
-        groupKeyForBusy || 'group'
-      }`
-      const res = (await autoAssign({
-        ...phaseAssignBody,
-        departmentPeople,
-        premises: premisesData?.premises,
-        premisesWarnings: premisesData?.warnings || [],
-        ledger,
-        ignoreBusyQuadrantDocIds: [phaseDocIdForBusy],
-      })) as {
+      const groupsForManual = Array.isArray(phaseAssignBody.groups)
+        ? (phaseAssignBody.groups as ServeisGroupInput[])
+        : []
+
+      type PhaseAssignResult = {
         assignment: {
           responsible?: { name: string } | null
-          drivers?: Array<{ name: string; meetingPoint?: string; plate?: string; vehicleType?: string }>
-          staff?: Array<{ name: string; meetingPoint?: string }>
+          drivers?: Array<{
+            name: string
+            meetingPoint?: string
+            plate?: string
+            vehicleType?: string
+            isJamonero?: boolean
+          }>
+          staff?: Array<{ name: string; meetingPoint?: string; isJamonero?: boolean }>
         }
         meta: {
           needsReview?: boolean
@@ -1509,11 +2067,65 @@ export async function POST(req: NextRequest) {
           notes?: string[]
         }
       }
+
+      let res: PhaseAssignResult
+      if (phaseManualServeis) {
+        const built = buildServeisManualAssignmentOnly(
+          phaseAssignBody,
+          departmentPeople as DepartmentPersonLite[],
+          phaseServiceJamoneros
+        )
+        res = built
+      } else if (phaseManualLogistica) {
+        const built = buildLogisticaManualAssignmentOnly(
+          phaseAssignBody,
+          departmentPeople as DepartmentPersonLite[]
+        )
+        res = built
+      } else {
+        const premisesData = await getPremisesData()
+        const ledger = await getLedgerForDate(String(phase.date || body.startDate || '').slice(0, 10))
+        const phaseKeyForBusy = norm(phase.label || phase.phaseType || 'fase')
+        const phaseDateForBusy = String(phase.date || body.startDate)
+        const groupKeyForBusy = String(phase.groupId || phase.groupsOverride?.[0]?.id || 'group')
+          .trim()
+          .replace(/[^a-zA-Z0-9_-]/g, '')
+        const phaseDocIdForBusy = `${canonicalEventId}__${phaseKeyForBusy}__${phaseDateForBusy}__${
+          groupKeyForBusy || 'group'
+        }`
+        type AutoAssignPayload = Parameters<typeof autoAssign>[0]
+        res = (await autoAssign({
+          ...(phaseAssignBody as unknown as AutoAssignPayload),
+          departmentPeople,
+          premises: premisesData?.premises,
+          premisesWarnings: premisesData?.warnings || [],
+          ledger,
+          ignoreBusyQuadrantDocIds: [phaseDocIdForBusy],
+        })) as PhaseAssignResult
+      }
+
+      if (mode === 'manual' && deptNorm === 'serveis' && !phaseManualServeis) {
+        const meetingForStaff = String(phaseAssignBody.meetingPoint || body.meetingPoint || '')
+        res = {
+          ...res,
+          assignment: applyManualServeisStaffPolicy(
+            res.assignment,
+            groupsForManual,
+            departmentPeople as DepartmentPersonLite[],
+            phaseServiceJamoneros,
+            meetingForStaff
+          ),
+        }
+      }
       if (deptNorm === 'serveis' && phase.phaseType === 'event') {
         consumeServiceJamoneros(res.assignment)
         remainingServiceEventGroups = Math.max(remainingServiceEventGroups - 1, 0)
       }
-      const { toSave } = buildToSave(phaseAssignBody, res.assignment, res.meta)
+      const { toSave } = buildToSave(
+        phaseAssignBody as unknown as QuadrantSaveRequestBody,
+        res.assignment,
+        res.meta
+      )
       await applyStageData(toSave)
       const phaseKey = norm(phase.label || phase.phaseType || 'fase')
       const phaseDate = String(phase.date || body.startDate)
@@ -1521,7 +2133,13 @@ export async function POST(req: NextRequest) {
         .trim()
         .replace(/[^a-zA-Z0-9_-]/g, '')
       const docId = `${canonicalEventId}__${phaseKey}__${phaseDate}__${groupKey || 'group'}`
-      await db.collection(collectionName).doc(docId).set(toSave, { merge: true })
+      savedDraftSnapshotByDocId.set(docId, toSave)
+      if (phaseFirestoreQueue && phaseSkipHeavyPipeline) {
+        phaseFirestoreQueue.push({ docId, toSave })
+      } else {
+        await db.collection(collectionName).doc(docId).set(toSave, { merge: true })
+      }
+      createdDocIds.push(docId)
       return res
     }
 
@@ -1591,8 +2209,22 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      for (const phase of orderedPhaseRequests) {
-        const result = await writePhaseDoc(phase, Array.from(blockedNamesInBatch))
+      const manualPhasesFirestoreQueue =
+        mode === 'manual' &&
+        (deptNorm === 'logistica' ||
+          (deptNorm === 'serveis' && jamAssignmentsAllowServeisFirestoreBatch))
+          ? ([] as Array<{ docId: string; toSave: QuadrantSave }>)
+          : undefined
+
+      if (mode === 'manual' && (deptNorm === 'serveis' || deptNorm === 'logistica')) {
+        /** Personal + stage_verd en paral·lel: warmup abans del bucle de fases (menys espera seqüencial). */
+        await Promise.all([getDepartmentPeople(), getStageVerdCached(canonicalEventId)])
+      }
+
+      const manualLogParallel =
+        mode === 'manual' && deptNorm === 'logistica' && Boolean(manualPhasesFirestoreQueue)
+
+      const applyPhaseWriteResult = (phase: PhaseRequest, result: Awaited<ReturnType<typeof writePhaseDoc>>) => {
         if (!preferredResult && phase.phaseType === 'event') {
           preferredResult = result
         }
@@ -1612,9 +2244,124 @@ export async function POST(req: NextRequest) {
           .filter((name): name is string => Boolean(name) && String(name).trim() !== '' && String(name) !== 'Extra')
           .forEach((name) => blockedNamesInBatch.add(String(name)))
       }
-      revalidateQuadrantsListCache()
+
+      if (manualLogParallel) {
+        /** Manual logística: buildLogisticaManualAssignmentOnly no usa `blockedNames`; escriure les fases en paral·lel. */
+        const tuples = await Promise.all(
+          orderedPhaseRequests.map((phase, index) =>
+            writePhaseDoc(phase, [], manualPhasesFirestoreQueue).then((result) => ({
+              index,
+              phase,
+              result,
+            }))
+          )
+        )
+        tuples.sort((a, b) => a.index - b.index)
+        tuples.forEach(({ phase, result }) => applyPhaseWriteResult(phase, result))
+      } else {
+        for (const phase of orderedPhaseRequests) {
+          const result = await writePhaseDoc(
+            phase,
+            Array.from(blockedNamesInBatch),
+            manualPhasesFirestoreQueue
+          )
+          applyPhaseWriteResult(phase, result)
+        }
+      }
+
+      if (manualPhasesFirestoreQueue && manualPhasesFirestoreQueue.length > 0) {
+        let fwBatch = db.batch()
+        let fwCount = 0
+        const fwCol = db.collection(collectionName)
+        const flushFw = async () => {
+          if (fwCount === 0) return
+          await fwBatch.commit()
+          fwBatch = db.batch()
+          fwCount = 0
+        }
+        for (const row of manualPhasesFirestoreQueue) {
+          fwBatch.set(fwCol.doc(row.docId), row.toSave as DocumentData, { merge: true })
+          fwCount++
+          if (fwCount >= 480) await flushFw()
+        }
+        await flushFw()
+      }
+
+      if (
+        confirmImmediatelyRequested &&
+        createdDocIds.length > 0 &&
+        mode === 'manual' &&
+        isQuadrantCoreDepartment(deptNorm)
+      ) {
+        if (!jwtSessionForInlineConfirm) {
+          return NextResponse.json(
+            { success: false, error: 'Sessió caducada mentre es desava' },
+            { status: 401 }
+          )
+        }
+        const uniqIds = Array.from(new Set(createdDocIds))
+        const firstDocId = uniqIds[0]
+        const firstDraftRef = db.collection(collectionName).doc(firstDocId)
+        const reuseDraftSnapshot = savedDraftSnapshotByDocId.has(firstDocId)
+        const [stagePayload, fetchedSnapMaybe] = await Promise.all([
+          getStageVerdCached(canonicalEventId),
+          reuseDraftSnapshot
+            ? Promise.resolve<DocumentSnapshot | undefined>(undefined)
+            : firstDraftRef.get(),
+        ])
+        const firstPrevInline: QuadrantConfirmDoc | null = reuseDraftSnapshot
+          ? (savedDraftSnapshotByDocId.get(firstDocId)! as unknown as QuadrantConfirmDoc)
+          : fetchedSnapMaybe?.exists
+            ? (fetchedSnapMaybe.data() as QuadrantConfirmDoc)
+            : null
+        const sdInline = stagePayload
+        const confirmedAtIc = Timestamp.fromDate(new Date())
+        const confirmedByIc =
+          jwtSessionForInlineConfirm.user?.email || jwtSessionForInlineConfirm.email || 'system'
+        await commitQuadrantConfirmedFirestoreBatch({
+          colName: collectionName,
+          docIds: uniqIds,
+          confirmPatch: {
+            status: 'confirmed',
+            confirmedAt: confirmedAtIc,
+            confirmedBy: confirmedByIc,
+            code: quadrantConfirmTrim(sdInline?.code ?? sdInline?.C_digo ?? ''),
+          },
+        })
+        const assignedIc = extractAssignedNamesFromQuadrant(firstPrevInline)
+        const diffIc = computeQuadrantProposalDiff({
+          proposal: firstPrevInline?.autoProposal || null,
+          finalAssigned: assignedIc,
+        })
+        after(async () => {
+          await deferQuadrantConfirmSideEffects({
+            requestOrigin: req.nextUrl.origin,
+            dept: deptNorm,
+            colName: collectionName,
+            eventId: String(canonicalEventId),
+            confirmedAtIso: confirmedAtIc.toDate().toISOString(),
+            confirmedBy: confirmedByIc,
+            firstPrev: firstPrevInline,
+            stageData: sdInline,
+            assigned: assignedIc,
+            diff: diffIc,
+          })
+        })
+        confirmInlineApplied = true
+      }
+
+      after(() => {
+        try {
+          revalidateQuadrantsListCache()
+        } catch {
+          /* ignore */
+        }
+      })
+
       return NextResponse.json({
         success: true,
+        docIds: Array.from(new Set(createdDocIds)),
+        confirmInlineApplied,
         proposal: {
           responsible: preferredResult?.assignment?.responsible || null,
           drivers: preferredResult?.assignment?.drivers || [],
@@ -1624,46 +2371,90 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const finalSurveyPreferred = await getSurveyPreferred(
-      String(assignBody.phaseDate || assignBody.startDate || '').slice(0, 10)
-    )
-    const finalAssignBody = await enrichWithSurveyPreferences(assignBody, deptNorm, finalSurveyPreferred)
-    const departmentPeople = await getDepartmentPeople()
-    const premisesData = await getPremisesData()
-    const ledger = await getLedgerForDate(
-      String(assignBody.phaseDate || assignBody.startDate || '').slice(0, 10)
-    )
-    const normEvIdForBusy =
-      typeof finalAssignBody.eventId === 'string' && String(finalAssignBody.eventId).trim()
-        ? normalizeEventId(String(finalAssignBody.eventId))
-        : canonicalEventId
-    const singleFlowPhaseDateForBusy = String(
-      finalAssignBody.phaseDate || body.phaseDate || finalAssignBody.startDate || ''
-    ).trim()
-    const shouldIgnoreSelfSingleFlow =
-      String(body.generationScope || '').trim().toLowerCase() === 'event' &&
-      Boolean(singleFlowPhaseDateForBusy)
-    const singleFlowDocIdForBusy = shouldIgnoreSelfSingleFlow
-      ? `${normEvIdForBusy}__event__${singleFlowPhaseDateForBusy}__event`
-      : normEvIdForBusy
-    const res = (await autoAssign({
-      ...finalAssignBody,
-      departmentPeople,
-      premises: premisesData?.premises,
-      premisesWarnings: premisesData?.warnings || [],
-      ledger,
-      ignoreBusyQuadrantDocIds: [singleFlowDocIdForBusy],
-    })) as {
+    const cuinaManualFast =
+      mode === 'manual' &&
+      deptNorm === 'cuina' &&
+      Array.isArray(assignBody.groups) &&
+      assignBody.groups.length > 0
+
+    type SingleFlowAssignResult = {
       assignment: {
         responsible?: { name: string } | null
-        drivers?: Array<{ name: string; meetingPoint?: string; plate?: string; vehicleType?: string }>
-        staff?: Array<{ name: string; meetingPoint?: string }>
+        drivers: Array<{ name: string; meetingPoint?: string; plate?: string; vehicleType?: string }>
+        staff: Array<{ name: string; meetingPoint?: string }>
       }
       meta: {
-        needsReview?: boolean
-        violations?: string[]
-        notes?: string[]
+        needsReview: boolean
+        violations: string[]
+        notes: string[]
       }
+    }
+
+    let finalAssignBody: QuadrantSaveRequestBody
+    let res: SingleFlowAssignResult
+
+    if (cuinaManualFast) {
+      finalAssignBody = assignBody as QuadrantSaveRequestBody
+      const departmentPeopleCu = await getDepartmentPeople()
+      res = buildCuinaManualAssignmentOnly(
+        assignBody as unknown as Record<string, unknown>,
+        departmentPeopleCu as DepartmentPersonLite[]
+      )
+    } else {
+      const finalSurveyPreferred = await getSurveyPreferred(
+        String(assignBody.phaseDate || assignBody.startDate || '').slice(0, 10)
+      )
+      finalAssignBody = await enrichWithSurveyPreferences(assignBody, deptNorm, finalSurveyPreferred)
+      const departmentPeople = await getDepartmentPeople()
+      const premisesData = await getPremisesData()
+      const ledger = await getLedgerForDate(
+        String(assignBody.phaseDate || assignBody.startDate || '').slice(0, 10)
+      )
+      const normEvIdForBusy =
+        typeof finalAssignBody.eventId === 'string' && String(finalAssignBody.eventId).trim()
+          ? normalizeEventId(String(finalAssignBody.eventId))
+          : canonicalEventId
+      const singleFlowPhaseDateForBusy = String(
+        finalAssignBody.phaseDate || body.phaseDate || finalAssignBody.startDate || ''
+      ).trim()
+      const shouldIgnoreSelfSingleFlow =
+        String(body.generationScope || '').trim().toLowerCase() === 'event' &&
+        Boolean(singleFlowPhaseDateForBusy)
+      const singleFlowDocIdForBusy = shouldIgnoreSelfSingleFlow
+        ? `${normEvIdForBusy}__event__${singleFlowPhaseDateForBusy}__event`
+        : normEvIdForBusy
+      const manualAssignment = body?.manualAssignment as
+        | { responsibleName?: string | null; driverNames?: string[]; staffNames?: string[] }
+        | undefined
+
+      res =
+        mode === 'manual'
+          ? {
+              assignment: {
+                responsible: manualAssignment?.responsibleName
+                  ? { name: String(manualAssignment.responsibleName) }
+                  : null,
+                drivers: Array.isArray(manualAssignment?.driverNames)
+                  ? manualAssignment.driverNames
+                      .map((name) => ({ name: String(name || '').trim() }))
+                      .filter((d) => d.name)
+                  : [],
+                staff: Array.isArray(manualAssignment?.staffNames)
+                  ? manualAssignment.staffNames
+                      .map((name) => ({ name: String(name || '').trim() }))
+                      .filter((s) => s.name)
+                  : [],
+              },
+              meta: { needsReview: false, violations: [] as string[], notes: [] as string[] },
+            }
+          : ((await autoAssign({
+              ...(finalAssignBody as unknown as Parameters<typeof autoAssign>[0]),
+              departmentPeople,
+              premises: premisesData?.premises,
+              premisesWarnings: premisesData?.warnings || [],
+              ledger,
+              ignoreBusyQuadrantDocIds: [singleFlowDocIdForBusy],
+            })) as SingleFlowAssignResult)
     }
 
     const { toSave } = buildToSave(finalAssignBody, res.assignment, res.meta)
@@ -1682,10 +2473,70 @@ export async function POST(req: NextRequest) {
       : normalizedEventId
 
     await db.collection(collectionName).doc(docIdForSingleFlow).set(toSave, { merge: true })
+    createdDocIds.push(docIdForSingleFlow)
 
-    revalidateQuadrantsListCache()
+    if (
+      confirmImmediatelyRequested &&
+      mode === 'manual' &&
+      isQuadrantCoreDepartment(deptNorm) &&
+      createdDocIds.length > 0
+    ) {
+      if (!jwtSessionForInlineConfirm) {
+        return NextResponse.json(
+          { success: false, error: 'Sessió caducada mentre es desava' },
+          { status: 401 }
+        )
+      }
+      const uniqSf = Array.from(new Set(createdDocIds))
+      const stagePayloadSf = await getStageVerdCached(canonicalEventId)
+      const firstPrevSf = toSave as unknown as QuadrantConfirmDoc
+      const confirmedAtSf = Timestamp.fromDate(new Date())
+      const confirmedBySf =
+        jwtSessionForInlineConfirm.user?.email || jwtSessionForInlineConfirm.email || 'system'
+      await commitQuadrantConfirmedFirestoreBatch({
+        colName: collectionName,
+        docIds: uniqSf,
+        confirmPatch: {
+          status: 'confirmed',
+          confirmedAt: confirmedAtSf,
+          confirmedBy: confirmedBySf,
+          code: quadrantConfirmTrim(stagePayloadSf?.code ?? stagePayloadSf?.C_digo ?? ''),
+        },
+      })
+      const assignedSf = extractAssignedNamesFromQuadrant(firstPrevSf)
+      const diffSf = computeQuadrantProposalDiff({
+        proposal: firstPrevSf?.autoProposal || null,
+        finalAssigned: assignedSf,
+      })
+      after(async () => {
+        await deferQuadrantConfirmSideEffects({
+          requestOrigin: req.nextUrl.origin,
+          dept: deptNorm,
+          colName: collectionName,
+          eventId: String(canonicalEventId),
+          confirmedAtIso: confirmedAtSf.toDate().toISOString(),
+          confirmedBy: confirmedBySf,
+          firstPrev: firstPrevSf,
+          stageData: stagePayloadSf,
+          assigned: assignedSf,
+          diff: diffSf,
+        })
+      })
+      confirmInlineApplied = true
+    }
+
+    after(() => {
+      try {
+        revalidateQuadrantsListCache()
+      } catch {
+        /* ignore */
+      }
+    })
+
     return NextResponse.json({
       success: true,
+      docIds: Array.from(new Set(createdDocIds)),
+      confirmInlineApplied,
       proposal: {
         responsible: res.assignment.responsible,
         drivers: res.assignment.drivers,

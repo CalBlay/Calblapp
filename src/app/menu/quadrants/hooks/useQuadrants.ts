@@ -51,6 +51,9 @@ export function useQuadrants(department: string, start?: string, end?: string) {
         params.set('department', department)
         params.set('start', start)
         params.set('end', end)
+        if (silent) {
+          params.set('skipCache', '1')
+        }
 
         const url = `/api/quadrants/get?${params.toString()}`
         console.log('[useQuadrants] 🔗 Crida API:', url)
@@ -83,9 +86,7 @@ export function useQuadrants(department: string, start?: string, end?: string) {
     }
   }, [department, start, end, fetchData])
 
-  const reload = useCallback(() => {
-    void fetchData({ silent: true })
-  }, [fetchData])
+  const reload = useCallback(() => fetchData({ silent: true }), [fetchData])
 
   return { quadrants, loading, error, reload }
 }

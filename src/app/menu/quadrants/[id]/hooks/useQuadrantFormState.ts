@@ -79,6 +79,15 @@ export type LogisticPhasePayload = {
     arrivalTime?: string
   }>
   timetables: Array<{ startTime: string; endTime: string }>
+  /** Mode manual: tria explícita de treballadors (API). */
+  manualWorkers?: Array<{
+    id: string
+    name?: string
+    serviceDate?: string
+    meetingPoint?: string
+    startTime?: string
+    endTime?: string
+  }>
 }
 
 export type ServiceJamoneroPayload = {
@@ -139,6 +148,7 @@ export interface QuadrantFormState {
   availableResponsables: Array<{ id: string; name: string }>
   availableConductors: AvailableConductor[]
   availableJamoneros: Array<{ id: string; name: string }>
+  availableTreballadors: Array<{ id: string; name: string }>
   serviceTotals: {
     workers: number
     drivers: number
@@ -162,10 +172,12 @@ export function useQuadrantFormState({
   event,
   department,
   modalOpen,
+  mode,
 }: {
   event: QuadrantEvent
   department: string
   modalOpen: boolean
+  mode: 'auto' | 'semi' | 'manual'
 }): QuadrantFormState {
   const [startDate, setStartDate] = useState(extractDate(event.start))
   const [endDate, setEndDate] = useState(extractDate(event.start))
@@ -186,6 +198,8 @@ export function useQuadrantFormState({
       workers: Number(totalWorkers) || 0,
       drivers: Number(numDrivers) || 0,
       meetingPoint: meetingPoint || location || event.eventLocation || '',
+      workerIds: [] as string[],
+      workerDetails: {} as NonNullable<LogisticPhaseForm['workerDetails']>,
     }),
     [startDate, endDate, startTime, endTime, totalWorkers, numDrivers, meetingPoint, location, event.eventLocation]
   )
@@ -229,6 +243,14 @@ export function useQuadrantFormState({
     [conductors, responsables, treballadors]
   )
 
+  const availableTreballadors = useMemo(
+    () =>
+      treballadors
+        .filter((p) => Boolean(p.id?.trim()))
+        .map((p) => ({ id: p.id, name: p.name })),
+    [treballadors]
+  )
+
   const logistics = useLogisticsPhasesState({
     event,
     department,
@@ -241,6 +263,7 @@ export function useQuadrantFormState({
     totalWorkers: totalWorkersNumber,
     numDrivers: numDriversNumber,
     availableConductors,
+    quadrantMode: mode,
   })
 
   const services = useServicePhasesState({
@@ -324,7 +347,7 @@ export function useQuadrantFormState({
   const getManualResponsible = useCallback(
     (phaseKey: LogisticPhaseKey) => {
       const entry = phaseResponsibles[phaseKey] ?? '__auto__'
-      return entry && entry !== '__auto__' ? entry : null
+      return entry && entry !== '__auto__' && entry !== '__manual_pick__' ? entry : null
     },
     [phaseResponsibles]
   )
@@ -340,6 +363,24 @@ export function useQuadrantFormState({
         const phaseTimetables = buildTimetablesForPhase(form)
         const label = logisticPhaseOptions.find((phase) => phase.key === phaseKey)?.label || phaseKey
         const phaseVehicles = buildVehiclesPayloadForPhase(phaseKey)
+        const workerSlots = Array.isArray(form.workerIds) ? form.workerIds : []
+        const details = form.workerDetails || {}
+        const manualWorkers =
+          mode === 'manual' && workerSlots.length > 0
+            ? workerSlots.map((workerId) => {
+                const id = String(workerId || '')
+                const d = id ? details[id] || { id } : { id: '' }
+                return {
+                  id,
+                  name: d.name,
+                  serviceDate: d.serviceDate || form.startDate,
+                  meetingPoint: d.meetingPoint || form.meetingPoint || baseMeetingPoint,
+                  startTime: d.startTime || form.startTime,
+                  endTime: d.endTime || form.endTime,
+                }
+              })
+            : undefined
+
         return {
           label,
           phaseType: phaseKey,
@@ -354,6 +395,7 @@ export function useQuadrantFormState({
           meetingPoint: form.meetingPoint || baseMeetingPoint,
           vehicles: phaseVehicles,
           timetables: phaseTimetables,
+          ...(manualWorkers ? { manualWorkers } : {}),
         }
       })
     },
@@ -368,11 +410,9 @@ export function useQuadrantFormState({
       selectedLogisticPhaseKeys,
       getManualResponsible,
       buildVehiclesPayloadForPhase,
+      mode,
     ]
   )
-  const syncNumDrivers = useMemo(() => {
-    return logisticPhaseOptions.reduce((sum, phase) => sum + (phaseForms[phase.key]?.drivers || 0), 0)
-  }, [phaseForms])
 
   useEffect(() => {
     if (!modalOpen) return
@@ -408,10 +448,6 @@ export function useQuadrantFormState({
     event.totalWorkers,
     event.numDrivers,
   ])
-
-  useEffect(() => {
-    setNumDrivers(syncNumDrivers.toString())
-  }, [syncNumDrivers])
 
   return {
     startDate,
@@ -473,5 +509,6 @@ export function useQuadrantFormState({
     availableResponsables,
     availableConductors,
     availableJamoneros,
+    availableTreballadors,
   }
 }

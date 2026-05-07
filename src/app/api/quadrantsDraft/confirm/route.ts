@@ -6,8 +6,6 @@ import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 
 export const runtime = 'nodejs'
-const ORIGIN = 'Molí Vinyals, 11, 08776 Sant Pere de Riudebitlles, Barcelona'
-const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
 
 /* ------------------ Tipus ------------------ */
 interface QuadrantDoc {
@@ -42,15 +40,6 @@ type TokenLike = {
   email?: string
 }
 
-type StageVerdAddress = {
-  Ubicacio?: string
-  location?: string
-  address?: string
-  eventName?: string
-  Nom?: string
-  name?: string
-}
-
 type AssignedUserSrc = {
   name?: string
   id?: string
@@ -75,29 +64,6 @@ const normalizeEventId = (value?: string | null) =>
     .trim()
     .split('__')[0]
     .trim()
-
-async function calcDistanceKm(destination: string): Promise<number | null> {
-  if (!GOOGLE_KEY || !destination) return null
-  try {
-    const url = new URL('https://maps.googleapis.com/maps/api/distancematrix/json')
-    url.searchParams.set('origins', ORIGIN)
-    url.searchParams.set('destinations', destination)
-    url.searchParams.set('key', GOOGLE_KEY)
-    url.searchParams.set('mode', 'driving')
-
-    const res = await fetch(url.toString())
-    if (!res.ok) return null
-    const json = await res.json()
-    const el = json?.rows?.[0]?.elements?.[0]
-    if (el?.status !== 'OK') return null
-    const meters = el.distance?.value
-    if (!meters) return null
-    return (meters / 1000) * 2 // anada + tornada
-  } catch (err) {
-    console.warn('[quadrantsDraft/confirm] distance error', err)
-    return null
-  }
-}
 
 async function lookupUidForAssigned(user: AssignedUser): Promise<string | null> {
   const rawId = String(user?.id || '').trim()
@@ -270,23 +236,6 @@ export async function POST(req: NextRequest) {
         batch.set(doc.ref, updatePayload, { merge: true })
       })
       await batch.commit()
-    }
-
-    // Distància: sempre intentem recalcular amb l'adreça actual
-    const evSnap = await db.collection('stage_verd').doc(String(eventId)).get()
-    const ev = evSnap.data() as StageVerdAddress | undefined
-    const destination = ev?.Ubicacio || ev?.location || ev?.address || ''
-    const km = await calcDistanceKm(destination)
-    if (km) {
-      if (targetDocs.size === 0) {
-        await directRef.set({ distanceKm: km, distanceCalcAt: new Date() }, { merge: true })
-      } else {
-        const batch = db.batch()
-        targetDocs.forEach((doc) => {
-          batch.set(doc.ref, { distanceKm: km, distanceCalcAt: new Date() }, { merge: true })
-        })
-        await batch.commit()
-      }
     }
 
     try {

@@ -186,7 +186,7 @@ export function useServicePhasesState({
       prev.map((group) => {
         if (group.id !== id) return group
         const nextWorkers =
-          typeof patch.workers === 'number' ? Math.min(4, Math.max(0, patch.workers)) : group.workers
+          typeof patch.workers === 'number' ? Math.min(30, Math.max(0, patch.workers)) : group.workers
         return { ...group, ...patch, workers: nextWorkers }
       })
     )
@@ -285,6 +285,22 @@ export function useServicePhasesState({
           index === 0 &&
           group.phaseKey === 'event' &&
           Boolean(manualResponsibleId)
+        const resolvedWorkerIds = Array.isArray(group.workerIds) ? group.workerIds.filter(Boolean) : []
+        const resolvedWorkerDetails = group.workerDetails || {}
+        const manualWorkers =
+          resolvedWorkerIds.length > 0
+            ? resolvedWorkerIds.map((id) => {
+                const d = resolvedWorkerDetails[id] || { id }
+                return {
+                  id,
+                  name: d.name,
+                  serviceDate: d.serviceDate || group.serviceDate,
+                  meetingPoint: d.meetingPoint || group.meetingPoint,
+                  startTime: d.startTime || group.startTime,
+                  endTime: d.endTime || group.endTime,
+                }
+              })
+            : null
         return {
           id: group.id,
           serviceDate: group.serviceDate,
@@ -304,6 +320,7 @@ export function useServicePhasesState({
             ? manualResponsibleName || null
             : null,
           wantsResponsible,
+          ...(manualWorkers ? { manualWorkers } : {}),
         }
       })
     },

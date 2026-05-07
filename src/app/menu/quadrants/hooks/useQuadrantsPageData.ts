@@ -422,24 +422,29 @@ export function useQuadrantsPageData({
       const existing = quadrantsByEvent.get(eventId) || []
       const desiredDay = ev?.start ? String(ev.start).slice(0, 10) : ''
       const hasEventDoc = existing.some((q) => {
-        const p = (q.phaseType || q.phaseLabel || '')
-          .toString()
-          .trim()
-          .toLowerCase()
+        const rawPhase = (q.phaseType || q.phaseLabel || '').toString().trim().toLowerCase()
+        const phaseNormKey = normalize((q.phaseType || q.phaseLabel || '').toString())
         const dept = (q.department || '').toString().trim().toLowerCase()
 
         const candidateDate = String(q.phaseDate || q.startDate || '').slice(0, 10)
         if (desiredDay && candidateDate && candidateDate !== desiredDay) return false
 
         // Event phase (normal).
-        if (p === 'event') return true
+        if (rawPhase === 'event' || phaseNormKey === 'event') return true
 
         // Cuina treballa amb una sola fase (event) i pot tenir docs antics sense phaseType.
-        if (dept === 'cuina' && !p) return true
+        if (dept === 'cuina' && !rawPhase) return true
+
+        // Serveis: muntatge/recollida… (mateix dia) — sense això queda «pendent» encara que el borrador existeixi.
+        if (normalizeDepartment(dept) === 'serveis' && desiredDay && candidateDate === desiredDay) {
+          const auxPhases = new Set(
+            ['muntatge', 'montatge', 'recollida', 'desmuntatge', 'trasllat', 'entrega'].map(normalize)
+          )
+          if (auxPhases.has(phaseNormKey)) return true
+        }
 
         // Serveis pot tenir fases/grups sense document "event" pur.
-        // Ara NO bloquegem per tots els dies: només si no hi ha phaseKey (p buit) i coincideix el dia.
-        if (normalizeDepartment(dept) === 'serveis' && !p) return true
+        if (normalizeDepartment(dept) === 'serveis' && !rawPhase) return true
 
         return false
       })
