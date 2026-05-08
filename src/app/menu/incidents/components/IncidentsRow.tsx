@@ -14,6 +14,12 @@ import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
 import { Camera, ListChecks, Trash2 } from 'lucide-react'
 
+declare global {
+  interface Window {
+    openEventModal?: (eventCode: string) => void
+  }
+}
+
 interface Props {
   inc: Incident
   isEditing: boolean
@@ -137,8 +143,8 @@ function IncidentsRow({
     e.stopPropagation()
     if (inc.eventCode) {
       // Obrirem el modal superior
-      if (typeof (window as any).openEventModal === "function") {
-        ;(window as any).openEventModal(inc.eventCode)
+      if (typeof window.openEventModal === 'function') {
+        window.openEventModal(inc.eventCode)
       }
     }
   }}

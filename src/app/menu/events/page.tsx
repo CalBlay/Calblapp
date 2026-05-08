@@ -9,6 +9,7 @@ import { startOfWeek, endOfWeek, format } from 'date-fns'
 import { CalendarDays } from 'lucide-react'
 
 import useEvents from '@/hooks/events/useEvents'
+import type { EventData } from '@/hooks/events/useEvents'
 import EventsDayGroup from '@/components/events/EventsDayGroup'
 import EventMenuModal from '@/components/events/EventMenuModal'
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
@@ -68,6 +69,21 @@ type EventMenuData = {
   importAmount?: number
 }
 
+type MessagingChannel = {
+  source?: string | null
+  eventId?: string | number | null
+  unreadCount?: number | null
+}
+
+type MessagingChannelsResponse = {
+  channels?: MessagingChannel[]
+}
+
+type EnhancedEvent = EventData & {
+  chatUnread: number
+  canChat: boolean
+}
+
 export default function EventsPage() {
   const { data: session, status: sessionStatus } = useSession()
   const router = useRouter()
@@ -103,7 +119,7 @@ export default function EventsPage() {
 
   const isAuth = sessionStatus === 'authenticated'
   const fetcher = (url: string) => fetch(url).then(r => r.json())
-  const { data: channelsData } = useSWR(
+  const { data: channelsData } = useSWR<MessagingChannelsResponse>(
     isAuth ? '/api/messaging/channels?scope=mine' : null,
     fetcher,
     { refreshInterval: isAuth ? 15000 : 0 }
@@ -112,7 +128,7 @@ export default function EventsPage() {
   const eventChatUnread = useMemo(() => {
     const map = new Map<string, number>()
     const channels = Array.isArray(channelsData?.channels) ? channelsData.channels : []
-    channels.forEach((c: any) => {
+    channels.forEach((c) => {
       if (c?.source !== 'events') return
       const eventId = String(c?.eventId || '').trim()
       if (!eventId) return
@@ -125,7 +141,7 @@ export default function EventsPage() {
   const eventChatVisible = useMemo(() => {
     const set = new Set<string>()
     const channels = Array.isArray(channelsData?.channels) ? channelsData.channels : []
-    channels.forEach((c: any) => {
+    channels.forEach((c) => {
       if (c?.source !== 'events') return
       const eventId = String(c?.eventId || '').trim()
       if (eventId) set.add(eventId)
@@ -177,7 +193,7 @@ export default function EventsPage() {
     )
   }
 
-  const enhancedEvents = filteredEvents.map(ev => {
+  const enhancedEvents = filteredEvents.map((ev): EnhancedEvent => {
     const code = ev.eventCode || ev.id
     const hasAvisos = code
       ? (avisosState[code]?.hasAvisos ?? Boolean(ev.lastAviso))
@@ -204,7 +220,7 @@ export default function EventsPage() {
     return acc
   }, {})
 
-  const handleEventClick = (ev: any, mode: 'menu' | 'avisos' = 'menu') => {
+  const handleEventClick = (ev: EnhancedEvent, mode: 'menu' | 'avisos' = 'menu') => {
     if (mode === 'avisos') {
       const codeForAvisos = ev.eventCode || (ev.id ? String(ev.id) : null)
       setAvisosEventCode(codeForAvisos)
@@ -230,7 +246,7 @@ export default function EventsPage() {
     setMenuOpen(true)
   }
 
-  const handleEventChat = async (ev: any) => {
+  const handleEventChat = async (ev: EnhancedEvent) => {
     const code = String(ev?.eventCode || '').trim()
     const commercial = String(ev?.commercial || '').trim()
     if (!code || !commercial) return
@@ -314,7 +330,7 @@ export default function EventsPage() {
     []
   )
 
-  const openDocuments = (data: { eventId: string; eventCode?: string | null }) => {
+  const _openDocuments = (data: { eventId: string; eventCode?: string | null }) => {
     if (suppressMenuInteraction) return
     const now = Date.now()
     if (

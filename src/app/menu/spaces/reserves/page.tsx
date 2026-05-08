@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 
-import { useSpaces } from '@/hooks/spaces/useSpaces'
+import { useSpaces, type SpaceApiRow } from '@/hooks/spaces/useSpaces'
 import SpaceGrid from '@/components/spaces/SpaceGrid'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 
@@ -46,6 +46,21 @@ const {
   lns,        // âœ… AFEGIT
   loading
 } = useSpaces(filters)
+
+  const normalizedSpaces: Array<{
+    fincaId?: string
+    finca: string
+    dies: Array<{ date: string; events: Array<Record<string, unknown>> }>
+  }> = spaces.map((row: SpaceApiRow) => ({
+    fincaId: row.fincaId,
+    finca: row.finca ?? '',
+    dies: Array.isArray(row.dies)
+      ? row.dies.map((day) => ({
+          date: day?.date ?? '',
+          events: Array.isArray(day?.events) ? day.events : [],
+        }))
+      : [],
+  }))
 
   const monthFormatter = new Intl.DateTimeFormat('ca-ES', { month: 'long' })
   const monthOptions = Array.from({ length: 12 }, (_, month) => ({
@@ -237,7 +252,7 @@ const {
            â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {!loading && (
           <SpaceGrid
-            data={spaces}
+            data={normalizedSpaces}
             totals={totals}
             baseDate={filters.baseDate}
           />

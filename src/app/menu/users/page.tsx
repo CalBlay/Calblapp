@@ -232,10 +232,10 @@ function UsersPage() {
                       setModalUser({
                         id: undefined,
                         personId: req.personId || req.id,
-                        name: req.name,
-                        role: req.role,
+                        name: req.name || req.id,
+                        role: req.role || 'treballador',
                         isAdmin: Boolean(req.isAdmin),
-                        department: req.department,
+                        department: req.department || DEFAULT_USER_DEPARTMENT,
                         phone: req.phone,
                         email: req.email,
                         available: req.available,

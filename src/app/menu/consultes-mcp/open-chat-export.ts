@@ -24,7 +24,7 @@ export async function exportOpenChatToXlsx(
   const wb = XLSX.utils.book_new()
   const taken = new Set<string>()
   const appendSheet = (ws: object, desired: string, fallback: string) => {
-    let base = safeExcelSheetName(desired, fallback)
+    const base = safeExcelSheetName(desired, fallback)
     let name = base
     let n = 1
     while (taken.has(name)) {

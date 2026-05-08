@@ -5,8 +5,13 @@ import React, { useState } from 'react'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import type { SmartFiltersChange } from '@/components/filters/SmartFilters'
 
+type TornRoleType = 'all' | 'treballador' | 'responsable' | 'conductor'
+type TornFiltersState = Omit<SmartFiltersChange, 'roleType'> & {
+  roleType?: TornRoleType
+}
+
 type Props = {
-  setFilters: React.Dispatch<React.SetStateAction<SmartFiltersChange>>
+  setFilters: React.Dispatch<React.SetStateAction<TornFiltersState>>
   deptOptions?: string[]
   workerOptions?: { id: string; name: string }[]
   role: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
@@ -27,7 +32,7 @@ export default function TornFilters({
   isWorker: _isWorker,
 }: Props) {
 
-  const [localRoleType, setLocalRoleType] = useState('all')
+  const [localRoleType, setLocalRoleType] = useState<TornRoleType>('all')
   const [localDepartment, setLocalDepartment] = useState(
     isAdminOrDireccio ? '' : sessionDept || ''
   )
@@ -65,7 +70,7 @@ export default function TornFilters({
             className="border rounded-lg p-2"
             value={localRoleType}
             onChange={(e) => {
-              const v = e.target.value
+              const v = e.target.value as TornRoleType
               setLocalRoleType(v)
               setFilters(prev => ({ ...prev, roleType: v }))
             }}

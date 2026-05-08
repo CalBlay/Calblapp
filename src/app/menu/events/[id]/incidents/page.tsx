@@ -11,6 +11,20 @@ interface PageProps {
   params: { id: string }
 }
 
+type EventDocData = {
+  NomEvent?: string
+  C_digo?: string | number | null
+  DataInici?: string
+  Ubicacio?: string
+  LN?: string
+  Servei?: string
+  NumPax?: number | string | null
+}
+
+type TimestampLike = {
+  toDate?: () => Date
+}
+
 // Petit helper per netejar ubicació igual que a /api/events/list
 function cleanLocation(raw: string | undefined): string {
   const v = raw || ''
@@ -50,7 +64,7 @@ export default async function EventIncidentsPage({ params }: PageProps) {
     )
   }
 
-  const ev = eventDoc.data() as any
+  const ev = (eventDoc.data() || {}) as EventDocData
 
   // 🔹 Nom de l’esdeveniment: només fins al primer “/” (mateix criteri que events/list)
   const rawSummary: string = ev.NomEvent || '(Sense títol)'
@@ -83,7 +97,7 @@ export default async function EventIncidentsPage({ params }: PageProps) {
     .get()
 
   const incidents: Incident[] = snap.docs.map((doc) => {
-    const d = doc.data() as Partial<Incident> & { createdAt?: any }
+    const d = doc.data() as Partial<Incident> & { createdAt?: string | TimestampLike | null }
     const ts = d.createdAt
 
     const createdAt: string =

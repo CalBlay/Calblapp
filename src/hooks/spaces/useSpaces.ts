@@ -6,7 +6,7 @@ import { SpacesFilterState } from '@/components/spaces/SpacesFilters'
 
 type SpaceEventRow = Record<string, unknown>
 type SpaceDayRow = { date?: string; events?: SpaceEventRow[] }
-type SpaceApiRow = { finca?: string; dies?: SpaceDayRow[]; fincaId?: string }
+export type SpaceApiRow = { finca?: string; dies?: SpaceDayRow[]; fincaId?: string }
 
 export function useSpaces(
   filters: SpacesFilterState & { baseDate: string; month?: number; year?: number }

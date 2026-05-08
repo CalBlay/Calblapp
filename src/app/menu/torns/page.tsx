@@ -38,6 +38,10 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import TornNotificationsBanner from '@/components/torns/TornNotificationsBanner'
 
 type ApiWorker = { id?: string; name?: string }
+type TornsRoleType = 'all' | 'treballador' | 'responsable' | 'conductor'
+type TornsFiltersState = Omit<SmartFiltersChange, 'roleType'> & {
+  roleType?: TornsRoleType
+}
 type ApiTorn = {
   id: string
   eventId?: string
@@ -145,7 +149,7 @@ export default function TornsPage() {
   const defaultStart = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd')
   const defaultEnd = format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd')
 
-  const [filters, setFilters] = useState<SmartFiltersChange>({
+  const [filters, setFilters] = useState<TornsFiltersState>({
     mode: 'week',
     start: defaultStart,
     end: defaultEnd,

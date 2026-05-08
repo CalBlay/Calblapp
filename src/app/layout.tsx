@@ -1,5 +1,6 @@
 // file: src/app/layout.tsx
 import type { Metadata } from 'next'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 import ClientLayout from './ClientLayout'
 import './globals.css'
 
@@ -60,6 +61,7 @@ export default function RootLayout({
         <ClientLayout>
           {children}
         </ClientLayout>
+        <SpeedInsights />
       </body>
     </html>
   )

@@ -19,10 +19,16 @@ import QuadrantModal from './[id]/components/QuadrantModal'
 import QuadrantCard from './drafts/components/QuadrantCard'
 import { useQuadrantsPageData } from './hooks/useQuadrantsPageData'
 import type { UnifiedEvent } from './types'
+import type { Draft } from './drafts/page'
 
 type SessionDepartmentSource = {
   department?: string
   dept?: string
+}
+
+type QuadrantEventLike = QuadrantEvent & {
+  ln?: string | null
+  lnLabel?: string | null
 }
 
 type QuadrantDraftDetails = {
@@ -246,8 +252,9 @@ export default function QuadrantsPage() {
   const lnOptions = useMemo(() => {
     const set = new Set<string>()
     events.forEach((ev) => {
-      if (ev.ln || ev.lnLabel) {
-        set.add((ev.ln || ev.lnLabel).toString().trim().toLowerCase())
+      const event = ev as QuadrantEventLike
+      if (event.ln || event.lnLabel) {
+        set.add((event.ln || event.lnLabel).toString().trim().toLowerCase())
       }
     })
     return Array.from(set).sort()
@@ -550,7 +557,7 @@ export default function QuadrantsPage() {
 
                   {/* Files per esdeveniment */}
                   {evs.map((ev, evIdx) => {
-                    const draft = ev.draft as QuadrantDraftDetails | undefined
+                    const draft = ev.draft as (Draft & QuadrantDraftDetails) | undefined
 
                     const dotClass =
                       ev.quadrantStatus === 'confirmed'
@@ -627,8 +634,9 @@ export default function QuadrantsPage() {
                             if (ev.quadrantStatus === 'pending') {
                               setSelected(buildSelectedEvent(ev))
                             } else if (draft && draft.id) {
+                              const nextExpandedId = draft.id
                               setExpandedId((prev) =>
-                                prev === draft.id ? null : draft.id
+                                prev === nextExpandedId ? null : nextExpandedId
                               )
                             }
                           }}
@@ -714,14 +722,16 @@ export default function QuadrantsPage() {
                           <tr>
                             <td colSpan={12} className="bg-slate-50/40 px-3 pt-1 pb-2">
                               <div className="p-0">
-                               <QuadrantCard
-                                 quadrant={draft}
-                                 autoExpand
-                                 pendingPhases={pendingPhases}
-                                 onCreatePhase={(phaseKey) => {
-                                   setSelected(buildSelectedEvent(ev, phaseKey))
-                                 }}
-                               />
+                               {draft ? (
+                                 <QuadrantCard
+                                   quadrant={draft}
+                                   autoExpand
+                                   pendingPhases={pendingPhases}
+                                   onCreatePhase={(phaseKey) => {
+                                     setSelected(buildSelectedEvent(ev, phaseKey))
+                                   }}
+                                 />
+                               ) : null}
 
                               </div>
                             </td>
