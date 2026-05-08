@@ -902,7 +902,6 @@ export default function DraftsTable({
       canManageGroups={canManageGroups}
       showStructuredGroups={showStructuredGroups}
       rows={rows}
-      renderRow={renderRow}
       availableForEditor={availableForEditor}
       renderDisplayItems={renderDisplayItems}
       canEditMeetingPoint={canEditMeetingPoint}

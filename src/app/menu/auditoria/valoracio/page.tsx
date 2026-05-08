@@ -419,7 +419,7 @@ export default function AuditoriaValoracioPage() {
         </div>
       </div>
     )
-  }, [query, departmentFilter, isGlobalViewer, setContent, setOpen])
+  }, [query, departmentFilter, isGlobalViewer, setContent, setOpen, load])
 
   const onDatesChange = (f: SmartFiltersChange) => {
     if (!f.start || !f.end) return
@@ -568,9 +568,9 @@ export default function AuditoriaValoracioPage() {
       <div className="w-full max-w-7xl 2xl:max-w-[1600px] mx-auto p-3 sm:p-4 space-y-4">
         <div className="w-full bg-gradient-to-r from-cyan-100 to-teal-100 border-b border-gray-200 px-4 py-3">
           <div className="text-sm font-semibold text-gray-800">
-            <a href="/menu/auditoria" className="hover:underline">Auditoria</a>
+            <Link href="/menu/auditoria" className="hover:underline">Auditoria</Link>
             <span className="mx-1 text-gray-500">/</span>
-            <a href="/menu/auditoria/valoracio" className="hover:underline">Valoracio</a>
+            <Link href="/menu/auditoria/valoracio" className="hover:underline">Valoracio</Link>
           </div>
           <div className="text-xs italic text-gray-600">Valoracio mensual</div>
         </div>

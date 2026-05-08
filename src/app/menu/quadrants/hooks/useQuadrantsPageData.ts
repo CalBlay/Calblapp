@@ -10,6 +10,13 @@ interface UseQuadrantsPageDataParams {
   filters: FiltersState
 }
 
+type QuadrantEventLike = QuadrantEvent & {
+  eventId?: string
+  name?: string
+  ln?: string | null
+  lnLabel?: string | null
+}
+
 type QuadrantPerson = {
   id?: string | null
   name?: string | null
@@ -166,6 +173,9 @@ const mergePeople = (groups: QuadrantPerson[][]) => {
   return merged
 }
 
+const isQuadrantDraft = (value: unknown): value is QuadrantDraft =>
+  typeof value === 'object' && value !== null
+
 const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
   const grouped = new Map<string, UnifiedEvent[]>()
 
@@ -195,7 +205,8 @@ const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
     if (entries.length === 1) return entries[0]
 
     const base = entries[0]
-    const drafts = entries.map((entry) => entry.draft).filter(Boolean)
+    const baseDraft: QuadrantDraft = isQuadrantDraft(base.draft) ? base.draft : {}
+    const drafts = entries.map((entry) => entry.draft).filter(isQuadrantDraft)
     const mergedStatus: QuadrantStatus =
       entries.every((entry) => entry.quadrantStatus === 'confirmed')
         ? 'confirmed'
@@ -239,10 +250,10 @@ const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
     const startTime = pickEdgeTime(entries.map((entry) => entry.displayStartTime || entry.startTime), 'min')
     const endTime = pickEdgeTime(entries.map((entry) => entry.displayEndTime || entry.endTime), 'max')
     const mergedDraft = {
-      ...base.draft,
+      ...baseDraft,
       id: String(base.eventId || base.id || ''),
-      startTime: startTime || base.draft?.startTime || '',
-      endTime: endTime || base.draft?.endTime || '',
+      startTime: startTime || baseDraft.startTime || '',
+      endTime: endTime || baseDraft.endTime || '',
       conductors: mergePeople(drafts.map((draft) => (Array.isArray(draft?.conductors) ? draft.conductors : []))),
       treballadors: mergePeople(drafts.map((draft) => (Array.isArray(draft?.treballadors) ? draft.treballadors : []))),
       groups: mergedGroups,
@@ -250,11 +261,11 @@ const mergeServiceEntries = (items: UnifiedEvent[]): UnifiedEvent[] => {
       numDrivers: drafts.reduce((sum: number, draft) => sum + Number(draft?.numDrivers || 0), 0),
       responsableId:
         drafts.find((draft) => String(draft?.responsableId || '').trim())?.responsableId ||
-        base.draft?.responsableId ||
+        baseDraft.responsableId ||
         '',
       responsableName:
         drafts.find((draft) => String(draft?.responsableName || '').trim())?.responsableName ||
-        base.draft?.responsableName ||
+        baseDraft.responsableName ||
         '',
     }
 
@@ -313,15 +324,16 @@ export function useQuadrantsPageData({
 }: UseQuadrantsPageDataParams): UseQuadrantsPageDataResult {
   const eventsWithStatus = useMemo<UnifiedEvent[]>(() => {
     const out: UnifiedEvent[] = []
-    const eventsById = new Map<string, QuadrantEvent>()
-    const eventsByCode = new Map<string, QuadrantEvent>()
+    const eventsById = new Map<string, QuadrantEventLike>()
+    const eventsByCode = new Map<string, QuadrantEventLike>()
     const quadrantsByEvent = new Map<string, QuadrantDraft[]>()
 
     events.forEach((ev) => {
-      const id = String(ev.id || ev.eventId || ev.code || '').trim()
-      if (id) eventsById.set(id, ev)
-      const code = normalize(ev.code || ev.eventCode || '')
-      if (code) eventsByCode.set(code, ev)
+      const event = ev as QuadrantEventLike
+      const id = String(event.id || event.eventId || event.code || '').trim()
+      if (id) eventsById.set(id, event)
+      const code = normalize(event.code || event.eventCode || '')
+      if (code) eventsByCode.set(code, event)
     })
 
     quadrants.forEach((q) => {
@@ -369,8 +381,9 @@ export function useQuadrantsPageData({
         .toLowerCase()
       const phaseLabelRaw = (q.phaseLabel || q.phaseType || '').toString().trim()
       const phaseKeyValue = normalize(phaseType || phaseLabelRaw)
-      const eventDateLabel = eventDateBase || eventStartDate
-        ? format(parseISO(eventDateBase || eventStartDate), 'dd/MM')
+      const rawEventDate = eventDateBase || eventStartDate || ''
+      const eventDateLabel = rawEventDate
+        ? format(parseISO(rawEventDate), 'dd/MM')
         : ''
       let phaseBadgeLabel = ''
       if (phaseLabelRaw) {
@@ -384,8 +397,9 @@ export function useQuadrantsPageData({
       }
       const phaseDate = displayDate ? String(displayDate).slice(0, 10) : undefined
 
-      out.push({
-        ...(ev || q),
+      const baseEvent = (ev || {}) as Partial<QuadrantEventLike>
+      const mergedEvent: UnifiedEvent = {
+        ...baseEvent,
         id: q.id || q.eventId || q.code || '',
         eventId: String(q.eventId || ev?.id || ev?.eventId || q.code || ''),
         summary: ev?.summary || ev?.name || q.eventName || '-',
@@ -411,16 +425,18 @@ export function useQuadrantsPageData({
         phaseKey: phaseKeyValue || undefined,
         phaseDate,
         eventDateLabel,
-        eventDateRaw: (eventDateBase || eventStartDate) || undefined,
+        eventDateRaw: rawEventDate || undefined,
         draft: q,
-      })
+      }
+      out.push(mergedEvent)
     })
 
     events.forEach((ev) => {
-      const eventId = String(ev.id || ev.eventId || ev.code || '').trim()
+      const event = ev as QuadrantEventLike
+      const eventId = String(event.id || event.eventId || event.code || '').trim()
       if (!eventId) return
       const existing = quadrantsByEvent.get(eventId) || []
-      const desiredDay = ev?.start ? String(ev.start).slice(0, 10) : ''
+      const desiredDay = event.start ? String(event.start).slice(0, 10) : ''
       const hasEventDoc = existing.some((q) => {
         const rawPhase = (q.phaseType || q.phaseLabel || '').toString().trim().toLowerCase()
         const phaseNormKey = normalize((q.phaseType || q.phaseLabel || '').toString())
@@ -450,32 +466,32 @@ export function useQuadrantsPageData({
       })
       if (hasEventDoc) return
 
-      const eventStartDate = ev?.start ? String(ev.start).slice(0, 10) : ''
+      const eventStartDate = event.start ? String(event.start).slice(0, 10) : ''
       const eventStartTime =
-        ev?.horaInici || (ev?.start ? String(ev.start).slice(11, 16) : null)
+        event.horaInici || (event.start ? String(event.start).slice(11, 16) : null)
       const eventEndTime =
-        hhMmFromFirestore(ev?.horaFi) ||
-        (ev?.end ? String(ev.end).slice(11, 16) : null)
+        hhMmFromFirestore(event.horaFi) ||
+        (event.end ? String(event.end).slice(11, 16) : null)
       const eventDateLabel = eventStartDate
         ? format(parseISO(eventStartDate), 'dd/MM')
         : ''
 
-      out.push({
-        ...(ev as QuadrantEvent),
-        id: String(ev.id || ev.eventId || ev.code || ''),
-        eventId: String(ev.id || ev.eventId || ev.code || ''),
-        summary: ev.summary || ev.name || '-',
-        originalStart: ev.originalStart || ev.start || undefined,
-        originalEnd: ev.originalEnd || ev.end || undefined,
-        start: ev.start || '',
-        end: ev.end || '',
-        code: ev.code || '',
-        location: cleanText(ev.location || ''),
-        ln: cleanText(ev.ln || ev.lnLabel || '') || null,
-        responsable: cleanText(ev.responsable || ''),
-        numPax: ev.numPax ?? null,
-        service: cleanText(ev.service || '') || null,
-        commercial: ev.commercial || null,
+      const pendingEvent: UnifiedEvent = {
+        ...event,
+        id: String(event.id || event.eventId || event.code || ''),
+        eventId: String(event.id || event.eventId || event.code || ''),
+        summary: event.summary || event.name || '-',
+        originalStart: event.originalStart || event.start || undefined,
+        originalEnd: event.originalEnd || event.end || undefined,
+        start: event.start || '',
+        end: event.end || '',
+        code: event.code || '',
+        location: cleanText(event.location || ''),
+        ln: cleanText(event.ln || event.lnLabel || '') || null,
+        responsable: cleanText(event.responsable || ''),
+        numPax: event.numPax ?? null,
+        service: cleanText(event.service || '') || null,
+        commercial: event.commercial || null,
         workersSummary: '',
         displayStartTime: eventStartTime || undefined,
         displayEndTime: eventEndTime || undefined,
@@ -489,7 +505,8 @@ export function useQuadrantsPageData({
         eventDateLabel,
         eventDateRaw: eventStartDate || undefined,
         draft: null,
-      })
+      }
+      out.push(pendingEvent)
     })
 
     const merged = mergeServiceEntries(out)

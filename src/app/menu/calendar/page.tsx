@@ -57,6 +57,11 @@ type CalendarFilterChange = {
   codeStatus?: string
 }
 
+type SessionUserLike = {
+  role?: string | null
+  department?: string | null
+}
+
 const STORAGE_KEY = 'calblay.calendar.filters.v1'
 const toIso = (d: Date) => format(d, 'yyyy-MM-dd')
 const EMPTY_FILTER_LIST: CalendarLN[] = []
@@ -125,7 +130,7 @@ export default function CalendarPage() {
   const arraysEqual = (a: string[], b: string[]) =>
     a.length === b.length && a.every((v, i) => v === b[i])
 
-  const applyFilterChange = (f: CalendarFilterChange) => {
+  const applyFilterChange = useCallback((f: CalendarFilterChange) => {
     setState((prev) => {
       const nextLn = f.ln ?? prev.ln
       const nextStage = f.stage ?? prev.stage
@@ -147,7 +152,7 @@ export default function CalendarPage() {
         codeStatus: nextCodeStatus,
       }
     })
-  }
+  }, [])
 
   /* Persistència LN + Stage */
   useEffect(() => {
@@ -209,8 +214,9 @@ export default function CalendarPage() {
   const normalize = (value: string) =>
     value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
-  const role = normalize(String(session?.user?.role || ''))
-  const department = normalize(String((session?.user as any)?.department || ''))
+  const sessionUser = session?.user as SessionUserLike | undefined
+  const role = normalize(String(sessionUser?.role || ''))
+  const department = normalize(String(sessionUser?.department || ''))
   const isProductionOperationalWorker = role === 'treballador' && department === 'produccio'
   const canManageCodes =
     role === 'admin' ||
@@ -254,28 +260,6 @@ export default function CalendarPage() {
   const [syncingAda, setSyncingAda] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [showLegend, setShowLegend] = useState(false)
-
-  /* Render filtres (unic punt) */
-  const renderFilters = useCallback(() => (
-    <CalendarFilters
-      ln={ln}
-      stage={stage}
-      commercial={commercial}
-      codeStatus={codeStatus}
-      showCodeStatus={canManageCodes}
-      comercialOptions={comercialOptions}
-      onChange={applyFilterChange}
-      onReset={() =>
-        setState((prev) => ({
-          ...prev,
-          ln: [],
-          stage: 'all',
-          commercial: [],
-          codeStatus: 'all',
-        }))
-      }
-    />
-  ), [ln, stage, commercial, codeStatus, canManageCodes, comercialOptions])
 
   /* Obrir filtres */
   const openFilters = () => {

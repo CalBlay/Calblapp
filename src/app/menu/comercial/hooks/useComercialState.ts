@@ -241,7 +241,7 @@ export function useComercialState() {
     const known = services.filter((s) => set.has(s.name))
     const missing = selectedServices
       .filter((name) => !known.some((s) => s.name === name))
-      .map((name) => ({ name, templates: [] as any }))
+      .map((name): ServiceNode => ({ name, templates: [] }))
     return [...known, ...missing]
   }, [services, selectedServices])
 
@@ -307,7 +307,10 @@ export function useComercialState() {
     }))
   }
 
-  const templates = activeService?.templates || []
+  const templates = useMemo(
+    () => activeService?.templates ?? [],
+    [activeService]
+  )
 
   useEffect(() => {
     if (!templates.length) {
@@ -597,47 +600,51 @@ export function useComercialState() {
     return rows
   }, [selectedEvent, currentOrder, groupedLines])
 
-  const handleExportExcel = async () => {
-    if (!exportRows.length || !selectedEvent) return
-    const XLSX = await loadXlsx()
-    const ws = XLSX.utils.json_to_sheet(exportRows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Comanda')
-    const safeName = (selectedEvent.name || 'comanda').replace(/[\\/:*?"<>|]/g, '')
-    XLSX.writeFile(wb, `${safeName}.xlsx`)
-  }
+  const handleExportExcel = useMemo(
+    () => async () => {
+      if (!exportRows.length || !selectedEvent) return
+      const XLSX = await loadXlsx()
+      const ws = XLSX.utils.json_to_sheet(exportRows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Comanda')
+      const safeName = (selectedEvent.name || 'comanda').replace(/[\\/:*?"<>|]/g, '')
+      XLSX.writeFile(wb, `${safeName}.xlsx`)
+    },
+    [exportRows, selectedEvent]
+  )
 
-  const handleExportPdfTable = () => {
-    if (!exportRows.length || !selectedEvent) return
-    const cols = [
-      'Esdeveniment',
-      'Data',
-      'Hora',
-      'Ubicacio',
-      'Comercial',
-      'Servei',
-      'Plantilla',
-      'Concepte',
-      'Comensals',
-    ]
-    const escapeHtml = (value: string) =>
-      value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-    const header = cols.map((c) => `<th>${escapeHtml(c)}</th>`).join('')
-    const body = exportRows
-      .map((row) => {
-        const cells = cols
-          .map((key) => `<td>${escapeHtml(String((row as any)[key] ?? ''))}</td>`)
-          .join('')
-        return `<tr>${cells}</tr>`
-      })
-      .join('')
+  const handleExportPdfTable = useMemo(
+    () => () => {
+      if (!exportRows.length || !selectedEvent) return
+      const cols = [
+        'Esdeveniment',
+        'Data',
+        'Hora',
+        'Ubicacio',
+        'Comercial',
+        'Servei',
+        'Plantilla',
+        'Concepte',
+        'Comensals',
+      ] as const
+      const escapeHtml = (value: string) =>
+        value
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;')
+      const header = cols.map((c) => `<th>${escapeHtml(c)}</th>`).join('')
+      const body = exportRows
+        .map((row) => {
+          const cells = cols
+            .map((key) => `<td>${escapeHtml(String(row[key] ?? ''))}</td>`)
+            .join('')
+          return `<tr>${cells}</tr>`
+        })
+        .join('')
 
-    const html = `<!doctype html>
+      const html = `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -661,13 +668,18 @@ export function useComercialState() {
     </table>
   </body>
 </html>`
-    printBrandedHtmlInNewWindow(html)
-  }
+      printBrandedHtmlInNewWindow(html)
+    },
+    [exportRows, selectedEvent]
+  )
 
-  const handleExportPdfView = () => {
-    if (!exportRows.length) return
-    window.print()
-  }
+  const handleExportPdfView = useMemo(
+    () => () => {
+      if (!exportRows.length) return
+      window.print()
+    },
+    [exportRows.length]
+  )
 
   const exportItems = useMemo(
     () => [
