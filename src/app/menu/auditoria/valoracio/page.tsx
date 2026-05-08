@@ -64,6 +64,11 @@ type ValuationRow = {
   bonusEur: number
 }
 
+type SessionUser = {
+  department?: string | null
+  role?: string | null
+}
+
 const DEPARTMENTS: Array<{ id: Department; label: string }> = [
   { id: 'comercial', label: 'Comercial' },
   { id: 'serveis', label: 'Serveis' },
@@ -148,6 +153,7 @@ const VALIDATION_PAGE_SIZE = 100
 export default function AuditoriaValoracioPage() {
   const { data: session } = useSession()
   const { setContent, setOpen } = useFilters()
+  const sessionUser = session?.user as SessionUser | undefined
 
   const [activeTab, setActiveTab] = useState<'validacio' | 'valoracio'>('validacio')
 
@@ -167,13 +173,13 @@ export default function AuditoriaValoracioPage() {
   const [loadingMoreRows, setLoadingMoreRows] = useState(false)
   const [deletingId, setDeletingId] = useState('')
 
-  const userDepartment = String((session?.user as any)?.department || '')
+  const userDepartment = String(sessionUser?.department || '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .trim()
-  const userAuditDepartment = resolveAuditDepartmentForUser((session?.user as any)?.department || '')
-  const userRole = normalizeRole((session?.user as any)?.role || '')
+  const userAuditDepartment = resolveAuditDepartmentForUser(sessionUser?.department || '')
+  const userRole = normalizeRole(sessionUser?.role || '')
   const isAdmin = userRole === 'admin'
   const isGlobalViewer = userRole === 'admin' || userRole === 'direccio'
   const canSeeValoracio =
@@ -214,52 +220,55 @@ export default function AuditoriaValoracioPage() {
   const fromTs = useMemo(() => toStartTs(fromDate), [fromDate])
   const toTs = useMemo(() => toEndTs(toDate), [toDate])
 
-  const load = async (opts?: {
-    fromTs?: number
-    toTs?: number
-    append?: boolean
-    cursorTs?: number
-    status?: 'all' | 'completed' | 'validated' | 'rejected'
-  }) => {
-    const append = Boolean(opts?.append)
-    if (append) setLoadingMoreRows(true)
-    else setLoading(true)
-    setError('')
-    try {
-      let start = typeof opts?.fromTs === 'number' ? opts.fromTs : fromTs
-      let end = typeof opts?.toTs === 'number' ? opts.toTs : toTs
-      if (start > 0 && end > 0 && start > end) {
-        const tmp = start
-        start = end
-        end = tmp
+  const load = useCallback(
+    async (opts?: {
+      fromTs?: number
+      toTs?: number
+      append?: boolean
+      cursorTs?: number
+      status?: 'all' | 'completed' | 'validated' | 'rejected'
+    }) => {
+      const append = Boolean(opts?.append)
+      if (append) setLoadingMoreRows(true)
+      else setLoading(true)
+      setError('')
+      try {
+        let start = typeof opts?.fromTs === 'number' ? opts.fromTs : fromTs
+        let end = typeof opts?.toTs === 'number' ? opts.toTs : toTs
+        if (start > 0 && end > 0 && start > end) {
+          const tmp = start
+          start = end
+          end = tmp
+        }
+
+        const qs = new URLSearchParams({ limit: String(VALIDATION_PAGE_SIZE) })
+        const effectiveStatus = opts?.status || statusFilter
+        if (effectiveStatus !== 'all') qs.set('status', effectiveStatus)
+        if (departmentFilter !== 'all') qs.set('department', departmentFilter)
+        if (query.trim()) qs.set('q', query.trim())
+        if (start > 0) qs.set('fromTs', String(start))
+        if (end > 0) qs.set('toTs', String(end))
+        if (typeof opts?.cursorTs === 'number' && opts.cursorTs > 0) qs.set('cursorTs', String(opts.cursorTs))
+
+        const res = await fetch(`/api/auditoria/executions/list?${qs.toString()}`, { cache: 'no-store' })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(String(json?.error || 'No s ha pogut carregar validacio'))
+        const nextRows = Array.isArray(json?.executions) ? (json.executions as ExecutionRow[]) : []
+        setRows((prev) => (append ? [...prev, ...nextRows] : nextRows))
+        setHasMoreRows(Boolean(json?.hasMore))
+        setNextRowsCursorTs(typeof json?.nextCursorTs === 'number' && json.nextCursorTs > 0 ? json.nextCursorTs : null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Error carregant validacio')
+        if (!append) setRows([])
+        setHasMoreRows(false)
+        setNextRowsCursorTs(null)
+      } finally {
+        if (append) setLoadingMoreRows(false)
+        else setLoading(false)
       }
-
-      const qs = new URLSearchParams({ limit: String(VALIDATION_PAGE_SIZE) })
-      const effectiveStatus = opts?.status || statusFilter
-      if (effectiveStatus !== 'all') qs.set('status', effectiveStatus)
-      if (departmentFilter !== 'all') qs.set('department', departmentFilter)
-      if (query.trim()) qs.set('q', query.trim())
-      if (start > 0) qs.set('fromTs', String(start))
-      if (end > 0) qs.set('toTs', String(end))
-      if (typeof opts?.cursorTs === 'number' && opts.cursorTs > 0) qs.set('cursorTs', String(opts.cursorTs))
-
-      const res = await fetch(`/api/auditoria/executions/list?${qs.toString()}`, { cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(String(json?.error || 'No s ha pogut carregar validacio'))
-      const nextRows = Array.isArray(json?.executions) ? (json.executions as ExecutionRow[]) : []
-      setRows((prev) => (append ? [...prev, ...nextRows] : nextRows))
-      setHasMoreRows(Boolean(json?.hasMore))
-      setNextRowsCursorTs(typeof json?.nextCursorTs === 'number' && json.nextCursorTs > 0 ? json.nextCursorTs : null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error carregant validacio')
-      if (!append) setRows([])
-      setHasMoreRows(false)
-      setNextRowsCursorTs(null)
-    } finally {
-      if (append) setLoadingMoreRows(false)
-      else setLoading(false)
-    }
-  }
+    },
+    [departmentFilter, fromTs, query, statusFilter, toTs]
+  )
 
   const loadValuationConfig = useCallback(async () => {
     try {
@@ -314,7 +323,7 @@ export default function AuditoriaValoracioPage() {
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
 
   useEffect(() => {
     loadValuationConfig()
@@ -346,8 +355,8 @@ export default function AuditoriaValoracioPage() {
             enabled: true,
           }),
         })
-        const json = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(String((json as any)?.error || 'No s ha pogut desar configuracio'))
+        const json = (await res.json().catch(() => ({}))) as { error?: string }
+        if (!res.ok) throw new Error(String(json.error || 'No s ha pogut desar configuracio'))
         return true
       } catch (err) {
         setValuationError(err instanceof Error ? err.message : 'Error desant configuracio')

@@ -18,6 +18,12 @@ function safeString(value: unknown) {
   return String(value ?? '').trim()
 }
 
+type TrainingSampleRow = {
+  id: string
+  startDate?: unknown
+  [key: string]: unknown
+}
+
 export async function GET(req: NextRequest) {
   try {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
@@ -34,7 +40,13 @@ export async function GET(req: NextRequest) {
 
     const snap = await q.limit(limit).get()
     const rows = snap.docs
-      .map((doc) => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) }))
+      .map(
+        (doc) =>
+          ({
+            id: doc.id,
+            ...(doc.data() as Record<string, unknown>),
+          }) as TrainingSampleRow
+      )
       .filter((row) => {
         if (!startDate && !endDate) return true
         const d = safeString(row.startDate)
@@ -50,4 +62,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 })
   }
 }
-

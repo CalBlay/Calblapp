@@ -91,6 +91,34 @@ type PlatLookupItem = {
   nameEn: string
 }
 
+type SessionUser = {
+  role?: string
+  department?: string
+}
+
+type NamedLabelDoc = {
+  label?: string
+}
+
+type PlatDocData = {
+  code?: string
+  name?: {
+    ca?: string | null
+    es?: string | null
+    en?: string | null
+  }
+  nameMeta?: NameMeta
+  category?: string | null
+  family?: string | null
+  menus?: string[]
+  onEstanRaw?: string
+  allergens?: Record<string, string | null>
+  consumption?: {
+    vegan?: boolean
+    vegetarian?: boolean
+  }
+}
+
 const buildAllergensState = (
   source: Record<string, string | null> = {},
   list: readonly AllergenItem[] = DEFAULT_ALLERGENS
@@ -178,14 +206,14 @@ const ALLERGEN_OPTIONS: Array<{ value: AllergenValue | typeof EMPTY_SELECT; labe
 
 export default function AllergensBbddPage() {
   const { data: session } = useSession()
-  const user = session?.user
+  const user = session?.user as SessionUser | undefined
 
   const allowed = useMemo(() => {
-    const module = getVisibleModules({
+    const visibleModule = getVisibleModules({
       role: user?.role,
       department: user?.department,
     }).find(mod => mod.path === '/menu/allergens')
-    return module?.submodules?.some(sub => sub.path === '/menu/allergens/bbdd')
+    return visibleModule?.submodules?.some(sub => sub.path === '/menu/allergens/bbdd')
   }, [user?.role, user?.department])
 
   const [form, setForm] = useState<FormState>(defaultFormState)
@@ -276,25 +304,25 @@ export default function AllergensBbddPage() {
       setCategories(
         categorySnap.docs.map(docSnap => ({
           id: docSnap.id,
-          label: (docSnap.data().label as string) || docSnap.id,
+          label: ((docSnap.data() as NamedLabelDoc).label || docSnap.id) as string,
         }))
       )
       setFamilies(
         familySnap.docs.map(docSnap => ({
           id: docSnap.id,
-          label: (docSnap.data().label as string) || docSnap.id,
+          label: ((docSnap.data() as NamedLabelDoc).label || docSnap.id) as string,
         }))
       )
       setMenusCatalog(
         menuSnap.docs.map(docSnap => ({
           id: docSnap.id,
-          label: (docSnap.data().label as string) || docSnap.id,
+          label: ((docSnap.data() as NamedLabelDoc).label || docSnap.id) as string,
         }))
       )
 
       const dbAllergens = allergenSnap.docs.map(docSnap => ({
         key: docSnap.id,
-        label: (docSnap.data().label as string) || docSnap.id,
+        label: ((docSnap.data() as NamedLabelDoc).label || docSnap.id) as string,
       }))
 
       if (dbAllergens.length) {
@@ -307,7 +335,7 @@ export default function AllergensBbddPage() {
 
       setPlatsIndex(
         platsSnap.docs.map(docSnap => {
-          const data = docSnap.data() as any
+          const data = docSnap.data() as PlatDocData
           return {
             id: docSnap.id,
             code: String(data.code || docSnap.id),
@@ -530,7 +558,7 @@ export default function AllergensBbddPage() {
     }
 
     snap.forEach(docSnap => {
-      const data = docSnap.data() as any
+      const data = docSnap.data() as PlatDocData
       if (!data?.allergens || !(key in data.allergens)) return
       batch.update(docSnap.ref, { [`allergens.${key}`]: deleteField() })
       batchCount++
@@ -623,7 +651,7 @@ export default function AllergensBbddPage() {
         return
       }
 
-      const data = snap.data() as any
+      const data = snap.data() as PlatDocData
       const loadedMenus = Array.isArray(data.menus) && data.menus.length
         ? data.menus
         : parseMenus(data.onEstanRaw || '')
@@ -866,7 +894,7 @@ export default function AllergensBbddPage() {
       if (!savedNameEs || !savedNameEn) {
         void (async () => {
           try {
-            const updates: Record<string, any> = {}
+            const updates: Record<string, unknown> = {}
             const metaUpdates: NameMeta = { ...savedNameMeta }
 
             if (!savedNameEs) {

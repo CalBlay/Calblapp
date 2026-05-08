@@ -16,6 +16,13 @@ const DEPARTMENTS: Array<{ id: Department; label: string }> = [
   { id: 'deco', label: 'Deco' },
 ]
 
+const formatIsoDay = (iso?: string) => {
+  const raw = String(iso || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return 'Sense dia'
+  const [yyyy, mm, dd] = raw.split('-')
+  return `${dd}/${mm}/${yyyy}`
+}
+
 type ExecutionRow = {
   id: string
   eventId: string
@@ -117,7 +124,7 @@ export default function AuditoriaConsultaEventPage() {
     } finally {
       setLoading(false)
     }
-  }, [eventId, fromTs, toTs])
+  }, [eventDay, eventId, fromTs, toTs])
 
   useEffect(() => {
     if (!eventId) return

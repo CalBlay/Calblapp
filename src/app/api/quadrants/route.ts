@@ -2144,19 +2144,35 @@ export async function POST(req: NextRequest) {
     }
 
     if (phaseRequests.length > 0) {
+      type PreferredPhaseResult = {
+        assignment: {
+          responsible: { name: string } | null
+          drivers: Array<{ name: string; meetingPoint?: string; plate?: string; vehicleType?: string }>
+          staff: Array<{ name: string; meetingPoint?: string }>
+        }
+        meta: {
+          needsReview: boolean
+          violations: string[]
+          notes: string[]
+        }
+      }
+
+      const emptyPreferredResult: PreferredPhaseResult = {
+        assignment: {
+          responsible: null,
+          drivers: [],
+          staff: [],
+        },
+        meta: {
+          needsReview: false,
+          violations: [],
+          notes: [],
+        },
+      }
+
       const blockedNamesInBatch = new Set<string>()
-      let preferredResult: {
-        assignment?: {
-          responsible?: { name: string } | null
-          drivers?: Array<{ name: string; meetingPoint?: string; plate?: string; vehicleType?: string }>
-          staff?: Array<{ name: string; meetingPoint?: string }>
-        }
-        meta?: {
-          needsReview?: boolean
-          violations?: string[]
-          notes?: string[]
-        }
-      } | null = null
+      let preferredResult = emptyPreferredResult
+      let hasPreferredResult = false
       const orderedPhaseRequests =
         deptNorm === 'serveis'
           ? [
@@ -2225,11 +2241,37 @@ export async function POST(req: NextRequest) {
         mode === 'manual' && deptNorm === 'logistica' && Boolean(manualPhasesFirestoreQueue)
 
       const applyPhaseWriteResult = (phase: PhaseRequest, result: Awaited<ReturnType<typeof writePhaseDoc>>) => {
-        if (!preferredResult && phase.phaseType === 'event') {
-          preferredResult = result
+        const normalizedResult: PreferredPhaseResult = {
+          assignment: {
+            responsible: result.assignment?.responsible || null,
+            drivers: Array.isArray(result.assignment?.drivers)
+              ? result.assignment.drivers.map((driver) => ({
+                  name: driver.name,
+                  meetingPoint: driver.meetingPoint,
+                  plate: driver.plate,
+                  vehicleType: driver.vehicleType,
+                }))
+              : [],
+            staff: Array.isArray(result.assignment?.staff)
+              ? result.assignment.staff.map((person) => ({
+                  name: person.name,
+                  meetingPoint: person.meetingPoint,
+                }))
+              : [],
+          },
+          meta: {
+            needsReview: Boolean(result.meta?.needsReview),
+            violations: Array.isArray(result.meta?.violations) ? result.meta.violations : [],
+            notes: Array.isArray(result.meta?.notes) ? result.meta.notes : [],
+          },
         }
-        if (!preferredResult) {
-          preferredResult = result
+        if (!hasPreferredResult && phase.phaseType === 'event') {
+          preferredResult = normalizedResult
+          hasPreferredResult = true
+        }
+        if (!hasPreferredResult) {
+          preferredResult = normalizedResult
+          hasPreferredResult = true
         }
         const assignedNames = [
           result?.assignment?.responsible?.name || null,
@@ -2363,11 +2405,11 @@ export async function POST(req: NextRequest) {
         docIds: Array.from(new Set(createdDocIds)),
         confirmInlineApplied,
         proposal: {
-          responsible: preferredResult?.assignment?.responsible || null,
-          drivers: preferredResult?.assignment?.drivers || [],
-          staff: preferredResult?.assignment?.staff || [],
+          responsible: preferredResult.assignment.responsible,
+          drivers: preferredResult.assignment.drivers,
+          staff: preferredResult.assignment.staff,
         },
-        meta: preferredResult?.meta || { needsReview: false, violations: [], notes: [] },
+        meta: preferredResult.meta,
       })
     }
 

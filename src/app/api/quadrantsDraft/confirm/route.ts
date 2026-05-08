@@ -40,6 +40,12 @@ type TokenLike = {
   email?: string
 }
 
+type EventStageData = {
+  eventName?: string
+  Nom?: string
+  name?: string
+}
+
 type AssignedUserSrc = {
   name?: string
   id?: string
@@ -203,6 +209,8 @@ export async function POST(req: NextRequest) {
     const directRef = collection.doc(String(eventId))
     const directSnap = await directRef.get()
     const byEvent = await collection.where('eventId', '==', String(eventId)).get()
+    const eventSnap = await db.collection('stage_verd').doc(String(eventId)).get()
+    const eventData = eventSnap.exists ? (eventSnap.data() as EventStageData) : null
 
     const targetDocs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot>()
     if (directSnap.exists) targetDocs.set(directSnap.id, directSnap)
@@ -307,9 +315,9 @@ export async function POST(req: NextRequest) {
     }
 
     const eventName =
-      ev?.eventName ||
-      ev?.Nom ||
-      ev?.name ||
+      eventData?.eventName ||
+      eventData?.Nom ||
+      eventData?.name ||
       'Nou esdeveniment'
     const mainDoc = (currentDocs[0]?.data() as QuadrantDoc | undefined) || {}
     const when = mainDoc.startDate ? ` ${mainDoc.startDate}` : ''

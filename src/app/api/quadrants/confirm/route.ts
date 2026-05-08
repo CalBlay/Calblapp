@@ -66,9 +66,15 @@ export async function POST(req: NextRequest) {
     }
 
     const dept = qcNorm(deptRaw)
-    const docIds =
+    const docIds: string[] =
       docIdsIn && docIdsIn.length
-        ? Array.from(new Set(docIdsIn.map((x: unknown) => String(x || '').trim()).filter(Boolean)))
+        ? Array.from(
+            new Set(
+              docIdsIn
+                .map((x: unknown) => String(x || '').trim())
+                .filter((id): id is string => id.length > 0)
+            )
+          )
         : [String(eventId)]
 
     const colName = await resolveWriteCollectionForDepartment(deptRaw)
