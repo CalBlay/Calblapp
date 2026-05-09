@@ -111,4 +111,6 @@ export type DeliveryRow = {
   acknowledgmentSignatureDataUrl?: string | null
   workerReceiptAckSignatureDataUrl?: string | null
   workerReceiptCorrectionOpen?: boolean
+  /** Quantitats que el treballador proposa en una sol·licitud de rectificació (pendent de revisió per roba). */
+  workerReceiptDisputeProposedLines?: { productId: string; quantity: number }[] | null
 }

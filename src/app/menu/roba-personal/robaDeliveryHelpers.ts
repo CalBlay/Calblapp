@@ -31,6 +31,23 @@ export function robaDeliveryRequestedMatchesDelivered(d: DeliveryRow): boolean {
   return true
 }
 
+/** Mateix criteri que al servidor: compara agregats per producte. */
+export function robaLinesQuantitiesDiffer(
+  a: { productId: string; quantity: number }[],
+  b: { productId: string; quantity: number }[]
+): boolean {
+  const ma = robaLinesQtyByProduct(a)
+  const mb = robaLinesQtyByProduct(b)
+  if (ma.size !== mb.size) return true
+  for (const [k, v] of ma) {
+    if ((mb.get(k) ?? 0) !== v) return true
+  }
+  for (const [k, v] of mb) {
+    if ((ma.get(k) ?? 0) !== v) return true
+  }
+  return false
+}
+
 export function entregaDeliveredTotalUnits(r: DeliveryRow): number {
   return (r.lines || []).reduce((a, l) => a + (Number(l.quantity) || 0), 0)
 }

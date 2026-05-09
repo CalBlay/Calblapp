@@ -59,6 +59,19 @@ function trimAmendmentHistory(h: unknown[]): unknown[] {
   return h.slice(h.length - MAX_AMENDMENT_ENTRIES)
 }
 
+function deliveryQuantitiesDiffer(a: RobaDotacioLine[], b: RobaDotacioLine[]): boolean {
+  const ma = aggregateQuantities(a)
+  const mb = aggregateQuantities(b)
+  if (ma.size !== mb.size) return true
+  for (const [k, v] of ma) {
+    if ((mb.get(k) ?? 0) !== v) return true
+  }
+  for (const [k, v] of mb) {
+    if ((ma.get(k) ?? 0) !== v) return true
+  }
+  return false
+}
+
 /**
  * Treballador: confirma que ha rebut el material d’una entrega registrada pel responsable de roba.
  */
@@ -144,9 +157,11 @@ async function patchConfirmWorkerReceipt(
 async function patchReportWorkerReceiptDispute(
   access: RobaAccessWorkerSelf,
   deliveryId: string,
-  body: { note?: string }
+  body: { note?: string; proposedLines?: unknown[] }
 ) {
   const note = String(body.note || '').trim().slice(0, MAX_DISPUTE_NOTE_CHARS)
+  const proposedRaw = Array.isArray(body.proposedLines) ? body.proposedLines : []
+  const proposedLines = parsePatchLines(proposedRaw)
 
   const dref = db.collection(DEL).doc(deliveryId)
   const dsnap = await dref.get()
@@ -175,6 +190,19 @@ async function patchReportWorkerReceiptDispute(
     )
   }
 
+  const currentDelivered = linesFromStoredDelivery(cur)
+  if (proposedLines.length > 0) {
+    if (!deliveryQuantitiesDiffer(proposedLines, currentDelivered)) {
+      return NextResponse.json(
+        {
+          error:
+            'Les quantitats que heu indicat coincideixen amb el lliurament registrat. Confirmeu la recepció o afegiu una nota si el problema és un altre (producte erroni, etc.).',
+        },
+        { status: 400 }
+      )
+    }
+  }
+
   const now = FieldValue.serverTimestamp()
   const prevHistory = Array.isArray(cur.amendmentHistory) ? [...cur.amendmentHistory] : []
   prevHistory.push({
@@ -182,12 +210,14 @@ async function patchReportWorkerReceiptDispute(
     at: Date.now(),
     byUserId: access.userId,
     note: note || null,
+    proposedLines: proposedLines.length > 0 ? proposedLines : null,
   })
 
   await dref.update({
     workerReceiptDisputedAt: now,
     workerReceiptDisputeNote: note || null,
     workerReceiptDisputeByUserId: access.userId,
+    workerReceiptDisputeProposedLines: proposedLines.length > 0 ? proposedLines : null,
     workerReceiptCorrectionOpen: true,
     amendmentHistory: trimAmendmentHistory(prevHistory),
     updatedAt: now,
@@ -214,6 +244,10 @@ async function patchReportWorkerReceiptDispute(
         deliveryReference: refStr,
         workerName: workerName || undefined,
         note: note || undefined,
+        proposedLinesSummary:
+          proposedLines.length > 0
+            ? proposedLines.map((l) => `${l.productId}×${l.quantity}`).join(', ')
+            : undefined,
       })
     } catch (e) {
       console.error('[deliveries PATCH] notify dispute', e)
@@ -350,6 +384,7 @@ async function patchCorrectDeliveryLines(
         workerReceiptDisputedAt: null,
         workerReceiptDisputeNote: null,
         workerReceiptDisputeByUserId: null,
+        workerReceiptDisputeProposedLines: null,
         workerReceiptCorrectionOpen: false,
         workerReceiptAckAt: null,
         workerReceiptAckByUserId: null,
@@ -444,6 +479,7 @@ export async function PATCH(
     workerReceiptAckSignatureDataUrl?: string
     note?: string
     lines?: unknown[]
+    proposedLines?: unknown[]
   } = {}
   try {
     body = (await req.json()) as typeof body
@@ -462,7 +498,10 @@ export async function PATCH(
     if (access.scope !== 'workerSelf') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    return patchReportWorkerReceiptDispute(access, id, body)
+    return patchReportWorkerReceiptDispute(access, id, {
+      note: body.note,
+      proposedLines: body.proposedLines,
+    })
   }
 
   if (body.action === 'correctDeliveryLines') {

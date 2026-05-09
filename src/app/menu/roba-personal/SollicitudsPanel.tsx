@@ -1,6 +1,7 @@
 'use client'
 
-import React, { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -59,13 +60,22 @@ type SollicitudsPanelMode = 'requests' | 'prepare' | 'pickup'
 
 export function SollicitudsPanel({
   highlightRequestId = '',
+  highlightDeliveryId = '',
   mode = 'requests',
 }: {
   highlightRequestId?: string
+  /** Recollides: obre el flux de correcció d’entrega quan ve d’una notificació o URL (`deliveryId`). */
+  highlightDeliveryId?: string
   mode?: SollicitudsPanelMode
 }) {
   const [rows, setRows] = useState<RequestRow[]>([])
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([])
+  const [pickupCorrectTarget, setPickupCorrectTarget] = useState<DeliveryRow | null>(null)
+  const [pickupCorrectLinesEditor, setPickupCorrectLinesEditor] = useState<
+    { productId: string; qty: string }[]
+  >([{ productId: '', qty: '1' }])
+  const [pickupCorrectNote, setPickupCorrectNote] = useState('')
+  const [pickupCorrectBusy, setPickupCorrectBusy] = useState(false)
   const [products, setProducts] = useState<ProductRow[]>([])
   const [workers, setWorkers] = useState<WorkerRow[]>([])
   const [selectedRequestId, setSelectedRequestId] = useState('')
@@ -662,6 +672,113 @@ export function SollicitudsPanel({
     return t ? `${p.code} ${p.name} · talla ${t}` : `${p.code} ${p.name}`
   }, [products])
 
+  const router = useRouter()
+
+  const deliveriesOpenWorkerReceiptCorrection = useMemo(() => {
+    if (!isPickupMode || isRobaWorkerSelf) return []
+    return deliveries.filter((d) => {
+      if (d.workerReceiptCorrectionOpen !== true) return false
+      if (isRobaAdminOrRrhh) return true
+      if (isDeptLeadLimited) {
+        const reqDept = String(d.requestRequestingDepartment || '').trim()
+        const wDept = workers.find((w) => w.id === d.workerId)?.department || ''
+        const dept = reqDept || wDept
+        return departmentsInSameRobaScope(dept, sessionDeptLabel)
+      }
+      return false
+    })
+  }, [
+    deliveries,
+    isPickupMode,
+    isRobaWorkerSelf,
+    isRobaAdminOrRrhh,
+    isDeptLeadLimited,
+    workers,
+    sessionDeptLabel,
+  ])
+
+  const autoOpenedPickupCorrectionRef = useRef('')
+
+  const openPickupDeliveryCorrection = useCallback((r: DeliveryRow) => {
+    setPickupCorrectTarget(r)
+    const prop = r.workerReceiptDisputeProposedLines
+    const from =
+      prop && prop.length > 0
+        ? prop.map((l) => ({ productId: l.productId, qty: String(l.quantity) }))
+        : (r.lines || []).map((l) => ({ productId: l.productId, qty: String(l.quantity) }))
+    setPickupCorrectLinesEditor(from.length ? from : [{ productId: '', qty: '1' }])
+    setPickupCorrectNote('')
+  }, [])
+
+  const addPickupCorrectLine = useCallback(() => {
+    setPickupCorrectLinesEditor((L) => [...L, { productId: '', qty: '1' }])
+  }, [])
+
+  const removePickupCorrectLine = useCallback((i: number) => {
+    setPickupCorrectLinesEditor((L) =>
+      L.length <= 1 ? [{ productId: '', qty: '1' }] : L.filter((_, j) => j !== i)
+    )
+  }, [])
+
+  const submitPickupDeliveryCorrection = useCallback(async () => {
+    if (!pickupCorrectTarget) return
+    const parsedLines = pickupCorrectLinesEditor
+      .filter((l) => l.productId)
+      .map((l) => ({
+        productId: l.productId,
+        quantity: Number(String(l.qty ?? '').replace(',', '.').trim()),
+      }))
+      .filter((l) => l.productId && Number.isFinite(l.quantity) && l.quantity > 0)
+    if (parsedLines.length === 0) {
+      toast({ title: 'Cal almenys una línia vàlida', variant: 'destructive' })
+      return
+    }
+    setPickupCorrectBusy(true)
+    try {
+      await api(`/api/roba-personal/deliveries/${pickupCorrectTarget.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          action: 'correctDeliveryLines',
+          lines: parsedLines,
+          note: pickupCorrectNote.trim() || undefined,
+        }),
+      })
+      toast({ title: 'Entrega corregida', description: "S'ha notificat el treballador." })
+      autoOpenedPickupCorrectionRef.current = ''
+      setPickupCorrectTarget(null)
+      void load()
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setPickupCorrectBusy(false)
+    }
+  }, [pickupCorrectTarget, pickupCorrectLinesEditor, pickupCorrectNote, load])
+
+  useEffect(() => {
+    const id = highlightDeliveryId.trim()
+    if (!id) {
+      autoOpenedPickupCorrectionRef.current = ''
+      return
+    }
+    if (!isPickupMode) return
+    if (autoOpenedPickupCorrectionRef.current === id) return
+    const d = deliveries.find((x) => x.id === id && x.workerReceiptCorrectionOpen === true)
+    if (!d) return
+    autoOpenedPickupCorrectionRef.current = id
+    openPickupDeliveryCorrection(d)
+    const t = window.setTimeout(() => {
+      document.getElementById(`roba-pickup-delivery-corr-${id}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    }, 250)
+    return () => window.clearTimeout(t)
+  }, [highlightDeliveryId, isPickupMode, deliveries, openPickupDeliveryCorrection])
+
   const normalizeSolicFilter = (s: string) =>
     s
       .normalize('NFD')
@@ -1092,6 +1209,66 @@ export function SollicitudsPanel({
               {directPrepareBusy ? 'Preparant…' : 'Preparar sense sol·licitud'}
             </Button>
           </div>
+        </div>
+      ) : null}
+
+      {deliveriesOpenWorkerReceiptCorrection.length > 0 ? (
+        <div className="rounded-xl border border-amber-300/80 bg-amber-50/70 dark:bg-amber-950/25 dark:border-amber-800/50 p-4 sm:p-5 space-y-3 w-full">
+          <h3 className="font-semibold text-sm sm:text-base text-amber-950 dark:text-amber-50">
+            Entregues amb sol·licitud de rectificació
+          </h3>
+          <p className="text-xs text-amber-900/90 dark:text-amber-100/85 leading-relaxed">
+            Un treballador ha demanat revisió de quantitats sobre una entrega ja registrada. Corregiu el registre aquí
+            mateix: l&apos;estoc i l&apos;historial de moviments s&apos;actualitzen automàticament i el treballador rep
+            un avís per tornar a confirmar a la pestanya Entregues.
+          </p>
+          <ul className="space-y-2">
+            {deliveriesOpenWorkerReceiptCorrection.map((d) => {
+              const wn = workers.find((w) => w.id === d.workerId)?.name?.trim() || d.workerId
+              return (
+                <li
+                  key={d.id}
+                  id={`roba-pickup-delivery-corr-${d.id}`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/25 bg-background/60 px-3 py-2 text-sm scroll-mt-24"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{d.reference ?? `E-${d.id}`}</p>
+                    <p className="text-xs text-muted-foreground">{wn}</p>
+                    {d.workerReceiptDisputeProposedLines?.length ? (
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Proposta del treballador:{' '}
+                        {d.workerReceiptDisputeProposedLines.map((l) => `${prodLabel(l.productId)} × ${l.quantity}`).join('; ')}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 shrink-0">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="default"
+                      className="shrink-0"
+                      onClick={() => openPickupDeliveryCorrection(d)}
+                    >
+                      Corregir quantitats
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={() =>
+                        router.replace(
+                          `/menu/roba-personal?tab=entregues&deliveryId=${encodeURIComponent(d.id)}`
+                        )
+                      }
+                    >
+                      Veure a Entregues
+                    </Button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
         </div>
       ) : null}
 
@@ -1612,6 +1789,103 @@ export function SollicitudsPanel({
             </Button>
             <Button type="button" onClick={() => void confirmPickup()}>
               Confirmar recollida
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pickupCorrectTarget != null} onOpenChange={(o) => !o && setPickupCorrectTarget(null)}>
+        <DialogContent className="max-w-lg max-h-[min(90vh,720px)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Corregir entrega (rectificació)</DialogTitle>
+          </DialogHeader>
+          {pickupCorrectTarget ? (
+            <p className="text-xs text-muted-foreground font-mono">
+              {pickupCorrectTarget.reference ?? `E-${pickupCorrectTarget.id}`}
+            </p>
+          ) : null}
+          <p className="text-sm text-muted-foreground">
+            Ajusteu productes i quantitats. L&apos;estoc es mou segons la diferència respecte al registre anterior,
+            queda registrat a l&apos;historial de moviments i el treballador haurà de tornar a confirmar la recepció.
+          </p>
+          <div className="rounded-lg border border-border bg-muted/20 px-3 py-3 space-y-3">
+            {pickupCorrectLinesEditor.map((ln, i) => (
+              <div
+                key={i}
+                className={cn(
+                  'grid gap-2 grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(4.25rem,5.5rem)_auto] sm:items-end',
+                  i > 0 && 'pt-3 border-t border-border'
+                )}
+              >
+                <div className="space-y-1 min-w-0">
+                  <Label className="text-xs text-muted-foreground">Producte</Label>
+                  <ProductSearchCombobox
+                    products={products}
+                    value={ln.productId}
+                    onChange={(v) =>
+                      setPickupCorrectLinesEditor((L) =>
+                        L.map((x, j) => (j === i ? { ...x, productId: v } : x))
+                      )
+                    }
+                    placeholder="Cercar i triar…"
+                    showStockHint
+                    variant="list"
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Qt.</Label>
+                  <Input
+                    className="h-9"
+                    type="number"
+                    value={ln.qty}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setPickupCorrectLinesEditor((L) =>
+                        L.map((x, j) => (j === i ? { ...x, qty: v } : x))
+                      )
+                    }}
+                  />
+                </div>
+                <div className="flex items-end justify-end pb-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={pickupCorrectLinesEditor.length <= 1}
+                    aria-label="Eliminar línia"
+                    onClick={() => removePickupCorrectLine(i)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={addPickupCorrectLine}>
+              + Línia
+            </Button>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Nota interna (auditoria)</Label>
+            <Textarea
+              value={pickupCorrectNote}
+              onChange={(e) => setPickupCorrectNote(e.target.value)}
+              placeholder="Opcional"
+              rows={2}
+              className="resize-y min-h-[56px] text-sm"
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setPickupCorrectTarget(null)}>
+              Cancel·la
+            </Button>
+            <Button
+              type="button"
+              disabled={pickupCorrectBusy}
+              onClick={() => void submitPickupDeliveryCorrection()}
+            >
+              {pickupCorrectBusy ? 'Desant…' : 'Desar correcció'}
             </Button>
           </DialogFooter>
         </DialogContent>

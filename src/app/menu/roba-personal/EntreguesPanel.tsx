@@ -328,10 +328,17 @@ export function EntreguesPanel({
 
   const openDeliveryCorrection = (r: DeliveryRow) => {
     setCorrectTarget(r)
-    const from = (r.lines || []).map((l) => ({
-      productId: l.productId,
-      qty: String(l.quantity),
-    }))
+    const prop = r.workerReceiptDisputeProposedLines
+    const from =
+      prop && prop.length > 0
+        ? prop.map((l) => ({
+            productId: l.productId,
+            qty: String(l.quantity),
+          }))
+        : (r.lines || []).map((l) => ({
+            productId: l.productId,
+            qty: String(l.quantity),
+          }))
     setCorrectLinesEditor(from.length ? from : [{ productId: '', qty: '1' }])
     setCorrectNote('')
   }
@@ -1023,13 +1030,13 @@ export function EntreguesPanel({
           {deliveriesAwaitingWorkerCorrection.length > 0 ? (
             <section className="space-y-3 w-full pt-2 border-t border-border">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-semibold text-sm sm:text-base">Incidencia en revisio</h2>
+                <h2 className="font-semibold text-sm sm:text-base">Incidència en revisió</h2>
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums">
                   {deliveriesAwaitingWorkerCorrection.length}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Roba esta corregint el registre despres de la vostra incidencia.
+                Roba està corregint el registre després de la vostra incidència.
               </p>
               <div className="space-y-3">
                 {deliveriesAwaitingWorkerCorrection.map((d) => (

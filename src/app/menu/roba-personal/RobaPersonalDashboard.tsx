@@ -102,6 +102,18 @@ export default function RobaPersonalDashboard() {
     [router]
   )
 
+  /** Incidència / rectificació: el responsable treballa des de Recollides (mateix flux d’estoc i notificació al treballador). */
+  const navigateDeliveryDispute = useCallback(
+    (deliveryId: string) => {
+      setTab('recollides')
+      router.replace(
+        `/menu/roba-personal?tab=recollides&deliveryId=${encodeURIComponent(deliveryId)}`,
+        { scroll: false }
+      )
+    },
+    [router]
+  )
+
   return (
     <div className="space-y-5 px-2 pb-8 sm:px-4">
       <RobaPersonalRequestNotificationsBanner
@@ -109,7 +121,7 @@ export default function RobaPersonalDashboard() {
         onMaterialReady={navigateEntregaForRequest}
         onDeliveryAck={navigateDeliveryAck}
         onDeliveryRevised={navigateDeliveryAck}
-        onDeliveryDispute={navigateDeliveryAck}
+        onDeliveryDispute={navigateDeliveryDispute}
       />
 
       {!isRobaWorkerSelf ? (
@@ -164,7 +176,11 @@ export default function RobaPersonalDashboard() {
         <SollicitudsPanel mode="prepare" highlightRequestId={requestIdFromUrl} />
       )}
       {tab === 'recollides' && (
-        <SollicitudsPanel mode="pickup" highlightRequestId={requestIdFromUrl} />
+        <SollicitudsPanel
+          mode="pickup"
+          highlightRequestId={requestIdFromUrl}
+          highlightDeliveryId={deliveryIdFromUrl}
+        />
       )}
       {tab === 'entregues' && (
         <EntreguesPanel

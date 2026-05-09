@@ -338,14 +338,18 @@ export async function notifyRobaResponsibleDeliveryDispute(params: {
   deliveryReference: string
   workerName?: string
   note?: string
+  proposedLinesSummary?: string
 }): Promise<void> {
   const uid = String(params.targetUserId || '').trim()
   if (!uid) return
 
   const extra = params.note?.trim() ? ` · ${params.note.trim().slice(0, 200)}` : ''
+  const props = params.proposedLinesSummary?.trim()
+    ? ` · quantitats proposades: ${params.proposedLinesSummary.trim().slice(0, 280)}`
+    : ''
   const who = params.workerName?.trim() ? `${params.workerName.trim()} · ` : ''
   const title = 'Roba: incidència en una entrega'
-  const body = `${who}${params.deliveryReference} · el treballador indica que el material no és correcte.${extra}`
+  const body = `${who}${params.deliveryReference} · el treballador sol·licita revisió del lliurament.${props}${extra}`
 
   const now = Date.now()
   const ref = db.collection('users').doc(uid).collection('notifications').doc()
