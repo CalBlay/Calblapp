@@ -1,5 +1,58 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { normDeptLabel } from '@/lib/roba-personal/requestPermissions'
+
+const PROD = DOTACIO_COLLECTIONS.products
+const MAX_ROBA_REQUEST_BODY_CHARS = 3500
+
+function mergeLinesByProduct(
+  lines: Array<{ productId: string; quantity: number }>
+): Array<{ productId: string; quantity: number }> {
+  const m = new Map<string, number>()
+  for (const l of lines) {
+    const id = String(l.productId || '').trim()
+    const q = Number(l.quantity)
+    if (!id || !Number.isFinite(q) || q <= 0) continue
+    m.set(id, (m.get(id) || 0) + q)
+  }
+  return [...m.entries()].map(([productId, quantity]) => ({ productId, quantity }))
+}
+
+async function linesSummaryForRobaRequest(
+  lines: Array<{ productId: string; quantity: number }>
+): Promise<string> {
+  const merged = mergeLinesByProduct(lines)
+  if (merged.length === 0) return ''
+
+  const ids = merged.map((l) => l.productId)
+  const labelById = new Map<string, string>()
+  for (let i = 0; i < ids.length; i += 10) {
+    const chunk = ids.slice(i, i + 10)
+    const snaps = await db.getAll(...chunk.map((id) => db.collection(PROD).doc(id)))
+    for (const s of snaps) {
+      if (!s.exists) continue
+      const d = s.data() as { code?: string; name?: string; size?: string }
+      const code = String(d.code || '').trim()
+      const name = String(d.name || '').trim()
+      const size = String(d.size || '').trim()
+      const base =
+        code && name
+          ? `${code} — ${name}${size ? ` (${size})` : ''}`
+          : code || name || s.id
+      labelById.set(s.id, base)
+    }
+  }
+
+  const parts = merged.map((l) => {
+    const lb = labelById.get(l.productId) || l.productId
+    return `${lb} × ${l.quantity}`
+  })
+  let out = parts.join('; ')
+  if (out.length > MAX_ROBA_REQUEST_BODY_CHARS) {
+    out = `${out.slice(0, MAX_ROBA_REQUEST_BODY_CHARS - 1)}…`
+  }
+  return out
+}
 
 const normLower = (s?: string) =>
   (s || '')
@@ -29,6 +82,8 @@ export async function notifyRecursosHumansNewRobaRequest(params: {
   requestingDepartment: string
   requestedByWorkerName: string
   lineCount: number
+  lines: Array<{ productId: string; quantity: number }>
+  createdByUserName?: string | null
 }): Promise<void> {
   const snap = await db
     .collection('users')
@@ -38,8 +93,22 @@ export async function notifyRecursosHumansNewRobaRequest(params: {
   const uids = snap.docs.map((d) => d.id).filter(Boolean)
   if (!uids.length) return
 
+  const worker = String(params.requestedByWorkerName || '').trim() || 'Sense nom'
+  const dept = String(params.requestingDepartment || '').trim()
+  const refCode = String(params.reference || '').trim()
+  const linesSummary = await linesSummaryForRobaRequest(params.lines)
+  const tram = String(params.createdByUserName || '').trim()
   const title = 'Nova sol·licitud de roba personal'
-  const body = `${params.reference} · ${params.requestingDepartment} · ${params.lineCount} línia(es)`
+  const bodyParts = [
+    `Treballador: ${worker}`,
+    dept ? `Departament: ${dept}` : null,
+    refCode ? `Referència: ${refCode}` : null,
+    tram && tram !== worker ? `Tramitat per: ${tram}` : null,
+    linesSummary
+      ? `Material: ${linesSummary}`
+      : `${params.lineCount} línia(es) (sense detall de producte)`,
+  ].filter(Boolean)
+  const body = bodyParts.join('\n')
 
   const now = Date.now()
   const batch = db.batch()
@@ -53,7 +122,10 @@ export async function notifyRecursosHumansNewRobaRequest(params: {
       requestId: params.requestId,
       reference: params.reference,
       requestingDepartment: params.requestingDepartment,
-      requestedByWorkerName: params.requestedByWorkerName,
+      requestedByWorkerName: worker,
+      linesSummary: linesSummary || null,
+      lineCount: params.lineCount,
+      createdByUserName: tram || null,
       createdAt: now,
       read: false,
     })
@@ -95,11 +167,11 @@ export async function notifyRobaRequestMaterialReady(params: {
   const uid = String(params.targetUserId || '').trim()
   if (!uid) return
 
-  const title = 'Roba preparada per recollir'
+  const title = 'Roba: material preparat (recollida a RRHH)'
   const extra = params.pickupAvailabilityMessage?.trim()
     ? ` · ${params.pickupAvailabilityMessage.trim()}`
     : ''
-  const body = `${params.reference} · ${params.requestingDepartment} · recollida ${params.pickupDate}${params.workerName ? ` · ${params.workerName}` : ''}${extra}`
+  const body = `${params.reference} · ${params.requestingDepartment} · data prevista de recollida al magatzem/RRHH: ${params.pickupDate}${params.workerName ? ` · treballador: ${params.workerName}` : ''}${extra}`
 
   const now = Date.now()
   const ref = db.collection('users').doc(uid).collection('notifications').doc()
@@ -160,11 +232,11 @@ export async function notifyRobaDepartmentLeadsPickupDate(params: {
 
   if (!uids.length) return
 
-  const title = 'Roba: data de recollida (responsable departament)'
+  const title = 'Roba: data de recollida al magatzem (cap de roba)'
   const extra = params.pickupAvailabilityMessage?.trim()
     ? ` · ${params.pickupAvailabilityMessage.trim()}`
     : ''
-  const body = `${params.reference} · ${params.requestingDepartment} · recollida ${params.pickupDate}${params.workerName ? ` · ${params.workerName}` : ''}${extra}`
+  const body = `${params.reference} · ${params.requestingDepartment} · el material es pot recollir a RRHH el ${params.pickupDate}${params.workerName ? ` · sol·licitant/treballador: ${params.workerName}` : ''}${extra}`
 
   const now = Date.now()
   const batch = db.batch()
@@ -220,11 +292,11 @@ export async function notifyRobaWorkerDeliveryAck(params: {
   const uid = String(params.targetUserId || '').trim()
   if (!uid) return
 
-  const title = 'Roba: confirmeu la recepció de l’entrega'
+  const title = 'Roba: confirmeu la recepció (lliurament al treballador)'
   const dept = String(params.requestingDepartment || '').trim()
   const body = dept
-    ? `${params.deliveryReference} · ${dept} · el responsable de roba ha registrat el lliurament; confirmeu que ho heu rebut.`
-    : `${params.deliveryReference} · el responsable de roba ha registrat el lliurament; confirmeu que ho heu rebut.`
+    ? `${params.deliveryReference} · ${dept} · RRHH o el responsable de roba del departament ha registrat el lliurament al treballador. Reviseu el material i confirmeu amb signatura.`
+    : `${params.deliveryReference} · RRHH o el responsable de roba ha registrat el lliurament al treballador. Reviseu el material i confirmeu amb signatura.`
 
   const now = Date.now()
   const ref = db.collection('users').doc(uid).collection('notifications').doc()
@@ -315,10 +387,10 @@ export async function notifyRobaWorkerDeliveryRevised(params: {
   if (!uid) return
 
   const dept = String(params.requestingDepartment || '').trim()
-  const title = 'Roba: entrega actualitzada'
+  const title = 'Roba: entrega actualitzada (confirmeu recepció)'
   const body = dept
-    ? `${params.deliveryReference} · ${dept} · el responsable ha corregit el lliurament; reviseu i confirmeu.`
-    : `${params.deliveryReference} · el responsable ha corregit el lliurament; reviseu i confirmeu.`
+    ? `${params.deliveryReference} · ${dept} · RRHH o el cap de roba ha corregit el registre del lliurament; reviseu el material i torneu a confirmar amb signatura.`
+    : `${params.deliveryReference} · s’ha corregit el registre del lliurament; reviseu el material i torneu a confirmar amb signatura.`
 
   const now = Date.now()
   const ref = db.collection('users').doc(uid).collection('notifications').doc()

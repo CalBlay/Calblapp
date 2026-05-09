@@ -107,9 +107,10 @@ export function ProductSearchCombobox({
 
   const stockHint = (p: RobaProductPick) => {
     if (!showStockHint || p.quantityOnHand === undefined) return ''
+    const hand = Math.max(0, Number(p.quantityOnHand))
     const res = Math.max(0, Number(p.quantityReserved ?? 0))
-    const avail = Math.max(0, Number(p.quantityOnHand) - res)
-    return ` · disp. ${avail}${res > 0 ? ` (res. ${res})` : ''}`
+    const avail = Math.max(0, hand - res)
+    return ` · físic ${hand} · disp. ${avail}${res > 0 ? ` · reservat ${res}` : ''}`
   }
 
   const labelSelected = selected
@@ -185,11 +186,11 @@ export function ProductSearchCombobox({
                       )}
                     />
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="truncate text-sm">
+                      <span className="break-words text-sm leading-snug">
                         {p.code} — {p.name}
                         {sizeSuffix(p.size)}
                       </span>
-                      <span className="truncate text-xs text-muted-foreground">
+                      <span className="break-words text-xs text-muted-foreground leading-snug">
                         {p.supplier}
                         {stockHint(p)}
                       </span>
@@ -225,11 +226,11 @@ export function ProductSearchCombobox({
                     )}
                   />
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate text-sm">
+                    <span className="break-words text-sm leading-snug">
                       {p.code} — {p.name}
                       {sizeSuffix(p.size)}
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span className="break-words text-xs text-muted-foreground leading-snug">
                       {p.supplier}
                       {stockHint(p)}
                     </span>

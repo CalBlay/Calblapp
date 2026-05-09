@@ -9,6 +9,20 @@ export function robaRequestCalendarDay(createdAt?: string | null): string | null
   return `${y}-${m}-${day}`
 }
 
+/** Mes natural actual (1 → últim dia), per al filtre per defecte de «Moviments recents». */
+export function robaMovimentsDefaultMonthRange(): { start: string; end: string } {
+  const today = new Date()
+  const start = new Date(today.getFullYear(), today.getMonth(), 1)
+  const end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+  const iso = (dt: Date) => {
+    const y = dt.getFullYear()
+    const mo = String(dt.getMonth() + 1).padStart(2, '0')
+    const da = String(dt.getDate()).padStart(2, '0')
+    return `${y}-${mo}-${da}`
+  }
+  return { start: iso(start), end: iso(end) }
+}
+
 export function robaSollicitudsWeekRange(): { start: string; end: string } {
   const today = new Date()
   const monday = new Date(today)

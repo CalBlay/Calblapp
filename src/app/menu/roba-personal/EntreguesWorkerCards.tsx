@@ -96,7 +96,8 @@ export function WorkerReceiptConfirmationCard({
         </ul>
       </div>
       <p className="text-xs text-muted-foreground">
-        Signeu només si el material coincideix; si no, parleu amb roba abans.
+        Aquest pas és el <strong>lliurament final</strong> (es descompta estoc). Signeu només si el material coincideix;
+        si no, parleu amb roba abans de signar.
       </p>
       <RobaSignaturePad key={padKey} onChange={setSig} />
       <Button type="button" disabled={busy || !sig} onClick={() => void confirmar()}>

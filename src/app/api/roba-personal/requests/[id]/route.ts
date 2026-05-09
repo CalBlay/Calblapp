@@ -19,10 +19,16 @@ import {
   notifyRobaRequestMaterialReady,
 } from '@/lib/roba-personal/robaRequestNotifications'
 import { createRobaPickupCalendarEvent } from '@/services/graph/calendar'
+import {
+  deliveryStockMovementReferenceFromDocId,
+  requestReferenceFromDocId,
+  reservationStockMovementReferenceFromDocId,
+} from '@/lib/roba-personal/dotacioReferenceCodes'
 
 const COL = DOTACIO_COLLECTIONS.requests
 const DEL = DOTACIO_COLLECTIONS.deliveries
 const PROD = DOTACIO_COLLECTIONS.products
+const MOV = DOTACIO_COLLECTIONS.stockMovements
 const USERS = 'users'
 
 const MAX_PICKUP_AVAILABILITY_MSG = 4000
@@ -193,6 +199,8 @@ export async function PATCH(
           const hadStockReservation =
             (d as { preparedWithStockReservation?: boolean }).preparedWithStockReservation !== false
           if (hadStockReservation) {
+            const reqRefStr = requestReferenceFromDocId(id)
+            const reqDept = String(d.requestingDepartment || '').trim() || null
             for (const line of ls) {
               const pref = db.collection(PROD).doc(line.productId)
               const ps = await tx.get(pref)
@@ -202,6 +210,21 @@ export async function PATCH(
               tx.update(pref, {
                 quantityReserved: nextRes,
                 updatedAt: now,
+              })
+              const mref = db.collection(MOV).doc()
+              tx.set(mref, {
+                productId: line.productId,
+                quantityDelta: 0,
+                reason: 'request_reserve_release',
+                reference: reservationStockMovementReferenceFromDocId(mref.id),
+                notes: `Alliberament reserva (cancel·lació) ${reqRefStr} · ${line.quantity} u.`,
+                requestId: id,
+                createdByUserId: access.userId,
+                createdAt: now,
+                quantityReservedDelta: -line.quantity,
+                productReservedAfter: nextRes,
+                requestingDepartment: reqDept,
+                workerDepartment: null,
               })
             }
           }
@@ -281,6 +304,8 @@ export async function PATCH(
               : linesToStore
 
         if (!skipStockReservation) {
+          const reqRefStr = requestReferenceFromDocId(id)
+          const reqDept = String(d.requestingDepartment || '').trim() || null
           for (const line of ls) {
             const pref = db.collection(PROD).doc(line.productId)
             const ps = await tx.get(pref)
@@ -292,9 +317,25 @@ export async function PATCH(
                 `Estoc disponible insuficient per ${line.productId} (disponible ${available}, cal ${line.quantity}).`
               )
             }
+            const nextReserved = reserved + line.quantity
             tx.update(pref, {
-              quantityReserved: reserved + line.quantity,
+              quantityReserved: nextReserved,
               updatedAt: now,
+            })
+            const mref = db.collection(MOV).doc()
+            tx.set(mref, {
+              productId: line.productId,
+              quantityDelta: 0,
+              reason: 'request_reserve',
+              reference: reservationStockMovementReferenceFromDocId(mref.id),
+              notes: `Reserva ${reqRefStr} · ${line.quantity} u.`,
+              requestId: id,
+              createdByUserId: access.userId,
+              createdAt: now,
+              quantityReservedDelta: line.quantity,
+              productReservedAfter: nextReserved,
+              requestingDepartment: reqDept,
+              workerDepartment: null,
             })
           }
         }
@@ -412,13 +453,106 @@ export async function PATCH(
       return NextResponse.json({ error: 'No autoritzat per marcar la recollida.' }, { status: 403 })
     }
 
-    await ref.update({
-      status: 'picked_up',
-      pickedUpAt: now,
-      pickedUpByUserId: access.userId,
-      notes: body.notes !== undefined ? String(body.notes || '').trim() || null : cur.notes,
-      updatedAt: now,
-    })
+    const linesOverride =
+      body.lines !== undefined ? mergeLinesByProduct(normalizeRequestLinesInput(body.lines)) : null
+    if (linesOverride !== null && linesOverride.length === 0) {
+      return NextResponse.json(
+        { error: 'Cal almenys una línia vàlida per registrar la recollida.' },
+        { status: 400 }
+      )
+    }
+
+    try {
+      await db.runTransaction(async (tx) => {
+        const rs = await tx.get(ref)
+        if (!rs.exists) throw new Error('Sol·licitud no trobada.')
+        const d = rs.data() as Record<string, unknown>
+        if (effectiveRequestStatus(d) !== 'prepared') {
+          throw new Error('Només es pot marcar «recollit» des de «preparat».')
+        }
+
+        const preparedLines = parseLines(d)
+        const pickedLines =
+          linesOverride !== null && linesOverride.length > 0 ? linesOverride : preparedLines
+        if (pickedLines.length === 0) throw new Error('La sol·licitud no té línies.')
+        const linesToStore = mergeLineNotesFromDoc(d, pickedLines)
+        const hadStockReservation =
+          (d as { preparedWithStockReservation?: boolean }).preparedWithStockReservation !== false
+        const preparedByProduct = new Map(preparedLines.map((line) => [line.productId, line.quantity]))
+        const pickedByProduct = new Map(pickedLines.map((line) => [line.productId, line.quantity]))
+        const allProductIds = new Set<string>([
+          ...preparedByProduct.keys(),
+          ...pickedByProduct.keys(),
+        ])
+        const reqRefStr = requestReferenceFromDocId(id)
+        const reqDept = String(d.requestingDepartment || '').trim() || null
+
+        for (const productId of allProductIds) {
+          const preparedQty = preparedByProduct.get(productId) || 0
+          const pickedQty = pickedByProduct.get(productId) || 0
+          const pref = db.collection(PROD).doc(productId)
+          const ps = await tx.get(pref)
+          if (!ps.exists) throw new Error(`Producte no trobat: ${productId}`)
+          const { onHand, reserved } = readProduct(ps.data() as Record<string, unknown>)
+          const freeAvailable = Math.max(0, onHand - reserved)
+
+          if (hadStockReservation) {
+            if (reserved < preparedQty) {
+              throw new Error(`Reserva insuficient per al producte ${productId}.`)
+            }
+            if (pickedQty > preparedQty + freeAvailable) {
+              throw new Error(
+                `No hi ha prou estoc disponible per recollir ${pickedQty} u. del producte ${productId}.`
+              )
+            }
+          } else if (pickedQty > freeAvailable) {
+            throw new Error(
+              `No hi ha prou estoc disponible per recollir ${pickedQty} u. del producte ${productId}.`
+            )
+          }
+
+          if (pickedQty > onHand) {
+            throw new Error(`Estoc físic insuficient per al producte ${productId}.`)
+          }
+
+          const nextReserved = hadStockReservation ? Math.max(0, reserved - preparedQty) : reserved
+          tx.update(pref, {
+            quantityOnHand: onHand - pickedQty,
+            quantityReserved: nextReserved,
+            updatedAt: now,
+          })
+
+          const mref = db.collection(MOV).doc()
+          tx.set(mref, {
+            productId,
+            quantityDelta: -pickedQty,
+            reason: 'department_pickup',
+            reference: deliveryStockMovementReferenceFromDocId(mref.id),
+            notes: `Recollida departament ${reqRefStr} · ${pickedQty} u.`,
+            requestId: id,
+            createdByUserId: access.userId,
+            createdAt: now,
+            quantityReservedDelta: hadStockReservation ? -preparedQty : 0,
+            productReservedAfter: nextReserved,
+            requestingDepartment: reqDept,
+            workerDepartment: reqDept,
+          })
+        }
+
+        tx.update(ref, {
+          lines: linesToStore,
+          status: 'picked_up',
+          pickedUpAt: now,
+          pickedUpByUserId: access.userId,
+          notes: body.notes !== undefined ? String(body.notes || '').trim() || null : d.notes,
+          updatedAt: now,
+        })
+      })
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e)
+      return NextResponse.json({ error: message }, { status: 400 })
+    }
+
     const out = await ref.get()
     return NextResponse.json(
       serializeFirestoreDoc(out.id, out.data() as Record<string, unknown>)
@@ -499,6 +633,8 @@ export async function DELETE(
       const hadStockReservation =
         (d as { preparedWithStockReservation?: boolean }).preparedWithStockReservation !== false
       if ((curStatus === 'prepared' || curStatus === 'picked_up') && hadStockReservation) {
+        const reqRefStr = requestReferenceFromDocId(id)
+        const reqDept = String(d.requestingDepartment || '').trim() || null
         for (const line of ls) {
           const pref = db.collection(PROD).doc(line.productId)
           const ps = await tx.get(pref)
@@ -508,6 +644,21 @@ export async function DELETE(
           tx.update(pref, {
             quantityReserved: nextRes,
             updatedAt: now,
+          })
+          const mref = db.collection(MOV).doc()
+          tx.set(mref, {
+            productId: line.productId,
+            quantityDelta: 0,
+            reason: 'request_reserve_release',
+            reference: reservationStockMovementReferenceFromDocId(mref.id),
+            notes: `Alliberament reserva (eliminació sol·licitud) ${reqRefStr} · ${line.quantity} u.`,
+            requestId: id,
+            createdByUserId: access.userId,
+            createdAt: now,
+            quantityReservedDelta: -line.quantity,
+            productReservedAfter: nextRes,
+            requestingDepartment: reqDept,
+            workerDepartment: null,
           })
         }
       }

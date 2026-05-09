@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Search, Trash2 } from 'lucide-react'
+import { Loader2, Search, Trash2 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import FilterButton from '@/components/ui/filter-button'
@@ -33,6 +33,7 @@ import { DEPARTMENTS } from '@/data/departments'
 import { normalizeRole } from '@/lib/roles'
 import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
 import { robaRequestDocIdFromInput } from '@/lib/roba-personal/dotacioReferenceCodes'
+import { DELIVERIES_PURGE_CONFIRM_PHRASE } from '@/lib/roba-personal/deliveriesPurgeConstants'
 import {
   exportDeliveryReceiptsPdf,
   exportRowsToXlsx,
@@ -88,6 +89,7 @@ export function EntreguesPanel({
   const [linkReqDraft, setLinkReqDraft] = useState<Record<string, string>>({})
   const [busyEntrega, setBusyEntrega] = useState(false)
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
+  const [purgeAllDeliveriesBusy, setPurgeAllDeliveriesBusy] = useState(false)
   const [applyLinkedBusy, setApplyLinkedBusy] = useState(false)
   const [correctTarget, setCorrectTarget] = useState<DeliveryRow | null>(null)
   const [correctLinesEditor, setCorrectLinesEditor] = useState<{ productId: string; qty: string }[]>(
@@ -487,12 +489,12 @@ export function EntreguesPanel({
 
   const applyLinkedRequestToForm = async () => {
     if (!linkedRequest?.lines?.length) return
-    if (!['prepared', 'picked_up'].includes(linkedRequest.status)) {
+    if (linkedRequest.status !== 'picked_up') {
       toast({
         title: 'Sollicitud no valida',
         description:
-          linkedRequest.status === 'submitted'
-            ? 'La sollicitud encara no esta preparada per roba.'
+          linkedRequest.status === 'prepared'
+            ? 'La sollicitud encara no consta com a recollida pel departament.'
             : "Aquesta sollicitud no admet registrar una entrega des d'aqui.",
         variant: 'destructive',
       })
@@ -500,14 +502,7 @@ export function EntreguesPanel({
     }
     setApplyLinkedBusy(true)
     try {
-      let req = linkedRequest
-      if (req.status === 'prepared') {
-        const updated = await api<RequestRow>(`/api/roba-personal/requests/${req.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'picked_up' }),
-        })
-        req = { ...req, ...updated }
-      }
+      const req = linkedRequest
       if (req.requestedByWorkerId) {
         setWorkerId(req.requestedByWorkerId)
       }
@@ -565,6 +560,23 @@ export function EntreguesPanel({
     if (parsedLines.length === 0) {
       toast({ title: 'Cal almenys una linia valida', variant: 'destructive' })
       return
+    }
+    if (deliveryWithoutRequest && !isRobaWorkerSelf) {
+      for (const l of parsedLines) {
+        const p = productById(products, l.productId)
+        if (!p) continue
+        const hand = Math.max(0, Number(p.quantityOnHand ?? 0))
+        const res = Math.max(0, Number(p.quantityReserved ?? 0))
+        const avail = Math.max(0, hand - res)
+        if (l.quantity > avail) {
+          toast({
+            title: 'Estoc insuficient (entrega sense sol·licitud)',
+            description: `${prodLabel(l.productId)}: disponible ~${avail} u. (físic ${hand}, reservat ${res}), en vol registrar ${l.quantity}.`,
+            variant: 'destructive',
+          })
+          return
+        }
+      }
     }
     if (!deliveryWithoutRequest && !effectiveRequestId) {
       toast({
@@ -791,6 +803,55 @@ export function EntreguesPanel({
     setWorkerId('')
   }, [isRobaWorkerSelf, robaLinkedPersonnelId])
 
+  const purgeAllEntregues = useCallback(async () => {
+    if (!isRobaAdmin) return
+    const ok1 = window.confirm(
+      'Eliminareu TOTES les entregues (mateixa lògica que «Eliminar» fila a fila: es restaura estoc i sol·licituds vinculades). Irreversible. Continuar?'
+    )
+    if (!ok1) return
+    const typed = window.prompt(
+      `Escriviu exactament:\n${DELIVERIES_PURGE_CONFIRM_PHRASE}`
+    )
+    if (typed !== DELIVERIES_PURGE_CONFIRM_PHRASE) {
+      toast({ title: 'Cancel·lat', description: 'El text de confirmació no coincideix.' })
+      return
+    }
+    setPurgeAllDeliveriesBusy(true)
+    try {
+      const out = await api<{
+        ok?: boolean
+        deletedCount?: number
+        failureCount?: number
+        failures?: Array<{ id: string; error: string }>
+      }>('/api/roba-personal/deliveries/purge-all', {
+        method: 'POST',
+        body: JSON.stringify({ confirm: DELIVERIES_PURGE_CONFIRM_PHRASE }),
+      })
+      const failN = out.failureCount ?? 0
+      toast({
+        title: 'Esborrat d’entregues',
+        description:
+          failN > 0
+            ? `Eliminades: ${out.deletedCount ?? 0}. Errors: ${failN} (vegeu consola o torneu a intentar les que fallen).`
+            : `S’han eliminat ${out.deletedCount ?? 0} entrega(es).`,
+        variant: failN > 0 ? 'destructive' : 'default',
+      })
+      if (failN > 0 && out.failures?.length) {
+        console.warn('[purge-all deliveries]', out.failures)
+      }
+      resetNewDeliveryForm()
+      void load()
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setPurgeAllDeliveriesBusy(false)
+    }
+  }, [isRobaAdmin, load, resetNewDeliveryForm])
+
   const fillFormFromDelivery = useCallback((delivery: DeliveryRow) => {
     if (selectedDeliveryId === delivery.id) {
       resetNewDeliveryForm()
@@ -913,16 +974,34 @@ export function EntreguesPanel({
   return (
     <div className="space-y-6 w-full">
       {isRobaWorkerSelf ? (
+        <div className="rounded-xl border border-sky-200/80 bg-sky-50/45 px-3 py-2.5 text-xs text-sky-950/90 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-100/90 sm:px-4">
+          <p className="font-semibold text-sm text-sky-950 dark:text-sky-50">Dos formes de tancar el lliurament</p>
+          <ul className="mt-1.5 list-disc space-y-1 pl-4 leading-relaxed">
+            <li>
+              <strong>Recollida a RRHH feta:</strong> si la sol·licitud ja consta com a recollida al magatzem, podeu{' '}
+              <strong>signar a la primera secció</strong>: es registra l&apos;entrega al treballador i es descompta
+              l&apos;estoc (recepció tancada en un sol pas).
+            </li>
+            <li>
+              <strong>Responsable que registra:</strong> si RRHH o el cap de roba registra ell mateix el lliurament,
+              rebreu un avís i haureu de <strong>confirmar la recepció</strong> a la secció de sota (amb segona
+              signatura si cal).
+            </li>
+          </ul>
+        </div>
+      ) : null}
+      {isRobaWorkerSelf ? (
         <>
           <section className="space-y-3 w-full">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold text-sm sm:text-base">Sollicitud recollida</h2>
+              <h2 className="font-semibold text-sm sm:text-base">Signar lliurament al treballador</h2>
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums">
                 {pendingReceiptRequests.length}
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Signeu quan us hagin lliurat el material de la llista.
+              Només quan el material ja ha estat recollit a RRHH per al vostre departament. La signatura registra
+              l&apos;entrega definitiva i tanca la sol·licitud.
             </p>
             {pendingReceiptRequests.length === 0 ? (
               <p className="text-sm text-muted-foreground py-2">Cap pendent.</p>
@@ -966,13 +1045,14 @@ export function EntreguesPanel({
 
           <section className="space-y-3 w-full pt-2 border-t border-border">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold text-sm sm:text-base">Entrega del responsable</h2>
+              <h2 className="font-semibold text-sm sm:text-base">Entrega registrada per RRHH o cap de roba</h2>
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums">
                 {deliveriesPendingWorkerAck.length}
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Rebeu avis quan roba registri l'entrega; signeu per tancar.
+              Aquí apareix quan algú amb permís ha registrat el lliurament al vostre nom: reviseu el material i signeu
+              per confirmar la recepció.
             </p>
             {deliveriesPendingWorkerAck.length === 0 ? (
               <p className="text-sm text-muted-foreground py-2">Cap pendent.</p>
@@ -1015,22 +1095,17 @@ export function EntreguesPanel({
                   </li>
                 ))}
               </ul>
+              {linkedRequest.status === 'submitted' ? (
+                <p className="mt-2 text-xs text-amber-900/85 dark:text-amber-200/90">
+                  La sollicitud encara està enviada. Prepareu-la primer a la pestanya Preparació.
+                </p>
+              ) : null}
               {linkedRequest.status === 'prepared' ? (
                 <p className="mt-2 text-xs text-amber-900/85 dark:text-amber-200/90">
-                  En premer el boto es marcara la sollicitud com a recollida i s'omplira el formulari.
+                  La roba encara no consta com a recollida pel departament. Feu aquest pas a la pestanya Recollides.
                 </p>
               ) : null}
-              {linkedRequest.status === 'submitted' && isRobaAdminOrRrhh ? (
-                <p className="mt-2 text-xs text-amber-900/85 dark:text-amber-200/90">
-                  La sollicitud encara esta enviada. Com a RRHH podeu preparar-la aqui i s'omplira el formulari
-                  d'entrega al confirmar.
-                </p>
-              ) : null}
-              {linkedRequest.status === 'submitted' && isRobaAdminOrRrhh ? (
-                <Button type="button" size="sm" className="mt-2" onClick={openRrhhPrepareFromLinked}>
-                  Preparar i omplir formulari (RRHH)
-                </Button>
-              ) : ['prepared', 'picked_up'].includes(linkedRequest.status) ? (
+              {linkedRequest.status === 'picked_up' ? (
                 <Button
                   type="button"
                   size="sm"
@@ -1046,12 +1121,11 @@ export function EntreguesPanel({
           ) : null}
           {linkedRequest &&
           !deliveryWithoutRequest &&
-          linkedRequest.status === 'submitted' &&
-          !isRobaAdminOrRrhh ? (
+          linkedRequest.status === 'submitted' ? (
             <div className="rounded-lg border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 text-sm dark:bg-amber-950/25 dark:border-amber-900/50 text-amber-950 dark:text-amber-100">
               <p className="font-medium">La sollicitud encara no esta preparada.</p>
               <p className="text-xs mt-1 opacity-90">
-                Nomes Recursos Humans (o administracio) pot preparar-la des d'aqui o des de la pestanya Sollicituds.
+                Passeu abans per la pestanya Preparació.
               </p>
             </div>
           ) : null}
@@ -1061,7 +1135,8 @@ export function EntreguesPanel({
             <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
               <p className="font-medium">Aquesta sollicitud no es pot vincular a una entrega nova.</p>
               <p className="text-xs mt-1 opacity-90">
-                Cal una sollicitud preparada o recollida. Si ja consta com a lliurada o confirmada, reviseu l'historial
+                Cal una sollicitud recollida pel departament. Si encara està preparada, passeu abans per Recollides.
+                Si ja consta com a lliurada o confirmada, reviseu l'historial
                 d'entregues.
               </p>
             </div>
@@ -1264,6 +1339,26 @@ export function EntreguesPanel({
               setContent(entFiltersSlidePanel)
             }}
           />
+          {isRobaAdmin ? (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="h-10 shrink-0"
+              disabled={purgeAllDeliveriesBusy}
+              title="Només administrador: elimina totes les entregues i restaura estoc (confirmació en dos passos)"
+              onClick={() => void purgeAllEntregues()}
+            >
+              {purgeAllDeliveriesBusy ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" aria-hidden />
+                  Eliminant…
+                </>
+              ) : (
+                'Eliminar totes les entregues'
+              )}
+            </Button>
+          ) : null}
         </div>
 
         {entFilteredRows.length === 0 ? (
@@ -1384,20 +1479,18 @@ export function EntreguesPanel({
                           </TableCell>
                           {isRobaWorkerSelf ? (
                             <TableCell className="text-sm align-top min-w-[7rem] pt-2.5">
-                              {r.workerReceiptAckExpected ? (
-                                r.workerReceiptAckAt ? (
-                                  <span className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-950 dark:text-emerald-100 font-medium">
-                                    Confirmada
-                                  </span>
-                                ) : r.workerReceiptCorrectionOpen ? (
-                                  <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-950 dark:text-amber-100 font-medium">
-                                    Revisio roba
-                                  </span>
-                                ) : (
-                                  <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-950 dark:text-amber-100 font-medium">
-                                    Pendent
-                                  </span>
-                                )
+                              {r.workerReceiptCorrectionOpen ? (
+                                <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-950 dark:text-amber-100 font-medium">
+                                  Revisio roba
+                                </span>
+                              ) : r.workerReceiptAckAt ? (
+                                <span className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-950 dark:text-emerald-100 font-medium">
+                                  Confirmada
+                                </span>
+                              ) : r.workerReceiptAckExpected ? (
+                                <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-950 dark:text-amber-100 font-medium">
+                                  Pendent
+                                </span>
                               ) : (
                                 <span className="font-medium text-muted-foreground">Registrada</span>
                               )}

@@ -8,9 +8,47 @@ import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import { adjustmentStockMovementReferenceFromDocId } from '@/lib/roba-personal/dotacioReferenceCodes'
+import { enrichStockMovementsDeliveryContext } from '@/lib/roba-personal/stockMovementsEnrich'
 
 const MOV = DOTACIO_COLLECTIONS.stockMovements
 const PROD = DOTACIO_COLLECTIONS.products
+const USERS = 'users'
+
+async function enrichStockMovementsWithCreatorNames(
+  items: ReturnType<typeof serializeFirestoreDoc>[]
+): Promise<ReturnType<typeof serializeFirestoreDoc>[]> {
+  const uids = new Set<string>()
+  for (const row of items) {
+    const uid = String((row as { createdByUserId?: string }).createdByUserId || '').trim()
+    if (uid) uids.add(uid)
+  }
+  if (uids.size === 0) return items
+
+  const idList = [...uids]
+  const nameById = new Map<string, string>()
+  for (let i = 0; i < idList.length; i += 10) {
+    const chunk = idList.slice(i, i + 10)
+    const snaps = await db.getAll(...chunk.map((id) => db.collection(USERS).doc(id)))
+    for (const s of snaps) {
+      if (!s.exists) continue
+      const n = String((s.data() as { name?: string }).name || '').trim()
+      if (n) nameById.set(s.id, n)
+    }
+  }
+
+  return items.map((row) => {
+    const uid = String((row as { createdByUserId?: string }).createdByUserId || '').trim()
+    const createdByUserName = uid ? nameById.get(uid) ?? null : null
+    return { ...row, createdByUserName } as typeof row
+  })
+}
+
+const ALLOWED_MANUAL_POST_REASONS = new Set([
+  'manual',
+  'manual_adjust',
+  'manual_purchase',
+  'manual_return',
+])
 
 export async function GET(req: Request) {
   const auth = await requireRobaPersonalAdmin()
@@ -24,14 +62,16 @@ export async function GET(req: Request) {
         .collection(MOV)
         .where('productId', '==', productId)
         .orderBy('createdAt', 'desc')
-        .limit(200)
+        .limit(500)
         .get()
-    : await db.collection(MOV).orderBy('createdAt', 'desc').limit(200).get()
+    : await db.collection(MOV).orderBy('createdAt', 'desc').limit(500).get()
 
   const items = snap.docs.map((d) =>
     serializeFirestoreDoc(d.id, d.data() as Record<string, unknown>)
   )
-  return NextResponse.json(items)
+  const withDelivery = await enrichStockMovementsDeliveryContext(items)
+  const enriched = await enrichStockMovementsWithCreatorNames(withDelivery)
+  return NextResponse.json(enriched)
 }
 
 export async function POST(req: Request) {
@@ -49,6 +89,14 @@ export async function POST(req: Request) {
   if (!productId || !Number.isFinite(quantityDelta) || quantityDelta === 0) {
     return NextResponse.json(
       { error: 'Cal productId i quantityDelta (nombre ≠ 0).' },
+      { status: 400 }
+    )
+  }
+
+  const reasonRaw = String(body.reason || '').trim() || 'manual_adjust'
+  if (!ALLOWED_MANUAL_POST_REASONS.has(reasonRaw)) {
+    return NextResponse.json(
+      { error: 'Tipus de moviment no vàlid per a aquest formulari.' },
       { status: 400 }
     )
   }
@@ -77,11 +125,13 @@ export async function POST(req: Request) {
       tx.set(movementRef, {
         productId,
         quantityDelta,
-        reason: String(body.reason || '').trim() || 'manual',
+        reason: reasonRaw,
         reference: adjustmentStockMovementReferenceFromDocId(movementRef.id),
         notes: String(body.notes || '').trim() || null,
         createdByUserId: auth.userId,
         createdAt: FieldValue.serverTimestamp(),
+        quantityReservedDelta: 0,
+        productReservedAfter: reserved,
       })
     })
   } catch (e: unknown) {

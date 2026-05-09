@@ -467,12 +467,8 @@ export async function POST(req: Request) {
         }
       }
 
-      const hadStockReservation =
-        requestId && reqData
-          ? (reqData as { preparedWithStockReservation?: boolean }).preparedWithStockReservation !==
-            false
-          : false
-
+      const hadStockReservation = false
+      const movementMeta = new Map<string, { nextReserved: number; reservedDelta: number }>()
       for (const [productId, qty] of qtyByProduct) {
         const pref = db.collection(PROD).doc(productId)
         const psnap = await tx.get(pref)
@@ -484,13 +480,25 @@ export async function POST(req: Request) {
         if (requestId && hadStockReservation && reserved < qty) {
           throw new Error(`Reserva insuficient per al producte ${productId}.`)
         }
+        movementMeta.set(productId, {
+          nextReserved,
+          reservedDelta: hadStockReservation ? -qty : 0,
+        })
         tx.update(pref, {
           quantityOnHand: onHand - qty,
           quantityReserved: nextReserved,
           updatedAt: now,
         })
+        if (requestId) {
+          tx.update(pref, {
+            quantityOnHand: onHand,
+            quantityReserved: reserved,
+            updatedAt: now,
+          })
+        }
       }
 
+      const isWorkerSelfSignedDelivery = access.scope === 'workerSelf' && Boolean(sig)
       const deliveryPayload: Record<string, unknown> = {
         workerId,
         lines,
@@ -509,22 +517,36 @@ export async function POST(req: Request) {
         createdAt: now,
         /** Si el treballador té usuari d’app, ha de confirmar recepció després del registre del responsable. */
         workerReceiptAckExpected: Boolean(notifyWorkerUid),
-        workerReceiptAckAt: null,
-        workerReceiptAckByUserId: null,
+        /** Signatura del propi treballador: una sola passada (sense pas de confirmació pendent). */
+        workerReceiptAckAt: isWorkerSelfSignedDelivery ? now : null,
+        workerReceiptAckByUserId: isWorkerSelfSignedDelivery ? access.userId : null,
+        workerReceiptAckSignatureDataUrl: isWorkerSelfSignedDelivery ? sig : null,
       }
 
       tx.set(deliveryRef, deliveryPayload)
 
+      const requestingDeptMeta =
+        requestId && reqData
+          ? String((reqData as { requestingDepartment?: string }).requestingDepartment || '').trim()
+          : ''
+
       for (const [productId, qty] of qtyByProduct) {
+        const meta = movementMeta.get(productId)
+        if (!meta) throw new Error(`Moviment sense metadades: ${productId}`)
         const mref = db.collection(MOV).doc()
         tx.set(mref, {
           productId,
-          quantityDelta: -qty,
+          quantityDelta: requestId ? 0 : -qty,
           reason: 'delivery',
           reference: deliveryStockMovementReferenceFromDocId(mref.id),
           notes: `Entrega ${deliveryRecordReferenceFromDocId(deliveryRef.id)} · treballador ${workerId}`,
+          deliveryId: deliveryRef.id,
           createdByUserId: access.userId,
           createdAt: now,
+          quantityReservedDelta: meta.reservedDelta,
+          productReservedAfter: meta.nextReserved,
+          requestingDepartment: requestingDeptMeta || null,
+          workerDepartment: workerDept || null,
         })
       }
 

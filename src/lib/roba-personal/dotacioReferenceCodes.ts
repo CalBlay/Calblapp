@@ -3,6 +3,7 @@
  * S- sol·licitud (document sol·licitud)
  * E- entrega (document entrega i cada moviment d’estoc generat)
  * A- ajust / entrada manual d’estoc
+ * R- moviment només de reserva (sense canvi d’estoc físic)
  */
 
 export function requestReferenceFromDocId(docId: string): string {
@@ -33,4 +34,9 @@ export function deliveryStockMovementReferenceFromDocId(movementDocId: string): 
 /** Moviment d’estoc manual (entrada o ajust amb quantitat ±). */
 export function adjustmentStockMovementReferenceFromDocId(movementDocId: string): string {
   return `A-${movementDocId}`
+}
+
+/** Moviment de reserva / alliberament vinculat a una sol·licitud (Δ físic = 0). */
+export function reservationStockMovementReferenceFromDocId(movementDocId: string): string {
+  return `R-${movementDocId}`
 }

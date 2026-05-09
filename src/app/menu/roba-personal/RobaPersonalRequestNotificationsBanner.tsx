@@ -9,6 +9,28 @@ import type { RobaPersonalRequestNotification } from './robaPersonalTypes'
 
 const swrFetcher = (url: string) => fetch(url).then((r) => r.json())
 
+/** Cos llegible per a avisos de sol·licitud (compatibilitat amb notificacions antigues sense cos ric). */
+function formatRobaRequestNotificationBody(n: RobaPersonalRequestNotification): string {
+  if (String(n.type || '') !== 'roba_personal_request') return String(n.body || '').trim()
+  const rawBody = String(n.body || '').trim()
+  if (rawBody.startsWith('Treballador:')) {
+    return rawBody
+  }
+  const worker = String(n.requestedByWorkerName || '').trim()
+  const dept = String(n.requestingDepartment || '').trim()
+  const ref = String(n.reference || '').trim()
+  const mat = String(n.linesSummary || '').trim()
+  const tram = String(n.createdByUserName || '').trim()
+  const parts: string[] = []
+  if (worker) parts.push(`Treballador: ${worker}`)
+  if (dept) parts.push(`Departament: ${dept}`)
+  if (ref) parts.push(`Referència: ${ref}`)
+  if (tram && tram !== worker) parts.push(`Tramitat per: ${tram}`)
+  if (mat) parts.push(`Material: ${mat}`)
+  else if (rawBody) parts.push(rawBody)
+  return parts.join('\n')
+}
+
 export function RobaPersonalRequestNotificationsBanner({
   onPrepareDelivery,
   onMaterialReady,
@@ -114,15 +136,23 @@ export function RobaPersonalRequestNotificationsBanner({
         {notifications.slice(0, 8).map((n) => (
           <div
             key={n.id}
-            className="flex min-h-9 items-center gap-2 rounded-md border border-border bg-background/80 px-2.5 py-1.5 text-sm"
+            className="flex min-h-9 items-start gap-2 rounded-md border border-border bg-background/80 px-2.5 py-2 text-sm"
           >
             <button
               type="button"
-              className="min-w-0 flex-1 truncate text-left font-medium text-foreground hover:text-indigo-700 hover:underline"
+              className="min-w-0 flex-1 text-left font-medium text-foreground hover:text-indigo-700 hover:underline"
               onClick={() => void openNotification(n)}
             >
-              {n.title || 'Notificació'}
-              {n.body ? <span className="block truncate text-xs font-normal text-muted-foreground">{n.body}</span> : null}
+              <span className="block leading-snug">{n.title || 'Notificació'}</span>
+              {String(n.type || '') === 'roba_personal_request' ? (
+                <span className="mt-1 block text-xs font-normal leading-relaxed text-muted-foreground whitespace-pre-wrap break-words">
+                  {formatRobaRequestNotificationBody(n) || 'Sense detall'}
+                </span>
+              ) : n.body ? (
+                <span className="mt-1 block text-xs font-normal leading-relaxed text-muted-foreground whitespace-normal break-words">
+                  {n.body}
+                </span>
+              ) : null}
             </button>
             <span className="shrink-0 text-[10px] text-muted-foreground hidden sm:inline">
               {String(n.type || '') === 'roba_personal_delivery_ack' ||

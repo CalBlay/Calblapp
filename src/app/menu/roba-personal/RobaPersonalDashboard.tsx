@@ -42,7 +42,6 @@ export default function RobaPersonalDashboard() {
     ) &&
     !isRobaFullUser &&
     !isDeptLeadLimited
-  /** Cap de roba: sol·licituds + entregues. Treballador: només entregues (pròpies, filtrades a l’API). */
   const isRobaDeptLeadTabs = isDeptLeadLimited
 
   const [tab, setTab] = useState<TabId>('productes')
@@ -61,7 +60,7 @@ export default function RobaPersonalDashboard() {
       return
     }
     if (!isDeptLeadLimited) return
-    if (tab === 'sollicituds' || tab === 'entregues') return
+    if (tab === 'sollicituds' || tab === 'recollides' || tab === 'entregues') return
     setTab('sollicituds')
     const p = new URLSearchParams(searchParams?.toString() || '')
     p.set('tab', 'sollicituds')
@@ -74,7 +73,7 @@ export default function RobaPersonalDashboard() {
     setTab(id)
     const p = new URLSearchParams(searchParams?.toString() || '')
     p.set('tab', id)
-    if (id !== 'entregues' && id !== 'sollicituds') {
+    if (id !== 'entregues' && id !== 'sollicituds' && id !== 'preparacio' && id !== 'recollides') {
       p.delete('requestId')
       p.delete('deliveryId')
     }
@@ -118,6 +117,7 @@ export default function RobaPersonalDashboard() {
           {(isRobaDeptLeadTabs
             ? ([
                 ['sollicituds', 'Sol·licituds'],
+                ['recollides', 'Recollides'],
                 ['entregues', 'Entregues'],
               ] as const)
             : ([
@@ -125,6 +125,8 @@ export default function RobaPersonalDashboard() {
                 ['treballadors', 'Treballadors'],
                 ['estoc', 'Estoc'],
                 ['sollicituds', 'Sol·licituds'],
+                ['preparacio', 'Preparació'],
+                ['recollides', 'Recollides'],
                 ['entregues', 'Entregues'],
                 ['compres', 'Compres'],
               ] as const)
@@ -147,7 +149,7 @@ export default function RobaPersonalDashboard() {
         <div className="border-b border-border pb-3">
           <h2 className="text-sm font-semibold text-foreground">Entregues</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Confirmeu recepcions i consulteu l’historial.
+            Confirmeu recepcions i consulteu l'historial.
           </p>
         </div>
       )}
@@ -156,7 +158,13 @@ export default function RobaPersonalDashboard() {
       {tab === 'treballadors' && <TreballadorsPanel />}
       {tab === 'estoc' && <EstocPanel />}
       {tab === 'sollicituds' && (
-        <SollicitudsPanel highlightRequestId={requestIdFromUrl} />
+        <SollicitudsPanel mode="requests" highlightRequestId={requestIdFromUrl} />
+      )}
+      {tab === 'preparacio' && (
+        <SollicitudsPanel mode="prepare" highlightRequestId={requestIdFromUrl} />
+      )}
+      {tab === 'recollides' && (
+        <SollicitudsPanel mode="pickup" highlightRequestId={requestIdFromUrl} />
       )}
       {tab === 'entregues' && (
         <EntreguesPanel

@@ -333,6 +333,8 @@ export async function POST(req: Request) {
       requestingDepartment,
       requestedByWorkerName: requestedByWorkerName || 'Sense nom',
       lineCount: lines.length,
+      lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+      createdByUserName: createdByUserName || null,
     })
   } catch (e) {
     console.error('[roba-personal/requests POST] notify RRHH', e)

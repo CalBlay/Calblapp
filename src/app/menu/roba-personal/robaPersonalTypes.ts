@@ -1,6 +1,14 @@
 export type { RobaProductDepartmentId } from '@/data/departments'
 
-export type TabId = 'productes' | 'treballadors' | 'estoc' | 'sollicituds' | 'entregues' | 'compres'
+export type TabId =
+  | 'productes'
+  | 'treballadors'
+  | 'estoc'
+  | 'sollicituds'
+  | 'preparacio'
+  | 'recollides'
+  | 'entregues'
+  | 'compres'
 
 export type RobaPersonalRequestNotification = {
   id: string
@@ -10,6 +18,12 @@ export type RobaPersonalRequestNotification = {
   body?: string
   requestId?: string
   deliveryId?: string
+  reference?: string
+  requestingDepartment?: string
+  requestedByWorkerName?: string | null
+  linesSummary?: string | null
+  lineCount?: number
+  createdByUserName?: string | null
 }
 
 export type ProductRow = {

@@ -5,6 +5,8 @@ export const ROBA_TAB_IDS = new Set<TabId>([
   'treballadors',
   'estoc',
   'sollicituds',
+  'preparacio',
+  'recollides',
   'entregues',
   'compres',
 ])
@@ -18,7 +20,7 @@ export function parseRobaTab(v: string | null): TabId | null {
 export const ROBA_REQUEST_STATUS_LABEL: Record<string, string> = {
   submitted: 'Enviada',
   prepared: 'Preparada',
-  picked_up: 'Recollida (cap)',
+  picked_up: 'Recollida a RRHH (pendent lliurament al treballador)',
   fulfilled: 'Lliurada',
   receipt_confirmed: 'Confirmada',
   cancelled: 'Cancel·lada',

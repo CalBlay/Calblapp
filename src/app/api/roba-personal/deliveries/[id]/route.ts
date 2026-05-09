@@ -18,6 +18,7 @@ import {
   notifyRobaResponsibleDeliveryDispute,
   notifyRobaWorkerDeliveryRevised,
 } from '@/lib/roba-personal/robaRequestNotifications'
+import { adminDeleteDeliveryTransaction } from '@/lib/roba-personal/adminDeleteDelivery'
 const DEL = DOTACIO_COLLECTIONS.deliveries
 const REQ = DOTACIO_COLLECTIONS.requests
 const WORK = DOTACIO_COLLECTIONS.workers
@@ -280,6 +281,17 @@ async function patchCorrectDeliveryLines(
   const workerId = String(curPre.workerId || '').trim()
   const deliveryRefStr = String((curPre.reference as string) || '').trim() || `E-${deliveryId}`
 
+  let correctionReqDept = ''
+  const corrRid = String(curPre.requestId || '').trim()
+  if (corrRid) {
+    const crs = await db.collection(REQ).doc(corrRid).get()
+    if (crs.exists) {
+      correctionReqDept = String(
+        (crs.data() as { requestingDepartment?: string }).requestingDepartment || ''
+      ).trim()
+    }
+  }
+
   try {
     await db.runTransaction(async (tx) => {
       const ds = await tx.get(dref)
@@ -353,6 +365,10 @@ async function patchCorrectDeliveryLines(
         if (diff === 0) continue
         const pref = prefByPid.get(productId)!
         const onHand = onHandByPid.get(productId) ?? 0
+        const psCorr = prodSnaps[allPids.indexOf(productId)]
+        const reservedAfterCorr = psCorr.exists
+          ? Number((psCorr.data() as { quantityReserved?: number }).quantityReserved ?? 0)
+          : 0
         tx.update(pref, {
           quantityOnHand: onHand - diff,
           updatedAt: now,
@@ -367,6 +383,9 @@ async function patchCorrectDeliveryLines(
           deliveryId,
           createdByUserId: access.userId,
           createdAt: now,
+          quantityReservedDelta: 0,
+          productReservedAfter: reservedAfterCorr,
+          requestingDepartment: correctionReqDept || null,
         })
       }
     })
@@ -543,78 +562,9 @@ export async function DELETE(
   }
 
   const { id } = await ctx.params
-  const dref = db.collection(DEL).doc(id)
-  const now = FieldValue.serverTimestamp()
 
   try {
-    await db.runTransaction(async (tx) => {
-      const dsnap = await tx.get(dref)
-      if (!dsnap.exists) throw new Error('No trobat')
-
-      const cur = dsnap.data() as Record<string, unknown>
-      const lines = linesFromStoredDelivery(cur)
-      if (lines.length === 0) {
-        throw new Error('L entrega no te linies valides.')
-      }
-
-      const qtyByProduct = aggregateQuantities(lines)
-      const requestId = String(cur.requestId || '').trim()
-
-      let requestData: Record<string, unknown> | null = null
-      let reqRef: DocumentReference | null = null
-      let restoreReserved = false
-      if (requestId) {
-        reqRef = db.collection(REQ).doc(requestId)
-        const rsnap = await tx.get(reqRef)
-        if (!rsnap.exists) throw new Error('Sollicitud vinculada no trobada.')
-        requestData = rsnap.data() as Record<string, unknown>
-        const fulfillmentDeliveryId = String(requestData.fulfillmentDeliveryId || '').trim()
-        if (fulfillmentDeliveryId && fulfillmentDeliveryId !== id) {
-          throw new Error('La sollicitud ja no esta vinculada a aquesta entrega.')
-        }
-        restoreReserved =
-          (requestData as { preparedWithStockReservation?: boolean }).preparedWithStockReservation !==
-          false
-      }
-
-      for (const [productId, qty] of qtyByProduct) {
-        const pref = db.collection(PROD).doc(productId)
-        const psnap = await tx.get(pref)
-        if (!psnap.exists) throw new Error(`Producte no trobat: ${productId}`)
-        const pdata = psnap.data() as Record<string, unknown>
-        const onHand = Number((pdata as { quantityOnHand?: number }).quantityOnHand ?? 0)
-        const reserved = Number((pdata as { quantityReserved?: number }).quantityReserved ?? 0)
-        tx.update(pref, {
-          quantityOnHand: onHand + qty,
-          quantityReserved: requestId && restoreReserved ? reserved + qty : reserved,
-          updatedAt: now,
-        })
-
-        const mref = db.collection(MOV).doc()
-        tx.set(mref, {
-          productId,
-          quantityDelta: qty,
-          reason: 'delivery_delete',
-          reference: deliveryStockMovementReferenceFromDocId(mref.id),
-          notes: `Eliminacio entrega ${String(cur.reference || `E-${id}`)}`,
-          deliveryId: id,
-          createdByUserId: access.userId,
-          createdAt: now,
-        })
-      }
-
-      if (reqRef && requestData) {
-        tx.update(reqRef, {
-          status: 'picked_up',
-          fulfilledAt: null,
-          fulfillmentDeliveryId: null,
-          receiptConfirmedAt: null,
-          updatedAt: now,
-        })
-      }
-
-      tx.delete(dref)
-    })
+    await adminDeleteDeliveryTransaction(id, access.userId)
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e)
     const status = message === 'No trobat' ? 404 : 400

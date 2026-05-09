@@ -55,7 +55,15 @@ import {
 } from './robaPersonalDates'
 import { productById } from './robaProductHelpers'
 
-export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequestId?: string }) {
+type SollicitudsPanelMode = 'requests' | 'prepare' | 'pickup'
+
+export function SollicitudsPanel({
+  highlightRequestId = '',
+  mode = 'requests',
+}: {
+  highlightRequestId?: string
+  mode?: SollicitudsPanelMode
+}) {
   const [rows, setRows] = useState<RequestRow[]>([])
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
@@ -154,6 +162,25 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
   const [pickupDate, setPickupDate] = useState('')
   const [prepareMessage, setPrepareMessage] = useState('')
   const [prepareWithoutStock, setPrepareWithoutStock] = useState(false)
+  const [directPreparePickupDate, setDirectPreparePickupDate] = useState('')
+  const [directPrepareMessage, setDirectPrepareMessage] = useState('')
+  const [directPrepareWithoutStock, setDirectPrepareWithoutStock] = useState(false)
+  const [directPrepareBusy, setDirectPrepareBusy] = useState(false)
+  const [pickupOpen, setPickupOpen] = useState(false)
+  const [pickupRequestId, setPickupRequestId] = useState('')
+  const [pickupSummary, setPickupSummary] = useState<RequestRow | null>(null)
+  const [pickupLines, setPickupLines] = useState<{ productId: string; qty: string }[]>([])
+  const isRequestsMode = mode === 'requests'
+  const isPrepareMode = mode === 'prepare'
+  const isPickupMode = mode === 'pickup'
+
+  useEffect(() => {
+    if (!isPrepareMode) return
+    if (directPreparePickupDate) return
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    setDirectPreparePickupDate(tomorrow.toISOString().slice(0, 10))
+  }, [directPreparePickupDate, isPrepareMode])
 
   const [listRangeStart, setListRangeStart] = useState(() => robaSollicitudsWeekRange().start)
   const [listRangeEnd, setListRangeEnd] = useState(() => robaSollicitudsWeekRange().end)
@@ -247,6 +274,15 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
     setPrepareOpen(true)
   }
 
+  const openPickup = (r: RequestRow) => {
+    setPickupRequestId(r.id)
+    setPickupSummary(r)
+    setPickupLines(
+      (r.lines || []).map((l) => ({ productId: l.productId, qty: String(l.quantity) }))
+    )
+    setPickupOpen(true)
+  }
+
   const prepareTotalUnits = useMemo(
     () =>
       prepareLines.reduce((acc, l) => {
@@ -254,6 +290,15 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
         return acc + (Number.isFinite(q) && q > 0 ? q : 0)
       }, 0),
     [prepareLines]
+  )
+
+  const pickupTotalUnits = useMemo(
+    () =>
+      pickupLines.reduce((acc, l) => {
+        const q = Number(String(l.qty ?? '').replace(',', '.').trim())
+        return acc + (Number.isFinite(q) && q > 0 ? q : 0)
+      }, 0),
+    [pickupLines]
   )
 
   const confirmPrepare = async () => {
@@ -296,14 +341,18 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
         description: e instanceof Error ? e.message : String(e),
         variant: 'destructive',
       })
+      throw e
     }
   }
 
-  const markPickedUp = async (id: string) => {
+  const markPickedUp = async (id: string, linesOverride?: { productId: string; quantity: number }[]) => {
     try {
       await api(`/api/roba-personal/requests/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'picked_up' }),
+        body: JSON.stringify({
+          status: 'picked_up',
+          lines: linesOverride,
+        }),
       })
       toast({ title: 'Recollida registrada' })
       void load()
@@ -313,6 +362,30 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
         description: e instanceof Error ? e.message : String(e),
         variant: 'destructive',
       })
+    }
+  }
+
+  const confirmPickup = async () => {
+    if (!pickupRequestId) return
+    const payloadLines = pickupLines
+      .map((l) => ({
+        productId: String(l.productId || '').trim(),
+        quantity: Number(String(l.qty ?? '').replace(',', '.').trim()),
+      }))
+      .filter((l) => l.productId && Number.isFinite(l.quantity) && l.quantity > 0)
+    if (payloadLines.length === 0) {
+      toast({
+        title: 'Falten línies',
+        description: 'Cal almenys un producte amb quantitat vàlida.',
+        variant: 'destructive',
+      })
+      return
+    }
+    try {
+      await markPickedUp(pickupRequestId, payloadLines)
+      setPickupOpen(false)
+    } catch {
+      // `markPickedUp` already reports the error toast.
     }
   }
 
@@ -514,6 +587,74 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
     }
   }
 
+  const crearPreparacioDirecta = async () => {
+    if (!workerId.trim()) {
+      toast({
+        title: 'Trieu el treballador',
+        description: 'Cal indicar per a qui prepareu el material.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (!directPreparePickupDate.trim()) {
+      toast({
+        title: 'Falta la data',
+        description: 'Cal indicar el dia de recollida.',
+        variant: 'destructive',
+      })
+      return
+    }
+    const payloadLines = lines
+      .map((l) => ({
+        productId: String(l.productId || '').trim(),
+        quantity: Number(String(l.qty ?? '').replace(',', '.').trim()),
+      }))
+      .filter((l) => l.productId && Number.isFinite(l.quantity) && l.quantity > 0)
+    if (payloadLines.length === 0) {
+      toast({
+        title: 'Falten línies vàlides',
+        description: 'Cal almenys un producte amb quantitat vàlida per preparar.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setDirectPrepareBusy(true)
+    try {
+      const created = await api<RequestRow>('/api/roba-personal/requests', {
+        method: 'POST',
+        body: JSON.stringify({
+          requestingDepartment: dept,
+          requestedByWorkerId: workerId.trim(),
+          lines: payloadLines,
+        }),
+      })
+      await api(`/api/roba-personal/requests/${created.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'prepared',
+          pickupDate: directPreparePickupDate.trim(),
+          pickupAvailabilityMessage: directPrepareMessage.trim() || undefined,
+          prepareWithoutStockReservation: directPrepareWithoutStock || undefined,
+          lines: payloadLines,
+        }),
+      })
+      toast({ title: 'Preparació directa creada' })
+      setLines([{ productId: '', qty: '1' }])
+      setDirectPrepareMessage('')
+      setDirectPrepareWithoutStock(false)
+      void load()
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setDirectPrepareBusy(false)
+    }
+  }
+
   const prodLabel = useCallback((id: string) => {
     const p = productById(products, id)
     if (!p) return id
@@ -536,6 +677,9 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
       }
       if (listFilterDept && r.requestingDepartment !== listFilterDept) return false
       if (listFilterStatus && r.status !== listFilterStatus) return false
+      if (isPrepareMode && r.status !== 'submitted') return false
+      if (isPickupMode && r.status !== 'prepared') return false
+      if (isRequestsMode && !['submitted', 'prepared', 'picked_up'].includes(r.status)) return false
       const q = normalizeSolicFilter(listSearch)
       if (q) {
         const wname =
@@ -562,6 +706,9 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
     listRangeEnd,
     listFilterDept,
     listFilterStatus,
+    isPickupMode,
+    isPrepareMode,
+    isRequestsMode,
     listSearch,
     workers,
     prodLabel,
@@ -691,6 +838,7 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
 
   return (
     <div className="space-y-6 w-full">
+      {isRequestsMode ? (
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
         <h2 className="font-semibold text-base">Nova sol·licitud</h2>
         <div className="rounded-lg border border-indigo-200/60 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 px-3 py-3 sm:px-4 min-w-0">
@@ -811,9 +959,146 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
           </Button>
         </div>
       </div>
+      ) : null}
+
+      {isPrepareMode ? (
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
+          <h2 className="font-semibold text-base">Preparació sense sol·licitud prèvia</h2>
+          <p className="text-xs text-muted-foreground">
+            Crea una preparació directa: es generarà la sol·licitud interna i quedarà preparada amb la reserva corresponent si escau.
+          </p>
+          <div className="rounded-lg border border-indigo-200/60 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 px-3 py-3 sm:px-4 min-w-0 space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs text-muted-foreground">Departament sol·licitant</Label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={dept}
+                  onChange={(e) => setDept(e.target.value as DepartmentId)}
+                >
+                  {DEPARTMENTS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs text-muted-foreground">Treballador</Label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm min-w-0"
+                  value={workerId}
+                  onChange={(e) => setWorkerId(e.target.value)}
+                >
+                  <option value="">— Trieu —</option>
+                  {workersForDept.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name.trim() || '—'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {lines.map((ln, i) => (
+              <div
+                key={`direct-${i}`}
+                className={cn(
+                  'grid gap-2 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(4.25rem,5.5rem)_auto] md:items-end md:gap-3',
+                  i > 0 && 'pt-3 mt-2 border-t border-indigo-200/40 dark:border-indigo-900/40'
+                )}
+              >
+                <div className="space-y-1 min-w-0">
+                  <Label className="text-xs text-muted-foreground">Producte</Label>
+                  <ProductSearchCombobox
+                    products={products}
+                    value={ln.productId}
+                    onChange={(v) =>
+                      setLines((L) => L.map((x, j) => (j === i ? { ...x, productId: v } : x)))
+                    }
+                    placeholder="Cercar i triar…"
+                    showStockHint
+                    variant="list"
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Qty</Label>
+                  <Input
+                    className="h-9"
+                    type="number"
+                    value={ln.qty}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setLines((L) => L.map((x, j) => (j === i ? { ...x, qty: v } : x)))
+                    }}
+                  />
+                </div>
+                <div className="flex items-end justify-end md:justify-start pb-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={lines.length <= 1}
+                    onClick={() => removeLine(i)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="direct-pickup-date">Dia de recollida</Label>
+                <Input
+                  id="direct-pickup-date"
+                  type="date"
+                  className="h-9"
+                  value={directPreparePickupDate}
+                  onChange={(e) => setDirectPreparePickupDate(e.target.value)}
+                />
+              </div>
+              <div className="flex items-end">
+                <div className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                  <Switch
+                    id="direct-prep-no-stock"
+                    checked={directPrepareWithoutStock}
+                    onCheckedChange={(v) => setDirectPrepareWithoutStock(Boolean(v))}
+                  />
+                  <Label htmlFor="direct-prep-no-stock" className="text-sm font-normal cursor-pointer leading-snug">
+                    Sense reserva d'estoc
+                  </Label>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="direct-prepare-msg" className="text-xs text-muted-foreground">
+                Missatge (opcional)
+              </Label>
+              <Textarea
+                id="direct-prepare-msg"
+                className="min-h-[64px] text-sm"
+                placeholder="Ex.: material disponible a partir de…"
+                value={directPrepareMessage}
+                onChange={(e) => setDirectPrepareMessage(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={addLine}>
+              + Línia
+            </Button>
+            <Button type="button" disabled={directPrepareBusy} onClick={() => void crearPreparacioDirecta()}>
+              {directPrepareBusy ? 'Preparant…' : 'Preparar sense sol·licitud'}
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
-        <h2 className="font-semibold text-base">Sol·licituds</h2>
+        <h2 className="font-semibold text-base">
+          {isPrepareMode ? 'Sol·licituds per preparar' : isPickupMode ? 'Recollides pendents' : 'Sol·licituds'}
+        </h2>
         <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
           <SmartFilters
             modeDefault="week"
@@ -1006,7 +1291,7 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
                           </TableCell>
                           <TableCell className="align-top" onClick={(e) => e.stopPropagation()}>
                             <div className="flex flex-wrap gap-1">
-                              {r.status === 'submitted' && isRobaAdminOrRrhh ? (
+                              {isPrepareMode && r.status === 'submitted' && isRobaAdminOrRrhh ? (
                                 <Button
                                   type="button"
                                   variant="secondary"
@@ -1017,13 +1302,13 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
                                   Preparat (RRHH)
                                 </Button>
                               ) : null}
-                              {canMarkPickedUpClient(r) ? (
+                              {isPickupMode && canMarkPickedUpClient(r) ? (
                                 <Button
                                   type="button"
                                   variant="secondary"
                                   size="sm"
                                   className="text-xs h-7"
-                                  onClick={() => void markPickedUp(r.id)}
+                                  onClick={() => openPickup(r)}
                                 >
                                   Recollit
                                 </Button>
@@ -1217,13 +1502,120 @@ export function SollicitudsPanel({ highlightRequestId = '' }: { highlightRequest
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={pickupOpen} onOpenChange={setPickupOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[min(90vh,720px)] flex flex-col gap-0 p-0">
+          <DialogHeader className="px-6 pt-6 pb-3 space-y-1 shrink-0">
+            <DialogTitle>Confirma recollida del departament</DialogTitle>
+            <p className="text-xs text-muted-foreground font-normal leading-relaxed">
+              Ajusteu la quantitat real recollida. En confirmar, es descomptarà l&apos;estoc físic i s&apos;alliberarà la reserva d&apos;aquesta sol·licitud.
+            </p>
+          </DialogHeader>
+          <div className="px-6 pb-4 space-y-4 overflow-y-auto min-h-0 flex-1">
+            {pickupSummary ? (
+              <div className="rounded-lg border border-border bg-muted/25 px-3 py-2.5 text-sm space-y-1.5">
+                <div className="flex flex-wrap gap-x-3 gap-y-1 justify-between items-baseline">
+                  <span>
+                    <span className="text-muted-foreground text-xs">Dept</span>{' '}
+                    <span className="font-medium">{pickupSummary.requestingDepartment}</span>
+                  </span>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {pickupSummary.reference ?? pickupSummary.id}
+                  </span>
+                </div>
+                <p>
+                  <span className="text-muted-foreground text-xs">Treballador</span>{' '}
+                  <span className="font-medium">
+                    {pickupSummary.requestedByWorkerName?.trim() ||
+                      (pickupSummary.requestedByWorkerId
+                        ? workers.find((w) => w.id === pickupSummary.requestedByWorkerId)?.name ?? '—'
+                        : '—')}
+                  </span>
+                </p>
+                <p className="text-sm pt-0.5 border-t border-border/60 mt-1">
+                  <span className="text-muted-foreground text-xs">Total unitats recollides</span>{' '}
+                  <span className="font-semibold tabular-nums text-base">{pickupTotalUnits}</span>
+                </p>
+              </div>
+            ) : null}
+
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-foreground">Línies recollides</Label>
+              <div className="space-y-2">
+                {pickupLines.map((ln, i) => (
+                  <div
+                    key={`pickup-${i}-${ln.productId}`}
+                    className="flex flex-col sm:flex-row gap-2 sm:items-end rounded-md border border-border/80 bg-background/50 p-2"
+                  >
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Producte</span>
+                      <ProductSearchCombobox
+                        products={products}
+                        value={ln.productId}
+                        onChange={(v) =>
+                          setPickupLines((L) => L.map((x, j) => (j === i ? { ...x, productId: v } : x)))
+                        }
+                        placeholder="Cercar…"
+                        showStockHint
+                        variant="list"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="flex gap-2 items-end shrink-0">
+                      <div className="space-y-0.5 w-[4.5rem]">
+                        <Label className="text-[10px] text-muted-foreground">Qty</Label>
+                        <Input
+                          className="h-9 tabular-nums"
+                          type="number"
+                          min={1}
+                          value={ln.qty}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setPickupLines((L) => L.map((x, j) => (j === i ? { ...x, qty: v } : x)))
+                          }}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10"
+                        disabled={pickupLines.length <= 1}
+                        title={pickupLines.length <= 1 ? 'Mínim una línia' : 'Eliminar línia'}
+                        aria-label="Eliminar línia"
+                        onClick={() =>
+                          setPickupLines((L) =>
+                            L.length <= 1 ? L : L.filter((_, j) => j !== i)
+                          )
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => setPickupLines((L) => [...L, { productId: '', qty: '1' }])}
+              >
+                + Línia
+              </Button>
+            </div>
+          </div>
+          <DialogFooter className="px-6 py-4 border-t border-border shrink-0 gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setPickupOpen(false)}>
+              Tanca
+            </Button>
+            <Button type="button" onClick={() => void confirmPickup()}>
+              Confirmar recollida
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-
-
-
-
-
-
-
