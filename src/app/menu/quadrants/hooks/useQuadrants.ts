@@ -1,4 +1,3 @@
-//filename:src\app\menu\quadrants\hooks\useQuadrants.ts
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
@@ -15,7 +14,6 @@ export type QuadrantEvent = {
   pax?: number
   ln?: string
   commercial?: string
-  // Camps provinents del quadrant si existeix
   status?: 'pending' | 'draft' | 'confirmed'
   department?: string
   responsableName?: string
@@ -24,11 +22,6 @@ export type QuadrantEvent = {
   [key: string]: unknown
 }
 
-/**
- * 🔹 Hook que carrega tots els esdeveniments confirmats (stage_verd)
- * i comprova a Firestore si existeix el seu quadrant dins del departament.
- * Retorna la llista d'esdeveniments amb tota la informació fusionada.
- */
 export function useQuadrants(department: string, start?: string, end?: string) {
   const [quadrants, setQuadrants] = useState<QuadrantEvent[]>([])
   const [loading, setLoading] = useState(false)
@@ -51,24 +44,19 @@ export function useQuadrants(department: string, start?: string, end?: string) {
         params.set('department', department)
         params.set('start', start)
         params.set('end', end)
-        if (silent) {
-          params.set('skipCache', '1')
-        }
 
-        const url = `/api/quadrants/get?${params.toString()}`
-        console.log('[useQuadrants] 🔗 Crida API:', url)
-
-        const res = await fetch(url, { cache: 'no-store', signal })
+        const res = await fetch(`/api/quadrants/get?${params.toString()}`, {
+          cache: 'no-store',
+          signal,
+        })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
         const json = await res.json()
         const data = json?.quadrants || json?.events || []
-
-        console.log(`[useQuadrants] ✅ Rebuts ${data.length} quadrants`)
         if (!signal?.aborted) setQuadrants(data)
       } catch (err) {
         if ((err as Error)?.name === 'AbortError') return
-        console.error('[useQuadrants] ❌ Error carregant dades:', err)
+        console.error('[useQuadrants] Error carregant dades:', err)
         if (!silent) setError(err)
       } finally {
         if (!signal?.aborted && !silent) setLoading(false)

@@ -69,14 +69,13 @@ export async function GET(req: NextRequest) {
         .where('departmentLower', '==', requestedDept)
         .get()
       lowerSnap.docs.forEach((doc) => byId.set(doc.id, doc))
-    } catch {}
-
-    try {
-      const exactSnap = await db
-        .collection('personnel')
-        .where('department', '==', requestedDept)
-        .get()
-      exactSnap.docs.forEach((doc) => byId.set(doc.id, doc))
+      if (lowerSnap.empty) {
+        const exactSnap = await db
+          .collection('personnel')
+          .where('department', '==', requestedDept)
+          .get()
+        exactSnap.docs.forEach((doc) => byId.set(doc.id, doc))
+      }
     } catch {}
 
     if (byId.size === 0) {

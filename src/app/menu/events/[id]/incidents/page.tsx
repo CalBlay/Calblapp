@@ -25,6 +25,9 @@ type TimestampLike = {
   toDate?: () => Date
 }
 
+const isTimestampLike = (value: unknown): value is TimestampLike =>
+  typeof value === 'object' && value !== null && typeof (value as TimestampLike).toDate === 'function'
+
 // Petit helper per netejar ubicació igual que a /api/events/list
 function cleanLocation(raw: string | undefined): string {
   const v = raw || ''
@@ -101,7 +104,7 @@ export default async function EventIncidentsPage({ params }: PageProps) {
     const ts = d.createdAt
 
     const createdAt: string =
-      ts && typeof ts.toDate === 'function'
+      isTimestampLike(ts)
         ? ts.toDate().toISOString()
         : typeof ts === 'string'
         ? ts

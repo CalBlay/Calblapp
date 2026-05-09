@@ -88,8 +88,18 @@ export interface UseQuadrantsPageDataResult {
   phasesByEventId: Record<string, Set<string>>
 }
 
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
+
 const normalize = (value?: string) =>
   (value || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+
+/** Dia de la fila tal com s’agrupa a la UI (alineat amb `grouped`). */
+function dayKeyFromUnifiedEvent(ev: UnifiedEvent): string {
+  const fromStart = ev.start ? String(ev.start).slice(0, 10) : ''
+  if (ISO_DAY.test(fromStart)) return fromStart
+  const pd = ev.phaseDate ? String(ev.phaseDate).slice(0, 10) : ''
+  return ISO_DAY.test(pd) ? pd : ''
+}
 
 const normalizeDepartment = (value?: unknown) =>
   (value || '')
@@ -403,8 +413,14 @@ export function useQuadrantsPageData({
         id: q.id || q.eventId || q.code || '',
         eventId: String(q.eventId || ev?.id || ev?.eventId || q.code || ''),
         summary: ev?.summary || ev?.name || q.eventName || '-',
-        originalStart: ev?.originalStart || ev?.start || undefined,
-        originalEnd: ev?.originalEnd || ev?.end || undefined,
+        originalStart:
+          String(ev?.originalStart || '').slice(0, 10) ||
+          (rawEventDate ? rawEventDate.slice(0, 10) : '') ||
+          undefined,
+        originalEnd:
+          String(ev?.originalEnd || '')
+            .slice(0, 10)
+            .trim() || undefined,
         start: `${displayDate}T${q.startTime || '00:00'}:00`,
         end: `${(q.endDate || displayDate)}T${q.endTime || '00:00'}:00`,
         code: q.code || q.eventCode || '',
@@ -481,8 +497,12 @@ export function useQuadrantsPageData({
         id: String(event.id || event.eventId || event.code || ''),
         eventId: String(event.id || event.eventId || event.code || ''),
         summary: event.summary || event.name || '-',
-        originalStart: event.originalStart || event.start || undefined,
-        originalEnd: event.originalEnd || event.end || undefined,
+        originalStart:
+          String(event.originalStart || '').slice(0, 10) || eventStartDate || undefined,
+        originalEnd:
+          String(event.originalEnd || '')
+            .slice(0, 10)
+            .trim() || undefined,
         start: event.start || '',
         end: event.end || '',
         code: event.code || '',
@@ -511,7 +531,99 @@ export function useQuadrantsPageData({
 
     const merged = mergeServiceEntries(out)
 
+    const timeFromIso = (iso: string | undefined, fallback: string) => {
+      if (!iso) return fallback
+      const t = String(iso).slice(11, 16)
+      return /^\d{2}:\d{2}$/.test(t) ? t : fallback
+    }
+
+    const eventPhaseCanon = new Map<string, UnifiedEvent>()
+    merged.forEach((ev) => {
+      const phaseKey = (ev.phaseKey || ev.phaseType || ev.phaseLabel || '').toString().toLowerCase()
+      if (phaseKey !== 'event') return
+
+      const origS = String(ev.originalStart || ev.eventDateRaw || '').slice(0, 10)
+      let origE = String(ev.originalEnd || '').slice(0, 10).trim()
+      if (!ISO_DAY.test(origE)) origE = origS
+
+      const stableEventKey = String(
+        ev.eventId || ev.code || ev.eventCode || ev.id || ''
+      ).trim()
+      const canonKey = `${normalize(stableEventKey)}|${origS}|${origE}`
+
+      const prev = eventPhaseCanon.get(canonKey)
+      if (!prev || (!prev.draft && ev.draft)) {
+        eventPhaseCanon.set(canonKey, ev)
+      }
+    })
+
+    const appendExpandedEventPhase = (ev: UnifiedEvent, into: UnifiedEvent[]) => {
+      const origS = String(ev.originalStart || ev.eventDateRaw || '').slice(0, 10)
+      let origE = String(ev.originalEnd || '').slice(0, 10).trim()
+      if (!ISO_DAY.test(origE)) origE = origS
+
+      if (!ISO_DAY.test(origS)) {
+        into.push(ev)
+        return
+      }
+
+      let startDate: Date
+      let endDate: Date
+      try {
+        startDate = parseISO(origS)
+        endDate = parseISO(origE)
+      } catch {
+        into.push(ev)
+        return
+      }
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        into.push(ev)
+        return
+      }
+
+      const daySpan = differenceInCalendarDays(endDate, startDate)
+      const startH =
+        (ev.displayStartTime && String(ev.displayStartTime).slice(0, 5)) ||
+        timeFromIso(ev.start, '00:00')
+      const endH =
+        (ev.displayEndTime && String(ev.displayEndTime).slice(0, 5)) ||
+        timeFromIso(ev.end, '23:59')
+
+      if (daySpan <= 0) {
+        into.push({
+          ...ev,
+          originalStart: origS,
+          originalEnd: origE,
+          start: `${origS}T${startH}:00`,
+          end: ev.end,
+          phaseDate: origS,
+        })
+        return
+      }
+
+      for (let i = 0; i <= daySpan; i += 1) {
+        const current = addDays(startDate, i)
+        const iso = format(current, 'yyyy-MM-dd')
+        const isFirst = i === 0
+        const isLast = i === daySpan
+        const dayStartH = isFirst ? startH : '00:00'
+        const dayEndH = isLast ? endH : '23:59'
+        into.push({
+          ...ev,
+          originalStart: origS,
+          originalEnd: origE,
+          start: `${iso}T${dayStartH}:00`,
+          end: `${iso}T${dayEndH}:00`,
+          phaseDate: iso,
+          displayStartTime: dayStartH,
+          displayEndTime: dayEndH,
+          horariLabel: `${dayStartH} - ${dayEndH}`,
+        })
+      }
+    }
+
     const expanded: UnifiedEvent[] = []
+    const emittedEventCanon = new Set<string>()
 
     merged.forEach((ev) => {
       const phaseKey = (ev.phaseKey || ev.phaseType || ev.phaseLabel || '').toString().toLowerCase()
@@ -522,53 +634,34 @@ export function useQuadrantsPageData({
         return
       }
 
-      const startIso = ev.start ? String(ev.start).slice(0, 10) : ''
-      const endIso = ev.end ? String(ev.end).slice(0, 10) : startIso
+      const origS = String(ev.originalStart || ev.eventDateRaw || '').slice(0, 10)
+      let origE = String(ev.originalEnd || '').slice(0, 10).trim()
+      if (!ISO_DAY.test(origE)) origE = origS
 
-      if (!startIso || !endIso) {
-        expanded.push(ev)
-        return
-      }
+      const stableEventKey = String(
+        ev.eventId || ev.code || ev.eventCode || ev.id || ''
+      ).trim()
+      const canonKey = `${normalize(stableEventKey)}|${origS}|${origE}`
 
-      let startDate: Date
-      let endDate: Date
+      if (emittedEventCanon.has(canonKey)) return
+      emittedEventCanon.add(canonKey)
 
-      try {
-        startDate = parseISO(startIso)
-        endDate = parseISO(endIso)
-      } catch {
-        expanded.push(ev)
-        return
-      }
-
-      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-        expanded.push(ev)
-        return
-      }
-
-      const daySpan = differenceInCalendarDays(endDate, startDate)
-
-      if (daySpan <= 0) {
-        expanded.push(ev)
-        return
-      }
-
-      for (let i = 0; i <= daySpan; i += 1) {
-        const current = addDays(startDate, i)
-        const iso = format(current, 'yyyy-MM-dd')
-        expanded.push({
-          ...ev,
-          originalStart: ev.originalStart || ev.start,
-          originalEnd: ev.originalEnd || ev.end,
-          start: `${iso}T${ev.displayStartTime || '00:00'}:00`,
-          end: `${iso}T${ev.displayEndTime || '00:00'}:00`,
-          phaseDate: iso,
-        })
-      }
+      const canon = eventPhaseCanon.get(canonKey) || ev
+      appendExpandedEventPhase(canon, expanded)
     })
 
-    return expanded
-  }, [events, quadrants])
+    const rangeStart = String(filters.start ?? '').slice(0, 10)
+    const rangeEnd = String(filters.end ?? '').slice(0, 10)
+    if (!ISO_DAY.test(rangeStart) || !ISO_DAY.test(rangeEnd)) {
+      return expanded
+    }
+
+    return expanded.filter((ev) => {
+      const day = dayKeyFromUnifiedEvent(ev)
+      if (!day) return false
+      return day >= rangeStart && day <= rangeEnd
+    })
+  }, [events, quadrants, filters.start, filters.end])
 
   const phasesByEventId = useMemo(() => {
     const map: Record<string, Set<string>> = {}

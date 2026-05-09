@@ -280,7 +280,7 @@ const treballadorsPersons =
     }
     const t = window.setTimeout(warm, 120)
     return () => clearTimeout(t)
-  }, [event?.id, user.department])
+  }, [event?.id, event?.start, user.department])
 
   const roleN = norm(user?.role)
   const deptN = norm(user?.department)

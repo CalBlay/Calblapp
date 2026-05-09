@@ -55,6 +55,11 @@ type CalendarEditData = {
 
 type CalendarDealRecord = Deal & Record<string, unknown>
 
+const toCalendarPax = (value: unknown): number | string | null => {
+  if (typeof value === 'number' || typeof value === 'string') return value
+  return ''
+}
+
 const normalizeLoose = (value?: string | null) =>
   (value || '')
     .normalize('NFD')
@@ -89,6 +94,7 @@ const normalizeDeptForLnBucket = (value?: string | null) => {
 export default function CalendarModal({ deal, trigger, onSaved, readonly }: Props) {
   console.log('🧩 Dades rebudes al modal:', deal)
 
+  const dealRecord = deal as CalendarDealRecord
   const { data: session } = useSession()
   const [open, setOpen] = useState(false)
   const [comercialPool, setComercialPool] = useState<ComercialCandidate[]>([])
@@ -97,8 +103,9 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
 
   // Helper per recuperar camps sense importar majúscules/minúscules
   const get = (obj: Record<string, unknown> | null | undefined, ...keys: string[]) => {
+    if (!obj) return undefined
     for (const k of keys) {
-      const foundKey = Object.keys(obj || {}).find(
+      const foundKey = Object.keys(obj).find(
         (key) => key.toLowerCase() === k.toLowerCase()
       )
       if (foundKey) return obj[foundKey]
@@ -109,18 +116,18 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   // ✅ Dades del formulari de l’esdeveniment (estat inicial)
   const [editData, setEditData] = useState<CalendarEditData>(() => ({
     // 🔧 FIX: abans hi havia get('ev.code'...) amb string literal. Ara és get(deal,...)
-    LN: get(deal, 'LN', 'ln', 'liniaNegoci') || 'Altres',
-    code: get(deal, 'code', 'codi', 'eventcode', 'codigo', 'C_digo') || '',
-    NomEvent: get(deal, 'NomEvent', 'nomEvent', 'summary') || '',
-    DataInici: get(deal, 'DataInici', 'dataInici', 'Data', 'dateStart') || '',
-    DataFi: get(deal, 'DataFi', 'dataFi', 'dateEnd') || '',
-    HoraInici: get(deal, 'HoraInici', 'horaInici', 'Hora', 'hora') || '',
-    HoraFi: get(deal, 'HoraFi', 'horaFi') || '',
-    NumPax: get(deal, 'NumPax', 'numPax', 'pax') ?? '',
-    Ubicacio: get(deal, 'Ubicacio', 'ubicacio', 'location') || '',
-    Servei: get(deal, 'Servei', 'servei', 'service') || '',
-    Comercial: get(deal, 'Comercial', 'comercial') || '',
-    Responsable: get(deal, 'Responsable', 'responsable') || '',
+    LN: String(get(dealRecord, 'LN', 'ln', 'liniaNegoci') || 'Altres'),
+    code: String(get(dealRecord, 'code', 'codi', 'eventcode', 'codigo', 'C_digo') || ''),
+    NomEvent: String(get(dealRecord, 'NomEvent', 'nomEvent', 'summary') || ''),
+    DataInici: String(get(dealRecord, 'DataInici', 'dataInici', 'Data', 'dateStart') || ''),
+    DataFi: String(get(dealRecord, 'DataFi', 'dataFi', 'dateEnd') || ''),
+    HoraInici: String(get(dealRecord, 'HoraInici', 'horaInici', 'Hora', 'hora') || ''),
+    HoraFi: String(get(dealRecord, 'HoraFi', 'horaFi') || ''),
+    NumPax: toCalendarPax(get(dealRecord, 'NumPax', 'numPax', 'pax')),
+    Ubicacio: String(get(dealRecord, 'Ubicacio', 'ubicacio', 'location') || ''),
+    Servei: String(get(dealRecord, 'Servei', 'servei', 'service') || ''),
+    Comercial: String(get(dealRecord, 'Comercial', 'comercial') || ''),
+    Responsable: String(get(dealRecord, 'Responsable', 'responsable') || ''),
   }))
 
   // Guarda una còpia per poder fer reset si cal
@@ -259,22 +266,22 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
 
   // 📝 Observacions Zoho (read-only)
   const ObservacionsZoho = useMemo(() => {
-    return (
+    return String(
       get(
-        deal,
+        dealRecord,
         'ObservacionsZoho',
         'observacionsZoho',
         'Observacions',
         'observacions'
       ) || ''
     )
-  }, [deal])
+  }, [dealRecord])
 
   // ✅ Pax display robust (mostra també 0)
   const paxDisplay = useMemo(() => {
     const raw =
       get(
-        deal,
+        dealRecord,
         'NumPax',
         'numPax',
         'pax',
@@ -286,62 +293,63 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     if (raw === 0) return '0'
     const s = String(raw ?? '').trim()
     return s
-  }, [deal, editData.NumPax])
+  }, [dealRecord, editData.NumPax])
 
   // 🧩 Sincronitza el formulari quan canviï el deal
   useEffect(() => {
-    const NomEventRaw = get(deal, 'NomEvent', 'nomEvent', 'summary') || ''
-    const LN = get(deal, 'LN', 'ln', 'liniaNegoci') || 'Altres'
+    const NomEventRaw = String(get(dealRecord, 'NomEvent', 'nomEvent', 'summary') || '')
+    const LN = String(get(dealRecord, 'LN', 'ln', 'liniaNegoci') || 'Altres')
     const Servei =
-      get(
-        deal,
+      String(get(
+        dealRecord,
         'Servei',
         'servei',
         'service',
         'TipusServei',
         'tipusservei'
-      ) || ''
+      ) || '')
     const Comercial =
-      get(
-        deal,
+      String(get(
+        dealRecord,
         'Comercial',
         'comercial',
         'salesperson',
         'Salesperson'
-      ) || ''
+      ) || '')
     const Responsable =
-      get(deal, 'Responsable', 'responsable', 'ResponsableZoho') || ''
-    const NumPax =
+      String(get(dealRecord, 'Responsable', 'responsable', 'ResponsableZoho') || '')
+    const NumPax = toCalendarPax(
       get(
-        deal,
+        dealRecord,
         'NumPax',
         'numPax',
         'pax',
         'Num_Pax',
         'num_pax',
         'PAX'
-      ) ?? ''
-    const Ubicacio = get(deal, 'Ubicacio', 'ubicacio', 'location') || ''
-    const Code = get(deal, 'code', 'C_digo', 'codi') || ''
+      )
+    )
+    const Ubicacio = String(get(dealRecord, 'Ubicacio', 'ubicacio', 'location') || '')
+    const Code = String(get(dealRecord, 'code', 'C_digo', 'codi') || '')
     const DataInici =
-      get(deal, 'DataInici', 'dataInici', 'Data', 'dateStart') || ''
-    const DataFi = get(deal, 'DataFi', 'dataFi', 'dateEnd') || ''
+      String(get(dealRecord, 'DataInici', 'dataInici', 'Data', 'dateStart') || '')
+    const DataFi = String(get(dealRecord, 'DataFi', 'dataFi', 'dateEnd') || '')
     const HoraInici =
-      get(deal, 'HoraInici', 'horaInici', 'Hora', 'hora') || ''
-    const HoraFi = get(deal, 'HoraFi', 'horaFi') || ''
+      String(get(dealRecord, 'HoraInici', 'horaInici', 'Hora', 'hora') || '')
+    const HoraFi = String(get(dealRecord, 'HoraFi', 'horaFi') || '')
 
     console.log('📊 Extracte camps:', {
-      NomEvent: deal.NomEvent,
-      Comercial: deal.Comercial,
-      Servei: deal.Servei,
-      NumPax: deal.NumPax,
-      LN: deal.LN,
-      origen: deal.origen,
-      collection: deal.collection,
-      ObservacionsZoho: (deal as CalendarDealRecord)?.ObservacionsZoho,
+      NomEvent: dealRecord.NomEvent,
+      Comercial: dealRecord.Comercial,
+      Servei: dealRecord.Servei,
+      NumPax: dealRecord.NumPax,
+      LN: dealRecord.LN,
+      origen: dealRecord.origen,
+      collection: dealRecord.collection,
+      ObservacionsZoho: dealRecord?.ObservacionsZoho,
     })
 
-    const next = {
+    const next: CalendarEditData = {
       LN,
       code: Code,
       NomEvent: NomEventRaw.split('/')[0].trim(),
@@ -360,14 +368,13 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     setInitialData(next)
     setMultiDay(Boolean(DataFi && DataFi !== DataInici))
     setCodeDirty(false)
-  }, [deal])
+  }, [dealRecord])
 
   // 🔄 Quan canviï el deal, carregar directament els adjunts estructurats
   useEffect(() => {
-    const anyDeal = deal as CalendarDealRecord
-    const nextFiles = Array.isArray(anyDeal?.files) ? anyDeal.files : []
+    const nextFiles = Array.isArray(dealRecord?.files) ? dealRecord.files : []
     setFiles(nextFiles)
-  }, [deal])
+  }, [dealRecord])
 
   // Helpers
   const handleChange = (field: string, value: string) => {
@@ -573,7 +580,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
                 <option value="Altres">Altres</option>
               </select>
             ) : (
-              <p>{get(deal, 'LN', 'ln') || editData.LN || '—'}</p>
+              <p>{String(get(dealRecord, 'LN', 'ln') || editData.LN || '—')}</p>
             )}
           </div>
 

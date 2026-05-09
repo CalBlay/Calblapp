@@ -29,6 +29,14 @@ import SurveyLaunchPanel from './SurveyLaunchPanel'
 import CuinaSection from './CuinaSection'
 
 const surveyPremisesCache = new Map<string, Array<{ id: string; name: string; workerIds: string[] }>>()
+const surveyPremisesModelsCache = new Map<string, string[]>()
+const surveyPremisesPromiseCache = new Map<
+  string,
+  Promise<{
+    groups: Array<{ id: string; name: string; workerIds: string[] }>
+    vestimentModels: string[]
+  }>
+>()
 const surveyPeopleCache = new Map<string, Array<{ id: string; name: string }>>()
 const surveyPeoplePromiseCache = new Map<string, Promise<Array<{ id: string; name: string }>>>()
 
@@ -134,6 +142,13 @@ type ExternalWorkerPayload = {
 type SurveyPersonApi = {
   id?: unknown
   name?: unknown
+}
+
+type PremisesResponse = {
+  premises?: {
+    surveyGroups?: Array<{ id: string; name: string; workerIds: string[] }>
+    vestimentModels?: string[]
+  }
 }
 
 type SubmitQuadrantResponse = {
@@ -322,6 +337,41 @@ const toastAutoAssignDoubleBookingWarnings = (data: {
     description: preview,
     duration: 16_000,
   })
+}
+
+const loadDepartmentPremises = async (department: string) => {
+  const cachedGroups = surveyPremisesCache.get(department)
+  const cachedModels = surveyPremisesModelsCache.get(department)
+  if (cachedGroups && cachedModels) {
+    return { groups: cachedGroups, vestimentModels: cachedModels }
+  }
+
+  let request = surveyPremisesPromiseCache.get(department)
+  if (!request) {
+    request = fetch(`/api/quadrants/premises?department=${encodeURIComponent(department)}`, {
+      cache: 'no-store',
+    })
+      .then((res) => res.json().catch(() => ({} as PremisesResponse)))
+      .then((json: PremisesResponse) => {
+        const groups = Array.isArray(json?.premises?.surveyGroups)
+          ? json.premises.surveyGroups
+          : []
+        const vestimentModels = Array.isArray(json?.premises?.vestimentModels)
+          ? json.premises.vestimentModels
+              .map((m) => String(m || '').trim())
+              .filter(Boolean)
+          : []
+        surveyPremisesCache.set(department, groups)
+        surveyPremisesModelsCache.set(department, vestimentModels)
+        return { groups, vestimentModels }
+      })
+      .finally(() => {
+        surveyPremisesPromiseCache.delete(department)
+      })
+    surveyPremisesPromiseCache.set(department, request)
+  }
+
+  return request
 }
 
 type CuinaEttState = {
@@ -651,14 +701,8 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
     let cancelled = false
     ;(async () => {
       try {
-        const res = await fetch('/api/quadrants/premises?department=serveis', {
-          cache: 'no-store',
-        })
-        const json = await res.json()
-        if (cancelled || !res.ok) return
-        const models = Array.isArray(json?.premises?.vestimentModels)
-          ? (json.premises.vestimentModels as string[]).map((m) => String(m || '').trim()).filter(Boolean)
-          : []
+        const { vestimentModels: models } = await loadDepartmentPremises('serveis')
+        if (cancelled) return
         setServeisVestimentModels(models)
       } catch {
         if (!cancelled) setServeisVestimentModels([])
@@ -689,14 +733,9 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
           setSurveyGroups(cachedGroups)
         } else {
           setSurveyGroupsLoading(true)
-          fetch(`/api/quadrants/premises?department=${encodeURIComponent(department)}`, { cache: 'no-store' })
-            .then((res) => res.json().catch(() => ({})))
-            .then((premisesJson) => {
+          loadDepartmentPremises(department)
+            .then(({ groups }) => {
               if (cancelled) return
-              const groups = Array.isArray(premisesJson?.premises?.surveyGroups)
-                ? premisesJson.premises.surveyGroups
-                : []
-              surveyPremisesCache.set(department, groups)
               setSurveyGroups(groups)
             })
             .finally(() => {

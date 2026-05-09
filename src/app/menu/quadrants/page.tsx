@@ -3,6 +3,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import useSWR from 'swr'
 import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
 import { useSession } from 'next-auth/react'
 import { loadXlsx } from '@/lib/loadXlsx'
@@ -10,11 +11,9 @@ import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
 import ExportMenu from '@/components/export/ExportMenu'
 
-import useFetch from '@/hooks/useFetch'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
-import { useQuadrants } from '@/app/menu/quadrants/hooks/useQuadrants'
 import QuadrantModal from './[id]/components/QuadrantModal'
 import QuadrantCard from './drafts/components/QuadrantCard'
 import { useQuadrantsPageData } from './hooks/useQuadrantsPageData'
@@ -53,6 +52,77 @@ type ExportRow = {
   Estat: string
 }
 
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
+
+function normPhaseKey(value: unknown) {
+  return String(value ?? '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase()
+}
+
+/** Data d’inici de l’esdeveniment (stage / calendari) per mostrar entre parèntesi. */
+function eventStartDisplayLabel(ev: UnifiedEvent): string {
+  if (ev.eventDateLabel && String(ev.eventDateLabel).trim()) return String(ev.eventDateLabel).trim()
+  const ymd = String(ev.eventDateRaw || ev.originalStart || '').slice(0, 10)
+  if (!ISO_DAY.test(ymd)) return ''
+  try {
+    return format(parseISO(ymd), 'dd/MM')
+  } catch {
+    return ''
+  }
+}
+
+function isEventPhaseRow(ev: UnifiedEvent) {
+  const k = normPhaseKey(ev.phaseKey)
+  const t = normPhaseKey(ev.phaseType)
+  const lbl = normPhaseKey(ev.phaseLabel)
+  return k === 'event' || t === 'event' || lbl === 'event'
+}
+
+/**
+ * Pastilla de fase: si no és «event», sempre `FASE (data inici esdeveniment)` quan hi ha data;
+ * si és «event» i l’acte és multi-dia: `EVENT (dd/MM - dd/MM)`; si és un sol dia, parèntesi només
+ * quan la fila és un altre dia que l’inici de l’esdeveniment.
+ */
+function buildQuadrantPhaseBadge(ev: UnifiedEvent, rowDate: string): string {
+  const row = rowDate.slice(0, 10)
+  const eventDateRaw = String(ev.eventDateRaw || '').slice(0, 10)
+  const phaseUpper = ev.phaseLabel ? ev.phaseLabel.toUpperCase() : ''
+
+  if (!isEventPhaseRow(ev) && phaseUpper) {
+    const startLbl = eventStartDisplayLabel(ev)
+    return startLbl ? `${phaseUpper} (${startLbl})` : phaseUpper
+  }
+
+  const hasPhaseLabel = Boolean(ev.phaseLabel)
+  if (!hasPhaseLabel) return ''
+
+  // Només dates de l’esdeveniment (stage_verd / calendari): DataInici + DataFi.
+  // No usar ev.end (sovit horari o dia del quadrant).
+  const origStart = String(ev.originalStart || ev.eventDateRaw || '').slice(0, 10)
+  const origEnd = String(ev.originalEnd || '').slice(0, 10)
+  const isMultiDay =
+    ISO_DAY.test(origStart) &&
+    ISO_DAY.test(origEnd) &&
+    origStart !== origEnd
+
+  if (isMultiDay) {
+    try {
+      const span = `${format(parseISO(origStart), 'dd/MM')} - ${format(parseISO(origEnd), 'dd/MM')}`
+      return `${phaseUpper} (${span})`
+    } catch {
+      /* continua amb la lògica d’un sol dia */
+    }
+  }
+
+  const showEventDate =
+    hasPhaseLabel && eventDateRaw && row && eventDateRaw !== row
+  if (showEventDate && ev.eventDateLabel) {
+    return `${phaseUpper} (${ev.eventDateLabel})`
+  }
+  return phaseUpper
+}
+
 const LOGISTIC_PHASE_OPTIONS = [
   { key: 'event', label: 'Event' },
   { key: 'entrega', label: 'Entrega' },
@@ -65,6 +135,20 @@ const SERVICE_PHASE_OPTIONS = [
 ]
 
 const CUINA_PHASE_OPTIONS = [{ key: 'event', label: 'Event' }]
+
+type DashboardResponse = {
+  events?: QuadrantEvent[]
+  quadrants?: Draft[]
+  surveyKeys?: string[]
+}
+
+type QuadrantsPageDataInput = Parameters<typeof useQuadrantsPageData>[0]
+
+const fetchDashboard = async (url: string): Promise<DashboardResponse> => {
+  const res = await fetch(url, { cache: 'no-store' })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
 
 
 export default function QuadrantsPage() {
@@ -80,13 +164,6 @@ export default function QuadrantsPage() {
     location: '__all__',
     status: '__all__',
   }))
-
-  const {
-    data: eventsData = [],
-    loading,
-    error,
-  } = useFetch('/api/events/quadrants', filters.start, filters.end)
-  const events = eventsData as QuadrantEvent[]
 
   const { data: session } = useSession()
   const sessionUser = session?.user as SessionDepartmentSource | undefined
@@ -107,14 +184,46 @@ export default function QuadrantsPage() {
     setHideCuinaMinorServices(isCuinaDepartment)
   }, [isCuinaDepartment])
 
-  const { quadrants, reload } = useQuadrants(
-    department,
-    filters.start,
-    filters.end
+  const dashboardUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      department,
+      start: filters.start,
+      end: filters.end,
+    })
+    return `/api/quadrants/dashboard?${params.toString()}`
+  }, [department, filters.end, filters.start])
+
+  const {
+    data: dashboardData,
+    error,
+    isLoading: loading,
+    mutate: reload,
+  } = useSWR<DashboardResponse>(dashboardUrl, fetchDashboard)
+
+  const events = useMemo(
+    () => (Array.isArray(dashboardData?.events) ? dashboardData.events : []),
+    [dashboardData?.events]
+  ) as QuadrantEvent[]
+  const quadrants = useMemo<QuadrantsPageDataInput['quadrants']>(
+    () =>
+      (Array.isArray(dashboardData?.quadrants) ? dashboardData.quadrants : []).map(
+        (item) => ({
+          ...item,
+          phaseType: item.phaseType ?? undefined,
+          phaseLabel: item.phaseLabel ?? undefined,
+        })
+      ) as unknown as QuadrantsPageDataInput['quadrants'],
+    [dashboardData?.quadrants]
   )
-  const [surveyKeys, setSurveyKeys] = useState<string[]>([])
+  const surveyKeys = useMemo(
+    () => (Array.isArray(dashboardData?.surveyKeys) ? dashboardData.surveyKeys : []),
+    [dashboardData?.surveyKeys]
+  )
+
   useEffect(() => {
-    const handler = () => reload()
+    const handler = () => {
+      void reload()
+    }
 
     window.addEventListener('quadrant:created', handler)
     window.addEventListener('quadrant:updated', handler)
@@ -124,29 +233,6 @@ export default function QuadrantsPage() {
       window.removeEventListener('quadrant:updated', handler)
     }
   }, [reload])
-
-  useEffect(() => {
-    let cancelled = false
-
-    const run = async () => {
-      try {
-        const res = await fetch(
-          `/api/quadrants/surveys/summary?start=${encodeURIComponent(filters.start)}&end=${encodeURIComponent(filters.end)}`,
-          { cache: 'no-store' }
-        )
-        const json = await res.json().catch(() => ({}))
-        if (!res.ok || cancelled) return
-        setSurveyKeys(Array.isArray(json?.surveyKeys) ? json.surveyKeys : [])
-      } catch {
-        if (!cancelled) setSurveyKeys([])
-      }
-    }
-
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [filters.end, filters.start])
 
   const surveyKeySet = useMemo(() => new Set(surveyKeys), [surveyKeys])
 
@@ -253,8 +339,9 @@ export default function QuadrantsPage() {
     const set = new Set<string>()
     events.forEach((ev) => {
       const event = ev as QuadrantEventLike
-      if (event.ln || event.lnLabel) {
-        set.add((event.ln || event.lnLabel).toString().trim().toLowerCase())
+      const lnValue = event.ln ?? event.lnLabel
+      if (lnValue) {
+        set.add(String(lnValue).trim().toLowerCase())
       }
     })
     return Array.from(set).sort()
@@ -306,18 +393,6 @@ export default function QuadrantsPage() {
     return ''
   }
 
-  const getMultiDayRangeLabel = (ev: UnifiedEvent) => {
-    const originalStart = String(ev.originalStart || ev.start || '').slice(0, 10)
-    const originalEnd = String(ev.originalEnd || ev.end || '').slice(0, 10)
-    if (!originalStart || !originalEnd || originalStart === originalEnd) return null
-
-    try {
-      return `${format(parseISO(originalStart), 'dd/MM')}-${format(parseISO(originalEnd), 'dd/MM')}`
-    } catch {
-      return null
-    }
-  }
-
   const exportRows = useMemo(
     () =>
       visibleFilteredEvents.map((ev): ExportRow => {
@@ -329,18 +404,7 @@ export default function QuadrantsPage() {
         const horariLabel = ev.horariLabel || timeRange
 
         const rowDate = ev.start ? ev.start.slice(0, 10) : ''
-        const eventDateRaw = ev.eventDateRaw || ''
-        const hasPhaseLabel = Boolean(ev.phaseLabel)
-        const showEventDate =
-          hasPhaseLabel &&
-          eventDateRaw &&
-          rowDate &&
-          eventDateRaw !== rowDate
-        const phaseLabel = ev.phaseLabel ? ev.phaseLabel.toUpperCase() : ''
-        const phaseLabelWithDate =
-          hasPhaseLabel && showEventDate && ev.eventDateLabel
-            ? `${phaseLabel} (${ev.eventDateLabel})`
-            : phaseLabel
+        const phaseLabelWithDate = buildQuadrantPhaseBadge(ev, rowDate)
 
         return {
           Data: startDate,
@@ -570,19 +634,8 @@ export default function QuadrantsPage() {
                     const endTime = ev.displayEndTime || '--:--'
                     const horariLabel = ev.horariLabel || `${startTime} - ${endTime}`
                     const rowDate = ev.start ? ev.start.slice(0, 10) : ''
-                    const eventDateRaw = ev.eventDateRaw || ''
-                    const hasPhaseLabel = Boolean(ev.phaseLabel)
-                    const showEventDate =
-                      hasPhaseLabel &&
-                      eventDateRaw &&
-                      rowDate &&
-                      eventDateRaw !== rowDate
-                    const phaseLabel = ev.phaseLabel ? ev.phaseLabel.toUpperCase() : ''
-                    const phaseLabelWithDate =
-                      hasPhaseLabel && showEventDate && ev.eventDateLabel
-                        ? `${phaseLabel} (${ev.eventDateLabel})`
-                        : phaseLabel
-                    const multiDayRangeLabel = getMultiDayRangeLabel(ev)
+                    const phaseLabelWithDate = buildQuadrantPhaseBadge(ev, rowDate)
+                    const hasPhaseBadge = Boolean(phaseLabelWithDate)
                     const eventId = String(ev.eventId || ev.eventCode || ev.code || ev.id || "")
                       .trim()
                     const surveyKey = `${eventId.split('__')[0]}__${String(
@@ -590,14 +643,15 @@ export default function QuadrantsPage() {
                     ).slice(0, 10)}`
                     const hasSurvey = surveyKeySet.has(surveyKey)
                     const existingPhases = eventId ? phasesByEventId[eventId] : undefined
+                    const pendingPhaseStartLbl = eventStartDisplayLabel(ev)
                     const pendingPhases = eventId
                       ? phaseOptions
                           .filter((p) => !(existingPhases && existingPhases.has(p.key)))
                           .map((p) => ({
                             key: p.key,
                             label:
-                              p.key !== 'event' && ev.eventDateLabel
-                                ? `${p.label} (${ev.eventDateLabel})`
+                              p.key !== 'event' && pendingPhaseStartLbl
+                                ? `${p.label} (${pendingPhaseStartLbl})`
                                 : p.label,
                           }))
                       : []
@@ -645,7 +699,7 @@ export default function QuadrantsPage() {
                             {ev.responsable || '-'}
                           </td>
                           <td className="px-3 py-2">
-                            {hasPhaseLabel ? (
+                            {hasPhaseBadge ? (
                               <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
                                 {phaseLabelWithDate}
                               </span>
@@ -663,15 +717,6 @@ export default function QuadrantsPage() {
                                 >
                                   <CheckCircle2 className="mr-1 h-3 w-3" />
                                   Sondeig
-                                </span>
-                              )}
-                              {multiDayRangeLabel && (
-                                <span
-                                  className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"
-                                  title={`Esdeveniment multi-dia: ${multiDayRangeLabel}`}
-                                >
-                                  <CalendarDays className="mr-1 h-3 w-3" />
-                                  {multiDayRangeLabel}
                                 </span>
                               )}
                             </div>
@@ -751,7 +796,9 @@ export default function QuadrantsPage() {
         <QuadrantModal
           open
           event={selected}
-          onSaved={reload}
+          onSaved={async () => {
+            await reload()
+          }}
           onOpenChange={(open) => {
             if (!open) setSelected(null)
           }}

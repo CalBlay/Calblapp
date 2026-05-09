@@ -186,20 +186,11 @@ let COLS_LOADED = false
 async function loadCollectionsMap() {
   if (COLS_LOADED) return
   const cols = await db.listCollections()
-  console.log('[quadrants/list] 📚 Col·leccions detectades:', cols.map(c => c.id))
-  console.log(
-  '[quadrants/list] 📚 Col·leccions trobades:',
-  cols.map((c) => c.id)
-)
-
   cols.forEach(c => {
     const key = normalizeColId(c.id)
     if (key) COLS_MAP[key] = c.id
   })
   COLS_LOADED = true
-  console.log('[quadrants/list] 🔄 Collections map carregat:', COLS_MAP)
-  console.log('[quadrants/list] 🧭 Clau per "serveis":', COLS_MAP['serveis'])
-
 }
 
 async function resolveColForDept(dept: Dept): Promise<string | undefined> {
@@ -267,33 +258,19 @@ async function fetchDeptDrafts(
     return []
   }
 
-  console.log(`[quadrants/list] 🔍 Queryant col·lecció: ${colName}`, { start, end })
-
   let ref: FirebaseFirestore.Query = db.collection(colName)
   if (start) ref = ref.where('startDate', '>=', start)
   if (end)   ref = ref.where('startDate', '<=', end)
   ref = ref.orderBy('startDate', 'asc').orderBy('startTime', 'asc')
 
   const snap = await ref.get()
-  console.log(`[quadrants/list] 📥 ${snap.size} documents trobats a ${colName}`)
 
   const drafts: Draft[] = snap.docs.map((doc) => {
     const d = doc.data() as FirestoreDraftDoc
 
-    // 🧪 LOG: estat tal com arriba del document
-    console.log(
-      `[quadrants/list] ▶️ Doc ${doc.id} status (raw):`,
-      d?.status,
-      '| confirmada:', d?.confirmada,
-      '| confirmed:', d?.confirmed
-    )
-
     const statusRaw = String(d?.status ?? '').toLowerCase()
     const status: 'confirmed' | 'draft' =
       statusRaw === 'confirmed' ? 'confirmed' : 'draft'
-
-    // 🧪 LOG: estat normalitzat
-    console.log(`[quadrants/list] ✅ Doc ${doc.id} status (normalized):`, status)
 
     const confirmedAtVal = d?.confirmedAt as { toDate?: () => Date } | string | undefined
     const confirmedAt =
@@ -447,8 +424,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ drafts: [], range: { start, end } }, { status: 403 })
     }
 
-    console.log('[quadrants/list] 🗂️ Depts a consultar:', deptsToFetch, { start, end, qsStatus })
-
     const results = await Promise.all(
       deptsToFetch.map((d) => fetchDeptDrafts(d, start, end))
     )
@@ -462,7 +437,6 @@ export async function GET(req: NextRequest) {
       drafts = drafts.filter((d) => d.status === qsStatus)
     }
 
-    console.log('[quadrants/list] ✅ Retornant drafts:', drafts.length)
     return NextResponse.json({ drafts, range: { start, end } })
   } catch (err) {
     console.error('[quadrants/list] 💥 Error GET:', err)

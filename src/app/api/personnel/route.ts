@@ -134,26 +134,17 @@ export async function GET(request: NextRequest) {
       s1.docs.forEach(d => byId.set(d.id, d))
       stepUsed.push(`lower:${s1.size}`)
 
-      const rawTrim = rawDept.trim()
-      if (rawTrim) {
-        const s2 = await firestoreAdmin
-          .collection('personnel')
-          .where('department', '==', rawTrim)
-          .get()
-        s2.docs.forEach(d => byId.set(d.id, d))
-        stepUsed.push(`exact:${s2.size}`)
+      if (s1.empty) {
+        const rawTrim = rawDept.trim()
+        if (rawTrim) {
+          const s2 = await firestoreAdmin
+            .collection('personnel')
+            .where('department', '==', rawTrim)
+            .get()
+          s2.docs.forEach(d => byId.set(d.id, d))
+          stepUsed.push(`exact-fallback:${s2.size}`)
+        }
       }
-
-      const s3all = await firestoreAdmin.collection('personnel').get()
-
-
-      const addedFromAll = s3all.docs.filter(d => {
-        const data = d.data() as FirestorePersonnelDoc
-        const dep = normLower(data.departmentLower || data.department)
-        return dep === deptLower
-      })
-      addedFromAll.forEach(d => byId.set(d.id, d))
-      stepUsed.push(`all+filter:${addedFromAll.length}`)
     } else {
       const sAll = await firestoreAdmin.collection('personnel').get()
       sAll.docs.forEach(d => byId.set(d.id, d))
@@ -172,15 +163,19 @@ export async function GET(request: NextRequest) {
     // 2️⃣ Enriquir amb users i userRequests
     const personIds = baseDocs.map(d => d.id)
 
-    const userDocs = await Promise.all(
-      personIds.map(id => firestoreAdmin.collection('users').doc(id).get())
-    )
+    const userDocs = personIds.length
+      ? await firestoreAdmin.getAll(
+          ...personIds.map(id => firestoreAdmin.collection('users').doc(id))
+        )
+      : []
     const hasUser = new Map<string, boolean>()
     userDocs.forEach(doc => hasUser.set(doc.id, doc.exists))
 
-    const reqDocs = await Promise.all(
-      personIds.map(id => firestoreAdmin.collection('userRequests').doc(id).get())
-    )
+    const reqDocs = personIds.length
+      ? await firestoreAdmin.getAll(
+          ...personIds.map(id => firestoreAdmin.collection('userRequests').doc(id))
+        )
+      : []
     const reqStatus = new Map<string, 'none' | 'pending' | 'approved' | 'rejected'>()
     reqDocs.forEach(doc => {
       if (!doc.exists) reqStatus.set(doc.id, 'none')

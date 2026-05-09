@@ -256,7 +256,7 @@ export function useLogisticsPhasesState({
         return acc
       }, {} as Record<LogisticPhaseKey, VehicleAssignment[]>)
     )
-  }, [phaseDriversFingerprint])
+  }, [phaseDriversFingerprint, phaseForms])
 
   const logisticWorkersFingerprint = useMemo(
     () => logisticPhaseOptions.map((p) => String(phaseForms[p.key]?.workers ?? '')).join('|'),

@@ -25,11 +25,27 @@
       ]
     },
     {
+      "collectionGroup": "quadrantsServeis",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "startTime", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "quadrantsLogistica",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "startDate", "order": "ASCENDING" },
         { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "quadrantsLogistica",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "startTime", "order": "ASCENDING" }
       ]
     },
     {
@@ -41,11 +57,27 @@
       ]
     },
     {
+      "collectionGroup": "quadrantsCuina",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "startTime", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "quadrantsProduccio",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "startDate", "order": "ASCENDING" },
         { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "quadrantsProduccio",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "startTime", "order": "ASCENDING" }
       ]
     },
     {
@@ -57,11 +89,35 @@
       ]
     },
     {
+      "collectionGroup": "quadrantsComercial",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "startTime", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "quadrantsEmpresa",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "startDate", "order": "ASCENDING" },
         { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "quadrantsEmpresa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "startDate", "order": "ASCENDING" },
+        { "fieldPath": "startTime", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "quadrantSurveys",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "department", "order": "ASCENDING" },
+        { "fieldPath": "serviceDate", "order": "ASCENDING" }
       ]
     },
     {

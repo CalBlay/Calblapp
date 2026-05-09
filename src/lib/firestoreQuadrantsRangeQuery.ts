@@ -1,10 +1,11 @@
 /**
- * Consultes per rang sobre col·leccions quadrants* (startDate, endDate, date, phaseDate).
+ * Consultes per rang sobre col·leccions quadrants* (startDate, endDate, phaseDate).
  * Inclou solapament (startDate <= fi del rang AND endDate >= inici del rang) per no perdre
  * esdeveniments multi-dia quan el rang és només uns dies al mig.
  *
- * Si totes les consultes fallen (p. ex. sense índex compost), fallback a .get() complet.
- * Els índexs es creen per col·lecció (quadrantsServeis, quadrantsLogistica, …) o via enllaç d’error de Firestore.
+ * Reduïm consultes per petició: solapament multi-dia + rang simple per startDate + fase.
+ * Si falla la consulta de solapament per manca d'índex compost, la resta encara eviten una
+ * lectura completa de col·lecció en la majoria de casos.
  */
 import type {
   CollectionReference,
@@ -14,7 +15,6 @@ import type {
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
 
-/** Dues dates YYYY-MM-DD ordenades (inici <= fi). */
 export function orderedDayRangeFromISOStrings(
   a: string,
   b: string
@@ -25,7 +25,6 @@ export function orderedDayRangeFromISOStrings(
   return s <= e ? { start: s, end: e } : { start: e, end: s }
 }
 
-/** Dies locals (calendari) ordenats, per finestres horàries. */
 export function orderedDayRangeFromLocalDates(a: Date, b: Date): { start: string; end: string } {
   const ymd = (d: Date) => {
     const y = d.getFullYear()
@@ -67,14 +66,10 @@ export async function queryQuadrantCollectionDocsInDateRange(
     throw new Error('Rang de dates invàlid (esperat YYYY-MM-DD)')
   }
 
-  const col = collectionRef
-
   const snaps = await Promise.all([
-    safeGet(col.where('startDate', '<=', e).where('endDate', '>=', s).get()),
-    safeGet(col.where('startDate', '>=', s).where('startDate', '<=', e).get()),
-    safeGet(col.where('endDate', '>=', s).where('endDate', '<=', e).get()),
-    safeGet(col.where('date', '>=', s).where('date', '<=', e).get()),
-    safeGet(col.where('phaseDate', '>=', s).where('phaseDate', '<=', e).get()),
+    safeGet(collectionRef.where('startDate', '<=', e).where('endDate', '>=', s).get()),
+    safeGet(collectionRef.where('startDate', '>=', s).where('startDate', '<=', e).get()),
+    safeGet(collectionRef.where('phaseDate', '>=', s).where('phaseDate', '<=', e).get()),
   ])
 
   const byId = new Map<string, QueryDocumentSnapshot>()
@@ -89,24 +84,13 @@ export async function queryQuadrantCollectionDocsInDateRange(
   }
 
   if (!anyQueryOk) {
-    console.warn(
-      '[firestoreQuadrantsRangeQuery] Cap consulta indexada ha funcionat; fallback .get() complet',
-      { path: col.path }
-    )
-    const full = await col.get()
-    for (const d of full.docs) {
-      byId.set(d.id, d)
-    }
-    return { docs: Array.from(byId.values()), usedFullCollectionScan: true }
+    console.warn('[firestoreQuadrantsRangeQuery] Cap consulta operativa', {
+      path: collectionRef.path,
+      start: s,
+      end: e,
+    })
+    return { docs: [], usedFullCollectionScan: false }
   }
-
-  console.info('[firestoreQuadrantsRangeQuery]', {
-    path: col.path,
-    start: s,
-    end: e,
-    merged: byId.size,
-    queriesOk: snaps.filter((x) => x !== null).length,
-  })
 
   return { docs: Array.from(byId.values()), usedFullCollectionScan: false }
 }

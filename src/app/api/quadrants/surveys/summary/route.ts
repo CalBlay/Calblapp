@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { listSurveyKeysByDepartmentAndRange } from '@/lib/quadrantSurveys'
 
 export const runtime = 'nodejs'
 
@@ -45,20 +45,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Missing range' }, { status: 400 })
     }
 
-    const snap = await db.collection('quadrantSurveys').where('department', '==', department).get()
-    const surveyKeys = snap.docs
-      .map((doc) => doc.data() as { serviceDate?: string; eventId?: string })
-      .filter((survey) => {
-        const serviceDate = String(survey?.serviceDate || '').slice(0, 10)
-        return serviceDate >= start && serviceDate <= end
-      })
-      .map((survey) => {
-        const eventId = String(survey?.eventId || '').trim().split('__')[0]
-        const serviceDate = String(survey?.serviceDate || '').slice(0, 10)
-        return `${eventId}__${serviceDate}`
-      })
+    const surveyKeys = await listSurveyKeysByDepartmentAndRange(
+      department,
+      start,
+      end
+    )
 
-    return NextResponse.json({ surveyKeys: Array.from(new Set(surveyKeys)) })
+    return NextResponse.json({ surveyKeys })
   } catch (error) {
     console.error('[quadrants/surveys/summary] GET error', error)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })

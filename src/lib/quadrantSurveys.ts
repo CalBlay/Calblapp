@@ -137,6 +137,32 @@ export async function loadSurveyNoResponseDefault(department: string): Promise<S
   )
 }
 
+export async function listSurveyKeysByDepartmentAndRange(
+  department: string,
+  start: string,
+  end: string
+): Promise<string[]> {
+  const snap = await db
+    .collection(SURVEYS_COLLECTION)
+    .where('department', '==', norm(department))
+    .where('serviceDate', '>=', start)
+    .where('serviceDate', '<=', end)
+    .get()
+
+  return Array.from(
+    new Set(
+      snap.docs
+        .map((doc) => doc.data() as { serviceDate?: string; eventId?: string })
+        .map((survey) => {
+          const eventId = String(survey?.eventId || '').trim().split('__')[0]
+          const serviceDate = String(survey?.serviceDate || '').slice(0, 10)
+          return eventId && serviceDate ? `${eventId}__${serviceDate}` : ''
+        })
+        .filter(Boolean)
+    )
+  )
+}
+
 async function lookupUserIdByPersonnelId(personnelId: string) {
   const rawId = String(personnelId || '').trim()
   if (!rawId) return null

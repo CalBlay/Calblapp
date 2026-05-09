@@ -70,14 +70,17 @@ export default function IncidentsPage() {
     role?: string
     department?: string
   } | undefined
-  const accessUser =
-    (session?.user as {
-      id?: string
-      role?: string
-      department?: string
-      name?: string
-      email?: string
-    }) || {}
+  const accessUser = useMemo(
+    () =>
+      ((session?.user as {
+        id?: string
+        role?: string
+        department?: string
+        name?: string
+        email?: string
+      }) || {}),
+    [session?.user]
+  )
   const isMarketingUser = MARKETING_DEPARTMENTS.has(normalizeDept(accessUser.department || ''))
   const actaAuthorLabel = sessionUser?.name?.trim() || sessionUser?.email?.trim()
   const canEditTipologies = canManageIncidentCategories(
@@ -360,13 +363,13 @@ export default function IncidentsPage() {
       'LN',
       'Pax',
       'Servei',
-    ]
+    ] as const
 
     const header = cols.map((c) => `<th>${escapeHtml(c)}</th>`).join('')
     const body = exportRows
       .map((row) => {
         const cells = cols
-          .map((key) => `<td>${escapeHtml(String((row as any)[key] ?? ''))}</td>`)
+          .map((key) => `<td>${escapeHtml(String(row[key] ?? ''))}</td>`)
           .join('')
         return `<tr>${cells}</tr>`
       })
