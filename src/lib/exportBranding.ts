@@ -127,12 +127,42 @@ export async function fetchCalBlayLogoDataUrl(): Promise<string | null> {
     const res = await fetch(CAL_BLAY_LOGO_SRC)
     if (!res.ok) return null
     const blob = await res.blob()
-    return await new Promise<string | null>((resolve) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null)
-      reader.onerror = () => resolve(null)
-      reader.readAsDataURL(blob)
-    })
+    const objectUrl = URL.createObjectURL(blob)
+
+    try {
+      return await new Promise<string | null>((resolve) => {
+        const img = new Image()
+        img.onload = () => {
+          try {
+            const maxWidth = 480
+            const scale = img.naturalWidth > maxWidth ? maxWidth / img.naturalWidth : 1
+            const width = Math.max(1, Math.round(img.naturalWidth * scale))
+            const height = Math.max(1, Math.round(img.naturalHeight * scale))
+            const canvas = document.createElement('canvas')
+            canvas.width = width
+            canvas.height = height
+
+            const ctx = canvas.getContext('2d')
+            if (!ctx) {
+              resolve(null)
+              return
+            }
+
+            // Flatten transparency onto white to keep the exported PDF compact.
+            ctx.fillStyle = '#ffffff'
+            ctx.fillRect(0, 0, width, height)
+            ctx.drawImage(img, 0, 0, width, height)
+            resolve(canvas.toDataURL('image/jpeg', 0.72))
+          } catch {
+            resolve(null)
+          }
+        }
+        img.onerror = () => resolve(null)
+        img.src = objectUrl
+      })
+    } finally {
+      URL.revokeObjectURL(objectUrl)
+    }
   } catch {
     return null
   }
@@ -155,7 +185,8 @@ export function addCalBlayLogoToPdf(
 ): boolean {
   if (!logoDataUrl) return false
   try {
-    pdf.addImage(logoDataUrl, 'PNG', x, y, width, height)
+    const format = /^data:image\/jpeg/i.test(logoDataUrl) ? 'JPEG' : 'PNG'
+    pdf.addImage(logoDataUrl, format, x, y, width, height, undefined, 'FAST')
     return true
   } catch {
     return false

@@ -82,6 +82,18 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 
+const MAX_EXPORT_BASE_LENGTH = 80
+
+const buildSafeExportBase = (value?: string | null) => {
+  const normalized = String(value || 'plantilla')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  const trimmed = normalized.slice(0, MAX_EXPORT_BASE_LENGTH).replace(/-+$/g, '')
+  return `historial-${trimmed || 'plantilla'}`
+}
+
 export default function PlantillaHistorialPage() {
   const params = useParams()
   const id = Array.isArray(params?.id) ? params.id[0] : (params?.id as string)
@@ -89,7 +101,6 @@ export default function PlantillaHistorialPage() {
   const [records, setRecords] = useState<CompletedRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [sendingEmail, setSendingEmail] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -136,10 +147,7 @@ export default function PlantillaHistorialPage() {
     [records]
   )
 
-  const exportBase = `historial-${(template?.name || 'plantilla')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'plantilla'}`
+  const exportBase = buildSafeExportBase(template?.name)
 
   const exportRows = useMemo(
     () =>
@@ -180,7 +188,7 @@ export default function PlantillaHistorialPage() {
   const buildHistoryPdfDocument = async () => {
     const { jsPDF } = await import('jspdf')
     const logoDataUrl = await fetchCalBlayLogoDataUrl()
-    const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true })
     const margin = 40
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
@@ -377,81 +385,10 @@ export default function PlantillaHistorialPage() {
     window.print()
   }
 
-  const handleSendEmail = async () => {
-    if (!template || records.length === 0) return
-    const recipientEmail = window.prompt('Email destinatari', '')
-    if (!recipientEmail) return
-    if (!recipientEmail.includes('@')) {
-      window.alert('L email destinatari no es valid.')
-      return
-    }
-    const subject = window.prompt(
-      'Assumpte del correu',
-      `Historial preventiu - ${template.name || 'Plantilla'}`
-    )
-    if (!subject) return
-    const message = window.prompt(
-      'Missatge opcional',
-      `Adjunto el PDF de l historial del preventiu ${template.name || ''}.`
-    )
-
-    try {
-      setSendingEmail(true)
-      const pdf = await buildHistoryPdfDocument()
-      const blob = pdf.output('blob')
-      const file = new File([blob], `${exportBase}.pdf`, { type: 'application/pdf' })
-      const form = new FormData()
-      form.append('file', file)
-      form.append('ticketId', id)
-      const uploadRes = await fetch('/api/maintenance/upload-email-attachment', {
-        method: 'POST',
-        body: form,
-      })
-      const uploadJson = await uploadRes.json().catch(() => ({}))
-      if (!uploadRes.ok) {
-        throw new Error(uploadJson?.error || 'No s ha pogut pujar el PDF adjunt')
-      }
-
-      const emailRes = await fetch(
-        `/api/maintenance/preventius/plantilles/${encodeURIComponent(id)}/historial/email`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            recipientEmail,
-            recipientName: recipientEmail,
-            subject,
-            message: message || '',
-            templateName: template.name || 'Plantilla',
-            periodicity: PERIODICITY_LABELS[String(template.periodicity || '')] || '-',
-            location: template.location || '-',
-            recordsCount: records.length,
-            validatedCount,
-            attachment: {
-              name: String(uploadJson?.name || `${exportBase}.pdf`),
-              path: String(uploadJson?.path || ''),
-              contentType: 'application/pdf',
-            },
-          }),
-        }
-      )
-      const emailJson = await emailRes.json().catch(() => ({}))
-      if (!emailRes.ok) {
-        throw new Error(emailJson?.error || 'No s ha pogut enviar el correu')
-      }
-      window.alert('Correu enviat amb el PDF adjunt.')
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'No s ha pogut enviar el correu')
-    } finally {
-      setSendingEmail(false)
-    }
-  }
-
   const exportItems = [
     { label: 'Excel (.xlsx)', onClick: handleExportExcel, disabled: records.length === 0 },
     { label: 'PDF (vista)', onClick: handleExportPdfView, disabled: records.length === 0 },
     { label: 'PDF (taula)', onClick: handleExportPdfTable, disabled: records.length === 0 },
-    { label: sendingEmail ? 'Enviant email...' : 'Enviar per email', onClick: handleSendEmail, disabled: records.length === 0 || sendingEmail },
   ]
 
   return (

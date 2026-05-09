@@ -5,9 +5,11 @@ import { useParams } from 'next/navigation'
 import { format } from 'date-fns'
 import ExportMenu from '@/components/export/ExportMenu'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
+import { addCalBlayLogoToPdf, fetchCalBlayLogoDataUrl, printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { RoleGuard } from '@/lib/withRoleGuard'
+
+const EMAIL_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
 
 type TemplateSection = { location: string; items: { label: string }[] }
 type Template = {
@@ -44,11 +46,24 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 
+const MAX_EXPORT_BASE_LENGTH = 80
+
+const buildSafeExportBase = (value?: string | null) => {
+  const normalized = String(value || 'completat')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  const trimmed = normalized.slice(0, MAX_EXPORT_BASE_LENGTH).replace(/-+$/g, '')
+  return `preventiu-${trimmed || 'completat'}`
+}
+
 export default function PreventiuCompletatPage() {
   const params = useParams()
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string)
   const [record, setRecord] = useState<CompletedRecord | null>(null)
   const [template, setTemplate] = useState<Template | null>(null)
+  const [sendingEmail, setSendingEmail] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -97,10 +112,7 @@ export default function PreventiuCompletatPage() {
     })
   }, [checklistEntries, template])
 
-  const exportBase = `preventiu-${(record?.title || 'completat')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'completat'}`
+  const exportBase = buildSafeExportBase(record?.title)
 
   const exportDate = toCompletedAtDate(record?.completedAt)
     ? format(toCompletedAtDate(record?.completedAt) as Date, 'dd/MM/yyyy HH:mm')
@@ -352,10 +364,199 @@ export default function PreventiuCompletatPage() {
     window.print()
   }
 
+  const buildPdfDocument = async (options?: { omitLogo?: boolean }) => {
+    const { jsPDF } = await import('jspdf')
+    const logoDataUrl = options?.omitLogo ? null : await fetchCalBlayLogoDataUrl()
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true })
+    const margin = 40
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+    const tableWidth = pageWidth - margin * 2
+    const colGroup = 130
+    const colStatus = 56
+    const colItem = tableWidth - colGroup - colStatus
+
+    let y = margin
+    const hasLogo = addCalBlayLogoToPdf(pdf, logoDataUrl, {
+      x: margin,
+      y: y - 8,
+      width: 82,
+      height: 52,
+    })
+    if (hasLogo) y += 50
+
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(15)
+    pdf.text('Fitxa de preventiu completat', margin, y)
+    y += 16
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(10)
+    pdf.text(record?.title || 'Preventiu completat', margin, y)
+    y += 10
+    pdf.setDrawColor(190)
+    pdf.line(margin, y, pageWidth - margin, y)
+    y += 14
+
+    const checklistDoneCount = checklistRows.filter((row) => row.Fet === 'Si').length
+    const metaRows: Array<[string, string]> = [
+      ['Data execucio', exportDate],
+      ['Operari', record?.worker || '-'],
+      ['Estat', record?.status || 'pendent'],
+      ['Franja horaria', `${record?.startTime || '--:--'} - ${record?.endTime || '--:--'}`],
+      ['Plantilla base', template?.name || 'No disponible'],
+      ['Checklist', `${checklistDoneCount}/${checklistRows.length || 0}`],
+      ['Notes', record?.notes || 'Sense observacions addicionals.'],
+    ]
+
+    const metaLabelW = 110
+    const metaLineH = 11
+    const metaMinRowH = 18
+    pdf.setFontSize(10)
+    metaRows.forEach(([label, value]) => {
+      const wrapped = pdf.splitTextToSize(String(value || '-'), tableWidth - metaLabelW - 16) as string[]
+      const rowH = Math.max(metaMinRowH, wrapped.length * metaLineH + 8)
+      const top = y - 12
+      pdf.setDrawColor(220)
+      pdf.rect(margin, top, tableWidth, rowH)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text(`${label}:`, margin + 6, y)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(wrapped, margin + metaLabelW, y)
+      y += rowH
+    })
+
+    y += 10
+    const xGroup = margin
+    const xItem = xGroup + colGroup
+    const xStatus = xItem + colItem
+
+    const drawHeader = () => {
+      pdf.setFillColor(245, 248, 246)
+      pdf.rect(margin, y - 11, tableWidth, 20, 'F')
+      pdf.setDrawColor(200)
+      pdf.rect(margin, y - 11, tableWidth, 20)
+      pdf.line(xItem, y - 11, xItem, y + 9)
+      pdf.line(xStatus, y - 11, xStatus, y + 9)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(9)
+      pdf.text('Grup', xGroup + 6, y + 2)
+      pdf.text('Element verificat', xItem + 6, y + 2)
+      pdf.text('Resultat', xStatus + 6, y + 2)
+      pdf.setFont('helvetica', 'normal')
+      y += 20
+    }
+
+    drawHeader()
+    for (const row of checklistRows) {
+      const groupLines = pdf.splitTextToSize(String(row.Grup || '-'), colGroup - 10) as string[]
+      const itemLines = pdf.splitTextToSize(String(row.Camp || '-'), colItem - 10) as string[]
+      const statusLines = pdf.splitTextToSize(String(row.Fet || '-'), colStatus - 10) as string[]
+      const rowH = Math.max(24, groupLines.length * 11 + 8, itemLines.length * 11 + 8, statusLines.length * 11 + 8)
+
+      if (y + rowH > pageHeight - margin) {
+        pdf.addPage()
+        y = margin
+        drawHeader()
+      }
+
+      const top = y - 11
+      pdf.setDrawColor(220)
+      pdf.rect(margin, top, tableWidth, rowH)
+      pdf.line(xItem, top, xItem, top + rowH)
+      pdf.line(xStatus, top, xStatus, top + rowH)
+      pdf.setFontSize(8.5)
+      pdf.text(groupLines, xGroup + 6, y + 1)
+      pdf.text(itemLines, xItem + 6, y + 1)
+      pdf.text(statusLines, xStatus + 6, y + 1)
+      y += rowH
+    }
+
+    return pdf
+  }
+
+  const handleSendEmail = async () => {
+    if (!record) return
+    const recipientEmail = window.prompt('Email destinatari', '')
+    if (!recipientEmail) return
+    if (!recipientEmail.includes('@')) {
+      window.alert('L email destinatari no es valid.')
+      return
+    }
+
+    const subject = window.prompt('Assumpte del correu', `Preventiu completat - ${record.title || 'Preventiu'}`)
+    if (!subject) return
+    const message = window.prompt(
+      'Missatge opcional',
+      `Adjunto el PDF del preventiu completat ${record.title || ''}.`
+    )
+
+    try {
+      setSendingEmail(true)
+      let pdf = await buildPdfDocument()
+      let blob = pdf.output('blob')
+      if (blob.size > EMAIL_ATTACHMENT_MAX_BYTES) {
+        pdf = await buildPdfDocument({ omitLogo: true })
+        blob = pdf.output('blob')
+      }
+      if (blob.size > EMAIL_ATTACHMENT_MAX_BYTES) {
+        throw new Error('El PDF continua sent massa gran per enviar-lo per email.')
+      }
+      const file = new File([blob], `${exportBase}.pdf`, { type: 'application/pdf' })
+      const form = new FormData()
+      form.append('file', file)
+      form.append('ticketId', record.id)
+      const uploadRes = await fetch('/api/maintenance/upload-email-attachment', {
+        method: 'POST',
+        body: form,
+      })
+      const uploadJson = await uploadRes.json().catch(() => ({}))
+      if (!uploadRes.ok) {
+        throw new Error(uploadJson?.error || 'No s ha pogut pujar el PDF adjunt')
+      }
+
+      const checklistDoneCount = checklistRows.filter((row) => row.Fet === 'Si').length
+      const emailRes = await fetch(
+        `/api/maintenance/preventius/completed/${encodeURIComponent(record.id)}/email`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipientEmail,
+            recipientName: recipientEmail,
+            subject,
+            message: message || '',
+            title: record.title || 'Preventiu completat',
+            templateName: template?.name || 'No disponible',
+            worker: record.worker || '-',
+            status: record.status || 'pendent',
+            completedAt: record.completedAt || null,
+            checklistDoneCount,
+            checklistTotalCount: checklistRows.length,
+            attachment: {
+              name: String(uploadJson?.name || `${exportBase}.pdf`),
+              path: String(uploadJson?.path || ''),
+              contentType: 'application/pdf',
+            },
+          }),
+        }
+      )
+      const emailJson = await emailRes.json().catch(() => ({}))
+      if (!emailRes.ok) {
+        throw new Error(emailJson?.error || 'No s ha pogut enviar el correu')
+      }
+      window.alert('Correu enviat amb el PDF adjunt.')
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'No s ha pogut enviar el correu')
+    } finally {
+      setSendingEmail(false)
+    }
+  }
+
   const exportItems = [
     { label: 'Excel (.xlsx)', onClick: handleExportExcel, disabled: !record },
     { label: 'PDF (vista)', onClick: handleExportPdfView, disabled: !record },
     { label: 'PDF (taula)', onClick: handleExportPdfTable, disabled: !record },
+    { label: sendingEmail ? 'Enviant email...' : 'Enviar per email', onClick: handleSendEmail, disabled: !record || sendingEmail },
   ]
 
   if (!record) {
