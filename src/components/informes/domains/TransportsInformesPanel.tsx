@@ -126,10 +126,8 @@ export function TransportsInformesPanel() {
         throw new Error(body.error || res.statusText)
       }
       setCustomData((await res.json()) as TransportsOverview)
-      setCustomReady(true)
     } catch (error: unknown) {
       setCustomData(null)
-      setCustomReady(false)
       setCustomError(error instanceof Error ? error.message : String(error))
     } finally {
       setCustomLoading(false)

@@ -53,8 +53,8 @@ const normalizeTimestamp = (ts: unknown): string => {
   return ''
 }
 
-const normalizeImportance = (value?: string): string => {
-  const v = (value || '').toLowerCase().trim()
+const normalizeImportance = (value?: unknown): string => {
+  const v = typeof value === 'string' ? value.toLowerCase().trim() : ''
   if (v === 'mitjana') return 'normal'
   if (v === 'urgent') return 'urgent'
   if (v === 'alta') return 'alta'

@@ -18,8 +18,8 @@ export interface UpdatePerson {
   unavailableIndefinite?: boolean
   unavailableNotifiedFor?: string | null
   unavailableNotifiedAt?: number | null
-  email?: string
-  phone?: string
+  email?: string | null
+  phone?: string | null
   maxHoursWeek?: number
 }
 

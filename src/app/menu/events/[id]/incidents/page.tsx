@@ -22,7 +22,7 @@ type EventDocData = {
 }
 
 type TimestampLike = {
-  toDate?: () => Date
+  toDate: () => Date
 }
 
 const isTimestampLike = (value: unknown): value is TimestampLike =>

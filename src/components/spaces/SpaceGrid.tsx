@@ -6,6 +6,7 @@ import { format, addDays, startOfWeek } from 'date-fns'
 import { ca } from 'date-fns/locale'
 import SpaceCell from './SpaceCell'
 import SpaceEventModal from '@/components/spaces/SpaceEventModal'
+import type { Stage } from '@/services/spaces/spaces'
 
 type SpaceRow = {
   fincaId?: string
@@ -18,6 +19,17 @@ type SpaceRow = {
 
 type RawSpaceEvent = Record<string, unknown>
 
+const readString = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' ? value : fallback
+
+const readNumber = (value: unknown, fallback = 0): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback
+
+const readStage = (value: unknown, fallback: Stage = 'verd'): Stage => {
+  if (value === 'verd' || value === 'taronja' || value === 'groc') return value
+  return fallback
+}
+
 /**
  * ðŸ” Adapter
  * - NomÃ©s per pintar la celÂ·la (SpaceCell)
@@ -25,10 +37,10 @@ type RawSpaceEvent = Record<string, unknown>
  */
 function adaptEventForCell(ev: RawSpaceEvent) {
   return {
-    NomEvent: ev.NomEvent ?? ev.eventName ?? '',
-    Comercial: ev.Comercial ?? ev.commercial ?? '',
-    NumPax: ev.NumPax ?? ev.numPax ?? 0,
-    StageGroup: ev.StageGroup ?? ev.stage ?? 'verd',
+    NomEvent: readString(ev.NomEvent) || readString(ev.eventName),
+    Comercial: readString(ev.Comercial) || readString(ev.commercial),
+    NumPax: readNumber(ev.NumPax, Number.NaN),
+    StageGroup: readStage(ev.StageGroup, readStage(ev.stage)),
   }
 }
 
@@ -72,7 +84,7 @@ export default function SpaceGrid({ data, totals = [], baseDate }: SpaceGridProp
   const handleEventClick = (ev: RawSpaceEvent) => {
     if (typeof window !== 'undefined') {
       const isMobile = window.innerWidth < 768
-      const targetCode = ev?.code || ev?.Code || ev?.id
+      const targetCode = readString(ev.code) || readString(ev.Code) || readString(ev.id)
 
       // En mÃ²bil obrim en una finestra nova per no tapar la graella
       if (isMobile && targetCode) {
@@ -229,7 +241,7 @@ export default function SpaceGrid({ data, totals = [], baseDate }: SpaceGridProp
                             event={{
                               eventName: cellEvent.NomEvent,
                               commercial: cellEvent.Comercial,
-                              numPax: cellEvent.NumPax,
+                              numPax: Number.isFinite(cellEvent.NumPax) ? cellEvent.NumPax : 0,
                               stage: cellEvent.StageGroup,
                             }}
                           />

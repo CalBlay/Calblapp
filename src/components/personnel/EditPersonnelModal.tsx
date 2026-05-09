@@ -17,7 +17,7 @@ import { usePersonnel, Personnel } from '@/hooks/usePersonnel'
 import { checkNameExists, generateSuggestions } from '@/lib/validateName'
 
 type UpdatePersonnelPayload = {
-  id?: string
+  id: string
   name?: string
   role: string
   department?: string
@@ -225,7 +225,7 @@ export default function EditPersonnelModal({
       ...availabilityPayload,
     }
 
-    await mutateAsync(payload as UpdatePersonnelPayload)
+    await mutateAsync(payload)
 
     onSaved()
     onOpenChange(false)
