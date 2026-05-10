@@ -91,10 +91,18 @@ export async function PATCH(req: Request) {
   }
 
   try {
-    const body = (await req.json()) as { action?: string; type?: string; notificationId?: string }
+    const body = (await req.json()) as {
+      action?: string
+      type?: string
+      notificationId?: string
+      requestId?: string
+      deliveryId?: string
+    }
     const action = body.action || ''
     const type = (body.type || '').trim()
     const notificationId = (body.notificationId || '').trim()
+    const requestId = (body.requestId || '').trim()
+    const deliveryId = (body.deliveryId || '').trim()
 
     const notificationsRef = db
       .collection('users')
@@ -125,6 +133,36 @@ export async function PATCH(req: Request) {
         .doc(notificationId)
         .set({ read: true }, { merge: true })
       return NextResponse.json({ success: true })
+    }
+
+    if (action === 'markResolvedRoba') {
+      const robaTypes = new Set([
+        'roba_personal_request',
+        'roba_personal_sent_to_rrhh',
+        'roba_personal_ready',
+        'roba_personal_delivery_ack',
+        'roba_personal_delivery_revised',
+        'roba_personal_delivery_dispute',
+        'roba_personal_cancelled',
+      ])
+      const snap = await notificationsRef.where('read', '==', false).limit(200).get()
+      const matches = snap.docs.filter((d) => {
+        const data = d.data() as NotificationFirestoreDoc & {
+          requestId?: string
+          deliveryId?: string
+        }
+        const ntype = String(data.type || '').trim()
+        if (!robaTypes.has(ntype)) return false
+        const reqMatch = requestId && String(data.requestId || '').trim() === requestId
+        const delMatch = deliveryId && String(data.deliveryId || '').trim() === deliveryId
+        return Boolean(reqMatch || delMatch)
+      })
+      if (matches.length > 0) {
+        const batch = db.batch()
+        matches.forEach((d) => batch.update(d.ref, { read: true }))
+        await batch.commit()
+      }
+      return NextResponse.json({ success: true, updated: matches.length })
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

@@ -983,9 +983,6 @@ export function EntreguesPanel({
                   {deliveriesAwaitingWorkerCorrection.length}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Roba està corregint el registre després de la vostra incidència.
-              </p>
               <div className="space-y-3">
                 {deliveriesAwaitingWorkerCorrection.map((d) => (
                   <WorkerDeliveryAwaitingCorrectionCard
@@ -1196,9 +1193,6 @@ export function EntreguesPanel({
         <h2 className="font-semibold text-base">
           {isRobaWorkerSelf ? "Històric d'entregues" : 'Entregues'}
         </h2>
-        {isRobaWorkerSelf ? (
-          <p className="text-xs text-muted-foreground">Només hi apareixen les recepcions ja acceptades i tancades.</p>
-        ) : null}
         <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
           <SmartFilters
             modeDefault="week"

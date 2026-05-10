@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -15,7 +16,7 @@ import {
 } from '@/components/ui/table'
 import { taulaContentidorScroll, taulaThText } from '@/lib/taules'
 import { cn } from '@/lib/utils'
-import { Loader2, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, Loader2, Search, Trash2 } from 'lucide-react'
 import { DEFAULT_DOTACIO_MAGATZEM } from '@/lib/roba-personal/dotacioDefaults'
 import { exportRowsToPdf, exportRowsToXlsx, robaExportFilename } from '@/lib/roba-personal/robaExport'
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
@@ -84,9 +85,13 @@ export function EstocPanel() {
   const [stockRows, setStockRows] = useState<StockOverviewRow[]>([])
   const [stockListSearch, setStockListSearch] = useState('')
   const [movListSearch, setMovListSearch] = useState('')
+  const [movTypeFilters, setMovTypeFilters] = useState<string[]>([])
   const [movListRangeStart, setMovListRangeStart] = useState(() => robaMovimentsDefaultMonthRange().start)
   const [movListRangeEnd, setMovListRangeEnd] = useState(() => robaMovimentsDefaultMonthRange().end)
   const [movListFiltersResetSignal, setMovListFiltersResetSignal] = useState(0)
+  const [stockOverviewOpen, setStockOverviewOpen] = useState(true)
+  const [stockEntryOpen, setStockEntryOpen] = useState(true)
+  const [stockMovementsOpen, setStockMovementsOpen] = useState(true)
   const [reconcileBusy, setReconcileBusy] = useState(false)
   const [reconcileApplyBusy, setReconcileApplyBusy] = useState(false)
   const [reconcileResult, setReconcileResult] = useState<StockReservedReconcileResult>({
@@ -130,18 +135,26 @@ export function EstocPanel() {
 
   const loadMov = useCallback(async () => {
     try {
-      const data = await api<typeof movements>('/api/roba-personal/stock-movements')
+      const params = new URLSearchParams()
+      if (movListRangeStart) params.set('start', movListRangeStart)
+      if (movListRangeEnd) params.set('end', movListRangeEnd)
+      const data = await api<typeof movements>(
+        `/api/roba-personal/stock-movements${params.toString() ? `?${params.toString()}` : ''}`
+      )
       setMovements(data)
     } catch {
       setMovements([])
     }
-  }, [])
+  }, [movListRangeEnd, movListRangeStart])
 
   useEffect(() => {
     void loadProducts()
-    void loadMov()
     void loadOverview()
-  }, [loadProducts, loadMov, loadOverview])
+  }, [loadProducts, loadOverview])
+
+  useEffect(() => {
+    void loadMov()
+  }, [loadMov])
 
   const normalizeStockHay = (s: string) =>
     s
@@ -269,6 +282,39 @@ export function EstocPanel() {
     prodLabel,
   ])
 
+  const movementTypeKey = useCallback(
+    (m: (typeof movements)[number]) =>
+      `${String(m.reason || '').trim() || 'unknown'}::${m.deliveryWorkerAckPending === true ? 'pending' : 'final'}`,
+    []
+  )
+
+  const movementsAfterSearch = useMemo(() => movementsFiltered, [movementsFiltered])
+
+  const movementTypeOptions = useMemo(() => {
+    const counts = new Map<string, { label: string; count: number }>()
+    for (const m of movementsAfterSearch) {
+      const key = movementTypeKey(m)
+      const label = labelStockMovementReasonDisplay(m)
+      const prev = counts.get(key)
+      counts.set(key, { label, count: (prev?.count || 0) + 1 })
+    }
+    return [...counts.entries()]
+      .map(([key, value]) => ({ key, label: value.label, count: value.count }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ca'))
+  }, [movementTypeKey, movementsAfterSearch])
+
+  const movementsVisible = useMemo(() => {
+    if (movTypeFilters.length === 0) return movementsAfterSearch
+    const selected = new Set(movTypeFilters)
+    return movementsAfterSearch.filter((m) => selected.has(movementTypeKey(m)))
+  }, [movementTypeKey, movTypeFilters, movementsAfterSearch])
+
+  const toggleMovTypeFilter = useCallback((key: string) => {
+    setMovTypeFilters((current) =>
+      current.includes(key) ? current.filter((x) => x !== key) : [...current, key]
+    )
+  }, [])
+
   const eliminarMoviment = async (m: (typeof movements)[number]) => {
     if (!isReversibleManualStockReason(m.reason)) return
     const ref = m.reference?.trim() || m.id
@@ -305,9 +351,13 @@ export function EstocPanel() {
         Stock: r.quantityOnHand,
         Reservat: r.quantityReserved ?? 0,
         Disponible: r.quantityAvailable ?? r.quantityOnHand,
+        PendTeoric: r.quantityPendingTheoretical ?? 0,
+        DispDespresDemanda: r.quantityAvailableAfterTheoretical ?? (r.quantityAvailable ?? r.quantityOnHand),
         Minim: r.minStock ?? '',
         Deficit: r.gapToMin,
         Consum6m: r.consumption6m,
+        TotalAnyActual: r.annualDeliveredCurrentYear,
+        TotalAnyAnterior: r.annualDeliveredPreviousYear,
         MitjanaDia: r.hasConsumptionHistory ? r.avgDaily : '',
         DiesFinsMinim: formatDaysUntilMin(r.daysUntilMin),
         SuggeritSemestre: r.suggestedSemesterQty ?? '',
@@ -318,7 +368,7 @@ export function EstocPanel() {
 
   const buildEstocMovimentsExportRows = useCallback(
     () =>
-      movementsFiltered.map((m) => ({
+      movementsVisible.map((m) => ({
         Data: formatDateTimeValue(m.createdAt, ''),
         Tipus: labelStockMovementReasonDisplay(m),
         Departament: stockMovementDepartmentLabel(m),
@@ -328,7 +378,7 @@ export function EstocPanel() {
         Usuari: String(m.createdByUserName || '').trim() || '—',
         Observacions: String(m.notes || '').trim() || '—',
       })),
-    [movementsFiltered, prodLabel]
+    [movementsVisible, prodLabel]
   )
 
   const buildEstocPdfRows = useCallback(
@@ -504,7 +554,23 @@ export function EstocPanel() {
   return (
     <div className="space-y-6 w-full">
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
-        <h2 className="font-semibold text-base">Vista d’estoc i previsió</h2>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setStockOverviewOpen((open) => !open)}
+          aria-expanded={stockOverviewOpen}
+        >
+          <h2 className="font-semibold text-base">Vista d’estoc i previsió</h2>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+              stockOverviewOpen && 'rotate-180'
+            )}
+            aria-hidden
+          />
+        </button>
+        {stockOverviewOpen ? (
+          <>
         {/* Text explicatiu retirat a petició de gestió */}
         {false ? (
         <p className="text-xs text-muted-foreground max-w-3xl">
@@ -546,10 +612,19 @@ export function EstocPanel() {
                   Reservat
                 </TableHead>
                 <TableHead className={cn(taulaThText, 'text-right')}>Disp.</TableHead>
+                <TableHead className={cn(taulaThText, 'text-right')}>Pend. teòric</TableHead>
+                <TableHead className={cn(taulaThText, 'text-right')}>Disp. després demanda</TableHead>
                 <TableHead className={cn(taulaThText, 'text-right')}>Mín.</TableHead>
                 <TableHead className={cn(taulaThText, 'text-right')}>Dèficit</TableHead>
                 <TableHead className={cn(taulaThText, 'text-right')}>Consum 6m</TableHead>
-                <TableHead className={cn(taulaThText, 'text-right')}>Mitj./dia</TableHead>
+                <TableHead className={cn(taulaThText, 'text-right')}>Any actual</TableHead>
+                <TableHead className={cn(taulaThText, 'text-right')}>Any anterior</TableHead>
+                <TableHead
+                  className={cn(taulaThText, 'text-right')}
+                  title="Mitjana diària calculada des de l'última entrada positiva d'estoc; si no n'hi ha, es calcula sobre els últims 180 dies."
+                >
+                  Mitj./dia
+                </TableHead>
                 <TableHead className={cn(taulaThText, 'text-right')}>Dies fins mín.</TableHead>
                 <TableHead className={cn(taulaThText, 'text-right')}>Sug. sem.</TableHead>
                 <TableHead className={taulaThText}>Magatzem</TableHead>
@@ -559,7 +634,7 @@ export function EstocPanel() {
               {stockRows.length > 0 && stockRowsFiltered.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={12}
+                    colSpan={16}
                     className="py-10 text-center text-sm text-muted-foreground"
                   >
                     Cap article coincideix amb la cerca. Proveu altres paraules o buideu el camp.
@@ -593,12 +668,31 @@ export function EstocPanel() {
                     {r.quantityAvailable ?? r.quantityOnHand}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">
+                    {r.quantityPendingTheoretical ?? 0}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      'text-right tabular-nums font-medium',
+                      (r.quantityAvailableAfterTheoretical ?? 0) < 0 ? 'text-destructive' : undefined
+                    )}
+                  >
+                    {r.quantityAvailableAfterTheoretical ?? (r.quantityAvailable ?? r.quantityOnHand)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">
                     {r.minStock ?? '—'}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{r.gapToMin}</TableCell>
                   <TableCell className="text-right tabular-nums">{r.consumption6m}</TableCell>
+                  <TableCell className="text-right tabular-nums">{r.annualDeliveredCurrentYear}</TableCell>
+                  <TableCell className="text-right tabular-nums">{r.annualDeliveredPreviousYear}</TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {r.hasConsumptionHistory ? r.avgDaily.toFixed(2) : '—'}
+                    {r.hasConsumptionHistory ? (
+                      <span title={r.avgDailySource === 'since_last_inbound'
+                        ? `Des de l'última entrada (${r.avgDailyWindowDays ?? 0} dies)`
+                        : 'Calculat sobre els últims 180 dies'}>
+                        {r.avgDaily.toFixed(2)}
+                      </span>
+                    ) : '—'}
                   </TableCell>
                   <TableCell className="text-right text-sm">
                     {r.atOrBelowMin
@@ -727,16 +821,36 @@ export function EstocPanel() {
             </Button>
           </div>
         ) : null}
+          </>
+        ) : null}
       </div>
 
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
-        <h2 className="font-semibold text-base">Entrada / ajust d’estoc</h2>
-        <p className="text-xs text-muted-foreground">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setStockEntryOpen((open) => !open)}
+          aria-expanded={stockEntryOpen}
+        >
+          <h2 className="font-semibold text-base">Entrada / ajust d’estoc</h2>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+              stockEntryOpen && 'rotate-180'
+            )}
+            aria-hidden
+          />
+        </button>
+        {stockEntryOpen ? (
+          <>
+        {false ? (
+          <p className="text-xs text-muted-foreground">
           Quantitat <strong className="font-medium text-foreground">positiva</strong> = entrada;
           <strong className="font-medium text-foreground"> negativa</strong> = sortida. Indiqueu el{' '}
           <strong className="font-medium text-foreground">tipus</strong> de moviment per deixar constància (compra,
           devolució, etc.). Les dates es mostren amb el format de l&apos;aplicació.
-        </p>
+          </p>
+        ) : null}
         <form
           className="rounded-lg border border-indigo-200/60 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 px-3 py-3 sm:px-4 min-w-0"
           onSubmit={(e) => {
@@ -818,10 +932,29 @@ export function EstocPanel() {
             </div>
           </div>
         </form>
+          </>
+        ) : null}
       </div>
 
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
-        <h2 className="font-semibold text-base">Moviments recents</h2>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setStockMovementsOpen((open) => !open)}
+          aria-expanded={stockMovementsOpen}
+        >
+          <h2 className="font-semibold text-base">Tots els moviments</h2>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+              stockMovementsOpen && 'rotate-180'
+            )}
+            aria-hidden
+          />
+        </button>
+        {stockMovementsOpen ? (
+          <>
+        {false && (
         <p className="text-xs text-muted-foreground">
           Ordre real: (1) Comanda preparada → apareix «Preparació · reserva al magatzem» i la columna «Reservat» puja; el
           producte encara és al magatzem. (2) Només després que el responsable registri l’entrega → moviment amb Δ negatiu;
@@ -829,6 +962,7 @@ export function EstocPanel() {
           mostra 2 i no veieu «Entrega…», és coherent: encara no s’ha registrat l’entrega; cerqueu «Preparació» o «reserva»
           als moviments (o ampliïu dates). Si tampoc no hi ha preparació, useu «Comprovar reserva» a la vista d’estoc.
         </p>
+        )}
         <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
           <SmartFilters
             modeDefault="month"
@@ -855,12 +989,13 @@ export function EstocPanel() {
               placeholder="Cercar tipus, producte, ref. S-…/E-…/R-…, departament, usuari…"
               value={movListSearch}
               onChange={(e) => setMovListSearch(e.target.value)}
-              aria-label="Cercar moviments recents"
+              aria-label="Cercar moviments"
             />
           </div>
           <ResetFilterButton
             onClick={() => {
               setMovListSearch('')
+              setMovTypeFilters([])
               const w = robaMovimentsDefaultMonthRange()
               setMovListRangeStart(w.start)
               setMovListRangeEnd(w.end)
@@ -868,6 +1003,35 @@ export function EstocPanel() {
             }}
           />
         </div>
+        {movementTypeOptions.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">Tipus:</span>
+            {movementTypeOptions.map((option) => {
+              const active = movTypeFilters.includes(option.key)
+              return (
+                <Button
+                  key={option.key}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    'h-8 rounded-full px-3 text-xs',
+                    active && 'border-primary bg-primary/10 text-primary'
+                  )}
+                  onClick={() => toggleMovTypeFilter(option.key)}
+                >
+                  <span>{option.label}</span>
+                  <Badge
+                    variant={active ? 'default' : 'secondary'}
+                    className="ml-2 min-w-5 justify-center px-1.5 py-0 text-[10px]"
+                  >
+                    {option.count}
+                  </Badge>
+                </Button>
+              )
+            })}
+          </div>
+        ) : null}
         <div className={taulaContentidorScroll}>
           <Table>
             <TableHeader>
@@ -891,25 +1055,27 @@ export function EstocPanel() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {movements.length > 0 && movementsFiltered.length === 0 ? (
+              {movements.length > 0 && movementsVisible.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={9}
                     className="py-10 text-center text-sm text-muted-foreground"
                   >
-                    Cap moviment coincideix amb el període o la cerca. Proveu altres dates o paraules.
+                    Cap moviment coincideix amb el període, la cerca o el tipus seleccionat.
                   </TableCell>
                 </TableRow>
               ) : null}
-              {movementsFiltered.map((m) => (
+              {movementsVisible.map((m) => (
                 <TableRow key={m.id}>
                   <TableCell className="text-xs whitespace-nowrap tabular-nums">
                     {formatDateTimeValue(m.createdAt)}
                   </TableCell>
                   <TableCell className="text-xs leading-snug">
-                    <span className="line-clamp-2" title={labelStockMovementReasonDisplay(m)}>
-                      {labelStockMovementReasonDisplay(m)}
-                    </span>
+                    <Badge variant="outline" className="max-w-full whitespace-normal text-left leading-snug">
+                      <span className="line-clamp-2" title={labelStockMovementReasonDisplay(m)}>
+                        {labelStockMovementReasonDisplay(m)}
+                      </span>
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-xs max-w-[10rem] text-muted-foreground">
                     <span className="line-clamp-2" title={stockMovementDepartmentLabel(m)}>
@@ -954,6 +1120,8 @@ export function EstocPanel() {
             </TableBody>
           </Table>
         </div>
+          </>
+        ) : null}
       </div>
     </div>
   )

@@ -389,6 +389,11 @@ export async function sendOutlookTextMail(input: {
   ccRecipients?: Array<{ email: string; name?: string }>
   subject: string
   bodyText: string
+  attachments?: Array<{
+    name: string
+    contentType?: string | null
+    contentBytesBase64: string
+  }>
 }) {
   const accessToken = await getAccessToken()
   const organizerEmail = String(input.organizerEmail || '').trim()
@@ -434,6 +439,26 @@ export async function sendOutlookTextMail(input: {
   }
   if (ccRecipients.length > 0) {
     message.ccRecipients = ccRecipients
+  }
+  const inlineAttachments = (input.attachments || [])
+    .map((attachment) => {
+      const name = String(attachment.name || '').trim()
+      const contentBytes = String(attachment.contentBytesBase64 || '').trim()
+      if (!name || !contentBytes) return null
+      return {
+        '@odata.type': '#microsoft.graph.fileAttachment' as const,
+        name,
+        contentType:
+          String(
+            attachment.contentType ||
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          ).trim() || 'application/octet-stream',
+        contentBytes,
+      }
+    })
+    .filter(Boolean)
+  if (inlineAttachments.length > 0) {
+    message.attachments = inlineAttachments
   }
 
   const response = await fetch(

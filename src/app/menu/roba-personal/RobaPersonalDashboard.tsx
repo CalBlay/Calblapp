@@ -60,7 +60,7 @@ export default function RobaPersonalDashboard() {
       return
     }
     if (!isDeptLeadLimited) return
-    if (tab === 'recollides' || tab === 'entregues') return
+    if (tab === 'sollicituds' || tab === 'recollides' || tab === 'entregues') return
     setTab('recollides')
     const p = new URLSearchParams(searchParams?.toString() || '')
     p.set('tab', 'recollides')
@@ -85,6 +85,28 @@ export default function RobaPersonalDashboard() {
       setTab('entregues')
       router.replace(
         `/menu/roba-personal?tab=entregues&requestId=${encodeURIComponent(requestId)}`,
+        { scroll: false }
+      )
+    },
+    [router]
+  )
+
+  const navigatePreparationForRequest = useCallback(
+    (requestId: string) => {
+      setTab('preparacio')
+      router.replace(
+        `/menu/roba-personal?tab=preparacio&requestId=${encodeURIComponent(requestId)}`,
+        { scroll: false }
+      )
+    },
+    [router]
+  )
+
+  const navigateRecepcioForRequest = useCallback(
+    (requestId: string) => {
+      setTab('recollides')
+      router.replace(
+        `/menu/roba-personal?tab=recollides&requestId=${encodeURIComponent(requestId)}`,
         { scroll: false }
       )
     },
@@ -116,17 +138,19 @@ export default function RobaPersonalDashboard() {
   return (
     <div className="space-y-5 px-2 pb-8 sm:px-4">
       <RobaPersonalRequestNotificationsBanner
-        onPrepareDelivery={navigateEntregaForRequest}
-        onMaterialReady={navigateEntregaForRequest}
+        onOpenPreparation={navigatePreparationForRequest}
+        onMaterialReady={navigateRecepcioForRequest}
         onDeliveryAck={navigateDeliveryAck}
         onDeliveryRevised={navigateDeliveryAck}
         onDeliveryDispute={navigateDeliveryDispute}
+        onWorkerPendingRequest={navigateEntregaForRequest}
       />
 
       {!isRobaWorkerSelf ? (
         <div className="flex flex-wrap gap-2 border-b border-border pb-3">
           {(isRobaDeptLeadTabs
             ? ([
+                ['sollicituds', 'Sol·licituds'],
                 ['recollides', 'Recepcions'],
                 ['entregues', 'Entregues'],
               ] as const)

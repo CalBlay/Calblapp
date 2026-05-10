@@ -8,7 +8,7 @@ import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { resolveRobaAccess } from '@/lib/roba-personal/guard'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import { requestReferenceFromDocId } from '@/lib/roba-personal/dotacioReferenceCodes'
-import { notifyRecursosHumansNewRobaRequest } from '@/lib/roba-personal/robaRequestNotifications'
+import { notifyRobaDepartmentLeadsNewRequest } from '@/lib/roba-personal/robaRequestNotifications'
 import {
   departmentsInSameRobaScope,
   normDeptLabel,
@@ -97,6 +97,20 @@ async function enrichFulfilledStatusWithDeliveryAck(
     }
     return it
   })
+}
+
+async function getProductsById(ids: string[]): Promise<Map<string, Record<string, unknown>>> {
+  const out = new Map<string, Record<string, unknown>>()
+  const uniqueIds = [...new Set(ids.map((id) => String(id).trim()).filter(Boolean))]
+  for (let i = 0; i < uniqueIds.length; i += 10) {
+    const chunk = uniqueIds.slice(i, i + 10)
+    const refs = chunk.map((id) => db.collection(PROD).doc(id))
+    const snaps = await db.getAll(...refs)
+    for (const snap of snaps) {
+      if (snap.exists) out.set(snap.id, snap.data() as Record<string, unknown>)
+    }
+  }
+  return out
 }
 
 export async function GET() {
@@ -265,13 +279,13 @@ export async function POST(req: Request) {
 
   if (auth.access.scope === 'deptLead') {
     const lead = auth.access.leadDeptNorm
+    const productsById = await getProductsById(lines.map((line) => line.productId))
     for (const line of lines) {
-      const psnap = await db.collection(PROD).doc(line.productId).get()
-      if (!psnap.exists) {
+      const pdata = productsById.get(line.productId)
+      if (!pdata) {
         return NextResponse.json({ error: `Producte no trobat: ${line.productId}` }, { status: 400 })
       }
-      const pdata = psnap.data() as { departments?: string[] }
-      if (!productDepartmentsVisibleToRobaLead(pdata.departments, lead)) {
+      if (!productDepartmentsVisibleToRobaLead(pdata.departments as string[] | undefined, lead)) {
         return NextResponse.json(
           { error: `Producte no permès per al vostre departament: ${line.productId}` },
           { status: 403 }
@@ -286,13 +300,13 @@ export async function POST(req: Request) {
       )
     }
     const lead = auth.access.workerDeptNorm
+    const productsById = await getProductsById(lines.map((line) => line.productId))
     for (const line of lines) {
-      const psnap = await db.collection(PROD).doc(line.productId).get()
-      if (!psnap.exists) {
+      const pdata = productsById.get(line.productId)
+      if (!pdata) {
         return NextResponse.json({ error: `Producte no trobat: ${line.productId}` }, { status: 400 })
       }
-      const pdata = psnap.data() as { departments?: string[] }
-      if (!productDepartmentsVisibleToRobaLead(pdata.departments, lead)) {
+      if (!productDepartmentsVisibleToRobaLead(pdata.departments as string[] | undefined, lead)) {
         return NextResponse.json(
           { error: `Producte no permès per al vostre departament: ${line.productId}` },
           { status: 403 }
@@ -325,21 +339,22 @@ export async function POST(req: Request) {
   }
 
   await reqRef.set(doc)
-
   try {
-    await notifyRecursosHumansNewRobaRequest({
-      requestId: reqRef.id,
-      reference: requestReferenceFromDocId(reqRef.id),
-      requestingDepartment,
-      requestedByWorkerName: requestedByWorkerName || 'Sense nom',
-      lineCount: lines.length,
-      lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
-      createdByUserName: createdByUserName || null,
-    })
+    if (String(doc.status || 'submitted').trim() === 'submitted') {
+      await notifyRobaDepartmentLeadsNewRequest({
+        requestId: reqRef.id,
+        reference: requestReferenceFromDocId(reqRef.id),
+        requestingDepartment,
+        requestedByWorkerName: requestedByWorkerName || 'Sense nom',
+        lineCount: lines.length,
+        lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+        createdByUserName: createdByUserName || null,
+        excludeUserIds: [auth.access.userId],
+      })
+    }
   } catch (e) {
-    console.error('[roba-personal/requests POST] notify RRHH', e)
+    console.error('[roba-personal/requests POST] notify dept leads', e)
   }
-
   const created = await reqRef.get()
   return NextResponse.json(
     serializeFirestoreDoc(created.id, created.data() as Record<string, unknown>),

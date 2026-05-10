@@ -17,6 +17,7 @@ const LABELS: Record<string, string> = {
   manual_purchase: 'Compra / entrada',
   manual_return: 'Devolució de departament',
   department_pickup: 'Recollida del departament',
+  department_validation: 'Validació del responsable',
   delivery: 'Entrega a treballador',
   delivery_correction: "Correcció d'entrega",
   delivery_delete: "Anul·lació d'entrega",

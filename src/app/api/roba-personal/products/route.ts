@@ -8,7 +8,10 @@ import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { SUPPLIERS_COLLECTION } from '@/lib/companySuppliers/constants'
 import { requireRobaPersonalAdmin, resolveRobaAccess } from '@/lib/roba-personal/guard'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
-import { productDepartmentsVisibleToRobaLead } from '@/lib/roba-personal/deptScope'
+import {
+  normDeptLabelsInRobaEquivalenceClass,
+  productDepartmentsVisibleToRobaLead,
+} from '@/lib/roba-personal/deptScope'
 import { DEFAULT_DOTACIO_MAGATZEM } from '@/lib/roba-personal/dotacioDefaults'
 import { normalizeRobaProductDepartments } from '@/data/departments'
 
@@ -29,28 +32,42 @@ export async function GET() {
   const auth = await resolveRobaAccess()
   if (!auth.ok) return auth.res
 
-  /** Evita lectura sense límit si el catàleg creix; pugeu el límit si cal. */
-  const snap = await db.collection(COL).limit(10_000).get()
-  let items = snap.docs.map((d) =>
-    serializeFirestoreDoc(d.id, d.data() as Record<string, unknown>)
-  )
-  if (auth.access.scope === 'deptLead') {
-    const lead = auth.access.leadDeptNorm
-    items = items.filter((row) =>
-      productDepartmentsVisibleToRobaLead(
-        (row as { departments?: string[] }).departments,
-        lead
-      )
+  let items: ReturnType<typeof serializeFirestoreDoc>[]
+
+  if (auth.access.scope === 'full') {
+    const snap = await db.collection(COL).limit(10_000).get()
+    items = snap.docs.map((d) =>
+      serializeFirestoreDoc(d.id, d.data() as Record<string, unknown>)
     )
-  } else if (auth.access.scope === 'workerSelf') {
-    const lead = auth.access.workerDeptNorm
-    items = items.filter((row) =>
-      productDepartmentsVisibleToRobaLead(
-        (row as { departments?: string[] }).departments,
-        lead
-      )
-    )
+  } else {
+    const lead =
+      auth.access.scope === 'deptLead' ? auth.access.leadDeptNorm : auth.access.workerDeptNorm
+    const labels = normDeptLabelsInRobaEquivalenceClass(lead)
+    const [scopedSnap, unrestrictedSnap] = await Promise.all([
+      labels.length > 0 && labels.length <= 10
+        ? db.collection(COL).where('departments', 'array-contains-any', labels).limit(5_000).get()
+        : Promise.resolve(null),
+      db.collection(COL).where('departments', '==', null).limit(5_000).get(),
+    ])
+
+    const merged = new Map<string, ReturnType<typeof serializeFirestoreDoc>>()
+    for (const snap of [scopedSnap, unrestrictedSnap]) {
+      if (!snap) continue
+      for (const d of snap.docs) {
+        const row = serializeFirestoreDoc(d.id, d.data() as Record<string, unknown>)
+        if (
+          productDepartmentsVisibleToRobaLead(
+            (row as { departments?: string[] }).departments,
+            lead
+          )
+        ) {
+          merged.set(d.id, row)
+        }
+      }
+    }
+    items = [...merged.values()]
   }
+
   items.sort((a, b) => {
     const c = String(a.code).localeCompare(String(b.code), 'ca')
     if (c !== 0) return c

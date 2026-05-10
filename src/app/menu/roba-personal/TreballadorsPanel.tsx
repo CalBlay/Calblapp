@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Paperclip, Search } from 'lucide-react'
+import { ChevronDown, Paperclip, Search } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { ROBA_PRODUCT_DEPARTMENTS, type RobaProductDepartmentId } from '@/data/departments'
 import { taulaContentidorScroll, taulaThText } from '@/lib/taules'
@@ -36,6 +36,8 @@ export function TreballadorsPanel() {
   })
   const [csvBusy, setCsvBusy] = useState(false)
   const [workerListQuery, setWorkerListQuery] = useState('')
+  const [newWorkerOpen, setNewWorkerOpen] = useState(true)
+  const [activeWorkersOpen, setActiveWorkersOpen] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -239,7 +241,23 @@ export function TreballadorsPanel() {
   return (
     <div className="space-y-6 w-full">
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
-        <h2 className="font-semibold text-base">Nou treballador</h2>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setNewWorkerOpen((open) => !open)}
+          aria-expanded={newWorkerOpen}
+        >
+          <h2 className="font-semibold text-base">Nou treballador</h2>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+              newWorkerOpen && 'rotate-180'
+            )}
+            aria-hidden
+          />
+        </button>
+        {newWorkerOpen ? (
+          <>
 
         <div className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-12 lg:items-end lg:gap-4 min-w-0">
@@ -330,11 +348,29 @@ export function TreballadorsPanel() {
         <Button type="button" onClick={() => void crear()}>
           Desar treballador
         </Button>
+          </>
+        ) : null}
       </div>
 
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
-        <div className="space-y-3">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setActiveWorkersOpen((open) => !open)}
+          aria-expanded={activeWorkersOpen}
+        >
           <h2 className="font-semibold text-base">Treballadors actius</h2>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+              activeWorkersOpen && 'rotate-180'
+            )}
+            aria-hidden
+          />
+        </button>
+        {activeWorkersOpen ? (
+          <>
+        <div className="space-y-3">
           <div className="relative w-full max-w-2xl">
             <Search
               className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground"
@@ -414,6 +450,8 @@ export function TreballadorsPanel() {
             </TableBody>
           </Table>
         </div>
+          </>
+        ) : null}
       </div>
     </div>
   )

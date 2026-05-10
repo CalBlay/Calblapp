@@ -7,7 +7,10 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireRobaPersonalAdmin, resolveRobaAccess } from '@/lib/roba-personal/guard'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
-import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
+import {
+  departmentsInSameRobaScope,
+  normDeptLabelsInRobaEquivalenceClass,
+} from '@/lib/roba-personal/deptScope'
 import { allocateUniqueWorkerCode, workerCodeTaken } from '@/lib/roba-personal/workerCode'
 import {
   basePersonnelFieldsFromRoba,
@@ -22,19 +25,30 @@ export async function GET() {
   const auth = await resolveRobaAccess()
   if (!auth.ok) return auth.res
 
-  const snap = await db.collection(COL).get()
-  let items = snap.docs.map((d) => {
-    const raw = d.data() as Record<string, unknown>
-    return serializeRobaWorkerRow(d.id, raw)
-  })
-  if (auth.access.scope === 'deptLead') {
-    const lead = auth.access.leadDeptNorm
-    items = items.filter((row) =>
-      departmentsInSameRobaScope(String(row.department || ''), lead)
-    )
-  } else if (auth.access.scope === 'workerSelf') {
+  let items: ReturnType<typeof serializeRobaWorkerRow>[]
+
+  if (auth.access.scope === 'workerSelf') {
     const pid = auth.access.linkedPersonnelId
-    items = items.filter((row) => String((row as { id?: string }).id || '').trim() === pid)
+    const snap = await db.collection(COL).doc(pid).get()
+    items = snap.exists
+      ? [serializeRobaWorkerRow(snap.id, snap.data() as Record<string, unknown>)]
+      : []
+  } else if (auth.access.scope === 'deptLead') {
+    const lead = auth.access.leadDeptNorm
+    const labels = normDeptLabelsInRobaEquivalenceClass(lead)
+    const snap =
+      labels.length > 0 && labels.length <= 10
+        ? await db.collection(COL).where('departmentLower', 'in', labels).get()
+        : await db.collection(COL).get()
+    items = snap.docs
+      .map((d) => serializeRobaWorkerRow(d.id, d.data() as Record<string, unknown>))
+      .filter((row) => departmentsInSameRobaScope(String(row.department || ''), lead))
+  } else {
+    const snap = await db.collection(COL).get()
+    items = snap.docs.map((d) => {
+      const raw = d.data() as Record<string, unknown>
+      return serializeRobaWorkerRow(d.id, raw)
+    })
   }
   items.sort((a, b) =>
     String(a.name).localeCompare(String(b.name), 'ca', { sensitivity: 'base' })

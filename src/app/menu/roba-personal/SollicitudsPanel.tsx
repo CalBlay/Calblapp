@@ -66,6 +66,11 @@ const REQUEST_ACTIVE_STATUSES = [
   'picked_up',
 ] as const
 
+const REQUEST_VISIBLE_STATUSES = [
+  ...REQUEST_ACTIVE_STATUSES,
+  'cancelled',
+] as const
+
 export function SollicitudsPanel({
   highlightRequestId = '',
   highlightDeliveryId = '',
@@ -84,6 +89,12 @@ export function SollicitudsPanel({
   >([{ productId: '', qty: '1' }])
   const [pickupCorrectNote, setPickupCorrectNote] = useState('')
   const [pickupCorrectBusy, setPickupCorrectBusy] = useState(false)
+  const [sendToRrhhOpen, setSendToRrhhOpen] = useState(false)
+  const [sendToRrhhTarget, setSendToRrhhTarget] = useState<RequestRow | null>(null)
+  const [sendToRrhhEmail, setSendToRrhhEmail] = useState('')
+  const [sendToRrhhSavedEmail, setSendToRrhhSavedEmail] = useState('')
+  const [sendToRrhhRememberEmail, setSendToRrhhRememberEmail] = useState(false)
+  const [sendToRrhhBusy, setSendToRrhhBusy] = useState(false)
   const [products, setProducts] = useState<ProductRow[]>([])
   const [workers, setWorkers] = useState<WorkerRow[]>([])
   const [selectedRequestId, setSelectedRequestId] = useState('')
@@ -372,11 +383,14 @@ export function SollicitudsPanel({
     }
   }
 
-  const sendToRrhh = async (id: string) => {
+  const sendToRrhh = async (id: string, extraEmail?: string) => {
     try {
       await api(`/api/roba-personal/requests/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'sent_to_rrhh' }),
+        body: JSON.stringify({
+          status: 'sent_to_rrhh',
+          extraEmail: extraEmail?.trim() || undefined,
+        }),
       })
       toast({ title: 'Sol·licitud enviada a RRHH' })
       void load()
@@ -388,6 +402,38 @@ export function SollicitudsPanel({
       })
     }
   }
+
+  const openSendToRrhhDialog = useCallback((request: RequestRow) => {
+    setSendToRrhhTarget(request)
+    setSendToRrhhEmail(sendToRrhhSavedEmail)
+    setSendToRrhhRememberEmail(false)
+    setSendToRrhhOpen(true)
+  }, [sendToRrhhSavedEmail])
+
+  const closeSendToRrhhDialog = useCallback(() => {
+    setSendToRrhhOpen(false)
+    setSendToRrhhTarget(null)
+    setSendToRrhhEmail('')
+    setSendToRrhhRememberEmail(false)
+  }, [])
+
+  const confirmSendToRrhh = useCallback(async () => {
+    if (!sendToRrhhTarget) return
+    setSendToRrhhBusy(true)
+    try {
+      if (sendToRrhhRememberEmail) {
+        await api('/api/roba-personal/rrhh-email-preference', {
+          method: 'PATCH',
+          body: JSON.stringify({ email: sendToRrhhEmail.trim() }),
+        })
+        setSendToRrhhSavedEmail(sendToRrhhEmail.trim())
+      }
+      await sendToRrhh(sendToRrhhTarget.id, sendToRrhhEmail)
+      closeSendToRrhhDialog()
+    } finally {
+      setSendToRrhhBusy(false)
+    }
+  }, [closeSendToRrhhDialog, sendToRrhhEmail, sendToRrhhRememberEmail, sendToRrhhTarget])
 
   const markPickedUp = async (id: string, linesOverride?: { productId: string; quantity: number }[]) => {
     try {
@@ -490,16 +536,20 @@ export function SollicitudsPanel({
 
   const load = useCallback(async () => {
     try {
-      const [r, d, p, w] = await Promise.all([
+      const [r, d, p, w, pref] = await Promise.all([
         api<RequestRow[]>('/api/roba-personal/requests'),
         api<DeliveryRow[]>('/api/roba-personal/deliveries'),
         api<ProductRow[]>('/api/roba-personal/products'),
         api<WorkerRow[]>('/api/roba-personal/workers'),
+        isRobaWorkerSelf
+          ? Promise.resolve({ savedEmail: '' })
+          : api<{ savedEmail?: string }>('/api/roba-personal/rrhh-email-preference').catch(() => ({ savedEmail: '' })),
       ])
       setRows(r)
       setDeliveries(d)
       setProducts(p.filter((x) => x.isActive !== false))
       setWorkers(w.filter((x) => x.isActive !== false))
+      setSendToRrhhSavedEmail(String(pref.savedEmail || '').trim())
     } catch (e: unknown) {
       toast({
         title: 'Error',
@@ -507,7 +557,7 @@ export function SollicitudsPanel({
         variant: 'destructive',
       })
     }
-  }, [])
+  }, [isRobaWorkerSelf])
 
   useEffect(() => {
     void load()
@@ -831,13 +881,13 @@ export function SollicitudsPanel({
       if (listFilterDept && r.requestingDepartment !== listFilterDept) return false
       if (listFilterStatus && r.status !== listFilterStatus) return false
       if (isPrepareMode && r.status !== 'sent_to_rrhh') return false
-      if (
-        isPickupMode &&
-        !['submitted', 'sent_to_rrhh', 'prepared', 'ready_for_worker_delivery', 'picked_up'].includes(r.status)
-      ) {
+      if (isRequestsMode && !REQUEST_VISIBLE_STATUSES.includes(r.status as (typeof REQUEST_VISIBLE_STATUSES)[number])) {
         return false
       }
-      if (isRequestsMode && !REQUEST_ACTIVE_STATUSES.includes(r.status as (typeof REQUEST_ACTIVE_STATUSES)[number])) {
+      if (
+        isPickupMode &&
+        !['submitted', 'sent_to_rrhh', 'prepared', 'ready_for_worker_delivery', 'picked_up', 'cancelled'].includes(r.status)
+      ) {
         return false
       }
       const q = normalizeSolicFilter(listSearch)
@@ -1563,7 +1613,7 @@ export function SollicitudsPanel({
                                   variant="secondary"
                                   size="sm"
                                   className="text-xs h-7"
-                                  onClick={() => void sendToRrhh(r.id)}
+                                  onClick={() => openSendToRrhhDialog(r)}
                                 >
                                   Enviar a RRHH
                                 </Button>
@@ -1614,6 +1664,49 @@ export function SollicitudsPanel({
           </div>
         )}
       </div>
+
+      <Dialog open={sendToRrhhOpen} onOpenChange={(open) => !open && closeSendToRrhhDialog()}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Enviar a RRHH</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              RRHH rebrà la notificació interna. El correu només s’enviarà a les adreces que indiqueu aquí.
+            </p>
+            <div className="space-y-1">
+              <Label htmlFor="rrhh-extra-email">Correus</Label>
+              <Input
+                id="rrhh-extra-email"
+                className="h-9 font-mono text-sm"
+                value={sendToRrhhEmail}
+                onChange={(e) => setSendToRrhhEmail(e.target.value)}
+                placeholder="exemple@calblay.com, altra@calblay.com"
+              />
+              <p className="text-xs text-muted-foreground">
+                Separeu-los amb coma, punt i coma o espai.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input"
+                checked={sendToRrhhRememberEmail}
+                onChange={(e) => setSendToRrhhRememberEmail(e.target.checked)}
+              />
+              Guardar per la propera vegada
+            </label>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={closeSendToRrhhDialog}>
+              Cancel·lar
+            </Button>
+            <Button type="button" disabled={sendToRrhhBusy} onClick={() => void confirmSendToRrhh()}>
+              {sendToRrhhBusy ? 'Enviant…' : 'Enviar a RRHH'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={prepareOpen} onOpenChange={setPrepareOpen}>
         <DialogContent className="sm:max-w-lg max-h-[min(90vh,720px)] flex flex-col gap-0 p-0">

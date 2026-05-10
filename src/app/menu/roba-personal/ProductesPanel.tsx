@@ -27,7 +27,7 @@ import { exportRowsToPdf, exportRowsToXlsx, robaExportFilename } from '@/lib/rob
 import { taulaContentidorScroll, taulaThText } from '@/lib/taules'
 import { cn } from '@/lib/utils'
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
-import { Trash2 } from 'lucide-react'
+import { ChevronDown, Trash2 } from 'lucide-react'
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -115,6 +115,8 @@ export function ProductesPanel() {
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editId, setEditId] = useState('')
+  const [newProductOpen, setNewProductOpen] = useState(true)
+  const [activeProductsOpen, setActiveProductsOpen] = useState(true)
   const [editForm, setEditForm] = useState({
     code: '',
     name: '',
@@ -531,7 +533,23 @@ export function ProductesPanel() {
   return (
     <div className="space-y-6 w-full">
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
-        <h2 className="font-semibold text-base">Nou producte</h2>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setNewProductOpen((open) => !open)}
+          aria-expanded={newProductOpen}
+        >
+          <h2 className="font-semibold text-base">Nou producte</h2>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+              newProductOpen && 'rotate-180'
+            )}
+            aria-hidden
+          />
+        </button>
+        {newProductOpen ? (
+          <>
 
         <div className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch lg:gap-6 min-w-0">
@@ -786,8 +804,28 @@ export function ProductesPanel() {
         <Button type="button" className="mt-1" onClick={() => void crear()}>
           Desar producte
         </Button>
+          </>
+        ) : null}
       </div>
 
+      <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 text-left"
+          onClick={() => setActiveProductsOpen((open) => !open)}
+          aria-expanded={activeProductsOpen}
+        >
+          <h2 className="font-semibold text-base">Productes actius</h2>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+              activeProductsOpen && 'rotate-180'
+            )}
+            aria-hidden
+          />
+        </button>
+        {activeProductsOpen ? (
+          <>
       <div className="space-y-2 w-full">
         <p className="text-xs text-muted-foreground">
           Feu clic a una fila per <strong className="font-medium text-foreground">editar</strong> l’article.
@@ -901,6 +939,9 @@ export function ProductesPanel() {
             </TableBody>
           </Table>
         </div>
+      </div>
+          </>
+        ) : null}
       </div>
 
       <Dialog

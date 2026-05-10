@@ -64,10 +64,16 @@ export type StockOverviewRow = {
   quantityOnHand: number
   quantityReserved?: number
   quantityAvailable?: number
+  quantityPendingTheoretical?: number
+  quantityAvailableAfterTheoretical?: number
   minStock: number | null
   gapToMin: number
   consumption6m: number
+  annualDeliveredCurrentYear: number
+  annualDeliveredPreviousYear: number
   avgDaily: number
+  avgDailySource?: 'since_last_inbound' | 'last_180_days'
+  avgDailyWindowDays?: number
   daysUntilMin: number | null
   atOrBelowMin: boolean
   hasConsumptionHistory: boolean

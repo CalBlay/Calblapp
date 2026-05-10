@@ -22,6 +22,7 @@ import {
 } from '@/lib/roba-personal/dotacioReferenceCodes'
 import {
   lookupAppUserIdForPersonnelId,
+  notifyRobaResponsibleDeliveryDispute,
   notifyRobaWorkerDeliveryAck,
 } from '@/lib/roba-personal/robaRequestNotifications'
 import { linesFromRequestSnapshot, type RobaDotacioLine } from '@/lib/roba-personal/requestLinesFromFirestore'
@@ -34,6 +35,20 @@ const REQ = DOTACIO_COLLECTIONS.requests
 const USERS = 'users'
 
 type Line = RobaDotacioLine
+const MAX_DISPUTE_NOTE_CHARS = 2000
+
+function parsePostedLines(raw: Array<{ productId?: string; quantity?: number; notes?: string }>): Line[] {
+  return raw
+    .map((l) => {
+      const productId = String(l.productId || '').trim()
+      const quantity = Number(l.quantity)
+      const notesTrim = String(l.notes || '').trim()
+      const entry: Line = { productId, quantity }
+      if (notesTrim) entry.notes = notesTrim
+      return entry
+    })
+    .filter((l) => l.productId && Number.isFinite(l.quantity) && l.quantity > 0)
+}
 
 const DELIVERY_FIELDS_STRIP_FOR_WORKER = new Set([
   'amendmentHistory',
@@ -259,8 +274,11 @@ export async function POST(req: Request) {
   const access = auth.access
 
   const body = (await req.json()) as {
+    action?: string
     workerId?: string
     lines?: Array<{ productId?: string; quantity?: number; notes?: string }>
+    proposedLines?: Array<{ productId?: string; quantity?: number; notes?: string }>
+    note?: string
     notes?: string
     acknowledgmentRef?: string
     requestId?: string
@@ -268,6 +286,14 @@ export async function POST(req: Request) {
     acknowledgmentSignatureDataUrl?: string
   }
   let workerId = String(body.workerId || '').trim()
+  const action = String(body.action || '').trim()
+  const isWorkerSelfDispute = access.scope === 'workerSelf' && action === 'reportWorkerReceiptDispute'
+  const disputeNote = isWorkerSelfDispute
+    ? String(body.note || '').trim().slice(0, MAX_DISPUTE_NOTE_CHARS)
+    : ''
+  const disputeProposedLines = isWorkerSelfDispute
+    ? parsePostedLines(Array.isArray(body.proposedLines) ? body.proposedLines : [])
+    : []
   if (access.scope === 'workerSelf') {
     workerId = access.linkedPersonnelId
     if (String(body.workerId || '').trim() && String(body.workerId || '').trim() !== workerId) {
@@ -315,7 +341,7 @@ export async function POST(req: Request) {
   let lines: Line[]
 
   if (access.scope === 'workerSelf') {
-    if (!sig) {
+    if (!isWorkerSelfDispute && !sig) {
       return NextResponse.json(
         { error: 'Cal signar per confirmar la recepció del material.' },
         { status: 400 }
@@ -373,18 +399,22 @@ export async function POST(req: Request) {
         )
       }
     }
+    for (const line of disputeProposedLines) {
+      const psnap = await db.collection(PROD).doc(line.productId).get()
+      if (!psnap.exists) {
+        return NextResponse.json({ error: `Producte no trobat: ${line.productId}` }, { status: 400 })
+      }
+      const pdata = psnap.data() as { departments?: string[] }
+      if (!productDepartmentsVisibleToRobaLead(pdata.departments, access.workerDeptNorm)) {
+        return NextResponse.json(
+          { error: `Producte no permÃ¨s per al vostre departament: ${line.productId}` },
+          { status: 403 }
+        )
+      }
+    }
   } else {
     const linesIn = Array.isArray(body.lines) ? body.lines : []
-    lines = linesIn
-      .map((l) => {
-        const productId = String(l.productId || '').trim()
-        const quantity = Number(l.quantity)
-        const notesTrim = String(l.notes || '').trim()
-        const entry: Line = { productId, quantity }
-        if (notesTrim) entry.notes = notesTrim
-        return entry
-      })
-      .filter((l) => l.productId && Number.isFinite(l.quantity) && l.quantity > 0)
+    lines = parsePostedLines(linesIn)
 
     if (lines.length === 0) {
       return NextResponse.json({ error: 'Cal almenys una línia vàlida.' }, { status: 400 })
@@ -498,7 +528,8 @@ export async function POST(req: Request) {
         }
       }
 
-      const isWorkerSelfSignedDelivery = access.scope === 'workerSelf' && Boolean(sig)
+      const isWorkerSelfSignedDelivery =
+        access.scope === 'workerSelf' && !isWorkerSelfDispute && Boolean(sig)
       const deliveryPayload: Record<string, unknown> = {
         workerId,
         lines,
@@ -516,11 +547,28 @@ export async function POST(req: Request) {
         createdByUserId: access.userId,
         createdAt: now,
         /** Si el treballador té usuari d’app, ha de confirmar recepció després del registre del responsable. */
-        workerReceiptAckExpected: Boolean(notifyWorkerUid),
+        workerReceiptAckExpected: isWorkerSelfDispute ? true : Boolean(notifyWorkerUid),
         /** Signatura del propi treballador: una sola passada (sense pas de confirmació pendent). */
         workerReceiptAckAt: isWorkerSelfSignedDelivery ? now : null,
         workerReceiptAckByUserId: isWorkerSelfSignedDelivery ? access.userId : null,
         workerReceiptAckSignatureDataUrl: isWorkerSelfSignedDelivery ? sig : null,
+        workerReceiptDisputedAt: isWorkerSelfDispute ? now : null,
+        workerReceiptDisputeNote: isWorkerSelfDispute ? disputeNote || null : null,
+        workerReceiptDisputeByUserId: isWorkerSelfDispute ? access.userId : null,
+        workerReceiptDisputeProposedLines:
+          isWorkerSelfDispute && disputeProposedLines.length > 0 ? disputeProposedLines : null,
+        workerReceiptCorrectionOpen: isWorkerSelfDispute,
+        amendmentHistory: isWorkerSelfDispute
+          ? [
+              {
+                action: 'worker_dispute',
+                at: Date.now(),
+                byUserId: access.userId,
+                note: disputeNote || null,
+                proposedLines: disputeProposedLines.length > 0 ? disputeProposedLines : null,
+              },
+            ]
+          : [],
       }
 
       tx.set(deliveryRef, deliveryPayload)
@@ -551,7 +599,7 @@ export async function POST(req: Request) {
       }
 
       if (reqRef && reqData) {
-        const needsWorkerAppAck = Boolean(notifyWorkerUid)
+        const needsWorkerAppAck = isWorkerSelfDispute || Boolean(notifyWorkerUid)
         const reqUpdate: Record<string, unknown> = {
           fulfilledAt: now,
           fulfillmentDeliveryId: deliveryRef.id,
@@ -575,7 +623,7 @@ export async function POST(req: Request) {
   const ddata = doc.data() as Record<string, unknown>
   const out = serializeFirestoreDoc(doc.id, ddata)
 
-  if (notifyWorkerUid) {
+  if (notifyWorkerUid && !isWorkerSelfDispute) {
     const dref = String((ddata.reference as string) || deliveryRecordReferenceFromDocId(doc.id))
     try {
       await notifyRobaWorkerDeliveryAck({
@@ -587,6 +635,37 @@ export async function POST(req: Request) {
       })
     } catch (e) {
       console.error('[roba-personal/deliveries POST] notify worker ack', e)
+    }
+  }
+
+  if (isWorkerSelfDispute && requestId) {
+    try {
+      const rs = await db.collection(REQ).doc(requestId).get()
+      const requestData = rs.exists ? (rs.data() as Record<string, unknown>) : {}
+      const responsibleUid = String(
+        requestData.validatedByLeadUserId ||
+          requestData.preparedByUserId ||
+          requestData.createdByUserId ||
+          ''
+      ).trim()
+      const workerName = String((wsnap.data() as { name?: string }).name || '').trim()
+      if (responsibleUid) {
+        await notifyRobaResponsibleDeliveryDispute({
+          targetUserId: responsibleUid,
+          deliveryId: doc.id,
+          deliveryReference: String(
+            (ddata.reference as string) || deliveryRecordReferenceFromDocId(doc.id)
+          ),
+          workerName: workerName || undefined,
+          note: disputeNote || undefined,
+          proposedLinesSummary:
+            disputeProposedLines.length > 0
+              ? disputeProposedLines.map((l) => `${l.productId}×${l.quantity}`).join(', ')
+              : undefined,
+        })
+      }
+    } catch (e) {
+      console.error('[roba-personal/deliveries POST] notify dispute', e)
     }
   }
 

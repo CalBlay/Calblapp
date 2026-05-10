@@ -1,9 +1,13 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
+import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
 import { normDeptLabel } from '@/lib/roba-personal/requestPermissions'
+import { sendOutlookTextMail } from '@/services/graph/calendar'
+import * as XLSX from 'xlsx'
 
 const PROD = DOTACIO_COLLECTIONS.products
 const MAX_ROBA_REQUEST_BODY_CHARS = 3500
+const RECIPIENT_CACHE_MS = 60_000
 
 function mergeLinesByProduct(
   lines: Array<{ productId: string; quantity: number }>
@@ -54,6 +58,80 @@ async function linesSummaryForRobaRequest(
   return out
 }
 
+async function buildRobaRequestMailAttachment(params: {
+  reference: string
+  requestingDepartment: string
+  requestedByWorkerName: string
+  lines: Array<{ productId: string; quantity: number }>
+}) {
+  const merged = mergeLinesByProduct(params.lines)
+  const ids = merged.map((l) => l.productId)
+  const labelById = new Map<
+    string,
+    { code: string; name: string; size: string }
+  >()
+  for (let i = 0; i < ids.length; i += 10) {
+    const chunk = ids.slice(i, i + 10)
+    const snaps = await db.getAll(...chunk.map((id) => db.collection(PROD).doc(id)))
+    for (const s of snaps) {
+      if (!s.exists) continue
+      const d = s.data() as { code?: string; name?: string; size?: string }
+      labelById.set(s.id, {
+        code: String(d.code || '').trim(),
+        name: String(d.name || '').trim(),
+        size: String(d.size || '').trim(),
+      })
+    }
+  }
+
+  const rows = merged.map((line) => {
+    const product = labelById.get(line.productId)
+    return {
+      Codi: product?.code || line.productId,
+      Article: product?.name || line.productId,
+      Talla: product?.size || '',
+      Quantitat: line.quantity,
+    }
+  })
+
+  const wb = XLSX.utils.book_new()
+  const generatedAt = new Date()
+  const titleRows = [
+    ['CAL BLAY'],
+    ['Sol·licitud de preparacio de roba personal'],
+    [],
+    ['Referencia', params.reference || '-'],
+    ['Treballador', params.requestedByWorkerName || '-'],
+    ['Departament', params.requestingDepartment || '-'],
+    ['Data generacio', generatedAt.toLocaleString('ca-ES')],
+    [],
+  ]
+  const ws = XLSX.utils.aoa_to_sheet(titleRows)
+  XLSX.utils.sheet_add_json(ws, rows, {
+    origin: 'A10',
+    skipHeader: false,
+  })
+  ws['!cols'] = [
+    { wch: 16 },
+    { wch: 42 },
+    { wch: 12 },
+    { wch: 12 },
+  ]
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
+  ]
+  XLSX.utils.book_append_sheet(wb, ws, 'Sollicitud')
+  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+  const safeRef = String(params.reference || 'sollicitud-roba').replace(/[^\w.-]+/g, '-')
+
+  return {
+    name: `${safeRef}.xlsx`,
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    contentBytesBase64: buffer.toString('base64'),
+  }
+}
+
 const normLower = (s?: string) =>
   (s || '')
     .toString()
@@ -76,6 +154,137 @@ export async function lookupAppUserIdForPersonnelId(personnelId: string): Promis
 /** Departament que rep les alertes de noves sol·licituds de roba (coincideix amb {@link DEPARTMENTS}). */
 const RRHH_DEPARTMENT_LOWER = normLower('Recursos Humans')
 
+type RrhhRecipient = {
+  userId: string
+  name: string
+  email: string | null
+}
+
+let rrhhRecipientsCache:
+  | {
+      expiresAt: number
+      value: RrhhRecipient[]
+    }
+  | null = null
+
+const deptLeadRecipientsCache = new Map<string, { expiresAt: number; value: string[] }>()
+
+async function getProductMetaMap(
+  ids: string[]
+): Promise<Map<string, { code: string; name: string; size: string }>> {
+  const out = new Map<string, { code: string; name: string; size: string }>()
+  const uniqueIds = [...new Set(ids.map((id) => String(id).trim()).filter(Boolean))]
+  for (let i = 0; i < uniqueIds.length; i += 10) {
+    const chunk = uniqueIds.slice(i, i + 10)
+    const snaps = await db.getAll(...chunk.map((id) => db.collection(PROD).doc(id)))
+    for (const s of snaps) {
+      if (!s.exists) continue
+      const d = s.data() as { code?: string; name?: string; size?: string }
+      out.set(s.id, {
+        code: String(d.code || '').trim(),
+        name: String(d.name || '').trim(),
+        size: String(d.size || '').trim(),
+      })
+    }
+  }
+  return out
+}
+
+async function getProductLabelMap(ids: string[]): Promise<Map<string, string>> {
+  const meta = await getProductMetaMap(ids)
+  const out = new Map<string, string>()
+  for (const [id, product] of meta) {
+    const base =
+      product.code && product.name
+        ? `${product.code} â€” ${product.name}${product.size ? ` (${product.size})` : ''}`
+        : product.code || product.name || id
+    out.set(id, base)
+  }
+  return out
+}
+
+function parseExtraEmails(raw?: string | null): string[] {
+  return String(raw || '')
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.includes('@'))
+}
+
+function uniqueEmailList(raw?: string | null): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const email of parseExtraEmails(raw)) {
+    const key = email.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(email)
+  }
+  return out
+}
+
+async function listRrhhRecipients(): Promise<RrhhRecipient[]> {
+  if (rrhhRecipientsCache && rrhhRecipientsCache.expiresAt > Date.now()) {
+    return rrhhRecipientsCache.value
+  }
+  const snap = await db
+    .collection('users')
+    .where('departmentLower', '==', RRHH_DEPARTMENT_LOWER)
+    .get()
+
+  const recipients = snap.docs.map((d) => {
+    const data = d.data() as { name?: string; email?: string }
+    const name = String(data.name || '').trim() || 'Sense nom'
+    const emailRaw = String(data.email || '').trim()
+    return {
+      userId: d.id,
+      name,
+      email: emailRaw.includes('@') ? emailRaw : null,
+    }
+  })
+  rrhhRecipientsCache = {
+    expiresAt: Date.now() + RECIPIENT_CACHE_MS,
+    value: recipients,
+  }
+  return recipients
+}
+
+async function listDepartmentLeadUserIds(params: {
+  requestingDepartment: string
+  excludeUserIds?: string[]
+}): Promise<string[]> {
+  const dept = String(params.requestingDepartment || '').trim()
+  if (!dept) return []
+
+  const exclude = new Set(
+    (params.excludeUserIds || []).map((x) => String(x).trim()).filter(Boolean)
+  )
+  const cacheKey = normLower(dept)
+  const cached = deptLeadRecipientsCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value.filter((id) => !exclude.has(id))
+  }
+
+  const snap = await db.collection('users').get()
+  const userIds = snap.docs
+    .filter((d) => {
+      const data = d.data() as {
+        isDepartmentRobaLead?: boolean
+        departmentLower?: string
+        department?: string
+      }
+      if (data.isDepartmentRobaLead !== true) return false
+      if (!d.id || exclude.has(d.id)) return false
+      const userDept = String(data.departmentLower || data.department || '').trim()
+      return Boolean(userDept) && departmentsInSameRobaScope(userDept, dept)
+    })
+    .map((d) => d.id)
+  deptLeadRecipientsCache.set(cacheKey, {
+    expiresAt: Date.now() + RECIPIENT_CACHE_MS,
+    value: userIds,
+  })
+  return userIds.filter((id) => !exclude.has(id))
+}
+
 export async function notifyRecursosHumansNewRobaRequest(params: {
   requestId: string
   reference: string
@@ -85,12 +294,8 @@ export async function notifyRecursosHumansNewRobaRequest(params: {
   lines: Array<{ productId: string; quantity: number }>
   createdByUserName?: string | null
 }): Promise<void> {
-  const snap = await db
-    .collection('users')
-    .where('departmentLower', '==', RRHH_DEPARTMENT_LOWER)
-    .get()
-
-  const uids = snap.docs.map((d) => d.id).filter(Boolean)
+  const recipients = await listRrhhRecipients()
+  const uids = recipients.map((r) => r.userId).filter(Boolean)
   if (!uids.length) return
 
   const worker = String(params.requestedByWorkerName || '').trim() || 'Sense nom'
@@ -151,6 +356,273 @@ export async function notifyRecursosHumansNewRobaRequest(params: {
   } catch (err) {
     console.error('[robaRequestNotifications] Ably publish error', err)
   }
+}
+
+export async function notifyRobaDepartmentLeadsNewRequest(params: {
+  requestId: string
+  reference: string
+  requestingDepartment: string
+  requestedByWorkerName: string
+  lineCount: number
+  lines: Array<{ productId: string; quantity: number }>
+  createdByUserName?: string | null
+  excludeUserIds?: string[]
+}): Promise<void> {
+  const uids = await listDepartmentLeadUserIds({
+    requestingDepartment: params.requestingDepartment,
+    excludeUserIds: params.excludeUserIds,
+  })
+  if (!uids.length) return
+
+  const worker = String(params.requestedByWorkerName || '').trim() || 'Sense nom'
+  const dept = String(params.requestingDepartment || '').trim()
+  const refCode = String(params.reference || '').trim()
+  const linesSummary = await linesSummaryForRobaRequest(params.lines)
+  const tram = String(params.createdByUserName || '').trim()
+  const title = 'Nova sol·licitud del departament'
+  const body = [refCode, worker, dept, linesSummary || `${params.lineCount} línia(es)`]
+    .filter(Boolean)
+    .join(' · ')
+
+  const now = Date.now()
+  const batch = db.batch()
+  for (const uid of uids) {
+    const ref = db.collection('users').doc(uid).collection('notifications').doc()
+    batch.set(ref, {
+      type: 'roba_personal_request',
+      title,
+      body,
+      requestId: params.requestId,
+      reference: params.reference,
+      requestingDepartment: params.requestingDepartment,
+      requestedByWorkerName: worker,
+      linesSummary: linesSummary || null,
+      lineCount: params.lineCount,
+      createdByUserName: tram || null,
+      createdAt: now,
+      read: false,
+    })
+  }
+  await batch.commit()
+
+  const apiKey = process.env.ABLY_API_KEY
+  if (!apiKey) return
+
+  try {
+    const Ably = (await import('ably')).default
+    const rest = new Ably.Rest({ key: apiKey })
+    await Promise.all(
+      uids.map((uid) =>
+        rest.channels.get(`user:${uid}:notifications`).publish('created', {
+          type: 'roba_personal_request',
+          requestId: params.requestId,
+          createdAt: now,
+        })
+      )
+    )
+  } catch (err) {
+    console.error('[robaRequestNotifications] Ably publish dept request error', err)
+  }
+}
+
+export async function notifyRecursosHumansRobaRequestSentToRrhh(params: {
+  requestId: string
+  reference: string
+  requestingDepartment: string
+  requestedByWorkerName: string
+  lineCount: number
+  lines: Array<{ productId: string; quantity: number }>
+  createdByUserName?: string | null
+  senderUserId: string
+  extraEmail?: string | null
+}): Promise<{ emailSent: boolean; emailSkippedReason?: string | null }> {
+  const recipients = await listRrhhRecipients()
+  const uids = recipients.map((r) => r.userId).filter(Boolean)
+  if (!uids.length) {
+    return { emailSent: false, emailSkippedReason: 'no_rrhh_recipients' }
+  }
+
+  const worker = String(params.requestedByWorkerName || '').trim() || 'Sense nom'
+  const dept = String(params.requestingDepartment || '').trim()
+  const refCode = String(params.reference || '').trim()
+  const linesSummary = await linesSummaryForRobaRequest(params.lines)
+  const tram = String(params.createdByUserName || '').trim()
+  const title = 'Sol·licitud de roba enviada a RRHH'
+  const bodyParts = [
+    `Treballador: ${worker}`,
+    dept ? `Departament: ${dept}` : null,
+    refCode ? `Referència: ${refCode}` : null,
+    tram ? `Enviada per: ${tram}` : null,
+    linesSummary
+      ? `Material: ${linesSummary}`
+      : `${params.lineCount} línia(es) (sense detall de producte)`,
+  ].filter(Boolean)
+  const body = bodyParts.join('\n')
+
+  const now = Date.now()
+  const batch = db.batch()
+  for (const uid of uids) {
+    const ref = db.collection('users').doc(uid).collection('notifications').doc()
+    batch.set(ref, {
+      type: 'roba_personal_sent_to_rrhh',
+      title,
+      body,
+      requestId: params.requestId,
+      reference: params.reference,
+      requestingDepartment: params.requestingDepartment,
+      requestedByWorkerName: worker,
+      linesSummary: linesSummary || null,
+      lineCount: params.lineCount,
+      createdByUserName: tram || null,
+      createdAt: now,
+      read: false,
+    })
+  }
+  await batch.commit()
+
+  const apiKey = process.env.ABLY_API_KEY
+  if (apiKey) {
+    try {
+      const Ably = (await import('ably')).default
+      const rest = new Ably.Rest({ key: apiKey })
+      await Promise.all(
+        uids.map((uid) =>
+          rest.channels.get(`user:${uid}:notifications`).publish('created', {
+            type: 'roba_personal_sent_to_rrhh',
+            requestId: params.requestId,
+            createdAt: now,
+          })
+        )
+      )
+    } catch (err) {
+      console.error('[robaRequestNotifications] Ably publish sent_to_rrhh error', err)
+    }
+  }
+
+  const senderSnap = await db.collection('users').doc(params.senderUserId).get()
+  const organizerEmail = String(
+    senderSnap.exists ? (senderSnap.data() as { email?: string }).email || '' : ''
+  ).trim()
+  if (!organizerEmail.includes('@')) {
+    return { emailSent: false, emailSkippedReason: 'missing_sender_email' }
+  }
+
+  const toRecipients = uniqueEmailList(params.extraEmail).map((email) => ({ email, name: email }))
+  if (!toRecipients.length) {
+    return { emailSent: false, emailSkippedReason: 'missing_recipient_emails' }
+  }
+
+  const subject = `Roba personal - enviada a RRHH - ${refCode || params.requestId}`
+  const bodyText = [
+    'S ha enviat una sol·licitud de roba a RRHH.',
+    '',
+    ...bodyParts,
+  ].join('\n')
+  const attachment = await buildRobaRequestMailAttachment({
+    reference: refCode || params.requestId,
+    requestingDepartment: dept,
+    requestedByWorkerName: worker,
+    lines: params.lines,
+  })
+
+  await sendOutlookTextMail({
+    organizerEmail,
+    toRecipients,
+    subject,
+    bodyText,
+    attachments: [attachment],
+  })
+
+  return { emailSent: true, emailSkippedReason: null }
+}
+
+export async function notifyRecursosHumansRobaRequestCancelled(params: {
+  requestId: string
+  reference: string
+  requestingDepartment: string
+  requestedByWorkerName: string
+  cancelledByUserName?: string | null
+  senderUserId: string
+  extraEmail?: string | null
+}): Promise<{ emailSent: boolean; emailSkippedReason?: string | null }> {
+  const recipients = await listRrhhRecipients()
+  const uids = recipients.map((r) => r.userId).filter(Boolean)
+
+  const worker = String(params.requestedByWorkerName || '').trim() || 'Sense nom'
+  const dept = String(params.requestingDepartment || '').trim()
+  const refCode = String(params.reference || '').trim()
+  const cancelledBy = String(params.cancelledByUserName || '').trim()
+  const title = 'Sol·licitud de roba cancel·lada'
+  const body = [
+    refCode ? `Referència: ${refCode}` : null,
+    worker ? `Treballador: ${worker}` : null,
+    dept ? `Departament: ${dept}` : null,
+    cancelledBy ? `Cancel·lada per: ${cancelledBy}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  if (uids.length > 0) {
+    const now = Date.now()
+    const batch = db.batch()
+    for (const uid of uids) {
+      const ref = db.collection('users').doc(uid).collection('notifications').doc()
+      batch.set(ref, {
+        type: 'roba_personal_cancelled',
+        title,
+        body,
+        requestId: params.requestId,
+        reference: params.reference,
+        requestingDepartment: params.requestingDepartment,
+        requestedByWorkerName: worker,
+        createdByUserName: cancelledBy || null,
+        createdAt: now,
+        read: false,
+      })
+    }
+    await batch.commit()
+
+    const apiKey = process.env.ABLY_API_KEY
+    if (apiKey) {
+      try {
+        const Ably = (await import('ably')).default
+        const rest = new Ably.Rest({ key: apiKey })
+        await Promise.all(
+          uids.map((uid) =>
+            rest.channels.get(`user:${uid}:notifications`).publish('created', {
+              type: 'roba_personal_cancelled',
+              requestId: params.requestId,
+              createdAt: now,
+            })
+          )
+        )
+      } catch (err) {
+        console.error('[robaRequestNotifications] Ably publish cancelled error', err)
+      }
+    }
+  }
+
+  const senderSnap = await db.collection('users').doc(params.senderUserId).get()
+  const organizerEmail = String(
+    senderSnap.exists ? (senderSnap.data() as { email?: string }).email || '' : ''
+  ).trim()
+  if (!organizerEmail.includes('@')) {
+    return { emailSent: false, emailSkippedReason: 'missing_sender_email' }
+  }
+
+  const toRecipients = uniqueEmailList(params.extraEmail).map((email) => ({ email, name: email }))
+  if (!toRecipients.length) {
+    return { emailSent: false, emailSkippedReason: 'missing_recipient_emails' }
+  }
+
+  await sendOutlookTextMail({
+    organizerEmail,
+    toRecipients,
+    subject: `Roba personal - cancel·lada - ${refCode || params.requestId}`,
+    bodyText: ['S ha cancel·lat una sol·licitud de roba enviada a RRHH.', '', body].join('\n'),
+  })
+
+  return { emailSent: true, emailSkippedReason: null }
 }
 
 /** Notifica el sol·licitant (app): material preparat + dia de recollida. */
@@ -217,19 +689,10 @@ export async function notifyRobaDepartmentLeadsPickupDate(params: {
   workerName?: string
   pickupAvailabilityMessage?: string
 }): Promise<void> {
-  const deptKey = normDeptLabel(params.requestingDepartment)
-  if (!deptKey) return
-
-  const snap = await db.collection('users').where('departmentLower', '==', deptKey).get()
-  const exclude = new Set(
-    (params.excludeUserIds || []).map((x) => String(x).trim()).filter(Boolean)
-  )
-
-  const uids = snap.docs
-    .filter((d) => (d.data() as { isDepartmentRobaLead?: boolean }).isDepartmentRobaLead === true)
-    .map((d) => d.id)
-    .filter((id) => Boolean(id) && !exclude.has(id))
-
+  const uids = await listDepartmentLeadUserIds({
+    requestingDepartment: params.requestingDepartment,
+    excludeUserIds: params.excludeUserIds,
+  })
   if (!uids.length) return
 
   const title = 'Roba: data de recollida al magatzem (cap de roba)'

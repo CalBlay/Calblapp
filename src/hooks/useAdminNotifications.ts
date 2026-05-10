@@ -8,8 +8,20 @@ import { subscribeToAblyEvent } from '@/lib/ablyClient'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-type SessionUser = { id?: string; role?: string; department?: string }
+type SessionUser = {
+  id?: string
+  role?: string
+  department?: string
+  isDepartmentRobaLead?: boolean
+  robaLinkedPersonnelId?: string | null
+}
 type NotificationListItem = { read?: boolean; type?: string }
+type RobaRequestListItem = { status?: string }
+type RobaDeliveryListItem = {
+  workerReceiptAckExpected?: boolean
+  workerReceiptAckAt?: string | null
+  workerReceiptCorrectionOpen?: boolean
+}
 
 export function useAdminUserRequestCount() {
   const { data: session, status } = useSession()
@@ -134,39 +146,44 @@ const normDept = (s?: string) =>
     .toLowerCase()
     .trim()
 
-/** Tipus de notificació del mòdul roba personal (mateix conjunt que el banner del dashboard). */
-const ROBA_PERSONAL_NOTIFICATION_TYPES = new Set([
-  'roba_personal_request',
-  'roba_personal_ready',
-  'roba_personal_delivery_ack',
-  'roba_personal_delivery_revised',
-  'roba_personal_delivery_dispute',
-])
-
-/**
- * Comptador de notificacions de roba personal sense llegir per a l’usuari actual.
- * Inclou «nova sol·licitud» (RRHH/admin), «material preparat» (sol·licitant / caps), entregues, etc.
- */
 export function useRobaPersonalRequestNotificationCount() {
   const { data: session, status } = useSession()
   const isAuth = status === 'authenticated'
-  const userId = (session?.user as { id?: string; department?: string })?.id
-  const dept = normDept((session?.user as { department?: string })?.department)
-  const role = normalizeRole((session?.user as { role?: string })?.role)
-  const isRrhh = dept === 'recursos humans'
-  const showRobaNotif = role === 'admin' || isRrhh
+  const user = session?.user as SessionUser | undefined
+  const userId = user?.id
+  const dept = normDept(user?.department)
+  const role = normalizeRole(user?.role)
+  const isFullUser = role === 'admin' || dept === 'recursos humans'
+  const isDeptLeadLimited = Boolean(user?.isDepartmentRobaLead) && !isFullUser
+  const isWorkerSelf =
+    Boolean(String(user?.robaLinkedPersonnelId || '').trim()) &&
+    !isFullUser &&
+    !isDeptLeadLimited
 
-  const url = isAuth && userId ? '/api/notifications?mode=list' : null
+  const requestsUrl = isAuth && userId ? '/api/roba-personal/requests' : null
+  const deliveriesUrl = isAuth && userId ? '/api/roba-personal/deliveries' : null
 
-  const { data, error, mutate } = useSWR(url, fetcher, {
-    refreshInterval: isAuth ? 15000 : 0,
-  })
+  const { data: requestsData, error: requestsError, mutate: mutateRequests } = useSWR(
+    requestsUrl,
+    fetcher,
+    {
+      refreshInterval: isAuth ? 15000 : 0,
+    }
+  )
+  const { data: deliveriesData, error: deliveriesError, mutate: mutateDeliveries } = useSWR(
+    deliveriesUrl,
+    fetcher,
+    {
+      refreshInterval: isAuth ? 15000 : 0,
+    }
+  )
 
   useEffect(() => {
     if (!isAuth || !userId) return
 
     const handler = () => {
-      mutate().catch(() => {})
+      mutateRequests().catch(() => {})
+      mutateDeliveries().catch(() => {})
     }
 
     return subscribeToAblyEvent({
@@ -174,20 +191,46 @@ export function useRobaPersonalRequestNotificationCount() {
       eventName: 'created',
       handler,
     })
-  }, [isAuth, userId, mutate])
+  }, [isAuth, userId, mutateRequests, mutateDeliveries])
 
   return {
     count: (() => {
-      const notifications = Array.isArray(data?.notifications) ? data.notifications : []
-      return notifications.filter(
-        (n: { read?: boolean; type?: string }) =>
-          !n.read && ROBA_PERSONAL_NOTIFICATION_TYPES.has(String(n.type || ''))
-      ).length
+      const requests = Array.isArray(requestsData) ? (requestsData as RobaRequestListItem[]) : []
+      const deliveries = Array.isArray(deliveriesData)
+        ? (deliveriesData as RobaDeliveryListItem[])
+        : []
+
+      if (isWorkerSelf) {
+        const requestsPending = requests.filter(
+          (r) => r.status === 'ready_for_worker_delivery' || r.status === 'picked_up'
+        ).length
+        const deliveriesPending = deliveries.filter(
+          (d) => d.workerReceiptAckExpected === true && !d.workerReceiptAckAt
+        ).length
+        return requestsPending + deliveriesPending
+      }
+
+      if (isDeptLeadLimited) {
+        const requestsPending = requests.filter(
+          (r) => r.status === 'submitted' || r.status === 'prepared'
+        ).length
+        const disputesPending = deliveries.filter((d) => d.workerReceiptCorrectionOpen === true)
+          .length
+        return requestsPending + disputesPending
+      }
+
+      if (isFullUser) {
+        return requests.filter((r) => r.status === 'sent_to_rrhh').length
+      }
+
+      return 0
     })(),
-    loading: status === 'loading' || (isAuth && !!userId && !data && !error),
-    error,
-    /** Encara útil si cal diferenciar vista RRHH; el comptador és per a tothom. */
-    isRrhh: showRobaNotif,
+    loading:
+      status === 'loading' ||
+      (isAuth && !!userId && !requestsData && !requestsError) ||
+      (isAuth && !!userId && !deliveriesData && !deliveriesError),
+    error: requestsError || deliveriesError,
+    isRrhh: isFullUser,
   }
 }
 

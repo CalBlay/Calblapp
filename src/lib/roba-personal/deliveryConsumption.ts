@@ -80,3 +80,45 @@ export function suggestedSemesterOrderQty(
   const shortfall = Math.max(0, minStock - quantityOnHand)
   return Math.ceil(shortfall + deliveredLast6Months)
 }
+
+export type DeliveredLineRollup = {
+  deliveredAt: Date
+  lines: Array<{ productId: string; quantity: number }>
+}
+
+export async function listDeliveredLineRollups(): Promise<DeliveredLineRollup[]> {
+  const out: DeliveredLineRollup[] = []
+  let last: QueryDocumentSnapshot | undefined
+  let totalRead = 0
+
+  while (totalRead < CONSUMPTION_MAX_DOCS) {
+    const take = Math.min(CONSUMPTION_PAGE, CONSUMPTION_MAX_DOCS - totalRead)
+    let q = db.collection(DEL).orderBy('deliveredAt', 'asc').limit(take)
+    if (last) q = q.startAfter(last)
+    const snap = await q.get()
+    if (snap.empty) break
+
+    for (const doc of snap.docs) {
+      const data = doc.data() as Record<string, unknown>
+      const deliveredAtRaw = data.deliveredAt
+      const deliveredAt =
+        deliveredAtRaw instanceof Timestamp ? deliveredAtRaw.toDate() : null
+      if (!deliveredAt) continue
+      const rawLines = Array.isArray(data.lines) ? data.lines : []
+      const lines = rawLines
+        .map((ln) => ({
+          productId: String((ln as { productId?: string }).productId || '').trim(),
+          quantity: Number((ln as { quantity?: number }).quantity),
+        }))
+        .filter((ln) => ln.productId && Number.isFinite(ln.quantity) && ln.quantity > 0)
+      if (lines.length === 0) continue
+      out.push({ deliveredAt, lines })
+    }
+
+    totalRead += snap.size
+    last = snap.docs[snap.docs.length - 1]
+    if (snap.size < take) break
+  }
+
+  return out
+}

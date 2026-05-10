@@ -10,11 +10,12 @@ import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
 import {
   getUserDoc,
-  normDeptLabel,
   userCanMarkRequestPickedUp,
   userCanMarkRequestPrepared,
 } from '@/lib/roba-personal/requestPermissions'
 import {
+  notifyRecursosHumansRobaRequestCancelled,
+  notifyRecursosHumansRobaRequestSentToRrhh,
   notifyRobaDepartmentLeadsPickupDate,
   notifyRobaRequestMaterialReady,
 } from '@/lib/roba-personal/robaRequestNotifications'
@@ -37,17 +38,21 @@ async function departmentRobaLeadCalendarAttendees(
   requestingDepartment: string,
   excludeEmailsLower: Set<string>
 ): Promise<Array<{ email: string; name?: string }>> {
-  const deptKey = normDeptLabel(requestingDepartment)
-  if (!deptKey) return []
-  const snap = await db.collection(USERS).where('departmentLower', '==', deptKey).get()
+  const dept = String(requestingDepartment || '').trim()
+  if (!dept) return []
+  const snap = await db.collection(USERS).get()
   const out: Array<{ email: string; name?: string }> = []
   for (const d of snap.docs) {
     const u = d.data() as {
       isDepartmentRobaLead?: boolean
+      departmentLower?: string
+      department?: string
       email?: string
       name?: string
     }
     if (u.isDepartmentRobaLead !== true) continue
+    const userDept = String(u.departmentLower || u.department || '').trim()
+    if (!userDept || !departmentsInSameRobaScope(userDept, dept)) continue
     const email = String(u.email || '').trim()
     if (!email || excludeEmailsLower.has(email.toLowerCase())) continue
     const name = String(u.name || '').trim()
@@ -157,6 +162,7 @@ export async function PATCH(
     pickupDate?: string
     pickupAvailabilityMessage?: string
     prepareWithoutStockReservation?: boolean
+    extraEmail?: string
     lines?: Array<{ productId?: string; quantity?: number }>
   }
   const now = FieldValue.serverTimestamp()
@@ -240,6 +246,7 @@ export async function PATCH(
           tx.update(ref, {
             status: 'cancelled',
             cancelledAt: now,
+            cancelledByUserId: access.userId,
             notes: body.notes !== undefined ? String(body.notes || '').trim() || null : d.notes,
             updatedAt: now,
           })
@@ -252,13 +259,38 @@ export async function PATCH(
       await ref.update({
         status: 'cancelled',
         cancelledAt: now,
+        cancelledByUserId: access.userId,
         notes: body.notes !== undefined ? String(body.notes || '').trim() || null : cur.notes,
         updatedAt: now,
       })
     }
     const out = await ref.get()
+    const cancelledData = out.data() as Record<string, unknown>
+    if (curStatus === 'sent_to_rrhh') {
+      try {
+        await notifyRecursosHumansRobaRequestCancelled({
+          requestId: out.id,
+          reference:
+            String(cancelledData.reference || '').trim() || requestReferenceFromDocId(out.id),
+          requestingDepartment: String(cancelledData.requestingDepartment || '').trim(),
+          requestedByWorkerName:
+            String(cancelledData.requestedByWorkerName || '').trim() || 'Sense nom',
+          cancelledByUserName: String(cancelledData.createdByUserName || '').trim() || null,
+          senderUserId: access.userId,
+          extraEmail:
+            Array.isArray((cancelledData as { sentToRrhhEmailTo?: unknown[] }).sentToRrhhEmailTo)
+              ? ((cancelledData as { sentToRrhhEmailTo: unknown[] }).sentToRrhhEmailTo
+                  .map((x) => String(x || '').trim())
+                  .filter(Boolean)
+                  .join(', ') || null)
+              : null,
+        })
+      } catch (e) {
+        console.error('[roba-personal/requests PATCH cancelled] notify RRHH', e)
+      }
+    }
     return NextResponse.json(
-      serializeFirestoreDoc(out.id, out.data() as Record<string, unknown>)
+      serializeFirestoreDoc(out.id, cancelledData)
     )
   }
 
@@ -283,11 +315,31 @@ export async function PATCH(
       status: 'sent_to_rrhh',
       sentToRrhhAt: now,
       sentToRrhhByUserId: access.userId,
+      sentToRrhhEmailTo: String(body.extraEmail || '')
+        .split(/[,;\s]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.includes('@')),
       updatedAt: now,
     })
     const out = await ref.get()
+    const nextData = out.data() as Record<string, unknown>
+    try {
+      await notifyRecursosHumansRobaRequestSentToRrhh({
+        requestId: out.id,
+        reference: String(nextData.reference || '').trim() || requestReferenceFromDocId(out.id),
+        requestingDepartment: String(nextData.requestingDepartment || '').trim(),
+        requestedByWorkerName: String(nextData.requestedByWorkerName || '').trim() || 'Sense nom',
+        lineCount: Array.isArray(nextData.lines) ? nextData.lines.length : 0,
+        lines: parseLines(nextData),
+        createdByUserName: String(nextData.createdByUserName || '').trim() || null,
+        senderUserId: access.userId,
+        extraEmail: String(body.extraEmail || '').trim() || null,
+      })
+    } catch (e) {
+      console.error('[roba-personal/requests PATCH sent_to_rrhh] notify RRHH', e)
+    }
     return NextResponse.json(
-      serializeFirestoreDoc(out.id, out.data() as Record<string, unknown>)
+      serializeFirestoreDoc(out.id, nextData)
     )
   }
 

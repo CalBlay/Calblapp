@@ -2,7 +2,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
-import { FieldValue } from 'firebase-admin/firestore'
+import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
@@ -56,15 +56,22 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url)
   const productId = String(searchParams.get('productId') || '').trim()
+  const start = String(searchParams.get('start') || '').trim()
+  const end = String(searchParams.get('end') || '').trim()
 
-  const snap = productId
-    ? await db
-        .collection(MOV)
-        .where('productId', '==', productId)
-        .orderBy('createdAt', 'desc')
-        .limit(500)
-        .get()
-    : await db.collection(MOV).orderBy('createdAt', 'desc').limit(500).get()
+  const rangeStart =
+    /^\d{4}-\d{2}-\d{2}$/.test(start) ? new Date(`${start}T00:00:00.000Z`) : null
+  const rangeEndExclusive =
+    /^\d{4}-\d{2}-\d{2}$/.test(end) ? new Date(`${end}T00:00:00.000Z`) : null
+  if (rangeEndExclusive) rangeEndExclusive.setUTCDate(rangeEndExclusive.getUTCDate() + 1)
+
+  let query = db.collection(MOV) as FirebaseFirestore.Query<FirebaseFirestore.DocumentData>
+  if (productId) query = query.where('productId', '==', productId)
+  if (rangeStart) query = query.where('createdAt', '>=', Timestamp.fromDate(rangeStart))
+  if (rangeEndExclusive) {
+    query = query.where('createdAt', '<', Timestamp.fromDate(rangeEndExclusive))
+  }
+  const snap = await query.orderBy('createdAt', 'desc').get()
 
   const items = snap.docs.map((d) =>
     serializeFirestoreDoc(d.id, d.data() as Record<string, unknown>)
