@@ -52,6 +52,124 @@ function safeString(value: unknown) {
   return quadrantConfirmTrim(value)
 }
 
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    const text = safeString(value)
+    if (text) return text
+  }
+  return ''
+}
+
+function firstNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    const text = safeString(value).replace(',', '.')
+    if (!text) continue
+    const parsed = Number(text)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function normalizeTrainingGroups(doc: QuadrantConfirmDoc | null) {
+  const groups = Array.isArray(doc?.groups) ? doc!.groups : []
+  return groups
+    .map((raw, index) => {
+      const group = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
+      const id = firstString(group.id, `group-${index + 1}`)
+      return {
+        id,
+        serviceDate: firstString(group.serviceDate, group.date, doc?.startDate),
+        dateLabel: firstString(group.dateLabel, group.label),
+        meetingPoint: firstString(group.meetingPoint, doc?.meetingPoint, doc?.location),
+        startTime: firstString(group.startTime, doc?.startTime),
+        arrivalTime: firstString(group.arrivalTime, doc?.arrivalTime),
+        endTime: firstString(group.endTime, doc?.endTime),
+        workers: firstNumber(group.workers, group.totalWorkers),
+        drivers: firstNumber(group.drivers, group.numDrivers),
+        needsDriver: group.needsDriver === true,
+        responsibleId: firstString(group.responsibleId),
+        responsibleName: firstString(group.responsibleName),
+        driverId: firstString(group.driverId),
+        driverName: firstString(group.driverName),
+      }
+    })
+    .filter((group) => group.id || group.serviceDate || group.startTime || group.workers !== null)
+}
+
+function hasProposalDiff(diff: ReturnType<typeof computeQuadrantProposalDiff>) {
+  if (!diff) return false
+  return Boolean(
+    diff.responsibleChanged ||
+      diff.drivers.added.length ||
+      diff.drivers.removed.length ||
+      diff.staff.added.length ||
+      diff.staff.removed.length ||
+      diff.moved.length
+  )
+}
+
+function buildTrainingSamplePayload(ctx: {
+  dept: string
+  colName: string
+  eventId: string
+  confirmedAtIso: string
+  confirmedBy: string
+  firstPrev: QuadrantConfirmDoc | null
+  stageData: Record<string, unknown> | null
+  assigned: ReturnType<typeof extractAssignedNamesFromQuadrant>
+  diff: ReturnType<typeof computeQuadrantProposalDiff>
+}) {
+  const st = ctx.stageData || {}
+  const doc = ctx.firstPrev || {}
+  const groups = normalizeTrainingGroups(ctx.firstPrev)
+  const eventName = firstString(doc.eventName, st.eventName, st.Nom)
+  const location = firstString(doc.location, st.Ubicacio, st.location, st.eventLocation)
+  const serviceType = firstString(doc.service, st.Servei, st.servei, st.service, st.serviceType)
+  const lineOfBusiness = firstString(doc.ln, st.LN, st.FincaLN, st.ln, st.lineOfBusiness)
+  const totalWorkers = firstNumber(doc.totalWorkers)
+  const numDrivers = firstNumber(doc.numDrivers)
+
+  return {
+    trainingVersion: 2,
+    createdAt: Date.now(),
+    department: ctx.dept,
+    sourceCollection: ctx.colName,
+    sourceDocId: String(ctx.eventId),
+    eventId: String(ctx.eventId),
+    code: firstString(doc.code, st.code, st.C_digo),
+    eventName,
+    location,
+    serviceType,
+    service: serviceType,
+    lineOfBusiness,
+    ln: lineOfBusiness,
+    numPax: firstNumber(doc.numPax, st.NumPax, st.numPax, st.pax),
+    startDate: firstString(doc.startDate),
+    startTime: firstString(doc.startTime),
+    endDate: firstString(doc.endDate),
+    endTime: firstString(doc.endTime),
+    arrivalTime: firstString(doc.arrivalTime),
+    meetingPoint: firstString(doc.meetingPoint, location),
+    phaseType: firstString(doc.phaseType),
+    phaseLabel: firstString(doc.phaseLabel),
+    phaseDate: firstString(doc.phaseDate),
+    totalWorkers,
+    numDrivers,
+    assignedPeopleCount: ctx.assigned.all.length,
+    groupCount: groups.length,
+    groups,
+    confirmedAt: ctx.confirmedAtIso,
+    confirmedBy: ctx.confirmedBy,
+    generationMode: ctx.firstPrev?.autoProposal?.generationMode ?? null,
+    changedFromProposal: hasProposalDiff(ctx.diff),
+    assigned: ctx.assigned,
+    proposal: ctx.firstPrev?.autoProposal || null,
+    diff: ctx.diff,
+    snapshot: ctx.firstPrev || {},
+  }
+}
+
 export function extractAssignedNamesFromQuadrant(doc: QuadrantConfirmDoc | null) {
   const responsible = safeString(doc?.responsable?.name)
   const drivers = Array.isArray(doc?.conductors)
@@ -227,26 +345,7 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
     resolveValidUsersFromQuadrant(ctx.firstPrev),
     (async () => {
       try {
-        await db.collection(QUADRANT_TRAINING_COLLECTION).doc().set({
-          createdAt: Date.now(),
-          department: ctx.dept,
-          sourceCollection: ctx.colName,
-          sourceDocId: String(ctx.eventId),
-          eventId: String(ctx.eventId),
-          code: safeString(st?.code || st?.C_digo || ''),
-          eventName: eventNameGuess,
-          startDate: safeString(ctx.firstPrev?.startDate),
-          startTime: safeString(ctx.firstPrev?.startTime),
-          endDate: safeString(ctx.firstPrev?.endDate),
-          endTime: safeString(ctx.firstPrev?.endTime),
-          confirmedAt: ctx.confirmedAtIso,
-          confirmedBy: ctx.confirmedBy,
-          generationMode: ctx.firstPrev?.autoProposal?.generationMode ?? null,
-          assigned: ctx.assigned,
-          proposal: ctx.firstPrev?.autoProposal || null,
-          diff: ctx.diff,
-          snapshot: ctx.firstPrev || {},
-        })
+        await db.collection(QUADRANT_TRAINING_COLLECTION).doc().set(buildTrainingSamplePayload(ctx))
       } catch (err) {
         console.warn('[quadrantsConfirmDeferred] training sample write failed', err)
       }

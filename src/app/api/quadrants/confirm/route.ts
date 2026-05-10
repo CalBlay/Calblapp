@@ -12,38 +12,22 @@ import {
   type QuadrantConfirmDoc,
   qcNorm,
 } from '@/lib/quadrantsConfirmDeferred'
+import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
 
 export const runtime = 'nodejs'
-
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-
-/** Evita `listCollections` a cada confirmació */
-const deptCollectionResolved = new Map<string, string>()
 
 interface TokenWithUser {
   email?: string
   user?: { email?: string }
 }
 
+/**
+ * Delega al modul `firestoreCollections` que comparteix el cache de
+ * `listCollections()` entre tots els call sites del projecte.
+ * Aquesta col·leccio prefereix `quadrant{Dept}` (singular) si existeix.
+ */
 async function resolveWriteCollectionForDepartment(department: string) {
-  const lookupKey = qcNorm(department)
-  const cached = deptCollectionResolved.get(lookupKey)
-  if (cached) return cached
-
-  const d = capitalize(qcNorm(department))
-  const plural = `quadrants${d}`
-  const singular = `quadrant${d}`
-
-  const all = await db.listCollections()
-  const names = all.map((c) => c.id.toLowerCase())
-
-  let resolved: string
-  if (names.includes(singular.toLowerCase())) resolved = singular
-  else if (names.includes(plural.toLowerCase())) resolved = plural
-  else resolved = plural
-
-  deptCollectionResolved.set(lookupKey, resolved)
-  return resolved
+  return resolveQuadrantCollection(department, { fallback: 'plural' })
 }
 
 export async function POST(req: NextRequest) {

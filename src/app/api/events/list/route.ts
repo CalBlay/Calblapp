@@ -86,17 +86,19 @@ function firstDocString(d: StageVerdDoc, keys: string[]): string | null {
 
 /* ================== Collections map ================== */
 const COLS_MAP: Record<string, string> = {}
-let COLS_LOADED = false
+let lastMapBuiltAt = 0
+const COLS_MAP_TTL_MS = 5 * 60_000
 
 async function loadCollectionsMap() {
-  if (COLS_LOADED) return
-  const cols = await db.listCollections()
-  cols.forEach((c) => {
-    const key = normalizeColId(c.id)
-    if (key) COLS_MAP[key] = c.id
+  const now = Date.now()
+  if (now - lastMapBuiltAt < COLS_MAP_TTL_MS && Object.keys(COLS_MAP).length > 0) return
+  const { listAllCollectionIds } = await import('@/lib/firestoreCollections')
+  const ids = await listAllCollectionIds()
+  ids.forEach((id) => {
+    const key = normalizeColId(id)
+    if (key) COLS_MAP[key] = id
   })
-  COLS_LOADED = true
-  console.log('[events/list] ð Collections map carregat:', COLS_MAP)
+  lastMapBuiltAt = now
 }
 
 async function resolveColForDept(dept: string): Promise<string | undefined> {

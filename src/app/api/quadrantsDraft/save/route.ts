@@ -9,6 +9,7 @@ import {
 } from '@/lib/quadrantsDraftEditor'
 import { saveDraftByDepartment } from '@/lib/quadrantsDraftSaveAdapters'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import { listAllCollectionIds } from '@/lib/firestoreCollections'
 
 export const runtime = 'nodejs'
 
@@ -29,20 +30,19 @@ const canonicalCollectionFor = (dept: string) => {
 
 async function resolveDeptCollection(dept: string): Promise<string> {
   const key = norm(dept)
-  const cols = await db.listCollections()
+  const cols = await listAllCollectionIds()
 
-  for (const c of cols) {
-    const plain = c.id
+  for (const id of cols) {
+    const plain = id
       .replace(/^quadrants/i, '')
       .replace(/[_\-\s]/g, '')
       .normalize('NFD')
       .replace(/\p{Diacritic}/gu, '')
       .toLowerCase()
 
-    if (plain === key) return c.id
+    if (plain === key) return id
   }
 
-  // Fallback canònic (no cal que existeixi prèviament)
   return canonicalCollectionFor(dept)
 }
 

@@ -2,6 +2,7 @@
 import fs from 'fs'
 import path from 'path'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import { listQuadrantCollectionIds } from '@/lib/firestoreCollections'
 import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
 
 
@@ -55,16 +56,13 @@ function readLegacyExternalWorkers(q: QuadrantDoc) {
   }>(q)
 }
 
+/**
+ * Llista cachejada de col·leccions `quadrants*`. Delega al modul
+ * compartit `firestoreCollections` perque tots els call sites
+ * comparteixin el mateix cache (5 min TTL).
+ */
 export async function listQuadrantCollections(): Promise<string[]> {
-  const cols = await firestoreAdmin.listCollections()
-  return cols
-    .map(c => c.id)
-    .filter(id => {
-      const n = norm(id)
-      if (!n.startsWith('quadrant')) return false
-      if (n.includes('draft')) return false
-      return true
-    })
+  return listQuadrantCollectionIds()
 }
 
 /* =============== Resolució col·lecció per departament =============== */
@@ -79,23 +77,62 @@ function resolveQuadrantCollection(department: string): string {
   return 'quadrantsServeis' // valor per defecte
 }
 
-export async function fetchQuadrantDocsByEndDate(colId: string, endDate: string) {
-  let snap = await firestoreAdmin
-    .collection(colId)
-    .where('startDate', '<=', endDate)
-    .get()
+/**
+ * Marge enrere per cobrir comprovacions de descans minim a quadrants
+ * que comencen abans del rang sol·licitat. 7 dies cobreix qualsevol
+ * configuracio realista (descans tipic 8h, max raonable < 7d).
+ */
+const REST_LOOKBACK_DAYS = 7
 
-  if (snap.empty) {
-    const endAsDate = new Date(endDate)
-    if (!Number.isNaN(endAsDate.getTime())) {
-      snap = await firestoreAdmin
-        .collection(colId)
-        .where('startDate', '<=', endAsDate)
-        .get()
-    }
+function shiftIsoDate(iso: string, days: number): string {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso
+  const date = new Date(`${iso.slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return iso
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+/**
+ * Llegeix els docs d'un quadrants* col·leccio que poden solapar el rang
+ * sol·licitat. Aplica un limit inferior (startDate >= startDate - 7d)
+ * per evitar lectures de tot l'historic, que abans escalaven linealment
+ * amb el volum acumulat de quadrants.
+ */
+export async function fetchQuadrantDocsByEndDate(
+  colId: string,
+  endDate: string,
+  startDate?: string
+) {
+  const lowerBound = shiftIsoDate(
+    startDate || endDate,
+    -REST_LOOKBACK_DAYS
+  )
+
+  try {
+    const snap = await firestoreAdmin
+      .collection(colId)
+      .where('startDate', '>=', lowerBound)
+      .where('startDate', '<=', endDate)
+      .get()
+    if (!snap.empty || lowerBound) return snap.docs
+  } catch (err) {
+    console.warn(
+      `[personnelRest] fallback fetchQuadrantDocsByEndDate ${colId}`,
+      err
+    )
   }
 
-  return snap.docs
+  // Fallback per docs antics amb startDate com a Date (no string).
+  const endAsDate = new Date(endDate)
+  if (!Number.isNaN(endAsDate.getTime())) {
+    const snap = await firestoreAdmin
+      .collection(colId)
+      .where('startDate', '<=', endAsDate)
+      .get()
+    return snap.docs
+  }
+
+  return [] as FirebaseFirestore.QueryDocumentSnapshot[]
 }
 
 /* =============== Premisses (JSON) =============== */
@@ -261,7 +298,7 @@ export async function getBusyPersonnelIds(
   const newEnd = new Date(`${endDate}T${endTime || '23:59'}:00Z`)
 
   const colId = resolveQuadrantCollection(department)
-  const docs = await fetchQuadrantDocsByEndDate(colId, endDate)
+  const docs = await fetchQuadrantDocsByEndDate(colId, endDate, startDate)
 
   console.log(`[getBusyPersonnelIds] scanning col: ${colId} → ${docs.length} docs`)
 
@@ -333,7 +370,7 @@ export async function getBusyPersonnelIdsAnyDepartment(
 
   const colIds = await listQuadrantCollections()
   for (const colId of colIds) {
-    const docs = await fetchQuadrantDocsByEndDate(colId, endDate)
+    const docs = await fetchQuadrantDocsByEndDate(colId, endDate, startDate)
 
     if (docs.length) {
       docs.forEach(d => {

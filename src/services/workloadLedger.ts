@@ -71,7 +71,46 @@ const overlapsDateWindow = (
   return itemStart <= endISO && itemEnd >= startISO
 }
 
-async function queryWindowedDocs(
+/**
+ * Cache in-memory entre requests per evitar repetir 3 queries identiques
+ * a Firestore quan diversos POST a /api/quadrants arriben en pocs segons
+ * (cas tipic: usuari guardant draft + confirmant, o varis usuaris al
+ * mateix departament). TTL curt perque sigui practicament invisible per
+ * a l'usuari pero estalvii queries en pics d'us.
+ *
+ * Aixo es un cache opcional: en cas d'error o miss es comporta com abans.
+ */
+const WORKLOAD_QUERY_TTL_MS = 30_000
+const WORKLOAD_QUERY_MAX_ENTRIES = 50
+type WorkloadCacheEntry = {
+  ts: number
+  promise: Promise<BusyAssignment[]>
+}
+const workloadQueryCache = new Map<string, WorkloadCacheEntry>()
+
+function pruneWorkloadCache() {
+  if (workloadQueryCache.size <= WORKLOAD_QUERY_MAX_ENTRIES) return
+  const now = Date.now()
+  for (const [k, v] of workloadQueryCache) {
+    if (now - v.ts > WORKLOAD_QUERY_TTL_MS) workloadQueryCache.delete(k)
+  }
+  if (workloadQueryCache.size > WORKLOAD_QUERY_MAX_ENTRIES) {
+    const oldestKey = workloadQueryCache.keys().next().value
+    if (oldestKey) workloadQueryCache.delete(oldestKey)
+  }
+}
+
+export function invalidateWorkloadLedgerCache(collectionId?: string) {
+  if (!collectionId) {
+    workloadQueryCache.clear()
+    return
+  }
+  for (const k of workloadQueryCache.keys()) {
+    if (k.startsWith(`${collectionId}|`)) workloadQueryCache.delete(k)
+  }
+}
+
+async function queryWindowedDocsRaw(
   collectionId: string,
   startISO: string,
   endISO: string
@@ -110,6 +149,29 @@ async function queryWindowedDocs(
   return Array.from(docs.values()).filter((item) =>
     overlapsDateWindow(item, startISO, endISO)
   )
+}
+
+async function queryWindowedDocs(
+  collectionId: string,
+  startISO: string,
+  endISO: string
+): Promise<BusyAssignment[]> {
+  const key = `${collectionId}|${startISO}|${endISO}`
+  const now = Date.now()
+  const cached = workloadQueryCache.get(key)
+  if (cached && now - cached.ts < WORKLOAD_QUERY_TTL_MS) {
+    return cached.promise
+  }
+
+  const promise = queryWindowedDocsRaw(collectionId, startISO, endISO).catch(
+    (err) => {
+      workloadQueryCache.delete(key)
+      throw err
+    }
+  )
+  workloadQueryCache.set(key, { ts: now, promise })
+  pruneWorkloadCache()
+  return promise
 }
 
 export async function buildLedger(

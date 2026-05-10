@@ -139,19 +139,17 @@ export async function GET(req: NextRequest) {
     }
 
     /* ────────────────────────────────────────────────
-       1) BUSCAR L’ESDEVENIMENT A FIRESTORE (3 col·leccions)
-       stage_verd / stage_taronja / stage_taronja
+       1) BUSCAR L'ESDEVENIMENT A FIRESTORE (paral·lel)
     ──────────────────────────────────────────────── */
-    const eventCollections = ['stage_verd', 'stage_taronja', 'stage_taronja']
+    const eventCollections = ['stage_verd', 'stage_taronja'] as const
 
-    let eventData: Record<string, unknown> | null = null
-    for (const coll of eventCollections) {
-      const snap = await firestoreAdmin.collection(coll).doc(eventId).get()
-      if (snap.exists) {
-        eventData = snap.data() ?? null
-        break
-      }
-    }
+    const eventSnaps = await Promise.all(
+      eventCollections.map((coll) =>
+        firestoreAdmin.collection(coll).doc(eventId).get()
+      )
+    )
+    const eventData: Record<string, unknown> | null =
+      eventSnaps.find((s) => s.exists)?.data() ?? null
 
     if (!eventData) {
       return NextResponse.json(
@@ -160,7 +158,6 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // Normalitzar camps per evitar NaN o undefined
     const code = String(eventData.code ?? '')
     const name = String(eventData.name ?? eventData.eventName ?? '')
     const startDateRaw = eventData.startDate
@@ -168,7 +165,9 @@ export async function GET(req: NextRequest) {
     const eventNameNorm = norm(name)
 
     /* ────────────────────────────────────────────────
-       2) LLEGIR QUADRANTS DE TOTS ELS DEPARTAMENTS
+       2) LLEGIR QUADRANTS (5 col·leccions, totes en paral·lel)
+       Estrategia: prioritzar query per eventId (la mes especifica).
+       Si no troba res, fer fallback a code i a startDate.
     ──────────────────────────────────────────────── */
     const quadrantCollections = [
       'quadrantsServeis',
@@ -178,39 +177,50 @@ export async function GET(req: NextRequest) {
       'quadrantsComercial',
     ]
 
-    const rows: QRow[] = []
-
-    for (const coll of quadrantCollections) {
-      const ref = firestoreAdmin.collection(coll)
-
-      const byId = await ref.where('eventId', '==', eventId).get().catch(() => null)
-      const byCode =
-        code
-          ? await ref.where('code', '==', code).get().catch(() => null)
-          : null
-      const byDate =
-        dateKeyValue
-          ? await ref.where('startDate', '==', dateKeyValue).get().catch(() => null)
-          : null
-
-      const push = (snap: QuerySnapshot | null) => {
-        if (snap && !snap.empty) {
-          snap.forEach((d) =>
-            rows.push({
-              ...(d.data() as QRow),
-              status: String((d.data() as QRow)?.status || ''),
-              updatedAt: (d.data() as QRow)?.updatedAt,
-              confirmedAt: (d.data() as QRow)?.confirmedAt,
-              createdAt: (d.data() as QRow)?.createdAt,
-            })
-          )
-        }
-      }
-
-      push(byId)
-      push(byCode)
-      push(byDate)
+    const pushSnap = (snap: QuerySnapshot | null, target: QRow[]) => {
+      if (!snap || snap.empty) return
+      snap.forEach((d) => {
+        const data = d.data() as QRow
+        target.push({
+          ...data,
+          status: String(data?.status || ''),
+          updatedAt: data?.updatedAt,
+          confirmedAt: data?.confirmedAt,
+          createdAt: data?.createdAt,
+        })
+      })
     }
+
+    const fetchPerCollection = async (coll: string): Promise<QRow[]> => {
+      const ref = firestoreAdmin.collection(coll)
+      const acc: QRow[] = []
+
+      // 1ª passada: query mes selectiva (eventId).
+      const byIdSnap = await ref
+        .where('eventId', '==', eventId)
+        .get()
+        .catch(() => null)
+      pushSnap(byIdSnap, acc)
+      if (acc.length > 0) return acc
+
+      // 2ª passada nomes si no s'han trobat docs: code + startDate en paral·lel.
+      const [byCode, byDate] = await Promise.all([
+        code
+          ? ref.where('code', '==', code).get().catch(() => null)
+          : Promise.resolve(null),
+        dateKeyValue
+          ? ref.where('startDate', '==', dateKeyValue).get().catch(() => null)
+          : Promise.resolve(null),
+      ])
+      pushSnap(byCode, acc)
+      pushSnap(byDate, acc)
+      return acc
+    }
+
+    const collectionResults = await Promise.all(
+      quadrantCollections.map((coll) => fetchPerCollection(coll))
+    )
+    const rows: QRow[] = collectionResults.flat()
 
     /* ────────────────────────────────────────────────
        3) FILTRAR QUADRANTS COINCIDENTS AMB L’ESDEVENIMENT
@@ -316,40 +326,45 @@ export async function GET(req: NextRequest) {
     const nameChunks = chunk(names, 10)
     const phoneMap = new Map<string, string>()
 
-    for (const chunkGroup of nameChunks) {
-      const snap = await firestoreAdmin
-        .collection('personnel')
-        .where('name', 'in', chunkGroup)
-        .get()
-        .catch(() => null)
+    const personnelSnaps = await Promise.all(
+      nameChunks.map((chunkGroup) =>
+        firestoreAdmin
+          .collection('personnel')
+          .where('name', 'in', chunkGroup)
+          .get()
+          .catch(() => null)
+      )
+    )
+    personnelSnaps.forEach((snap) => {
+      if (!snap || snap.empty) return
+      snap.forEach((doc) => {
+        const d = doc.data() as PersonnelDoc
+        const phone = d.phone || d.mobile || d.tel || d.telephone
+        if (d.name && phone) phoneMap.set(String(d.name), String(phone))
+      })
+    })
 
-      if (snap && !snap.empty) {
-        snap.forEach((doc) => {
-          const d = doc.data() as PersonnelDoc
-          const phone = d.phone || d.mobile || d.tel || d.telephone
-          if (d.name && phone) phoneMap.set(String(d.name), String(phone))
-        })
-      }
-    }
+    const missingChunks = nameChunks
+      .map((chunkGroup) => chunkGroup.filter((n) => !phoneMap.has(n)))
+      .filter((chunkGroup) => chunkGroup.length > 0)
 
-    for (const chunkGroup of nameChunks) {
-      const missing = chunkGroup.filter((n) => !phoneMap.has(n))
-      if (missing.length === 0) continue
-
-      const snap = await firestoreAdmin
-        .collection('users')
-        .where('name', 'in', missing)
-        .get()
-        .catch(() => null)
-
-      if (snap && !snap.empty) {
-        snap.forEach((doc) => {
-          const d = doc.data() as PersonnelDoc
-          const phone = d.phone || d.mobile || d.tel || d.telephone
-          if (d.name && phone) phoneMap.set(String(d.name), String(phone))
-        })
-      }
-    }
+    const userSnaps = await Promise.all(
+      missingChunks.map((chunkGroup) =>
+        firestoreAdmin
+          .collection('users')
+          .where('name', 'in', chunkGroup)
+          .get()
+          .catch(() => null)
+      )
+    )
+    userSnaps.forEach((snap) => {
+      if (!snap || snap.empty) return
+      snap.forEach((doc) => {
+        const d = doc.data() as PersonnelDoc
+        const phone = d.phone || d.mobile || d.tel || d.telephone
+        if (d.name && phone) phoneMap.set(String(d.name), String(phone))
+      })
+    })
 
     const withPhones = dedup.map((p) => ({ ...p, phone: phoneMap.get(p.name) }))
 

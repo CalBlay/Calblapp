@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
+import useSWR from 'swr'
 import { normalizeStatus } from '@/utils/normalize'
 
 export interface EventData {
@@ -94,6 +95,95 @@ const computeMapsUrl = (location = '') =>
 const normalizeCode = (raw?: string | number | null) =>
   String(raw ?? '').replace(/^#/, '').trim().toUpperCase()
 
+type EventsApiPayload = {
+  events?: EventPayload[]
+  responsables?: string[]
+  responsablesDetailed?: ResponsableDetailed[]
+}
+
+type EventsResult = {
+  events: EventData[]
+  groupedEvents: GroupedEvents
+  totalPerDay: TotalPerDay
+  responsables: string[]
+  responsablesDetailed: ResponsableDetailed[]
+}
+
+const EMPTY_RESULT: EventsResult = {
+  events: [],
+  groupedEvents: {},
+  totalPerDay: {},
+  responsables: [],
+  responsablesDetailed: [],
+}
+
+const eventsFetcher = async (url: string): Promise<EventsResult> => {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const payload = (await res.json()) as EventsApiPayload
+  const eventsFromPayload = payload?.events || []
+
+  const flat: EventData[] = eventsFromPayload.map((ev) => {
+    const location = ev.location || ''
+    let eventCode = ev.eventCode || ev.code || null
+
+    if (!eventCode && ev.summary) {
+      const match = ev.summary.match(/([A-Z]{1,3}\d{5,7})/i)
+      if (match) eventCode = match[1].toUpperCase()
+    }
+
+    const pax = Number(ev.pax ?? 0)
+    const lnRaw = String(ev.LN || ev.lnKey || 'altres').toLowerCase()
+    const lnKeys = ['empresa', 'casaments', 'foodlovers', 'agenda', 'altres'] as const
+    const lnKey = (lnKeys.includes(lnRaw as (typeof lnKeys)[number])
+      ? lnRaw
+      : 'altres') as NonNullable<EventData['lnKey']>
+
+    return {
+      ...ev,
+      name: ev.summary,
+      pax,
+      location,
+      day: ev.start.slice(0, 10),
+      locationShort: computeLocationShort(location),
+      mapsUrl: computeMapsUrl(location),
+      state: normalizeStatus(ev.state || ev.status),
+      eventCode: eventCode ? normalizeCode(eventCode) : null,
+      commercial: ev.commercial ?? null,
+      lastAviso: ev.lastAviso ?? null,
+      codeConfirmed: ev.codeConfirmed ?? undefined,
+      codeMatchScore: ev.codeMatchScore ?? undefined,
+      responsable: ev.responsableName || ev.responsable?.name,
+      responsableName: ev.responsableName || ev.responsable?.name || '',
+      conductors: [],
+      treballadors: [],
+      lnKey,
+      lnLabel: String(ev.LN || ev.lnLabel || 'Altres'),
+      fincaId: ev.fincaId ?? null,
+      fincaCode: ev.fincaCode ?? null,
+      horaInici:
+        String(ev.HoraInici || ev.horaInici || ev.Hora || ev.hora || '').slice(0, 5) ||
+        undefined,
+    } as EventData
+  })
+
+  const totals: TotalPerDay = {}
+  const grouped: GroupedEvents = {}
+  flat.forEach((ev) => {
+    totals[ev.day] = (totals[ev.day] || 0) + (ev.pax || 0)
+    if (!grouped[ev.day]) grouped[ev.day] = []
+    grouped[ev.day].push(ev)
+  })
+
+  return {
+    events: flat,
+    groupedEvents: grouped,
+    totalPerDay: totals,
+    responsables: payload?.responsables || [],
+    responsablesDetailed: payload?.responsablesDetailed || [],
+  }
+}
+
 export default function useEvents(
   department: string,
   fromISO: string,
@@ -101,133 +191,49 @@ export default function useEvents(
   scope?: 'all' | 'mine',
   _includeQuadrants?: boolean
 ) {
-  const [events, setEvents] = useState<EventData[]>([])
-  const [groupedEvents, setGroupedEvents] = useState<GroupedEvents>({})
-  const [totalPerDay, setTotalPerDay] = useState<TotalPerDay>({})
-  const [responsables, setResponsables] = useState<string[]>([])
-  const [responsablesDetailed, setResponsablesDetailed] = useState<ResponsableDetailed[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const ready = Boolean(department && fromISO && toISO)
+  const url = useMemo(() => {
+    if (!ready) return null
+    const qs = new URLSearchParams({
+      start: fromISO.slice(0, 10),
+      end: toISO.slice(0, 10),
+      department,
+    })
+    if (scope) qs.set('scope', scope)
+    return `/api/events/list?${qs.toString()}`
+  }, [ready, department, fromISO, toISO, scope])
 
-  const load = useCallback(
-    async (signal?: AbortSignal) => {
-      if (!fromISO || !toISO || !department) return
+  const { data, error, isLoading } = useSWR<EventsResult>(url, eventsFetcher, {
+    /**
+     * El servidor cacheja amb unstable_cache (EVENTS_LIST_REVALIDATE_SEC),
+     * aixi que aqui dedupliquem i revalidem nomes en ocasions clau:
+     * focus de finestra i reconnexio. Evitem fetches innecessaris.
+     */
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    dedupingInterval: 30_000,
+    keepPreviousData: true,
+  })
 
-      setLoading(true)
-      setError(null)
-
-      try {
-        const qs = new URLSearchParams({
-          start: fromISO.slice(0, 10),
-          end: toISO.slice(0, 10),
-          department,
-        })
-        if (scope) qs.set('scope', scope)
-
-        const res = await fetch(`/api/events/list?${qs.toString()}`, {
-          cache: 'no-store',
-          signal,
-        })
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`)
-        }
-
-        const payload = await res.json()
-        const eventsFromPayload = (payload?.events || []) as EventPayload[]
-
-        const flat: EventData[] = eventsFromPayload.map((ev) => {
-          const location = ev.location || ''
-          let eventCode = ev.eventCode || ev.code || null
-
-          if (!eventCode && ev.summary) {
-            const match = ev.summary.match(/([A-Z]{1,3}\d{5,7})/i)
-            if (match) eventCode = match[1].toUpperCase()
-          }
-
-          const pax = Number(ev.pax ?? 0)
-          const lnRaw = String(ev.LN || ev.lnKey || 'altres').toLowerCase()
-          const lnKeys = ['empresa', 'casaments', 'foodlovers', 'agenda', 'altres'] as const
-          const lnKey = (lnKeys.includes(lnRaw as (typeof lnKeys)[number])
-            ? lnRaw
-            : 'altres') as NonNullable<EventData['lnKey']>
-
-          return {
-            ...ev,
-            name: ev.summary,
-            pax,
-            location,
-            day: ev.start.slice(0, 10),
-            locationShort: computeLocationShort(location),
-            mapsUrl: computeMapsUrl(location),
-            state: normalizeStatus(ev.state || ev.status),
-            eventCode: eventCode ? normalizeCode(eventCode) : null,
-            commercial: ev.commercial ?? null,
-            lastAviso: ev.lastAviso ?? null,
-            codeConfirmed: ev.codeConfirmed ?? undefined,
-            codeMatchScore: ev.codeMatchScore ?? undefined,
-            responsable: ev.responsableName || ev.responsable?.name,
-            responsableName: ev.responsableName || ev.responsable?.name || '',
-            conductors: [],
-            treballadors: [],
-            lnKey,
-            lnLabel: String(ev.LN || ev.lnLabel || 'Altres'),
-            fincaId: ev.fincaId ?? null,
-            fincaCode: ev.fincaCode ?? null,
-            horaInici:
-              String(ev.HoraInici || ev.horaInici || ev.Hora || ev.hora || '').slice(0, 5) ||
-              undefined,
-          } as EventData
-        })
-
-        const totals: TotalPerDay = {}
-        const grouped: GroupedEvents = {}
-
-        flat.forEach((ev) => {
-          totals[ev.day] = (totals[ev.day] || 0) + (ev.pax || 0)
-          if (!grouped[ev.day]) grouped[ev.day] = []
-          grouped[ev.day].push(ev)
-        })
-
-        setEvents(flat)
-        setTotalPerDay(totals)
-        setGroupedEvents(grouped)
-        setResponsables(payload?.responsables || [])
-        setResponsablesDetailed(payload?.responsablesDetailed || [])
-      } catch (err: unknown) {
-        const aborted =
-          (err instanceof DOMException || err instanceof Error) && err.name === 'AbortError'
-        if (aborted) return
-        setError(err instanceof Error ? err.message : 'Error carregant esdeveniments')
-      } finally {
-        setLoading(false)
-      }
-    },
-    [fromISO, toISO, scope, department]
-  )
-
-  useEffect(() => {
-    const controller = new AbortController()
-    load(controller.signal)
-    return () => controller.abort()
-  }, [load])
+  const result = data ?? EMPTY_RESULT
 
   const lnOptions = useMemo(() => {
     const set = new Set<string>()
-    events.forEach((event) => {
+    result.events.forEach((event) => {
       if (event.lnLabel) set.add(event.lnLabel)
     })
     const order = ['Empresa', 'Casaments', 'Foodlovers', 'Agenda', 'Altres']
     return Array.from(set).sort((a, b) => order.indexOf(a) - order.indexOf(b))
-  }, [events])
+  }, [result.events])
 
   return {
-    events,
-    loading,
-    error,
-    groupedEvents,
-    totalPerDay,
-    responsables,
-    responsablesDetailed,
+    events: result.events,
+    loading: isLoading,
+    error: error instanceof Error ? error.message : null,
+    groupedEvents: result.groupedEvents,
+    totalPerDay: result.totalPerDay,
+    responsables: result.responsables,
+    responsablesDetailed: result.responsablesDetailed,
     lnOptions,
   }
 }

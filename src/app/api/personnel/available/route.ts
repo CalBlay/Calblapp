@@ -202,7 +202,7 @@ export async function GET(request: NextRequest) {
 
     for (const colId of colIds) {
       try {
-        const docs = await fetchQuadrantDocsByEndDate(colId, ed)
+        const docs = await fetchQuadrantDocsByEndDate(colId, ed, sd)
         docs.forEach((docSnap) => {
           if (excludeEventId && docSnap.id === excludeEventId) return
           const q = docSnap.data() as QuadrantDoc & { eventId?: string }
@@ -237,8 +237,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    /**
+     * Finestra ampliada per cobrir comprovacions de descans minim
+     * (mateix marge que personnelRest.REST_LOOKBACK_DAYS).
+     */
+    const MAINTENANCE_LOOKBACK_DAYS = 7
+    const lookbackDate = new Date(`${sd}T00:00:00Z`)
+    lookbackDate.setUTCDate(lookbackDate.getUTCDate() - MAINTENANCE_LOOKBACK_DAYS)
+    const lookbackIso = lookbackDate.toISOString().slice(0, 10)
+    const lookbackMs = lookbackDate.getTime()
+    const upperMs = new Date(`${ed}T23:59:59Z`).getTime()
+
     try {
-      const plannedSnap = await db.collection('maintenancePreventiusPlanned').get()
+      const plannedSnap = await db
+        .collection('maintenancePreventiusPlanned')
+        .where('date', '>=', lookbackIso)
+        .where('date', '<=', ed)
+        .get()
       plannedSnap.docs.forEach((doc) => {
         if (excludeMaintenancePlannedId && doc.id === excludeMaintenancePlannedId) return
         const data = doc.data() as MaintenancePlannedDoc
@@ -261,7 +276,11 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      const ticketsSnap = await db.collection('maintenanceTickets').get()
+      const ticketsSnap = await db
+        .collection('maintenanceTickets')
+        .where('plannedStart', '>=', lookbackMs)
+        .where('plannedStart', '<=', upperMs)
+        .get()
       ticketsSnap.docs.forEach((doc) => {
         if (excludeMaintenanceTicketId && doc.id === excludeMaintenanceTicketId) return
         const data = doc.data() as MaintenanceTicketDoc
@@ -280,11 +299,37 @@ export async function GET(request: NextRequest) {
       console.error('[available] Error reading maintenanceTickets:', error)
     }
 
-    const personnelSnap = await db.collection('personnel').get()
-    const deptPersonnel = personnelSnap.docs.filter((doc) => {
-      const data = doc.data() as PersonnelDoc
-      return norm(data.department) === deptNorm
-    })
+    /**
+     * Personal: filtrar per departmentLower (indexat) en lloc de
+     * llegir tota la col·leccio i filtrar en memoria. Si el camp
+     * encara no esta migrat a alguns docs, aplicar fallback.
+     */
+    let deptPersonnel: FirebaseFirestore.QueryDocumentSnapshot[] = []
+    try {
+      const lowerSnap = await db
+        .collection('personnel')
+        .where('departmentLower', '==', deptNorm)
+        .get()
+      deptPersonnel = lowerSnap.docs
+    } catch {}
+
+    if (deptPersonnel.length === 0) {
+      try {
+        const exactSnap = await db
+          .collection('personnel')
+          .where('department', '==', deptParam)
+          .get()
+        deptPersonnel = exactSnap.docs
+      } catch {}
+    }
+
+    if (deptPersonnel.length === 0) {
+      const personnelSnap = await db.collection('personnel').get()
+      deptPersonnel = personnelSnap.docs.filter((doc) => {
+        const data = doc.data() as PersonnelDoc
+        return norm(data.department) === deptNorm
+      })
+    }
 
     const responsables: AvailEntry[] = []
     const workers: AvailEntry[] = []

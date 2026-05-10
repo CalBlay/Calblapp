@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import { listAllCollectionIds } from '@/lib/firestoreCollections'
 
 export const runtime = 'nodejs'
 
@@ -23,14 +24,14 @@ const canonicalCollectionFor = (dept: string) => {
 
 async function resolveDeptCollection(dept: string) {
   const key = norm(dept)
-  const cols = await db.listCollections()
-  for (const c of cols) {
-    const plain = c.id
+  const cols = await listAllCollectionIds()
+  for (const id of cols) {
+    const plain = id
       .replace(/^quadrants/i, '')
       .replace(/[_\-\s]/g, '')
       .normalize('NFD').replace(/\p{Diacritic}/gu, '')
       .toLowerCase()
-    if (plain === key) return c.id
+    if (plain === key) return id
   }
   return canonicalCollectionFor(dept)
 }

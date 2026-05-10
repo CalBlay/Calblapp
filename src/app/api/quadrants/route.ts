@@ -4,6 +4,7 @@ import { Timestamp, type DocumentData, type DocumentSnapshot } from 'firebase-ad
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
 import {
   commitQuadrantConfirmedFirestoreBatch,
   deferQuadrantConfirmSideEffects,
@@ -16,11 +17,14 @@ import { autoAssign } from '@/services/autoAssign'
 import { loadDepartmentPersonnel, loadPremises, type DriverCrewPremise } from '@/services/premises'
 import { getSurveyPreferredCandidates } from '@/lib/quadrantSurveys'
 import { buildLedger } from '@/services/workloadLedger'
+import {
+  getQuadrantLearningSuggestion,
+  type QuadrantLearningSuggestion,
+} from '@/lib/quadrantLearning'
 
 export const runtime = 'nodejs'
 const unaccent = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const norm = (v?: string | null) => unaccent((v || '').toString().trim().toLowerCase())
-const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
 
 /** Serveis, Cuina i Logística: mateix sistema de modes, training i confirmació inline en manual. */
 const QUADRANT_CORE_DEPARTMENTS = new Set(['serveis', 'cuina', 'logistica'])
@@ -48,31 +52,13 @@ function partitionAssignmentsAcrossPhases<T>(items: T[], phaseCount: number): T[
   return result
 }
 
-/** Evita `listCollections()` a cada POST (costós); el nom efectiu canvia molt rarament. */
-const quadrantWriteCollectionCache = new Map<string, string>()
-
-/** Construeix el nom de colÂ·lecciÃ³ per departament: quadrantsLogistica, quadrantsServeis, ... */
-/** Retorna el nom de colÂ·lecciÃ³ existent per al departament (singular o plural). */
+/**
+ * Resol el nom real de col·leccio per departament (`quadrants{Dept}` o
+ * `quadrant{Dept}`). Delega al modul `firestoreCollections` que
+ * comparteix el cache de `listCollections()` entre tots els call sites.
+ */
 async function resolveWriteCollectionForDepartment(department: string) {
-  const deptKey = capitalize(norm(department)).toLowerCase()
-  const hit = quadrantWriteCollectionCache.get(deptKey)
-  if (hit) return hit
-
-  const d = capitalize(norm(department))
-  const plural = `quadrants${d}`
-  const singular = `quadrant${d}`
-
-  // Comprova si existeix el singular
-  const all = await db.listCollections()
-  const names = all.map((c) => c.id.toLowerCase())
-
-  // Prioritza la que existeixi (singular en el teu cas actual)
-  let resolved = plural
-  if (names.includes(singular.toLowerCase())) resolved = singular
-  else if (names.includes(plural.toLowerCase())) resolved = plural
-
-  quadrantWriteCollectionCache.set(deptKey, resolved)
-  return resolved
+  return resolveQuadrantCollection(department, { prefer: 'singular' })
 }
 
 
@@ -140,6 +126,7 @@ interface QuadrantSave {
   distanceKm?: number | null
   distanceCalcAt?: string | null
   timetables?: Array<{ startTime: string; endTime: string }>
+  ln?: string | null
   phaseType?: string | null
   phaseLabel?: string | null
   phaseDate?: string | null
@@ -225,6 +212,7 @@ type QuadrantSaveRequestBody = {
   totalWorkers?: number | string
   numPax?: number | null
   service?: string | null
+  ln?: string | null
   phaseType?: string | null
   phaseLabel?: string | null
   phaseDate?: string | null
@@ -887,6 +875,61 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    /**
+     * Mode `auto`: motor d'aprenentatge.
+     * Llegeix mostres confirmades de `quadrantTrainingSamples` i, si hi ha
+     * prou casos semblants, injecta noms preferits perque `autoAssign` els
+     * tingui en compte. Sempre retornem un `learningStatus` perque la UI
+     * pugui avisar si encara no hi ha prou dades.
+     */
+    let learningStatus: QuadrantLearningSuggestion | null = null
+    if (mode === 'auto' && isQuadrantCoreDepartment(deptNorm)) {
+      try {
+        learningStatus = await getQuadrantLearningSuggestion({
+          department: deptNorm,
+          eventId: canonicalEventId,
+          ln: typeof body?.ln === 'string' ? body.ln : null,
+          service: typeof body?.service === 'string' ? body.service : null,
+          location: typeof body?.location === 'string' ? body.location : null,
+          numPax:
+            typeof body?.numPax === 'number'
+              ? body.numPax
+              : Number.isFinite(Number(body?.numPax))
+                ? Number(body.numPax)
+                : null,
+          startDate: typeof body?.startDate === 'string' ? body.startDate : null,
+          startTime: typeof body?.startTime === 'string' ? body.startTime : null,
+          phaseType: typeof body?.phaseType === 'string' ? body.phaseType : null,
+        })
+
+        if (learningStatus.hasNameSuggestions) {
+          if (
+            !body.preferredResponsibleName &&
+            learningStatus.preferredNames.responsible
+          ) {
+            body.preferredResponsibleName = learningStatus.preferredNames.responsible
+          }
+          if (
+            (!Array.isArray(body.preferredDriverNames) ||
+              body.preferredDriverNames.length === 0) &&
+            learningStatus.preferredNames.drivers.length > 0
+          ) {
+            body.preferredDriverNames = [...learningStatus.preferredNames.drivers]
+          }
+          if (
+            (!Array.isArray(body.preferredStaffNames) ||
+              body.preferredStaffNames.length === 0) &&
+            learningStatus.preferredNames.staff.length > 0
+          ) {
+            body.preferredStaffNames = [...learningStatus.preferredNames.staff]
+          }
+        }
+      } catch (err) {
+        console.warn('[quadrants/route] learning suggestion failed', err)
+        learningStatus = null
+      }
+    }
+
     const getDepartmentPeople = async () => {
       if (!cachedDepartmentPeople) {
         cachedDepartmentPeople = await loadDepartmentPersonnel(deptNorm)
@@ -1002,6 +1045,7 @@ export async function POST(req: NextRequest) {
         isExternal: worker.isExternal === true,
       }))
 
+      const bodyRecord = bodyForSave as Record<string, unknown>
       const toSave: QuadrantSave = {
         code: bodyForSave.code || '',
         eventId: normalizeEventId(bodyForSave.eventId),
@@ -1019,6 +1063,7 @@ export async function POST(req: NextRequest) {
         totalWorkers: Number(bodyForSave.totalWorkers || 0),
         numPax: bodyForSave.numPax ?? null,
         service: bodyForSave.service || null,
+        ln: String(bodyRecord.ln || bodyRecord.LN || bodyRecord.lineOfBusiness || '').trim() || null,
         phaseType: bodyForSave.phaseType || (deptNorm === 'cuina' ? 'event' : null),
         phaseLabel: bodyForSave.phaseLabel || (deptNorm === 'cuina' ? 'Event' : null),
         phaseDate: bodyForSave.phaseDate || null,
@@ -1275,9 +1320,35 @@ export async function POST(req: NextRequest) {
       const baseEventId = normalizeEventId(String(body.eventId || ''))
       const stageDocId = baseEventId || canonicalEventId
       const stageData = await getStageVerdCached(stageDocId)
+      const stageText = (...keys: string[]) => {
+        for (const key of keys) {
+          const value = stageData?.[key]
+          const text = typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
+          if (text) return text
+        }
+        return ''
+      }
+      const stageNumber = (...keys: string[]) => {
+        const text = stageText(...keys)
+        if (!text) return null
+        const parsed = Number(String(text).replace(',', '.'))
+        return Number.isFinite(parsed) ? parsed : null
+      }
 
       if (!toSave.code) {
         toSave.code = String(stageData?.code || stageData?.C_digo || '')
+      }
+      if (!toSave.location) {
+        toSave.location = stageText('Ubicacio', 'location', 'eventLocation')
+      }
+      if (!toSave.service) {
+        toSave.service = stageText('Servei', 'servei', 'service', 'serviceType') || null
+      }
+      if (!toSave.ln) {
+        toSave.ln = stageText('LN', 'FincaLN', 'ln', 'lineOfBusiness') || null
+      }
+      if (toSave.numPax === null || toSave.numPax === undefined) {
+        toSave.numPax = stageNumber('NumPax', 'numPax', 'pax')
       }
       if (baseEventId) {
         toSave.eventId = baseEventId
@@ -2410,6 +2481,7 @@ export async function POST(req: NextRequest) {
           staff: preferredResult.assignment.staff,
         },
         meta: preferredResult.meta,
+        learningStatus,
       })
     }
 
@@ -2585,6 +2657,7 @@ export async function POST(req: NextRequest) {
         staff: res.assignment.staff,
       },
       meta: res.meta,
+      learningStatus,
     })
   } catch (e: unknown) {
     console.error('[quadrants/route] error:', e)

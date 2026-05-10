@@ -6,6 +6,7 @@ export const revalidate = 0
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken, type JWT } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
 
 type Dept =
   | 'serveis'
@@ -29,17 +30,8 @@ const unaccent = (s?: string | null) =>
 
 const norm = (v?: string | null) => unaccent((v || '').toString().trim().toLowerCase())
 
-const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
-
 async function resolveCollection(department: string) {
-  const d = capitalize(norm(department))
-  const plural = `quadrants${d}`
-  const singular = `quadrant${d}`
-  const all = await db.listCollections()
-  const names = all.map((c) => c.id.toLowerCase())
-  if (names.includes(singular.toLowerCase())) return singular
-  if (names.includes(plural.toLowerCase())) return plural
-  return plural
+  return resolveQuadrantCollection(department, { prefer: 'singular' })
 }
 
 function matchByName(a?: string, b?: string) {

@@ -1,9 +1,14 @@
 // ✅ file: src/app/api/quadrants/list/route.ts
 import { NextResponse, type NextRequest } from 'next/server'
+import { unstable_cache } from 'next/cache'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole as normalizeRoleCore } from '@/lib/roles'
 import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
+import { QUADRANTS_LIST_CACHE_TAG } from '@/lib/quadrantsListCache'
+import { listAllCollectionIds } from '@/lib/firestoreCollections'
+
+const QUADRANTS_LIST_REVALIDATE_SEC = 90
 
 /* ──────────────────────────────────────────────────────────────────────────
    Tipus: documents a Firestore (acceptem diversos noms de camps històrics)
@@ -180,17 +185,24 @@ function normalizeColId(id: string): string {
 }
 
 
+/**
+ * Map departament normalitzat -> nom real de col·leccio. Es construeix
+ * a partir del cache compartit (`firestoreCollections`) per evitar
+ * fer un nou `listCollections()` en cada request.
+ */
 const COLS_MAP: Record<string, string> = {}
-let COLS_LOADED = false
+let lastMapBuiltAt = 0
+const COLS_MAP_TTL_MS = 5 * 60_000
 
 async function loadCollectionsMap() {
-  if (COLS_LOADED) return
-  const cols = await db.listCollections()
-  cols.forEach(c => {
-    const key = normalizeColId(c.id)
-    if (key) COLS_MAP[key] = c.id
+  const now = Date.now()
+  if (now - lastMapBuiltAt < COLS_MAP_TTL_MS && Object.keys(COLS_MAP).length > 0) return
+  const cols = await listAllCollectionIds()
+  cols.forEach((id) => {
+    const key = normalizeColId(id)
+    if (key) COLS_MAP[key] = id
   })
-  COLS_LOADED = true
+  lastMapBuiltAt = now
 }
 
 async function resolveColForDept(dept: Dept): Promise<string | undefined> {
@@ -401,6 +413,30 @@ export async function GET(req: NextRequest) {
     const start = qsStart || defStart
     const end   = qsEnd   || defEnd
 
+    const payload = await getQuadrantsListCached(role, sessDept, qsDept, start, end, qsStatus)
+    if (payload.status === 403) {
+      return NextResponse.json({ drafts: [], range: { start, end } }, { status: 403 })
+    }
+    return NextResponse.json({ drafts: payload.drafts, range: payload.range })
+  } catch (err) {
+    console.error('[quadrants/list] 💥 Error GET:', err)
+    return NextResponse.json({ drafts: [] }, { status: 200 })
+  }
+}
+
+const getQuadrantsListCached = unstable_cache(
+  async (
+    role: string,
+    sessDept: string,
+    qsDept: string,
+    start: string,
+    end: string,
+    qsStatus: string
+  ): Promise<{
+    status: 200 | 403
+    drafts: Draft[]
+    range: { start: string; end: string }
+  }> => {
     await loadCollectionsMap()
     const existing = Object.keys(COLS_MAP)
 
@@ -410,8 +446,7 @@ export async function GET(req: NextRequest) {
       if (sessDept && existing.includes(sessDept)) {
         deptsToFetch = [sessDept]
       } else {
-        console.warn('[quadrants/list] ⚠️ Cap departament sense col·lecció vàlida', { sessDept })
-        return NextResponse.json({ drafts: [], range: { start, end } })
+        return { status: 200, drafts: [], range: { start, end } }
       }
     } else if (role === 'admin' || role === 'direccio') {
       if (qsDept && qsDept !== 'all' && existing.includes(qsDept)) {
@@ -420,8 +455,7 @@ export async function GET(req: NextRequest) {
         deptsToFetch = existing
       }
     } else {
-      console.warn('[quadrants/list] ❌ Accés denegat per rol', { role })
-      return NextResponse.json({ drafts: [], range: { start, end } }, { status: 403 })
+      return { status: 403, drafts: [], range: { start, end } }
     }
 
     const results = await Promise.all(
@@ -437,9 +471,8 @@ export async function GET(req: NextRequest) {
       drafts = drafts.filter((d) => d.status === qsStatus)
     }
 
-    return NextResponse.json({ drafts, range: { start, end } })
-  } catch (err) {
-    console.error('[quadrants/list] 💥 Error GET:', err)
-    return NextResponse.json({ drafts: [] }, { status: 200 })
-  }
-}
+    return { status: 200, drafts, range: { start, end } }
+  },
+  ['api-quadrants-list-v1'],
+  { revalidate: QUADRANTS_LIST_REVALIDATE_SEC, tags: [QUADRANTS_LIST_CACHE_TAG] }
+)

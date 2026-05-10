@@ -1,7 +1,8 @@
-//filename: src/hooks/quadrants/useLinkedDepartments.ts
+//filename: src/hooks/quadrants/useLinkedDepartmentsWeek.ts
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
+import useSWR from 'swr'
 
 /**
  * 🧩 Tipus de dades retornades per /api/quadrants/linked
@@ -12,41 +13,42 @@ export interface LinkedDept {
   responsable?: string
 }
 
+type LinkedMap = Record<string, LinkedDept[]>
+
+const linkedFetcher = async (url: string): Promise<LinkedMap> => {
+  const res = await fetch(url)
+  const json = await res.json()
+  if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+  return (json.linked || {}) as LinkedMap
+}
+
+const EMPTY_MAP: LinkedMap = {}
+
 /**
  * 🧠 Hook optimitzat per carregar tots els enllaços de departaments
- * segons el rang setmanal (start / end)
+ * segons el rang setmanal (start / end). Servidor cacheja amb tag de
+ * QUADRANTS_LIST_CACHE_TAG; aqui dedupliquem amb SWR.
  *
  * Exemple:
  *   const { linkedData, loading } = useLinkedDepartmentsWeek('2025-11-03', '2025-11-09')
  *   linkedData['E2500161'] -> [{ dept: 'serveis', startTime: '11:00' }]
  */
 export default function useLinkedDepartmentsWeek(start?: string, end?: string) {
-  const [linkedData, setLinkedData] = useState<Record<string, LinkedDept[]>>({})
-  const [loading, setLoading] = useState<boolean>(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!start || !end) return
-    const fetchData = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-
-        const res = await fetch(`/api/quadrants/linked?start=${start}&end=${end}`)
-        const json = await res.json()
-
-        if (!res.ok) throw new Error(json.error || 'Error carregant dades')
-        setLinkedData(json.linked || {})
-      } catch (err: unknown) {
-        console.error('[useLinkedDepartmentsWeek] Error:', err)
-        setError(err instanceof Error ? err.message : 'Error desconegut')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
+  const url = useMemo(() => {
+    if (!start || !end) return null
+    return `/api/quadrants/linked?start=${start}&end=${end}`
   }, [start, end])
 
-  return { linkedData, loading, error }
+  const { data, error, isLoading } = useSWR<LinkedMap>(url, linkedFetcher, {
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    dedupingInterval: 60_000,
+    keepPreviousData: true,
+  })
+
+  return {
+    linkedData: data ?? EMPTY_MAP,
+    loading: isLoading,
+    error: error instanceof Error ? error.message : null,
+  }
 }

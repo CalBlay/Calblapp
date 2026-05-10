@@ -9,4 +9,14 @@ export function revalidateQuadrantsListCache() {
   } catch (err) {
     console.warn('[quadrantsListCache] revalidateTag failed', err)
   }
+
+  // Importacio dinamica per evitar carregar firebase-admin en codepaths
+  // que nomes necessiten invalidar el tag (p. ex. routes light).
+  void import('@/services/workloadLedger')
+    .then(({ invalidateWorkloadLedgerCache }) => {
+      try {
+        invalidateWorkloadLedgerCache()
+      } catch {}
+    })
+    .catch(() => {})
 }

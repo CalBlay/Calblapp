@@ -1,13 +1,7 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
 import { queryQuadrantCollectionDocsInDateRange } from '@/lib/firestoreQuadrantsRangeQuery'
-
-const normalize = (s?: string | null): string =>
-  (s || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim()
+import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
 
 const normalizeEventId = (value?: string | null): string =>
   String(value || '')
@@ -30,8 +24,6 @@ const formatDayField = (primary: unknown, ...fallbacks: unknown[]): string => {
   }
   return ''
 }
-
-const readCollectionCache = new Map<string, string>()
 
 type LegacyExternalEntry = {
   workers?: unknown
@@ -64,37 +56,7 @@ const expandLegacyExternalWorkers = (entries: LegacyExternalEntry[] = []) =>
   })
 
 async function resolveReadCollectionForDepartment(department: string) {
-  const d = normalize(department)
-  if (readCollectionCache.has(d)) {
-    return readCollectionCache.get(d) as string
-  }
-  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-
-  const singular = `quadrant${cap(d)}`
-  const plural = `quadrants${cap(d)}`
-
-  const cols = await db.listCollections()
-  const names = cols.map((c) => c.id)
-
-  const map = names.reduce(
-    (acc, name) => {
-      acc[normalize(name)] = name
-      return acc
-    },
-    {} as Record<string, string>
-  )
-
-  if (map[normalize(singular)]) {
-    readCollectionCache.set(d, map[normalize(singular)])
-    return map[normalize(singular)]
-  }
-  if (map[normalize(plural)]) {
-    readCollectionCache.set(d, map[normalize(plural)])
-    return map[normalize(plural)]
-  }
-
-  readCollectionCache.set(d, plural)
-  return plural
+  return resolveQuadrantCollection(department, { prefer: 'singular' })
 }
 
 export async function computeQuadrantsGet(

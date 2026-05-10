@@ -1,9 +1,9 @@
 // file: src/hooks/useEventPersonnel.ts
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
+import useSWR from 'swr'
 
-// Tipus bàsics
 export interface Person {
   id?: string
   name?: string
@@ -26,56 +26,33 @@ export interface EventPersonnel {
   treballadors?: Person[]
 }
 
-// 🔵 Cache en memòria (per sessió)
-const personnelCache: Record<string, EventPersonnel> = {}
+const fetcher = async (url: string): Promise<EventPersonnel> => {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Error HTTP ${res.status}`)
+  return (await res.json()) as EventPersonnel
+}
 
 export function useEventPersonnel(eventId?: string | number) {
-  const [data, setData] = useState<EventPersonnel | null>(null)
-  const [loading, setLoading] = useState<boolean>(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!eventId) {
-      setData(null)
-      setLoading(false)
-    }
-
-    const key = String(eventId)
-
-    // 1) Si tenim cache, la retornem immediatament
-    if (personnelCache[key]) {
-      setData(personnelCache[key])
-      setLoading(false)
-      return
-    }
-
-    // 2) Sinó, fem fetch
-    async function fetchData() {
-      try {
-        setLoading(true)
-        setError(null)
-
-        const res = await fetch(`/api/events/personnel?eventId=${encodeURIComponent(key)}`, {
-          cache: 'no-store',
-        })
-        if (!res.ok) throw new Error(`Error HTTP ${res.status}`)
-
-        const json: EventPersonnel = await res.json()
-        personnelCache[key] = json // 👈 guardem al cache
-        setData(json)
-      } catch (err: unknown) {
-        if (err instanceof Error) {
-          setError(err.message)
-        } else {
-          setError('Error desconegut carregant personal')
-        }
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
+  const url = useMemo(() => {
+    if (!eventId) return null
+    return `/api/events/personnel?eventId=${encodeURIComponent(String(eventId))}`
   }, [eventId])
 
-  return { data, loading, error }
+  const { data, error, isLoading } = useSWR<EventPersonnel>(url, fetcher, {
+    /**
+     * Personal d'un esdeveniment canvia poc; deduplicacio agressiva
+     * entre components de la mateixa pagina i revalidacio en focus
+     * per detectar canvis sense forçar refetch constants.
+     */
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    dedupingInterval: 60_000,
+    keepPreviousData: true,
+  })
+
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error instanceof Error ? error.message : null,
+  }
 }

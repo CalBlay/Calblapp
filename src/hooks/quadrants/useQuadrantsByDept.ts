@@ -1,7 +1,8 @@
 //file: src/hooks/quadrants/useQuadrantsByDept.ts
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useMemo } from 'react'
+import useSWR from 'swr'
 
 /**
  * 🧩 Tipus coherent amb el que torna Firestore
@@ -33,102 +34,73 @@ type RawQuadrant = Omit<QuadrantData, 'service' | 'code' | 'displayDate'> & {
   servei?: string
 }
 
+const formatQuadrant = (q: RawQuadrant): QuadrantData => {
+  const d = q.startDate ? new Date(q.startDate) : null
+  const dayName = d ? d.toLocaleDateString('ca-ES', { weekday: 'long' }) : ''
+  const dayNum = d
+    ? d.toLocaleDateString('ca-ES', { day: '2-digit', month: '2-digit' })
+    : ''
+  return {
+    ...q,
+    code: q.code || q.eventCode || q.id,
+    service: q.service || q.servei || undefined,
+    displayDate: d
+      ? `${dayNum} — ${dayName.charAt(0).toUpperCase() + dayName.slice(1)}`
+      : '',
+  }
+}
+
+const quadrantsFetcher = async (url: string): Promise<QuadrantData[]> => {
+  const res = await fetch(url)
+  const json = await res.json()
+  if (!res.ok) {
+    throw new Error(json?.error || `HTTP ${res.status}`)
+  }
+  return ((json.quadrants || []) as RawQuadrant[]).map(formatQuadrant)
+}
+
 /**
- * 🔹 Carrega quadrants d’una setmana segons departament
+ * 🔹 Carrega quadrants d'una setmana segons departament
  */
 export default function useQuadrantsByDept(
   departament: string,
   startDate: string,
   endDate: string
 ) {
-  const [data, setData] = useState<QuadrantData[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const ready = Boolean(departament && startDate && endDate)
+  const url = useMemo(() => {
+    if (!ready) return null
+    const params = new URLSearchParams({
+      department: departament,
+      start: startDate,
+      end: endDate,
+    })
+    return `/api/quadrants/get?${params.toString()}`
+  }, [ready, departament, startDate, endDate])
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!departament || !startDate || !endDate) return
+  const { data, error, isLoading } = useSWR<QuadrantData[]>(url, quadrantsFetcher, {
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    dedupingInterval: 30_000,
+    keepPreviousData: true,
+  })
 
-      setLoading(true)
-      setError(null)
+  const quadrants = useMemo(() => data ?? [], [data])
 
-      try {
-        const params = new URLSearchParams({
-          department: departament,
-          start: startDate,
-          end: endDate,
-        })
-
-        const res = await fetch(`/api/quadrants/get?${params.toString()}`)
-        const json = await res.json()
-
-        if (!res.ok) {
-          console.error('❌ Error API quadrants/get:', json.error)
-          throw new Error(json.error || 'Error desconegut')
-        }
-
-        // -------------------------------
-        // 🧠 FORMATEM RESULTATS
-        // -------------------------------
-        const formatted: QuadrantData[] = (json.quadrants || []).map((q: RawQuadrant) => {
-          const d = q.startDate ? new Date(q.startDate) : null
-
-          const dayName = d
-            ? d.toLocaleDateString('ca-ES', { weekday: 'long' })
-            : ''
-
-          const dayNum = d
-            ? d.toLocaleDateString('ca-ES', { day: '2-digit', month: '2-digit' })
-            : ''
-
-          return {
-            ...q,
-
-            // 🔑 Normalització del codi
-            code: q.code || q.eventCode || q.id,
-
-            // 🍽️ Servei — accepta service o servei (Zoho / ADA)
-            service: q.service || q.servei || null,
-
-            // 📅 Etiqueta formatada
-            displayDate: d
-              ? `${dayNum} — ${dayName.charAt(0).toUpperCase() + dayName.slice(1)}`
-              : '',
-          }
-        })
-
-        console.log('✅ Quadrants carregats:', formatted.length)
-        setData(formatted)
-      } catch (err: unknown) {
-        console.error('⚠️ Error useQuadrantsByDept:', err)
-        setError(err instanceof Error ? err.message : 'Error carregant quadrants')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [departament, startDate, endDate])
-
-  // -------------------------------
-  // 🗂️ Agrupació per dia
-  // -------------------------------
   const groupedByDay = useMemo(() => {
     const groups: Record<string, QuadrantData[]> = {}
-
-    data.forEach((q) => {
+    quadrants.forEach((q) => {
       const key = q.displayDate || 'Sense data'
       if (!groups[key]) groups[key] = []
       groups[key].push(q)
     })
-
     return groups
-  }, [data])
+  }, [quadrants])
 
   return {
-    quadrants: data,
+    quadrants,
     groupedByDay,
-    loading,
-    error,
+    loading: isLoading,
+    error: error instanceof Error ? error.message : null,
   }
 }

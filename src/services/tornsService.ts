@@ -487,8 +487,10 @@ export async function fetchAllTorns(
     // Treballador
     if (role === 'Treballador') {
       if (dep) {
-        await fetchDeptCollectionRange(db, dep, startISO, endISO, out)
-        await fetchTransportAssignmentsRange(db, startISO, endISO, out, dep)
+        await Promise.all([
+          fetchDeptCollectionRange(db, dep, startISO, endISO, out),
+          fetchTransportAssignmentsRange(db, startISO, endISO, out, dep),
+        ])
         return out.filter((t) => {
           if (!Array.isArray(t.__rawWorkers)) return false
           const matchWorker = t.__rawWorkers.find(
@@ -511,8 +513,10 @@ export async function fetchAllTorns(
     // Cap Departament
     if (role === 'Cap Departament') {
       if (dep) {
-        await fetchDeptCollectionRange(db, dep, startISO, endISO, out)
-        await fetchTransportAssignmentsRange(db, startISO, endISO, out, dep)
+        await Promise.all([
+          fetchDeptCollectionRange(db, dep, startISO, endISO, out),
+          fetchTransportAssignmentsRange(db, startISO, endISO, out, dep),
+        ])
         return out
       }
       return []
@@ -523,34 +527,15 @@ export async function fetchAllTorns(
       if (dep) {
         await fetchDeptCollectionRange(db, dep, startISO, endISO, out)
       } else {
-        for (const d of KNOWN_DEPARTMENTS) {
-          await fetchDeptCollectionRange(db, d, startISO, endISO, out)
-        }
+        // Tots els departaments en paral·lel (3x mes rapid).
+        // Eliminada lectura legacy de la col·leccio "quadrants"
+        // (substituida per quadrants{Departament}*).
+        await Promise.all(
+          KNOWN_DEPARTMENTS.map((d) =>
+            fetchDeptCollectionRange(db, d, startISO, endISO, out)
+          )
+        )
       }
-
-      const collRef = db.collection('quadrants')
-      const snap2 = await collRef
-        .where('startDate', '>=', startISO)
-        .where('startDate', '<=', endISO)
-        .get()
-
-      snap2.forEach((doc) => {
-        const data = doc.data() as FirestoreData
-        if (!isVisibleInTorns(data)) return
-        const t = mapDocToTorn(doc.id, data, dep)
-        if (!t.startDate && !t.endDate) return
-
-        if (rangesOverlap(t.startDate || t.endDate, t.endDate || t.startDate, startISO, endISO)) {
-          const cur = new Date(t.startDate)
-          const realEnd = new Date(t.endDate)
-          while (cur <= realEnd) {
-            const iso = toISODate(cur)
-            out.push({ ...t, date: iso })
-            cur.setDate(cur.getDate() + 1)
-          }
-        }
-      })
-
       return out
     }
 
