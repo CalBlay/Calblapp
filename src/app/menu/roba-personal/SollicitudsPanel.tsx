@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Search, Trash2 } from 'lucide-react'
+import { ChevronDown, Search, Trash2 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import FilterButton from '@/components/ui/filter-button'
@@ -58,6 +58,14 @@ import { productById } from './robaProductHelpers'
 
 type SollicitudsPanelMode = 'requests' | 'prepare' | 'pickup'
 
+const REQUEST_ACTIVE_STATUSES = [
+  'submitted',
+  'sent_to_rrhh',
+  'prepared',
+  'ready_for_worker_delivery',
+  'picked_up',
+] as const
+
 export function SollicitudsPanel({
   highlightRequestId = '',
   highlightDeliveryId = '',
@@ -87,6 +95,7 @@ export function SollicitudsPanel({
 
   const { data: session } = useSession()
   const sessionUserId = String((session?.user as { id?: string })?.id || '').trim()
+  const sessionUserName = String((session?.user as { name?: string })?.name || '').trim()
   const sessionRoleNorm = normalizeRole((session?.user as { role?: string })?.role)
   const isRobaAdmin = sessionRoleNorm === 'admin'
   const sessionDeptNorm = String((session?.user as { department?: string })?.department || '')
@@ -130,6 +139,13 @@ export function SollicitudsPanel({
       departmentsInSameRobaScope(String(w.department || ''), dept)
     )
   }, [workers, dept, isDeptLeadLimited, isRobaWorkerSelf, robaLinkedPersonnelId])
+
+  const workerNameForRequestForm = useMemo(() => {
+    const fromWorkerList = workers.find((w) => w.id === workerId)?.name?.trim()
+    if (fromWorkerList) return fromWorkerList
+    if (isRobaWorkerSelf && sessionUserName) return sessionUserName
+    return '—'
+  }, [workers, workerId, isRobaWorkerSelf, sessionUserName])
 
   useEffect(() => {
     setWorkerId((id) => {
@@ -176,6 +192,7 @@ export function SollicitudsPanel({
   const [directPrepareMessage, setDirectPrepareMessage] = useState('')
   const [directPrepareWithoutStock, setDirectPrepareWithoutStock] = useState(false)
   const [directPrepareBusy, setDirectPrepareBusy] = useState(false)
+  const [directPrepareCollapsed, setDirectPrepareCollapsed] = useState(true)
   const [pickupOpen, setPickupOpen] = useState(false)
   const [pickupRequestId, setPickupRequestId] = useState('')
   const [pickupSummary, setPickupSummary] = useState<RequestRow | null>(null)
@@ -355,16 +372,33 @@ export function SollicitudsPanel({
     }
   }
 
+  const sendToRrhh = async (id: string) => {
+    try {
+      await api(`/api/roba-personal/requests/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'sent_to_rrhh' }),
+      })
+      toast({ title: 'Sol·licitud enviada a RRHH' })
+      void load()
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    }
+  }
+
   const markPickedUp = async (id: string, linesOverride?: { productId: string; quantity: number }[]) => {
     try {
       await api(`/api/roba-personal/requests/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          status: 'picked_up',
+          status: 'ready_for_worker_delivery',
           lines: linesOverride,
         }),
       })
-      toast({ title: 'Recollida registrada' })
+      toast({ title: 'Preparació validada' })
       void load()
     } catch (e: unknown) {
       toast({
@@ -419,13 +453,6 @@ export function SollicitudsPanel({
   const canMarkPickedUpClient = (r: RequestRow) => {
     if (r.status !== 'prepared') return false
     if (sessionRoleNorm === 'admin') return true
-    if (sessionUserId && String(r.createdByUserId || '').trim() === sessionUserId) return true
-    if (
-      robaLinkedPersonnelId &&
-      String(r.requestedByWorkerId || '').trim() === robaLinkedPersonnelId
-    ) {
-      return true
-    }
     const sessionRobaLead = Boolean(
       (session?.user as { isDepartmentRobaLead?: boolean })?.isDepartmentRobaLead
     )
@@ -435,11 +462,11 @@ export function SollicitudsPanel({
 
   const canCancelRequestClient = (r: RequestRow) => {
     if (isRobaAdminOrRrhh) {
-      return ['submitted', 'prepared', 'picked_up'].includes(r.status)
+      return [...REQUEST_ACTIVE_STATUSES].includes(r.status as (typeof REQUEST_ACTIVE_STATUSES)[number])
     }
     if (isDeptLeadLimited) {
       return (
-        ['submitted', 'prepared', 'picked_up'].includes(r.status) &&
+        [...REQUEST_ACTIVE_STATUSES].includes(r.status as (typeof REQUEST_ACTIVE_STATUSES)[number]) &&
         departmentsInSameRobaScope(String(r.requestingDepartment || ''), sessionDeptLabel)
       )
     }
@@ -452,6 +479,13 @@ export function SollicitudsPanel({
       )
     }
     return false
+  }
+
+  const canSendToRrhhClient = (r: RequestRow) => {
+    if (r.status !== 'submitted') return false
+    if (isRobaAdminOrRrhh) return true
+    if (!isDeptLeadLimited) return false
+    return departmentsInSameRobaScope(String(r.requestingDepartment || ''), sessionDeptLabel)
   }
 
   const load = useCallback(async () => {
@@ -553,7 +587,8 @@ export function SollicitudsPanel({
   }
 
   const crear = async () => {
-    if (!workerId.trim()) {
+    const effectiveWorkerId = isRobaWorkerSelf ? robaLinkedPersonnelId : workerId.trim()
+    if (!effectiveWorkerId) {
       toast({
         title: 'Trieu el treballador',
         description: 'Cal indicar per a qui és la sol·licitud.',
@@ -581,7 +616,7 @@ export function SollicitudsPanel({
         method: 'POST',
         body: JSON.stringify({
           requestingDepartment: dept,
-          requestedByWorkerId: workerId.trim(),
+          requestedByWorkerId: effectiveWorkerId,
           lines: payloadLines,
         }),
       })
@@ -637,6 +672,7 @@ export function SollicitudsPanel({
           requestingDepartment: dept,
           requestedByWorkerId: workerId.trim(),
           lines: payloadLines,
+          status: 'sent_to_rrhh',
         }),
       })
       await api(`/api/roba-personal/requests/${created.id}`, {
@@ -794,9 +830,16 @@ export function SollicitudsPanel({
       }
       if (listFilterDept && r.requestingDepartment !== listFilterDept) return false
       if (listFilterStatus && r.status !== listFilterStatus) return false
-      if (isPrepareMode && r.status !== 'submitted') return false
-      if (isPickupMode && r.status !== 'prepared') return false
-      if (isRequestsMode && !['submitted', 'prepared', 'picked_up'].includes(r.status)) return false
+      if (isPrepareMode && r.status !== 'sent_to_rrhh') return false
+      if (
+        isPickupMode &&
+        !['submitted', 'sent_to_rrhh', 'prepared', 'ready_for_worker_delivery', 'picked_up'].includes(r.status)
+      ) {
+        return false
+      }
+      if (isRequestsMode && !REQUEST_ACTIVE_STATUSES.includes(r.status as (typeof REQUEST_ACTIVE_STATUSES)[number])) {
+        return false
+      }
       const q = normalizeSolicFilter(listSearch)
       if (q) {
         const wname =
@@ -854,6 +897,7 @@ export function SollicitudsPanel({
         }>
         const requestedTotal = requestedLines.reduce((a, l) => a + (Number(l.quantity) || 0), 0)
         const preparedTotal = (r.lines || []).reduce((a, l) => a + (Number(l.quantity) || 0), 0)
+        const hasPreparation = ['prepared', 'ready_for_worker_delivery', 'picked_up', 'fulfilled', 'receipt_confirmed'].includes(r.status)
         const hasLinkedDelivery = deliveries.some(
           (x) => String(x.requestId || '').trim() === r.id
         )
@@ -861,14 +905,16 @@ export function SollicitudsPanel({
           ? deliveredQtyByProductForRequestId(deliveries, r.id)
           : null
         const deliveredTotal = totalDeliveredUnitsForRequest(deliveries, r.id)
-        const displayPreparedTotal = hasLinkedDelivery ? deliveredTotal : preparedTotal
+        const displayPreparedTotal = hasLinkedDelivery ? deliveredTotal : hasPreparation ? preparedTotal : 0
         const Linies = (r.lines || [])
           .map((l) => {
             const reqQ =
               requestedLines.find((x) => x.productId === l.productId)?.quantity ?? l.quantity
             const qtyShown = delByProd
               ? delByProd.get(l.productId) ?? 0
-              : Number(l.quantity) || 0
+              : hasPreparation
+                ? Number(l.quantity) || 0
+                : Number(reqQ) || 0
             const base = `${prodLabel(l.productId)} x ${qtyShown}`
             if (Number(reqQ) !== Number(qtyShown)) return `${base} (sol. ${reqQ})`
             return base
@@ -1004,20 +1050,28 @@ export function SollicitudsPanel({
                   <Label htmlFor="sol-worker" className="text-xs text-muted-foreground">
                     Treballador
                   </Label>
-                  <select
-                    id="sol-worker"
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm min-w-0"
-                    value={workerId}
-                    onChange={(e) => setWorkerId(e.target.value)}
-                    disabled={isRobaWorkerSelf}
-                  >
-                    <option value="">— Trieu —</option>
-                    {workersForDept.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name.trim() || '—'}
-                      </option>
-                    ))}
-                  </select>
+                  {isRobaWorkerSelf ? (
+                    <div
+                      id="sol-worker"
+                      className="flex h-9 w-full items-center rounded-md border border-input bg-muted/50 px-3 text-sm text-foreground"
+                    >
+                      {workerNameForRequestForm}
+                    </div>
+                  ) : (
+                    <select
+                      id="sol-worker"
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm min-w-0"
+                      value={workerId}
+                      onChange={(e) => setWorkerId(e.target.value)}
+                    >
+                      <option value="">— Trieu —</option>
+                      {workersForDept.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name.trim() || '—'}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               ) : (
                 <div className="hidden md:block min-w-[1px]" aria-hidden />
@@ -1080,135 +1134,154 @@ export function SollicitudsPanel({
 
       {isPrepareMode ? (
         <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
-          <h2 className="font-semibold text-base">Preparació sense sol·licitud prèvia</h2>
-          <p className="text-xs text-muted-foreground">
-            Crea una preparació directa: es generarà la sol·licitud interna i quedarà preparada amb la reserva corresponent si escau.
-          </p>
-          <div className="rounded-lg border border-indigo-200/60 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 px-3 py-3 sm:px-4 min-w-0 space-y-3">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1 min-w-0">
-                <Label className="text-xs text-muted-foreground">Departament sol·licitant</Label>
-                <select
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  value={dept}
-                  onChange={(e) => setDept(e.target.value as DepartmentId)}
-                >
-                  {DEPARTMENTS.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1 min-w-0">
-                <Label className="text-xs text-muted-foreground">Treballador</Label>
-                <select
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm min-w-0"
-                  value={workerId}
-                  onChange={(e) => setWorkerId(e.target.value)}
-                >
-                  <option value="">— Trieu —</option>
-                  {workersForDept.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name.trim() || '—'}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left"
+            onClick={() => setDirectPrepareCollapsed((v) => !v)}
+            aria-expanded={!directPrepareCollapsed}
+          >
+            <div className="space-y-1">
+              <h2 className="font-semibold text-base">Preparació sense sol·licitud prèvia</h2>
+              <p className="text-xs text-muted-foreground">
+                Crea una preparació directa quan no vingui d&apos;una sol·licitud prèvia.
+              </p>
             </div>
-            {lines.map((ln, i) => (
-              <div
-                key={`direct-${i}`}
-                className={cn(
-                  'grid gap-2 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(4.25rem,5.5rem)_auto] md:items-end md:gap-3',
-                  i > 0 && 'pt-3 mt-2 border-t border-indigo-200/40 dark:border-indigo-900/40'
-                )}
-              >
-                <div className="space-y-1 min-w-0">
-                  <Label className="text-xs text-muted-foreground">Producte</Label>
-                  <ProductSearchCombobox
-                    products={products}
-                    value={ln.productId}
-                    onChange={(v) =>
-                      setLines((L) => L.map((x, j) => (j === i ? { ...x, productId: v } : x)))
-                    }
-                    placeholder="Cercar i triar…"
-                    showStockHint
-                    variant="list"
-                    className="h-9 text-sm"
-                  />
+            <ChevronDown
+              className={cn(
+                'h-5 w-5 shrink-0 text-muted-foreground transition-transform',
+                !directPrepareCollapsed && 'rotate-180'
+              )}
+            />
+          </button>
+          {!directPrepareCollapsed ? (
+            <>
+              <div className="rounded-lg border border-indigo-200/60 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 px-3 py-3 sm:px-4 min-w-0 space-y-3">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1 min-w-0">
+                    <Label className="text-xs text-muted-foreground">Departament sol·licitant</Label>
+                    <select
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      value={dept}
+                      onChange={(e) => setDept(e.target.value as DepartmentId)}
+                    >
+                      {DEPARTMENTS.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1 min-w-0">
+                    <Label className="text-xs text-muted-foreground">Treballador</Label>
+                    <select
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm min-w-0"
+                      value={workerId}
+                      onChange={(e) => setWorkerId(e.target.value)}
+                    >
+                      <option value="">— Trieu —</option>
+                      {workersForDept.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name.trim() || '—'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {lines.map((ln, i) => (
+                  <div
+                    key={`direct-${i}`}
+                    className={cn(
+                      'grid gap-2 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(4.25rem,5.5rem)_auto] md:items-end md:gap-3',
+                      i > 0 && 'pt-3 mt-2 border-t border-indigo-200/40 dark:border-indigo-900/40'
+                    )}
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-xs text-muted-foreground">Producte</Label>
+                      <ProductSearchCombobox
+                        products={products}
+                        value={ln.productId}
+                        onChange={(v) =>
+                          setLines((L) => L.map((x, j) => (j === i ? { ...x, productId: v } : x)))
+                        }
+                        placeholder="Cercar i triar…"
+                        showStockHint
+                        variant="list"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Qty</Label>
+                      <Input
+                        className="h-9"
+                        type="number"
+                        value={ln.qty}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setLines((L) => L.map((x, j) => (j === i ? { ...x, qty: v } : x)))
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-end justify-end md:justify-start pb-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        disabled={lines.length <= 1}
+                        onClick={() => removeLine(i)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="direct-pickup-date">Dia de recollida</Label>
+                    <Input
+                      id="direct-pickup-date"
+                      type="date"
+                      className="h-9"
+                      value={directPreparePickupDate}
+                      onChange={(e) => setDirectPreparePickupDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <div className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                      <Switch
+                        id="direct-prep-no-stock"
+                        checked={directPrepareWithoutStock}
+                        onCheckedChange={(v) => setDirectPrepareWithoutStock(Boolean(v))}
+                      />
+                      <Label htmlFor="direct-prep-no-stock" className="text-sm font-normal cursor-pointer leading-snug">
+                        Sense reserva d'estoc
+                      </Label>
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Qty</Label>
-                  <Input
-                    className="h-9"
-                    type="number"
-                    value={ln.qty}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      setLines((L) => L.map((x, j) => (j === i ? { ...x, qty: v } : x)))
-                    }}
-                  />
-                </div>
-                <div className="flex items-end justify-end md:justify-start pb-0.5">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    disabled={lines.length <= 1}
-                    onClick={() => removeLine(i)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="direct-pickup-date">Dia de recollida</Label>
-                <Input
-                  id="direct-pickup-date"
-                  type="date"
-                  className="h-9"
-                  value={directPreparePickupDate}
-                  onChange={(e) => setDirectPreparePickupDate(e.target.value)}
-                />
-              </div>
-              <div className="flex items-end">
-                <div className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
-                  <Switch
-                    id="direct-prep-no-stock"
-                    checked={directPrepareWithoutStock}
-                    onCheckedChange={(v) => setDirectPrepareWithoutStock(Boolean(v))}
-                  />
-                  <Label htmlFor="direct-prep-no-stock" className="text-sm font-normal cursor-pointer leading-snug">
-                    Sense reserva d'estoc
+                  <Label htmlFor="direct-prepare-msg" className="text-xs text-muted-foreground">
+                    Missatge (opcional)
                   </Label>
+                  <Textarea
+                    id="direct-prepare-msg"
+                    className="min-h-[64px] text-sm"
+                    placeholder="Ex.: material disponible a partir de…"
+                    value={directPrepareMessage}
+                    onChange={(e) => setDirectPrepareMessage(e.target.value)}
+                  />
                 </div>
               </div>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="direct-prepare-msg" className="text-xs text-muted-foreground">
-                Missatge (opcional)
-              </Label>
-              <Textarea
-                id="direct-prepare-msg"
-                className="min-h-[64px] text-sm"
-                placeholder="Ex.: material disponible a partir de…"
-                value={directPrepareMessage}
-                onChange={(e) => setDirectPrepareMessage(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={addLine}>
-              + Línia
-            </Button>
-            <Button type="button" disabled={directPrepareBusy} onClick={() => void crearPreparacioDirecta()}>
-              {directPrepareBusy ? 'Preparant…' : 'Preparar sense sol·licitud'}
-            </Button>
-          </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                  + Línia
+                </Button>
+                <Button type="button" disabled={directPrepareBusy} onClick={() => void crearPreparacioDirecta()}>
+                  {directPrepareBusy ? 'Preparant…' : 'Preparar sense sol·licitud'}
+                </Button>
+              </div>
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -1274,7 +1347,7 @@ export function SollicitudsPanel({
 
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
         <h2 className="font-semibold text-base">
-          {isPrepareMode ? 'Sol·licituds per preparar' : isPickupMode ? 'Recollides pendents' : 'Sol·licituds'}
+          {isPrepareMode ? 'Sol·licituds per preparar' : isPickupMode ? 'Recepcions' : 'Sol·licituds'}
         </h2>
         <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
           <SmartFilters
@@ -1360,24 +1433,27 @@ export function SollicitudsPanel({
                         productId: string
                         quantity: number
                       }>
-                      const requestedTotal = requestedLines.reduce(
-                        (a, l) => a + (Number(l.quantity) || 0),
-                        0
-                      )
-                      const preparedTotal = (r.lines || []).reduce(
-                        (a, l) => a + (Number(l.quantity) || 0),
-                        0
-                      )
-                      const hasLinkedDelivery = deliveries.some(
-                        (x) => String(x.requestId || '').trim() === r.id
-                      )
-                      const delByProd = hasLinkedDelivery
-                        ? deliveredQtyByProductForRequestId(deliveries, r.id)
-                        : null
-                      const deliveredTotal = totalDeliveredUnitsForRequest(deliveries, r.id)
-                      const displayPreparedTotal = hasLinkedDelivery
-                        ? deliveredTotal
-                        : preparedTotal
+        const requestedTotal = requestedLines.reduce(
+          (a, l) => a + (Number(l.quantity) || 0),
+          0
+        )
+        const preparedTotal = (r.lines || []).reduce(
+          (a, l) => a + (Number(l.quantity) || 0),
+          0
+        )
+        const hasPreparation = ['prepared', 'ready_for_worker_delivery', 'picked_up', 'fulfilled', 'receipt_confirmed'].includes(r.status)
+        const hasLinkedDelivery = deliveries.some(
+          (x) => String(x.requestId || '').trim() === r.id
+        )
+        const delByProd = hasLinkedDelivery
+          ? deliveredQtyByProductForRequestId(deliveries, r.id)
+          : null
+        const deliveredTotal = totalDeliveredUnitsForRequest(deliveries, r.id)
+        const displayPreparedTotal = hasLinkedDelivery
+          ? deliveredTotal
+          : hasPreparation
+            ? preparedTotal
+            : 0
                       const requester = String(r.createdByUserName || '').trim() || '—'
                       const hid = highlightRequestId.trim() === r.id
                       return (
@@ -1418,7 +1494,9 @@ export function SollicitudsPanel({
                                   (Number(l.quantity) || 0)
                                 const showQ = delByProd
                                   ? delByProd.get(l.productId) ?? 0
-                                  : Number(l.quantity) || 0
+                                  : hasPreparation
+                                    ? Number(l.quantity) || 0
+                                    : Number(reqQ) || 0
                                 return (
                                   <li key={`${l.productId}-${idx}`} className="leading-snug">
                                     <span className="text-foreground">{prodLabel(l.productId)}</span>
@@ -1468,7 +1546,7 @@ export function SollicitudsPanel({
                           </TableCell>
                           <TableCell className="align-top" onClick={(e) => e.stopPropagation()}>
                             <div className="flex flex-wrap gap-1">
-                              {isPrepareMode && r.status === 'submitted' && isRobaAdminOrRrhh ? (
+                              {isPrepareMode && r.status === 'sent_to_rrhh' && isRobaAdminOrRrhh ? (
                                 <Button
                                   type="button"
                                   variant="secondary"
@@ -1479,6 +1557,17 @@ export function SollicitudsPanel({
                                   Preparat (RRHH)
                                 </Button>
                               ) : null}
+                              {isPickupMode && canSendToRrhhClient(r) ? (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  className="text-xs h-7"
+                                  onClick={() => void sendToRrhh(r.id)}
+                                >
+                                  Enviar a RRHH
+                                </Button>
+                              ) : null}
                               {isPickupMode && canMarkPickedUpClient(r) ? (
                                 <Button
                                   type="button"
@@ -1487,7 +1576,7 @@ export function SollicitudsPanel({
                                   className="text-xs h-7"
                                   onClick={() => openPickup(r)}
                                 >
-                                  Recollit
+                                  Validar preparació
                                 </Button>
                               ) : null}
                               {canCancelRequestClient(r) ? (

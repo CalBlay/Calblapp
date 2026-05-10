@@ -18,9 +18,11 @@ export function parseRobaTab(v: string | null): TabId | null {
 }
 
 export const ROBA_REQUEST_STATUS_LABEL: Record<string, string> = {
-  submitted: 'Enviada',
+  submitted: 'Sol·licitada',
+  sent_to_rrhh: 'Enviada a RRHH',
   prepared: 'Preparada',
-  picked_up: 'Recollida a RRHH (pendent lliurament al treballador)',
+  ready_for_worker_delivery: 'Preparada per entregar',
+  picked_up: 'Preparada per entregar',
   fulfilled: 'Lliurada',
   receipt_confirmed: 'Confirmada',
   cancelled: 'Cancel·lada',

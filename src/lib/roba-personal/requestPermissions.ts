@@ -48,11 +48,6 @@ export async function userCanMarkRequestPickedUp(
 ): Promise<boolean> {
   if (!userId) return false
   if (sessionRole && normalizeRole(sessionRole) === 'admin') return true
-  if (await userIsRecursosHumans(userId)) return true
-  if (String(request.createdByUserId || '').trim() === userId) return true
-  const linked = String(opts?.linkedPersonnelId || '').trim()
-  const forWorker = String(request.requestedByWorkerId || '').trim()
-  if (linked && forWorker && linked === forWorker) return true
   const u = await getUserDoc(userId)
   if (!u?.isDepartmentRobaLead) return false
   const ud = normDeptLabel(u.departmentLower || u.department)

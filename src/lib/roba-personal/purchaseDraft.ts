@@ -58,7 +58,15 @@ export type PurchaseProposalLine = StockInsightRow & {
 }
 
 /** Sol·licituds que encara generen demanda operativa (no lliurades ni cancel·lades). */
-const OPEN_REQUEST = new Set(['submitted', 'approved', 'draft', 'prepared', 'picked_up'])
+const OPEN_REQUEST = new Set([
+  'submitted',
+  'sent_to_rrhh',
+  'approved',
+  'draft',
+  'prepared',
+  'ready_for_worker_delivery',
+  'picked_up',
+])
 
 function purchaseTextTallaFragment(size: string): string {
   const t = (size || '').trim()

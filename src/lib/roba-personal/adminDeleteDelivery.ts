@@ -108,7 +108,7 @@ export async function adminDeleteDeliveryTransaction(
 
     if (reqRef && requestData) {
       tx.update(reqRef, {
-        status: 'picked_up',
+        status: 'ready_for_worker_delivery',
         fulfilledAt: null,
         fulfillmentDeliveryId: null,
         receiptConfirmedAt: null,

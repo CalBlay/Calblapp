@@ -56,7 +56,12 @@ async function departmentRobaLeadCalendarAttendees(
   return out
 }
 
-const TARGET_STATUSES = new Set(['prepared', 'picked_up', 'cancelled'])
+const TARGET_STATUSES = new Set([
+  'sent_to_rrhh',
+  'prepared',
+  'ready_for_worker_delivery',
+  'cancelled',
+])
 
 type ReqLine = { productId: string; quantity: number }
 
@@ -187,7 +192,11 @@ export async function PATCH(
     if (curStatus === 'fulfilled' || curStatus === 'receipt_confirmed') {
       return NextResponse.json({ error: 'La sol·licitud ja consta com a lliurada o confirmada.' }, { status: 400 })
     }
-    if (curStatus === 'prepared' || curStatus === 'picked_up') {
+    if (
+      curStatus === 'prepared' ||
+      curStatus === 'ready_for_worker_delivery' ||
+      curStatus === 'picked_up'
+    ) {
       try {
         await db.runTransaction(async (tx) => {
           const rs = await tx.get(ref)
@@ -254,10 +263,38 @@ export async function PATCH(
   }
 
   /** ─── Preparat (RRHH + reserva) ─── */
-  if (nextStatus === 'prepared') {
+  if (nextStatus === 'sent_to_rrhh') {
+    const sameDept =
+      access.scope === 'deptLead' &&
+      departmentsInSameRobaScope(String(cur.requestingDepartment || ''), access.leadDeptNorm)
     if (curStatus !== 'submitted') {
       return NextResponse.json(
-        { error: 'Només es pot marcar «preparat» des de «submitted».' },
+        { error: 'Només es pot enviar a RRHH des de «submitted».' },
+        { status: 400 }
+      )
+    }
+    if (!(access.scope === 'full' || sameDept)) {
+      return NextResponse.json(
+        { error: 'No autoritzat per enviar aquesta sol·licitud a RRHH.' },
+        { status: 403 }
+      )
+    }
+    await ref.update({
+      status: 'sent_to_rrhh',
+      sentToRrhhAt: now,
+      sentToRrhhByUserId: access.userId,
+      updatedAt: now,
+    })
+    const out = await ref.get()
+    return NextResponse.json(
+      serializeFirestoreDoc(out.id, out.data() as Record<string, unknown>)
+    )
+  }
+
+  if (nextStatus === 'prepared') {
+    if (curStatus !== 'sent_to_rrhh' && curStatus !== 'submitted') {
+      return NextResponse.json(
+        { error: 'Només es pot marcar «preparat» des de «sent_to_rrhh».' },
         { status: 400 }
       )
     }
@@ -289,7 +326,9 @@ export async function PATCH(
         const rs = await tx.get(ref)
         if (!rs.exists) throw new Error('Sol·licitud no trobada.')
         const d = rs.data() as Record<string, unknown>
-        if (effectiveRequestStatus(d) !== 'submitted') throw new Error('Estat invàlid per preparar.')
+        if (effectiveRequestStatus(d) !== 'sent_to_rrhh' && effectiveRequestStatus(d) !== 'submitted') {
+          throw new Error('Estat invàlid per preparar.')
+        }
 
         const ls =
           linesOverride !== null && linesOverride.length > 0 ? linesOverride : parseLines(d)
@@ -429,10 +468,10 @@ export async function PATCH(
   }
 
   /** ─── Recollit (sol·licitant / responsable roba dept.) ─── */
-  if (nextStatus === 'picked_up') {
+  if (nextStatus === 'ready_for_worker_delivery') {
     if (curStatus !== 'prepared') {
       return NextResponse.json(
-        { error: 'Només es pot marcar «recollit» des de «preparat».' },
+        { error: 'Només es pot validar la preparació quan la sol·licitud ja està «Preparada» per RRHH.' },
         { status: 400 }
       )
     }
@@ -450,7 +489,10 @@ export async function PATCH(
           : undefined
       ))
     ) {
-      return NextResponse.json({ error: 'No autoritzat per marcar la recollida.' }, { status: 403 })
+      return NextResponse.json(
+        { error: 'No autoritzat per validar la preparació.' },
+        { status: 403 }
+      )
     }
 
     const linesOverride =
@@ -468,7 +510,7 @@ export async function PATCH(
         if (!rs.exists) throw new Error('Sol·licitud no trobada.')
         const d = rs.data() as Record<string, unknown>
         if (effectiveRequestStatus(d) !== 'prepared') {
-          throw new Error('Només es pot marcar «recollit» des de «preparat».')
+          throw new Error('Només es pot validar la preparació quan la sol·licitud ja està «Preparada» per RRHH.')
         }
 
         const preparedLines = parseLines(d)
@@ -502,12 +544,12 @@ export async function PATCH(
             }
             if (pickedQty > preparedQty + freeAvailable) {
               throw new Error(
-                `No hi ha prou estoc disponible per recollir ${pickedQty} u. del producte ${productId}.`
+                `No hi ha prou estoc disponible per validar ${pickedQty} u. del producte ${productId}.`
               )
             }
           } else if (pickedQty > freeAvailable) {
             throw new Error(
-              `No hi ha prou estoc disponible per recollir ${pickedQty} u. del producte ${productId}.`
+              `No hi ha prou estoc disponible per validar ${pickedQty} u. del producte ${productId}.`
             )
           }
 
@@ -526,7 +568,7 @@ export async function PATCH(
           tx.set(mref, {
             productId,
             quantityDelta: -pickedQty,
-            reason: 'department_pickup',
+            reason: 'department_validation',
             reference: deliveryStockMovementReferenceFromDocId(mref.id),
             notes: `Recollida departament ${reqRefStr} · ${pickedQty} u.`,
             requestId: id,
@@ -541,9 +583,9 @@ export async function PATCH(
 
         tx.update(ref, {
           lines: linesToStore,
-          status: 'picked_up',
-          pickedUpAt: now,
-          pickedUpByUserId: access.userId,
+          status: 'ready_for_worker_delivery',
+          validatedByLeadAt: now,
+          validatedByLeadUserId: access.userId,
           notes: body.notes !== undefined ? String(body.notes || '').trim() || null : d.notes,
           updatedAt: now,
         })
@@ -632,7 +674,12 @@ export async function DELETE(
       const ls = parseLines(d)
       const hadStockReservation =
         (d as { preparedWithStockReservation?: boolean }).preparedWithStockReservation !== false
-      if ((curStatus === 'prepared' || curStatus === 'picked_up') && hadStockReservation) {
+      if (
+        (curStatus === 'prepared' ||
+          curStatus === 'ready_for_worker_delivery' ||
+          curStatus === 'picked_up') &&
+        hadStockReservation
+      ) {
         const reqRefStr = requestReferenceFromDocId(id)
         const reqDept = String(d.requestingDepartment || '').trim() || null
         for (const line of ls) {

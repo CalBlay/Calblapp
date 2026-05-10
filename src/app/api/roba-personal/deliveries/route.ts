@@ -337,7 +337,7 @@ export async function POST(req: Request) {
     }
     const rdata = rsnap.data() as Record<string, unknown>
     const st = String(rdata.status || '').trim()
-    if (st !== 'picked_up') {
+    if (st !== 'ready_for_worker_delivery' && st !== 'picked_up') {
       return NextResponse.json(
         {
           error:
@@ -458,7 +458,7 @@ export async function POST(req: Request) {
         if (!rsnap.exists) throw new Error('Sol·licitud no trobada.')
         reqData = rsnap.data() as Record<string, unknown>
         const st = String(reqData.status || '')
-        if (st !== 'picked_up') {
+        if (st !== 'ready_for_worker_delivery' && st !== 'picked_up') {
           throw new Error('La sol·licitud ha d’estar en estat «recollit» abans de l’entrega.')
         }
         const rw = String(reqData.requestedByWorkerId || '').trim()

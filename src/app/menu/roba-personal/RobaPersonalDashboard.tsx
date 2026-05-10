@@ -52,18 +52,18 @@ export default function RobaPersonalDashboard() {
 
   useEffect(() => {
     if (isRobaWorkerSelf) {
-      if (tab === 'entregues') return
-      setTab('entregues')
+      if (tab === 'sollicituds' || tab === 'entregues') return
+      setTab('sollicituds')
       const p = new URLSearchParams(searchParams?.toString() || '')
-      p.set('tab', 'entregues')
+      p.set('tab', 'sollicituds')
       router.replace(`/menu/roba-personal?${p.toString()}`, { scroll: false })
       return
     }
     if (!isDeptLeadLimited) return
-    if (tab === 'sollicituds' || tab === 'recollides' || tab === 'entregues') return
-    setTab('sollicituds')
+    if (tab === 'recollides' || tab === 'entregues') return
+    setTab('recollides')
     const p = new URLSearchParams(searchParams?.toString() || '')
-    p.set('tab', 'sollicituds')
+    p.set('tab', 'recollides')
     p.delete('requestId')
     p.delete('deliveryId')
     router.replace(`/menu/roba-personal?${p.toString()}`, { scroll: false })
@@ -102,7 +102,6 @@ export default function RobaPersonalDashboard() {
     [router]
   )
 
-  /** Incidència / rectificació: el responsable treballa des de Recollides (mateix flux d’estoc i notificació al treballador). */
   const navigateDeliveryDispute = useCallback(
     (deliveryId: string) => {
       setTab('recollides')
@@ -128,8 +127,7 @@ export default function RobaPersonalDashboard() {
         <div className="flex flex-wrap gap-2 border-b border-border pb-3">
           {(isRobaDeptLeadTabs
             ? ([
-                ['sollicituds', 'Sol·licituds'],
-                ['recollides', 'Recollides'],
+                ['recollides', 'Recepcions'],
                 ['entregues', 'Entregues'],
               ] as const)
             : ([
@@ -138,7 +136,7 @@ export default function RobaPersonalDashboard() {
                 ['estoc', 'Estoc'],
                 ['sollicituds', 'Sol·licituds'],
                 ['preparacio', 'Preparació'],
-                ['recollides', 'Recollides'],
+                ['recollides', 'Recepcions'],
                 ['entregues', 'Entregues'],
                 ['compres', 'Compres'],
               ] as const)
@@ -159,9 +157,27 @@ export default function RobaPersonalDashboard() {
         </div>
       ) : (
         <div className="border-b border-border pb-3">
-          <h2 className="text-sm font-semibold text-foreground">Entregues</h2>
+          <div className="flex flex-wrap gap-2">
+            {([
+              ['sollicituds', 'Sol·licituds'],
+              ['entregues', 'Entregues'],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setRobaTab(id)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                  tab === id
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Confirmeu recepcions i consulteu l'historial.
+            Feu sol·licituds i confirmeu recepcions.
           </p>
         </div>
       )}

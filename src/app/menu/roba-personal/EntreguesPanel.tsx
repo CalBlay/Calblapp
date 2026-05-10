@@ -82,8 +82,6 @@ export function EntreguesPanel({
   const [lines, setLines] = useState<{ productId: string; qty: string }[]>([
     { productId: '', qty: '1' },
   ])
-  const [deliveryWithoutRequest, setDeliveryWithoutRequest] = useState(false)
-  const [manualRequestId, setManualRequestId] = useState('')
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
   const [signaturePadKey, setSignaturePadKey] = useState(0)
   const [linkReqDraft, setLinkReqDraft] = useState<Record<string, string>>({})
@@ -218,12 +216,9 @@ export function EntreguesPanel({
   const router = useRouter()
   const entreguesSearchParams = useSearchParams()
 
-  /** Despres d'omplir el formulari des de l'avis: amaga el banner i treu `requestId` de la URL perque no torni a apareixer; mante la vinculacio via camp manual / `effectiveRequestId`. */
-  const absorbLinkedRequestIntoManualAndClearUrl = useCallback(
-    (req: RequestRow) => {
-      const ref = String(req.reference || '').trim()
-      setManualRequestId(ref || req.id)
-      setLinkedRequest(null)
+  /** Neteja els params de preomplert de la URL un cop ja hem carregat la sollicitud dins la pestanya. */
+  const clearLinkedRequestFromUrl = useCallback(
+    () => {
       const p = new URLSearchParams(entreguesSearchParams?.toString() || '')
       p.delete('requestId')
       p.delete('deliveryId')
@@ -236,7 +231,6 @@ export function EntreguesPanel({
   useEffect(() => {
     if (!isRobaWorkerSelf || !robaLinkedPersonnelId) return
     setWorkerId(robaLinkedPersonnelId)
-    setDeliveryWithoutRequest(false)
   }, [isRobaWorkerSelf, robaLinkedPersonnelId])
 
   const load = useCallback(async () => {
@@ -251,7 +245,9 @@ export function EntreguesPanel({
         setRows(d)
         setWorkers(w.filter((x) => x.isActive !== false))
         setProducts(p.filter((x) => x.isActive !== false))
-        setPendingReceiptRequests(reqs.filter((r) => r.status === 'picked_up'))
+        setPendingReceiptRequests(
+          reqs.filter((r) => r.status === 'ready_for_worker_delivery' || r.status === 'picked_up')
+        )
       } else {
         const [d, w, p] = await Promise.all([
           api<DeliveryRow[]>('/api/roba-personal/deliveries'),
@@ -464,7 +460,7 @@ export function EntreguesPanel({
       let req: RequestRow = { ...linkedRequest, ...prepared }
       const picked = await api<RequestRow>(`/api/roba-personal/requests/${linkedRequest.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'picked_up' }),
+        body: JSON.stringify({ status: 'ready_for_worker_delivery' }),
       })
       req = { ...req, ...picked }
       if (req.requestedByWorkerId) {
@@ -481,7 +477,8 @@ export function EntreguesPanel({
         description: req.reference ?? `S-${req.id}`,
       })
       setRrhhPrepareOpen(false)
-      absorbLinkedRequestIntoManualAndClearUrl(req)
+      setLinkedRequest(req)
+      clearLinkedRequestFromUrl()
       void load()
     } catch (e: unknown) {
       toast({
@@ -496,7 +493,7 @@ export function EntreguesPanel({
 
   const applyLinkedRequestToForm = async () => {
     if (!linkedRequest?.lines?.length) return
-    if (linkedRequest.status !== 'picked_up') {
+    if (linkedRequest.status !== 'ready_for_worker_delivery' && linkedRequest.status !== 'picked_up') {
       toast({
         title: 'Sollicitud no valida',
         description:
@@ -523,7 +520,7 @@ export function EntreguesPanel({
         title: 'Linies carregades',
         description: req.reference ?? `S-${req.id}`,
       })
-      absorbLinkedRequestIntoManualAndClearUrl(req)
+      clearLinkedRequestFromUrl()
     } catch (e: unknown) {
       toast({
         title: 'Error',
@@ -548,11 +545,7 @@ export function EntreguesPanel({
     )
   }
 
-  const effectiveRequestId = useMemo(() => {
-    const fromLink = linkedRequest?.id?.trim()
-    if (fromLink) return fromLink
-    return robaRequestDocIdFromInput(manualRequestId)
-  }, [linkedRequest?.id, manualRequestId])
+  const effectiveRequestId = linkedRequest?.id?.trim() || ''
 
   const registrar = async () => {
     const parsedLines = lines
@@ -561,33 +554,16 @@ export function EntreguesPanel({
       .filter((l) => l.productId && Number.isFinite(l.quantity) && l.quantity > 0)
 
     if (!workerId) {
-      toast({ title: 'Trieu un treballador', variant: 'destructive' })
+      toast({ title: 'Falta el treballador de la sol·licitud', variant: 'destructive' })
       return
     }
     if (parsedLines.length === 0) {
       toast({ title: 'Cal almenys una linia valida', variant: 'destructive' })
       return
     }
-    if (deliveryWithoutRequest && !isRobaWorkerSelf) {
-      for (const l of parsedLines) {
-        const p = productById(products, l.productId)
-        if (!p) continue
-        const hand = Math.max(0, Number(p.quantityOnHand ?? 0))
-        const res = Math.max(0, Number(p.quantityReserved ?? 0))
-        const avail = Math.max(0, hand - res)
-        if (l.quantity > avail) {
-          toast({
-            title: 'Estoc insuficient (entrega sense sol·licitud)',
-            description: `${prodLabel(l.productId)}: disponible ~${avail} u. (físic ${hand}, reservat ${res}), en vol registrar ${l.quantity}.`,
-            variant: 'destructive',
-          })
-          return
-        }
-      }
-    }
-    if (!deliveryWithoutRequest && !effectiveRequestId) {
+    if (!effectiveRequestId) {
       toast({
-        title: 'Cal una sollicitud o marcar "sense sollicitud"',
+        title: 'Cal una sol·licitud recollida',
         variant: 'destructive',
       })
       return
@@ -596,11 +572,7 @@ export function EntreguesPanel({
     const payload: Record<string, unknown> = {
       workerId,
       lines: parsedLines,
-    }
-    if (deliveryWithoutRequest) {
-      payload.deliveryWithoutRequest = true
-    } else {
-      payload.requestId = effectiveRequestId
+      requestId: effectiveRequestId,
     }
     if (signatureDataUrl) {
       payload.acknowledgmentSignatureDataUrl = signatureDataUrl
@@ -614,7 +586,6 @@ export function EntreguesPanel({
       })
       toast({ title: 'Entrega registrada' })
       setLinkedRequest(null)
-      setManualRequestId('')
       setLines([{ productId: '', qty: '1' }])
       setSignatureDataUrl(null)
       setSignaturePadKey((k) => k + 1)
@@ -711,6 +682,7 @@ export function EntreguesPanel({
 
   const entFilteredRows = useMemo(() => {
     return rows.filter((r) => {
+      if (isRobaWorkerSelf && deliveryReceptionFilterKey(r) !== 'done') return false
       const day = robaRequestCalendarDay(r.deliveredAt)
       if (day) {
         if (day < entListRangeStart || day > entListRangeEnd) return false
@@ -754,6 +726,7 @@ export function EntreguesPanel({
     entListFilterDept,
     entListFilterReception,
     entListSearch,
+    isRobaWorkerSelf,
     workers,
     workerLabel,
     workerNameOnly,
@@ -798,8 +771,6 @@ export function EntreguesPanel({
   const resetNewDeliveryForm = useCallback(() => {
     setSelectedDeliveryId('')
     setLinkedRequest(null)
-    setManualRequestId('')
-    setDeliveryWithoutRequest(false)
     setLines([{ productId: '', qty: '1' }])
     setSignatureDataUrl(null)
     setSignaturePadKey((k) => k + 1)
@@ -876,8 +847,6 @@ export function EntreguesPanel({
           }))
         : [{ productId: '', qty: '1' }]
     )
-    setDeliveryWithoutRequest(Boolean(delivery.deliveryWithoutRequest) && !reqId)
-    setManualRequestId(reqId)
     setSignatureDataUrl(
       delivery.workerReceiptAckSignatureDataUrl || delivery.acknowledgmentSignatureDataUrl || null
     )
@@ -981,37 +950,16 @@ export function EntreguesPanel({
   return (
     <div className="space-y-6 w-full">
       {isRobaWorkerSelf ? (
-        <div className="rounded-xl border border-sky-200/80 bg-sky-50/45 px-3 py-2.5 text-xs text-sky-950/90 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-100/90 sm:px-4">
-          <p className="font-semibold text-sm text-sky-950 dark:text-sky-50">Dos formes de tancar el lliurament</p>
-          <ul className="mt-1.5 list-disc space-y-1 pl-4 leading-relaxed">
-            <li>
-              <strong>Recollida a RRHH feta:</strong> si la sol·licitud ja consta com a recollida al magatzem, podeu{' '}
-              <strong>signar a la primera secció</strong>: es registra l&apos;entrega al treballador i es descompta
-              l&apos;estoc (recepció tancada en un sol pas).
-            </li>
-            <li>
-              <strong>Responsable que registra:</strong> si RRHH o el cap de roba registra ell mateix el lliurament,
-              rebreu un avís i haureu de <strong>confirmar la recepció</strong> a la secció de sota (amb segona
-              signatura si cal).
-            </li>
-          </ul>
-        </div>
-      ) : null}
-      {isRobaWorkerSelf ? (
         <>
           <section className="space-y-3 w-full">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold text-sm sm:text-base">Signar lliurament al treballador</h2>
+              <h2 className="font-semibold text-sm sm:text-base">Per signar ara</h2>
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums">
-                {pendingReceiptRequests.length}
+                {pendingReceiptRequests.length + deliveriesAwaitingWorkerCorrection.length + deliveriesPendingWorkerAck.length}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Només quan el material ja ha estat recollit a RRHH per al vostre departament. La signatura registra
-              l&apos;entrega definitiva i tanca la sol·licitud.
-            </p>
             {pendingReceiptRequests.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">Cap pendent.</p>
+              <p className="text-sm text-muted-foreground py-2">No teniu cap recepció pendent.</p>
             ) : (
               <div className="space-y-3">
                 {pendingReceiptRequests.map((r) => (
@@ -1050,20 +998,14 @@ export function EntreguesPanel({
             </section>
           ) : null}
 
-          <section className="space-y-3 w-full pt-2 border-t border-border">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold text-sm sm:text-base">Entrega registrada per RRHH o cap de roba</h2>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums">
-                {deliveriesPendingWorkerAck.length}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Aquí apareix quan algú amb permís ha registrat el lliurament al vostre nom: reviseu el material i signeu
-              per confirmar la recepció.
-            </p>
-            {deliveriesPendingWorkerAck.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">Cap pendent.</p>
-            ) : (
+          {deliveriesPendingWorkerAck.length > 0 ? (
+            <section className="space-y-3 w-full pt-2 border-t border-border">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-semibold text-sm sm:text-base">Entregues registrades per RRHH o responsable</h2>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums">
+                  {deliveriesPendingWorkerAck.length}
+                </span>
+              </div>
               <div className="space-y-3">
                 {deliveriesPendingWorkerAck.map((d) => (
                   <WorkerLeadDeliveryAckCard
@@ -1074,8 +1016,8 @@ export function EntreguesPanel({
                   />
                 ))}
               </div>
-            )}
-          </section>
+            </section>
+          ) : null}
         </>
       ) : (
         <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
@@ -1112,7 +1054,7 @@ export function EntreguesPanel({
                   La roba encara no consta com a recollida pel departament. Feu aquest pas a la pestanya Recollides.
                 </p>
               ) : null}
-              {linkedRequest.status === 'picked_up' ? (
+              {linkedRequest.status === 'ready_for_worker_delivery' || linkedRequest.status === 'picked_up' ? (
                 <Button
                   type="button"
                   size="sm"
@@ -1126,9 +1068,7 @@ export function EntreguesPanel({
               ) : null}
             </div>
           ) : null}
-          {linkedRequest &&
-          !deliveryWithoutRequest &&
-          linkedRequest.status === 'submitted' ? (
+          {linkedRequest && linkedRequest.status === 'submitted' ? (
             <div className="rounded-lg border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 text-sm dark:bg-amber-950/25 dark:border-amber-900/50 text-amber-950 dark:text-amber-100">
               <p className="font-medium">La sollicitud encara no esta preparada.</p>
               <p className="text-xs mt-1 opacity-90">
@@ -1137,8 +1077,7 @@ export function EntreguesPanel({
             </div>
           ) : null}
           {linkedRequest &&
-          !deliveryWithoutRequest &&
-          !['prepared', 'picked_up', 'submitted'].includes(linkedRequest.status) ? (
+          !['prepared', 'ready_for_worker_delivery', 'picked_up', 'submitted'].includes(linkedRequest.status) ? (
             <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
               <p className="font-medium">Aquesta sollicitud no es pot vincular a una entrega nova.</p>
               <p className="text-xs mt-1 opacity-90">
@@ -1148,51 +1087,10 @@ export function EntreguesPanel({
               </p>
             </div>
           ) : null}
-          {!linkedRequest && !deliveryWithoutRequest ? (
-            <div
-              className={cn(
-                'space-y-1 max-w-xl',
-                !isRobaWorkerSelf && 'xl:grid xl:max-w-none xl:grid-cols-[minmax(0,1fr)_auto] xl:gap-3 xl:items-end xl:space-y-0'
-              )}
-            >
-              <div className="space-y-1 min-w-0">
-              <Label htmlFor="ent-req-id" className="text-xs text-muted-foreground">
-                ID sollicitud (si no veniu des d'un avis)
-              </Label>
-              <Input
-                id="ent-req-id"
-                className="h-9 font-mono text-sm"
-                placeholder="ID Firestore o referencia S-... (es normalitza automaticament)"
-                value={manualRequestId}
-                onChange={(e) => setManualRequestId(e.target.value)}
-              />
-              </div>
-              {!isRobaWorkerSelf ? (
-                <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2 xl:min-h-9">
-                  <Switch
-                    id="ent-sense-sol"
-                    checked={deliveryWithoutRequest}
-                    onCheckedChange={(v) => setDeliveryWithoutRequest(Boolean(v))}
-                  />
-                  <Label htmlFor="ent-sense-sol" className="text-sm font-normal cursor-pointer">
-                    Entrega sense sollicitud previa (es pot vincular despres)
-                  </Label>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          {!isRobaWorkerSelf && (linkedRequest || deliveryWithoutRequest) ? (
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="ent-sense-sol"
-                  checked={deliveryWithoutRequest}
-                  onCheckedChange={(v) => setDeliveryWithoutRequest(Boolean(v))}
-                />
-                <Label htmlFor="ent-sense-sol" className="text-sm font-normal cursor-pointer">
-                  Entrega sense sollicitud previa (es pot vincular despres)
-                </Label>
-              </div>
+          {!linkedRequest ? (
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
+              L&apos;entrega es registra a partir d&apos;una sol·licitud ja recollida. Accediu-hi des de
+              `Recollides` o des de l&apos;avís corresponent.
             </div>
           ) : null}
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(17rem,0.85fr)] xl:items-start">
@@ -1208,23 +1106,12 @@ export function EntreguesPanel({
               >
                 {i === 0 ? (
                   <div className="space-y-1 min-w-0">
-                    <Label htmlFor="ent-worker" className="text-xs text-muted-foreground">
+                    <Label className="text-xs text-muted-foreground">
                       Treballador
                     </Label>
-                    <select
-                      id="ent-worker"
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm min-w-0"
-                      value={workerId}
-                      onChange={(e) => setWorkerId(e.target.value)}
-                      disabled={isRobaWorkerSelf}
-                    >
-                      <option value="">- Trieu -</option>
-                      {workers.map((w) => (
-                        <option key={w.id} value={w.id}>
-                          {w.name.trim() || '-'}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex h-9 w-full items-center rounded-md border border-input bg-background px-3 text-sm min-w-0">
+                      {workerNameOnly(workerId)}
+                    </div>
                   </div>
                 ) : (
                   <div className="hidden md:block min-w-[1px]" aria-hidden />
@@ -1292,10 +1179,10 @@ export function EntreguesPanel({
               disabled={
                 !workerId ||
                 busyEntrega ||
-                (!deliveryWithoutRequest && !effectiveRequestId) ||
-                (!deliveryWithoutRequest &&
-                  linkedRequest != null &&
-                  linkedRequest.status !== 'picked_up')
+                !effectiveRequestId ||
+                linkedRequest == null ||
+                linkedRequest.status !== 'ready_for_worker_delivery' &&
+                linkedRequest.status !== 'picked_up'
               }
               onClick={() => void registrar()}
             >
@@ -1307,10 +1194,10 @@ export function EntreguesPanel({
 
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
         <h2 className="font-semibold text-base">
-          {isRobaWorkerSelf ? 'Entregues registrades' : 'Entregues'}
+          {isRobaWorkerSelf ? "Històric d'entregues" : 'Entregues'}
         </h2>
         {isRobaWorkerSelf ? (
-          <p className="text-xs text-muted-foreground">Historial d'entregues.</p>
+          <p className="text-xs text-muted-foreground">Només hi apareixen les recepcions ja acceptades i tancades.</p>
         ) : null}
         <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
           <SmartFilters
