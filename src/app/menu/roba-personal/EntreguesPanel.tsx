@@ -119,6 +119,9 @@ export function EntreguesPanel({
     (session?.user as { robaLinkedPersonnelId?: string | null })?.robaLinkedPersonnelId || ''
   ).trim()
   const isRobaWorkerSelf = Boolean(robaLinkedPersonnelId) && !isRobaAdminOrRrhh && !isDeptLeadLimited
+  /** Inclou responsables de roba amb personnel vinculat (poden confirmar entregues pròpies). */
+  const isRobaLinkedWorkerUi =
+    Boolean(robaLinkedPersonnelId) && !isRobaAdminOrRrhh
 
   const sessionDeptLabel = String((session?.user as { department?: string })?.department || '').trim()
   const robaWorkerDeptNorm = String(
@@ -235,7 +238,7 @@ export function EntreguesPanel({
 
   const load = useCallback(async () => {
     try {
-      if (isRobaWorkerSelf) {
+      if (isRobaLinkedWorkerUi) {
         const [d, w, p, reqs] = await Promise.all([
           api<DeliveryRow[]>('/api/roba-personal/deliveries'),
           api<WorkerRow[]>('/api/roba-personal/workers'),
@@ -246,7 +249,13 @@ export function EntreguesPanel({
         setWorkers(w.filter((x) => x.isActive !== false))
         setProducts(p.filter((x) => x.isActive !== false))
         setPendingReceiptRequests(
-          reqs.filter((r) => r.status === 'ready_for_worker_delivery' || r.status === 'picked_up')
+          reqs.filter((r) => {
+            if (r.status !== 'ready_for_worker_delivery' && r.status !== 'picked_up') return false
+            if (isDeptLeadLimited && robaLinkedPersonnelId) {
+              return String(r.requestedByWorkerId || '').trim() === robaLinkedPersonnelId
+            }
+            return true
+          })
         )
       } else {
         const [d, w, p] = await Promise.all([
@@ -266,7 +275,7 @@ export function EntreguesPanel({
         variant: 'destructive',
       })
     }
-  }, [isRobaWorkerSelf])
+  }, [isRobaLinkedWorkerUi, isDeptLeadLimited, robaLinkedPersonnelId])
 
   useEffect(() => {
     void load()
@@ -301,7 +310,7 @@ export function EntreguesPanel({
   }, [prefillRequestId, pendingReceiptRequests.length])
 
   const deliveriesPendingWorkerAck = useMemo(() => {
-    if (!isRobaWorkerSelf || !robaLinkedPersonnelId) return []
+    if (!isRobaLinkedWorkerUi || !robaLinkedPersonnelId) return []
     return rows.filter(
       (r) =>
         r.workerId === robaLinkedPersonnelId &&
@@ -309,10 +318,10 @@ export function EntreguesPanel({
         !r.workerReceiptAckAt &&
         !r.workerReceiptCorrectionOpen
     )
-  }, [rows, isRobaWorkerSelf, robaLinkedPersonnelId])
+  }, [rows, isRobaLinkedWorkerUi, robaLinkedPersonnelId])
 
   const deliveriesAwaitingWorkerCorrection = useMemo(() => {
-    if (!isRobaWorkerSelf || !robaLinkedPersonnelId) return []
+    if (!isRobaLinkedWorkerUi || !robaLinkedPersonnelId) return []
     return rows.filter(
       (r) =>
         r.workerId === robaLinkedPersonnelId &&
@@ -320,7 +329,7 @@ export function EntreguesPanel({
         !r.workerReceiptAckAt &&
         r.workerReceiptCorrectionOpen === true
     )
-  }, [rows, isRobaWorkerSelf, robaLinkedPersonnelId])
+  }, [rows, isRobaLinkedWorkerUi, robaLinkedPersonnelId])
 
   const openDeliveryCorrection = (r: DeliveryRow) => {
     setCorrectTarget(r)
@@ -949,7 +958,7 @@ export function EntreguesPanel({
 
   return (
     <div className="space-y-6 w-full">
-      {isRobaWorkerSelf ? (
+      {isRobaLinkedWorkerUi ? (
         <>
           <section className="space-y-3 w-full">
             <div className="flex flex-wrap items-center gap-2">
@@ -1016,7 +1025,9 @@ export function EntreguesPanel({
             </section>
           ) : null}
         </>
-      ) : (
+      ) : null}
+
+      {!isRobaWorkerSelf ? (
         <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
           <h2 className="font-semibold text-base">Nova entrega</h2>
           {linkedRequest ? (
@@ -1187,11 +1198,11 @@ export function EntreguesPanel({
             </Button>
           </div>
         </div>
-      )}
+      ) : null}
 
       <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
         <h2 className="font-semibold text-base">
-          {isRobaWorkerSelf ? "Històric d'entregues" : 'Entregues'}
+          {isRobaLinkedWorkerUi && isRobaWorkerSelf ? "Històric d'entregues" : 'Entregues'}
         </h2>
         <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
           <SmartFilters

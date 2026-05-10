@@ -9,7 +9,7 @@ import {
 } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import { resolveRobaAccess } from '@/lib/roba-personal/guard'
+import { resolveRobaAccess, robaLinkedWorkerActor } from '@/lib/roba-personal/guard'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import {
   departmentsInSameRobaScope,
@@ -285,17 +285,34 @@ export async function POST(req: Request) {
     deliveryWithoutRequest?: boolean
     acknowledgmentSignatureDataUrl?: string
   }
-  let workerId = String(body.workerId || '').trim()
   const action = String(body.action || '').trim()
-  const isWorkerSelfDispute = access.scope === 'workerSelf' && action === 'reportWorkerReceiptDispute'
+  const requestId = robaRequestDocIdFromInput(String(body.requestId || ''))
+  const sig = String(body.acknowledgmentSignatureDataUrl || '').trim()
+
+  const linkedActor = robaLinkedWorkerActor(access)
+  const isLinkedWorkerDeliveryPost =
+    Boolean(linkedActor) &&
+    (action === 'reportWorkerReceiptDispute' || (Boolean(requestId) && Boolean(sig)))
+
+  let workerId = String(body.workerId || '').trim()
+  const isWorkerSelfDispute = action === 'reportWorkerReceiptDispute' && isLinkedWorkerDeliveryPost
   const disputeNote = isWorkerSelfDispute
     ? String(body.note || '').trim().slice(0, MAX_DISPUTE_NOTE_CHARS)
     : ''
   const disputeProposedLines = isWorkerSelfDispute
     ? parsePostedLines(Array.isArray(body.proposedLines) ? body.proposedLines : [])
     : []
+
   if (access.scope === 'workerSelf') {
-    workerId = access.linkedPersonnelId
+    if (!linkedActor) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    workerId = linkedActor.linkedPersonnelId
+    if (String(body.workerId || '').trim() && String(body.workerId || '').trim() !== workerId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+  } else if (access.scope === 'deptLead' && isLinkedWorkerDeliveryPost) {
+    workerId = linkedActor!.linkedPersonnelId
     if (String(body.workerId || '').trim() && String(body.workerId || '').trim() !== workerId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -304,7 +321,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Cal workerId.' }, { status: 400 })
   }
 
-  const requestId = robaRequestDocIdFromInput(String(body.requestId || ''))
   const deliveryWithoutRequest = Boolean(body.deliveryWithoutRequest)
   if (access.scope === 'workerSelf' && deliveryWithoutRequest) {
     return NextResponse.json(
@@ -333,14 +349,19 @@ export async function POST(req: Request) {
     (wsnap.data() as { department?: string })?.department || ''
   ).trim()
 
-  const sig = String(body.acknowledgmentSignatureDataUrl || '').trim()
   if (sig.length > MAX_SIGNATURE_CHARS) {
     return NextResponse.json({ error: 'Signatura massa gran.' }, { status: 400 })
   }
 
   let lines: Line[]
 
-  if (access.scope === 'workerSelf') {
+  const applyingWorkerLinkedDeliveryRules =
+    access.scope === 'workerSelf' || (access.scope === 'deptLead' && isLinkedWorkerDeliveryPost)
+
+  if (applyingWorkerLinkedDeliveryRules) {
+    if (!linkedActor) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     if (!isWorkerSelfDispute && !sig) {
       return NextResponse.json(
         { error: 'Cal signar per confirmar la recepció del material.' },
@@ -353,7 +374,7 @@ export async function POST(req: Request) {
         { status: 400 }
       )
     }
-    if (!departmentsInSameRobaScope(workerDept, access.workerDeptNorm)) {
+    if (!departmentsInSameRobaScope(workerDept, linkedActor.workerDeptNorm)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -373,11 +394,11 @@ export async function POST(req: Request) {
       )
     }
     const rw = String((rdata as { requestedByWorkerId?: string }).requestedByWorkerId || '').trim()
-    if (rw && rw !== access.linkedPersonnelId) {
+    if (rw && rw !== linkedActor.linkedPersonnelId) {
       return NextResponse.json({ error: 'Aquesta sol·licitud no és vostra.' }, { status: 403 })
     }
     const rd = String((rdata as { requestingDepartment?: string }).requestingDepartment || '')
-    if (!departmentsInSameRobaScope(rd, access.workerDeptNorm)) {
+    if (!departmentsInSameRobaScope(rd, linkedActor.workerDeptNorm)) {
       return NextResponse.json({ error: 'Sol·licitud d’un altre departament.' }, { status: 403 })
     }
 
@@ -392,7 +413,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Producte no trobat: ${line.productId}` }, { status: 400 })
       }
       const pdata = psnap.data() as { departments?: string[] }
-      if (!productDepartmentsVisibleToRobaLead(pdata.departments, access.workerDeptNorm)) {
+      if (!productDepartmentsVisibleToRobaLead(pdata.departments, linkedActor.workerDeptNorm)) {
         return NextResponse.json(
           { error: `Producte no permès per al vostre departament: ${line.productId}` },
           { status: 403 }
@@ -405,7 +426,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Producte no trobat: ${line.productId}` }, { status: 400 })
       }
       const pdata = psnap.data() as { departments?: string[] }
-      if (!productDepartmentsVisibleToRobaLead(pdata.departments, access.workerDeptNorm)) {
+      if (!productDepartmentsVisibleToRobaLead(pdata.departments, linkedActor.workerDeptNorm)) {
         return NextResponse.json(
           { error: `Producte no permÃ¨s per al vostre departament: ${line.productId}` },
           { status: 403 }
@@ -529,7 +550,7 @@ export async function POST(req: Request) {
       }
 
       const isWorkerSelfSignedDelivery =
-        access.scope === 'workerSelf' && !isWorkerSelfDispute && Boolean(sig)
+        applyingWorkerLinkedDeliveryRules && !isWorkerSelfDispute && Boolean(sig)
       const deliveryPayload: Record<string, unknown> = {
         workerId,
         lines,

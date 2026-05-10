@@ -22,6 +22,9 @@ export type RobaAccessDeptLead = {
   role: Role
   /** `normDeptLabel` del departament de l’usuari (Firestore). */
   leadDeptNorm: string
+  /** Mateix usuari pot tenir `personnel` vinculat i rebre/confirmar entregues pròpies com a treballador. */
+  linkedPersonnelId?: string
+  workerDeptNorm?: string
 }
 
 /** Treballador amb usuari d’app vinculat a `personnel`: veure roba i confirmar recollida / entrega pròpia. */
@@ -37,6 +40,31 @@ export type RobaAccess = RobaAccessFull | RobaAccessDeptLead | RobaAccessWorkerS
 
 export type ResolveRobaAccessOk = { ok: true; access: RobaAccess }
 export type ResolveRobaAccessFail = { ok: false; res: NextResponse }
+
+/** Identitat per a accions de treballador (confirmació d’entrega, incidències), incloent caps amb personnel vinculat. */
+export type RobaLinkedWorkerActor = {
+  userId: string
+  linkedPersonnelId: string
+  workerDeptNorm: string
+}
+
+export function robaLinkedWorkerActor(access: RobaAccess): RobaLinkedWorkerActor | null {
+  if (access.scope === 'workerSelf') {
+    return {
+      userId: access.userId,
+      linkedPersonnelId: access.linkedPersonnelId,
+      workerDeptNorm: access.workerDeptNorm,
+    }
+  }
+  if (access.scope === 'deptLead') {
+    const pid = String(access.linkedPersonnelId || '').trim()
+    const wdn = String(access.workerDeptNorm || '').trim()
+    if (pid && wdn) {
+      return { userId: access.userId, linkedPersonnelId: pid, workerDeptNorm: wdn }
+    }
+  }
+  return null
+}
 
 /**
  * Resol accés al mòdul Roba: administrador, RRHH (sessió o document), o responsable de roba de departament.
@@ -73,7 +101,19 @@ export async function resolveRobaAccess(): Promise<ResolveRobaAccessOk | Resolve
         ),
       }
     }
-    return { ok: true, access: { scope: 'deptLead', userId, role, leadDeptNorm } }
+    const link = await resolveRobaPersonnelLinkForUser(userId)
+    return {
+      ok: true,
+      access: {
+        scope: 'deptLead',
+        userId,
+        role,
+        leadDeptNorm,
+        ...(link
+          ? { linkedPersonnelId: link.personnelId, workerDeptNorm: link.workerDeptNorm }
+          : {}),
+      },
+    }
   }
 
   const link = await resolveRobaPersonnelLinkForUser(userId)

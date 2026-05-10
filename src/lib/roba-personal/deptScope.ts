@@ -3,6 +3,8 @@
  * Permet alinear p. ex. «Cuina» (usuari) amb «Cuina Central» (etiqueta de producte / treballador).
  */
 
+import { ROBA_PRODUCT_DEPARTMENTS } from '@/data/departments'
+
 export function normDeptLabel(s: string | undefined | null): string {
   return String(s || '')
     .normalize('NFD')
@@ -51,4 +53,17 @@ export function productDepartmentsVisibleToRobaLead(
   const l = normDeptLabel(leadDeptNorm)
   if (!l) return false
   return tags.some((t) => departmentsInSameRobaScope(t, l))
+}
+
+/**
+ * Valors literals del camp `departments` dels productes a Firestore (catàleg roba).
+ * Cal usar-los a `array-contains-any`: no valen les etiquetes normalitzades retornades per
+ * {@link normDeptLabelsInRobaEquivalenceClass} (minúscules), perquè el magatzem guarda els
+ * strings canònics de {@link ROBA_PRODUCT_DEPARTMENTS}.
+ */
+export function robaProductDepartmentTagsForFirestoreQuery(leadDeptNorm: string): string[] {
+  const l = normDeptLabel(leadDeptNorm)
+  if (!l) return []
+  const tags = ROBA_PRODUCT_DEPARTMENTS.filter((tag) => departmentsInSameRobaScope(tag, l))
+  return [...new Set(tags)]
 }

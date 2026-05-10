@@ -9,8 +9,8 @@ import { SUPPLIERS_COLLECTION } from '@/lib/companySuppliers/constants'
 import { requireRobaPersonalAdmin, resolveRobaAccess } from '@/lib/roba-personal/guard'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import {
-  normDeptLabelsInRobaEquivalenceClass,
   productDepartmentsVisibleToRobaLead,
+  robaProductDepartmentTagsForFirestoreQuery,
 } from '@/lib/roba-personal/deptScope'
 import { DEFAULT_DOTACIO_MAGATZEM } from '@/lib/roba-personal/dotacioDefaults'
 import { normalizeRobaProductDepartments } from '@/data/departments'
@@ -42,9 +42,9 @@ export async function GET() {
   } else {
     const lead =
       auth.access.scope === 'deptLead' ? auth.access.leadDeptNorm : auth.access.workerDeptNorm
-    const labels = normDeptLabelsInRobaEquivalenceClass(lead)
+    const labels = robaProductDepartmentTagsForFirestoreQuery(lead)
     const [scopedSnap, unrestrictedSnap] = await Promise.all([
-      labels.length > 0 && labels.length <= 10
+      labels.length > 0 && labels.length <= 30
         ? db.collection(COL).where('departments', 'array-contains-any', labels).limit(5_000).get()
         : Promise.resolve(null),
       db.collection(COL).where('departments', '==', null).limit(5_000).get(),

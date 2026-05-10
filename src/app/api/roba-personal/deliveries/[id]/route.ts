@@ -5,7 +5,11 @@ import { NextResponse } from 'next/server'
 import { FieldValue, type DocumentReference } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import { resolveRobaAccess, type RobaAccessWorkerSelf } from '@/lib/roba-personal/guard'
+import {
+  resolveRobaAccess,
+  robaLinkedWorkerActor,
+  type RobaLinkedWorkerActor,
+} from '@/lib/roba-personal/guard'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
 import {
@@ -76,7 +80,7 @@ function deliveryQuantitiesDiffer(a: RobaDotacioLine[], b: RobaDotacioLine[]): b
  * Treballador: confirma que ha rebut el material d’una entrega registrada pel responsable de roba.
  */
 async function patchConfirmWorkerReceipt(
-  access: RobaAccessWorkerSelf,
+  access: RobaLinkedWorkerActor,
   deliveryId: string,
   body: { workerReceiptAckSignatureDataUrl?: string }
 ) {
@@ -155,7 +159,7 @@ async function patchConfirmWorkerReceipt(
 
 /** Treballador: el material no coincideix amb el registrat pel responsable. */
 async function patchReportWorkerReceiptDispute(
-  access: RobaAccessWorkerSelf,
+  access: RobaLinkedWorkerActor,
   deliveryId: string,
   body: { note?: string; proposedLines?: unknown[] }
 ) {
@@ -488,17 +492,19 @@ export async function PATCH(
   }
 
   if (body.action === 'confirmWorkerReceipt') {
-    if (access.scope !== 'workerSelf') {
+    const actor = robaLinkedWorkerActor(access)
+    if (!actor) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    return patchConfirmWorkerReceipt(access, id, body)
+    return patchConfirmWorkerReceipt(actor, id, body)
   }
 
   if (body.action === 'reportWorkerReceiptDispute') {
-    if (access.scope !== 'workerSelf') {
+    const actor = robaLinkedWorkerActor(access)
+    if (!actor) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    return patchReportWorkerReceiptDispute(access, id, {
+    return patchReportWorkerReceiptDispute(actor, id, {
       note: body.note,
       proposedLines: body.proposedLines,
     })
