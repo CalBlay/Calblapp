@@ -6,6 +6,7 @@ import {
   orderedDayRangeFromISOStrings,
   queryQuadrantCollectionDocsInDateRange,
 } from '@/lib/firestoreQuadrantsRangeQuery'
+import { COMMERCIAL_RESERVATIONS_COLLECTION } from '@/lib/commercialReservations'
 import { normalizeTransportPlateKey, normalizeTransportType } from '@/lib/transportTypes'
 
 export const runtime = 'nodejs'
@@ -100,6 +101,14 @@ type ManualAssignmentRecord = Record<string, unknown> & {
   status?: string
 }
 
+type CommercialReservationRecord = Record<string, unknown> & {
+  date?: string
+  startTime?: string
+  endTime?: string
+  status?: string
+  assignedVehiclePlate?: string
+}
+
 const ACTIVE_ASSIGNMENT_STATUSES = new Set(['pending', 'confirmed', 'addedToTorns'])
 
 const resolveRange = (startDate?: string, startTime?: string, endDate?: string, endTime?: string) => {
@@ -164,6 +173,7 @@ export async function POST(req: Request) {
        2) OCUPACIONS REALS
        - Quadrants
        - Assignacions manuals (transportAssignmentsV2)
+       - Reserva comercials confirmades
     ========================= */
     const quadrantCols = [
       'quadrantsLogistica',
@@ -264,6 +274,36 @@ export async function POST(req: Request) {
 
       pushOccupation({
         plate: a.plate,
+        start,
+        end,
+      })
+    })
+
+    let reservationDocs: QueryDocumentSnapshot[] = []
+    try {
+      reservationDocs = (await db.collection(COMMERCIAL_RESERVATIONS_COLLECTION).get()).docs
+    } catch (err) {
+      console.warn('[transports/available] reservations fetch', err)
+    }
+
+    reservationDocs.forEach((doc) => {
+      const reservation = doc.data() as CommercialReservationRecord
+      const status = String(reservation.status || '')
+      if (status !== 'confirmed') return
+
+      const plate = String(reservation.assignedVehiclePlate || '').trim()
+      const date = String(reservation.date || '').trim()
+      const startTime = String(reservation.startTime || '').trim()
+      const endTime = String(reservation.endTime || '').trim() || startTime
+      if (!plate || !date || !startTime) return
+
+      const start = toDateTime(date, startTime)
+      const end = toDateTime(date, endTime)
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return
+      if (!overlaps(reqStart, reqEnd, start, end)) return
+
+      pushOccupation({
+        plate,
         start,
         end,
       })

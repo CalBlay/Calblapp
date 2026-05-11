@@ -5,13 +5,10 @@ import {
   orderedDayRangeFromISOStrings,
   queryQuadrantCollectionDocsInDateRange,
 } from '@/lib/firestoreQuadrantsRangeQuery'
+import { COMMERCIAL_RESERVATIONS_COLLECTION } from '@/lib/commercialReservations'
 
 export const runtime = 'nodejs'
 
-/**
- * Logística, Cuina i Serveis: són els departaments que poden requerir conductor de transport
- * en el model actual (es coincideix amb el que demana el mòdul Assignacions).
- */
 const DEPTS = ['logistica', 'cuina', 'serveis'] as const
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -21,9 +18,6 @@ const normalizeStageKey = (raw?: string) =>
     .split('__')[0]
     .trim()
 
-/**
- * Clau per enllaçar quadrant ↔ stage_verd: `code`, si no `eventId` normalitzat, si no id del document.
- */
 function resolveStageCodeForQuadrant(
   q: QuadrantRecord,
   docId: string,
@@ -33,6 +27,7 @@ function resolveStageCodeForQuadrant(
     const n = normalizeStageKey(k)
     return n && map.has(n) ? n : null
   }
+
   return (
     tryKey(String(q?.code ?? '')) ||
     tryKey(String((q as { eventId?: string }).eventId ?? '')) ||
@@ -40,11 +35,9 @@ function resolveStageCodeForQuadrant(
   )
 }
 
-/** Demanen conductor (flags) o ja tenen files `conductors` (esborrany o confirmat amb vehicle/matrícula). */
 function quadrantNeedsAssignacionsTransport(q: QuadrantRecord): boolean {
   const conductors = Array.isArray(q.conductors) ? q.conductors : []
-  const hasDemand =
-    Boolean(q.transportRequested) || Number(q.numDrivers || 0) > 0
+  const hasDemand = Boolean(q.transportRequested) || Number(q.numDrivers || 0) > 0
   return hasDemand || conductors.length > 0
 }
 
@@ -58,14 +51,15 @@ type Item = {
   pax: number
   service?: string
   status: 'draft' | 'confirmed'
+  source?: 'quadrant' | 'commercialReservation'
+  requesterName?: string
+  readOnly?: boolean
   rows: TransportAssignmentRow[]
 }
 
 type TransportAssignmentRow = {
   id: string
-  /** Id del document quadrant a Firestore (per save quan el conductor encara no té id propi). */
   quadrantDocId: string
-  /** Índex dins de `conductors[]` d’aquest document en el moment de la lectura. */
   conductorIndex: number
   department: string
   name: string
@@ -118,6 +112,17 @@ type QuadrantRecord = Record<string, unknown> & {
   conductors?: QuadrantConductorRecord[]
 }
 
+type CommercialReservationRecord = Record<string, unknown> & {
+  requesterName?: string
+  date?: string
+  startTime?: string
+  endTime?: string
+  destination?: string
+  reason?: string
+  status?: string
+  assignedVehiclePlate?: string
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
@@ -133,9 +138,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ items: [] })
     }
 
-    /* =========================
-       1) ESDEVENIMENTS BASE
-    ========================= */
     const eventsSnap = await db
       .collection('stage_verd')
       .where('DataInici', '>=', start)
@@ -144,7 +146,7 @@ export async function GET(req: Request) {
 
     const map = new Map<string, Item>()
 
-    eventsSnap.docs.forEach(doc => {
+    eventsSnap.docs.forEach((doc) => {
       const e = doc.data() as StageVerdEventRecord
       if (!e?.code) return
 
@@ -158,13 +160,11 @@ export async function GET(req: Request) {
         pax: Number(e.NumPax || 0),
         service: String(e.Servei || e.Servicio || e.service || e.TipusServei || '').trim(),
         status: 'draft',
+        source: 'quadrant',
         rows: [],
       })
     })
 
-    /* =========================
-       2) QUADRANTS → FILTRAT BO
-    ========================= */
     const visibleEvents = new Set<string>()
 
     for (const dept of DEPTS) {
@@ -176,18 +176,17 @@ export async function GET(req: Request) {
         dayRange.end
       )
 
-      docs.forEach(doc => {
+      docs.forEach((doc) => {
         const q = doc.data() as QuadrantRecord
         const stageCode = resolveStageCodeForQuadrant(q, doc.id, map)
         if (!stageCode) return
-
         if (!quadrantNeedsAssignacionsTransport(q)) return
 
         visibleEvents.add(stageCode)
 
-        const item = map.get(stageCode)!
+        const item = map.get(stageCode)
+        if (!item) return
 
-        // status (draft / confirmed)
         if (q.status === 'confirmed') {
           item.status = 'confirmed'
         }
@@ -195,7 +194,6 @@ export async function GET(req: Request) {
         const conductors = Array.isArray(q.conductors) ? q.conductors : []
         conductors.forEach((c, idx) => {
           item.rows.push({
-            // ID estable per poder substituir la mateixa fila al save (mai Math.random per càrrega).
             id: c.id || `pending:${doc.id}:${idx}`,
             quadrantDocId: doc.id,
             conductorIndex: idx,
@@ -213,12 +211,60 @@ export async function GET(req: Request) {
       })
     }
 
-    /* =========================
-       3) SORTIDA FINAL
-       👉 només visibles
-    ========================= */
+    const reservationSnap = await db.collection(COMMERCIAL_RESERVATIONS_COLLECTION).get()
+    const reservationItems = reservationSnap.docs
+      .map((doc): Item | null => {
+        const reservation = doc.data() as CommercialReservationRecord
+        const day = String(reservation.date || '').trim()
+        const status = String(reservation.status || '').trim()
+        if (!day || day < start || day > end) return null
+        if (status !== 'pending' && status !== 'confirmed') return null
+
+        const startTime = String(reservation.startTime || '').trim()
+        const endTime = String(reservation.endTime || '').trim() || startTime
+        const requesterName = String(reservation.requesterName || '').trim()
+        const plate = String(reservation.assignedVehiclePlate || '').trim()
+        const reason = String(reservation.reason || '').trim() || 'Reserva comercial'
+        const destination = String(reservation.destination || '').trim() || 'Sense destinació'
+
+        return {
+          eventCode: `RC-${doc.id.slice(0, 6).toUpperCase()}`,
+          day,
+          eventStartTime: startTime,
+          eventEndTime: endTime,
+          eventName: `${reason}${requesterName ? ` · ${requesterName}` : ''}`,
+          location: destination,
+          pax: 1,
+          service: 'Reserva comercial',
+          status: status === 'confirmed' ? 'confirmed' : 'draft',
+          source: 'commercialReservation',
+          requesterName,
+          readOnly: true,
+          rows: plate
+            ? [
+                {
+                  id: `commercial-reservation:${doc.id}`,
+                  quadrantDocId: '',
+                  conductorIndex: -1,
+                  department: 'comercial',
+                  name: requesterName,
+                  plate,
+                  vehicleType: 'comercial',
+                  startDate: day,
+                  endDate: day,
+                  startTime,
+                  arrivalTime: startTime,
+                  endTime,
+                },
+              ]
+            : [],
+        }
+      })
+      .filter((item): item is Item => item !== null)
+
     const items = Array.from(map.values())
-      .filter(i => visibleEvents.has(i.eventCode))
+      .filter((item) => visibleEvents.has(item.eventCode))
+      .concat(reservationItems)
       .sort((a, b) => {
         if (a.day !== b.day) return a.day.localeCompare(b.day)
         return a.eventStartTime.localeCompare(b.eventStartTime)

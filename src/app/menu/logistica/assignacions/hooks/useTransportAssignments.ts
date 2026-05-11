@@ -32,6 +32,9 @@ export interface TransportAssignmentItem {
   status: 'draft' | 'confirmed'
   service?: string
   eventCodeAlias?: string
+  source?: 'quadrant' | 'commercialReservation'
+  requesterName?: string
+  readOnly?: boolean
   rows?: AssignmentRow[]
 }
 
@@ -63,6 +66,9 @@ export function useTransportAssignments(start: string, end: string) {
         pax: typeof item.pax === 'number' ? item.pax : 0,
         status: item.status === 'confirmed' ? 'confirmed' : 'draft',
         service: item.service,
+        source: item.source === 'commercialReservation' ? 'commercialReservation' : 'quadrant',
+        requesterName: item.requesterName,
+        readOnly: item.readOnly === true,
         rows: Array.isArray(item.rows)
           ? item.rows.map((row, rowIndex) => ({
               id: row.id || `${item.eventCode || itemIndex}-${rowIndex}`,

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { useSession } from 'next-auth/react'
+import useSWR from 'swr'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import {
   ClipboardCheck,
@@ -10,13 +11,31 @@ import {
   Truck,
   CalendarClock,
   Route,
+  CarFront,
   type LucideIcon,
 } from 'lucide-react'
 import { getVisibleModules } from '@/lib/accessControl'
+import { normalizeRole } from '@/lib/roles'
+
+const fetcher = (url: string) => fetch(url).then((response) => response.json())
 
 export default function LogisticsHubPage() {
   const { data: session } = useSession()
   const user = session?.user
+  const { data: reservationNotificationData } = useSWR(
+    user?.id ? '/api/notifications?mode=list' : null,
+    fetcher,
+    { refreshInterval: user?.id ? 15000 : 0 }
+  )
+
+  const reservationNotificationCount = Array.isArray(reservationNotificationData?.notifications)
+    ? reservationNotificationData.notifications.filter(
+        (notification: { read?: boolean; type?: string }) =>
+          !notification.read &&
+          (notification.type === 'commercial_vehicle_request' ||
+            notification.type === 'commercial_vehicle_validation')
+      ).length
+    : 0
 
   const logisticaModule = getVisibleModules({
     role: user?.role,
@@ -38,6 +57,7 @@ export default function LogisticsHubPage() {
               preparacio: { bg: 'bg-[#e9f8ee]', text: 'text-[#155e37]', border: 'border-[#c7eed6]', Icon: ClipboardCheck },
               assignacions: { bg: 'bg-[#eef2ff]', text: 'text-[#3730a3]', border: 'border-[#c7d2fe]', Icon: Route },
               disponibilitat: { bg: 'bg-[#e8f5ff]', text: 'text-[#0f5c99]', border: 'border-[#c9e6ff]', Icon: CalendarClock },
+              'reserva-comercials': { bg: 'bg-[#edf7ff]', text: 'text-[#155e75]', border: 'border-[#cde9f6]', Icon: CarFront },
               transports: { bg: 'bg-[#fff4e5]', text: 'text-[#b45309]', border: 'border-[#fde2bd]', Icon: Truck },
             }
 
@@ -62,7 +82,14 @@ export default function LogisticsHubPage() {
                     ${styles.bg} ${styles.text} ${styles.border}
                   `}
                 >
-                  <Icon className="w-7 h-7" />
+                  <div className="relative">
+                    <Icon className="w-7 h-7" />
+                    {key === 'reserva-comercials' && reservationNotificationCount > 0 && (
+                      <span className="absolute -top-2 -right-3 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                        {reservationNotificationCount}
+                      </span>
+                    )}
+                  </div>
                   {sub.label}
                 </motion.div>
               </Link>

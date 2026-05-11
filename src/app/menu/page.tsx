@@ -30,6 +30,7 @@ import type { LucideIcon, LucideProps } from 'lucide-react'
 import { getVisibleModules } from '@/lib/accessControl'
 import {
   useAdminUserRequestCount,
+  useLogisticsReservationNotificationCount,
   useProjectAssignmentCount,
   useRobaPersonalRequestNotificationCount,
   useUserRequestResultCount,
@@ -285,6 +286,7 @@ function MenuContent({ user }: { user: SessionUser }) {
   const { count: incidentNotificationCount } = useIncidentNotificationCount()
   const { count: surveyNotificationCount } = useSurveyNotificationCount()
   const { count: robaPersonalRequestCount } = useRobaPersonalRequestNotificationCount()
+  const { count: logisticsReservationNotificationCount } = useLogisticsReservationNotificationCount()
   const maintenanceBadge = maintenanceNotificationCount
 
   // 🔑 ÚNICA FONT DE MÒDULS
@@ -362,6 +364,11 @@ function MenuContent({ user }: { user: SessionUser }) {
                 {mod.path === '/menu/roba-personal' && robaPersonalRequestCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                     {robaPersonalRequestCount}
+                  </span>
+                )}
+                {mod.path === '/menu/logistica' && logisticsReservationNotificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {logisticsReservationNotificationCount}
                   </span>
                 )}
                 {!isAdmin && mod.path === '/menu/personnel' && userRequestResultsCount > 0 && (

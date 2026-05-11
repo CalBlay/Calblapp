@@ -159,9 +159,10 @@ export function useRobaPersonalRequestNotificationCount() {
     Boolean(String(user?.robaLinkedPersonnelId || '').trim()) &&
     !isFullUser &&
     !isDeptLeadLimited
+  const canUseRobaPersonal = isFullUser || isDeptLeadLimited || isWorkerSelf
 
-  const requestsUrl = isAuth && userId ? '/api/roba-personal/requests' : null
-  const deliveriesUrl = isAuth && userId ? '/api/roba-personal/deliveries' : null
+  const requestsUrl = isAuth && userId && canUseRobaPersonal ? '/api/roba-personal/requests' : null
+  const deliveriesUrl = isAuth && userId && canUseRobaPersonal ? '/api/roba-personal/deliveries' : null
 
   const { data: requestsData, error: requestsError, mutate: mutateRequests } = useSWR(
     requestsUrl,
@@ -179,7 +180,7 @@ export function useRobaPersonalRequestNotificationCount() {
   )
 
   useEffect(() => {
-    if (!isAuth || !userId) return
+    if (!isAuth || !userId || !canUseRobaPersonal) return
 
     const handler = () => {
       mutateRequests().catch(() => {})
@@ -191,7 +192,7 @@ export function useRobaPersonalRequestNotificationCount() {
       eventName: 'created',
       handler,
     })
-  }, [isAuth, userId, mutateRequests, mutateDeliveries])
+  }, [isAuth, userId, canUseRobaPersonal, mutateRequests, mutateDeliveries])
 
   return {
     count: (() => {
@@ -227,8 +228,8 @@ export function useRobaPersonalRequestNotificationCount() {
     })(),
     loading:
       status === 'loading' ||
-      (isAuth && !!userId && !requestsData && !requestsError) ||
-      (isAuth && !!userId && !deliveriesData && !deliveriesError),
+      (isAuth && !!userId && canUseRobaPersonal && !requestsData && !requestsError) ||
+      (isAuth && !!userId && canUseRobaPersonal && !deliveriesData && !deliveriesError),
     error: requestsError || deliveriesError,
     isRrhh: isFullUser,
   }
@@ -271,6 +272,46 @@ export function useProjectAssignmentCount() {
           n.type === 'project_block_assignment' ||
           n.type === 'project_task_assignment'
         )
+      ).length
+    })(),
+    loading: status === 'loading' || (isAuth && !data && !error),
+    error,
+  }
+}
+
+export function useLogisticsReservationNotificationCount() {
+  const { data: session, status } = useSession()
+  const isAuth = status === 'authenticated'
+  const userId = (session?.user as SessionUser | undefined)?.id
+
+  const url = isAuth ? '/api/notifications?mode=list' : null
+
+  const { data, error, mutate } = useSWR(url, fetcher, {
+    refreshInterval: isAuth ? 15000 : 0,
+  })
+
+  useEffect(() => {
+    if (!isAuth || !userId) return
+
+    const handler = () => {
+      mutate().catch(() => {})
+    }
+
+    return subscribeToAblyEvent({
+      channelName: `user:${userId}:notifications`,
+      eventName: 'created',
+      handler,
+    })
+  }, [isAuth, userId, mutate])
+
+  return {
+    count: (() => {
+      const notifications = Array.isArray(data?.notifications) ? data.notifications : []
+      return notifications.filter(
+        (n: NotificationListItem) =>
+          !n.read &&
+          (n.type === 'commercial_vehicle_request' ||
+            n.type === 'commercial_vehicle_validation')
       ).length
     })(),
     loading: status === 'loading' || (isAuth && !data && !error),

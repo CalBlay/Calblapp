@@ -235,8 +235,8 @@ export const MODULES: ModuleDef[] = [
   {
     label: 'Logística',
     path: '/menu/logistica',
-    roles: ['admin','direccio','cap','treballador'],
-    departments: ['logistica'],
+    roles: ['admin','direccio','cap','treballador','comercial','usuari'],
+    departments: ['logistica', 'empresa'],
     submodules: [
       {
         label: 'Preparació',
@@ -252,6 +252,11 @@ export const MODULES: ModuleDef[] = [
         label: 'Disponibilitat',
         path: '/menu/logistica/disponibilitat',
         roles: ['admin','direccio','cap'],
+      },
+      {
+        label: 'Reserva comercials',
+        path: '/menu/logistica/reserva-comercials',
+        roles: ['admin','direccio','cap','treballador','comercial','usuari'],
       },
       {
         label: 'Transports',
@@ -421,4 +426,3 @@ export function canEditFinca(user?: AccessUser): boolean {
     (dept === 'empresa' || dept === 'casaments' || dept === 'foodlovers')
   )
 }
-

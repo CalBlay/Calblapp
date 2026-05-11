@@ -32,11 +32,15 @@ export default function TransportAssignmentCard({
     eventCode: string
     day: string
     eventStartTime: string
+    eventEndTime?: string
     eventName: string
     location: string
     service?: string
     pax: number
     status: 'draft' | 'confirmed'
+    source?: 'quadrant' | 'commercialReservation'
+    requesterName?: string
+    readOnly?: boolean
     rows?: VehicleRow[]
   }
   onChanged: () => void | Promise<void>
@@ -167,11 +171,45 @@ export default function TransportAssignmentCard({
 
       {open && (
         <div className="border-t bg-gray-50">
-          <VehiclesTable
-            item={item}
-            onChanged={onChanged}
-            onEditingChange={handleEditingChange}
-          />
+          {item.readOnly ? (
+            <div className="space-y-3 p-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border bg-white px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Sol·licitant
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-800">
+                    {item.requesterName || 'Sense dades'}
+                  </div>
+                </div>
+                <div className="rounded-xl border bg-white px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Franja
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-800">
+                    {item.eventStartTime || '--:--'} {item.eventEndTime ? `- ${item.eventEndTime}` : ''}
+                  </div>
+                </div>
+                <div className="rounded-xl border bg-white px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Vehicle
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-800">
+                    {rows[0]?.plate || 'Pendent d’assignar'}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-dashed bg-white px-3 py-2 text-sm text-slate-600">
+                Aquesta reserva es gestiona des de `Reserva comercials`.
+              </div>
+            </div>
+          ) : (
+            <VehiclesTable
+              item={item}
+              onChanged={onChanged}
+              onEditingChange={handleEditingChange}
+            />
+          )}
         </div>
       )}
     </div>
