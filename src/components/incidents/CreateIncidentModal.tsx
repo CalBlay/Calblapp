@@ -53,7 +53,9 @@ export default function CreateIncidentModal({
   const userDepartmentRaw = session?.user?.department ?? ''
   const normalizedUserRole = (session?.user?.role ?? '').toLowerCase().trim()
   const normalizedUserDepartment =
-    normalizedUserRole === 'comercial' ? 'Comercial' : userDepartmentRaw.trim() || INCIDENT_ORIGIN_DEPARTMENTS[0]
+    normalizedUserRole === 'comercial'
+      ? 'Comercial'
+      : userDepartmentRaw.trim() || INCIDENT_ORIGIN_DEPARTMENTS[0]
   const canPickDepartment = ['admin', 'direccio'].includes(normalizedUserRole)
 
   const [department, setDepartment] = useState(normalizedUserDepartment)
@@ -258,179 +260,186 @@ export default function CreateIncidentModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="w-[94vw] max-w-sm rounded-2xl p-0 overflow-hidden" lockDismissOnOutside>
-        <DialogHeader>
+      <DialogContent
+        className="flex max-h-[min(88dvh,100svh)] w-[94vw] max-w-sm flex-col overflow-hidden rounded-2xl p-0"
+        lockDismissOnOutside
+      >
+        <DialogHeader className="shrink-0">
           <DialogTitle className="px-4 pt-4 text-base font-semibold text-slate-900">Nova incidencia</DialogTitle>
           <DialogDescription className="px-4 pb-3 text-xs leading-5 text-slate-500">
             {event.summary.replace(/#.*$/, '').trim()} · {event.start.substring(0, 10)}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className={cn('space-y-4 px-4 pb-4', typography('bodySm'))}>
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Departament *</label>
-            <select
-              className={mobileSelectClass}
-              value={department}
-              onChange={(e) => {
-                if (canPickDepartment) setDepartment(e.target.value)
-              }}
-              disabled={!canPickDepartment}
-              required
-            >
-              {departmentOptions.map((dep) => (
-                <option key={dep} value={dep}>
-                  {dep}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Categoria *</label>
-            <select
-              className={mobileSelectClass}
-              value={category?.id || ''}
-              onChange={(e) => {
-                const selected = categories.find((c) => c.id === e.target.value)
-                if (selected) setCategory(selected)
-              }}
-              required
-              disabled={categoriesLoading || categories.length === 0}
-            >
-              {categoriesLoading ? (
-                <option value="">Carregant…</option>
-              ) : categories.length === 0 ? (
-                <option value="">No hi ha categories</option>
-              ) : (
-                categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
+        <form onSubmit={handleSubmit} className={cn('flex min-h-0 flex-1 flex-col', typography('bodySm'))}>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Departament *</label>
+              <select
+                className={mobileSelectClass}
+                value={department}
+                onChange={(e) => {
+                  if (canPickDepartment) setDepartment(e.target.value)
+                }}
+                disabled={!canPickDepartment}
+                required
+              >
+                {departmentOptions.map((dep) => (
+                  <option key={dep} value={dep}>
+                    {dep}
                   </option>
-                ))
-              )}
-            </select>
-            {category?.label ? (
-              <p className="text-[11px] leading-4 text-slate-500">
-                Seleccionada: <span className="font-medium text-slate-700">{category.label}</span>
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Importancia *</label>
-            <select
-              className={mobileSelectClass}
-              value={importance}
-              onChange={(e) => setImportance(e.target.value)}
-              required
-            >
-              {IMPORTANCIES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Descripcio *</label>
-            <textarea
-              className={cn(mobileFieldClass, 'min-h-[108px] resize-none')}
-              rows={4}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <label className={typography('bodyXs')}>Adjuntar fins a 3 fotos</label>
-              <label
-                className={cn(
-                  'min-h-[44px] cursor-pointer rounded-full border px-4 py-2',
-                  typography('bodySm')
-                )}
-              >
-                Fitxer
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    void handleImageChange(e.target.files)
-                    e.currentTarget.value = ''
-                  }}
-                />
-              </label>
-              <label
-                className={cn(
-                  'min-h-[44px] cursor-pointer rounded-full border px-4 py-2',
-                  typography('bodySm')
-                )}
-              >
-                Foto
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={(e) => {
-                    void handleImageChange(e.target.files)
-                    e.currentTarget.value = ''
-                  }}
-                />
-              </label>
-              <span className={typography('bodyXs')}>
-                {images.length}/{MAX_IMAGES}
-              </span>
-              {imageError && <span className={cn(typography('bodySm'), 'text-red-600')}>{imageError}</span>}
+                ))}
+              </select>
             </div>
 
-            {images.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
-                {images.map((image, index) => (
-                  <div key={`${image.preview}-${index}`} className="relative overflow-hidden rounded-2xl border">
-                    <Image
-                      src={image.preview}
-                      alt={`Previsualitzacio ${index + 1}`}
-                      width={448}
-                      height={112}
-                      className="h-28 w-full object-cover"
-                      unoptimized
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(index)}
-                      className={cn(
-                        'absolute right-1 top-1 rounded-full bg-black/60 px-2 py-1 text-white',
-                        typography('bodyXs')
-                      )}
-                    >
-                      X
-                    </button>
-                  </div>
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Categoria *</label>
+              <select
+                className={mobileSelectClass}
+                value={category?.id || ''}
+                onChange={(e) => {
+                  const selected = categories.find((c) => c.id === e.target.value)
+                  if (selected) setCategory(selected)
+                }}
+                required
+                disabled={categoriesLoading || categories.length === 0}
+              >
+                {categoriesLoading ? (
+                  <option value="">Carregant…</option>
+                ) : categories.length === 0 ? (
+                  <option value="">No hi ha categories</option>
+                ) : (
+                  categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))
+                )}
+              </select>
+              {category?.label ? (
+                <p className="text-[11px] leading-4 text-slate-500">
+                  Seleccionada: <span className="font-medium text-slate-700">{category.label}</span>
+                </p>
+              ) : null}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Importancia *</label>
+              <select
+                className={mobileSelectClass}
+                value={importance}
+                onChange={(e) => setImportance(e.target.value)}
+                required
+              >
+                {IMPORTANCIES.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
                 ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Descripcio *</label>
+              <textarea
+                className={cn(mobileFieldClass, 'min-h-[108px] resize-none')}
+                rows={4}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className={typography('bodyXs')}>Adjuntar fins a 3 fotos</label>
+                <label
+                  className={cn(
+                    'min-h-[44px] cursor-pointer rounded-full border px-4 py-2',
+                    typography('bodySm')
+                  )}
+                >
+                  Fitxer
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      void handleImageChange(e.target.files)
+                      e.currentTarget.value = ''
+                    }}
+                  />
+                </label>
+                <label
+                  className={cn(
+                    'min-h-[44px] cursor-pointer rounded-full border px-4 py-2',
+                    typography('bodySm')
+                  )}
+                >
+                  Foto
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => {
+                      void handleImageChange(e.target.files)
+                      e.currentTarget.value = ''
+                    }}
+                  />
+                </label>
+                <span className={typography('bodyXs')}>
+                  {images.length}/{MAX_IMAGES}
+                </span>
+                {imageError && <span className={cn(typography('bodySm'), 'text-red-600')}>{imageError}</span>}
               </div>
-            )}
+
+              {images.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {images.map((image, index) => (
+                    <div key={`${image.preview}-${index}`} className="relative overflow-hidden rounded-2xl border">
+                      <Image
+                        src={image.preview}
+                        alt={`Previsualitzacio ${index + 1}`}
+                        width={448}
+                        height={112}
+                        className="h-28 w-full object-cover"
+                        unoptimized
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(index)}
+                        className={cn(
+                          'absolute right-1 top-1 rounded-full bg-black/60 px-2 py-1 text-white',
+                          typography('bodyXs')
+                        )}
+                      >
+                        X
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {error && <p className={cn(typography('bodySm'), 'text-red-600')}>{error}</p>}
           </div>
 
-          {error && <p className={cn(typography('bodySm'), 'text-red-600')}>{error}</p>}
-
-          <div className="grid grid-cols-2 gap-2">
-            <Button type="button" variant="outline" className="w-full" disabled={loading} onClick={onClose}>
-              Cancel·lar
-            </Button>
-            <Button
-              type="submit"
-              className="w-full"
-              variant="primary"
-              disabled={loading || !category || categoriesLoading}
-            >
-              {loading ? 'Creant...' : 'Crear incidencia'}
-            </Button>
+          <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="outline" className="w-full" disabled={loading} onClick={onClose}>
+                Cancel·lar
+              </Button>
+              <Button
+                type="submit"
+                className="w-full"
+                variant="primary"
+                disabled={loading || !category || categoriesLoading}
+              >
+                {loading ? 'Creant...' : 'Crear incidencia'}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>

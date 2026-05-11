@@ -103,6 +103,27 @@ const getEventCommercial = (ev: Record<string, unknown>) =>
       ""
   ).trim();
 
+const getEventCode = (ev: Record<string, unknown>) =>
+  String(ev.code || ev.Code || ev.C_digo || ev.codi || '').trim()
+
+const getEventOperationalResponsibles = (ev: Record<string, unknown>) => {
+  const candidates = [
+    ev.Responsable,
+    ev.RESPONSABLE,
+    ev.responsable,
+    ev.responsableZoho,
+    ev.responsableName,
+  ]
+
+  return candidates
+    .flatMap((value) => {
+      if (Array.isArray(value)) return value
+      return [value]
+    })
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+}
+
 const commercialOwnsEvent = (
   user: { name?: string | null; commercialName?: string | null },
   ev: Record<string, unknown>
@@ -114,6 +135,62 @@ const commercialOwnsEvent = (
     .filter(Boolean);
   return aliases.some((alias) => alias === eventCommercial);
 };
+
+async function commercialCanCreateIncidentForEvent(
+  user: { name?: string | null; commercialName?: string | null },
+  eventId: string,
+  ev: Record<string, unknown>
+) {
+  if (commercialOwnsEvent(user, ev)) return true
+
+  const aliases = new Set(
+    [user.commercialName, user.name]
+      .map((value) => normalizeText(value || ''))
+      .filter(Boolean)
+  )
+  if (aliases.size === 0) return false
+
+  const operativeResponsibles = getEventOperationalResponsibles(ev).map((value) => normalizeText(value))
+  if (operativeResponsibles.some((value) => aliases.has(value))) return true
+
+  const eventCode = getEventCode(ev)
+  const quadrantCollections = [
+    'quadrantsServeis',
+    'quadrantsLogistica',
+    'quadrantsCuina',
+    'quadrantsProduccio',
+    'quadrantsComercial',
+  ]
+
+  const snapshots = await Promise.all(
+    quadrantCollections.map(async (collectionName) => {
+      const collection = firestoreAdmin.collection(collectionName)
+      const byEventId = await collection.where('eventId', '==', eventId).get().catch(() => null)
+      if (byEventId && !byEventId.empty) return byEventId.docs
+      if (!eventCode) return []
+      const byCode = await collection.where('code', '==', eventCode).get().catch(() => null)
+      return byCode?.docs ?? []
+    })
+  )
+
+  for (const docs of snapshots) {
+    for (const doc of docs) {
+      const data = doc.data() as {
+        responsableName?: string
+        responsable?: { name?: string | null } | null
+      }
+      const possibleResponsibleNames = [
+        String(data?.responsableName || '').trim(),
+        String(data?.responsable?.name || '').trim(),
+      ]
+        .map((value) => normalizeText(value))
+        .filter(Boolean)
+      if (possibleResponsibleNames.some((value) => aliases.has(value))) return true
+    }
+  }
+
+  return false
+}
 
 /** Resposta més lleugera per llistats (tauler, quadre): sense payloads d’imatges. */
 function projectIncidentLight(inc: Record<string, unknown>): Record<string, unknown> {
@@ -263,11 +340,17 @@ export async function POST(req: Request) {
     }
 
     const ev = (evSnap.data() || {}) as Record<string, unknown>;
-    if (normalizeRole(user.role || "") === "comercial" && !commercialOwnsEvent(user, ev)) {
-      return NextResponse.json({ error: "Aquest esdeveniment no esta assignat al teu comercial" }, { status: 403 });
+    if (
+      normalizeRole(user.role || "") === "comercial" &&
+      !(await commercialCanCreateIncidentForEvent(user, String(eventId), ev))
+    ) {
+      return NextResponse.json(
+        { error: "Aquest esdeveniment no esta assignat ni al teu comercial ni al teu responsable" },
+        { status: 403 }
+      );
     }
 
-    const eventCode = String(ev.code || ev.Code || ev.C_digo || ev.codi || "")
+    const eventCode = getEventCode(ev)
     const eventTitle = String(ev.NomEvent || "")
     const eventDate = String(ev.DataInici || ev.DataPeticio || "")
     const eventLocation = String(ev.Ubicacio || "")
