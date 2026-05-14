@@ -18,6 +18,7 @@ import type {
 import {
   buildPreferredAssignments,
   clonePayloadForDate,
+  normalizePayloadToSingleDate,
 } from '../components/quadrantModalUtils'
 import {
   confirmSavedQuadrants,
@@ -52,6 +53,7 @@ export type UseQuadrantSubmitParams = {
   isQuadrantCoreDept: boolean
   isMultiDayEvent: boolean
   multiDayDates: string[]
+  selectedMultiDates: string[]
   generationScope: GenerationScope
   mode: QuadrantMode
 
@@ -127,6 +129,7 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
         isQuadrantCoreDept,
         isMultiDayEvent,
         multiDayDates,
+        selectedMultiDates,
         generationScope,
         mode,
         canAutoGen,
@@ -336,10 +339,22 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
           payload.confirmImmediately = true
         }
 
+        const normalizedPayload =
+          isMultiDayEvent && generationScope === 'day'
+            ? normalizePayloadToSingleDate(payload, department, startDate)
+            : payload
+
+        const targetDates =
+          selectedMultiDates.length > 0 ? selectedMultiDates : multiDayDates
+
+        if (isMultiDayEvent && generationScope === 'event' && targetDates.length === 0) {
+          throw new Error('Selecciona almenys un dia per generar el quadrant multi dia.')
+        }
+
         const payloads =
           isMultiDayEvent && generationScope === 'event'
-            ? multiDayDates.map((date) => clonePayloadForDate(payload, department, date))
-            : [payload]
+            ? targetDates.map((date) => clonePayloadForDate(normalizedPayload, department, date))
+            : [normalizedPayload]
 
         await dispatchSubmissions({
           payloads,

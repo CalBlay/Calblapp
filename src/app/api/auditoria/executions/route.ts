@@ -7,6 +7,13 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { registerAuditAnswersInIndex } from '@/lib/media/storageMediaIndex'
 import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
+import {
+  ExtraOutcome,
+  buildEventExtrasDocId,
+  getEventStageContext,
+  isWeddingLn,
+  normalizeEventDay,
+} from '@/lib/eventExtras'
 
 type Department = 'comercial' | 'serveis' | 'cuina' | 'logistica' | 'deco'
 type IncidentOutcome = 'none' | 'reported'
@@ -25,11 +32,6 @@ type TemplateBlock = {
   weight?: number
   itemWeightMode?: 'equal' | 'manual' | string
   items?: Array<{ id?: string; label?: string; type?: string; weight?: number }>
-}
-
-function normalizeEventDay(raw?: string | null) {
-  const value = String(raw || '').trim()
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : ''
 }
 
 function buildExecutionDocId(eventId: string, department: Department, eventDay?: string | null) {
@@ -170,6 +172,7 @@ export async function POST(req: Request) {
       department?: string
       incidentOutcome?: IncidentOutcome
       incidentIds?: string[]
+      extraOutcome?: ExtraOutcome
       notes?: string
       auditAnswers?: Array<{
         itemId?: string
@@ -191,6 +194,7 @@ export async function POST(req: Request) {
     const incidentIds = Array.isArray(body.incidentIds)
       ? body.incidentIds.map((x) => String(x || '').trim()).filter(Boolean)
       : []
+    const extraOutcome: ExtraOutcome = body.extraOutcome === 'reported' ? 'reported' : 'none'
     const notes = String(body.notes || '').trim()
     const auditAnswers = Array.isArray(body.auditAnswers)
       ? body.auditAnswers
@@ -247,10 +251,25 @@ export async function POST(req: Request) {
         { status: 400 }
       )
     }
-
     if (!['admin', 'direccio', 'cap', 'comercial'].includes(auth.role)) {
       if (!auth.department || auth.department !== department) {
         return NextResponse.json({ error: 'Sense permisos per aquest departament' }, { status: 403 })
+      }
+    }
+
+    const eventContext = await getEventStageContext(eventId)
+    const requiresExtras = department === 'serveis' && isWeddingLn(eventContext?.lnKey)
+    if (requiresExtras && mode === 'finalize' && extraOutcome === 'reported') {
+      const extrasDocId = buildEventExtrasDocId(eventId, eventDay)
+      const extrasSnap = await firestoreAdmin.collection('event_extras').doc(extrasDocId).get()
+      const extrasCount = extrasSnap.exists
+        ? Number((extrasSnap.data() as { entriesCount?: unknown })?.entriesCount || 0)
+        : 0
+      if (extrasCount <= 0) {
+        return NextResponse.json(
+          { error: "Has indicat extres, pero no n'hi ha cap registrat." },
+          { status: 400 }
+        )
       }
     }
 
@@ -302,6 +321,8 @@ export async function POST(req: Request) {
       incidentsReviewed: true,
       incidentOutcome,
       incidentIds,
+      extrasRequired: requiresExtras,
+      extraOutcome: requiresExtras ? extraOutcome : 'none',
       notes: notes || null,
       auditAnswers,
       updatedAt: now,
@@ -344,6 +365,7 @@ export async function POST(req: Request) {
           status: 'draft',
           incidentOutcome,
           incidentIds,
+          extraOutcome: requiresExtras ? extraOutcome : 'none',
           templateId: visibleTemplate?.id || null,
         },
         { status: 200 }
@@ -377,6 +399,7 @@ export async function POST(req: Request) {
         status: 'completed',
         incidentOutcome,
         incidentIds,
+        extraOutcome: requiresExtras ? extraOutcome : 'none',
         templateId: visibleTemplate?.id || null,
       },
       { status: 200 }

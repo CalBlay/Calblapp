@@ -25,10 +25,14 @@ import {
 import { useTransports } from '@/hooks/useTransports'
 import {
   COMMERCIAL_RESERVATION_STATUS_LABELS,
+  getCommercialReservationDayKeys,
+  getCommercialReservationEndDate,
   type CommercialReservation,
   type CommercialReservationStatus,
 } from '@/lib/commercialReservations'
+import { formatDateOnly } from '@/lib/date-format'
 import { normalizeRole } from '@/lib/roles'
+import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
 import { cn } from '@/lib/utils'
 
 type TabId = 'sollicitud' | 'validacio'
@@ -46,6 +50,7 @@ type AssignmentRow = {
   vehicleType?: string
   name?: string
   startDate?: string
+  endDate?: string
   startTime?: string
   endTime?: string
 }
@@ -79,13 +84,7 @@ function isoDate(date: Date) {
 }
 
 function prettyDate(value: string) {
-  const date = new Date(`${value}T00:00:00`)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString('ca-ES', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
+  return formatDateOnly(value, value)
 }
 
 function monthBounds(baseDate: Date) {
@@ -95,6 +94,96 @@ function monthBounds(baseDate: Date) {
     start: isoDate(start),
     end: isoDate(end),
   }
+}
+
+function reservationDateLabel(reservation: Pick<CommercialReservation, 'date' | 'endDate' | 'startTime' | 'endTime'>) {
+  const endDate = getCommercialReservationEndDate(reservation)
+  if (endDate !== reservation.date) {
+    return `${prettyDate(reservation.date)} ${reservation.startTime} -> ${prettyDate(endDate)} ${reservation.endTime}`
+  }
+  return `${prettyDate(reservation.date)} · ${reservation.startTime} - ${reservation.endTime}`
+}
+
+function overlapsDateTimes(
+  startA: string,
+  startTimeA: string,
+  endA: string,
+  endTimeA: string,
+  startB: string,
+  startTimeB: string,
+  endB: string,
+  endTimeB: string
+) {
+  return (
+    new Date(`${startA}T${startTimeA}:00`) < new Date(`${endB}T${endTimeB}:00`) &&
+    new Date(`${startB}T${startTimeB}:00`) < new Date(`${endA}T${endTimeA}:00`)
+  )
+}
+
+const STANDARD_DAY_START = '08:00'
+const STANDARD_DAY_END = '18:00'
+const STANDARD_DAY_MINUTES = 10 * 60
+
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(':').map((part) => Number(part))
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0
+  return hours * 60 + minutes
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function mergeIntervals(intervals: Array<{ start: number; end: number }>) {
+  if (intervals.length === 0) return []
+  const sorted = [...intervals].sort((a, b) => a.start - b.start)
+  const merged = [sorted[0]]
+  for (let index = 1; index < sorted.length; index += 1) {
+    const current = sorted[index]
+    const previous = merged[merged.length - 1]
+    if (current.start <= previous.end) {
+      previous.end = Math.max(previous.end, current.end)
+      continue
+    }
+    merged.push({ ...current })
+  }
+  return merged
+}
+
+function dayAvailabilityVisual(freeRatio: number) {
+  const ratio = clamp(freeRatio, 0, 1)
+  if (ratio <= 0.15) {
+    return {
+      tone: 'border-red-200 bg-red-50/70 hover:border-red-300 hover:bg-red-50',
+    }
+  }
+  if (ratio <= 0.45) {
+    return {
+      tone: 'border-amber-200 bg-amber-50/70 hover:border-amber-300 hover:bg-amber-50',
+    }
+  }
+  if (ratio <= 0.75) {
+    return {
+      tone: 'border-lime-200 bg-lime-50/70 hover:border-lime-300 hover:bg-lime-50',
+    }
+  }
+  return {
+    tone: 'border-emerald-200 bg-emerald-50/70 hover:border-emerald-300 hover:bg-emerald-50',
+  }
+}
+
+function includesDaySpan(
+  startDate: string,
+  endDate: string,
+  targetDay: string
+) {
+  return startDate <= targetDay && targetDay <= endDate
+}
+
+function ensureSetMapValue(map: Map<string, Set<string>>, key: string) {
+  const current = map.get(key) || new Set<string>()
+  map.set(key, current)
+  return current
 }
 
 export default function ReservaComercialsPage() {
@@ -122,6 +211,7 @@ export default function ReservaComercialsPage() {
 
   const [tab, setTab] = useState<TabId>(initialTab)
   const [filters, setFilters] = useState<FiltersState>(initialFilters)
+  const [requestFilters, setRequestFilters] = useState<FiltersState>(initialFilters)
   const [monthDate, setMonthDate] = useState(() => new Date())
   const [reservations, setReservations] = useState<CommercialReservation[]>([])
   const [assignmentItems, setAssignmentItems] = useState<AssignmentItem[]>([])
@@ -129,6 +219,7 @@ export default function ReservaComercialsPage() {
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedDay, setSelectedDay] = useState(() => isoDate(new Date()))
+  const [selectedEndDay, setSelectedEndDay] = useState(() => isoDate(new Date()))
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('13:00')
   const [destination, setDestination] = useState('')
@@ -140,7 +231,7 @@ export default function ReservaComercialsPage() {
 
   const { data: transports = [] } = useTransports()
   const commercialFleet = useMemo(
-    () => transports.filter((transport) => transport.type === 'comercial'),
+    () => transports.filter((transport) => ['comercial', 'furgonetaPetita'].includes(transport.type)),
     [transports]
   )
 
@@ -180,6 +271,15 @@ export default function ReservaComercialsPage() {
   }, [])
 
   useEffect(() => {
+    if (!user.id) return
+    void fetch('/api/notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clearCommercialVehicle' }),
+    }).catch(() => {})
+  }, [user.id])
+
+  useEffect(() => {
     void loadAssignmentItems(monthDate)
   }, [monthDate])
 
@@ -206,6 +306,16 @@ export default function ReservaComercialsPage() {
     }))
   }
 
+  const handleRequestDatesChange = (next: SmartFiltersChange) => {
+    if (!next.start || !next.end) return
+    setRequestFilters((prev) => ({
+      ...prev,
+      start: next.start || prev.start,
+      end: next.end || prev.end,
+      mode: (next.mode as FiltersState['mode']) || prev.mode,
+    }))
+  }
+
   const assignmentRows = useMemo(() => {
     const commercialPlates = new Set(
       commercialFleet.map((vehicle) => String(vehicle.plate || '').trim().toUpperCase())
@@ -222,6 +332,7 @@ export default function ReservaComercialsPage() {
           .map((row) => ({
             id: row.id,
             date: String(row.startDate || item.day || '').trim(),
+            endDate: String(row.endDate || row.startDate || item.day || '').trim(),
             startTime: String(row.startTime || item.eventStartTime || '').trim(),
             endTime: String(row.endTime || item.eventEndTime || row.startTime || item.eventStartTime || '').trim(),
             plate: String(row.plate || '').trim(),
@@ -234,10 +345,12 @@ export default function ReservaComercialsPage() {
   const statsByDay = useMemo(() => {
     const map = new Map<string, { confirmed: number; pending: number }>()
     for (const reservation of reservations) {
-      const current = map.get(reservation.date) || { confirmed: 0, pending: 0 }
-      if (reservation.status === 'confirmed') current.confirmed += 1
-      if (reservation.status === 'pending') current.pending += 1
-      map.set(reservation.date, current)
+      for (const dayKey of getCommercialReservationDayKeys(reservation)) {
+        const current = map.get(dayKey) || { confirmed: 0, pending: 0 }
+        if (reservation.status === 'confirmed') current.confirmed += 1
+        if (reservation.status === 'pending') current.pending += 1
+        map.set(dayKey, current)
+      }
     }
     return map
   }, [reservations])
@@ -246,9 +359,11 @@ export default function ReservaComercialsPage() {
     const map = new Map<string, CommercialReservation[]>()
     for (const reservation of reservations) {
       if (reservation.status === 'rejected' || reservation.status === 'cancelled') continue
-      const current = map.get(reservation.date) || []
-      current.push(reservation)
-      map.set(reservation.date, current)
+      for (const dayKey of getCommercialReservationDayKeys(reservation)) {
+        const current = map.get(dayKey) || []
+        current.push(reservation)
+        map.set(dayKey, current)
+      }
     }
     for (const [key, list] of map.entries()) {
       map.set(key, [...list].sort((a, b) => a.startTime.localeCompare(b.startTime)))
@@ -259,38 +374,136 @@ export default function ReservaComercialsPage() {
   const assignmentRowsByDay = useMemo(() => {
     const map = new Map<string, typeof assignmentRows>()
     for (const row of assignmentRows) {
-      const current = map.get(row.date) || []
-      current.push(row)
-      map.set(row.date, current)
+      for (const dayKey of getCommercialReservationDayKeys({
+        date: String(row.date || '').trim(),
+        endDate: String(row.endDate || row.date || '').trim(),
+      })) {
+        const current = map.get(dayKey) || []
+        current.push(row)
+        map.set(dayKey, current)
+      }
     }
     return map
   }, [assignmentRows])
 
-  const occupiedCommercialPlatesByDay = useMemo(() => {
-    const map = new Map<string, Set<string>>()
+  const slotKeys = useMemo(
+    () => Array.from({ length: 10 }, (_, index) => `${String(8 + index).padStart(2, '0')}:00`),
+    []
+  )
 
-    for (const reservation of reservations) {
-      if (reservation.status !== 'confirmed' || !reservation.assignedVehiclePlate) continue
-      const key = String(reservation.date || '').trim()
-      if (!key) continue
-      const current = map.get(key) || new Set<string>()
-      current.add(String(reservation.assignedVehiclePlate).trim().toUpperCase())
-      map.set(key, current)
+  const occupiedPlatesByDayAndSlot = useMemo(() => {
+    const map = new Map<string, Map<string, Set<string>>>()
+
+    const pushPlate = (dayKey: string, slotKey: string, plate: string) => {
+      const normalizedPlate = plate.trim().toUpperCase()
+      if (!normalizedPlate) return
+      const dayMap = map.get(dayKey) || new Map<string, Set<string>>()
+      map.set(dayKey, dayMap)
+      const slotSet = ensureSetMapValue(dayMap, slotKey)
+      slotSet.add(normalizedPlate)
     }
 
-    for (const row of assignmentRows) {
-      if (!row.plate) continue
-      const current = map.get(row.date) || new Set<string>()
-      current.add(String(row.plate).trim().toUpperCase())
-      map.set(row.date, current)
-    }
+    reservations.forEach((reservation) => {
+      if (reservation.status !== 'confirmed' || !reservation.assignedVehiclePlate) return
+      const spansMultipleDays = getCommercialReservationEndDate(reservation) !== reservation.date
+      for (const dayKey of getCommercialReservationDayKeys(reservation)) {
+        slotKeys.forEach((slotKey) => {
+          const slotEnd = `${String(Number(slotKey.slice(0, 2)) + 1).padStart(2, '0')}:00`
+          const reservationStart = spansMultipleDays ? STANDARD_DAY_START : reservation.startTime
+          const reservationEnd = spansMultipleDays ? STANDARD_DAY_END : reservation.endTime
+          if (
+            overlapsDateTimes(
+              dayKey,
+              reservationStart,
+              dayKey,
+              reservationEnd,
+              dayKey,
+              slotKey,
+              dayKey,
+              slotEnd
+            )
+          ) {
+            pushPlate(dayKey, slotKey, String(reservation.assignedVehiclePlate || ''))
+          }
+        })
+      }
+    })
+
+    assignmentRows.forEach((row) => {
+      const plate = String(row.plate || '').trim()
+      if (!plate) return
+      for (const dayKey of getCommercialReservationDayKeys({
+        date: String(row.date || '').trim(),
+        endDate: String(row.endDate || row.date || '').trim(),
+      })) {
+        slotKeys.forEach((slotKey) => {
+          const slotEnd = `${String(Number(slotKey.slice(0, 2)) + 1).padStart(2, '0')}:00`
+          if (
+            overlapsDateTimes(
+              dayKey,
+              String(row.startTime || STANDARD_DAY_START).trim(),
+              dayKey,
+              String(row.endTime || STANDARD_DAY_END).trim(),
+              dayKey,
+              slotKey,
+              dayKey,
+              slotEnd
+            )
+          ) {
+            pushPlate(dayKey, slotKey, plate)
+          }
+        })
+      }
+    })
 
     return map
-  }, [assignmentRows, reservations])
+  }, [assignmentRows, reservations, slotKeys])
+
+  const freeCapacityRatioByDay = useMemo(() => {
+    const map = new Map<string, number>()
+    const totalVehicles = commercialFleet.length
+    const totalVehicleSlots = Math.max(totalVehicles * slotKeys.length, 1)
+
+    const allDayKeys = new Set<string>()
+    reservations.forEach((reservation) => {
+      getCommercialReservationDayKeys(reservation).forEach((dayKey) => allDayKeys.add(dayKey))
+    })
+    assignmentRows.forEach((row) => {
+      getCommercialReservationDayKeys({
+        date: String(row.date || '').trim(),
+        endDate: String(row.endDate || row.date || '').trim(),
+      }).forEach((dayKey) => allDayKeys.add(dayKey))
+    })
+
+    allDayKeys.forEach((dayKey) => {
+      let occupiedVehicleSlots = 0
+      slotKeys.forEach((slotKey) => {
+        const occupied = occupiedPlatesByDayAndSlot.get(dayKey)?.get(slotKey)?.size || 0
+        occupiedVehicleSlots += occupied
+      })
+      const freeVehicleSlots = Math.max(totalVehicleSlots - occupiedVehicleSlots, 0)
+      map.set(dayKey, freeVehicleSlots / totalVehicleSlots)
+    })
+
+    return map
+  }, [assignmentRows, commercialFleet.length, occupiedPlatesByDayAndSlot, reservations, slotKeys])
 
   const myReservations = useMemo(
     () => reservations.filter((reservation) => reservation.requesterId === user.id),
     [reservations, user.id]
+  )
+
+  const requestStatusFilter = requestFilters.status ?? '__all__'
+  const filteredMyReservations = useMemo(
+    () =>
+      myReservations.filter((reservation) => {
+        const reservationEndDate = getCommercialReservationEndDate(reservation)
+        if (requestFilters.start && reservationEndDate < requestFilters.start) return false
+        if (requestFilters.end && reservation.date > requestFilters.end) return false
+        if (requestStatusFilter !== '__all__' && reservation.status !== requestStatusFilter) return false
+        return true
+      }),
+    [myReservations, requestFilters.end, requestFilters.start, requestStatusFilter]
   )
 
   const confirmedReservations = useMemo(
@@ -308,7 +521,8 @@ export default function ReservaComercialsPage() {
         const isManageable =
           reservation.status === 'pending' || reservation.status === 'confirmed'
         if (!isManageable) return false
-        if (filters.start && reservation.date < filters.start) return false
+        const reservationEndDate = getCommercialReservationEndDate(reservation)
+        if (filters.start && reservationEndDate < filters.start) return false
         if (filters.end && reservation.date > filters.end) return false
         if (statusFilter !== '__all__' && reservation.status !== statusFilter) return false
         return true
@@ -317,6 +531,7 @@ export default function ReservaComercialsPage() {
   )
 
   const availableVehiclesForReservation = (target: CommercialReservation) => {
+    const targetEndDate = getCommercialReservationEndDate(target)
     return commercialFleet.filter((vehicle) => {
       if (vehicle.available === false) return false
 
@@ -324,9 +539,16 @@ export default function ReservaComercialsPage() {
       const hasAssignmentConflict = assignmentRows.some(
         (row) =>
           String(row.plate || '').trim().toUpperCase() === plateKey &&
-          row.date === target.date &&
-          row.startTime < target.endTime &&
-          target.startTime < row.endTime
+          overlapsDateTimes(
+            String(row.date || '').trim(),
+            String(row.startTime || '').trim(),
+            String(row.endDate || row.date || '').trim(),
+            String(row.endTime || row.startTime || '').trim(),
+            target.date,
+            target.startTime,
+            targetEndDate,
+            target.endTime
+          )
       )
       if (hasAssignmentConflict) return false
 
@@ -334,9 +556,16 @@ export default function ReservaComercialsPage() {
         (reservation) =>
           reservation.id !== target.id &&
           reservation.assignedVehicleId === vehicle.id &&
-          reservation.date === target.date &&
-          reservation.startTime < target.endTime &&
-          target.startTime < reservation.endTime
+          overlapsDateTimes(
+            reservation.date,
+            reservation.startTime,
+            getCommercialReservationEndDate(reservation),
+            reservation.endTime,
+            target.date,
+            target.startTime,
+            targetEndDate,
+            target.endTime
+          )
       )
     })
   }
@@ -344,10 +573,14 @@ export default function ReservaComercialsPage() {
   const handleOpenReservation = (dayIso: string) => {
     if (dayIso < todayIso) return
     setSelectedDay(dayIso)
+    setSelectedEndDay(dayIso)
     setDialogOpen(true)
   }
 
   const resetForm = () => {
+    const today = isoDate(new Date())
+    setSelectedDay(today)
+    setSelectedEndDay(today)
     setStartTime('09:00')
     setEndTime('13:00')
     setDestination('')
@@ -361,6 +594,13 @@ export default function ReservaComercialsPage() {
       setError("Només es poden fer reserves d'avui en endavant")
       return
     }
+    if (selectedEndDay < selectedDay) {
+      setError('La data final no pot ser anterior a la inicial')
+      return
+    }
+    const isMultiDayReservation = selectedEndDay !== selectedDay
+    const effectiveStartTime = isMultiDayReservation ? STANDARD_DAY_START : startTime
+    const effectiveEndTime = isMultiDayReservation ? STANDARD_DAY_END : endTime
 
     try {
       setSaving(true)
@@ -369,8 +609,9 @@ export default function ReservaComercialsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           date: selectedDay,
-          startTime,
-          endTime,
+          endDate: selectedEndDay,
+          startTime: effectiveStartTime,
+          endTime: effectiveEndTime,
           destination: destination.trim(),
           reason: reason.trim(),
           notes: notes.trim(),
@@ -444,6 +685,24 @@ export default function ReservaComercialsPage() {
     month: 'long',
     year: 'numeric',
   })
+  const isMultiDaySelection = selectedEndDay !== selectedDay
+  const selectedDayTimeline = useMemo(() => {
+    const totalVehicles = commercialFleet.length
+    return slotKeys.map((slotStart) => {
+      const slotEnd = `${String(Number(slotStart.slice(0, 2)) + 1).padStart(2, '0')}:00`
+      const occupiedVehicles =
+        occupiedPlatesByDayAndSlot.get(selectedDay)?.get(slotStart)?.size || 0
+      const freeVehicles = Math.max(totalVehicles - occupiedVehicles, 0)
+
+      return {
+        slotStart,
+        slotEnd,
+        occupiedVehicles,
+        freeVehicles,
+        totalVehicles,
+      }
+    })
+  }, [commercialFleet.length, occupiedPlatesByDayAndSlot, selectedDay, slotKeys])
 
   return (
     <div className="w-full flex flex-col gap-6 sm:gap-8">
@@ -543,8 +802,8 @@ export default function ReservaComercialsPage() {
                     const isPastDay = dayIso < todayIso
                     const dayReservations = reservationsByDay.get(dayIso) || []
                     const dayAssignments = assignmentRowsByDay.get(dayIso) || []
-                    const occupiedPlates = occupiedCommercialPlatesByDay.get(dayIso)
-                    const available = Math.max(commercialFleet.length - (occupiedPlates?.size || 0), 0)
+                    const freeCapacityRatio = freeCapacityRatioByDay.get(dayIso) ?? 1
+                    const availabilityVisual = dayAvailabilityVisual(freeCapacityRatio)
                     const stats = statsByDay.get(dayIso) || { confirmed: 0, pending: 0 }
                     void stats
 
@@ -559,32 +818,31 @@ export default function ReservaComercialsPage() {
                           sameMonth
                             ? isPastDay
                               ? 'border-gray-100 bg-gray-100 text-gray-400'
-                              : 'border-sky-100 bg-sky-50/50 hover:border-sky-300 hover:bg-sky-50'
+                              : availabilityVisual.tone
                             : 'border-gray-100 bg-gray-50 text-gray-400'
                         )}
                       >
                         <div className="text-sm font-semibold">{day.getDate()}</div>
 
                         <div className="mt-3 flex flex-wrap gap-1.5">
-                          <span className="rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-slate-600 shadow-sm">
-                            {isPastDay ? 'Tancat' : `${available} lliure${available === 1 ? '' : 's'}`}
-                          </span>
                           {!isPastDay && dayReservations.length > 0 ? (
                             <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                              {dayReservations.length} reserva{dayReservations.length === 1 ? '' : 's'}
+                              Amb reserva
                             </span>
                           ) : null}
                           {!isPastDay && dayAssignments.length > 0 ? (
                             <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
-                              {dayAssignments.length} assign.
+                              Amb lliurament
                             </span>
                           ) : null}
                         </div>
 
                         {!isPastDay && dayReservations.length > 0 ? (
                           <div className="mt-2 space-y-1.5">
-                            {dayReservations.slice(0, 2).map((reservation) => {
+                            {dayReservations.slice(0, 1).map((reservation) => {
                               const isPending = reservation.status === 'pending'
+                              const isMultiDayReservation =
+                                getCommercialReservationEndDate(reservation) !== reservation.date
                               return (
                                 <div
                                   key={reservation.id}
@@ -595,7 +853,7 @@ export default function ReservaComercialsPage() {
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <span className="font-semibold text-slate-800">
-                                      {reservation.startTime}
+                                      {isMultiDayReservation ? 'Tot el dia' : `${reservation.startTime} - ${reservation.endTime}`}
                                     </span>
                                     <span
                                       className={cn(
@@ -612,7 +870,7 @@ export default function ReservaComercialsPage() {
                                 </div>
                               )
                             })}
-                            {dayReservations.length > 2 ? (
+                            {false ? (
                               <div className="pl-1 text-[11px] font-medium text-slate-500">
                                 +{dayReservations.length - 2} més
                               </div>
@@ -638,7 +896,7 @@ export default function ReservaComercialsPage() {
                                 <div className="mt-1 truncate text-slate-600">{assignment.label}</div>
                               </div>
                             ))}
-                            {dayAssignments.length > 1 ? (
+                            {false ? (
                               <div className="pl-1 text-[11px] font-medium text-slate-500">
                                 +{dayAssignments.length - 1} assignació més
                               </div>
@@ -660,13 +918,68 @@ export default function ReservaComercialsPage() {
                     Les meves sol·licituds
                   </div>
 
+                  <div className="mt-3 flex items-center justify-end">
+                    <Badge variant="outline" className="px-3 py-1 text-sm">
+                      {filteredMyReservations.length} resultat{filteredMyReservations.length === 1 ? '' : 's'}
+                    </Badge>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+                      <SmartFilters
+                        modeDefault="week"
+                        modeOptions={['week', 'month', 'year', 'day', 'range']}
+                        role="Treballador"
+                        showDepartment={false}
+                        showWorker={false}
+                        showLocation={false}
+                        showStatus={false}
+                        onChange={handleRequestDatesChange}
+                        initialStart={requestFilters.start}
+                        initialEnd={requestFilters.end}
+                      />
+
+                      <div className="flex flex-nowrap gap-2 lg:ml-auto">
+                        {[
+                          { value: '__all__', label: 'Totes' },
+                          { value: 'pending', label: 'Pendents' },
+                          { value: 'confirmed', label: 'Confirmades' },
+                          { value: 'cancelled', label: 'Cancel·lades' },
+                          { value: 'rejected', label: 'Rebutjades' },
+                        ].map((option) => {
+                          const active = (requestFilters.status ?? '__all__') === option.value
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() =>
+                                setRequestFilters((prev) => ({
+                                  ...prev,
+                                  status: option.value,
+                                }))
+                              }
+                              className={cn(
+                                'min-h-10 rounded-full border px-4 text-sm font-semibold transition',
+                                active
+                                  ? 'border-sky-600 bg-sky-600 text-white'
+                                  : 'border-slate-200 bg-white text-slate-700 hover:border-sky-200 hover:bg-sky-50'
+                              )}
+                            >
+                              {option.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="mt-4 space-y-3">
                     {loading ? <div className="text-sm text-slate-500">Carregant...</div> : null}
-                    {!loading && myReservations.length === 0 ? (
+                    {!loading && filteredMyReservations.length === 0 ? (
                       <div className="text-sm text-slate-500">Encara no tens cap sol·licitud.</div>
                     ) : null}
 
-                    {myReservations.map((reservation) => (
+                    {filteredMyReservations.map((reservation) => (
                       <div
                         key={reservation.id}
                         className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3"
@@ -691,8 +1004,13 @@ export default function ReservaComercialsPage() {
                         </div>
                         <div className="mt-2 font-semibold text-slate-900">{reservation.reason}</div>
                         <div className="mt-1 text-sm text-slate-600">
-                          {prettyDate(reservation.date)} · {reservation.startTime} - {reservation.endTime}
+                          {reservationDateLabel(reservation)}
                         </div>
+                        {getCommercialReservationEndDate(reservation) !== reservation.date ? (
+                          <div className="mt-1 text-xs font-medium text-slate-500">
+                            Franja completa: {reservationDateLabel(reservation)}
+                          </div>
+                        ) : null}
                         <div className="mt-1 text-sm text-slate-600">{reservation.destination}</div>
                         {reservation.status === 'pending' || reservation.status === 'confirmed' ? (
                           <div className="mt-3 flex justify-end">
@@ -821,7 +1139,7 @@ export default function ReservaComercialsPage() {
                                 {isPending ? 'Pendent' : 'Confirmada'}
                               </Badge>
                               <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                                {prettyDate(reservation.date)} · {reservation.startTime} - {reservation.endTime}
+                                {reservationDateLabel(reservation)}
                               </span>
                               {reservation.assignedVehiclePlate ? (
                                 <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
@@ -829,6 +1147,12 @@ export default function ReservaComercialsPage() {
                                 </span>
                               ) : null}
                             </div>
+
+                            {getCommercialReservationEndDate(reservation) !== reservation.date ? (
+                              <div className="mt-2 text-xs font-medium text-slate-500">
+                                Franja completa: {reservationDateLabel(reservation)}
+                              </div>
+                            ) : null}
 
                             <div className="mt-3 text-lg font-semibold leading-tight text-slate-900">
                               {reservation.reason}
@@ -883,9 +1207,9 @@ export default function ReservaComercialsPage() {
                                 >
                                   <option value="">Selecciona vehicle</option>
                                   {vehicleOptions.map((vehicle) => (
-                                    <option key={vehicle.id} value={vehicle.id}>
-                                      {vehicle.plate}
-                                    </option>
+                                  <option key={vehicle.id} value={vehicle.id}>
+                                      {vehicle.plate} · {TRANSPORT_TYPE_LABELS[vehicle.type] || vehicle.type}
+                                  </option>
                                   ))}
                                 </select>
 
@@ -973,14 +1297,68 @@ export default function ReservaComercialsPage() {
 
           <div className="space-y-3">
             <Field label="Dia">
-              <Input value={selectedDay} readOnly />
+              <Input value={prettyDate(selectedDay)} readOnly />
             </Field>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="text-sm font-semibold text-slate-900">
+                Disponibilitat 08:00 - 18:00
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                Capacitat del dia: {commercialFleet.length} vehicle{commercialFleet.length === 1 ? '' : 's'} x 10 hores
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {selectedDayTimeline.map((slot) => (
+                  <div
+                    key={`${slot.slotStart}-${slot.slotEnd}`}
+                    className={cn(
+                      'rounded-xl border px-3 py-2 text-sm',
+                      slot.freeVehicles === 0
+                        ? 'border-red-200 bg-red-50 text-red-800'
+                        : slot.freeVehicles < slot.totalVehicles
+                          ? 'border-amber-200 bg-amber-50 text-amber-800'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    )}
+                  >
+                    <div className="font-semibold">
+                      {slot.slotStart} - {slot.slotEnd}
+                    </div>
+                    <div className="mt-1 text-xs">
+                      {slot.freeVehicles}/{slot.totalVehicles} lliures
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <Field label="Fins al dia">
+              <Input
+                type="date"
+                min={selectedDay}
+                value={selectedEndDay}
+                onChange={(event) => setSelectedEndDay(event.target.value)}
+              />
+            </Field>
+            <div className="text-xs text-slate-500">Seleccionat: {prettyDate(selectedEndDay)}</div>
+            {isMultiDaySelection ? (
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+                Reserva multi-dia: es bloquejarà cada dia complet de 08:00 a 18:00.
+              </div>
+            ) : null}
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Hora inici">
-                <Input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
+                <Input
+                  type="time"
+                  value={isMultiDaySelection ? STANDARD_DAY_START : startTime}
+                  onChange={(event) => setStartTime(event.target.value)}
+                  disabled={isMultiDaySelection}
+                />
               </Field>
               <Field label="Hora fi">
-                <Input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} />
+                <Input
+                  type="time"
+                  value={isMultiDaySelection ? STANDARD_DAY_END : endTime}
+                  onChange={(event) => setEndTime(event.target.value)}
+                  disabled={isMultiDaySelection}
+                />
               </Field>
             </div>
             <Field label="Destinació">

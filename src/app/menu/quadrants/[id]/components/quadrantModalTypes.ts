@@ -8,6 +8,11 @@ export type QuadrantModalProps = {
   onSaved?: () => Promise<void>
 }
 
+export type CuinaDriverAssignment = {
+  vehicleType: string
+  driverMode: string
+}
+
 export type CuinaGroup = {
   id: string
   meetingPoint: string
@@ -21,6 +26,7 @@ export type CuinaGroup = {
   responsibleId: string
   driverMode: string
   vehicleType: string
+  driverAssignments?: CuinaDriverAssignment[]
   /** Mode manual: igual que Serveis - IDs de slots de treballadors */
   workerIds?: string[]
   workerDetails?: Record<

@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
-import type { CuinaEttState, CuinaGroup, QuadrantMode } from '../components/quadrantModalTypes'
+import type {
+  CuinaDriverAssignment,
+  CuinaEttState,
+  CuinaGroup,
+  QuadrantMode,
+} from '../components/quadrantModalTypes'
 import { extractDate, makeGroupId } from '../components/quadrantModalUtils'
 
 type ConductorOption = { id: string; name?: string }
@@ -63,12 +68,45 @@ export function useCuinaState({
   manualResp,
   availableConductors,
 }: UseCuinaStateParams): UseCuinaStateResult {
+  const buildDriverAssignments = useCallback(
+    (
+      drivers: number,
+      existing?: CuinaDriverAssignment[],
+      fallback?: Partial<CuinaGroup>
+    ): CuinaDriverAssignment[] => {
+      const count = Math.max(0, Number(drivers) || 0)
+      const source = Array.isArray(existing) ? existing : []
+      return Array.from({ length: count }, (_, idx) => ({
+        vehicleType: source[idx]?.vehicleType ?? (idx === 0 ? fallback?.vehicleType ?? '' : ''),
+        driverMode: source[idx]?.driverMode ?? (idx === 0 ? fallback?.driverMode ?? '__auto__' : '__auto__'),
+      }))
+    },
+    []
+  )
+
+  const normalizeGroupDrivers = useCallback(
+    (group: CuinaGroup): CuinaGroup => {
+      const normalizedDrivers = Math.max(0, Number(group.drivers) || 0)
+      const driverAssignments = buildDriverAssignments(normalizedDrivers, group.driverAssignments, group)
+      return {
+        ...group,
+        drivers: normalizedDrivers,
+        needsDriver: normalizedDrivers > 0,
+        driverAssignments,
+        driverMode: driverAssignments[0]?.driverMode ?? '__auto__',
+        vehicleType: driverAssignments[0]?.vehicleType ?? '',
+      }
+    },
+    [buildDriverAssignments]
+  )
+
   const createCuinaGroup = useCallback(
     (seed: Partial<CuinaGroup> = {}): CuinaGroup => {
       const seedDrivers = Math.max(0, (seed.drivers ?? Number(numDrivers)) || 0)
       const needsDriver = seed.needsDriver ?? seedDrivers > 0
+      const driverAssignments = buildDriverAssignments(seedDrivers, seed.driverAssignments, seed)
 
-      return {
+      return normalizeGroupDrivers({
         id: seed.id || makeGroupId(),
         meetingPoint: seed.meetingPoint || meetingPoint || 'CENTRAL',
         startTime: seed.startTime ?? startTime ?? '',
@@ -79,13 +117,14 @@ export function useCuinaState({
         needsDriver,
         wantsResponsible: seed.wantsResponsible ?? true,
         responsibleId: seed.responsibleId ?? '',
-        driverMode: seed.driverMode ?? '__auto__',
-        vehicleType: seed.vehicleType ?? '',
+        driverMode: driverAssignments[0]?.driverMode ?? seed.driverMode ?? '__auto__',
+        vehicleType: driverAssignments[0]?.vehicleType ?? seed.vehicleType ?? '',
+        driverAssignments,
         workerIds: Array.isArray(seed.workerIds) ? [...seed.workerIds] : [],
         workerDetails: seed.workerDetails ? { ...seed.workerDetails } : {},
-      }
+      })
     },
-    [arrivalTime, meetingPoint, numDrivers, startTime, endTime, totalWorkers]
+    [arrivalTime, meetingPoint, numDrivers, startTime, endTime, totalWorkers, buildDriverAssignments, normalizeGroupDrivers]
   )
 
   const [cuinaGroups, setCuinaGroups] = useState<CuinaGroup[]>(() => [createCuinaGroup()])
@@ -118,25 +157,26 @@ export function useCuinaState({
   const cuinaVehiclesPayload = useMemo(
     () =>
       cuinaGroups
-        .filter((group) => Number(group.drivers || 0) > 0)
-        .map((group) => {
-          let conductorId: string | null = null
-          if (group.driverMode === '__responsable__') {
-            conductorId =
-              group.responsibleId ||
-              (manualResp && manualResp !== '__auto__' ? manualResp : null)
-          } else if (group.driverMode && group.driverMode !== '__auto__') {
-            conductorId = group.driverMode
-          }
+        .flatMap((group) =>
+          (group.driverAssignments || []).map((assignment) => {
+            let conductorId: string | null = null
+            if (assignment.driverMode === '__responsable__') {
+              conductorId =
+                group.responsibleId ||
+                (manualResp && manualResp !== '__auto__' ? manualResp : null)
+            } else if (assignment.driverMode && assignment.driverMode !== '__auto__') {
+              conductorId = assignment.driverMode
+            }
 
-          return {
-            id: '',
-            plate: '',
-            vehicleType: group.vehicleType || '',
-            conductorId,
-            arrivalTime: group.arrivalTime || '',
-          }
-        })
+            return {
+              id: '',
+              plate: '',
+              vehicleType: assignment.vehicleType || '',
+              conductorId,
+              arrivalTime: group.arrivalTime || '',
+            }
+          })
+        )
         .filter((vehicle) => Boolean(vehicle.id || vehicle.vehicleType || vehicle.conductorId)),
     [cuinaGroups, manualResp]
   )
@@ -156,7 +196,7 @@ export function useCuinaState({
         first.workers === cuinaTotalsRef.current.workers &&
         first.drivers === cuinaTotalsRef.current.drivers
       if (!shouldSync) return prev
-      return [{ ...first, workers: targetWorkers, drivers: targetDrivers }, ...prev.slice(1)]
+      return [normalizeGroupDrivers({ ...first, workers: targetWorkers, drivers: targetDrivers }), ...prev.slice(1)]
     })
     cuinaTotalsRef.current = { workers: targetWorkers, drivers: targetDrivers }
   }, [
@@ -260,8 +300,12 @@ export function useCuinaState({
   ])
 
   const updateCuinaGroup = useCallback((id: string, patch: Partial<CuinaGroup>) => {
-    setCuinaGroups((prev) => prev.map((group) => (group.id === id ? { ...group, ...patch } : group)))
-  }, [])
+    setCuinaGroups((prev) =>
+      prev.map((group) =>
+        group.id === id ? normalizeGroupDrivers({ ...group, ...patch }) : group
+      )
+    )
+  }, [normalizeGroupDrivers])
 
   const addCuinaGroup = useCallback(() => {
     setCuinaGroups((prev) => [

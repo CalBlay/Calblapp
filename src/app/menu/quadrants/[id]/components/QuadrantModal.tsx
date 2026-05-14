@@ -22,6 +22,7 @@ import QuadrantModeSelector from './QuadrantModeSelector'
 import QuadrantTopBarCuina from './QuadrantTopBarCuina'
 import QuadrantTopBarServeis from './QuadrantTopBarServeis'
 import QuadrantTopBarLogistica from './QuadrantTopBarLogistica'
+import MultiDayDateSelector from './MultiDayDateSelector'
 import QuadrantModalFooter from './QuadrantModalFooter'
 import type {
   GenerationScope,
@@ -116,6 +117,7 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
   const _eventCode = parsedCode || (rawTitle.match(/[A-Z]\d{6,}/)?.[0] ?? '').toUpperCase()
 
   const [generationScope, setGenerationScope] = useState<GenerationScope>('day')
+  const [selectedMultiDates, setSelectedMultiDates] = useState<string[]>([])
   const [showJamoneroDetails, setShowJamoneroDetails] = useState(true)
 
   const { autoPreview, autoPreviewLoading, autoPreviewError } = useQuadrantAutoPreview({
@@ -209,7 +211,20 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
   useEffect(() => {
     if (!open) return
     setGenerationScope('day')
-  }, [open, event.id])
+    setSelectedMultiDates(multiDayDates)
+  }, [open, event.id, multiDayDates])
+
+  useEffect(() => {
+    if (!isMultiDayEvent) {
+      setSelectedMultiDates([])
+      return
+    }
+    setSelectedMultiDates((prev) => {
+      if (prev.length === 0) return multiDayDates
+      const valid = prev.filter((date) => multiDayDates.includes(date))
+      return valid.length > 0 ? valid : multiDayDates
+    })
+  }, [isMultiDayEvent, multiDayDates])
 
   useEffect(() => {
     if (mode !== 'manual') return
@@ -228,6 +243,7 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
     isQuadrantCoreDept,
     isMultiDayEvent,
     multiDayDates,
+    selectedMultiDates,
     generationScope,
     mode,
     canAutoGen,
@@ -450,6 +466,13 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
               updateEtt={(patch) => setEttData({ ...ettData, ...patch })}
             />
           )}
+
+          <MultiDayDateSelector
+            visible={isMultiDayEvent && generationScope === 'event'}
+            dates={multiDayDates}
+            selectedDates={selectedMultiDates}
+            setSelectedDates={setSelectedMultiDates}
+          />
 
           {isCuina && (
             <CuinaSection

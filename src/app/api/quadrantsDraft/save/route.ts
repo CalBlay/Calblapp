@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     const coll = await resolveDeptCollection(department)
     const sourceDocId = String(eventId || '').trim()
     const canonicalEventId = normalizeEventId(eventId)
-    await saveDraftByDepartment({
+    const saved = await saveDraftByDepartment({
       db,
       coll,
       department,
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     })
 
     revalidateQuadrantsListCache()
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, saved })
   } catch (e) {
     console.error('[quadrantsDraft/save] error:', e)
     return NextResponse.json(

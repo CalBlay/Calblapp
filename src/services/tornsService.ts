@@ -150,6 +150,7 @@ type TornDoc = {
   location?: string
   treballadors?: RawWorker[]
   conductors?: RawWorker[]
+  responsables?: RawWorker[]
   responsable?: RawWorker
   responsableId?: string
   responsableName?: string
@@ -211,6 +212,7 @@ function mapDocToTorn(
 
   const arrTreballadors = Array.isArray(doc?.treballadors) ? doc.treballadors : []
   const arrConductors = Array.isArray(doc?.conductors) ? doc.conductors : []
+  const arrResponsables = Array.isArray(doc?.responsables) ? doc.responsables : []
   const responsableObj =
     doc?.responsable ??
     ((doc?.responsableName || doc?.responsableId)
@@ -218,43 +220,58 @@ function mapDocToTorn(
       : undefined)
 
   const unified: NormalizedWorker[] = []
-
-  for (const w of arrTreballadors) {
-    const nw = normalizeTornWorker({
-      ...w,
-      role: 'treballador',
-      startTime: w.startTime ?? doc.startTime,
-      endTime: w.endTime ?? doc.endTime,
-      meetingPoint: w.meetingPoint ?? meetingPoint,
-      department,
-    })
-    unified.push(nw)
+  const rolePriority: Record<NormalizedWorker['role'], number> = {
+    responsable: 3,
+    conductor: 2,
+    treballador: 1,
   }
 
-  for (const w of arrConductors) {
-    const nw = normalizeTornWorker({
-      ...w,
-      role: 'conductor',
-      startTime: w.startTime ?? doc.startTime,
-      endTime: w.endTime ?? doc.endTime,
-      meetingPoint: w.meetingPoint ?? meetingPoint,
+  const pushUnified = (input: RawWorker | undefined, role: NormalizedWorker['role']) => {
+    if (!input) return
+
+    const normalized = normalizeTornWorker({
+      ...input,
+      role,
+      startTime: input.startTime ?? doc.startTime,
+      endTime: input.endTime ?? doc.endTime,
+      meetingPoint: input.meetingPoint ?? meetingPoint,
       department,
     })
-    unified.push(nw)
+
+    if (!normalized.name && !normalized.id) return
+
+    const normalizedName = norm(normalized.name)
+    const existingIndex = unified.findIndex((candidate) => {
+      if (normalized.id && candidate.id && candidate.id === normalized.id) return true
+      if (normalizedName && norm(candidate.name) === normalizedName) return true
+      return false
+    })
+
+    if (existingIndex < 0) {
+      unified.push(normalized)
+      return
+    }
+
+    const existing = unified[existingIndex]
+    const shouldReplaceRole = rolePriority[normalized.role] > rolePriority[existing.role]
+    const merged: NormalizedWorker = shouldReplaceRole
+      ? { ...existing, ...normalized, id: normalized.id || existing.id, plate: normalized.plate || existing.plate }
+      : {
+          ...existing,
+          id: existing.id || normalized.id,
+          plate: existing.plate || normalized.plate,
+          startTime: existing.startTime || normalized.startTime,
+          endTime: existing.endTime || normalized.endTime,
+          meetingPoint: existing.meetingPoint || normalized.meetingPoint,
+        }
+
+    unified[existingIndex] = merged
   }
 
-  if (responsableObj) {
-    const ro = responsableObj as RawWorker
-    const nw = normalizeTornWorker({
-      ...responsableObj,
-      role: 'responsable',
-      startTime: ro.startTime ?? doc.startTime,
-      endTime: ro.endTime ?? doc.endTime,
-      meetingPoint: ro.meetingPoint ?? meetingPoint,
-      department,
-    })
-    unified.push(nw)
-  }
+  for (const w of arrTreballadors) pushUnified(w, 'treballador')
+  for (const w of arrConductors) pushUnified(w, 'conductor')
+  for (const w of arrResponsables) pushUnified(w, 'responsable')
+  if (responsableObj) pushUnified(responsableObj as RawWorker, 'responsable')
 
   return {
     id: String(id || ''),

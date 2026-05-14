@@ -6,6 +6,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   COMMERCIAL_RESERVATIONS_COLLECTION,
+  getCommercialReservationEndDate,
   type CommercialReservation,
 } from '@/lib/commercialReservations'
 import { normalizeRole } from '@/lib/roles'
@@ -45,6 +46,7 @@ function mapReservation(id: string, data: ReservationDoc): CommercialReservation
     requesterRole: String(data.requesterRole || ''),
     requesterDepartment: String(data.requesterDepartment || ''),
     date: String(data.date || ''),
+    endDate: data.endDate ? String(data.endDate) : null,
     startTime: String(data.startTime || ''),
     endTime: String(data.endTime || ''),
     destination: String(data.destination || ''),
@@ -127,19 +129,24 @@ export async function POST(req: Request) {
 
     const body = (await req.json()) as Partial<CommercialReservation>
     const date = String(body.date || '').trim()
+    const rawEndDate = String(body.endDate || '').trim()
+    const endDate = rawEndDate || date
     const startTime = String(body.startTime || '').trim()
     const endTime = String(body.endTime || '').trim()
     const destination = String(body.destination || '').trim()
     const reason = String(body.reason || '').trim()
     const notes = String(body.notes || '').trim()
 
-    if (!date || !startTime || !endTime || !destination || !reason) {
+    if (!date || !endDate || !startTime || !endTime || !destination || !reason) {
       return NextResponse.json({ error: 'Falten camps obligatoris' }, { status: 400 })
     }
     if (date < todayIsoDate()) {
       return NextResponse.json({ error: 'Només es poden fer reserves d avui en endavant' }, { status: 400 })
     }
-    if (`${date}T${endTime}:00` <= `${date}T${startTime}:00`) {
+    if (endDate < date) {
+      return NextResponse.json({ error: 'La data final no pot ser anterior a la inicial' }, { status: 400 })
+    }
+    if (`${endDate}T${endTime}:00` <= `${date}T${startTime}:00`) {
       return NextResponse.json({ error: 'La franja horària no és vàlida' }, { status: 400 })
     }
 
@@ -150,6 +157,7 @@ export async function POST(req: Request) {
       requesterRole: String(user?.role || ''),
       requesterDepartment: String(user?.department || ''),
       date,
+      endDate,
       startTime,
       endTime,
       destination,
@@ -179,8 +187,12 @@ export async function POST(req: Request) {
     )
 
     const snap = await ref.get()
+    const reservation = mapReservation(snap.id, snap.data() as ReservationDoc)
     return NextResponse.json({
-      reservation: mapReservation(snap.id, snap.data() as ReservationDoc),
+      reservation: {
+        ...reservation,
+        endDate: getCommercialReservationEndDate(reservation),
+      },
     })
   } catch (error) {
     console.error('[api/logistica/reserva-comercials POST]', error)

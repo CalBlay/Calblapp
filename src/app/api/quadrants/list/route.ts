@@ -16,12 +16,18 @@ const QUADRANTS_LIST_REVALIDATE_SEC = 90
 interface FirestorePerson {
   id?: string
   name?: string
+  groupId?: string
   meetingPoint?: string
   startDate?: string
   startTime?: string
   endDate?: string
   endTime?: string
   arrivalTime?: string | null
+  isExternal?: boolean
+  externalType?: string
+  isCenterExternalExtra?: boolean
+  isJamonero?: boolean
+  isDriver?: boolean
   plate?: string
   vehicleType?: string
   type?: string
@@ -95,12 +101,18 @@ export const runtime = 'nodejs'
 type Person = {
   id: string
   name: string
+  groupId?: string
   meetingPoint?: string
   startDate?: string
   startTime?: string
   endDate?: string
   endTime?: string
   arrivalTime?: string
+  isExternal?: boolean
+  externalType?: string
+  isCenterExternalExtra?: boolean
+  isJamonero?: boolean
+  isDriver?: boolean
   plate?: string
   vehicleType?: string
 }
@@ -228,12 +240,18 @@ const readMp = (o?: Partial<FirestorePerson>): string => {
 const mapPerson = (p: FirestorePerson, doc?: FirestoreDraftDoc): Person => ({
   id: p?.id ?? '',
   name: p?.name ?? '',
+  groupId: typeof p?.groupId === 'string' ? p.groupId : '',
   meetingPoint: readMp(p) || readMp(doc as FirestorePerson),
   startDate: p?.startDate ?? doc?.startDate ?? '',
   startTime: p?.startTime ?? doc?.startTime ?? '',
   endDate: p?.endDate ?? doc?.endDate ?? '',
   endTime: p?.endTime ?? doc?.endTime ?? '',
   arrivalTime: p?.arrivalTime ?? (doc as FirestorePerson)?.arrivalTime ?? '',
+  isExternal: p?.isExternal === true,
+  externalType: typeof p?.externalType === 'string' ? p.externalType : '',
+  isCenterExternalExtra: p?.isCenterExternalExtra === true,
+  isJamonero: p?.isJamonero === true,
+  isDriver: p?.isDriver === true,
   plate: p?.plate ?? '',
   vehicleType: p?.vehicleType ?? p?.type ?? '',
 })

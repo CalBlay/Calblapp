@@ -43,8 +43,10 @@ type Vehicle = {
 
 export default function DraftsTable({
   draft,
+  onRefreshDrafts,
 }: {
   draft: DraftInput
+  onRefreshDrafts?: () => Promise<unknown>
 }) {
   const normalizeDraftLocation = (value: DraftInput['location']) => {
     if (typeof value === 'string') return value
@@ -334,16 +336,19 @@ export default function DraftsTable({
       rows: rowsToSave,
       groups: groupsToSave,
       vestimentModel: vestimentModelChoice || null,
-      onSaved: (cleanedRows) => {
-        rowsRef.current = cleanedRows
-        groupDefsRef.current = groupsToSave
-        setRows(cleanedRows)
-        setGroupDefs(groupsToSave)
+      onSaved: ({ savedRows, savedGroups }) => {
+        const nextRows = Array.isArray(savedRows) ? savedRows : rowsToSave
+        const nextGroups = Array.isArray(savedGroups) ? savedGroups : groupsToSave
+        rowsRef.current = nextRows
+        groupDefsRef.current = nextGroups
+        setRows(nextRows)
+        setGroupDefs(nextGroups)
         setEditIdx(null)
-        initialRef.current = JSON.stringify({ rows: cleanedRows, groups: groupsToSave })
+        initialRef.current = JSON.stringify({ rows: nextRows, groups: nextGroups })
         initialVestimentModelRef.current = vestimentModelChoice
       },
     })
+    await onRefreshDrafts?.()
   }
 
   const handleConfirm = async () => {

@@ -10,6 +10,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react'
 import React from 'react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import FiltersBar from '@/components/layout/FiltersBar'
+import type { ExternalWorkerType } from '@/lib/quadrantExternalWorkers'
 import {
   Table,
   TableBody,
@@ -58,7 +59,15 @@ export interface Draft {
   conductors?: Array<{
     id?: string
     name: string
+    groupId?: string
     meetingPoint?: string
+    startDate?: string
+    startTime?: string
+    endDate?: string
+    endTime?: string
+    arrivalTime?: string
+    isJamonero?: boolean
+    isDriver?: boolean
     plate?: string
     vehicleType?: string
   }>
@@ -67,7 +76,17 @@ export interface Draft {
   treballadors?: Array<{
     id?: string
     name: string
+    groupId?: string
     meetingPoint?: string
+    startDate?: string
+    startTime?: string
+    endDate?: string
+    endTime?: string
+    arrivalTime?: string
+    isExternal?: boolean
+    externalType?: ExternalWorkerType
+    isCenterExternalExtra?: boolean
+    isJamonero?: boolean
   }>
 
   legacyBrigades?: Array<{
@@ -474,7 +493,7 @@ export default function DraftsPage() {
                           <TableRow>
                             <TableCell colSpan={6}>
                               <div className="mt-2 mb-4">
-                                <QuadrantCard quadrant={q} />
+                                <QuadrantCard quadrant={q} onRefreshDrafts={mutate} />
                               </div>
                             </TableCell>
                           </TableRow>

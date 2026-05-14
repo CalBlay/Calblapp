@@ -9,6 +9,7 @@ interface Props {
   autoExpand?: boolean
   pendingPhases?: Array<{ key: string; label: string }>
   onCreatePhase?: (phaseKey: string) => void
+  onRefreshDrafts?: () => Promise<unknown>
 }
 
 type DraftWithMeta = Draft & {
@@ -22,6 +23,7 @@ export default function QuadrantCard({
   autoExpand = false,
   pendingPhases = [],
   onCreatePhase,
+  onRefreshDrafts,
 }: Props) {
   // Mantingut per compatibilitat amb props existents.
   void autoExpand
@@ -70,7 +72,7 @@ export default function QuadrantCard({
           </div>
         )}
 
-      <DraftsTable key={draftRenderKey} draft={quadrant} />
+      <DraftsTable key={draftRenderKey} draft={quadrant} onRefreshDrafts={onRefreshDrafts} />
     </div>
   )
 }

@@ -72,15 +72,19 @@ export function buildCuinaPayload(input: BuildCuinaPayloadInput): BuiltPayload {
 
   const singleGroup = cuinaGroups.length === 1
   const groupsPayload = cuinaGroups.map((group) => {
+    const driverAssignments = Array.isArray(group.driverAssignments)
+      ? group.driverAssignments
+      : []
     const selectedRespId = group.wantsResponsible
       ? group.responsibleId || manualResponsibleId || ''
       : ''
     const selected = availableResponsables.find((r) => r.id === selectedRespId)
+    const primaryAssignment = driverAssignments[0] || null
     const selectedDriverId =
-      group.driverMode === '__responsable__'
+      primaryAssignment?.driverMode === '__responsable__'
         ? selectedRespId || manualResponsibleId || ''
-        : group.driverMode && group.driverMode !== '__auto__'
-        ? group.driverMode
+        : primaryAssignment?.driverMode && primaryAssignment.driverMode !== '__auto__'
+        ? primaryAssignment.driverMode
         : ''
     const selectedDriver =
       selectedDriverId && selectedDriverId !== '__auto__'
@@ -105,7 +109,7 @@ export function buildCuinaPayload(input: BuildCuinaPayloadInput): BuiltPayload {
           })
         : null
     const responsibleActsAsDriver =
-      group.driverMode === '__responsable__' &&
+      primaryAssignment?.driverMode === '__responsable__' &&
       Number(group.drivers || 0) > 0 &&
       isManualResponsibleConductor
     return {

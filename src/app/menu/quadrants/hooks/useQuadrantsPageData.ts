@@ -538,6 +538,9 @@ export function useQuadrantsPageData({
     }
 
     const eventPhaseCanon = new Map<string, UnifiedEvent>()
+    const eventPhasePendingBase = new Map<string, UnifiedEvent>()
+    const eventPhaseDraftDates = new Map<string, Set<string>>()
+    const eventPhaseRealEntries = new Map<string, UnifiedEvent[]>()
     merged.forEach((ev) => {
       const phaseKey = (ev.phaseKey || ev.phaseType || ev.phaseLabel || '').toString().toLowerCase()
       if (phaseKey !== 'event') return
@@ -555,9 +558,28 @@ export function useQuadrantsPageData({
       if (!prev || (!prev.draft && ev.draft)) {
         eventPhaseCanon.set(canonKey, ev)
       }
+      if (!ev.draft && !eventPhasePendingBase.has(canonKey)) {
+        eventPhasePendingBase.set(canonKey, ev)
+      }
+      if (ev.draft) {
+        const realEntries = eventPhaseRealEntries.get(canonKey) || []
+        realEntries.push(ev)
+        eventPhaseRealEntries.set(canonKey, realEntries)
+
+        const realDate = dayKeyFromUnifiedEvent(ev)
+        if (ISO_DAY.test(realDate)) {
+          const set = eventPhaseDraftDates.get(canonKey) || new Set<string>()
+          set.add(realDate)
+          eventPhaseDraftDates.set(canonKey, set)
+        }
+      }
     })
 
-    const appendExpandedEventPhase = (ev: UnifiedEvent, into: UnifiedEvent[]) => {
+    const appendExpandedEventPhase = (
+      ev: UnifiedEvent,
+      into: UnifiedEvent[],
+      excludedDates?: Set<string>
+    ) => {
       const origS = String(ev.originalStart || ev.eventDateRaw || '').slice(0, 10)
       let origE = String(ev.originalEnd || '').slice(0, 10).trim()
       if (!ISO_DAY.test(origE)) origE = origS
@@ -590,6 +612,7 @@ export function useQuadrantsPageData({
         timeFromIso(ev.end, '23:59')
 
       if (daySpan <= 0) {
+        if (excludedDates?.has(origS)) return
         into.push({
           ...ev,
           originalStart: origS,
@@ -604,6 +627,7 @@ export function useQuadrantsPageData({
       for (let i = 0; i <= daySpan; i += 1) {
         const current = addDays(startDate, i)
         const iso = format(current, 'yyyy-MM-dd')
+        if (excludedDates?.has(iso)) continue
         const isFirst = i === 0
         const isLast = i === daySpan
         const dayStartH = isFirst ? startH : '00:00'
@@ -643,10 +667,32 @@ export function useQuadrantsPageData({
       ).trim()
       const canonKey = `${normalize(stableEventKey)}|${origS}|${origE}`
 
+      const canon = eventPhaseCanon.get(canonKey) || ev
+      const realEntries = (eventPhaseRealEntries.get(canonKey) || []).sort((a, b) =>
+        dayKeyFromUnifiedEvent(a).localeCompare(dayKeyFromUnifiedEvent(b))
+      )
+      const excludedDates = eventPhaseDraftDates.get(canonKey)
+      const pendingBase = eventPhasePendingBase.get(canonKey)
+
       if (emittedEventCanon.has(canonKey)) return
       emittedEventCanon.add(canonKey)
 
-      const canon = eventPhaseCanon.get(canonKey) || ev
+      if (realEntries.length > 0) {
+        expanded.push(...realEntries)
+        if (pendingBase) {
+          appendExpandedEventPhase(
+            {
+              ...pendingBase,
+              draft: null,
+              quadrantStatus: 'pending',
+            },
+            expanded,
+            excludedDates
+          )
+        }
+        return
+      }
+
       appendExpandedEventPhase(canon, expanded)
     })
 

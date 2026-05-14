@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Circle,
+  Gift,
   Paperclip,
   RotateCcw,
   Save,
@@ -28,6 +29,7 @@ import CreateIncidentModal from '@/components/incidents/CreateIncidentModal'
 import { Switch } from '@/components/ui/switch'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
 import { normalizeAuditDepartment } from '@/lib/auditDepartment'
+import EventExtrasModal from './EventExtrasModal'
 
 type Outcome = 'none' | 'reported'
 
@@ -40,6 +42,7 @@ interface Props {
     start: string
     eventCode?: string
     location?: string
+    lnKey?: 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
   }
   user: {
     department?: string
@@ -52,6 +55,7 @@ type ExistingExecution = {
   status?: string
   incidentOutcome?: Outcome | ''
   incidentIds?: string[]
+  extraOutcome?: Outcome | ''
   notes?: string | null
   auditAnswers?: Array<{
     itemId?: string
@@ -81,6 +85,15 @@ type AuditExecutionPayload = {
   visibleTemplate?: VisibleTemplate
 }
 
+type ExtrasPayload = {
+  extras?: {
+    id?: string
+    entries?: Array<{ text?: string }>
+    entriesCount?: number
+  } | null
+  required?: boolean
+}
+
 const nextChecklistValue = (current: unknown) => {
   if (current === true) return false
   if (current === false) return null
@@ -97,6 +110,8 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const [visibleTemplate, setVisibleTemplate] = useState<VisibleTemplate>(null)
   const [showCreateIncident, setShowCreateIncident] = useState(false)
   const [incidentsRefresh, setIncidentsRefresh] = useState(0)
+  const [hasExtras, setHasExtras] = useState(false)
+  const [showExtrasModal, setShowExtrasModal] = useState(false)
   const [answers, setAnswers] = useState<
     Record<
       string,
@@ -131,6 +146,21 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     enabled: open && Boolean(eventId),
   })
 
+  const extrasUrl = useMemo(() => {
+    if (!open || !eventId) return null
+    const qs = new URLSearchParams({ eventId })
+    if (eventDay) qs.set('eventDay', eventDay)
+    return `/api/events/extras?${qs.toString()}`
+  }, [open, eventId, eventDay])
+
+  const { data: extrasData, error: extrasError, mutate: mutateExtras } = useSWR<ExtrasPayload>(
+    extrasUrl,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 15_000,
+    }
+  )
+
   const incidentIds = useMemo(() => {
     const ids = new Set<string>()
     incidents.forEach((incident) => {
@@ -143,7 +173,12 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     })
     return Array.from(ids)
   }, [incidents, localIncidentIds])
-  const canFinalize = !hasIncidents || (hasIncidents && incidentIds.length > 0)
+  const isWeddingServicesAudit = department === 'serveis' && event.lnKey === 'casaments'
+  const extrasCount = Array.isArray(extrasData?.extras?.entries)
+    ? extrasData.extras.entries.filter((entry) => String(entry?.text || '').trim()).length
+    : Number(extrasData?.extras?.entriesCount || 0)
+  const canFinalize =
+    (!hasIncidents || incidentIds.length > 0) && (!hasExtras || extrasCount > 0)
   const isLocked = executionStatus !== 'draft'
   const totalAuditPhotos = useMemo(
     () =>
@@ -179,6 +214,10 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       setError(swrError instanceof Error ? swrError.message : 'Error carregant dades')
       return
     }
+    if (extrasError) {
+      setError(extrasError instanceof Error ? extrasError.message : 'Error carregant extres')
+      return
+    }
 
     if (data === undefined) return
 
@@ -192,6 +231,11 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       Array.isArray(execution?.incidentIds)
         ? execution.incidentIds.map((id) => String(id || '').trim()).filter(Boolean)
         : []
+    )
+    setHasExtras(
+      isWeddingServicesAudit
+        ? (execution?.extraOutcome || 'reported') === 'reported'
+        : false
     )
     setNotes(String(execution?.notes || ''))
     setVisibleTemplate((data.visibleTemplate || null) as VisibleTemplate)
@@ -226,7 +270,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       }
     })
     setAnswers(mapped)
-  }, [open, department, executionUrl, loadingExecution, swrError, data])
+  }, [open, department, executionUrl, loadingExecution, swrError, extrasError, data, isWeddingServicesAudit])
 
   const submit = async (mode: 'save' | 'finalize') => {
     setError('')
@@ -236,9 +280,14 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       return
     }
     const outcome: Outcome = hasIncidents ? 'reported' : 'none'
+    const extraOutcome: Outcome = hasExtras ? 'reported' : 'none'
 
     if (mode === 'finalize' && outcome === 'reported' && incidentIds.length === 0) {
       setError('Has indicat incidencies, pero no n hi ha cap creada.')
+      return
+    }
+    if (mode === 'finalize' && extraOutcome === 'reported' && extrasCount === 0) {
+      setError('Has indicat extres, pero no n hi ha cap registrat.')
       return
     }
 
@@ -265,6 +314,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
           department,
           incidentOutcome: outcome,
           incidentIds: hasIncidents ? incidentIds : [],
+          extraOutcome,
           notes,
           auditAnswers,
         }),
@@ -449,6 +499,36 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                   </Button>
                 </div>
               </div>
+
+              {isWeddingServicesAudit ? (
+                <div className="rounded-xl border border-gray-200 p-3 space-y-3">
+                  <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <Gift className="w-4 h-4 text-fuchsia-600" />
+                    Extres
+                    <span className="rounded-full bg-fuchsia-100 px-2 py-[3px] text-xs font-semibold text-fuchsia-800">
+                      {extrasCount}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-2">
+                    <Switch
+                      checked={hasExtras}
+                      onCheckedChange={setHasExtras}
+                      className={hasExtras ? 'bg-emerald-600' : 'bg-red-500'}
+                      disabled={isLocked}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowExtrasModal(true)}
+                      disabled={!hasExtras || isLocked}
+                      className="h-11"
+                    >
+                      Registrar extres
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="rounded-xl border border-gray-200 p-3 space-y-2">
                 <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
@@ -715,6 +795,15 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
             )
           }
           setIncidentsRefresh((n) => n + 1)
+        }}
+      />
+      <EventExtrasModal
+        open={showExtrasModal}
+        onClose={() => setShowExtrasModal(false)}
+        event={event}
+        onSaved={() => {
+          void mutateExtras()
+          setSuccess('Extres actualitzats correctament.')
         }}
       />
     </>

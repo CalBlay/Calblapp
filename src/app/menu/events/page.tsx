@@ -62,6 +62,7 @@ type EventMenuData = {
   eventCode?: string | null
   responsableName?: string
   lnKey?: LnKey
+  commercialInternal?: string | null
   isResponsible?: boolean
   fincaId?: string | null
   fincaCode?: string | null
@@ -235,6 +236,7 @@ export default function EventsPage() {
       location: ev.location || '',
       responsableName: ev.responsableName,
       lnKey: ev.lnKey,
+      commercialInternal: ev.commercialInternal ?? null,
       isResponsible: ev.isResponsible,
       fincaId: ev.fincaId ?? null,
       fincaCode: ev.fincaCode ?? null,
@@ -476,6 +478,7 @@ export default function EventsPage() {
             start: auditEvent.start,
             eventCode: auditEvent.eventCode || undefined,
             location: auditEvent.location,
+            lnKey: auditEvent.lnKey,
           }}
           user={{ department: userForModal.department, role: userForModal.role, name: userForModal.name }}
         />

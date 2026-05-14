@@ -112,6 +112,58 @@ export const clonePayloadForDate = (
   return nextPayload
 }
 
+export const normalizePayloadToSingleDate = (
+  payload: Record<string, unknown>,
+  department: string,
+  date: string
+): Record<string, unknown> => {
+  const nextPayload: Record<string, unknown> = {
+    ...payload,
+    startDate: date,
+    endDate: date,
+    phaseDate: date,
+  }
+
+  if (Array.isArray(payload.groups)) {
+    nextPayload.groups = payload.groups.map((group) => {
+      const merged = {
+        ...(group as GroupPayload),
+        ...group,
+        serviceDate:
+          department === 'serveis' ? date : (group as GroupPayload)?.serviceDate ?? date,
+      } as Record<string, unknown>
+      if (Array.isArray(merged.manualWorkers)) {
+        merged.manualWorkers = (merged.manualWorkers as Array<Record<string, unknown>>).map((mw) => ({
+          ...mw,
+          serviceDate: date,
+        }))
+      }
+      return merged
+    })
+  }
+
+  if (Array.isArray(payload.externalWorkers)) {
+    nextPayload.externalWorkers = payload.externalWorkers.map((worker) => ({
+      ...(worker as Record<string, unknown>),
+      startDate: date,
+      endDate: date,
+    }))
+  }
+
+  if (Array.isArray(payload.logisticaPhases)) {
+    nextPayload.logisticaPhases = payload.logisticaPhases.map((phase: Record<string, unknown>) => ({
+      ...phase,
+      date,
+      endDate: date,
+      manualWorkers: Array.isArray(phase.manualWorkers)
+        ? phase.manualWorkers.map((mw: Record<string, unknown>) => ({ ...mw, serviceDate: date }))
+        : phase.manualWorkers,
+    }))
+  }
+
+  return nextPayload
+}
+
 export const buildPreferredAssignments = (proposal?: {
   responsible?: { name?: string | null } | null
   drivers?: Array<{ name?: string | null }>

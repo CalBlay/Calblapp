@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
 import { canDriverHandleVehicleType, type DriverCapability } from '@/lib/driverCapabilities'
+import type { CuinaDriverAssignment } from './quadrantModalTypes'
 
 type PersonnelOption = {
   id: string
@@ -32,6 +33,7 @@ type CuinaGroup = {
   responsibleId: string
   driverMode: string
   vehicleType: string
+  driverAssignments?: CuinaDriverAssignment[]
   workerIds?: string[]
   workerDetails?: Record<
     string,
@@ -111,18 +113,24 @@ export default function CuinaSection({
     <div className="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-white p-4">
       <div className="space-y-3">
         {cuinaGroups.map((group, idx) => {
+          const driverAssignments = Array.isArray(group.driverAssignments)
+            ? group.driverAssignments
+            : []
           const selectedRespForReserve =
             group.wantsResponsible
               ? group.responsibleId || (manualResp && manualResp !== '__auto__' ? manualResp : '')
               : ''
-          const selectedDriverForReserve =
-            group.driverMode === '__responsable__'
-              ? selectedRespForReserve
-              : group.driverMode &&
-                  group.driverMode !== '__auto__' &&
-                  group.driverMode !== manualPickConductor
-                ? group.driverMode
-                : ''
+          const selectedDriverForReserve = driverAssignments
+            .map((assignment) =>
+              assignment.driverMode === '__responsable__'
+                ? selectedRespForReserve
+                : assignment.driverMode &&
+                    assignment.driverMode !== '__auto__' &&
+                    assignment.driverMode !== manualPickConductor
+                  ? assignment.driverMode
+                  : ''
+            )
+            .find(Boolean) || ''
           const selectedWorkersElsewhere = new Set(
             cuinaGroups
               .filter((c) => c.id !== group.id)
@@ -249,7 +257,7 @@ export default function CuinaSection({
                     updateCuinaGroup(group.id, {
                       drivers: Number.isNaN(Number(e.target.value)) ? 0 : Math.max(0, Number(e.target.value)),
                       needsDriver: Number(e.target.value) > 0,
-                      ...(Number(e.target.value) > 0 ? {} : { driverMode: '__auto__', vehicleType: '' }),
+                      ...(Number(e.target.value) > 0 ? {} : { driverMode: '__auto__', vehicleType: '', driverAssignments: [] }),
                     })
                   }
                 />
@@ -494,14 +502,19 @@ export default function CuinaSection({
             ) : null}
             {Number(group.drivers || 0) > 0 && (
               <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                <div className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_minmax(280px,1fr)] lg:items-end">
+                {driverAssignments.map((assignment, driverIdx) => (
+                <div key={`${group.id}-driver-${driverIdx}`} className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_minmax(280px,1fr)] lg:items-end">
                   <div>
-                    <Label>Tipus de vehicle</Label>
+                    <Label>{driverAssignments.length > 1 ? `Tipus de vehicle ${driverIdx + 1}` : 'Tipus de vehicle'}</Label>
                     <Select
-                      value={group.vehicleType || '__none__'}
+                      value={assignment.vehicleType || '__none__'}
                       onValueChange={(value) =>
                         updateCuinaGroup(group.id, {
-                          vehicleType: value === '__none__' ? '' : value,
+                          driverAssignments: driverAssignments.map((item, idx2) =>
+                            idx2 === driverIdx
+                              ? { ...item, vehicleType: value === '__none__' ? '' : value }
+                              : item
+                          ),
                         })
                       }
                     >
@@ -519,23 +532,30 @@ export default function CuinaSection({
                     </Select>
                   </div>
                   <div>
-                    <Label>Conductor</Label>
+                    <Label>{driverAssignments.length > 1 ? `Conductor ${driverIdx + 1}` : 'Conductor'}</Label>
                     <Select
                       value={
                         isManualMode &&
                         Number(group.drivers || 0) > 0 &&
-                        (!group.driverMode || group.driverMode === '__auto__')
+                        (!assignment.driverMode || assignment.driverMode === '__auto__')
                           ? manualPickConductor
-                          : group.driverMode || '__auto__'
+                          : assignment.driverMode || '__auto__'
                       }
                       onValueChange={(value) =>
                         updateCuinaGroup(group.id, {
-                          driverMode:
-                            value === manualPickConductor
-                              ? ''
-                              : value === '__auto__'
-                              ? '__auto__'
-                              : value,
+                          driverAssignments: driverAssignments.map((item, idx2) =>
+                            idx2 === driverIdx
+                              ? {
+                                  ...item,
+                                  driverMode:
+                                    value === manualPickConductor
+                                      ? ''
+                                      : value === '__auto__'
+                                      ? '__auto__'
+                                      : value,
+                                }
+                              : item
+                          ),
                         })
                       }
                     >
@@ -554,14 +574,14 @@ export default function CuinaSection({
                             const responsibleId = group.responsibleId || (manualResp !== '__auto__' ? manualResp : '')
                             return (
                               conductor.id === responsibleId &&
-                              canDriverHandleVehicleType(conductor as DriverCapability, group.vehicleType || '')
+                              canDriverHandleVehicleType(conductor as DriverCapability, assignment.vehicleType || '')
                             )
                           }) && <SelectItem value="__responsable__">Responsable</SelectItem>}
                         {availableConductors
                           .filter(
                             (conductor) =>
-                              conductor.id === group.driverMode ||
-                              canDriverHandleVehicleType(conductor as DriverCapability, group.vehicleType || '')
+                              conductor.id === assignment.driverMode ||
+                              canDriverHandleVehicleType(conductor as DriverCapability, assignment.vehicleType || '')
                           )
                           .map((conductor) => (
                             <SelectItem key={conductor.id} value={conductor.id}>
@@ -572,6 +592,7 @@ export default function CuinaSection({
                     </Select>
                   </div>
                 </div>
+                ))}
               </div>
             )}
           </div>

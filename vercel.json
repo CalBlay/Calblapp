@@ -9,6 +9,10 @@
     {
       "path": "/api/sync/ada-to-firestore?mode=cron",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/cleanup/zoho-attachments?mode=cron",
+      "schedule": "30 3 * * *"
     }
   ]
 }

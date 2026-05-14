@@ -6,9 +6,11 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   COMMERCIAL_RESERVATIONS_COLLECTION,
+  getCommercialReservationEndDate,
   type CommercialReservation,
 } from '@/lib/commercialReservations'
 import { normalizeRole } from '@/lib/roles'
+import { normalizeTransportType } from '@/lib/transportTypes'
 
 type SessionUser = {
   id?: string
@@ -50,6 +52,7 @@ function mapReservation(id: string, data: ReservationDoc): CommercialReservation
     requesterRole: String(data.requesterRole || ''),
     requesterDepartment: String(data.requesterDepartment || ''),
     date: String(data.date || ''),
+    endDate: data.endDate ? String(data.endDate) : null,
     startTime: String(data.startTime || ''),
     endTime: String(data.endTime || ''),
     destination: String(data.destination || ''),
@@ -72,9 +75,18 @@ function mapReservation(id: string, data: ReservationDoc): CommercialReservation
   }
 }
 
+function reservationWindow(reservation: Pick<CommercialReservation, 'date' | 'endDate' | 'startTime' | 'endTime'>) {
+  const endDate = getCommercialReservationEndDate(reservation)
+  return {
+    start: new Date(`${reservation.date}T${reservation.startTime}:00`),
+    end: new Date(`${endDate}T${reservation.endTime}:00`),
+  }
+}
+
 function overlaps(a: CommercialReservation, b: CommercialReservation) {
-  if (a.date !== b.date) return false
-  return a.startTime < b.endTime && b.startTime < a.endTime
+  const rangeA = reservationWindow(a)
+  const rangeB = reservationWindow(b)
+  return rangeA.start < rangeB.end && rangeB.start < rangeA.end
 }
 
 async function createUserNotification(params: {
@@ -99,7 +111,7 @@ async function createUserNotification(params: {
 
 async function findAvailableCommercialVehicle(target: CommercialReservation) {
   const [vehiclesSnap, reservationsSnap] = await Promise.all([
-    db.collection('transports').where('type', '==', 'comercial').get(),
+    db.collection('transports').get(),
     db.collection(COMMERCIAL_RESERVATIONS_COLLECTION).get(),
   ])
 
@@ -111,7 +123,13 @@ async function findAvailableCommercialVehicle(target: CommercialReservation) {
           ...(doc.data() as Record<string, unknown>),
         }) as VehicleDoc
     )
-    .filter((vehicle) => vehicle.available !== false)
+    .filter(
+      (vehicle) =>
+        vehicle.available !== false &&
+        ['comercial', 'furgonetaPetita'].includes(
+          normalizeTransportType(String((vehicle as Record<string, unknown>).type || ''))
+        )
+    )
 
   const confirmed = reservationsSnap.docs
     .map((doc) => mapReservation(doc.id, doc.data() as ReservationDoc))
@@ -120,9 +138,7 @@ async function findAvailableCommercialVehicle(target: CommercialReservation) {
   return (
     vehicles.find((vehicle) => {
       return !confirmed.some(
-        (reservation) =>
-          reservation.assignedVehicleId === vehicle.id &&
-          overlaps(reservation, target)
+        (reservation) => reservation.assignedVehicleId === vehicle.id && overlaps(reservation, target)
       )
     }) || null
   )
@@ -141,8 +157,9 @@ async function findCommercialVehicleById(targetVehicleId: string, target: Commer
     ...(vehicleSnap.data() as Record<string, unknown>),
   } as VehicleDoc
 
-  if (String((vehicle as Record<string, unknown>).type || '') !== 'comercial') {
-    return { error: 'El vehicle seleccionat no és de tipus comercial' as const }
+  const vehicleType = normalizeTransportType(String((vehicle as Record<string, unknown>).type || ''))
+  if (!['comercial', 'furgonetaPetita'].includes(vehicleType)) {
+    return { error: 'El vehicle seleccionat no és apte per a reserva comercial' as const }
   }
 
   if (vehicle.available === false) {
@@ -223,7 +240,7 @@ export async function PATCH(
 
       const vehicle = vehicleResult.vehicle
       if (!vehicle) {
-        return NextResponse.json({ error: 'No hi ha cap comercial lliure per a aquesta franja' }, { status: 409 })
+        return NextResponse.json({ error: 'No hi ha cap vehicle lliure per a aquesta franja' }, { status: 409 })
       }
 
       patch.status = 'confirmed'
@@ -245,6 +262,12 @@ export async function PATCH(
 
     await ref.set(patch, { merge: true })
 
+    const shownEndDate = getCommercialReservationEndDate(current)
+    const dateLabel =
+      shownEndDate !== current.date
+        ? `${current.date} ${current.startTime} -> ${shownEndDate} ${current.endTime}`
+        : `${current.date} ${current.startTime}-${current.endTime}`
+
     const title =
       patch.status === 'confirmed'
         ? 'Reserva confirmada'
@@ -253,12 +276,12 @@ export async function PATCH(
           : 'Reserva anul·lada'
     const bodyText =
       patch.status === 'confirmed'
-        ? `La teva reserva del ${current.date} ha estat confirmada${patch.assignedVehiclePlate ? ` amb ${String(patch.assignedVehiclePlate)}` : ''}.`
+        ? `La teva reserva ${dateLabel} ha estat confirmada${patch.assignedVehiclePlate ? ` amb ${String(patch.assignedVehiclePlate)}` : ''}.`
         : patch.status === 'rejected'
-          ? `La teva reserva del ${current.date} no ha estat validada.`
+          ? `La teva reserva ${dateLabel} no ha estat validada.`
           : actorIsRequester
-            ? `Has anul·lat la reserva del ${current.date}.`
-            : `La teva reserva del ${current.date} ha estat anul·lada per transports.`
+            ? `Has anul·lat la reserva ${dateLabel}.`
+            : `La teva reserva ${dateLabel} ha estat anul·lada per transports.`
 
     await createUserNotification({
       userId: current.requesterId,

@@ -223,7 +223,7 @@ function EditorFields({
   const fixedDisplayName = isCenterExternalExtra
     ? row.name || getExternalWorkerBaseLabel(row.externalType)
     : row.name || ''
-  const canEditMeetingPointField = canEditMeetingPoint && !isCenterExternalExtra
+  const canEditMeetingPointField = true
   const canEditArrivalField = canEditArrivalTime && !isCenterExternalExtra
 
   const allPeople = mergeUniquePeople(

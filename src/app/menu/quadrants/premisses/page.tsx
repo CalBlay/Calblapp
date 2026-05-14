@@ -161,6 +161,22 @@ const toEditableSurveyGroups = (premises: Premises): EditableSurveyGroup[] =>
     workerIds: Array.isArray(group.workerIds) ? group.workerIds : [],
   }))
 
+const hydrateConditionsWithPeople = (
+  items: EditableCondition[],
+  people: PersonnelOption[]
+): EditableCondition[] =>
+  items.map((condition) => {
+    if (condition.responsibleId) return condition
+    const matched = people.find((person) => norm(person.name) === norm(condition.responsible))
+    return matched
+      ? {
+          ...condition,
+          responsibleId: matched.id,
+          responsible: matched.name,
+        }
+      : condition
+  })
+
 export default function QuadrantPremisesPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
@@ -170,7 +186,6 @@ export default function QuadrantPremisesPage() {
   const sessionDept = ALLOWED_DEPARTMENTS.has(rawSessionDept) ? rawSessionDept : 'serveis'
   const canSelectDepartment = role === 'admin' || role === 'direccio'
   const lastSavedSnapshotRef = useRef('')
-  const hydratingDepartmentRef = useRef(false)
 
   const [department, setDepartment] = useState<string>('serveis')
   const [premises, setPremises] = useState<Premises>(emptyPremises('serveis'))
@@ -210,7 +225,6 @@ export default function QuadrantPremisesPage() {
       setLoading(true)
       setError(null)
       setSuccess(null)
-      hydratingDepartmentRef.current = true
       try {
         const res = await fetch(
           `/api/quadrants/premises?department=${encodeURIComponent(department)}`,
@@ -254,7 +268,7 @@ export default function QuadrantPremisesPage() {
     return () => {
       cancelled = true
     }
-  }, [status, department, people])
+  }, [status, department])
 
   useEffect(() => {
     if (status !== 'authenticated' || !department || !ALLOWED_DEPARTMENTS.has(department)) return
@@ -298,18 +312,6 @@ export default function QuadrantPremisesPage() {
             }))
           : toEditableDriverCrews(premises, nextPeople)
         setDriverCrews(nextDriverCrews)
-        if (hydratingDepartmentRef.current) {
-          lastSavedSnapshotRef.current = buildSnapshot({
-            department,
-            premises,
-            defaultCharacteristicsText,
-            vestimentModelsText,
-            conditions,
-            driverCrews: nextDriverCrews,
-            surveyGroups,
-          })
-          hydratingDepartmentRef.current = false
-        }
       } catch {
         if (!cancelled) {
           setPeople([])
@@ -322,16 +324,7 @@ export default function QuadrantPremisesPage() {
     return () => {
       cancelled = true
     }
-  }, [
-    conditions,
-    defaultCharacteristicsText,
-    department,
-    driverCrews,
-    premises,
-    status,
-    surveyGroups,
-    vestimentModelsText,
-  ])
+  }, [status, department, premises])
 
   useEffect(() => {
     if (status !== 'authenticated') return

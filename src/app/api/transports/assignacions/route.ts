@@ -5,7 +5,10 @@ import {
   orderedDayRangeFromISOStrings,
   queryQuadrantCollectionDocsInDateRange,
 } from '@/lib/firestoreQuadrantsRangeQuery'
-import { COMMERCIAL_RESERVATIONS_COLLECTION } from '@/lib/commercialReservations'
+import {
+  COMMERCIAL_RESERVATIONS_COLLECTION,
+  getCommercialReservationEndDate,
+} from '@/lib/commercialReservations'
 
 export const runtime = 'nodejs'
 
@@ -115,6 +118,7 @@ type QuadrantRecord = Record<string, unknown> & {
 type CommercialReservationRecord = Record<string, unknown> & {
   requesterName?: string
   date?: string
+  endDate?: string
   startTime?: string
   endTime?: string
   destination?: string
@@ -216,8 +220,12 @@ export async function GET(req: Request) {
       .map((doc): Item | null => {
         const reservation = doc.data() as CommercialReservationRecord
         const day = String(reservation.date || '').trim()
+        const endDate = getCommercialReservationEndDate({
+          date: day,
+          endDate: String(reservation.endDate || '').trim(),
+        })
         const status = String(reservation.status || '').trim()
-        if (!day || day < start || day > end) return null
+        if (!day || endDate < start || day > end) return null
         if (status !== 'pending' && status !== 'confirmed') return null
 
         const startTime = String(reservation.startTime || '').trim()
@@ -251,7 +259,7 @@ export async function GET(req: Request) {
                   plate,
                   vehicleType: 'comercial',
                   startDate: day,
-                  endDate: day,
+                  endDate,
                   startTime,
                   arrivalTime: startTime,
                   endTime,

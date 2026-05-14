@@ -72,6 +72,7 @@ interface PremisesConfig {
   driverCrews?: DriverCrewPremise[]
   restHours: number
   allowMultipleEventsSameDay?: boolean
+  maxFirstEventDurationHours?: number
   requireResponsible?: boolean
 }
 
@@ -129,13 +130,12 @@ function tieBreakOrder(a: RankedPersonnel, b: RankedPersonnel) {
 
 const buildEligibilityCtx = (
   premises: PremisesConfig,
-  dept: string,
   busyAssignments: Ledger['busyAssignments']
 ): EligibilityCtx => ({
   busyAssignments: busyAssignments as EligibilityCtx['busyAssignments'],
   restHours: premises.restHours,
-  allowMultipleEventsSameDay:
-    dept === 'cuina' ? false : !!premises.allowMultipleEventsSameDay,
+  allowMultipleEventsSameDay: !!premises.allowMultipleEventsSameDay,
+  maxFirstEventDurationHours: premises.maxFirstEventDurationHours,
 })
 
 const getEligibility = (
@@ -305,7 +305,7 @@ export async function autoAssign(payload: {
   let locationResponsibleMatched = false
   let locationResponsibleName: string | null = null
 
-  const baseCtx = buildEligibilityCtx(premises, dept, ledger.busyAssignments)
+  const baseCtx = buildEligibilityCtx(premises, ledger.busyAssignments)
 
   if (!skipResponsible && manualResponsibleId) {
     chosenResp = all.find(p => p.id === manualResponsibleId) || null
@@ -373,13 +373,8 @@ export async function autoAssign(payload: {
           lastAssignedAt: ledger.lastAssignedAtByUser.get(p.name) || null
         }))
         .sort(tieBreakOrder)
-      const eligibleCtx: EligibilityCtx = {
-        busyAssignments: ledger.busyAssignments as EligibilityCtx['busyAssignments'],
-        restHours: premises.restHours,
-        allowMultipleEventsSameDay: false,
-      }
       const eligible = ranked.find((entry) =>
-        isEligibleByName(entry.p.name, startISO, endISO, eligibleCtx).eligible
+        isEligibleByName(entry.p.name, startISO, endISO, baseCtx).eligible
       )
       chosenResp = eligible?.p || null
     }
@@ -395,11 +390,7 @@ export async function autoAssign(payload: {
         }))
         .sort(tieBreakOrder)
       const fallback = fallbackPool.find((entry) =>
-        isEligibleByName(entry.p.name, startISO, endISO, {
-          busyAssignments: ledger.busyAssignments as EligibilityCtx['busyAssignments'],
-          restHours: premises.restHours,
-          allowMultipleEventsSameDay: false,
-        }).eligible
+        isEligibleByName(entry.p.name, startISO, endISO, baseCtx).eligible
       )
       chosenResp = fallback?.p || null
       if (chosenResp) usedGeneralResponsibleFallback = true

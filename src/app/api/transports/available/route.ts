@@ -6,7 +6,10 @@ import {
   orderedDayRangeFromISOStrings,
   queryQuadrantCollectionDocsInDateRange,
 } from '@/lib/firestoreQuadrantsRangeQuery'
-import { COMMERCIAL_RESERVATIONS_COLLECTION } from '@/lib/commercialReservations'
+import {
+  COMMERCIAL_RESERVATIONS_COLLECTION,
+  getCommercialReservationEndDate,
+} from '@/lib/commercialReservations'
 import { normalizeTransportPlateKey, normalizeTransportType } from '@/lib/transportTypes'
 
 export const runtime = 'nodejs'
@@ -103,6 +106,7 @@ type ManualAssignmentRecord = Record<string, unknown> & {
 
 type CommercialReservationRecord = Record<string, unknown> & {
   date?: string
+  endDate?: string
   startTime?: string
   endTime?: string
   status?: string
@@ -293,12 +297,16 @@ export async function POST(req: Request) {
 
       const plate = String(reservation.assignedVehiclePlate || '').trim()
       const date = String(reservation.date || '').trim()
+      const endDate = getCommercialReservationEndDate({
+        date,
+        endDate: String(reservation.endDate || '').trim(),
+      })
       const startTime = String(reservation.startTime || '').trim()
       const endTime = String(reservation.endTime || '').trim() || startTime
       if (!plate || !date || !startTime) return
 
       const start = toDateTime(date, startTime)
-      const end = toDateTime(date, endTime)
+      const end = toDateTime(endDate, endTime)
       if (isNaN(start.getTime()) || isNaN(end.getTime())) return
       if (!overlaps(reqStart, reqEnd, start, end)) return
 

@@ -5,8 +5,9 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
 import { canDriverHandleVehicleType } from '@/lib/driverCapabilities'
 import { normalizeTransportType } from '@/lib/transportTypes'
+import { evaluateRangeEligibility } from '@/services/eligibility'
 import {
-  loadMinRestHours,
+  loadPersonnelRules,
   listQuadrantCollections,
   fetchQuadrantDocsByEndDate,
   QuadrantDoc,
@@ -37,6 +38,7 @@ type PersonRef = {
 type OccupiedRange = {
   start: Date
   end: Date
+  startDate: string
 }
 
 type MaintenancePlannedDoc = {
@@ -77,7 +79,6 @@ const RESPONSABLE_ROLES = new Set([
   'supervisor',
 ])
 const TREBALLADOR_ROLES = new Set(['equip', 'treballador', 'operari'])
-const REST_MS_PER_HOUR = 3600000
 
 const unaccent = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '')
 const norm = (v?: string | null) => unaccent(String(v ?? '').trim().toLowerCase())
@@ -101,37 +102,17 @@ const buildDate = (date?: string, time?: string) =>
 const normalizeRange = (start: Date, end: Date) =>
   end <= start ? { start, end: new Date(end.getTime() + 24 * 60 * 60 * 1000) } : { start, end }
 
-const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) =>
-  aStart < bEnd && bStart < aEnd
-
-/** Non-overlapping ranges with gap strictly below minRestMs (before/after the busy block). */
-function violatesAdjacentMinRest(
-  reqStart: Date,
-  reqEnd: Date,
-  busyStart: Date,
-  busyEnd: Date,
-  minRestMs: number
-): boolean {
-  if (overlaps(reqStart, reqEnd, busyStart, busyEnd)) return false
-  if (reqEnd.getTime() <= busyStart.getTime()) {
-    return busyStart.getTime() - reqEnd.getTime() < minRestMs
-  }
-  if (reqStart.getTime() >= busyEnd.getTime()) {
-    return reqStart.getTime() - busyEnd.getTime() < minRestMs
-  }
-  return false
-}
-
 const pushIndexedRange = (
   index: Map<string, OccupiedRange[]>,
   key: string | undefined,
   start: Date,
-  end: Date
+  end: Date,
+  startDate: string
 ) => {
   const normalizedKey = norm(key)
   if (!normalizedKey) return
   const list = index.get(normalizedKey) || []
-  list.push({ start, end })
+  list.push({ start, end, startDate })
   index.set(normalizedKey, list)
 }
 
@@ -147,21 +128,23 @@ const addRangesFromRef = (
   if (isNaN(rawStart.getTime()) || isNaN(rawEnd.getTime())) return
 
   const range = normalizeRange(rawStart, rawEnd)
-  pushIndexedRange(index, ref.id, range.start, range.end)
-  pushIndexedRange(index, ref.name, range.start, range.end)
+  const rangeStartDate = String(ref.startDate || base.startDate || '').trim()
+  pushIndexedRange(index, ref.id, range.start, range.end, rangeStartDate)
+  pushIndexedRange(index, ref.name, range.start, range.end, rangeStartDate)
 }
 
 const addMaintenanceRange = (
   index: Map<string, OccupiedRange[]>,
   start: Date,
   end: Date,
+  startDate: string,
   ids?: string[],
   names?: string[]
 ) => {
   if (isNaN(start.getTime()) || isNaN(end.getTime())) return
   const range = normalizeRange(start, end)
-  ;(ids || []).forEach((id) => pushIndexedRange(index, id, range.start, range.end))
-  ;(names || []).forEach((name) => pushIndexedRange(index, name, range.start, range.end))
+  ;(ids || []).forEach((id) => pushIndexedRange(index, id, range.start, range.end, startDate))
+  ;(names || []).forEach((name) => pushIndexedRange(index, name, range.start, range.end, startDate))
 }
 
 export async function GET(request: NextRequest) {
@@ -195,7 +178,7 @@ export async function GET(request: NextRequest) {
     const reqStart = buildDate(sd, st || '00:00')
     const reqEnd = buildDate(ed, et || '23:59')
     const reqRange = normalizeRange(reqStart, reqEnd)
-    const minRest = await loadMinRestHours(deptNorm)
+    const premisesRules = await loadPersonnelRules(deptNorm)
 
     const occupancyIndex = new Map<string, OccupiedRange[]>()
     const colIds = await listQuadrantCollections()
@@ -267,6 +250,7 @@ export async function GET(request: NextRequest) {
           occupancyIndex,
           start,
           end,
+          date,
           Array.isArray(data.workerIds) ? data.workerIds : [],
           Array.isArray(data.workerNames) ? data.workerNames : []
         )
@@ -291,6 +275,7 @@ export async function GET(request: NextRequest) {
           occupancyIndex,
           start,
           end,
+          start.toISOString().slice(0, 10),
           Array.isArray(data.assignedToIds) ? data.assignedToIds : [],
           Array.isArray(data.assignedToNames) ? data.assignedToNames : []
         )
@@ -344,24 +329,33 @@ export async function GET(request: NextRequest) {
       ]
 
       let hasOverlap = false
+      let hasSameDayViolation = false
       let hasRestViolation = false
-      const minRestMs = minRest * REST_MS_PER_HOUR
 
       for (const range of personRanges) {
-        if (overlaps(reqRange.start, reqRange.end, range.start, range.end)) {
-          hasOverlap = true
-        } else if (
-          violatesAdjacentMinRest(reqRange.start, reqRange.end, range.start, range.end, minRestMs)
-        ) {
-          hasRestViolation = true
+        const result = evaluateRangeEligibility({
+          reqStart: reqRange.start,
+          reqEnd: reqRange.end,
+          reqStartDate: sd,
+          busyStart: range.start,
+          busyEnd: range.end,
+          busyStartDate: range.startDate,
+          ctx: premisesRules,
+        })
+        if (!result.eligible) {
+          if (result.reason === 'overlap') hasOverlap = true
+          if (result.reason === 'same_day_not_allowed') hasSameDayViolation = true
+          if (result.reason === 'rest_violation') hasRestViolation = true
         }
       }
 
-      const isAvailable = !hasOverlap && !hasRestViolation
+      const isAvailable = !hasOverlap && !hasSameDayViolation && !hasRestViolation
       const reason = hasOverlap
         ? 'Ja assignat en aquest rang'
+        : hasSameDayViolation
+        ? 'No pot fer dos serveis el mateix dia'
         : hasRestViolation
-        ? `No compleix descans minim (${minRest}h)`
+        ? `No compleix descans minim (${premisesRules.restHours}h)`
         : ''
 
       const isDriver =

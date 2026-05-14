@@ -163,6 +163,63 @@ export async function loadMinRestHours(department: string): Promise<number> {
   }
 }
 
+export async function loadPersonnelRules(department: string): Promise<{
+  restHours: number
+  allowMultipleEventsSameDay: boolean
+  maxFirstEventDurationHours: number
+}> {
+  const dept = norm(department)
+  const fallback = {
+    restHours: 8,
+    allowMultipleEventsSameDay: true,
+    maxFirstEventDurationHours: 24,
+  }
+  if (!dept) return fallback
+
+  try {
+    const snap = await firestoreAdmin.collection('quadrantPremises').doc(dept).get()
+    if (snap.exists) {
+      const data = snap.data() as {
+        restHours?: unknown
+        allowMultipleEventsSameDay?: unknown
+        maxFirstEventDurationHours?: unknown
+      } | undefined
+      return {
+        restHours: Number.isFinite(Number(data?.restHours)) ? Number(data?.restHours) : fallback.restHours,
+        allowMultipleEventsSameDay:
+          typeof data?.allowMultipleEventsSameDay === 'boolean'
+            ? data.allowMultipleEventsSameDay
+            : fallback.allowMultipleEventsSameDay,
+        maxFirstEventDurationHours: Number.isFinite(Number(data?.maxFirstEventDurationHours))
+          ? Number(data?.maxFirstEventDurationHours)
+          : fallback.maxFirstEventDurationHours,
+      }
+    }
+  } catch {}
+
+  const filePath = path.resolve(process.cwd(), `src/data/premises-${dept}.json`)
+  try {
+    const raw = await fs.promises.readFile(filePath, 'utf8')
+    const data = JSON.parse(raw) as {
+      restHours?: number
+      allowMultipleEventsSameDay?: boolean
+      maxFirstEventDurationHours?: number
+    }
+    return {
+      restHours: Number.isFinite(Number(data?.restHours)) ? Number(data?.restHours) : fallback.restHours,
+      allowMultipleEventsSameDay:
+        typeof data?.allowMultipleEventsSameDay === 'boolean'
+          ? data.allowMultipleEventsSameDay
+          : fallback.allowMultipleEventsSameDay,
+      maxFirstEventDurationHours: Number.isFinite(Number(data?.maxFirstEventDurationHours))
+        ? Number(data?.maxFirstEventDurationHours)
+        : fallback.maxFirstEventDurationHours,
+    }
+  } catch {
+    return fallback
+  }
+}
+
 /* =============== Utils temps/solapament =============== */
 export function intervalsOverlap(
   aStart: Date,

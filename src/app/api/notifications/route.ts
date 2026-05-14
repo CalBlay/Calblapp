@@ -126,13 +126,25 @@ export async function PATCH(req: Request) {
       if (!notificationId) {
         return NextResponse.json({ error: 'notificationId required' }, { status: 400 })
       }
-      await db
-        .collection('users')
-        .doc(userId)
-        .collection('notifications')
-        .doc(notificationId)
-        .set({ read: true }, { merge: true })
+      await notificationsRef.doc(notificationId).delete()
       return NextResponse.json({ success: true })
+    }
+
+    if (action === 'clearCommercialVehicle') {
+      const commercialTypes = new Set([
+        'commercial_vehicle_request',
+        'commercial_vehicle_validation',
+      ])
+      const snap = await notificationsRef.limit(200).get()
+      const matches = snap.docs.filter((doc) =>
+        commercialTypes.has(String((doc.data() as NotificationFirestoreDoc).type || '').trim())
+      )
+      if (matches.length > 0) {
+        const batch = db.batch()
+        matches.forEach((doc) => batch.delete(doc.ref))
+        await batch.commit()
+      }
+      return NextResponse.json({ success: true, deleted: matches.length })
     }
 
     if (action === 'markResolvedRoba') {

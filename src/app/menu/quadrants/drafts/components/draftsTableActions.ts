@@ -1,11 +1,27 @@
 import type { DraftInput, Row } from './types'
 
+type SaveResponse = {
+  ok?: boolean
+  saved?: {
+    normalizedRows?: Row[]
+    updateData?: {
+      groups?: DraftInput['groups']
+      updatedAt?: string | null
+    }
+  }
+}
+
 type SaveParams = {
   draft: DraftInput
   rows: Row[]
   groups: DraftInput['groups']
   vestimentModel?: string | null
-  onSaved: (cleanedRows: Row[]) => void
+  onSaved: (payload: {
+    cleanedRows: Row[]
+    savedRows: Row[]
+    savedGroups?: DraftInput['groups']
+    savedUpdatedAt?: string | null
+  }) => void
 }
 
 export async function saveDraftTable({
@@ -35,8 +51,24 @@ export async function saveDraftTable({
       throw new Error(text || `Error en desar quadrant (status ${res.status})`)
     }
 
+    const json = (await res.json()) as SaveResponse
+    const savedRows = Array.isArray(json?.saved?.normalizedRows)
+      ? json.saved.normalizedRows
+      : cleaned
+    const savedGroups = Array.isArray(json?.saved?.updateData?.groups)
+      ? json.saved.updateData.groups
+      : groups
+
     alert('Quadrant desat correctament')
-    onSaved(cleaned)
+    onSaved({
+      cleanedRows: cleaned,
+      savedRows,
+      savedGroups,
+      savedUpdatedAt:
+        typeof json?.saved?.updateData?.updatedAt === 'string'
+          ? json.saved.updateData.updatedAt
+          : null,
+    })
     window.dispatchEvent(new Event('quadrant:updated'))
     return true
   } catch (err) {
