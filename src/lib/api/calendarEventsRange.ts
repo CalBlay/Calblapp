@@ -70,12 +70,23 @@ export async function computeCalendarEventsInRange(
 
       const fileFields: Record<string, string> = {}
       Object.entries(d).forEach(([k, v]) => {
-        if (
-          k.toLowerCase().startsWith('file') &&
-          typeof v === 'string' &&
-          v.length > 0
-        ) {
-          fileFields[k] = v
+        const lower = k.toLowerCase()
+        const isAttachmentField =
+          /^(file|zohofile)\d+$/.test(lower)
+        if (!isAttachmentField || typeof v !== 'string' || v.length === 0) return
+        fileFields[k] = v
+
+        const nameKey = `${k}Name`
+        const sourceKey = `${k}Source`
+        const mimeKey = `${k}MimeType`
+        if (typeof d[nameKey] === 'string' && d[nameKey]) {
+          fileFields[nameKey] = String(d[nameKey])
+        }
+        if (typeof d[sourceKey] === 'string' && d[sourceKey]) {
+          fileFields[sourceKey] = String(d[sourceKey])
+        }
+        if (typeof d[mimeKey] === 'string' && d[mimeKey]) {
+          fileFields[mimeKey] = String(d[mimeKey])
         }
       })
 
@@ -100,6 +111,11 @@ export async function computeCalendarEventsInRange(
           typeof d.codeMatchScore === 'number' ? d.codeMatchScore : undefined,
 
         comercial: d.Comercial || d.comercial || '',
+        ComercialIntern:
+          d.ComercialIntern ||
+          d.comercialIntern ||
+          d.Comercial_Interna ||
+          '',
         Responsable: d.Responsable || d.responsable || '',
         servei: d.Servei || d.servei || '',
 

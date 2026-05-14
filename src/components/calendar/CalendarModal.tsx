@@ -50,6 +50,7 @@ type CalendarEditData = {
   Ubicacio: string
   Servei: string
   Comercial: string
+  ComercialIntern: string
   Responsable: string
 }
 
@@ -127,6 +128,9 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     Ubicacio: String(get(dealRecord, 'Ubicacio', 'ubicacio', 'location') || ''),
     Servei: String(get(dealRecord, 'Servei', 'servei', 'service') || ''),
     Comercial: String(get(dealRecord, 'Comercial', 'comercial') || ''),
+    ComercialIntern: String(
+      get(dealRecord, 'ComercialIntern', 'comercialIntern', 'Comercial_Interna') || ''
+    ),
     Responsable: String(get(dealRecord, 'Responsable', 'responsable') || ''),
   }))
 
@@ -134,7 +138,9 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   const [initialData, setInitialData] = useState(editData)
 
   // Fitxers (file1, file2, ...) llegits del deal
-  const [files, setFiles] = useState<{ key: string; url: string }[]>([])
+  const [files, setFiles] = useState<
+    Array<{ key: string; url: string; name?: string; source?: string }>
+  >([])
   const [multiDay, setMultiDay] = useState(false)
 
   // Només editable si és Confirmat o manual (respectant readonly si ve informat)
@@ -154,6 +160,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   const isComercial = department === 'comercial'
   const isComercialRole = role === 'comercial'
   const isCap = role.includes('cap')
+  const isCapProduccio = isCap && department === 'produccio'
   const isProductionOperationalWorker = role === 'treballador' && department === 'produccio'
   const isCapCalendarDept =
     isCap &&
@@ -184,8 +191,10 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   }, [editData.Comercial, isComercialRole, sessionCommercialName, sessionName])
   const canEditCode =
     !readonly && (isZohoVerd || isManual) && (isAdmin || isProduccio || isOwnCommercialEvent)
+  const canEditComercialIntern =
+    !readonly && (isZohoVerd || isManual) && (isAdmin || isCapProduccio)
   const canManageDocuments = !readonly && (canEdit || isOwnCommercialEvent)
-  const canSave = canEdit || canEditCode
+  const canSave = canEdit || canEditCode || canEditComercialIntern
   const canDeleteEvent = canEdit && !isProductionOperationalWorker
 
   const allowedDepartments = useMemo(() => {
@@ -316,6 +325,9 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
         'salesperson',
         'Salesperson'
       ) || '')
+    const ComercialIntern = String(
+      get(dealRecord, 'ComercialIntern', 'comercialIntern', 'Comercial_Interna') || ''
+    )
     const Responsable =
       String(get(dealRecord, 'Responsable', 'responsable', 'ResponsableZoho') || '')
     const NumPax = toCalendarPax(
@@ -361,6 +373,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
       Ubicacio,
       Servei,
       Comercial,
+      ComercialIntern,
       Responsable,
     }
 
@@ -427,7 +440,14 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
       }
       if (!canEdit) {
         Object.keys(payload).forEach((key) => {
-          if (!['code', 'collection', 'updatedAt'].includes(key)) {
+          if (
+            ![
+              'code',
+              'ComercialIntern',
+              'collection',
+              'updatedAt',
+            ].includes(key)
+          ) {
             delete payload[key]
           }
         })
@@ -457,6 +477,11 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   // 🗑️ Eliminar un enllaç (fileN) de Firestore
   const handleDeleteFile = async (key: string) => {
     if (!canManageDocuments) return
+    const target = files.find((f) => f.key === key)
+    if (String(target?.source || '').startsWith('zoho')) {
+      alert('Aquest document ve de Zoho i no es pot eliminar manualment des del calendari.')
+      return
+    }
     if (!confirm('Vols eliminar aquest enllaç del document?')) return
 
     try {
@@ -787,6 +812,22 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
             )}
           </div>
 
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">
+              Comercial intern
+              <span className="text-gray-400 font-normal"> (Zoho)</span>
+            </label>
+            {canEditComercialIntern ? (
+              <Input
+                value={editData.ComercialIntern}
+                onChange={(e) => handleChange('ComercialIntern', e.target.value)}
+                placeholder="Nom del comercial intern"
+              />
+            ) : (
+              <p>{editData.ComercialIntern || '—'}</p>
+            )}
+          </div>
+
           {/* Responsable (seguiment operatiu — Zoho Responsable) */}
           <div>
             <label className="block text-xs text-gray-500 mb-1">
@@ -845,10 +886,12 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
                       className="text-blue-600 hover:underline flex-1 break-all flex items-center gap-1"
                     >
                       <ExternalLink className="w-4 h-4 shrink-0" />
-                      {decodeURIComponent(url.split('/').pop() || url)}
+                      {files.find((f) => f.key === key)?.name ||
+                        decodeURIComponent(url.split('/').pop() || url)}
                     </a>
 
-                    {canManageDocuments && (
+                    {canManageDocuments &&
+                      !String(files.find((f) => f.key === key)?.source || '').startsWith('zoho') && (
                       <Button
                         size="sm"
                         variant="ghost"

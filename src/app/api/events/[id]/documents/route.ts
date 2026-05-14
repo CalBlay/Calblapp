@@ -90,10 +90,10 @@ export async function GET(
     const { id } = await ctx.params
     const url = new URL(req.url)
     const eventCode = url.searchParams.get('eventCode')
-    const prefixParam = url.searchParams.get('prefix') || 'file'
+    const prefixParam = url.searchParams.get('prefix') || 'file,zohoFile'
     const prefixes =
       prefixParam === 'all'
-        ? ['file', 'cuinaFile']
+        ? ['file', 'cuinaFile', 'zohoFile']
         : prefixParam.split(',').map((p) => p.trim()).filter(Boolean)
 
     let snap = await db.collection('stage_verd').doc(id).get()
@@ -114,7 +114,7 @@ export async function GET(
     const data = snap.data() || {}
 
     const files = Object.entries(data).filter(([k, v]) => {
-      const okPrefix = prefixes.some((p) => k.startsWith(p))
+      const okPrefix = prefixes.some((p) => new RegExp(`^${p}\\d+$`, 'i').test(k))
       return okPrefix && typeof v === 'string' && v.length > 0
     })
 
@@ -123,14 +123,22 @@ export async function GET(
 
     for (const [key, rawPath] of files) {
       const path = String(rawPath)
-      const filename = filenameFromPath(path, key)
+      const filename =
+        typeof data[`${key}Name`] === 'string' && String(data[`${key}Name`]).trim()
+          ? String(data[`${key}Name`]).trim()
+          : filenameFromPath(path, key)
+      const storedMimeType =
+        typeof data[`${key}MimeType`] === 'string'
+          ? String(data[`${key}MimeType`]).trim()
+          : ''
 
       const doc: EventDoc = {
         id: key,
         title: filename,
         source: 'firestore-link',
         url: path,
-        icon: detectIcon(filename),
+        icon: detectIconFromMime(storedMimeType) || detectIcon(filename),
+        mimeType: storedMimeType || undefined,
       }
 
       // SharePoint proxy -> recuperem nom real + mime

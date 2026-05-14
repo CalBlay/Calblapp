@@ -1,6 +1,7 @@
 // file: src/services/zoho/sync.ts
-import { firestoreAdmin as firestore } from '@/lib/firebaseAdmin'
-import { zohoFetch } from '@/services/zoho/auth'
+import { FieldValue } from 'firebase-admin/firestore'
+import { firestoreAdmin as firestore, storageAdmin } from '@/lib/firebaseAdmin'
+import { getZohoAccessToken, zohoFetch } from '@/services/zoho/auth'
 
 interface ZohoOwner {
   id: string
@@ -29,12 +30,20 @@ interface ZohoDeal {
   C_digo?: string | null
   Owner: ZohoOwner
   Responsable?: string | ZohoNamedValue | Array<string | ZohoNamedValue> | null
+  Comercial_Interna?: string | ZohoNamedValue | Array<string | ZohoNamedValue> | null
   Fecha_de_petici_n?: string | null
   Precio_Total?: number | string | null
   Amount?: number | string | null
   Observacions?: string | null
   Description?: string | null
 
+}
+
+interface ZohoAttachment {
+  id: string
+  File_Name?: string
+  Size?: number
+  Modified_Time?: string
 }
 
 interface NormalizedDeal {
@@ -44,6 +53,7 @@ interface NormalizedDeal {
   LN: string
   Servei: string
   Comercial: string
+  ComercialIntern?: string
   /** Responsable operatiu (Zoho), independent del comercial de venda (Owner). */
   Responsable: string
   DataInici: string | null
@@ -190,6 +200,193 @@ const parseZohoTime = (raw?: string | null): string | null => {
   const timePart = value.split('T')[1] || value.split(' ')[1] || ''
   const match = timePart.match(/(\d{2}:\d{2})/)
   return match ? match[1] : null
+}
+
+function sanitizeStorageName(raw?: string | null): string {
+  const value = String(raw || '').trim()
+  const normalized = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w.\-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return normalized || `attachment-${Date.now()}`
+}
+
+function zohoAttachmentSlotKeys(baseKey: string) {
+  return {
+    url: baseKey,
+    name: `${baseKey}Name`,
+    mimeType: `${baseKey}MimeType`,
+    attachmentId: `${baseKey}AttachmentId`,
+    modifiedTime: `${baseKey}ModifiedTime`,
+    size: `${baseKey}Size`,
+    path: `${baseKey}Path`,
+    source: `${baseKey}Source`,
+  }
+}
+
+function listExistingZohoAttachmentBaseKeys(
+  existing?: FirebaseFirestore.DocumentData
+): string[] {
+  if (!existing) return []
+  return Object.keys(existing).filter((key) => /^zohoFile\d+$/i.test(key))
+}
+
+async function listZohoAttachments(
+  moduleName: string,
+  recordId: string
+): Promise<ZohoAttachment[]> {
+  const res = await zohoFetch<{ data?: ZohoAttachment[] }>(
+    `/${moduleName}/${recordId}/Attachments`
+  )
+  return Array.isArray(res.data) ? res.data : []
+}
+
+async function downloadZohoAttachment(
+  moduleName: string,
+  recordId: string,
+  attachmentId: string
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const token = await getZohoAccessToken()
+  const base = String(process.env.ZOHO_API_BASE || '').trim().replace(/\/$/, '')
+  if (!base) throw new Error('❌ Falta ZOHO_API_BASE')
+
+  const res = await fetch(
+    `${base}/${moduleName}/${recordId}/Attachments/${attachmentId}`,
+    {
+      headers: {
+        Authorization: `Zoho-oauthtoken ${token}`,
+      },
+      cache: 'no-store',
+    }
+  )
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(
+      `Error descarregant attachment Zoho ${attachmentId}: ${res.status} ${text}`
+    )
+  }
+
+  const arrayBuffer = await res.arrayBuffer()
+  const mimeType =
+    String(res.headers.get('content-type') || '').split(';')[0].trim() ||
+    'application/octet-stream'
+
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    mimeType,
+  }
+}
+
+async function buildZohoAttachmentFields(
+  moduleName: string,
+  dealId: string,
+  existing?: FirebaseFirestore.DocumentData
+): Promise<{
+  fields: Record<string, unknown>
+  stats: {
+    checked: number
+    downloaded: number
+    reused: number
+    deletedFromStorage: number
+  }
+}> {
+  const attachments = await listZohoAttachments(moduleName, dealId)
+  const out: Record<string, unknown> = {}
+  const currentKeys = new Set<string>()
+  const bucket = storageAdmin.bucket()
+  let downloadedCount = 0
+  let reusedCount = 0
+  let deletedFromStorage = 0
+
+  for (let i = 0; i < attachments.length; i++) {
+    const attachment = attachments[i]
+    const slot = `zohoFile${i + 1}`
+    const keys = zohoAttachmentSlotKeys(slot)
+    const fileName =
+      String(attachment.File_Name || '').trim() || `${attachment.id}.bin`
+    const storageName = sanitizeStorageName(fileName)
+    const storagePath = `events/zoho/${dealId}/${attachment.id}-${storageName}`
+    const modifiedTime = String(attachment.Modified_Time || '').trim()
+    const size =
+      typeof attachment.Size === 'number' && Number.isFinite(attachment.Size)
+        ? attachment.Size
+        : null
+
+    const needsRefresh =
+      String(existing?.[keys.attachmentId] || '') !== String(attachment.id) ||
+      String(existing?.[keys.modifiedTime] || '') !== modifiedTime ||
+      Number(existing?.[keys.size] || 0) !== Number(size || 0) ||
+      String(existing?.[keys.path] || '') !== storagePath ||
+      !String(existing?.[keys.url] || '').trim()
+
+    let publicUrl = String(existing?.[keys.url] || '').trim()
+    let mimeType = String(existing?.[keys.mimeType] || '').trim()
+
+    if (needsRefresh) {
+      const downloaded = await downloadZohoAttachment(
+        moduleName,
+        dealId,
+        String(attachment.id)
+      )
+      mimeType = downloaded.mimeType
+      await bucket.file(storagePath).save(downloaded.buffer, {
+        contentType: mimeType,
+        resumable: false,
+      })
+      ;[publicUrl] = await bucket.file(storagePath).getSignedUrl({
+        action: 'read',
+        expires: '2035-01-01',
+      })
+      downloadedCount += 1
+    } else {
+      reusedCount += 1
+    }
+
+    out[keys.url] = publicUrl
+    out[keys.name] = fileName
+    out[keys.mimeType] = mimeType || 'application/octet-stream'
+    out[keys.attachmentId] = String(attachment.id)
+    out[keys.modifiedTime] = modifiedTime
+    out[keys.size] = size
+    out[keys.path] = storagePath
+    out[keys.source] = 'zoho-attachment'
+    currentKeys.add(slot)
+  }
+
+  for (const existingBaseKey of listExistingZohoAttachmentBaseKeys(existing)) {
+    if (currentKeys.has(existingBaseKey)) continue
+    const keys = zohoAttachmentSlotKeys(existingBaseKey)
+    const oldPath = String(existing?.[keys.path] || '').trim()
+    if (oldPath) {
+      try {
+        await bucket.file(oldPath).delete({ ignoreNotFound: true })
+        deletedFromStorage += 1
+      } catch {
+        // Ignorem errors de neteja del bucket i continuem amb la neteja de metadades.
+      }
+    }
+    out[keys.url] = FieldValue.delete()
+    out[keys.name] = FieldValue.delete()
+    out[keys.mimeType] = FieldValue.delete()
+    out[keys.attachmentId] = FieldValue.delete()
+    out[keys.modifiedTime] = FieldValue.delete()
+    out[keys.size] = FieldValue.delete()
+    out[keys.path] = FieldValue.delete()
+    out[keys.source] = FieldValue.delete()
+  }
+
+  return {
+    fields: out,
+    stats: {
+      checked: attachments.length,
+      downloaded: downloadedCount,
+      reused: reusedCount,
+      deletedFromStorage,
+    },
+  }
 }
 
 const normalizeCommercialName = (value?: string | null) =>
@@ -397,13 +594,21 @@ export async function syncZohoDealsToFirestore(): Promise<{
   totalCount: number
   createdCount: number
   deletedCount: number
+  attachmentsChecked: number
+  attachmentsDownloaded: number
+  attachmentsReused: number
+  attachmentsDeletedFromStorage: number
 }> {
   console.info('🚀 Iniciant sincronització Zoho → Firestore')
 
   const todayISO = new Date().toISOString().slice(0, 10)
   const moduleName = process.env.ZOHO_CRM_MODULE || 'Deals'
+  let attachmentsChecked = 0
+  let attachmentsDownloaded = 0
+  let attachmentsReused = 0
+  let attachmentsDeletedFromStorage = 0
   const baseFields =
-    'id,Deal_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description'
+    'id,Deal_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description'
   const fields = ZOHO_EXTRA_RESPONSABLE_FIELD
     ? `${baseFields},${ZOHO_EXTRA_RESPONSABLE_FIELD}`
     : baseFields
@@ -660,6 +865,7 @@ const ubicacioLabel = stripCode(ubicacioRaw).trim()
     const fincaCode = fincaMatch?.code
     const fincaLN = fincaMatch?.ln
     const comercial = ownerCommercial
+    const comercialIntern = extractZohoDisplayName(d.Comercial_Interna) || ''
     const responsableZoho = operativeResponsableFromZohoDeal(
       d as ZohoDeal & Record<string, unknown>
     )
@@ -671,6 +877,7 @@ const ubicacioLabel = stripCode(ubicacioRaw).trim()
       LN,
       Servei: d.Servicio_texto || d.Men_texto || '',
       Comercial: comercial,
+      ComercialIntern: comercialIntern,
       Responsable: responsableZoho,
       DataInici: dateISO,
       DataFi: dataFiISO,
@@ -765,10 +972,20 @@ StageGroup:
   for (const deal of normalized) {
     if (deal.collection !== 'verd') continue
     const ref = firestore.collection('stage_verd').doc(deal.idZoho)
-    const dataToSave = preserveLocalCalendarChanges(
-      cleanUndefined(deal),
-      existingVerd.get(deal.idZoho)
+    const existingDoc = existingVerd.get(deal.idZoho)
+    const zohoAttachments = await buildZohoAttachmentFields(
+      moduleName,
+      deal.idZoho,
+      existingDoc
     )
+    attachmentsChecked += zohoAttachments.stats.checked
+    attachmentsDownloaded += zohoAttachments.stats.downloaded
+    attachmentsReused += zohoAttachments.stats.reused
+    attachmentsDeletedFromStorage += zohoAttachments.stats.deletedFromStorage
+    const dataToSave = {
+      ...preserveLocalCalendarChanges(cleanUndefined(deal), existingDoc),
+      ...zohoAttachments.fields,
+    }
     batchVerd.set(ref, dataToSave, { merge: true })
   }
 
@@ -782,13 +999,29 @@ StageGroup:
     const id = deal.idZoho
     if (idsVerd.has(id)) continue
 
-    const dataToSave = cleanUndefined(deal)
+    const existingDoc =
+      deal.collection === 'groc'
+        ? existingVerd.get(id) || existingGroc.get(id)
+        : existingVerd.get(id) || existingTaronja.get(id)
+    const zohoAttachments = await buildZohoAttachmentFields(
+      moduleName,
+      id,
+      existingDoc
+    )
+    attachmentsChecked += zohoAttachments.stats.checked
+    attachmentsDownloaded += zohoAttachments.stats.downloaded
+    attachmentsReused += zohoAttachments.stats.reused
+    attachmentsDeletedFromStorage += zohoAttachments.stats.deletedFromStorage
+    const dataToSave = {
+      ...cleanUndefined(deal),
+      ...zohoAttachments.fields,
+    }
 
     if (deal.collection === 'groc') {
       const ref = firestore.collection('stage_groc').doc(id)
       batchOthers.set(
         ref,
-        preserveLocalCalendarChanges(dataToSave, existingVerd.get(id) || existingGroc.get(id)),
+        preserveLocalCalendarChanges(dataToSave, existingDoc),
         { merge: true }
       )
     }
@@ -797,7 +1030,7 @@ StageGroup:
       const ref = firestore.collection('stage_taronja').doc(id)
       batchOthers.set(
         ref,
-        preserveLocalCalendarChanges(dataToSave, existingVerd.get(id) || existingTaronja.get(id)),
+        preserveLocalCalendarChanges(dataToSave, existingDoc),
         { merge: true }
       )
     }
@@ -1000,5 +1233,9 @@ StageGroup:
     totalCount: allDeals.length,
     createdCount: normalized.length,
     deletedCount: deleted,
+    attachmentsChecked,
+    attachmentsDownloaded,
+    attachmentsReused,
+    attachmentsDeletedFromStorage,
   }
 }

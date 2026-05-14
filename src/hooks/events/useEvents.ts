@@ -19,6 +19,7 @@ export interface EventData {
   codeConfirmed?: boolean
   codeMatchScore?: number | null
   commercial?: string | null
+  commercialInternal?: string | null
   locationShort?: string
   mapsUrl?: string
   htmlLink?: string | null
@@ -54,6 +55,7 @@ interface EventPayload {
   codeConfirmed?: boolean
   codeMatchScore?: number | null
   commercial?: string | null
+  commercialInternal?: string | null
   responsableName?: string
   responsable?: { name?: string }
   LN?: string
@@ -150,6 +152,7 @@ const eventsFetcher = async (url: string): Promise<EventsResult> => {
       state: normalizeStatus(ev.state || ev.status),
       eventCode: eventCode ? normalizeCode(eventCode) : null,
       commercial: ev.commercial ?? null,
+      commercialInternal: ev.commercialInternal ?? null,
       lastAviso: ev.lastAviso ?? null,
       codeConfirmed: ev.codeConfirmed ?? undefined,
       codeMatchScore: ev.codeMatchScore ?? undefined,

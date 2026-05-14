@@ -27,6 +27,7 @@ const MODAL_OVERRIDE_FIELDS = new Set([
   'Ubicacio',
   'Servei',
   'Comercial',
+  'ComercialIntern',
   'Responsable',
 ])
 

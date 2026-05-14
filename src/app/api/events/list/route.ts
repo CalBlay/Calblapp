@@ -274,6 +274,11 @@ const getEventsListCached = unstable_cache(
         'ComercialName',
         'ComercialNom',
       ])
+      const commercialInternal = firstDocString(d, [
+        'ComercialIntern',
+        'comercialIntern',
+        'Comercial_Interna',
+      ])
       const codeConfirmed =
         typeof d?.codeConfirmed === 'boolean' ? d.codeConfirmed : undefined
       const codeMatchScore =
@@ -317,6 +322,7 @@ const getEventsListCached = unstable_cache(
         importAmount,
         eventCode,
         commercial,
+        commercialInternal,
         responsableZoho,
         codeConfirmed,
         codeMatchScore,

@@ -6,6 +6,7 @@ export interface Deal {
   id: string
   NomEvent: string
   Comercial: string
+  ComercialIntern?: string
   Responsable?: string
   LN?: string
   Servei?: string
@@ -25,7 +26,7 @@ export interface Deal {
   codeConfirmed?: boolean
   codeMatchScore?: number | null
   codeStatus?: 'confirmed' | 'review' | 'missing'
-  files?: { key: string; url: string }[]
+  files?: { key: string; url: string; name?: string; source?: string }[]
 }
 
 export function useCalendarData(filters?: {
@@ -101,12 +102,23 @@ export function useCalendarData(filters?: {
         const fileEntries = Object.entries(ev)
           .filter(
             ([k, v]) =>
-              k.toLowerCase().startsWith('file') &&
+              /^(file|zohofile)\d+$/.test(k.toLowerCase()) &&
               typeof v === 'string' &&
               v
           )
           .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
-          .map(([key, url]) => ({ key, url: url as string }))
+          .map(([key, url]) => ({
+            key,
+            url: url as string,
+            name:
+              typeof ev[`${key}Name`] === 'string'
+                ? (ev[`${key}Name`] as string)
+                : undefined,
+            source:
+              typeof ev[`${key}Source`] === 'string'
+                ? (ev[`${key}Source`] as string)
+                : undefined,
+          }))
 
         const codeValue = String(ev.code ?? '').trim()
         const codeMatchScore =
@@ -143,6 +155,9 @@ export function useCalendarData(filters?: {
           id: String(ev.id ?? ''),
           NomEvent: String(ev.summary ?? '(Sense titol)'),
           Comercial: String(ev.Comercial ?? ev.comercial ?? ''),
+          ComercialIntern: String(
+            ev.ComercialIntern ?? ev.comercialIntern ?? ev.Comercial_Interna ?? ''
+          ),
           Responsable: String(ev.Responsable ?? ev.responsable ?? ''),
           LN: String(ev.LN ?? ev.lnLabel ?? 'Altres'),
           Servei: String(ev.Servei ?? ev.servei ?? ''),
