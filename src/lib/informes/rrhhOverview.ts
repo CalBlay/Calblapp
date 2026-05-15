@@ -49,6 +49,11 @@ export type RrhhRobaOverview = {
   periodDays: number
   totalRequests: number
   byStatus: Record<string, number>
+  requestsInRequestsTab: number
+  requestsInPreparationTab: number
+  requestsInReceptionTab: number
+  requestsInDeliveriesTab: number
+  requestsClosed: number
   /** Unitats sol·licitades (línies originals o actuals) en sol·licituds creades al període. */
   requestedUnitsInPeriod: number
   /** Unitats lliurades (suma d’entregues vinculades) per aquestes mateixes sol·licituds. */

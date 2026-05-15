@@ -86,7 +86,7 @@ export function RrhhInformesVisualCharts({ data, chartMountReady, chartKey }: Pr
     <div className="space-y-4">
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border pb-2 mb-1">
-          4. Vista visual
+          5. Vista visual
         </h3>
         <p className="text-[11px] text-muted-foreground mb-3">
           Sèrie diària (UTC), distribució d’estats i principals parells departament · article.

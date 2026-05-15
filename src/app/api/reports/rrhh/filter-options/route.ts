@@ -7,9 +7,11 @@ import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 
 const COL = DOTACIO_COLLECTIONS.products
+const WORKERS_COL = DOTACIO_COLLECTIONS.workers
 const LIMIT = 4_000
 
 export type RrhhFilterProductOption = { id: string; label: string }
+export type RrhhFilterDepartmentOption = { value: string; label: string }
 
 /**
  * Opcions per al desplegable «Informe a mida» (mateix rol que overview).
@@ -36,5 +38,23 @@ export async function GET() {
   })
   products.sort((a, b) => a.label.localeCompare(b.label, 'ca'))
 
-  return NextResponse.json({ products })
+  const workersSnap = await db.collection(WORKERS_COL).limit(LIMIT).get()
+  const departmentMap = new Map<string, string>()
+  workersSnap.docs.forEach((doc) => {
+    const data = doc.data() as { department?: string; isActive?: boolean }
+    if (data.isActive === false) return
+    const label = String(data.department || '').trim()
+    if (!label) return
+    const key = label
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+      .trim()
+    if (!departmentMap.has(key)) departmentMap.set(key, label)
+  })
+  const departments: RrhhFilterDepartmentOption[] = [...departmentMap.values()]
+    .sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }))
+    .map((label) => ({ value: label, label }))
+
+  return NextResponse.json({ products, departments })
 }

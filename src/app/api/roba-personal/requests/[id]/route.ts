@@ -177,9 +177,9 @@ export async function PATCH(
         { status: 403 }
       )
     }
-    if (!['submitted', 'sent_to_rrhh'].includes(curStatus)) {
+    if (curStatus !== 'submitted') {
       return NextResponse.json(
-        { error: 'Només es poden rectificar quantitats mentre la sol·licitud no estigui preparada.' },
+        { error: 'Només es poden rectificar quantitats abans d enviar la sol·licitud a RRHH.' },
         { status: 400 }
       )
     }
@@ -193,6 +193,7 @@ export async function PATCH(
     }
 
     await ref.update({
+      originalRequestedLines: mergeLineNotesFromDoc(cur, nextLines),
       lines: mergeLineNotesFromDoc(cur, nextLines),
       updatedAt: now,
       requestAdjustedAt: now,

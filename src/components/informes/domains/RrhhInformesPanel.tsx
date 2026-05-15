@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { INFORMES_DOMAINS } from '@/lib/informes/domains'
-import { DEPARTMENTS } from '@/data/departments'
 import { ROBA_REQUEST_STATUS_LABEL } from '@/app/menu/roba-personal/robaPersonalConstants'
 import { DataSourceLegend } from '../DataSourceLegend'
 import { InformesProductFilterCombobox } from '../InformesProductFilterCombobox'
@@ -119,6 +118,7 @@ export function RrhhInformesPanel() {
   const [customDept, setCustomDept] = useState('')
   const [customStatus, setCustomStatus] = useState('')
   const [customProductId, setCustomProductId] = useState('')
+  const [departmentOptions, setDepartmentOptions] = useState<{ value: string; label: string }[]>([])
   const [productOptions, setProductOptions] = useState<{ id: string; label: string }[]>([])
   const [customData, setCustomData] = useState<RrhhRobaOverview | null>(null)
   const [customLoading, setCustomLoading] = useState(false)
@@ -143,8 +143,14 @@ export function RrhhInformesPanel() {
       try {
         const res = await fetch('/api/reports/rrhh/filter-options', { cache: 'no-store' })
         if (!res.ok) return
-        const j = (await res.json()) as { products?: { id: string; label: string }[] }
-        if (!cancelled) setProductOptions(j.products ?? [])
+        const j = (await res.json()) as {
+          products?: { id: string; label: string }[]
+          departments?: { value: string; label: string }[]
+        }
+        if (!cancelled) {
+          setProductOptions(j.products ?? [])
+          setDepartmentOptions(j.departments ?? [])
+        }
       } catch {
         /* catàleg opcional */
       }
@@ -477,7 +483,56 @@ export function RrhhInformesPanel() {
 
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border pb-2 mb-3">
-                  2. Volum i compliment (unitats)
+                  2. Flux per pestanya
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="rounded-xl border border-border bg-card p-4">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                      Sol·licituds
+                    </p>
+                    <p className="text-2xl font-semibold tabular-nums mt-1">
+                      {kpiData.requestsInRequestsTab}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Pendents d&apos;enviar a RRHH</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card p-4">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                      Preparació
+                    </p>
+                    <p className="text-2xl font-semibold tabular-nums mt-1">
+                      {kpiData.requestsInPreparationTab}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Ja enviades a RRHH</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card p-4">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                      Recepcions
+                    </p>
+                    <p className="text-2xl font-semibold tabular-nums mt-1">
+                      {kpiData.requestsInReceptionTab}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Preparades pendent recollida</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card p-4">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                      Entregues
+                    </p>
+                    <p className="text-2xl font-semibold tabular-nums mt-1">
+                      {kpiData.requestsInDeliveriesTab}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">En flux d&apos;entrega</p>
+                  </div>
+                  <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/30 p-4">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Tancades</p>
+                    <p className="text-2xl font-semibold tabular-nums mt-1">{kpiData.requestsClosed}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Recepció confirmada o lliurada</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border pb-2 mb-3">
+                  3. Volum i compliment (unitats)
                 </h3>
                 <div className="rounded-xl border border-border bg-card p-4">
                   <div className="grid gap-4 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border">
@@ -518,7 +573,7 @@ export function RrhhInformesPanel() {
 
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border pb-2 mb-3">
-                  3. Pipeline, temps i riscos
+                  4. Pipeline, temps i riscos
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-xl border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 p-4">
@@ -587,7 +642,7 @@ export function RrhhInformesPanel() {
 
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b border-border pb-2 mb-3">
-                  5. Concentració de demanda (Pareto)
+                  6. Concentració de demanda (Pareto)
                 </h3>
                 <p className="text-[11px] text-muted-foreground mb-3 max-w-2xl">
                   El % mostra la part del total d’unitats sol·licitades al període; l’acumulat ajuda a veure
@@ -744,9 +799,9 @@ export function RrhhInformesPanel() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">Tots</SelectItem>
-                    {DEPARTMENTS.map((d) => (
-                      <SelectItem key={d} value={d}>
-                        {d}
+                    {departmentOptions.map((department) => (
+                      <SelectItem key={department.value} value={department.value}>
+                        {department.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -795,15 +850,45 @@ export function RrhhInformesPanel() {
                   <p className="text-sm font-semibold">Resum del tall</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{overviewPeriodLabel(customData)}</p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
                   <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Sol·licituds</p>
                     <p className="text-xl font-semibold tabular-nums mt-0.5">{customData.totalRequests}</p>
                   </div>
                   <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">A Sol·licituds</p>
+                    <p className="text-xl font-semibold tabular-nums mt-0.5">
+                      {customData.requestsInRequestsTab}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">A Preparació</p>
+                    <p className="text-xl font-semibold tabular-nums mt-0.5">
+                      {customData.requestsInPreparationTab}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">A Recepcions</p>
+                    <p className="text-xl font-semibold tabular-nums mt-0.5">
+                      {customData.requestsInReceptionTab}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Unitats sol·lic.</p>
                     <p className="text-xl font-semibold tabular-nums mt-0.5">
                       {customData.requestedUnitsInPeriod}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">A Entregues</p>
+                    <p className="text-xl font-semibold tabular-nums mt-0.5">
+                      {customData.requestsInDeliveriesTab}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Tancades</p>
+                    <p className="text-xl font-semibold tabular-nums mt-0.5">
+                      {customData.requestsClosed}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border/80 bg-muted/20 p-3">

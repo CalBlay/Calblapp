@@ -714,6 +714,11 @@ export async function exportRrhhRobaInformePdf(
 
   sectionTitle('Indicadors principals')
   drawMetricCards([
+    { label: 'A Sol·licituds', value: String(data.requestsInRequestsTab) },
+    { label: 'A Preparació', value: String(data.requestsInPreparationTab) },
+    { label: 'A Recepcions', value: String(data.requestsInReceptionTab) },
+    { label: 'A Entregues', value: String(data.requestsInDeliveriesTab) },
+    { label: 'Tancades', value: String(data.requestsClosed) },
     { label: 'Sol·licituds al període', value: String(data.totalRequests) },
     { label: 'Amb entrega registrada', value: `${data.requestsWithSomeDelivery} (${pctAmbEnt})` },
     { label: 'Sense entrega (actives)', value: String(data.requestsPendingNoDelivery) },
@@ -824,6 +829,11 @@ export async function exportRrhhRobaInformeXlsx(
   const resumKpis = [
     { Metrica: 'Periode', Valor: periodLabel },
     { Metrica: 'Sollicituds', Valor: data.totalRequests },
+    { Metrica: 'A Sollicituds', Valor: data.requestsInRequestsTab },
+    { Metrica: 'A Preparacio', Valor: data.requestsInPreparationTab },
+    { Metrica: 'A Recepcions', Valor: data.requestsInReceptionTab },
+    { Metrica: 'A Entregues', Valor: data.requestsInDeliveriesTab },
+    { Metrica: 'Tancades', Valor: data.requestsClosed },
     { Metrica: 'Amb entrega', Valor: `${data.requestsWithSomeDelivery} (${pctAmbEnt})` },
     { Metrica: 'Sense entrega actives', Valor: data.requestsPendingNoDelivery },
     { Metrica: 'Unitats solicitades', Valor: data.requestedUnitsInPeriod },
@@ -844,6 +854,11 @@ export async function exportRrhhRobaInformeXlsx(
   const resumCustom = [
     { Metrica: 'Periode', Valor: periodLabel },
     { Metrica: 'Sollicituds', Valor: data.totalRequests },
+    { Metrica: 'A Sollicituds', Valor: data.requestsInRequestsTab },
+    { Metrica: 'A Preparacio', Valor: data.requestsInPreparationTab },
+    { Metrica: 'A Recepcions', Valor: data.requestsInReceptionTab },
+    { Metrica: 'A Entregues', Valor: data.requestsInDeliveriesTab },
+    { Metrica: 'Tancades', Valor: data.requestsClosed },
     { Metrica: 'Unitats solicitades', Valor: data.requestedUnitsInPeriod },
     { Metrica: 'Unitats lliurades', Valor: data.deliveredUnitsLinked },
     { Metrica: 'Compliment %', Valor: pctCompl },

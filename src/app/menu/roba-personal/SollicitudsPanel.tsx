@@ -105,6 +105,7 @@ export function SollicitudsPanel({
   const [selectedRequestId, setSelectedRequestId] = useState('')
   const [dept, setDept] = useState<DepartmentId>(DEPARTMENTS[0])
   const [workerId, setWorkerId] = useState('')
+  const [requestNotes, setRequestNotes] = useState('')
   const [lines, setLines] = useState<{ productId: string; qty: string }[]>([
     { productId: '', qty: '1' },
   ])
@@ -156,6 +157,26 @@ export function SollicitudsPanel({
     )
   }, [workers, dept, isDeptLeadLimited, isRobaWorkerSelf, robaLinkedPersonnelId])
 
+  const availableRequestDepartments = useMemo(() => {
+    const unique = new Map<string, string>()
+    workers
+      .filter((worker) => worker.isActive !== false)
+      .forEach((worker) => {
+        const department = String(worker.department || '').trim()
+        if (!department) return
+        const key = department
+          .normalize('NFD')
+          .replace(/\p{Diacritic}/gu, '')
+          .toLowerCase()
+          .trim()
+        if (!unique.has(key)) unique.set(key, department)
+      })
+
+    return [...unique.values()].sort((a, b) =>
+      a.localeCompare(b, 'ca', { sensitivity: 'base' })
+    ) as DepartmentId[]
+  }, [workers])
+
   const workerNameForRequestForm = useMemo(() => {
     const fromWorkerList = workers.find((w) => w.id === workerId)?.name?.trim()
     if (fromWorkerList) return fromWorkerList
@@ -190,6 +211,16 @@ export function SollicitudsPanel({
     if (!isRobaWorkerSelf || !robaLinkedPersonnelId) return
     setWorkerId(robaLinkedPersonnelId)
   }, [isRobaWorkerSelf, robaLinkedPersonnelId])
+
+  useEffect(() => {
+    if (isDeptLeadLimited || isRobaWorkerSelf) return
+    if (!availableRequestDepartments.length) return
+    setDept((current) =>
+      availableRequestDepartments.includes(current)
+        ? current
+        : availableRequestDepartments[0]
+    )
+  }, [availableRequestDepartments, isDeptLeadLimited, isRobaWorkerSelf])
 
   useEffect(() => {
     const id = highlightRequestId.trim()
@@ -516,7 +547,7 @@ export function SollicitudsPanel({
   }
 
   const canEditRequestQuantitiesClient = (r: RequestRow) => {
-    if (!['submitted', 'sent_to_rrhh'].includes(r.status)) return false
+    if (r.status !== 'submitted') return false
     if (isRobaAdminOrRrhh) return true
     if (!isDeptLeadLimited) return false
     return departmentsInSameRobaScope(String(r.requestingDepartment || ''), sessionDeptLabel)
@@ -674,6 +705,7 @@ export function SollicitudsPanel({
 
     if (isRobaWorkerSelf && robaLinkedPersonnelId) setWorkerId(robaLinkedPersonnelId)
     else setWorkerId('')
+    setRequestNotes('')
     setLines([{ productId: '', qty: '1' }])
   }, [
     isDeptLeadLimited,
@@ -716,6 +748,7 @@ export function SollicitudsPanel({
     setSelectedRequestId(request.id)
     setDept(request.requestingDepartment as DepartmentId)
     setWorkerId(String(request.requestedByWorkerId || '').trim())
+    setRequestNotes(String(request.notes || '').trim())
     setLines(
       (request.lines || []).length > 0
         ? request.lines.map((line) => ({
@@ -766,10 +799,12 @@ export function SollicitudsPanel({
           requestingDepartment: dept,
           requestedByWorkerId: effectiveWorkerId,
           lines: payloadLines,
+          notes: requestNotes.trim() || undefined,
         }),
       })
       toast({ title: 'Sol·licitud creada' })
       setLines([{ productId: '', qty: '1' }])
+      setRequestNotes('')
       void load()
     } catch (e: unknown) {
       toast({
@@ -1189,7 +1224,7 @@ export function SollicitudsPanel({
             <div
               key={i}
               className={cn(
-                'grid gap-2 grid-cols-1 md:grid-cols-[minmax(6.5rem,9.5rem)_minmax(9rem,14rem)_minmax(0,1fr)_minmax(4.25rem,5.5rem)_auto] md:items-end md:gap-3',
+                'grid gap-2 grid-cols-1 md:grid-cols-[minmax(6.5rem,9.5rem)_minmax(9rem,14rem)_minmax(0,1.2fr)_minmax(12rem,0.9fr)_minmax(4.25rem,5.5rem)_auto] md:items-end md:gap-3',
                 i > 0 && 'pt-3 mt-2 border-t border-indigo-200/40 dark:border-indigo-900/40'
               )}
             >
@@ -1214,7 +1249,7 @@ export function SollicitudsPanel({
                       value={dept}
                       onChange={(e) => setDept(e.target.value as DepartmentId)}
                     >
-                      {DEPARTMENTS.map((d) => (
+                      {availableRequestDepartments.map((d) => (
                         <option key={d} value={d}>
                           {d}
                         </option>
@@ -1272,6 +1307,22 @@ export function SollicitudsPanel({
                   />
                 </div>
               </div>
+              {i === 0 ? (
+                <div className="space-y-1 min-w-0">
+                  <Label htmlFor="sol-notes" className="text-xs text-muted-foreground">
+                    Observacions
+                  </Label>
+                  <Input
+                    id="sol-notes"
+                    className="h-9 text-sm"
+                    placeholder="Indicacions breus..."
+                    value={requestNotes}
+                    onChange={(e) => setRequestNotes(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <div className="hidden md:block min-w-[1px]" aria-hidden />
+              )}
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Qty</Label>
                 <Input
@@ -1300,6 +1351,18 @@ export function SollicitudsPanel({
               </div>
             </div>
           ))}
+        </div>
+        <div className="hidden space-y-1">
+          <Label htmlFor="sol-notes" className="text-xs text-muted-foreground">
+            Observacions
+          </Label>
+          <Textarea
+            id="sol-notes"
+            className="min-h-[70px] text-sm"
+            placeholder="Indicacions breus per a la sol·licitud..."
+            value={requestNotes}
+            onChange={(e) => setRequestNotes(e.target.value)}
+          />
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" onClick={addLine}>
@@ -1344,7 +1407,7 @@ export function SollicitudsPanel({
                       value={dept}
                       onChange={(e) => setDept(e.target.value as DepartmentId)}
                     >
-                      {DEPARTMENTS.map((d) => (
+                      {availableRequestDepartments.map((d) => (
                         <option key={d} value={d}>
                           {d}
                         </option>
@@ -1761,6 +1824,11 @@ export function SollicitudsPanel({
                             <span className="font-medium">
                               {ROBA_REQUEST_STATUS_LABEL[r.status] || r.status}
                             </span>
+                            {r.notes ? (
+                              <span className="mt-1 block text-[10px] text-muted-foreground line-clamp-2">
+                                {r.notes}
+                              </span>
+                            ) : null}
                             {r.pickupDate && r.status === 'prepared' ? (
                               <span className="block text-[10px] text-muted-foreground">
                                 Recollida: {formatDateOnly(r.pickupDate)}

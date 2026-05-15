@@ -148,14 +148,15 @@ async function buildRobaRequestBatchMailAttachment(params: {
   const rows = params.requests.flatMap((request) =>
     mergeLinesByProduct(request.lines).map((line) => {
       const product = labelById.get(line.productId)
+      const articleLabel = product?.name
+        ? `${product.name}${product?.size ? ` ${product.size}` : ''}`
+        : line.productId
       return {
-        Referencia: request.reference || '-',
         Departament: request.requestingDepartment || '-',
         Treballador: request.requestedByWorkerName || '-',
         Sollicitant: String(request.createdByUserName || '').trim() || '-',
         Codi: product?.code || line.productId,
-        Article: product?.name || line.productId,
-        Talla: product?.size || '',
+        Article: articleLabel,
         Quantitat: line.quantity,
       }
     })
@@ -177,18 +178,16 @@ async function buildRobaRequestBatchMailAttachment(params: {
     skipHeader: false,
   })
   ws['!cols'] = [
-    { wch: 20 },
     { wch: 22 },
     { wch: 24 },
     { wch: 22 },
     { wch: 16 },
-    { wch: 38 },
-    { wch: 12 },
+    { wch: 42 },
     { wch: 12 },
   ]
   ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
   ]
   XLSX.utils.book_append_sheet(wb, ws, 'Remesa RRHH')
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer

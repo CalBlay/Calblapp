@@ -282,6 +282,12 @@ export async function buildRrhhRobaOverview(opts: BuildRrhhOverviewOptions): Pro
   }
 
   const cancelledRequestsInPeriod = byStatus.cancelled ?? 0
+  const requestsInRequestsTab = byStatus.submitted ?? 0
+  const requestsInPreparationTab = byStatus.sent_to_rrhh ?? 0
+  const requestsInReceptionTab = byStatus.prepared ?? 0
+  const requestsInDeliveriesTab =
+    (byStatus.ready_for_worker_delivery ?? 0) + (byStatus.picked_up ?? 0)
+  const requestsClosed = (byStatus.receipt_confirmed ?? 0) + (byStatus.fulfilled ?? 0)
 
   const avgDaysToFirstDelivery =
     countDaysToFirst > 0 ? Math.round((100 * sumDaysToFirst) / countDaysToFirst) / 100 : null
@@ -350,6 +356,11 @@ export async function buildRrhhRobaOverview(opts: BuildRrhhOverviewOptions): Pro
     periodDays,
     totalRequests,
     byStatus,
+    requestsInRequestsTab,
+    requestsInPreparationTab,
+    requestsInReceptionTab,
+    requestsInDeliveriesTab,
+    requestsClosed,
     requestedUnitsInPeriod,
     deliveredUnitsLinked,
     pctDeliveredVsRequested,

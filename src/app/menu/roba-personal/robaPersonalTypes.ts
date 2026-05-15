@@ -92,6 +92,7 @@ export type RequestRow = {
   pickupDate?: string
   pickupAvailabilityMessage?: string | null
   preparedWithStockReservation?: boolean
+  notes?: string | null
   status: string
   originalRequestedLines?: { productId: string; quantity: number; notes?: string }[] | null
   lines: { productId: string; quantity: number }[]
