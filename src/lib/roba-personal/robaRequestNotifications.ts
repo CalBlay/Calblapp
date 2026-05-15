@@ -132,6 +132,75 @@ async function buildRobaRequestMailAttachment(params: {
   }
 }
 
+async function buildRobaRequestBatchMailAttachment(params: {
+  batchReference: string
+  requests: Array<{
+    reference: string
+    requestingDepartment: string
+    requestedByWorkerName: string
+    createdByUserName?: string | null
+    lines: Array<{ productId: string; quantity: number }>
+  }>
+}) {
+  const allProductIds = params.requests.flatMap((request) => request.lines.map((line) => line.productId))
+  const labelById = await getProductMetaMap(allProductIds)
+
+  const rows = params.requests.flatMap((request) =>
+    mergeLinesByProduct(request.lines).map((line) => {
+      const product = labelById.get(line.productId)
+      return {
+        Referencia: request.reference || '-',
+        Departament: request.requestingDepartment || '-',
+        Treballador: request.requestedByWorkerName || '-',
+        Sollicitant: String(request.createdByUserName || '').trim() || '-',
+        Codi: product?.code || line.productId,
+        Article: product?.name || line.productId,
+        Talla: product?.size || '',
+        Quantitat: line.quantity,
+      }
+    })
+  )
+
+  const wb = XLSX.utils.book_new()
+  const generatedAt = new Date()
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['CAL BLAY'],
+    ['Remesa agrupada de roba personal a RRHH'],
+    [],
+    ['Referencia remesa', params.batchReference || '-'],
+    ['Nombre de sollicituds', params.requests.length],
+    ['Data generacio', generatedAt.toLocaleString('ca-ES')],
+    [],
+  ])
+  XLSX.utils.sheet_add_json(ws, rows, {
+    origin: 'A9',
+    skipHeader: false,
+  })
+  ws['!cols'] = [
+    { wch: 20 },
+    { wch: 22 },
+    { wch: 24 },
+    { wch: 22 },
+    { wch: 16 },
+    { wch: 38 },
+    { wch: 12 },
+    { wch: 12 },
+  ]
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
+  ]
+  XLSX.utils.book_append_sheet(wb, ws, 'Remesa RRHH')
+  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+  const safeRef = String(params.batchReference || 'remesa-roba').replace(/[^\w.-]+/g, '-')
+
+  return {
+    name: `${safeRef}.xlsx`,
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    contentBytesBase64: buffer.toString('base64'),
+  }
+}
+
 const normLower = (s?: string) =>
   (s || '')
     .toString()
@@ -523,6 +592,121 @@ export async function notifyRecursosHumansRobaRequestSentToRrhh(params: {
     requestingDepartment: dept,
     requestedByWorkerName: worker,
     lines: params.lines,
+  })
+
+  await sendOutlookTextMail({
+    organizerEmail,
+    toRecipients,
+    subject,
+    bodyText,
+    attachments: [attachment],
+  })
+
+  return { emailSent: true, emailSkippedReason: null }
+}
+
+export async function notifyRecursosHumansRobaRequestBatchSentToRrhh(params: {
+  batchReference: string
+  requestIds: string[]
+  requests: Array<{
+    reference: string
+    requestingDepartment: string
+    requestedByWorkerName: string
+    createdByUserName?: string | null
+    lines: Array<{ productId: string; quantity: number }>
+  }>
+  senderUserId: string
+  extraEmail?: string | null
+}): Promise<{ emailSent: boolean; emailSkippedReason?: string | null }> {
+  const recipients = await listRrhhRecipients()
+  const uids = recipients.map((r) => r.userId).filter(Boolean)
+  if (!uids.length) {
+    return { emailSent: false, emailSkippedReason: 'no_rrhh_recipients' }
+  }
+
+  const requestCount = params.requests.length
+  const mergedLines = mergeLinesByProduct(params.requests.flatMap((request) => request.lines))
+  const linesSummary = await linesSummaryForRobaRequest(mergedLines)
+  const references = params.requests
+    .map((request) => String(request.reference || '').trim())
+    .filter(Boolean)
+    .slice(0, 6)
+  const departments = [...new Set(params.requests.map((request) => String(request.requestingDepartment || '').trim()).filter(Boolean))]
+  const workers = params.requests
+    .map((request) => String(request.requestedByWorkerName || '').trim())
+    .filter(Boolean)
+    .slice(0, 6)
+
+  const title = 'Remesa agrupada de roba enviada a RRHH'
+  const bodyParts = [
+    `Remesa: ${params.batchReference}`,
+    `${requestCount} sol·licitud(s) agrupades`,
+    departments.length ? `Departaments: ${departments.join(', ')}` : null,
+    references.length ? `Referències: ${references.join(', ')}${requestCount > references.length ? '…' : ''}` : null,
+    workers.length ? `Treballadors: ${workers.join(', ')}${requestCount > workers.length ? '…' : ''}` : null,
+    linesSummary ? `Material total: ${linesSummary}` : null,
+  ].filter(Boolean)
+  const body = bodyParts.join('\n')
+
+  const now = Date.now()
+  const batch = db.batch()
+  for (const uid of uids) {
+    const ref = db.collection('users').doc(uid).collection('notifications').doc()
+    batch.set(ref, {
+      type: 'roba_personal_sent_to_rrhh',
+      title,
+      body,
+      requestId: params.requestIds[0] || null,
+      requestIds: params.requestIds,
+      reference: params.batchReference,
+      requestingDepartment: departments.join(', '),
+      requestedByWorkerName: requestCount === 1 ? workers[0] || null : null,
+      linesSummary: linesSummary || null,
+      lineCount: mergedLines.length,
+      createdByUserName: null,
+      createdAt: now,
+      read: false,
+    })
+  }
+  await batch.commit()
+
+  const apiKey = process.env.ABLY_API_KEY
+  if (apiKey) {
+    try {
+      const Ably = (await import('ably')).default
+      const rest = new Ably.Rest({ key: apiKey })
+      await Promise.all(
+        uids.map((uid) =>
+          rest.channels.get(`user:${uid}:notifications`).publish('created', {
+            type: 'roba_personal_sent_to_rrhh',
+            requestIds: params.requestIds,
+            createdAt: now,
+          })
+        )
+      )
+    } catch (err) {
+      console.error('[robaRequestNotifications] Ably publish batch sent_to_rrhh error', err)
+    }
+  }
+
+  const senderSnap = await db.collection('users').doc(params.senderUserId).get()
+  const organizerEmail = String(
+    senderSnap.exists ? (senderSnap.data() as { email?: string }).email || '' : ''
+  ).trim()
+  if (!organizerEmail.includes('@')) {
+    return { emailSent: false, emailSkippedReason: 'missing_sender_email' }
+  }
+
+  const toRecipients = uniqueEmailList(params.extraEmail).map((email) => ({ email, name: email }))
+  if (!toRecipients.length) {
+    return { emailSent: false, emailSkippedReason: 'missing_recipient_emails' }
+  }
+
+  const subject = `Roba personal - remesa agrupada RRHH - ${params.batchReference}`
+  const bodyText = ['S ha enviat una remesa agrupada de roba a RRHH.', '', ...bodyParts].join('\n')
+  const attachment = await buildRobaRequestBatchMailAttachment({
+    batchReference: params.batchReference,
+    requests: params.requests,
   })
 
   await sendOutlookTextMail({

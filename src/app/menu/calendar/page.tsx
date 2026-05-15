@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import ExportMenu from '@/components/export/ExportMenu'
 import { useCalendarData } from '@/hooks/useCalendarData'
 import CalendarMonthView from '@/components/calendar/CalendarMonthView'
 import CalendarWeekView from '@/components/calendar/CalendarWeekView'
@@ -22,6 +23,8 @@ import { useSession } from 'next-auth/react'
 import FilterButton from '@/components/ui/filter-button'
 import FloatingAddButton from '@/components/ui/floating-add-button'
 import { useFilters } from '@/context/FiltersContext'
+import { loadXlsx } from '@/lib/loadXlsx'
+import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 
 import {
   addMonths,
@@ -65,6 +68,13 @@ type SessionUserLike = {
 const STORAGE_KEY = 'calblay.calendar.filters.v1'
 const toIso = (d: Date) => format(d, 'yyyy-MM-dd')
 const EMPTY_FILTER_LIST: CalendarLN[] = []
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 const toArray = (value: unknown) => {
   if (Array.isArray(value)) {
     return value.filter(
@@ -445,6 +455,116 @@ export default function CalendarPage() {
       stage: prev.stage === 'all' ? 'confirmat' : prev.stage,
     }))
   }
+
+  const exportPeriodLabel = mode === 'month' ? monthLabel : mode === 'week' ? weekLabel : rangeLabel
+
+  const exportRows = useMemo(
+    () =>
+      visibleDeals.map((deal) => ({
+        'Nom event': deal.NomEvent || '',
+        Inici: deal.DataInici || '',
+        Fi: deal.DataFi || '',
+        Hora:
+          deal.HoraInici && deal.HoraFi
+            ? `${deal.HoraInici} - ${deal.HoraFi}`
+            : deal.HoraInici || deal.HoraFi || '',
+        Comercial: deal.Comercial || '',
+        'Comercial intern': deal.ComercialIntern || '',
+        Responsable: deal.Responsable || '',
+        LN: deal.LN || '',
+        Servei: deal.Servei || '',
+        Etapa: deal.StageGroup || '',
+        Ubicacio: deal.Ubicacio || '',
+        Pax: deal.NumPax == null ? '' : String(deal.NumPax),
+        Codi: deal.code || '',
+        'Estat codi': deal.codeStatus || '',
+        Origen: deal.origen || '',
+        Observacions: deal.ObservacionsZoho || '',
+      })),
+    [visibleDeals]
+  )
+
+  const handleExportExcel = async () => {
+    const XLSX = await loadXlsx()
+    const ws = XLSX.utils.json_to_sheet(exportRows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Calendari')
+    const fileMode = mode === 'month' ? 'mes' : mode === 'week' ? 'setmana' : 'rang'
+    XLSX.writeFile(wb, `calendari-${fileMode}.xlsx`)
+  }
+
+  const handleExportPdfView = () => {
+    if (!visibleDeals.length) return
+    window.print()
+  }
+
+  const buildPdfTableHtml = () => {
+    const cols = [
+      'Nom event',
+      'Inici',
+      'Fi',
+      'Hora',
+      'Comercial',
+      'Comercial intern',
+      'Responsable',
+      'LN',
+      'Servei',
+      'Etapa',
+      'Ubicacio',
+      'Pax',
+      'Codi',
+      'Estat codi',
+      'Origen',
+      'Observacions',
+    ] as const
+
+    const header = cols.map((col) => `<th>${escapeHtml(col)}</th>`).join('')
+    const body = exportRows
+      .map((row) => {
+        const cells = cols
+          .map((key) => `<td>${escapeHtml(String(row[key] ?? ''))}</td>`)
+          .join('')
+        return `<tr>${cells}</tr>`
+      })
+      .join('')
+
+    return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Calendari comercial</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+      h1 { font-size: 16px; margin-bottom: 8px; }
+      .meta { font-size: 12px; color: #555; margin-bottom: 16px; }
+      table { width: 100%; border-collapse: collapse; font-size: 11px; }
+      th, td { border: 1px solid #ddd; padding: 6px 8px; vertical-align: top; text-align: left; }
+      th { background: #f3f4f6; }
+      tr:nth-child(even) td { background: #fafafa; }
+    </style>
+  </head>
+  <body>
+    <h1>Calendari comercial</h1>
+    <div class="meta">Període: ${escapeHtml(exportPeriodLabel)}</div>
+    <table>
+      <thead><tr>${header}</tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+  </body>
+</html>`
+  }
+
+  const handleExportPdfTable = () => {
+    if (!exportRows.length) return
+    printBrandedHtmlInNewWindow(buildPdfTableHtml())
+  }
+
+  const exportItems = [
+    { label: 'Excel (.xlsx)', onClick: handleExportExcel, disabled: exportRows.length === 0 },
+    { label: 'PDF (vista)', onClick: handleExportPdfView, disabled: visibleDeals.length === 0 },
+    { label: 'PDF (taula)', onClick: handleExportPdfTable, disabled: exportRows.length === 0 },
+  ]
+
   return (
     <div className="relative w-full">
       {/* CAPÇALERA */}
@@ -465,6 +585,7 @@ export default function CalendarPage() {
 
         <div className="flex items-center gap-2">
           <FilterButton onClick={openFilters} />
+          <ExportMenu items={exportItems} ariaLabel="Exportar calendari" />
           {!isMobile && canManageCodes && (
             <>
               <Button
@@ -518,7 +639,31 @@ export default function CalendarPage() {
       )}
 
       {/* MODE */}
-      <div className="flex justify-between items-center mb-3">
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #calendar-print-root, #calendar-print-root * { visibility: visible; }
+          #calendar-print-root {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            overflow: visible;
+          }
+          #calendar-print-root .overflow-x-auto,
+          #calendar-print-root .overflow-hidden,
+          #calendar-print-root .overflow-visible {
+            overflow: visible !important;
+          }
+          #calendar-print-root .shadow-sm,
+          #calendar-print-root .rounded-xl,
+          #calendar-print-root .rounded-lg {
+            box-shadow: none !important;
+          }
+        }
+      `}</style>
+
+      <div className="flex justify-between items-center mb-3 print:hidden">
         <div className="inline-flex bg-gray-100 rounded-full p-1">
           <button onClick={switchToMonth} className={`px-3 py-1 text-sm rounded-full ${mode === 'month' ? 'bg-white shadow' : ''}`}>Mes</button>
           <button onClick={switchToWeek} className={`px-3 py-1 text-sm rounded-full ${mode === 'week' ? 'bg-white shadow' : ''}`}>Setmana</button>
@@ -566,7 +711,15 @@ export default function CalendarPage() {
       {error && <p className="text-red-600 text-sm">{error}</p>}
       {loading && <p className="text-gray-500 text-sm">Carregant dades...</p>}
 
-      <div className="rounded-xl bg-white border shadow-sm overflow-hidden">
+      <div id="calendar-print-root" className="space-y-3">
+        <div className="hidden print:block">
+          <h1 className="text-xl font-semibold">Calendari comercial</h1>
+          <p className="text-sm text-gray-600">
+            {mode === 'month' ? monthLabel : mode === 'week' ? weekLabel : rangeLabel}
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-white border shadow-sm overflow-hidden">
         {mode === 'range' ? (
           <CalendarRangeView deals={visibleDeals} start={start} months={rangeMonths} />
         ) : mode === 'week' ? (
@@ -584,6 +737,7 @@ export default function CalendarPage() {
             showCodeStatus={canManageCodes}
           />
         )}
+        </div>
       </div>
 
       {/* ADD */}

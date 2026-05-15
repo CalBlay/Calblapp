@@ -89,12 +89,17 @@ export function SollicitudsPanel({
   >([{ productId: '', qty: '1' }])
   const [pickupCorrectNote, setPickupCorrectNote] = useState('')
   const [pickupCorrectBusy, setPickupCorrectBusy] = useState(false)
+  const [editRequestOpen, setEditRequestOpen] = useState(false)
+  const [editRequestTarget, setEditRequestTarget] = useState<RequestRow | null>(null)
+  const [editRequestLines, setEditRequestLines] = useState<{ productId: string; qty: string }[]>([])
+  const [editRequestBusy, setEditRequestBusy] = useState(false)
   const [sendToRrhhOpen, setSendToRrhhOpen] = useState(false)
-  const [sendToRrhhTarget, setSendToRrhhTarget] = useState<RequestRow | null>(null)
+  const [sendToRrhhTargets, setSendToRrhhTargets] = useState<RequestRow[]>([])
   const [sendToRrhhEmail, setSendToRrhhEmail] = useState('')
   const [sendToRrhhSavedEmail, setSendToRrhhSavedEmail] = useState('')
   const [sendToRrhhRememberEmail, setSendToRrhhRememberEmail] = useState(false)
   const [sendToRrhhBusy, setSendToRrhhBusy] = useState(false)
+  const [selectedBatchRequestIds, setSelectedBatchRequestIds] = useState<string[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
   const [workers, setWorkers] = useState<WorkerRow[]>([])
   const [selectedRequestId, setSelectedRequestId] = useState('')
@@ -372,7 +377,7 @@ export function SollicitudsPanel({
           'Avisos enviats al sol·licitant i als responsables de roba del departament; calendari Outlook si hi ha correu.',
       })
       setPrepareOpen(false)
-      void load()
+      window.location.reload()
     } catch (e: unknown) {
       toast({
         title: 'Error',
@@ -403,8 +408,32 @@ export function SollicitudsPanel({
     }
   }
 
-  const openSendToRrhhDialog = useCallback((request: RequestRow) => {
-    setSendToRrhhTarget(request)
+  const sendToRrhhBatch = async (ids: string[], extraEmail?: string) => {
+    try {
+      await api('/api/roba-personal/requests/send-to-rrhh-batch', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          requestIds: ids,
+          extraEmail: extraEmail?.trim() || undefined,
+        }),
+      })
+      toast({
+        title: 'Remesa enviada a RRHH',
+        description: `${ids.length} sol·licitud(s) enviades en una sola remesa.`,
+      })
+      setSelectedBatchRequestIds([])
+      void load()
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const openSendToRrhhDialog = useCallback((requests: RequestRow[]) => {
+    setSendToRrhhTargets(requests)
     setSendToRrhhEmail(sendToRrhhSavedEmail)
     setSendToRrhhRememberEmail(false)
     setSendToRrhhOpen(true)
@@ -412,13 +441,13 @@ export function SollicitudsPanel({
 
   const closeSendToRrhhDialog = useCallback(() => {
     setSendToRrhhOpen(false)
-    setSendToRrhhTarget(null)
+    setSendToRrhhTargets([])
     setSendToRrhhEmail('')
     setSendToRrhhRememberEmail(false)
   }, [])
 
   const confirmSendToRrhh = useCallback(async () => {
-    if (!sendToRrhhTarget) return
+    if (sendToRrhhTargets.length === 0) return
     setSendToRrhhBusy(true)
     try {
       if (sendToRrhhRememberEmail) {
@@ -428,12 +457,19 @@ export function SollicitudsPanel({
         })
         setSendToRrhhSavedEmail(sendToRrhhEmail.trim())
       }
-      await sendToRrhh(sendToRrhhTarget.id, sendToRrhhEmail)
+      if (sendToRrhhTargets.length === 1) {
+        await sendToRrhh(sendToRrhhTargets[0].id, sendToRrhhEmail)
+      } else {
+        await sendToRrhhBatch(
+          sendToRrhhTargets.map((request) => request.id),
+          sendToRrhhEmail
+        )
+      }
       closeSendToRrhhDialog()
     } finally {
       setSendToRrhhBusy(false)
     }
-  }, [closeSendToRrhhDialog, sendToRrhhEmail, sendToRrhhRememberEmail, sendToRrhhTarget])
+  }, [closeSendToRrhhDialog, sendToRrhhEmail, sendToRrhhRememberEmail, sendToRrhhTargets])
 
   const markPickedUp = async (id: string, linesOverride?: { productId: string; quantity: number }[]) => {
     try {
@@ -478,6 +514,68 @@ export function SollicitudsPanel({
       // `markPickedUp` already reports the error toast.
     }
   }
+
+  const canEditRequestQuantitiesClient = (r: RequestRow) => {
+    if (!['submitted', 'sent_to_rrhh'].includes(r.status)) return false
+    if (isRobaAdminOrRrhh) return true
+    if (!isDeptLeadLimited) return false
+    return departmentsInSameRobaScope(String(r.requestingDepartment || ''), sessionDeptLabel)
+  }
+
+  const openEditRequestDialog = useCallback((request: RequestRow) => {
+    setEditRequestTarget(request)
+    setEditRequestLines(
+      (request.lines || []).length > 0
+        ? request.lines.map((line) => ({
+            productId: line.productId,
+            qty: String(line.quantity),
+          }))
+        : [{ productId: '', qty: '1' }]
+    )
+    setEditRequestOpen(true)
+  }, [])
+
+  const confirmEditRequest = useCallback(async () => {
+    if (!editRequestTarget) return
+    const payloadLines = editRequestLines
+      .map((line) => ({
+        productId: String(line.productId || '').trim(),
+        quantity: Number(String(line.qty ?? '').replace(',', '.').trim()),
+      }))
+      .filter((line) => line.productId && Number.isFinite(line.quantity) && line.quantity > 0)
+
+    if (payloadLines.length === 0) {
+      toast({
+        title: 'Falten línies vàlides',
+        description: 'Cal almenys un producte amb quantitat vàlida.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setEditRequestBusy(true)
+    try {
+      await api(`/api/roba-personal/requests/${editRequestTarget.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          lines: payloadLines,
+        }),
+      })
+      toast({ title: 'Quantitats rectificades' })
+      setEditRequestOpen(false)
+      setEditRequestTarget(null)
+      setEditRequestLines([])
+      void load()
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setEditRequestBusy(false)
+    }
+  }, [editRequestLines, editRequestTarget])
 
   const cancelRequest = async (id: string) => {
     try {
@@ -937,6 +1035,38 @@ export function SollicitudsPanel({
     }
     return entries
   }, [filteredListRows])
+
+  const batchSendableRows = useMemo(
+    () => filteredListRows.filter((row) => isPickupMode && canSendToRrhhClient(row)),
+    [filteredListRows, isPickupMode]
+  )
+
+  const selectedBatchRows = useMemo(
+    () => batchSendableRows.filter((row) => selectedBatchRequestIds.includes(row.id)),
+    [batchSendableRows, selectedBatchRequestIds]
+  )
+
+  useEffect(() => {
+    setSelectedBatchRequestIds((current) =>
+      current.filter((id) => batchSendableRows.some((row) => row.id === id))
+    )
+  }, [batchSendableRows])
+
+  const allBatchSendableSelected =
+    batchSendableRows.length > 0 && selectedBatchRows.length === batchSendableRows.length
+
+  const toggleBatchSelection = useCallback((requestId: string, checked: boolean) => {
+    setSelectedBatchRequestIds((current) => {
+      if (checked) return current.includes(requestId) ? current : [...current, requestId]
+      return current.filter((id) => id !== requestId)
+    })
+  }, [])
+
+  const toggleAllBatchSelection = useCallback((checked: boolean) => {
+    setSelectedBatchRequestIds(checked ? batchSendableRows.map((row) => row.id) : [])
+  }, [batchSendableRows])
+
+  const tableColumnCount = isPickupMode ? SOLIC_TABLE_COLS + 1 : SOLIC_TABLE_COLS
 
   const buildSollicitudsExportRows = useCallback(
     () =>
@@ -1440,10 +1570,50 @@ export function SollicitudsPanel({
             Cap sol·licitud en aquest període o amb aquests filtres.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-border shadow-sm bg-card">
+          <div className="space-y-3">
+            {isPickupMode && batchSendableRows.length > 0 ? (
+              <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-emerald-950">
+                  <span className="font-semibold">{selectedBatchRows.length}</span> de{' '}
+                  <span className="font-semibold">{batchSendableRows.length}</span> solÂ·licitud(s) seleccionades per
+                  enviar a RRHH en una sola remesa.
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleAllBatchSelection(!allBatchSendableSelected)}
+                  >
+                    {allBatchSendableSelected ? 'Deseleccionar totes' : 'Seleccionar totes'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={selectedBatchRows.length === 0}
+                    onClick={() => openSendToRrhhDialog(selectedBatchRows)}
+                  >
+                    Enviar remesa a RRHH
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="overflow-x-auto rounded-2xl border border-border shadow-sm bg-card">
             <Table>
               <TableHeader>
                 <TableRow className="bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-950/40 dark:to-emerald-900/30 text-emerald-900 dark:text-emerald-100 text-sm">
+                  {isPickupMode ? (
+                    <TableHead className={cn(taulaThText, 'w-[52px] py-2 text-center')}>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-input align-middle"
+                        checked={allBatchSendableSelected}
+                        onChange={(e) => toggleAllBatchSelection(e.target.checked)}
+                        aria-label="Seleccionar totes les solÂ·licituds enviables a RRHH"
+                      />
+                    </TableHead>
+                  ) : null}
                   <TableHead
                     className={cn(
                       taulaThText,
@@ -1467,14 +1637,14 @@ export function SollicitudsPanel({
                   </TableHead>
                   <TableHead className={cn(taulaThText, 'py-2')}>Estat</TableHead>
                   <TableHead className={cn(taulaThText, 'whitespace-nowrap w-[1%] py-2')}>Ref.</TableHead>
-                  <TableHead className={cn(taulaThText, 'w-[200px] py-2')}>Accions</TableHead>
+                  <TableHead className={cn(taulaThText, 'w-[320px] py-2')}>Accions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {groupedListRows.map(([dayKey, dayRows]) => (
                   <Fragment key={dayKey}>
                     <TableRow className="bg-emerald-100/70 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 font-semibold">
-                      <TableCell colSpan={SOLIC_TABLE_COLS} className="py-2 text-sm">
+                      <TableCell colSpan={tableColumnCount} className="py-2 text-sm">
                         {formatRobaDayGroupLabel(dayKey)}
                       </TableCell>
                     </TableRow>
@@ -1517,6 +1687,22 @@ export function SollicitudsPanel({
                             selectedRequestId === r.id ? 'bg-emerald-50 dark:bg-emerald-950/20' : undefined
                           )}
                         >
+                          {isPickupMode ? (
+                            <TableCell
+                              className="align-top text-center"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {canSendToRrhhClient(r) ? (
+                                <input
+                                  type="checkbox"
+                                  className="mt-1 h-4 w-4 rounded border-input"
+                                  checked={selectedBatchRequestIds.includes(r.id)}
+                                  onChange={(e) => toggleBatchSelection(r.id, e.target.checked)}
+                                  aria-label={`Seleccionar ${r.reference ?? r.id} per enviar a RRHH`}
+                                />
+                              ) : null}
+                            </TableCell>
+                          ) : null}
                           <TableCell
                             className={cn(
                               'text-sm align-top max-w-[9rem] sticky left-0 z-20 bg-card',
@@ -1594,17 +1780,28 @@ export function SollicitudsPanel({
                           <TableCell className="align-top text-[10px] text-muted-foreground font-mono whitespace-nowrap pt-2.5">
                             {r.reference ?? `S-${r.id}`}
                           </TableCell>
-                          <TableCell className="align-top" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex flex-wrap gap-1">
+                          <TableCell className="align-top min-w-[320px]" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-wrap items-start gap-2">
                               {isPrepareMode && r.status === 'sent_to_rrhh' && isRobaAdminOrRrhh ? (
                                 <Button
                                   type="button"
                                   variant="secondary"
                                   size="sm"
-                                  className="text-xs h-7"
+                                  className="h-8 text-xs"
                                   onClick={() => openPrepare(r)}
                                 >
                                   Preparat (RRHH)
+                                </Button>
+                              ) : null}
+                              {isPickupMode && canEditRequestQuantitiesClient(r) ? (
+                                <Button
+                                  type="button"
+                                  variant="default"
+                                  size="sm"
+                                  className="h-8 bg-amber-500 px-3 text-xs font-semibold text-white hover:bg-amber-600"
+                                  onClick={() => openEditRequestDialog(r)}
+                                >
+                                  Rectificar quantitats
                                 </Button>
                               ) : null}
                               {isPickupMode && canSendToRrhhClient(r) ? (
@@ -1612,8 +1809,8 @@ export function SollicitudsPanel({
                                   type="button"
                                   variant="secondary"
                                   size="sm"
-                                  className="text-xs h-7"
-                                  onClick={() => openSendToRrhhDialog(r)}
+                                  className="h-8 text-xs"
+                                  onClick={() => openSendToRrhhDialog([r])}
                                 >
                                   Enviar a RRHH
                                 </Button>
@@ -1623,7 +1820,7 @@ export function SollicitudsPanel({
                                   type="button"
                                   variant="secondary"
                                   size="sm"
-                                  className="text-xs h-7"
+                                  className="h-8 text-xs"
                                   onClick={() => openPickup(r)}
                                 >
                                   Validar preparació
@@ -1634,7 +1831,7 @@ export function SollicitudsPanel({
                                   type="button"
                                   variant="outline"
                                   size="sm"
-                                  className="text-xs h-7 text-destructive border-destructive/40"
+                                  className="h-8 text-xs text-destructive border-destructive/40"
                                   onClick={() => void cancelRequest(r.id)}
                                 >
                                   Cancel·lar
@@ -1645,7 +1842,7 @@ export function SollicitudsPanel({
                                   type="button"
                                   variant="ghost"
                                   size="sm"
-                                  className="text-xs h-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                                   disabled={deleteRequestBusyId === r.id}
                                   onClick={() => void deleteRequest(r)}
                                 >
@@ -1662,15 +1859,28 @@ export function SollicitudsPanel({
               </TableBody>
             </Table>
           </div>
+          </div>
         )}
       </div>
 
       <Dialog open={sendToRrhhOpen} onOpenChange={(open) => !open && closeSendToRrhhDialog()}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Enviar a RRHH</DialogTitle>
+            <DialogTitle>
+              {sendToRrhhTargets.length > 1 ? 'Enviar remesa a RRHH' : 'Enviar a RRHH'}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {sendToRrhhTargets.length > 1 ? (
+              <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                <div className="font-medium text-foreground">
+                  Remesa agrupada de {sendToRrhhTargets.length} sol·licitud(s)
+                </div>
+                <div className="mt-1">
+                  Referències: {sendToRrhhTargets.map((request) => request.reference ?? request.id).join(', ')}
+                </div>
+              </div>
+            ) : null}
             <p className="text-sm text-muted-foreground">
               RRHH rebrà la notificació interna. El correu només s’enviarà a les adreces que indiqueu aquí.
             </p>
@@ -1703,6 +1913,129 @@ export function SollicitudsPanel({
             </Button>
             <Button type="button" disabled={sendToRrhhBusy} onClick={() => void confirmSendToRrhh()}>
               {sendToRrhhBusy ? 'Enviant…' : 'Enviar a RRHH'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editRequestOpen}
+        onOpenChange={(open) => {
+          setEditRequestOpen(open)
+          if (!open) {
+            setEditRequestTarget(null)
+            setEditRequestLines([])
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg max-h-[min(90vh,720px)] flex flex-col gap-0 p-0">
+          <DialogHeader className="px-6 pt-6 pb-3 space-y-1 shrink-0">
+            <DialogTitle>Rectificar quantitats de la sol·licitud</DialogTitle>
+            <p className="text-xs text-muted-foreground font-normal leading-relaxed">
+              Ajusteu les línies des de recepcions abans d&apos;enviar la petició a RRHH o mentre encara estigui pendent de preparar.
+            </p>
+          </DialogHeader>
+          <div className="px-6 pb-4 space-y-4 overflow-y-auto min-h-0 flex-1">
+            {editRequestTarget ? (
+              <div className="rounded-lg border border-border bg-muted/25 px-3 py-2.5 text-sm space-y-1.5">
+                <div className="flex flex-wrap gap-x-3 gap-y-1 justify-between items-baseline">
+                  <span>
+                    <span className="text-muted-foreground text-xs">Dept</span>{' '}
+                    <span className="font-medium">{editRequestTarget.requestingDepartment}</span>
+                  </span>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {editRequestTarget.reference ?? editRequestTarget.id}
+                  </span>
+                </div>
+                <p>
+                  <span className="text-muted-foreground text-xs">Treballador</span>{' '}
+                  <span className="font-medium">
+                    {editRequestTarget.requestedByWorkerName?.trim() ||
+                      (editRequestTarget.requestedByWorkerId
+                        ? workers.find((w) => w.id === editRequestTarget.requestedByWorkerId)?.name ?? '—'
+                        : '—')}
+                  </span>
+                </p>
+              </div>
+            ) : null}
+
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-foreground">Línies rectificades</Label>
+              <div className="space-y-2">
+                {editRequestLines.map((ln, i) => (
+                  <div
+                    key={`edit-request-${i}-${ln.productId}`}
+                    className="flex flex-col sm:flex-row gap-2 sm:items-end rounded-md border border-border/80 bg-background/50 p-2"
+                  >
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Producte</span>
+                      <ProductSearchCombobox
+                        products={products}
+                        value={ln.productId}
+                        onChange={(value) =>
+                          setEditRequestLines((current) =>
+                            current.map((item, index) => (index === i ? { ...item, productId: value } : item))
+                          )
+                        }
+                        placeholder="Cercar..."
+                        showStockHint
+                        variant="list"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="flex gap-2 items-end shrink-0">
+                      <div className="space-y-0.5 w-[4.5rem]">
+                        <Label className="text-[10px] text-muted-foreground">Qty</Label>
+                        <Input
+                          className="h-9 tabular-nums"
+                          type="number"
+                          min={1}
+                          value={ln.qty}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            setEditRequestLines((current) =>
+                              current.map((item, index) => (index === i ? { ...item, qty: value } : item))
+                            )
+                          }}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10"
+                        disabled={editRequestLines.length <= 1}
+                        title={editRequestLines.length <= 1 ? 'Mínim una línia' : 'Eliminar línia'}
+                        aria-label="Eliminar línia"
+                        onClick={() =>
+                          setEditRequestLines((current) =>
+                            current.length <= 1 ? current : current.filter((_, index) => index !== i)
+                          )
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => setEditRequestLines((current) => [...current, { productId: '', qty: '1' }])}
+              >
+                + Línia
+              </Button>
+            </div>
+          </div>
+          <DialogFooter className="px-6 py-4 border-t border-border shrink-0 gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setEditRequestOpen(false)}>
+              Tancar
+            </Button>
+            <Button type="button" disabled={editRequestBusy} onClick={() => void confirmEditRequest()}>
+              {editRequestBusy ? 'Guardant...' : 'Guardar rectificació'}
             </Button>
           </DialogFooter>
         </DialogContent>

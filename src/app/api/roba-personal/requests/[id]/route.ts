@@ -167,6 +167,43 @@ export async function PATCH(
   }
   const now = FieldValue.serverTimestamp()
 
+  if (body.lines !== undefined && body.status === undefined) {
+    const sameDept =
+      access.scope === 'deptLead' &&
+      departmentsInSameRobaScope(String(cur.requestingDepartment || ''), access.leadDeptNorm)
+    if (!(access.scope === 'full' || sameDept)) {
+      return NextResponse.json(
+        { error: 'No autoritzat per rectificar aquesta sol·licitud.' },
+        { status: 403 }
+      )
+    }
+    if (!['submitted', 'sent_to_rrhh'].includes(curStatus)) {
+      return NextResponse.json(
+        { error: 'Només es poden rectificar quantitats mentre la sol·licitud no estigui preparada.' },
+        { status: 400 }
+      )
+    }
+
+    const nextLines = mergeLinesByProduct(normalizeRequestLinesInput(body.lines))
+    if (nextLines.length === 0) {
+      return NextResponse.json(
+        { error: 'Cal almenys una línia vàlida per rectificar la sol·licitud.' },
+        { status: 400 }
+      )
+    }
+
+    await ref.update({
+      lines: mergeLineNotesFromDoc(cur, nextLines),
+      updatedAt: now,
+      requestAdjustedAt: now,
+      requestAdjustedByUserId: access.userId,
+    })
+    const next = await ref.get()
+    return NextResponse.json(
+      serializeFirestoreDoc(next.id, next.data() as Record<string, unknown>)
+    )
+  }
+
   if (body.notes !== undefined && body.status === undefined) {
     await ref.update({
       notes: String(body.notes || '').trim() || null,
