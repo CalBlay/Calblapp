@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "seed:users": "node scripts/seedUsers.js",
     "cleanup:notifications": "tsc scripts/cleanupNotifications.ts --outDir dist && node dist/scripts/cleanupNotifications.js",
-    "import:maintenance-machines": "node scripts/importMaintenanceMachines.cjs"
+    "import:maintenance-machines": "node scripts/importMaintenanceMachines.cjs",
+    "import:allergens": "node scripts/import_plats_allergens.js",
+    "import:allergens:dry": "node scripts/import_plats_allergens.js --dry-run --report-file tmp/allergens-import-report.json",
+    "import:allergens:replace": "node scripts/import_plats_allergens.js --replace-all --report-file tmp/allergens-import-report.json"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.2",

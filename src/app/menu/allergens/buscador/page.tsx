@@ -62,7 +62,7 @@ const ALLERGEN_FILTER_OPTIONS: Array<{ value: AllergenFilter; label: string }> =
   { value: 'ANY', label: 'Qualsevol' },
   { value: 'NO', label: 'No' },
   { value: 'T', label: 'Traces' },
-  { value: 'SI', label: 'Sí' },
+  { value: 'SI', label: 'Si' },
 ]
 
 const buildAllergenFilters = (list: readonly AllergenItem[]) =>
@@ -159,14 +159,14 @@ export default function AllergensSearchPage() {
   const menuOptions = useMemo(() => {
     const set = new Set<string>()
     plats.forEach(plat => plat.menus?.forEach(menu => set.add(menu)))
-    return Array.from(set).sort()
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ca'))
   }, [plats])
 
   const allAllergenItems = useMemo(() => {
     const known = new Set(allergensCatalog.map(item => item.key))
     const combined = [...allergensCatalog]
-
     const legacyKeys = new Set<string>()
+
     plats.forEach(plat => {
       Object.keys(plat.allergens || {}).forEach(key => {
         if (!key || !key.trim()) return
@@ -184,9 +184,7 @@ export default function AllergensSearchPage() {
   }, [allergensCatalog, plats])
 
   const activeAdvancedCount = useMemo(
-    () =>
-      Object.values(allergenFilters).filter(value => value !== 'ANY')
-        .length,
+    () => Object.values(allergenFilters).filter(value => value !== 'ANY').length,
     [allergenFilters]
   )
 
@@ -211,19 +209,18 @@ export default function AllergensSearchPage() {
           plat.name?.ca || '',
           plat.name?.es || '',
           plat.name?.en || '',
+          plat.categoryLabel || '',
+          plat.familyLabel || '',
+          ...(plat.menus || []),
         ]
           .map(value => normalize(value))
           .join(' ')
+
         if (!haystack.includes(search)) return false
       }
 
-      if (categoryFilter !== 'all') {
-        if (plat.category !== categoryFilter) return false
-      }
-
-      if (familyFilter !== 'all') {
-        if (plat.family !== familyFilter) return false
-      }
+      if (categoryFilter !== 'all' && plat.category !== categoryFilter) return false
+      if (familyFilter !== 'all' && plat.family !== familyFilter) return false
 
       if (menuFilters.length) {
         const menus = plat.menus || []
@@ -291,7 +288,7 @@ export default function AllergensSearchPage() {
       <>
         <ModuleHeader />
         <div className="p-6 text-center text-sm text-gray-500">
-          No tens permisos per accedir al buscador d'al·lèrgens.
+          No tens permisos per accedir al buscador d'allergens.
         </div>
       </>
     )
@@ -299,7 +296,7 @@ export default function AllergensSearchPage() {
 
   return (
     <>
-      <ModuleHeader subtitle="Filtra plats per al·lèrgens, menús i models de consum." />
+      <ModuleHeader subtitle="Filtra plats per allergens, menus, tipus, grups i models de consum." />
 
       <section className="w-full max-w-6xl mx-auto p-6 flex flex-col gap-6">
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
@@ -308,32 +305,32 @@ export default function AllergensSearchPage() {
               <Input
                 value={searchText}
                 onChange={e => setSearchText(e.target.value)}
-                placeholder="Cercar per nom o codi"
+                placeholder="Cercar per nom, codi, tipus, grup o menu"
               />
 
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <Select value={familyFilter} onValueChange={setFamilyFilter}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Categoria" />
+                  <SelectValue placeholder="Grup" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Totes les categories</SelectItem>
-                  {categories.map(cat => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {cat.label}
+                  <SelectItem value="all">Tots els grups</SelectItem>
+                  {families.map(fam => (
+                    <SelectItem key={fam.id} value={fam.id}>
+                      {fam.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
 
-              <Select value={familyFilter} onValueChange={setFamilyFilter}>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Família" />
+                  <SelectValue placeholder="Tipus" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Totes les famílies</SelectItem>
-                  {families.map(fam => (
-                    <SelectItem key={fam.id} value={fam.id}>
-                      {fam.label}
+                  <SelectItem value="all">Tots els tipus</SelectItem>
+                  {categories.map(cat => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -353,8 +350,9 @@ export default function AllergensSearchPage() {
                     }))
                   }
                 />
-                Vegetarià
+                Vegetaria
               </label>
+
               <label className="flex items-center gap-2 text-sm text-slate-700">
                 <input
                   type="checkbox"
@@ -367,7 +365,7 @@ export default function AllergensSearchPage() {
                     }))
                   }
                 />
-                Vegà
+                Vega
               </label>
 
               <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -376,18 +374,15 @@ export default function AllergensSearchPage() {
                   checked={inverseMode}
                   onChange={e => setInverseMode(e.target.checked)}
                 />
-                Cerca inversa (apta per al·lèrgics)
+                Cerca inversa (apta per allergics)
               </label>
 
               <Button variant="outline" onClick={resetFilters}>
                 Neteja filtres
               </Button>
 
-              <Button
-                variant="secondary"
-                onClick={() => setShowAdvanced(prev => !prev)}
-              >
-                {showAdvanced ? 'Amaga avançat' : 'Avançat'}
+              <Button variant="secondary" onClick={() => setShowAdvanced(prev => !prev)}>
+                {showAdvanced ? 'Amaga avancat' : 'Avancat'}
                 {activeAdvancedCount > 0 && ` (${activeAdvancedCount})`}
               </Button>
             </div>
@@ -395,7 +390,7 @@ export default function AllergensSearchPage() {
             {inverseMode && (
               <div>
                 <p className="text-sm font-medium text-slate-700 mb-2">
-                  Al·lèrgens a evitar (NO, sense traces)
+                  Allergens a evitar (NO, sense traces)
                   {avoidedCount > 0 && ` · ${avoidedCount}`}
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -419,7 +414,7 @@ export default function AllergensSearchPage() {
 
             {menuOptions.length > 0 && (
               <div>
-                <p className="text-sm font-medium text-slate-700 mb-2">Menús</p>
+                <p className="text-sm font-medium text-slate-700 mb-2">Menus</p>
                 <div className="flex flex-wrap gap-2">
                   {menuOptions.map(menu => (
                     <button
@@ -444,9 +439,7 @@ export default function AllergensSearchPage() {
         {showAdvanced && (
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-800">
-                Filtres d'al·lèrgens
-              </h2>
+              <h2 className="text-lg font-semibold text-slate-800">Filtres d'allergens</h2>
               <p className="text-xs text-slate-500">
                 {activeAdvancedCount > 0
                   ? `${activeAdvancedCount} seleccionats`
@@ -488,29 +481,34 @@ export default function AllergensSearchPage() {
 
         <div className="flex items-center justify-between">
           <p className="text-sm text-slate-600">
-            {loading ? 'Carregant plats…' : `${filteredPlats.length} plats trobats`}
+            {loading ? 'Carregant plats...' : `${filteredPlats.length} plats trobats`}
           </p>
         </div>
 
         <div className="grid grid-cols-1 gap-4">
           {filteredPlats.map(plat => {
             const name = plat.name?.ca || plat.name?.es || plat.name?.en || plat.code || ''
-            const allergenBadges = allAllergenItems.map(allergen => {
-              const value = plat.allergens?.[allergen.key]
-              if (value !== 'SI' && value !== 'T') return null
-              const label = value === 'T' ? `${allergen.label} (Traces)` : allergen.label
-              return (
-                <Badge
-                  key={`${plat.id}-${allergen.key}`}
-                  variant={value === 'SI' ? 'destructive' : 'warning'}
-                >
-                  {label}
-                </Badge>
-              )
-            }).filter(Boolean)
+            const allergenBadges = allAllergenItems
+              .map(allergen => {
+                const value = plat.allergens?.[allergen.key]
+                if (value !== 'SI' && value !== 'T') return null
+                const label = value === 'T' ? `${allergen.label} (Traces)` : allergen.label
+                return (
+                  <Badge
+                    key={`${plat.id}-${allergen.key}`}
+                    variant={value === 'SI' ? 'destructive' : 'warning'}
+                  >
+                    {label}
+                  </Badge>
+                )
+              })
+              .filter(Boolean)
 
             return (
-              <div key={plat.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <div
+                key={plat.id}
+                className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="text-base font-semibold text-slate-800">{name}</h3>
@@ -522,12 +520,13 @@ export default function AllergensSearchPage() {
                       <p className="text-xs text-slate-500">ENG: {plat.name.en}</p>
                     )}
                   </div>
+
                   <div className="flex flex-wrap gap-2">
-                    {plat.categoryLabel && <Badge variant="secondary">{plat.categoryLabel}</Badge>}
                     {plat.familyLabel && <Badge variant="outline">{plat.familyLabel}</Badge>}
-                    {plat.consumption?.vegan && <Badge variant="success">Vegà</Badge>}
+                    {plat.categoryLabel && <Badge variant="secondary">{plat.categoryLabel}</Badge>}
+                    {plat.consumption?.vegan && <Badge variant="success">Vega</Badge>}
                     {!plat.consumption?.vegan && plat.consumption?.vegetarian && (
-                      <Badge variant="success">Vegetarià</Badge>
+                      <Badge variant="success">Vegetaria</Badge>
                     )}
                   </div>
                 </div>

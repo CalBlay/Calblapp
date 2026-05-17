@@ -1,0 +1,169 @@
+{
+  "file": "C:\\dev\\cal-blay-webapp\\BIBLIO AL·LÈRGENS.xlsx",
+  "sheets": [
+    "APERITIUS OKAY x ENVIAR - 13.05",
+    "CUINA DEL FÈLIX",
+    "BARQUETES AMETLLER"
+  ],
+  "mode": "incremental",
+  "updateExisting": false,
+  "summary": {
+    "rowsParsed": 175,
+    "rowsReadyAfterDuplicateFiltering": 172,
+    "duplicateGroupsExcluded": 1,
+    "parseIssues": 0,
+    "typesDetected": 5,
+    "groupsDetected": 3,
+    "menusDetected": 17
+  },
+  "parseIssues": [],
+  "duplicateConflicts": [
+    {
+      "code": "C0530100442",
+      "status": "pending",
+      "reason": "duplicate-code-in-excel",
+      "source": "BIBLIO AL·LÈRGENS.xlsx",
+      "incomingData": [
+        {
+          "code": "C0530100442",
+          "name": {
+            "ca": "Coctel digestiu: Cava i préssec sanguí",
+            "es": null,
+            "en": null
+          },
+          "nameMeta": {},
+          "category": "ap-fred",
+          "categoryLabel": "AP. FRED",
+          "family": "aperitius-okay-x-enviar-13-05",
+          "familyLabel": "APERITIUS OKAY x ENVIAR - 13.05",
+          "menus": [
+            "CASAMENTS"
+          ],
+          "onEstanRaw": "CASAMENTS",
+          "allergens": {
+            "gluten": "NO",
+            "crustacis": "NO",
+            "ou": "NO",
+            "peix": "NO",
+            "cacauet": "NO",
+            "soja": "NO",
+            "lactosa": "NO",
+            "fruitsSecs": "NO",
+            "api": "NO",
+            "mostassa": "NO",
+            "sesam": "NO",
+            "sulfits": "SI",
+            "tramus": "NO",
+            "moluscs": "NO"
+          },
+          "consumption": {
+            "vegan": true,
+            "vegetarian": true
+          },
+          "importSource": "BIBLIO AL·LÈRGENS.xlsx",
+          "importSheet": "APERITIUS OKAY x ENVIAR - 13.05",
+          "updatedAt": 1779036055560
+        },
+        {
+          "code": "C0530100442",
+          "name": {
+            "ca": "Coctel digestiu: Pinya colada",
+            "es": null,
+            "en": null
+          },
+          "nameMeta": {},
+          "category": "ap-fred",
+          "categoryLabel": "AP. FRED",
+          "family": "aperitius-okay-x-enviar-13-05",
+          "familyLabel": "APERITIUS OKAY x ENVIAR - 13.05",
+          "menus": [
+            "CASAMENTS"
+          ],
+          "onEstanRaw": "CASAMENTS",
+          "allergens": {
+            "gluten": "NO",
+            "crustacis": "NO",
+            "ou": "NO",
+            "peix": "NO",
+            "cacauet": "NO",
+            "soja": "NO",
+            "lactosa": "SI",
+            "fruitsSecs": "NO",
+            "api": "NO",
+            "mostassa": "NO",
+            "sesam": "NO",
+            "sulfits": "NO",
+            "tramus": "NO",
+            "moluscs": "NO"
+          },
+          "consumption": {
+            "vegan": false,
+            "vegetarian": true
+          },
+          "importSource": "BIBLIO AL·LÈRGENS.xlsx",
+          "importSheet": "APERITIUS OKAY x ENVIAR - 13.05",
+          "updatedAt": 1779036055560
+        },
+        {
+          "code": "C0530100442",
+          "name": {
+            "ca": "Coctel digestiu: San Francisco",
+            "es": null,
+            "en": null
+          },
+          "nameMeta": {},
+          "category": "ap-fred",
+          "categoryLabel": "AP. FRED",
+          "family": "aperitius-okay-x-enviar-13-05",
+          "familyLabel": "APERITIUS OKAY x ENVIAR - 13.05",
+          "menus": [
+            "CASAMENTS"
+          ],
+          "onEstanRaw": "CASAMENTS",
+          "allergens": {
+            "gluten": "NO",
+            "crustacis": "NO",
+            "ou": "NO",
+            "peix": "NO",
+            "cacauet": "NO",
+            "soja": "NO",
+            "lactosa": "NO",
+            "fruitsSecs": "NO",
+            "api": "NO",
+            "mostassa": "NO",
+            "sesam": "NO",
+            "sulfits": "NO",
+            "tramus": "NO",
+            "moluscs": "NO"
+          },
+          "consumption": {
+            "vegan": true,
+            "vegetarian": true
+          },
+          "importSource": "BIBLIO AL·LÈRGENS.xlsx",
+          "importSheet": "APERITIUS OKAY x ENVIAR - 13.05",
+          "updatedAt": 1779036055560
+        }
+      ],
+      "entries": [
+        {
+          "sheet": "APERITIUS OKAY x ENVIAR - 13.05",
+          "row": 44,
+          "nameCa": "Coctel digestiu: Cava i préssec sanguí"
+        },
+        {
+          "sheet": "APERITIUS OKAY x ENVIAR - 13.05",
+          "row": 45,
+          "nameCa": "Coctel digestiu: Pinya colada"
+        },
+        {
+          "sheet": "APERITIUS OKAY x ENVIAR - 13.05",
+          "row": 46,
+          "nameCa": "Coctel digestiu: San Francisco"
+        }
+      ],
+      "createdAt": 1779036055575
+    }
+  ],
+  "existingConflicts": []
+}
