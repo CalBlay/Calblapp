@@ -102,7 +102,12 @@ type Props = {
       }>
     }
   ) => Promise<void>
-  onDeletePlanned?: (() => void | Promise<void>) | null
+  destructiveAction?: {
+    label: string
+    title?: string
+    ariaLabel?: string
+    onClick: () => void | Promise<void>
+  } | null
   onClose: () => void
 }
 
@@ -149,7 +154,7 @@ export default function AssignTicketModal({
   onAssignVehicle,
   onReopen,
   onExternalize,
-  onDeletePlanned,
+  destructiveAction,
   onClose,
 }: Props) {
   const isDeco = ticket.ticketType === 'deco'
@@ -1042,15 +1047,16 @@ export default function AssignTicketModal({
         </div>
 
         <div className="sticky bottom-0 flex items-center justify-between rounded-b-3xl border-t border-slate-100 bg-white px-5 py-4 md:px-6">
-          {onDeletePlanned ? (
+          {destructiveAction ? (
             <button
               type="button"
-              title="Eliminar"
-              aria-label="Eliminar"
-              className="rounded-full border border-red-300 p-3 text-red-600 hover:bg-red-50"
-              onClick={() => void onDeletePlanned()}
+              title={destructiveAction.title || destructiveAction.label}
+              aria-label={destructiveAction.ariaLabel || destructiveAction.label}
+              className="inline-flex min-h-[48px] items-center gap-2 rounded-full border border-red-300 px-4 text-sm font-semibold text-red-600 hover:bg-red-50"
+              onClick={() => void destructiveAction.onClick()}
             >
               <Trash2 className="h-4 w-4" />
+              <span>{destructiveAction.label}</span>
             </button>
           ) : (
             <div />

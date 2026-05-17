@@ -6,8 +6,7 @@ import type { DueTemplate, ScheduledItem, Template, TicketCard } from './types'
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
 import {
   findAutoPlanSlot,
-  findAvailablePreventiuSlot,
-  resolveTemplateWorkerNames,
+  findBestPreventiuSlot,
 } from './autoPlanning'
 import {
   PRIORITY_WEIGHT,
@@ -402,6 +401,9 @@ export default function usePlannerData({
       const workingPreventius = [...plannedMapped]
       const workingAgenda: ScheduledItem[] = [...plannedMapped, ...ticketsMapped]
       const templateMap = new Map(templates.map((template) => [template.id, template]))
+      const maintenanceWorkerNames = users
+        .map((user) => String(user.name || '').trim())
+        .filter(Boolean)
       const alreadyPlannedTemplateIds = new Set(
         plannedList
           .map((item: PlannedApiItem) => String(item?.templateId || ''))
@@ -413,29 +415,33 @@ export default function usePlannerData({
         if (!item.templateId || item.workers.length > 0) continue
         const template = templateMap.get(String(item.templateId))
         if (!template) continue
-        const desiredWorkers = resolveTemplateWorkerNames(template)
-        if (desiredWorkers.length === 0) continue
+        const preferredWorkers = [template.primaryOperator, template.backupOperator]
+          .map((worker) => String(worker || '').trim())
+          .filter(Boolean)
+        if (preferredWorkers.length === 0) continue
 
-        const preferredSlot = findAvailablePreventiuSlot(workingAgenda, {
+        const preferredSlot = findBestPreventiuSlot(workingAgenda, {
           minutes: item.minutes,
-          workers: desiredWorkers,
+          preferredWorkers,
+          fallbackWorkers: maintenanceWorkerNames,
           firstDayIndex: item.dayIndex,
           ignoreId: item.id,
           normalizeName,
           minutesFromTime,
           timeFromMinutes,
+          allowUnassigned: false,
         })
         if (!preferredSlot) continue
 
         const dateStr = format(addDays(weekStart, preferredSlot.dayIndex), 'yyyy-MM-dd')
-        const workerIds = resolveWorkerIds(desiredWorkers)
+        const workerIds = resolveWorkerIds(preferredSlot.workers)
         const nextItem: ScheduledItem = {
           ...item,
           dayIndex: preferredSlot.dayIndex,
           start: preferredSlot.start,
           end: preferredSlot.end,
-          workers: desiredWorkers,
-          workersCount: desiredWorkers.length || 1,
+          workers: preferredSlot.workers,
+          workersCount: preferredSlot.workers.length || 1,
           status: item.status || 'assignat',
         }
 
@@ -443,14 +449,14 @@ export default function usePlannerData({
           const res = await fetch(`/api/maintenance/preventius/planned/${item.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              date: dateStr,
-              startTime: preferredSlot.start,
-              endTime: preferredSlot.end,
-              workerNames: desiredWorkers,
-              workerIds,
-            }),
-          })
+              body: JSON.stringify({
+                date: dateStr,
+                startTime: preferredSlot.start,
+                endTime: preferredSlot.end,
+                workerNames: preferredSlot.workers,
+                workerIds,
+              }),
+            })
           if (!res.ok) continue
           workingPreventius[index] = nextItem
           const agendaIndex = workingAgenda.findIndex((entry) => entry.id === item.id)
@@ -466,6 +472,7 @@ export default function usePlannerData({
 
         const slot = findAutoPlanSlot(workingAgenda, template, {
           weekStart,
+          availableWorkerNames: maintenanceWorkerNames,
           parseStoredDate,
           normalizeName,
           minutesFromTime,

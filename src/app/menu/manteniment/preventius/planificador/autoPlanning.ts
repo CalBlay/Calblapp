@@ -12,12 +12,29 @@ export const AUTO_PLAN_MAX_UNASSIGNED = 2
 export const rangesOverlap = (startA: number, endA: number, startB: number, endB: number) =>
   startA < endB && endA > startB
 
+const pushUniqueWorker = (
+  list: string[],
+  value: string,
+  normalizeName: (worker: string) => string
+) => {
+  const trimmed = value.trim()
+  if (!trimmed) return
+  const wanted = normalizeName(trimmed)
+  if (!wanted) return
+  if (list.some((current) => normalizeName(current) === wanted)) return
+  list.push(trimmed)
+}
+
+export const resolveTemplateWorkerPriority = (template: Template) => {
+  const workers: string[] = []
+  pushUniqueWorker(workers, String(template.primaryOperator || ''), (worker) => worker.toLowerCase())
+  pushUniqueWorker(workers, String(template.backupOperator || ''), (worker) => worker.toLowerCase())
+  return workers
+}
+
 export const resolveTemplateWorkerNames = (template: Template) => {
-  const primary = (template.primaryOperator || '').trim()
-  if (primary) return [primary]
-  const backup = (template.backupOperator || '').trim()
-  if (backup) return [backup]
-  return []
+  const [firstWorker] = resolveTemplateWorkerPriority(template)
+  return firstWorker ? [firstWorker] : []
 }
 
 export const getAutoPlanStartDayIndex = (
@@ -139,20 +156,85 @@ export const findAvailablePreventiuSlot = (
   return null
 }
 
+export const findBestPreventiuSlot = (
+  items: ScheduledItem[],
+  options: {
+    minutes: number
+    preferredWorkers: string[]
+    fallbackWorkers?: string[]
+    firstDayIndex: number
+    ignoreId?: string
+    normalizeName: (value: string) => string
+    minutesFromTime: (time: string) => number
+    timeFromMinutes: (total: number) => string
+    allowUnassigned?: boolean
+  }
+) => {
+  const {
+    minutes,
+    preferredWorkers,
+    fallbackWorkers = [],
+    firstDayIndex,
+    ignoreId,
+    normalizeName,
+    minutesFromTime,
+    timeFromMinutes,
+    allowUnassigned = true,
+  } = options
+
+  const triedWorkers: string[] = []
+  const uniqueCandidates = [...preferredWorkers, ...fallbackWorkers].filter((worker) => {
+    const trimmed = String(worker || '').trim()
+    if (!trimmed) return false
+    const normalized = normalizeName(trimmed)
+    if (!normalized) return false
+    if (triedWorkers.some((current) => normalizeName(current) === normalized)) return false
+    triedWorkers.push(trimmed)
+    return true
+  })
+
+  for (const worker of uniqueCandidates) {
+    const slot = findAvailablePreventiuSlot(items, {
+      minutes,
+      workers: [worker],
+      firstDayIndex,
+      ignoreId,
+      normalizeName,
+      minutesFromTime,
+      timeFromMinutes,
+    })
+    if (slot) return slot
+  }
+
+  if (!allowUnassigned) return null
+
+  return findAvailablePreventiuSlot(items, {
+    minutes,
+    workers: [],
+    firstDayIndex,
+    ignoreId,
+    normalizeName,
+    minutesFromTime,
+    timeFromMinutes,
+  })
+}
+
 export const findAutoPlanSlot = (
   items: ScheduledItem[],
   template: DueTemplate,
   options: {
     weekStart: Date
+    availableWorkerNames?: string[]
     parseStoredDate: (value?: string | null) => Date | null
     normalizeName: (value: string) => string
     minutesFromTime: (time: string) => number
     timeFromMinutes: (total: number) => string
   }
 ) =>
-  findAvailablePreventiuSlot(items, {
+  findBestPreventiuSlot(items, {
     minutes: AUTO_PLAN_DEFAULT_MINUTES,
-    workers: resolveTemplateWorkerNames(template),
+    preferredWorkers: resolveTemplateWorkerPriority(template),
+    fallbackWorkers: options.availableWorkerNames || [],
     firstDayIndex: getAutoPlanStartDayIndex(template.dueDate, options.weekStart, options.parseStoredDate),
     normalizeName: options.normalizeName,
     minutesFromTime: options.minutesFromTime,

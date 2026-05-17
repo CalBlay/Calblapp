@@ -51,6 +51,7 @@ export type ScheduledItem = {
 export type PlannerDraft = {
   id?: string
   kind: 'preventiu' | 'ticket'
+  source?: 'pending' | 'scheduled'
   templateId?: string | null
   ticketId?: string | null
   title: string

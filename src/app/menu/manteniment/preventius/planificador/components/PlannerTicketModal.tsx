@@ -34,6 +34,7 @@ type Props = {
   /** Planificador: si es passen, la disponibilitat és només la graella; si no, tots els operaris de manteniment es poden triar */
   weekStart?: Date
   dayCount?: number
+  deleteMode?: 'delete-ticket' | 'unplan-ticket' | null
   availableWorkers?: (
     dayIndex: number,
     start: string,
@@ -79,6 +80,7 @@ export default function PlannerTicketModal({
   users,
   weekStart: weekStartProp,
   dayCount: dayCountProp,
+  deleteMode = null,
   availableWorkers: availableWorkersProp,
   onDeletePlanned,
   onClose,
@@ -263,6 +265,58 @@ export default function PlannerTicketModal({
     }
   }
 
+  const handleDeleteTicket = useCallback(async () => {
+    const currentTicketId = String(selected?.id || ticketId || '').trim()
+    if (!currentTicketId) return
+    if (!window.confirm('Estas segur que vols eliminar el ticket?')) return
+    try {
+      const res = await fetch(`/api/maintenance/tickets/${encodeURIComponent(currentTicketId)}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await onRefresh()
+      onClose()
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "No s'ha pogut eliminar el ticket")
+    }
+  }, [onClose, onRefresh, selected?.id, ticketId])
+
+  const handleUnplanTicket = useCallback(async () => {
+    if (!onDeletePlanned) return
+    if (
+      !window.confirm(
+        'Estas segur que vols treure el ticket del planificador? El ticket continuara existint.'
+      )
+    ) {
+      return
+    }
+    try {
+      await onDeletePlanned()
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "No s'ha pogut treure del planificador")
+    }
+  }, [onDeletePlanned])
+
+  const destructiveAction = useMemo(() => {
+    if (deleteMode === 'delete-ticket') {
+      return {
+        label: 'Eliminar ticket',
+        title: 'Eliminar ticket',
+        ariaLabel: 'Eliminar ticket',
+        onClick: handleDeleteTicket,
+      }
+    }
+    if (deleteMode === 'unplan-ticket' && onDeletePlanned) {
+      return {
+        label: 'Treure del planificador',
+        title: 'Treure del planificador',
+        ariaLabel: 'Treure del planificador',
+        onClick: handleUnplanTicket,
+      }
+    }
+    return null
+  }, [deleteMode, handleDeleteTicket, handleUnplanTicket, onDeletePlanned])
+
   const handleAssignVehicle = async (
     ticket: Ticket,
     needsVehicle: boolean,
@@ -434,7 +488,7 @@ export default function PlannerTicketModal({
       onAssignVehicle={handleAssignVehicle}
       onReopen={handleReopen}
       onExternalize={handleExternalize}
-      onDeletePlanned={onDeletePlanned}
+      destructiveAction={destructiveAction}
       onClose={onClose}
     />
   )

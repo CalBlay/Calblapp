@@ -111,9 +111,7 @@ export default function PlannerSidebar({
           : undefined
       }
     >
-      <div className={titleClass}>
-        {tab === 'preventius' ? 'Preventius pendents' : 'Tickets pendents'}
-      </div>
+      <div className={titleClass}>{tab === 'preventius' ? 'Preventius pendents' : 'Tickets pendents'}</div>
       {scheduledCountForTab > 0 ? (
         <button
           type="button"

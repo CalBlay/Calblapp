@@ -139,7 +139,7 @@ export default function TicketsList({
       {groupedTickets.map((section) => {
         const sectionStyle = SECTION_STYLES[section.key] || SECTION_STYLES.closed
         const isCollapsed =
-          collapsedSections[section.key] ?? (section.key === 'inbox' ? false : true)
+          collapsedSections[section.key] ?? (groupedTickets.length === 1 ? false : section.key === 'inbox' ? false : true)
 
         return (
           <section key={section.key} className="space-y-3">

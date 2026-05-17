@@ -42,6 +42,9 @@ const mobileFieldClass =
 
 const mobileSelectClass = `${mobileFieldClass} appearance-none bg-[linear-gradient(45deg,transparent_50%,#64748b_50%),linear-gradient(135deg,#64748b_50%,transparent_50%)] bg-[position:calc(100%-18px)_calc(50%-2px),calc(100%-12px)_calc(50%-2px)] bg-[size:6px_6px,6px_6px] bg-no-repeat pr-10`
 
+const sortCategoriesByLabel = (items: Array<{ id: string; label: string }>) =>
+  [...items].sort((a, b) => a.label.localeCompare(b.label, 'ca', { sensitivity: 'base' }))
+
 export default function CreateIncidentModal({
   open,
   event,
@@ -98,15 +101,17 @@ export default function CreateIncidentModal({
         const json = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(String(json?.error || 'Error categories'))
         const raw = Array.isArray(json.categories) ? json.categories : []
-        const allCategories = raw.map((c: { id: string; label: string }) => ({
-          id: String(c.id),
-          label: String(c.label),
-        }))
+        const allCategories = sortCategoriesByLabel(
+          raw.map((c: { id: string; label: string }) => ({
+            id: String(c.id),
+            label: String(c.label),
+          }))
+        )
         if (cancel) return
         setCategories(allCategories)
         setCategory((prev) => {
           if (prev && allCategories.some((x) => x.id === prev.id)) return prev
-          return allCategories[0] || null
+          return null
         })
       } catch {
         if (!cancel) {
@@ -299,7 +304,7 @@ export default function CreateIncidentModal({
                 value={category?.id || ''}
                 onChange={(e) => {
                   const selected = categories.find((c) => c.id === e.target.value)
-                  if (selected) setCategory(selected)
+                  setCategory(selected || null)
                 }}
                 required
                 disabled={categoriesLoading || categories.length === 0}
@@ -309,11 +314,14 @@ export default function CreateIncidentModal({
                 ) : categories.length === 0 ? (
                   <option value="">No hi ha categories</option>
                 ) : (
-                  categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))
+                  <>
+                    <option value="">Selecciona categoria</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </>
                 )}
               </select>
               {category?.label ? (

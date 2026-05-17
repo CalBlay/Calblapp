@@ -54,6 +54,7 @@ export default function PreventiusPlanificadorPage() {
     }
   })
   const [tab, setTab] = useState<'preventius' | 'tickets'>('preventius')
+  const [plannerViewFilter, setPlannerViewFilter] = useState<'all' | 'preventius' | 'tickets'>('all')
   const [preventiusFilter, setPreventiusFilter] = useState<'all' | 'due' | 'overdue'>('all')
   const [ticketsAgeFilter, setTicketsAgeFilter] = useState<
     'all' | 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus'
@@ -113,13 +114,18 @@ export default function PreventiusPlanificadorPage() {
     [scheduledItems]
   )
 
+  const kindFilteredScheduledItems = useMemo(() => {
+    if (plannerViewFilter === 'all') return scheduledItems
+    return scheduledItems.filter((item) => item.kind === plannerViewFilter.slice(0, -1))
+  }, [plannerViewFilter, scheduledItems])
+
   const filteredScheduledItems = useMemo(() => {
-    if (!selectedWorker || selectedWorker === '__all__') return scheduledItems
+    if (!selectedWorker || selectedWorker === '__all__') return kindFilteredScheduledItems
     const normalizedSelected = normalizeName(selectedWorker)
-    return scheduledItems.filter((item) =>
+    return kindFilteredScheduledItems.filter((item) =>
       item.workers.some((worker) => normalizeName(worker) === normalizedSelected)
     )
-  }, [scheduledItems, selectedWorker])
+  }, [kindFilteredScheduledItems, selectedWorker])
 
   const scheduledItemsByDay = useMemo(() => {
     const grouped = new Map<number, ScheduledItem[]>()
@@ -357,6 +363,7 @@ export default function PreventiusPlanificadorPage() {
     openModal({
       id: item.id,
       kind: item.kind,
+      source: 'scheduled',
       templateId: item.templateId || null,
       ticketId: item.ticketId || (item.kind === 'ticket' ? item.id : null),
       title: item.title,
@@ -425,6 +432,7 @@ export default function PreventiusPlanificadorPage() {
   ) => {
     openModal({
       kind: item.kind,
+      source: 'pending',
       templateId: item.kind === 'preventiu' ? item.id : null,
       ticketId: item.kind === 'ticket' ? item.id : null,
       title: item.title,
@@ -799,21 +807,60 @@ export default function PreventiusPlanificadorPage() {
                 </button>
               </>
             )}
-            <button
-              type="button"
-              onClick={() => setShowLegend((v) => !v)}
-              className="ml-auto inline-flex items-center gap-1 text-xs text-gray-600"
-            >
-              {showLegend ? (
-                <>
-                  Amagar llegenda <ChevronUp size={14} />
-                </>
-              ) : (
-                <>
-                  Mostrar llegenda <ChevronDown size={14} />
-                </>
-              )}
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="text-xs font-semibold text-gray-500">Calendari</div>
+              <button
+                type="button"
+                onClick={() => setPlannerViewFilter('all')}
+                className={[
+                  'rounded-full px-3 py-2 text-xs font-semibold border',
+                  plannerViewFilter === 'all'
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-white text-gray-700 border-gray-200',
+                ].join(' ')}
+              >
+                Tots
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlannerViewFilter('preventius')}
+                className={[
+                  'rounded-full px-3 py-2 text-xs font-semibold border',
+                  plannerViewFilter === 'preventius'
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                    : 'bg-white text-gray-700 border-gray-200',
+                ].join(' ')}
+              >
+                Preventius
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlannerViewFilter('tickets')}
+                className={[
+                  'rounded-full px-3 py-2 text-xs font-semibold border',
+                  plannerViewFilter === 'tickets'
+                    ? 'bg-sky-100 text-sky-800 border-sky-200'
+                    : 'bg-white text-gray-700 border-gray-200',
+                ].join(' ')}
+              >
+                Tickets
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLegend((v) => !v)}
+                className="inline-flex items-center gap-1 text-xs text-gray-600"
+              >
+                {showLegend ? (
+                  <>
+                    Amagar llegenda <ChevronUp size={14} />
+                  </>
+                ) : (
+                  <>
+                    Mostrar llegenda <ChevronDown size={14} />
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {showLegend && (
@@ -1046,6 +1093,7 @@ export default function PreventiusPlanificadorPage() {
             weekStart={weekStart}
             dayCount={DAY_COUNT}
             availableWorkers={availableWorkers}
+            deleteMode={draft.source === 'scheduled' ? 'unplan-ticket' : 'delete-ticket'}
             onDeletePlanned={async () => {
               const ticketId = draft.ticketId || draft.id
               if (!ticketId) return
