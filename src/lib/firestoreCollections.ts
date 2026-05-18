@@ -25,6 +25,10 @@ const norm = (s?: string) =>
     .trim()
 
 const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
+const NON_OPERATIONAL_QUADRANT_COLLECTIONS = new Set([
+  'quadrantpremises',
+  'quadranttrainingsamples',
+])
 
 /**
  * Retorna tots els collection IDs del projecte. Cachejat 5 min.
@@ -69,6 +73,7 @@ export async function listQuadrantCollectionIds(
   return ids.filter((id) => {
     const n = norm(id)
     if (!n.startsWith('quadrant')) return false
+    if (NON_OPERATIONAL_QUADRANT_COLLECTIONS.has(n)) return false
     if (!options?.includeDrafts && n.includes('draft')) return false
     return true
   })

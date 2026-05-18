@@ -13,6 +13,7 @@ import {
   qcNorm,
 } from '@/lib/quadrantsConfirmDeferred'
 import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
+import { findQuadrantOverlapConflicts } from '@/lib/quadrantOverlapGuard'
 
 export const runtime = 'nodejs'
 
@@ -63,12 +64,66 @@ export async function POST(req: NextRequest) {
 
     const colName = await resolveWriteCollectionForDepartment(deptRaw)
     const firstRef = db.collection(colName).doc(docIds[0])
-    const [stageSnap, firstSnap] = await Promise.all([
+    const [stageSnap, firstSnap, currentDocsSnap] = await Promise.all([
       db.collection('stage_verd').doc(String(eventId)).get(),
       firstRef.get(),
+      Promise.all(docIds.map((docId) => db.collection(colName).doc(docId).get())),
     ])
     const stageData = stageSnap.exists ? (stageSnap.data() as Record<string, unknown>) : null
     const firstPrev = firstSnap.exists ? (firstSnap.data() as QuadrantConfirmDoc) : null
+    const overlapAssignments = currentDocsSnap.flatMap((snap) => {
+      if (!snap.exists) return []
+      const data = snap.data() as QuadrantConfirmDoc & {
+        responsables?: Array<Record<string, unknown>>
+        conductors?: Array<Record<string, unknown>>
+        treballadors?: Array<Record<string, unknown>>
+      }
+      const assignments: Array<{
+        id?: string | null
+        name?: string | null
+        startDate: string
+        endDate?: string | null
+        startTime?: string | null
+        endTime?: string | null
+      }> = []
+      const push = (entry: {
+        id?: string | null
+        name?: string | null
+        startDate?: string | null
+        endDate?: string | null
+        startTime?: string | null
+        endTime?: string | null
+      }) => {
+        const id = String(entry.id || '').trim()
+        const name = String(entry.name || '').trim()
+        const startDate = String(entry.startDate || data.startDate || '').trim()
+        const endDate = String(entry.endDate || data.endDate || startDate).trim()
+        const startTime = String(entry.startTime || data.startTime || '00:00').trim() || '00:00'
+        const endTime = String(entry.endTime || data.endTime || '23:59').trim() || '23:59'
+        if ((!id && !name) || !startDate || !endDate) return
+        assignments.push({ id: id || null, name: name || null, startDate, endDate, startTime, endTime })
+      }
+      push({ name: String(data.responsableName || data.responsable?.name || '').trim() || null })
+      ;(Array.isArray(data.responsables) ? data.responsables : []).forEach((line) => push(line))
+      ;(Array.isArray(data.conductors) ? data.conductors : []).forEach((line) => push(line))
+      ;(Array.isArray(data.treballadors) ? data.treballadors : []).forEach((line) => push(line))
+      return assignments
+    })
+    const overlapConflicts = await findQuadrantOverlapConflicts({
+      assignments: overlapAssignments,
+      excludeDocIds: docIds,
+    })
+    if (overlapConflicts.length > 0) {
+      const first = overlapConflicts[0]
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `No es pot confirmar: ${first.personLabel} ja està assignat a ${first.source.eventId || first.source.docId} (${first.busy.startDate} ${first.busy.startTime}-${first.busy.endTime}).`,
+          conflicts: overlapConflicts,
+        },
+        { status: 409 }
+      )
+    }
     const already = firstPrev?.status === 'confirmed'
     const assigned = extractAssignedNamesFromQuadrant(firstPrev)
     const diff = computeQuadrantProposalDiff({ proposal: firstPrev?.autoProposal || null, finalAssigned: assigned })

@@ -10,6 +10,7 @@ import {
 import { saveDraftByDepartment } from '@/lib/quadrantsDraftSaveAdapters'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import { listAllCollectionIds } from '@/lib/firestoreCollections'
+import { findQuadrantOverlapConflicts } from '@/lib/quadrantOverlapGuard'
 
 export const runtime = 'nodejs'
 
@@ -74,6 +75,31 @@ export async function POST(req: NextRequest) {
     const coll = await resolveDeptCollection(department)
     const sourceDocId = String(eventId || '').trim()
     const canonicalEventId = normalizeEventId(eventId)
+    const overlapConflicts = await findQuadrantOverlapConflicts({
+      assignments: rows
+        .filter((row) => String(row?.name || '').trim() && String(row?.name || '').trim() !== 'Extra')
+        .map((row) => ({
+          id: row.id || null,
+          name: row.name || null,
+          startDate: row.startDate,
+          endDate: row.endDate || row.startDate,
+          startTime: row.startTime || '00:00',
+          endTime: row.endTime || '23:59',
+        })),
+      excludeEventId: canonicalEventId,
+      excludeDocIds: [sourceDocId].filter(Boolean),
+    })
+    if (overlapConflicts.length > 0) {
+      const first = overlapConflicts[0]
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `No es pot desar: ${first.personLabel} ja està assignat a ${first.source.eventId || first.source.docId} (${first.busy.startDate} ${first.busy.startTime}-${first.busy.endTime}).`,
+          conflicts: overlapConflicts,
+        },
+        { status: 409 }
+      )
+    }
     const saved = await saveDraftByDepartment({
       db,
       coll,

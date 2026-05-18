@@ -43,6 +43,13 @@ export type EttEntry = {
   meetingPoint: string
 }
 
+export type ResponsableAvailabilityOption = {
+  id: string
+  name: string
+  status: 'available' | 'conflict' | 'notfound'
+  reason?: string
+}
+
 export type ServiceGroupPayload = {
   serviceDate: string
   dateLabel: string | null
@@ -145,7 +152,7 @@ export interface QuadrantFormState {
   setEttOpen: (value: boolean) => void
   ettData: ServicePhaseEttData
   setEttData: (value: ServicePhaseEttData) => void
-  availableResponsables: Array<{ id: string; name: string }>
+  availableResponsables: ResponsableAvailabilityOption[]
   availableConductors: AvailableConductor[]
   availableJamoneros: Array<{ id: string; name: string }>
   availableTreballadors: Array<{ id: string; name: string }>
@@ -223,8 +230,16 @@ export function useQuadrantFormState({
     endTime,
   })
 
-  const availableResponsables = useMemo(
-    () => responsables.filter((r) => Boolean(r.id?.trim())),
+  const availableResponsables = useMemo<ResponsableAvailabilityOption[]>(
+    () =>
+      responsables
+        .filter((r) => Boolean(r.id?.trim()))
+        .map((r) => ({
+          id: r.id,
+          name: r.name,
+          status: r.status,
+          reason: r.reason,
+        })),
     [responsables]
   )
   const availableConductors = useMemo<AvailableConductor[]>(
@@ -313,6 +328,28 @@ export function useQuadrantFormState({
     updateServiceJamoneroAssignment,
     buildServiceGroupsPayload,
   } = services
+
+  useEffect(() => {
+    if (department.trim().toLowerCase() !== 'serveis') return
+
+    const validResponsibleIds = new Set(
+      availableResponsables
+        .filter((resp) => resp.status === 'available')
+        .map((resp) => String(resp.id || '').trim())
+        .filter(Boolean)
+    )
+
+    if (manualResp && manualResp !== '__auto__' && !validResponsibleIds.has(manualResp)) {
+      setManualResp('')
+    }
+
+    servicePhaseGroups.forEach((group) => {
+      const currentId = String(group.responsibleId || '').trim()
+      if (!currentId) return
+      if (validResponsibleIds.has(currentId)) return
+      updateServiceGroup(group.id, { responsibleId: '' })
+    })
+  }, [department, availableResponsables, manualResp, servicePhaseGroups, updateServiceGroup])
 
   const ettEntry = useMemo(() => {
     const workers = Number(ettData.workers || 0)

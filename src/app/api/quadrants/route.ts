@@ -5,6 +5,7 @@ import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
+import { findQuadrantOverlapConflicts } from '@/lib/quadrantOverlapGuard'
 import {
   commitQuadrantConfirmedFirestoreBatch,
   deferQuadrantConfirmSideEffects,
@@ -1358,6 +1359,72 @@ export async function POST(req: NextRequest) {
     const normalizePerson = (value?: string | null) =>
       (value || '').toString().trim().toLowerCase()
 
+    const extractOverlapAssignmentsFromQuadrantSave = (doc: QuadrantSave) => {
+      const assignments: Array<{
+        id?: string | null
+        name?: string | null
+        startDate: string
+        endDate?: string | null
+        startTime?: string | null
+        endTime?: string | null
+      }> = []
+      const push = (entry: {
+        id?: string | null
+        name?: string | null
+        startDate?: string | null
+        endDate?: string | null
+        startTime?: string | null
+        endTime?: string | null
+      }) => {
+        const id = String(entry.id || '').trim()
+        const name = String(entry.name || '').trim()
+        const startDate = String(entry.startDate || doc.startDate || '').trim()
+        const endDate = String(entry.endDate || doc.endDate || startDate).trim()
+        const startTime = String(entry.startTime || doc.startTime || '00:00').trim() || '00:00'
+        const endTime = String(entry.endTime || doc.endTime || '23:59').trim() || '23:59'
+        if ((!id && !name) || !startDate || !endDate) return
+        assignments.push({ id: id || null, name: name || null, startDate, endDate, startTime, endTime })
+      }
+
+      push({
+        name: doc.responsableName || doc.responsable?.name || null,
+        startDate: doc.startDate,
+        endDate: doc.endDate,
+        startTime: doc.startTime,
+        endTime: doc.endTime,
+      })
+      ;(doc.conductors || []).forEach((line) => push(line))
+      ;(doc.treballadors || []).forEach((line) => push(line))
+      ;(doc.groups || []).forEach((group) =>
+        push({
+          id: group.responsibleId || null,
+          name: group.responsibleName || null,
+          startDate: (group as { serviceDate?: string | null }).serviceDate || doc.startDate,
+          endDate: (group as { serviceDate?: string | null }).serviceDate || doc.endDate || doc.startDate,
+          startTime: group.startTime || doc.startTime,
+          endTime: group.endTime || doc.endTime,
+        })
+      )
+
+      return assignments
+    }
+
+    const ensureNoOverlapForQuadrantSave = async (doc: QuadrantSave, excludeDocIds: string[] = []) => {
+      const conflicts = await findQuadrantOverlapConflicts({
+        assignments: extractOverlapAssignmentsFromQuadrantSave(doc),
+        excludeEventId: String(doc.eventId || '').trim(),
+        excludeDocIds,
+      })
+      if (conflicts.length === 0) return
+
+      const first = conflicts[0]
+      const message = `Solapament de personal no permès: ${first.personLabel} ja està assignat a ${first.source.eventId || first.source.docId} (${first.busy.startDate} ${first.busy.startTime}-${first.busy.endTime}).`
+      const error = new Error(message)
+      ;(error as Error & { status?: number; conflicts?: unknown }).status = 409
+      ;(error as Error & { status?: number; conflicts?: unknown }).conflicts = conflicts
+      throw error
+    }
+
     let phaseRequests: PhaseRequest[] = []
     const createdDocIds: string[] = []
     /** Snapshot del darrer `toSave` per docId; evita un `get()` de Firestore abans de confirmar inline. */
@@ -2204,6 +2271,7 @@ export async function POST(req: NextRequest) {
         .trim()
         .replace(/[^a-zA-Z0-9_-]/g, '')
       const docId = `${canonicalEventId}__${phaseKey}__${phaseDate}__${groupKey || 'group'}`
+      await ensureNoOverlapForQuadrantSave(toSave, [docId])
       savedDraftSnapshotByDocId.set(docId, toSave)
       if (phaseFirestoreQueue && phaseSkipHeavyPipeline) {
         phaseFirestoreQueue.push({ docId, toSave })
@@ -2586,6 +2654,7 @@ export async function POST(req: NextRequest) {
       ? `${normalizedEventId}__event__${singleFlowPhaseDate}__event`
       : normalizedEventId
 
+    await ensureNoOverlapForQuadrantSave(toSave, [docIdForSingleFlow])
     await db.collection(collectionName).doc(docIdForSingleFlow).set(toSave, { merge: true })
     createdDocIds.push(docIdForSingleFlow)
 
@@ -2662,7 +2731,21 @@ export async function POST(req: NextRequest) {
   } catch (e: unknown) {
     console.error('[quadrants/route] error:', e)
     if (e instanceof Error) {
-      return NextResponse.json({ success: false, error: e.message }, { status: 500 })
+      const status =
+        typeof (e as Error & { status?: unknown }).status === 'number'
+          ? Number((e as Error & { status?: number }).status)
+          : 500
+      return NextResponse.json(
+        {
+          success: false,
+          error: e.message,
+          conflicts:
+            status === 409
+              ? (e as Error & { conflicts?: unknown }).conflicts || []
+              : [],
+        },
+        { status }
+      )
     }
     return NextResponse.json({ success: false, error: 'Internal error' }, { status: 500 })
   }

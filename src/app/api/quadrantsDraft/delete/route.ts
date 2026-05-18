@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import { listAllCollectionIds } from '@/lib/firestoreCollections'
 
 export const runtime = 'nodejs'
 
 const norm = (v?: string) =>
   (v || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
+
+const normalizeEventId = (value?: string | null) =>
+  String(value || '')
+    .trim()
+    .split('__')[0]
+    .trim()
 
 type LogisticsPhaseRow = { key?: string; label?: string }
 
@@ -23,6 +30,21 @@ const canonicalCollectionFor = (dept: string) => {
   return `quadrants${capitalized}`
 }
 
+async function resolveDeptCollection(dept: string) {
+  const key = norm(dept)
+  const cols = await listAllCollectionIds()
+  for (const id of cols) {
+    const plain = id
+      .replace(/^quadrants?/i, '')
+      .replace(/[_\-\s]/g, '')
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+    if (plain === key) return id
+  }
+  return canonicalCollectionFor(dept)
+}
+
 export async function POST(req: NextRequest) {
   try {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
@@ -31,17 +53,20 @@ export async function POST(req: NextRequest) {
     }
 
     const { department, eventId, phaseKey } = await req.json()
+    const canonicalEventId = normalizeEventId(eventId)
 
-    if (!department || !eventId) {
+    if (!department || !canonicalEventId) {
       return NextResponse.json(
         { ok: false, error: 'Missing department or eventId' },
         { status: 400 }
       )
     }
 
-    const collection = db.collection(canonicalCollectionFor(department))
-    const directRef = collection.doc(String(eventId))
+    const coll = await resolveDeptCollection(department)
+    const collection = db.collection(coll)
+    const directRef = collection.doc(String(canonicalEventId))
     const directSnap = await directRef.get()
+    const byEvent = await collection.where('eventId', '==', String(canonicalEventId)).get()
 
     if (directSnap.exists) {
       if (phaseKey) {
@@ -57,12 +82,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, phaseDeleted: true, deletedCount: 1 })
       }
 
-      await directRef.delete()
+      const batch = db.batch()
+      batch.delete(directRef)
+      byEvent.docs.forEach((doc) => {
+        if (doc.id !== directRef.id) batch.delete(doc.ref)
+      })
+      await batch.commit()
       revalidateQuadrantsListCache()
-      return NextResponse.json({ ok: true, deletedCount: 1 })
+      return NextResponse.json({ ok: true, deletedCount: 1 + byEvent.docs.filter((doc) => doc.id !== directRef.id).length })
     }
 
-    const byEvent = await collection.where('eventId', '==', String(eventId)).get()
     if (byEvent.empty) {
       return NextResponse.json({ ok: true, alreadyDeleted: true, deletedCount: 0 })
     }

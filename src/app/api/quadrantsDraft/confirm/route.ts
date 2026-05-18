@@ -4,6 +4,8 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { getToken } from 'next-auth/jwt'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import { listAllCollectionIds } from '@/lib/firestoreCollections'
+import { findQuadrantOverlapConflicts } from '@/lib/quadrantOverlapGuard'
 
 export const runtime = 'nodejs'
 
@@ -70,6 +72,22 @@ const normalizeEventId = (value?: string | null) =>
     .trim()
     .split('__')[0]
     .trim()
+const canonicalCollectionFor = (dept: string) => `quadrants${capitalize(norm(dept))}`
+
+async function resolveDeptCollection(dept: string) {
+  const key = norm(dept)
+  const cols = await listAllCollectionIds()
+  for (const id of cols) {
+    const plain = id
+      .replace(/^quadrants?/i, '')
+      .replace(/[_\-\s]/g, '')
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+    if (plain === key) return id
+  }
+  return canonicalCollectionFor(dept)
+}
 
 async function lookupUidForAssigned(user: AssignedUser): Promise<string | null> {
   const rawId = String(user?.id || '').trim()
@@ -204,7 +222,7 @@ export async function POST(req: NextRequest) {
     }
 
     const dept = norm(deptRaw)
-    const colName = `quadrants${capitalize(dept)}`
+    const colName = await resolveDeptCollection(dept)
     const collection = db.collection(colName)
     const directRef = collection.doc(String(eventId))
     const directSnap = await directRef.get()
@@ -217,6 +235,59 @@ export async function POST(req: NextRequest) {
     byEvent.docs.forEach((doc) => targetDocs.set(doc.id, doc))
 
     const prevDocs = Array.from(targetDocs.values())
+    const overlapAssignments = prevDocs.flatMap((doc) => {
+      if (!doc.exists) return []
+      const data = doc.data() as QuadrantDoc & {
+        endDate?: string
+        startTime?: string
+        endTime?: string
+      }
+      const assignments: Array<{
+        id?: string | null
+        name?: string | null
+        startDate: string
+        endDate?: string | null
+        startTime?: string | null
+        endTime?: string | null
+      }> = []
+      const push = (entry: {
+        id?: string | null
+        name?: string | null
+        startDate?: string | null
+        endDate?: string | null
+        startTime?: string | null
+        endTime?: string | null
+      }) => {
+        const id = String(entry.id || '').trim()
+        const name = String(entry.name || '').trim()
+        const startDate = String(entry.startDate || data.startDate || '').trim()
+        const endDate = String(entry.endDate || data.endDate || startDate).trim()
+        const startTime = String(entry.startTime || data.startTime || '00:00').trim() || '00:00'
+        const endTime = String(entry.endTime || data.endTime || '23:59').trim() || '23:59'
+        if ((!id && !name) || !startDate || !endDate) return
+        assignments.push({ id: id || null, name: name || null, startDate, endDate, startTime, endTime })
+      }
+      push({ id: data.responsableId, name: data.responsableName })
+      ;(Array.isArray(data.responsables) ? data.responsables : []).forEach((line) => push(line))
+      ;(Array.isArray(data.conductors) ? data.conductors : []).forEach((line) => push(line))
+      ;(Array.isArray(data.treballadors) ? data.treballadors : []).forEach((line) => push(line))
+      return assignments
+    })
+    const overlapConflicts = await findQuadrantOverlapConflicts({
+      assignments: overlapAssignments,
+      excludeDocIds: Array.from(targetDocs.keys()),
+    })
+    if (overlapConflicts.length > 0) {
+      const first = overlapConflicts[0]
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `No es pot confirmar: ${first.personLabel} ja està assignat a ${first.source.eventId || first.source.docId} (${first.busy.startDate} ${first.busy.startTime}-${first.busy.endTime}).`,
+          conflicts: overlapConflicts,
+        },
+        { status: 409 }
+      )
+    }
     const prev = prevDocs[0]?.exists ? (prevDocs[0].data() as QuadrantDoc) : null
     const already = prevDocs.length > 0 && prevDocs.every((doc) => {
       const data = doc.data() as QuadrantDoc | undefined

@@ -20,6 +20,7 @@ export interface UseAvailablePersonnelOptions {
   endDate?: string
   startTime?: string
   endTime?: string
+  includeConflicts?: boolean
   excludeIds?: string[]
   excludeNames?: string[]
   excludeEventId?: string
@@ -76,7 +77,7 @@ const cleanList = (
 
 async function fetchPersonnel(
   opts: Required<Pick<UseAvailablePersonnelOptions, 'departament' | 'startDate' | 'endDate' | 'startTime' | 'endTime'>> &
-    Pick<UseAvailablePersonnelOptions, 'excludeEventId' | 'vehicleType'>
+    Pick<UseAvailablePersonnelOptions, 'excludeEventId' | 'vehicleType' | 'includeConflicts'>
 ) {
   const params = new URLSearchParams({
     department: opts.departament,
@@ -88,6 +89,7 @@ async function fetchPersonnel(
   if (opts.excludeEventId) params.set('excludeEventId', opts.excludeEventId)
   const vt = String(opts.vehicleType || '').trim()
   if (vt) params.set('vehicleType', vt)
+  if (opts.includeConflicts) params.set('includeConflicts', 'true')
 
   const res = await fetch(`/api/personnel/available?${params.toString()}`)
   if (!res.ok) {
@@ -112,7 +114,7 @@ function getCachedPayload(key: string) {
 async function loadPersonnel(
   key: string,
   opts: Required<Pick<UseAvailablePersonnelOptions, 'departament' | 'startDate' | 'endDate' | 'startTime' | 'endTime'>> &
-    Pick<UseAvailablePersonnelOptions, 'excludeEventId' | 'vehicleType'>
+    Pick<UseAvailablePersonnelOptions, 'excludeEventId' | 'vehicleType' | 'includeConflicts'>
 ) {
   const existing = personnelCache.get(key)
   if (existing?.promise) return existing.promise
@@ -142,6 +144,7 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
     excludeNames: rawExcludeNames,
     excludeEventId,
     vehicleType,
+    includeConflicts,
   } = opts
   const enabled = opts.enabled ?? true
   const key = useMemo(
@@ -154,8 +157,9 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
         endTime || '',
         excludeEventId || '',
         vehicleType || '',
+        includeConflicts ? 'with-conflicts' : 'available-only',
       ].join('|'),
-    [departament, startDate, endDate, startTime, endTime, excludeEventId, vehicleType]
+    [departament, startDate, endDate, startTime, endTime, excludeEventId, vehicleType, includeConflicts]
   )
   const initialPayload = useMemo(
     () => (enabled ? getCachedPayload(key) : null),
@@ -212,6 +216,7 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
         endTime: endTime!,
         excludeEventId,
         vehicleType,
+        includeConflicts,
       })
       setPayload(data)
     } catch (err) {
@@ -230,11 +235,29 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
     endTime,
     excludeEventId,
     vehicleType,
+    includeConflicts,
   ])
 
   useEffect(() => {
     if (initialPayload) setPayload(initialPayload)
   }, [initialPayload])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handleQuadrantMutation = () => {
+      invalidateAvailablePersonnelCache()
+      void refetchPersonnel()
+    }
+
+    window.addEventListener('quadrant:updated', handleQuadrantMutation)
+    window.addEventListener('quadrant:created', handleQuadrantMutation)
+
+    return () => {
+      window.removeEventListener('quadrant:updated', handleQuadrantMutation)
+      window.removeEventListener('quadrant:created', handleQuadrantMutation)
+    }
+  }, [refetchPersonnel])
 
   useEffect(() => {
     refetchPersonnel()

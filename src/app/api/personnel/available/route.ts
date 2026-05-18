@@ -39,6 +39,14 @@ type OccupiedRange = {
   start: Date
   end: Date
   startDate: string
+  source?: {
+    collection?: string
+    docId?: string
+    eventId?: string
+    status?: string
+    role?: string
+    personKey?: string
+  }
 }
 
 type MaintenancePlannedDoc = {
@@ -72,6 +80,14 @@ interface PersonnelDoc {
   [key: string]: unknown
 }
 
+type QuadrantOccupancyDoc = QuadrantDoc & {
+  eventId?: string
+  status?: string
+  confirmed?: boolean
+  confirmada?: boolean
+  confirmedAt?: unknown
+}
+
 const RESPONSABLE_ROLES = new Set([
   'responsable',
   'cap departament',
@@ -82,6 +98,14 @@ const TREBALLADOR_ROLES = new Set(['equip', 'treballador', 'operari'])
 
 const unaccent = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '')
 const norm = (v?: string | null) => unaccent(String(v ?? '').trim().toLowerCase())
+
+const shouldCountQuadrantOccupancy = (doc: QuadrantOccupancyDoc) => {
+  const status = norm(doc.status)
+  // Els drafts a la col·lecció principal poden quedar penjats després d'edicions
+  // o esborrats parcials i no haurien de bloquejar disponibilitat.
+  if (status === 'draft') return false
+  return true
+}
 
 function uniqueById<T extends { id: string }>(arr: T[]): T[] {
   const seen = new Set<string>()
@@ -107,19 +131,21 @@ const pushIndexedRange = (
   key: string | undefined,
   start: Date,
   end: Date,
-  startDate: string
+  startDate: string,
+  source?: OccupiedRange['source']
 ) => {
   const normalizedKey = norm(key)
   if (!normalizedKey) return
   const list = index.get(normalizedKey) || []
-  list.push({ start, end, startDate })
+  list.push({ start, end, startDate, source })
   index.set(normalizedKey, list)
 }
 
 const addRangesFromRef = (
   index: Map<string, OccupiedRange[]>,
   ref: PersonRef | null,
-  base: QuadrantDoc
+  base: QuadrantDoc,
+  source?: Omit<NonNullable<OccupiedRange['source']>, 'personKey' | 'role'> & { role?: string }
 ) => {
   if (!ref) return
 
@@ -129,8 +155,14 @@ const addRangesFromRef = (
 
   const range = normalizeRange(rawStart, rawEnd)
   const rangeStartDate = String(ref.startDate || base.startDate || '').trim()
-  pushIndexedRange(index, ref.id, range.start, range.end, rangeStartDate)
-  pushIndexedRange(index, ref.name, range.start, range.end, rangeStartDate)
+  pushIndexedRange(index, ref.id, range.start, range.end, rangeStartDate, {
+    ...source,
+    personKey: norm(ref.id),
+  })
+  pushIndexedRange(index, ref.name, range.start, range.end, rangeStartDate, {
+    ...source,
+    personKey: norm(ref.name),
+  })
 }
 
 const addMaintenanceRange = (
@@ -139,12 +171,23 @@ const addMaintenanceRange = (
   end: Date,
   startDate: string,
   ids?: string[],
-  names?: string[]
+  names?: string[],
+  source?: Omit<NonNullable<OccupiedRange['source']>, 'personKey'>
 ) => {
   if (isNaN(start.getTime()) || isNaN(end.getTime())) return
   const range = normalizeRange(start, end)
-  ;(ids || []).forEach((id) => pushIndexedRange(index, id, range.start, range.end, startDate))
-  ;(names || []).forEach((name) => pushIndexedRange(index, name, range.start, range.end, startDate))
+  ;(ids || []).forEach((id) =>
+    pushIndexedRange(index, id, range.start, range.end, startDate, {
+      ...source,
+      personKey: norm(id),
+    })
+  )
+  ;(names || []).forEach((name) =>
+    pushIndexedRange(index, name, range.start, range.end, startDate, {
+      ...source,
+      personKey: norm(name),
+    })
+  )
 }
 
 export async function GET(request: NextRequest) {
@@ -162,6 +205,11 @@ export async function GET(request: NextRequest) {
   const excludeEventId = searchParams.get('excludeEventId')
   const excludeMaintenancePlannedId = searchParams.get('excludeMaintenancePlannedId')
   const excludeMaintenanceTicketId = searchParams.get('excludeMaintenanceTicketId')
+  const includeConflicts = ['1', 'true', 'yes'].includes(
+    String(searchParams.get('includeConflicts') || '').toLowerCase()
+  )
+  const debugPerson = String(searchParams.get('debugPerson') || '').trim()
+  const debugPersonNorm = norm(debugPerson)
   /** Si ve informat, només es llisten conductors aptes per aquest tipus (veure `canDriverHandleVehicleType`). */
   const vehicleTypeRaw = searchParams.get('vehicleType')?.trim()
   const vehicleTypeNorm = vehicleTypeRaw ? normalizeTransportType(vehicleTypeRaw) : ''
@@ -188,16 +236,42 @@ export async function GET(request: NextRequest) {
         const docs = await fetchQuadrantDocsByEndDate(colId, ed, sd)
         docs.forEach((docSnap) => {
           if (excludeEventId && docSnap.id === excludeEventId) return
-          const q = docSnap.data() as QuadrantDoc & { eventId?: string }
+          const q = docSnap.data() as QuadrantOccupancyDoc
           if (excludeEventId && q?.eventId === excludeEventId) return
+          if (!shouldCountQuadrantOccupancy(q)) return
 
-          addRangesFromRef(occupancyIndex, q.responsable || null, q)
-          if (q.responsableName) addRangesFromRef(occupancyIndex, { name: q.responsableName }, q)
-          if (Array.isArray(q.responsables)) q.responsables.forEach((line) => addRangesFromRef(occupancyIndex, line, q))
-          if (Array.isArray(q.conductors)) q.conductors.forEach((line) => addRangesFromRef(occupancyIndex, line, q))
-          if (Array.isArray(q.treballadors)) q.treballadors.forEach((line) => addRangesFromRef(occupancyIndex, line, q))
+          const baseSource = {
+            collection: colId,
+            docId: docSnap.id,
+            eventId: String(q?.eventId || '').trim() || docSnap.id,
+            status: String(q?.status || '').trim() || undefined,
+          }
+
+          addRangesFromRef(occupancyIndex, q.responsable || null, q, {
+            ...baseSource,
+            role: 'responsable',
+          })
+          if (q.responsableName)
+            addRangesFromRef(occupancyIndex, { name: q.responsableName }, q, {
+              ...baseSource,
+              role: 'responsableName',
+            })
+          if (Array.isArray(q.responsables))
+            q.responsables.forEach((line) =>
+              addRangesFromRef(occupancyIndex, line, q, { ...baseSource, role: 'responsables' })
+            )
+          if (Array.isArray(q.conductors))
+            q.conductors.forEach((line) =>
+              addRangesFromRef(occupancyIndex, line, q, { ...baseSource, role: 'conductors' })
+            )
+          if (Array.isArray(q.treballadors))
+            q.treballadors.forEach((line) =>
+              addRangesFromRef(occupancyIndex, line, q, { ...baseSource, role: 'treballadors' })
+            )
           const legacyExternalWorkers = readLegacyExternalWorkersFromDoc(q)
-          legacyExternalWorkers.forEach((line) => addRangesFromRef(occupancyIndex, line, q))
+          legacyExternalWorkers.forEach((line) =>
+            addRangesFromRef(occupancyIndex, line, q, { ...baseSource, role: 'legacyExternalWorkers' })
+          )
           if (Array.isArray(q.groups)) {
             q.groups.forEach((group) => {
               addRangesFromRef(
@@ -210,7 +284,8 @@ export async function GET(request: NextRequest) {
                   endDate: group.endDate,
                   endTime: group.endTime,
                 },
-                q
+                q,
+                { ...baseSource, role: 'groups.responsible' }
               )
             })
           }
@@ -252,7 +327,14 @@ export async function GET(request: NextRequest) {
           end,
           date,
           Array.isArray(data.workerIds) ? data.workerIds : [],
-          Array.isArray(data.workerNames) ? data.workerNames : []
+          Array.isArray(data.workerNames) ? data.workerNames : [],
+          {
+            collection: 'maintenancePreventiusPlanned',
+            docId: doc.id,
+            eventId: doc.id,
+            status: 'planned',
+            role: 'maintenance',
+          }
         )
       })
     } catch (error) {
@@ -277,7 +359,14 @@ export async function GET(request: NextRequest) {
           end,
           start.toISOString().slice(0, 10),
           Array.isArray(data.assignedToIds) ? data.assignedToIds : [],
-          Array.isArray(data.assignedToNames) ? data.assignedToNames : []
+          Array.isArray(data.assignedToNames) ? data.assignedToNames : [],
+          {
+            collection: 'maintenanceTickets',
+            docId: doc.id,
+            eventId: doc.id,
+            status: 'planned',
+            role: 'maintenance',
+          }
         )
       })
     } catch (error) {
@@ -331,6 +420,12 @@ export async function GET(request: NextRequest) {
       let hasOverlap = false
       let hasSameDayViolation = false
       let hasRestViolation = false
+      const debugMatches: Array<{
+        reason: string
+        source?: OccupiedRange['source']
+        busyStart: string
+        busyEnd: string
+      }> = []
 
       for (const range of personRanges) {
         const result = evaluateRangeEligibility({
@@ -346,6 +441,17 @@ export async function GET(request: NextRequest) {
           if (result.reason === 'overlap') hasOverlap = true
           if (result.reason === 'same_day_not_allowed') hasSameDayViolation = true
           if (result.reason === 'rest_violation') hasRestViolation = true
+          if (
+            debugPersonNorm &&
+            (norm(doc.id) === debugPersonNorm || norm(data.name) === debugPersonNorm)
+          ) {
+            debugMatches.push({
+              reason: result.reason,
+              source: range.source,
+              busyStart: range.start.toISOString(),
+              busyEnd: range.end.toISOString(),
+            })
+          }
         }
       }
 
@@ -399,6 +505,36 @@ export async function GET(request: NextRequest) {
           conductors.push(entry)
         }
       }
+
+      if (
+        debugPersonNorm &&
+        (norm(doc.id) === debugPersonNorm || norm(data.name) === debugPersonNorm) &&
+        debugMatches.length > 0
+      ) {
+        const expandedMatches = debugMatches.map((match) => ({
+          reason: match.reason,
+          busyStart: match.busyStart,
+          busyEnd: match.busyEnd,
+          collection: match.source?.collection || null,
+          docId: match.source?.docId || null,
+          eventId: match.source?.eventId || null,
+          status: match.source?.status || null,
+          role: match.source?.role || null,
+          personKey: match.source?.personKey || null,
+        }))
+        console.warn('[available][debugPerson] conflictes detectats', {
+          requestedPerson: debugPerson,
+          personId: doc.id,
+          personName: data.name || '',
+          requestedRange: {
+            startDate: sd,
+            endDate: ed,
+            startTime: st || '00:00',
+            endTime: et || '23:59',
+          },
+          matches: expandedMatches,
+        })
+      }
     }
 
     const sortEntries = (items: AvailEntry[]) =>
@@ -407,9 +543,15 @@ export async function GET(request: NextRequest) {
       )
 
     return NextResponse.json({
-      responsables: sortEntries(responsables).filter((p) => p.status === 'available'),
-      conductors: sortEntries(conductors).filter((p) => p.status === 'available'),
-      treballadors: sortEntries(workers).filter((p) => p.status === 'available'),
+      responsables: includeConflicts
+        ? sortEntries(responsables)
+        : sortEntries(responsables).filter((p) => p.status === 'available'),
+      conductors: includeConflicts
+        ? sortEntries(conductors)
+        : sortEntries(conductors).filter((p) => p.status === 'available'),
+      treballadors: includeConflicts
+        ? sortEntries(workers)
+        : sortEntries(workers).filter((p) => p.status === 'available'),
     })
   } catch (err: unknown) {
     console.error('Error GET /api/personnel/available:', err)

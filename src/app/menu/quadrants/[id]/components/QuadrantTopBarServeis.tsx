@@ -13,6 +13,7 @@ import {
 import GenerationScopeToggle from './GenerationScopeToggle'
 import type { GenerationScope, QuadrantMode } from './quadrantModalTypes'
 import type { ServiceJamoneroAssignment } from '../phaseConfig'
+import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
 
 type IdName = { id: string; name: string }
 
@@ -31,7 +32,7 @@ type Props = {
   setEndTime: (value: string) => void
   manualResp: string
   setManualResp: (value: string) => void
-  availableResponsables: IdName[]
+  availableResponsables: ResponsableAvailabilityOption[]
   availableJamoneros: IdName[]
   serviceJamoneroAssignments: ServiceJamoneroAssignment[]
   setServiceJamoneroCount: (count: number) => void
@@ -73,21 +74,32 @@ export default function QuadrantTopBarServeis({
   generationScope,
   setGenerationScope,
 }: Props) {
+  const topResponsibleOptions = availableResponsables.filter((resp) => resp.status === 'available')
+  const topResponsibleIds = new Set(topResponsibleOptions.map((resp) => resp.id))
+  const topResponsibleValue =
+    mode === 'manual'
+      ? topResponsibleIds.has(manualResp)
+        ? manualResp
+        : ''
+      : topResponsibleIds.has(manualResp)
+        ? manualResp
+        : '__auto__'
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,148px)_minmax(0,120px)_minmax(0,120px)_minmax(0,170px)_minmax(0,1fr)_auto] md:items-end md:justify-items-stretch md:gap-x-3 md:gap-y-0">
         <div className="min-w-0">
           <Label>Responsable</Label>
-          <Select value={manualResp} onValueChange={setManualResp}>
+          <Select value={topResponsibleValue} onValueChange={setManualResp}>
             <SelectTrigger className="h-10 w-full max-w-full">
               <SelectValue
-                placeholder={mode === 'manual' ? 'Selecciona un responsable…' : 'Automàtic'}
+                placeholder={mode === 'manual' ? 'Selecciona un responsable...' : 'Automatic'}
                 className="min-w-0 truncate text-left [&>span]:truncate"
               />
             </SelectTrigger>
             <SelectContent>
-              {mode !== 'manual' && <SelectItem value="__auto__">Automàtic</SelectItem>}
-              {availableResponsables.map((resp) => (
+              {mode !== 'manual' && <SelectItem value="__auto__">Automatic</SelectItem>}
+              {topResponsibleOptions.map((resp) => (
                 <SelectItem key={resp.id} value={resp.id}>
                   {resp.name}
                 </SelectItem>
@@ -140,12 +152,12 @@ export default function QuadrantTopBarServeis({
                 className="h-10 w-full shrink-0 md:w-[168px]"
               >
                 <SelectValue
-                  placeholder="Selecciona…"
+                  placeholder="Selecciona..."
                   className="min-w-0 flex-1 truncate text-left [&>span]:truncate"
                 />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">— Cap —</SelectItem>
+                <SelectItem value="__none__">-- Cap --</SelectItem>
                 {vestimentModelChoice !== '__none__' &&
                 !serveisVestimentModels.includes(vestimentModelChoice) ? (
                   <SelectItem value={vestimentModelChoice}>{vestimentModelChoice}</SelectItem>
@@ -197,10 +209,10 @@ export default function QuadrantTopBarServeis({
                     }
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Automàtic" />
+                      <SelectValue placeholder="Automatic" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__auto__">Automàtic</SelectItem>
+                      <SelectItem value="__auto__">Automatic</SelectItem>
                       {availableJamoneros.map((person) => (
                         <SelectItem key={person.id} value={person.id}>
                           {person.name}

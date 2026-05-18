@@ -24,6 +24,7 @@ import {
   ServicePhaseEttData,
 } from "../phaseConfig"
 import PhaseCard from "./PhaseCard"
+import type { ResponsableAvailabilityOption } from "../hooks/useQuadrantFormState"
 
 type Totals = {
   workers: number
@@ -42,7 +43,7 @@ type Props = {
   visibility: Record<ServicePhaseKey, boolean>
   ettState: Record<ServicePhaseKey, ServicePhaseEtt>
   manualResponsibleId: string
-  availableResponsables: Array<{ id: string; name: string }>
+  availableResponsables: ResponsableAvailabilityOption[]
   availableConductors: Array<{ id: string; name: string }>
   availableJamoneros: Array<{ id: string; name: string }>
   availableTreballadors?: Array<{ id: string; name: string }>
@@ -98,6 +99,11 @@ export default function ServicePhasePanel({
   void availableJamoneros
   void jamoneroAssignments
   void updateJamoneroAssignment
+  const availableResponsibleOptions = availableResponsables.filter((resp) => resp.status === 'available')
+  const conflictResponsibleOptions: ResponsableAvailabilityOption[] = []
+  const availableResponsibleIds = new Set(
+    availableResponsibleOptions.map((resp) => normalize(resp.id))
+  )
 
   return (
     <div className="space-y-4 rounded-2xl border border-dashed border-slate-200 bg-white p-4">
@@ -178,8 +184,12 @@ export default function ServicePhasePanel({
                               <Select
                                 value={
                                   mode === 'manual'
-                                    ? group.responsibleId || "__manual_pick__"
-                                    : group.responsibleId || "__auto__"
+                                    ? availableResponsibleIds.has(normalize(group.responsibleId))
+                                      ? group.responsibleId || "__manual_pick__"
+                                      : "__manual_pick__"
+                                    : availableResponsibleIds.has(normalize(group.responsibleId))
+                                      ? group.responsibleId || "__auto__"
+                                      : "__auto__"
                                 }
                                 onValueChange={(value) =>
                                   updateGroup(group.id, {
@@ -207,9 +217,15 @@ export default function ServicePhasePanel({
                                     </SelectItem>
                                   )}
                                   <SelectItem value="__none__">Sense responsable</SelectItem>
-                                  {availableResponsables.map((resp) => (
+                                  {availableResponsibleOptions.map((resp) => (
                                     <SelectItem key={resp.id} value={resp.id}>
                                       {resp.name}
+                                    </SelectItem>
+                                  ))}
+                                  {conflictResponsibleOptions.map((resp) => (
+                                    <SelectItem key={resp.id} value={resp.id} disabled>
+                                      {resp.name}
+                                      {resp.reason ? ` · ${resp.reason}` : ' · No disponible'}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
