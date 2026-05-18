@@ -1,7 +1,20 @@
 ﻿'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { addDays, addWeeks, endOfWeek, format, parseISO, startOfWeek, subDays, subWeeks } from 'date-fns'
+import {
+  addDays,
+  addMonths,
+  addWeeks,
+  endOfMonth,
+  endOfWeek,
+  format,
+  parseISO,
+  startOfMonth,
+  startOfWeek,
+  subDays,
+  subMonths,
+  subWeeks,
+} from 'date-fns'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { useSession } from 'next-auth/react'
@@ -129,7 +142,11 @@ export default function PreventiusFullsPage() {
   const role = normalizeRole(sessionUser.role || '')
   const userId = String(sessionUser.id || '').trim()
   const canFilterByWorker = role === 'admin' || role === 'direccio' || role === 'cap'
-  const [filters, setFiltersState] = useState<{ start: string; end: string; mode: 'day' | 'week' }>(() => {
+  const [filters, setFiltersState] = useState<{
+    start: string
+    end: string
+    mode: 'day' | 'week' | 'month'
+  }>(() => {
     const value = format(new Date(), 'yyyy-MM-dd')
     return { start: value, end: value, mode: 'day' }
   })
@@ -167,7 +184,15 @@ export default function PreventiusFullsPage() {
     setFiltersState((prev) => {
       const nextStart = queryStart || prev.start
       const nextEnd = queryEnd || prev.end
-      const nextMode = nextStart === nextEnd ? 'day' : 'week'
+      const parsedStart = parseISO(nextStart)
+      const parsedEnd = parseISO(nextEnd)
+      const isMonthRange =
+        nextStart === format(startOfMonth(parsedStart), 'yyyy-MM-dd') &&
+        nextEnd === format(endOfMonth(parsedStart), 'yyyy-MM-dd')
+      const isWeekRange =
+        nextStart === format(startOfWeek(parsedStart, { weekStartsOn: 1 }), 'yyyy-MM-dd') &&
+        nextEnd === format(endOfWeek(parsedStart, { weekStartsOn: 1 }), 'yyyy-MM-dd')
+      const nextMode = nextStart === nextEnd ? 'day' : isMonthRange ? 'month' : isWeekRange ? 'week' : 'week'
       if (prev.start === nextStart && prev.end === nextEnd && prev.mode === nextMode) return prev
       return { ...prev, start: nextStart, end: nextEnd, mode: nextMode }
     })
@@ -324,10 +349,20 @@ export default function PreventiusFullsPage() {
   const currentStart = useMemo(() => parseISO(filters.start), [filters.start])
   const currentEnd = useMemo(() => parseISO(filters.end), [filters.end])
 
-  const setMode = (nextMode: 'day' | 'week') => {
+  const setMode = (nextMode: 'day' | 'week' | 'month') => {
     if (nextMode === 'day') {
       const value = format(currentStart, 'yyyy-MM-dd')
       setFiltersState({ start: value, end: value, mode: 'day' })
+      return
+    }
+    if (nextMode === 'month') {
+      const monthStart = startOfMonth(currentStart)
+      const monthEnd = endOfMonth(currentStart)
+      setFiltersState({
+        start: format(monthStart, 'yyyy-MM-dd'),
+        end: format(monthEnd, 'yyyy-MM-dd'),
+        mode: 'month',
+      })
       return
     }
     const weekStart = startOfWeek(currentStart, { weekStartsOn: 1 })
@@ -346,6 +381,17 @@ export default function PreventiusFullsPage() {
       setFiltersState({ start: value, end: value, mode: 'day' })
       return
     }
+    if (filters.mode === 'month') {
+      const next = direction === 'next' ? addMonths(currentStart, 1) : subMonths(currentStart, 1)
+      const monthStart = startOfMonth(next)
+      const monthEnd = endOfMonth(next)
+      setFiltersState({
+        start: format(monthStart, 'yyyy-MM-dd'),
+        end: format(monthEnd, 'yyyy-MM-dd'),
+        mode: 'month',
+      })
+      return
+    }
     const next = direction === 'next' ? addWeeks(currentStart, 1) : subWeeks(currentStart, 1)
     const weekStart = startOfWeek(next, { weekStartsOn: 1 })
     const weekEnd = endOfWeek(next, { weekStartsOn: 1 })
@@ -359,7 +405,9 @@ export default function PreventiusFullsPage() {
   const rangeLabel =
     filters.mode === 'day'
       ? format(currentStart, 'dd MMM yyyy')
-      : `${format(currentStart, 'd MMM')} - ${format(currentEnd, 'd MMM')}`
+      : filters.mode === 'month'
+        ? format(currentStart, 'MMMM yyyy')
+        : `${format(currentStart, 'd MMM')} - ${format(currentEnd, 'd MMM')}`
 
   const filteredByDate = useMemo(() => {
     const start = parseISO(filters.start)
@@ -733,8 +781,9 @@ export default function PreventiusFullsPage() {
           modeOptions={[
             { value: 'day', label: 'Dia' },
             { value: 'week', label: 'Setmana' },
+            { value: 'month', label: 'Mes' },
           ]}
-          onModeChange={(value) => setMode(value as 'day' | 'week')}
+          onModeChange={(value) => setMode(value as 'day' | 'week' | 'month')}
           onOpenFilters={() => undefined}
         />
 

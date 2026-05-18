@@ -167,6 +167,37 @@ function mapPlannedTickets(
     .filter(Boolean) as ScheduledItem[]
 }
 
+function getPlanningDateFromDueDate(dueDate: Date) {
+  const planningDate = new Date(dueDate)
+  planningDate.setHours(0, 0, 0, 0)
+  const day = planningDate.getDay()
+  const offset = day === 1 ? 0 : day === 0 ? 1 : 8 - day
+  planningDate.setDate(planningDate.getDate() + offset)
+  return planningDate
+}
+
+function getPlannedTemplateIdsForCurrentCycle(
+  dueTemplates: DueTemplate[],
+  plannedList: PlannedApiItem[]
+) {
+  const planningDateByTemplateId = new Map(
+    dueTemplates.map((template) => [template.id, template.planningDate])
+  )
+
+  return new Set(
+    plannedList
+      .map((item) => {
+        const templateId = String(item?.templateId || '')
+        if (!templateId) return ''
+        const plannedDate = String(item?.date || '')
+        const planningDate = planningDateByTemplateId.get(templateId)
+        if (!planningDate || !plannedDate) return ''
+        return plannedDate >= planningDate ? templateId : ''
+      })
+      .filter(Boolean)
+  )
+}
+
 export default function usePlannerData({
   weekStart,
   dayCount,
@@ -183,6 +214,7 @@ export default function usePlannerData({
   const [machines, setMachines] = useState<Array<{ code: string; name: string; label: string }>>([])
   const [users, setUsers] = useState<Array<{ id: string; name: string; department?: string }>>([])
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([])
+  const [plannedPreventiuTemplateIds, setPlannedPreventiuTemplateIds] = useState<string[]>([])
 
   const loadTicketsData = useCallback(async () => {
     const res = await fetch('/api/maintenance/tickets?ticketType=maquinaria', { cache: 'no-store' })
@@ -216,11 +248,19 @@ export default function usePlannerData({
       })
       .map(({ template, nextDue }) => {
         const due = nextDue as Date
+        const planningDate = getPlanningDateFromDueDate(due)
         return {
           ...template,
-          dueState: due.getTime() < weekStartDay.getTime() ? 'overdue' : 'due',
+          dueState: (due.getTime() < weekStartDay.getTime() ? 'overdue' : 'due') as
+            | 'due'
+            | 'overdue',
           dueDate: format(due, 'yyyy-MM-dd'),
+          planningDate: format(planningDate, 'yyyy-MM-dd'),
         }
+      })
+      .filter((template) => {
+        const planningDate = parseStoredDate(template.planningDate)
+        return Boolean(planningDate) && (planningDate as Date).getTime() <= weekEnd.getTime()
       })
   }, [templates, weekStart, dayCount])
 
@@ -243,11 +283,13 @@ export default function usePlannerData({
   const visibleItems = useMemo(() => {
     if (tab === 'preventius') {
       return filteredDueTemplates.filter(
-        (item) => !isPreventiuScheduledInWeek(item.id, item.name, scheduledItems)
+        (item) =>
+          !plannedPreventiuTemplateIds.includes(item.id) &&
+          !isPreventiuScheduledInWeek(item.id, item.name, scheduledItems)
       )
     }
     return filteredRealTickets.filter((item) => !isTicketScheduledInWeek(item.id, scheduledItems))
-  }, [tab, filteredDueTemplates, filteredRealTickets, scheduledItems])
+  }, [tab, filteredDueTemplates, filteredRealTickets, plannedPreventiuTemplateIds, scheduledItems])
 
   const timeSlots = useMemo(() => {
     const slots: string[] = []
@@ -343,7 +385,7 @@ export default function usePlannerData({
     const endStr = format(addDays(weekStart, dayCount - 1), 'yyyy-MM-dd')
     try {
       const dueDates = dueTemplates
-        .map((template) => template.dueDate)
+        .map((template) => template.planningDate)
         .filter(Boolean)
         .sort()
       const plannedStartStr = dueDates[0] && dueDates[0] < startStr ? dueDates[0] : startStr
@@ -404,11 +446,8 @@ export default function usePlannerData({
       const maintenanceWorkerNames = users
         .map((user) => String(user.name || '').trim())
         .filter(Boolean)
-      const alreadyPlannedTemplateIds = new Set(
-        plannedList
-          .map((item: PlannedApiItem) => String(item?.templateId || ''))
-          .filter(Boolean)
-      )
+      const alreadyPlannedTemplateIds = getPlannedTemplateIdsForCurrentCycle(dueTemplates, plannedList)
+      setPlannedPreventiuTemplateIds(Array.from(alreadyPlannedTemplateIds) as string[])
 
       for (let index = 0; index < workingPreventius.length; index += 1) {
         const item = workingPreventius[index]
@@ -425,6 +464,7 @@ export default function usePlannerData({
           preferredWorkers,
           fallbackWorkers: maintenanceWorkerNames,
           firstDayIndex: item.dayIndex,
+          dayCount,
           ignoreId: item.id,
           normalizeName,
           minutesFromTime,
@@ -472,6 +512,7 @@ export default function usePlannerData({
 
         const slot = findAutoPlanSlot(workingAgenda, template, {
           weekStart,
+          dayCount,
           availableWorkerNames: maintenanceWorkerNames,
           parseStoredDate,
           normalizeName,
@@ -528,8 +569,10 @@ export default function usePlannerData({
         }
       }
 
+      setPlannedPreventiuTemplateIds(Array.from(alreadyPlannedTemplateIds) as string[])
       setScheduledItems([...workingPreventius, ...ticketsMapped])
     } catch {
+      setPlannedPreventiuTemplateIds([])
       setScheduledItems([])
     } finally {
       isLoadingWeekRef.current = false

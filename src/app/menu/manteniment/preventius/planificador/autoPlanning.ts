@@ -2,9 +2,8 @@
 
 import type { DueTemplate, ScheduledItem, Template } from './types'
 
-export const AUTO_PLAN_DAY_COUNT = 5
 export const AUTO_PLAN_DEFAULT_MINUTES = 60
-export const AUTO_PLAN_START_MINUTES = 9 * 60
+export const AUTO_PLAN_START_MINUTES = 8 * 60
 export const AUTO_PLAN_END_MINUTES = 17 * 60
 export const AUTO_PLAN_SLOT_STEP = 30
 export const AUTO_PLAN_MAX_UNASSIGNED = 2
@@ -38,14 +37,15 @@ export const resolveTemplateWorkerNames = (template: Template) => {
 }
 
 export const getAutoPlanStartDayIndex = (
-  dueDate: string,
+  planningDate: string,
   weekStart: Date,
+  dayCount: number,
   parseStoredDate: (value?: string | null) => Date | null
 ) => {
-  const date = parseStoredDate(dueDate)
+  const date = parseStoredDate(planningDate)
   if (!date) return 0
   const index = Math.round((date.getTime() - weekStart.getTime()) / 86400000)
-  return Math.max(0, Math.min(AUTO_PLAN_DAY_COUNT - 1, index))
+  return Math.max(0, Math.min(dayCount - 1, index))
 }
 
 export const hasWorkerConflict = (
@@ -88,6 +88,7 @@ export const findAvailablePreventiuSlot = (
     minutes: number
     workers: string[]
     firstDayIndex: number
+    dayCount: number
     ignoreId?: string
     normalizeName: (value: string) => string
     minutesFromTime: (time: string) => number
@@ -98,6 +99,7 @@ export const findAvailablePreventiuSlot = (
     minutes,
     workers,
     firstDayIndex,
+    dayCount,
     ignoreId,
     normalizeName,
     minutesFromTime,
@@ -105,7 +107,7 @@ export const findAvailablePreventiuSlot = (
   } = options
   const comparableItems = ignoreId ? items.filter((item) => item.id !== ignoreId) : items
 
-  for (let dayIndex = firstDayIndex; dayIndex < AUTO_PLAN_DAY_COUNT; dayIndex += 1) {
+  for (let dayIndex = firstDayIndex; dayIndex < dayCount; dayIndex += 1) {
     for (
       let startMin = AUTO_PLAN_START_MINUTES;
       startMin + minutes <= AUTO_PLAN_END_MINUTES;
@@ -163,6 +165,7 @@ export const findBestPreventiuSlot = (
     preferredWorkers: string[]
     fallbackWorkers?: string[]
     firstDayIndex: number
+    dayCount: number
     ignoreId?: string
     normalizeName: (value: string) => string
     minutesFromTime: (time: string) => number
@@ -175,6 +178,7 @@ export const findBestPreventiuSlot = (
     preferredWorkers,
     fallbackWorkers = [],
     firstDayIndex,
+    dayCount,
     ignoreId,
     normalizeName,
     minutesFromTime,
@@ -198,6 +202,7 @@ export const findBestPreventiuSlot = (
       minutes,
       workers: [worker],
       firstDayIndex,
+      dayCount,
       ignoreId,
       normalizeName,
       minutesFromTime,
@@ -212,6 +217,7 @@ export const findBestPreventiuSlot = (
     minutes,
     workers: [],
     firstDayIndex,
+    dayCount,
     ignoreId,
     normalizeName,
     minutesFromTime,
@@ -224,6 +230,7 @@ export const findAutoPlanSlot = (
   template: DueTemplate,
   options: {
     weekStart: Date
+    dayCount: number
     availableWorkerNames?: string[]
     parseStoredDate: (value?: string | null) => Date | null
     normalizeName: (value: string) => string
@@ -235,7 +242,13 @@ export const findAutoPlanSlot = (
     minutes: AUTO_PLAN_DEFAULT_MINUTES,
     preferredWorkers: resolveTemplateWorkerPriority(template),
     fallbackWorkers: options.availableWorkerNames || [],
-    firstDayIndex: getAutoPlanStartDayIndex(template.dueDate, options.weekStart, options.parseStoredDate),
+    firstDayIndex: getAutoPlanStartDayIndex(
+      template.planningDate,
+      options.weekStart,
+      options.dayCount,
+      options.parseStoredDate
+    ),
+    dayCount: options.dayCount,
     normalizeName: options.normalizeName,
     minutesFromTime: options.minutesFromTime,
     timeFromMinutes: options.timeFromMinutes,

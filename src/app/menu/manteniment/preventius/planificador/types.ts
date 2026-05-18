@@ -12,6 +12,7 @@ export type Template = {
 export type DueTemplate = Template & {
   dueState: 'due' | 'overdue'
   dueDate: string
+  planningDate: string
 }
 
 export type TicketCard = {
