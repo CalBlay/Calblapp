@@ -12,13 +12,13 @@ export async function GET(request: Request): Promise<Response> {
     const monthParam = searchParams.get('month')
     const yearParam = searchParams.get('year')
 
-    const finca = searchParams.get('finca') || ''
-    const comercial = searchParams.get('comercial') || ''
+    const finca = searchParams.getAll('finca')
+    const comercial = searchParams.getAll('comercial')
     const baseDate = searchParams.get('baseDate') || undefined
 
     // 🔑 filtres CLAU
-    const stage = searchParams.get('stage') || 'all'
-    const ln = searchParams.get('ln') || ''
+    const stage = searchParams.getAll('stage')
+    const ln = searchParams.getAll('ln')
 
     // ───────────────────────────────
     // 📅 Mes / any per defecte

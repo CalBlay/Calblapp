@@ -1,32 +1,40 @@
-// ✅ file: src/services/spaces/spaces.ts
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { startOfWeek, endOfWeek, parseISO, format, addDays } from 'date-fns'
+import { addDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
 
-// ──────────────────────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────────────────────
-function normalizeText(t: unknown): string {
-  return (t || '').toString().trim()
+function normalizeText(value: unknown): string {
+  return (value || '').toString().trim()
+}
+
+function toFilterArray(value: string | string[]): string[] {
+  const raw = Array.isArray(value) ? value : [value]
+  return raw
+    .map((item) => normalizeText(item).toLowerCase())
+    .filter((item) => item && item !== 'all')
+}
+
+function matchesAnyFilter(value: string, filters: string[]): boolean {
+  if (filters.length === 0) return true
+  const normalizedValue = normalizeText(value).toLowerCase()
+  return filters.some((filter) => normalizedValue.includes(filter))
 }
 
 function isWedding(ln?: string): boolean {
-  const s = ln?.toLowerCase() || ''
-  return s.includes('casament') || s.includes('casaments')
+  const normalized = ln?.toLowerCase() || ''
+  return normalized.includes('casament') || normalized.includes('casaments')
 }
 
 function isCorporateOrGroups(ln?: string): boolean {
-  const s = ln?.toLowerCase() || ''
-  return s.includes('empresa') || s.includes('grups')
+  const normalized = ln?.toLowerCase() || ''
+  return normalized.includes('empresa') || normalized.includes('grups')
 }
 
 function isRestaurant(ln?: string): boolean {
-  const s = ln?.toLowerCase() || ''
-  return s.includes('restaurant')
+  return (ln?.toLowerCase() || '').includes('restaurant')
 }
 
-function parseHourToMinutes(h?: string): number | null {
-  if (!h) return null
-  const [hh, mm] = h.split(':').map(Number)
+function parseHourToMinutes(hour?: string): number | null {
+  if (!hour) return null
+  const [hh, mm] = hour.split(':').map(Number)
   if (Number.isNaN(hh) || Number.isNaN(mm)) return null
   return hh * 60 + mm
 }
@@ -35,9 +43,6 @@ function diffHours(a: number, b: number) {
   return Math.abs(a - b) / 60
 }
 
-// ──────────────────────────────────────────────────────────────
-// Tipus base
-// ──────────────────────────────────────────────────────────────
 interface RawEvent {
   id: string
   finca: string
@@ -51,7 +56,7 @@ interface RawEvent {
   startTime?: string
   code?: string
   service?: string
-  observacions?: string 
+  observacions?: string
 }
 
 interface EventOut extends RawEvent {
@@ -66,105 +71,81 @@ interface DayOut {
 }
 
 interface SpaceRow {
-  fincaId?: string        // 🔑 ID real de Firestore (finques/{id})
-  finca: string           // Nom visible
+  fincaId?: string
+  finca: string
   dies: DayOut[]
 }
-
 
 export interface SpacesResult {
   data: SpaceRow[]
   totalPaxPerDia: number[]
 }
 
-// ──────────────────────────────────────────────────────────────
-// Consulta principal
-// ──────────────────────────────────────────────────────────────
 export async function getSpacesByWeek(
   month: number,
   year: number,
-  fincaFilter: string = '',
-  comercialFilter: string = '',
+  fincaFilter: string | string[] = '',
+  comercialFilter: string | string[] = '',
   baseDate?: string,
-  stage: string = 'all',
-  lnFilter: string = ''
-)
-: Promise<SpacesResult> {
+  stage: string | string[] = 'all',
+  lnFilter: string | string[] = ''
+): Promise<SpacesResult> {
   try {
-    // 1️⃣ Calcula rang de setmana
+    const fincaFilters = toFilterArray(fincaFilter)
+    const comercialFilters = toFilterArray(comercialFilter)
+    const stageFilters = toFilterArray(stage)
+    const lnFilters = toFilterArray(lnFilter)
+
     const base = baseDate ? new Date(baseDate) : new Date(year, month)
     const startRange = startOfWeek(base, { weekStartsOn: 1 })
     const endRange = endOfWeek(base, { weekStartsOn: 1 })
     const startStr = format(startRange, 'yyyy-MM-dd')
     const endStr = format(endRange, 'yyyy-MM-dd')
 
-    // 2️⃣ Determina col·leccions a llegir
-let collections: string[] = []
+    const collections =
+      stageFilters.length === 0
+        ? ['stage_verd', 'stage_taronja', 'stage_groc']
+        : Array.from(
+            new Set(
+              stageFilters
+                .map((value) => {
+                  switch (value) {
+                    case 'confirmat':
+                      return 'stage_verd'
+                    case 'pressupost':
+                      return 'stage_groc'
+                    case 'calentet':
+                      return 'stage_taronja'
+                    default:
+                      return null
+                  }
+                })
+                .filter(Boolean)
+            )
+          ) as string[]
 
-switch (stage) {
-  case 'confirmat':      // UI → Confirmats
-    collections = ['stage_verd']
-    break
+    const finquesSnap = await db.collection('finques').get()
+    const fincaIdMap = new Map<string, string>()
 
-  case 'pressupost':     // UI → Pressupost enviat
-    collections = ['stage_groc']
-    break
+    finquesSnap.forEach((doc) => {
+      const data = doc.data() as { nom?: string }
+      const name = normalizeText(data.nom || doc.id)
+      if (name) fincaIdMap.set(name.toLowerCase(), doc.id)
+    })
 
-  case 'calentet':       // UI → Prereserva / Calentet
-    collections = ['stage_taronja']
-    break
-
-  default:
-    collections = ['stage_verd', 'stage_taronja', 'stage_groc']
-}
-
-
-
-    console.log('🔍 START getSpacesByWeek', { startStr, endStr, collections })
-
-    // ──────────────────────────────────────────────
-// 🔑 Map de finques: NOM (normalitzat) → ID Firestore
-// ──────────────────────────────────────────────
-const finquesSnap = await db.collection('finques').get()
-const fincaIdMap = new Map<string, string>()
-
-finquesSnap.forEach((doc) => {
-  const d = doc.data() as { nom?: string }
-  const nom = normalizeText(d.nom || doc.id)
-  if (nom) {
-    fincaIdMap.set(nom.toLowerCase(), doc.id)
-  }
-})
-
-
-    // 3️⃣ Llegeix totes les col·leccions dins el rang
     const rawEvents: RawEvent[] = []
-    for (const col of collections) {
-      const startStrISO = startStr.toString()
-      const endStrISO = endStr.toString()
 
-      // ✅ Substituït firestore → db
-      const ref = db
-        .collection(col)
-        .where('DataInici', '<=', endStrISO)
-        .where('DataFi', '>=', startStrISO)
+    for (const collection of collections) {
+      const snap = await db
+        .collection(collection)
+        .where('DataInici', '<=', endStr)
+        .where('DataFi', '>=', startStr)
+        .get()
 
-      const snap = await ref.get()
-      console.log(`📚 Llegint col·lecció ${col} dins rang ${startStr} → ${endStr}`)
-
-      snap.forEach(doc => {
-        const d = doc.data()
-        const id = doc.id
-        let start = d.DataInici
-        const endRaw = d.DataFinal || d.DataFi || d.DataInici
-        const observacions = normalizeText(
-  d.ObservacionsZoho ||
-  d.observacionsZoho ||
-  d.Observacions ||
-  d.observacions ||
-  ''
-)
-
+      snap.forEach((doc) => {
+        const data = doc.data()
+        let start = data.DataInici
+        const endRaw = data.DataFinal || data.DataFi || data.DataInici
 
         if (start?.toDate) start = start.toDate()
         else if (typeof start === 'string') start = new Date(start)
@@ -173,164 +154,159 @@ finquesSnap.forEach((doc) => {
         if (endRaw?.toDate) end = endRaw.toDate()
         else if (typeof endRaw === 'string') end = new Date(endRaw)
 
-        if (!(start instanceof Date) || isNaN(start.getTime())) {
-          console.warn('⚠️ DataInici invàlida:', d.DataInici, 'doc:', id)
+        if (!(start instanceof Date) || Number.isNaN(start.getTime())) return
+        if (!(end instanceof Date) || Number.isNaN(end.getTime())) return
+
+        const finca = normalizeText((data.Ubicacio || '').split('(')[0])
+        const commercial = normalizeText(data.Comercial)
+        const ln = normalizeText(data.LN)
+
+        if (
+          !matchesAnyFilter(finca, fincaFilters) ||
+          !matchesAnyFilter(commercial, comercialFilters) ||
+          !matchesAnyFilter(ln, lnFilters)
+        ) {
           return
         }
-        if (!(end instanceof Date) || isNaN(end.getTime())) {
-          console.warn('⚠️ DataFi invàlida:', d.DataFi, 'doc:', id)
-          return
-        }
-
-        const finca = normalizeText((d.Ubicacio || '').split('(')[0])
-        const eventName = normalizeText(d.NomEvent)
-        const commercial = normalizeText(d.Comercial)
-        const ln = normalizeText(d.LN)
-        const stageActual = col.replace('stage_', '') as RawEvent['stage']
-        const numPax = Number(d.NumPax) || 0
-        const startTime = normalizeText(d.HoraInici)
-        const service = normalizeText(d.Servei || d.service || '')
-        const code = d.code ? normalizeText(d.code) : (d.Code ? normalizeText(d.Code) : '')
-
-// Filtres
-if (
-  (fincaFilter &&
-    !finca.toLowerCase().includes(fincaFilter.toLowerCase())) ||
-
-  (comercialFilter &&
-    !commercial.toLowerCase().includes(comercialFilter.toLowerCase())) ||
-
-  (lnFilter &&
-    !ln.toLowerCase().includes(lnFilter.toLowerCase()))
-)
-  return
-
-
 
         rawEvents.push({
-          id,
+          id: doc.id,
           finca,
           date: format(start, 'yyyy-MM-dd'),
           dateEnd: format(end, 'yyyy-MM-dd'),
           ln,
-          stage: stageActual,
-          eventName,
+          stage: collection.replace('stage_', '') as RawEvent['stage'],
+          eventName: normalizeText(data.NomEvent),
           commercial,
-          numPax,
-          startTime,
-          code,
-          service,
-          observacions,
+          numPax: Number(data.NumPax) || 0,
+          startTime: normalizeText(data.HoraInici),
+          code: data.code
+            ? normalizeText(data.code)
+            : data.Code
+              ? normalizeText(data.Code)
+              : '',
+          service: normalizeText(data.Servei || data.service || ''),
+          observacions: normalizeText(
+            data.ObservacionsZoho ||
+              data.observacionsZoho ||
+              data.Observacions ||
+              data.observacions ||
+              ''
+          ),
         })
       })
     }
 
-    // 4️⃣ Expandeix esdeveniments multidia
     const expanded: RawEvent[] = []
-    for (const ev of rawEvents) {
-      const start = parseISO(ev.date)
-      const end = parseISO(ev.dateEnd || ev.date)
-      for (let d = start; d <= end; d = addDays(d, 1)) {
-        if (d < startRange || d > endRange) continue
-        expanded.push({ ...ev, date: format(d, 'yyyy-MM-dd') })
+    for (const event of rawEvents) {
+      const start = parseISO(event.date)
+      const end = parseISO(event.dateEnd || event.date)
+      for (let day = start; day <= end; day = addDays(day, 1)) {
+        if (day < startRange || day > endRange) continue
+        expanded.push({ ...event, date: format(day, 'yyyy-MM-dd') })
       }
     }
 
-    // 5️⃣ Agrupa per finca i dia
-    const map = new Map<string, Map<string, RawEvent[]>>()
-    for (const ev of expanded) {
-      if (!map.has(ev.finca)) map.set(ev.finca, new Map())
-      const sub = map.get(ev.finca)!
-      if (!sub.has(ev.date)) sub.set(ev.date, [])
-      sub.get(ev.date)!.push(ev)
+    const byFinca = new Map<string, Map<string, RawEvent[]>>()
+    for (const event of expanded) {
+      if (!byFinca.has(event.finca)) byFinca.set(event.finca, new Map())
+      const byDay = byFinca.get(event.finca)!
+      if (!byDay.has(event.date)) byDay.set(event.date, [])
+      byDay.get(event.date)!.push(event)
     }
 
-    // 6️⃣ Aplica regles i genera resultats
     const result: SpaceRow[] = []
     const totalPaxPerDia = Array(7).fill(0)
 
-    for (const [finca, days] of map.entries()) {
-      const dies: DayOut[] = Array(7).fill(null).map((_, i) => ({
-        date: format(addDays(startRange, i), 'yyyy-MM-dd'),
+    for (const [finca, days] of byFinca.entries()) {
+      const dies: DayOut[] = Array.from({ length: 7 }, (_, index) => ({
+        date: format(addDays(startRange, index), 'yyyy-MM-dd'),
         events: [],
       }))
 
-      for (let i = 0; i < 7; i++) {
-        const dateISO = dies[i].date
-        const evs = days.get(dateISO) || []
-        if (evs.length === 0) continue
+      for (let index = 0; index < 7; index += 1) {
+        const dateISO = dies[index].date
+        const events = days.get(dateISO) || []
+        if (events.length === 0) continue
 
         const eventsOut: EventOut[] = []
-        for (const e of evs) {
+
+        for (const event of events) {
           let warning = false
           let reason = ''
 
-          const weddingGreen = evs.find(x => x.stage === 'verd' && isWedding(x.ln))
-          if (weddingGreen && e.id !== weddingGreen.id) {
+          const weddingGreen = events.find(
+            (candidate) => candidate.stage === 'verd' && isWedding(candidate.ln)
+          )
+
+          if (weddingGreen && event.id !== weddingGreen.id) {
             warning = true
             reason = 'Casament verd en el mateix dia i finca'
           }
 
-          if (e.stage === 'verd' && isRestaurant(e.ln)) {
-            const totalPax = evs
-              .filter(x => x.stage === 'verd' && isRestaurant(x.ln))
-              .reduce((acc, x) => acc + (x.numPax || 0), 0)
+          if (event.stage === 'verd' && isRestaurant(event.ln)) {
+            const totalPax = events
+              .filter(
+                (candidate) =>
+                  candidate.stage === 'verd' && isRestaurant(candidate.ln)
+              )
+              .reduce((sum, candidate) => sum + (candidate.numPax || 0), 0)
+
             if (totalPax > 1000) {
               warning = true
-              reason = 'Possible sobrepàs de 1000 pax Restaurant verd'
+              reason = 'Possible sobrepas de 1000 pax Restaurant verd'
             }
           }
 
-          if (e.stage === 'verd' && isCorporateOrGroups(e.ln)) {
-            const evMin = parseHourToMinutes(e.startTime)
-            if (evMin != null) {
-              const other = evs.find(x => {
-                if (x.id === e.id) return false
-                const xMin = parseHourToMinutes(x.startTime)
+          if (event.stage === 'verd' && isCorporateOrGroups(event.ln)) {
+            const eventMinutes = parseHourToMinutes(event.startTime)
+            if (eventMinutes != null) {
+              const other = events.find((candidate) => {
+                if (candidate.id === event.id) return false
+                const candidateMinutes = parseHourToMinutes(candidate.startTime)
                 return (
-                  x.stage === 'verd' &&
-                  isCorporateOrGroups(x.ln) &&
-                  xMin != null &&
-                  diffHours(xMin, evMin) <= 8
+                  candidate.stage === 'verd' &&
+                  isCorporateOrGroups(candidate.ln) &&
+                  candidateMinutes != null &&
+                  diffHours(candidateMinutes, eventMinutes) <= 8
                 )
               })
+
               if (other) {
                 warning = true
-                reason = 'Solapament horari ≤8h amb un altre verd Empresa/Grups'
+                reason = 'Solapament horari <=8h amb un altre verd Empresa/Grups'
               }
             }
           }
 
-          eventsOut.push({ ...e, warning, reason })
-          totalPaxPerDia[i] += e.numPax || 0
+          eventsOut.push({ ...event, warning, reason })
+          totalPaxPerDia[index] += event.numPax || 0
         }
 
-        const order: Record<string, number> = { verd: 0, taronja: 1, groc: 2 }
+        const order: Record<RawEvent['stage'], number> = {
+          verd: 0,
+          taronja: 1,
+          groc: 2,
+        }
+
         eventsOut.sort((a, b) => order[a.stage] - order[b.stage])
-        dies[i].events = eventsOut
+        dies[index].events = eventsOut
       }
 
-      const fincaId = fincaIdMap.get(finca.toLowerCase())
-
-result.push({
-  finca,
-  fincaId,
-  dies,
-})
-
+      result.push({
+        finca,
+        fincaId: fincaIdMap.get(finca.toLowerCase()),
+        dies,
+      })
     }
 
     result.sort((a, b) => a.finca.localeCompare(b.finca, 'ca', { sensitivity: 'base' }))
-    console.log(`✅ [getSpacesByWeek] ${result.length} finques — ${startStr} → ${endStr}`)
 
     return { data: result, totalPaxPerDia }
-  } catch (err) {
-    console.error('[getSpacesByWeek]', err)
+  } catch (error) {
+    console.error('[getSpacesByWeek]', error)
     return { data: [], totalPaxPerDia: Array(7).fill(0) }
   }
 }
 
-// ──────────────────────────────────────────────────────────────
-// EXPORTS PÚBLICS DE TIPUS (per components React)
-// ──────────────────────────────────────────────────────────────
 export type Stage = 'verd' | 'taronja' | 'groc'

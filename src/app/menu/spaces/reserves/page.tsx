@@ -1,8 +1,10 @@
 ﻿// file: src/app/menu/spaces/reserves/page.tsx
 'use client'
 
-import { useState } from 'react'
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
+import { useSession } from 'next-auth/react'
 
 import { useSpaces, type SpaceApiRow } from '@/hooks/spaces/useSpaces'
 import SpaceGrid from '@/components/spaces/SpaceGrid'
@@ -11,9 +13,24 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import FilterButton from '@/components/ui/filter-button'
 import { useFilters } from '@/context/FiltersContext'
 import SpacesFilters, { type SpacesFilterState } from '@/components/spaces/SpacesFilters'
+import { normalizeRole } from '@/lib/roles'
+import {
+  DEFAULT_SPACES_HEADER_RULE,
+  type SpacesHeaderRuleConfig,
+} from '@/lib/spacesHeaderRule'
+
+function getDefaultLnSelection(lns: string[]): string[] {
+  return lns.filter((ln) => !ln.toLowerCase().includes('restaurant'))
+}
 
 export default function SpacesPage() {
+  const { data: session } = useSession()
+  const userRole = normalizeRole(String(session?.user?.role || ''))
+  const isAdmin = userRole === 'admin'
   const toISODate = (date: Date) => date.toISOString().split('T')[0]
+  const [headerRule, setHeaderRule] = useState<SpacesHeaderRuleConfig>(
+    DEFAULT_SPACES_HEADER_RULE
+  )
 
   // -------------------------------
   // ðŸ”¹ Estat de filtres
@@ -25,10 +42,10 @@ export default function SpacesPage() {
   }>(() => {
     const today = new Date()
     return {
-      stage: 'all',
-      finca: '',
-      comercial: '',
-      ln: '',
+      stage: [],
+      finca: [],
+      comercial: [],
+      ln: [],
       baseDate: toISODate(today),  // Setmana inicial
       month: today.getMonth(),
       year: today.getFullYear(),
@@ -46,6 +63,22 @@ const {
   lns,        // âœ… AFEGIT
   loading
 } = useSpaces(filters)
+
+  useEffect(() => {
+    if (lns.length === 0) return
+
+    setFilters((prev) => {
+      if ((prev.ln ?? []).length > 0) return prev
+
+      const defaultLn = getDefaultLnSelection(lns)
+      if (defaultLn.length === 0) return prev
+
+      return {
+        ...prev,
+        ln: defaultLn,
+      }
+    })
+  }, [lns])
 
   const normalizedSpaces: Array<{
     fincaId?: string
@@ -74,6 +107,26 @@ const {
   // ðŸ”¹ Control del panell de filtres
   // -------------------------------
   const { setOpen: openFilters, setContent: setFiltersContent } = useFilters()
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadHeaderRule = async () => {
+      try {
+        const res = await fetch('/api/spaces/header-rule', { cache: 'no-store' })
+        const json = await res.json()
+        if (!res.ok) return
+        if (!cancelled && json?.config) {
+          setHeaderRule(json.config)
+        }
+      } catch {}
+    }
+
+    loadHeaderRule()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // -------------------------------
   // ðŸ”¹ Canvi de setmana
@@ -151,6 +204,16 @@ const {
       <ModuleHeader
         title="Espais / Reserves"
         subtitle="Disponibilitat setmanal de finques"
+        actions={
+          isAdmin ? (
+            <Link
+              href="/menu/spaces/premisses"
+              className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Premisses
+            </Link>
+          ) : undefined
+        }
       />
 
       <section className="relative w-full h-full bg-white">
@@ -216,6 +279,7 @@ const {
             onClick={() => {
               setFiltersContent(
                 <SpacesFilters
+                  value={filters}
                   fincas={fincas}
                   comercials={comercials}
                   lns={lns} 
@@ -255,6 +319,7 @@ const {
             data={normalizedSpaces}
             totals={totals}
             baseDate={filters.baseDate}
+            headerRule={headerRule}
           />
         )}
 

@@ -7,6 +7,11 @@ import { ca } from 'date-fns/locale'
 import SpaceCell from './SpaceCell'
 import SpaceEventModal from '@/components/spaces/SpaceEventModal'
 import type { Stage } from '@/services/spaces/spaces'
+import {
+  DEFAULT_SPACES_HEADER_RULE,
+  evaluateSpacesHeaderRule,
+  type SpacesHeaderRuleConfig,
+} from '@/lib/spacesHeaderRule'
 
 type SpaceRow = {
   fincaId?: string
@@ -48,6 +53,7 @@ interface SpaceGridProps {
   data: SpaceRow[]
   totals?: number[]
   baseDate?: string
+  headerRule?: SpacesHeaderRuleConfig
 }
 
 /**
@@ -55,7 +61,12 @@ interface SpaceGridProps {
  * Taula setmanal d'espais amb targetes clicables.
  * El modal rep SEMPRE lâ€™event original (sense perdre camps).
  */
-export default function SpaceGrid({ data, totals = [], baseDate }: SpaceGridProps) {
+export default function SpaceGrid({
+  data,
+  totals = [],
+  baseDate,
+  headerRule = DEFAULT_SPACES_HEADER_RULE,
+}: SpaceGridProps) {
   void totals
   const [selectedEvent, setSelectedEvent] = useState<RawSpaceEvent | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -143,30 +154,37 @@ export default function SpaceGrid({ data, totals = [], baseDate }: SpaceGridProp
             {days.map((day, i) => {
               const dia = format(day, 'EEE', { locale: ca })
               const dataDia = format(day, 'dd/MM', { locale: ca })
-              let totalPaxVerd = 0
-              let totalEventsVerd = 0
+              let totalPaxScoped = 0
+              let totalEventsScoped = 0
 
               for (const row of data) {
                 const cell = row?.dies?.[i]
                 if (!cell?.events) continue
 
-                const verds = cell.events.filter((e: RawSpaceEvent) => {
+                const scopedEvents = cell.events.filter((e: RawSpaceEvent) => {
                   const s = String(e.stage ?? e.StageGroup ?? '').toLowerCase()
+                  if (headerRule.stageScope === 'all') return true
                   return s === 'verd' || s.includes('confirmat')
                 })
 
-                totalPaxVerd += verds.reduce(
+                totalPaxScoped += scopedEvents.reduce(
                   (a: number, e: RawSpaceEvent) => a + Number(e.numPax ?? 0),
                   0
                 )
-                totalEventsVerd += verds.length
+                totalEventsScoped += scopedEvents.length
               }
+
+              const shouldHighlight = evaluateSpacesHeaderRule({
+                config: headerRule,
+                totalPax: totalPaxScoped,
+                totalEvents: totalEventsScoped,
+              })
 
               return (
                 <th
                   key={`head-${i}`}
                   className={`p-2 border transition-colors sticky top-0 z-20 w-[150px] min-w-[150px] max-w-[150px] ${
-                    totalPaxVerd > 1000
+                    shouldHighlight
                       ? 'bg-red-100 text-red-700 font-semibold'
                       : 'bg-gray-100 text-gray-700'
                   }`}
@@ -177,14 +195,14 @@ export default function SpaceGrid({ data, totals = [], baseDate }: SpaceGridProp
 
                     <div
                       className={`flex items-center gap-2 text-[11px] font-medium ${
-                        totalPaxVerd > 1000
+                        shouldHighlight
                           ? 'text-red-700'
                           : 'text-green-700'
                       }`}
                     >
-                      <span>Pax: {totalPaxVerd}</span>
+                      <span>Pax: {totalPaxScoped}</span>
                       <span className="opacity-40">|</span>
-                      <span>Events: {totalEventsVerd}</span>
+                      <span>Events: {totalEventsScoped}</span>
                     </div>
                   </div>
                 </th>
