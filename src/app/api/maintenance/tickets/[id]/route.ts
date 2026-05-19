@@ -2,13 +2,22 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { isMaintenanceCapDepartment } from '@/lib/accessControl'
+import { canManageMaintenanceTickets, isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
 import {
   buildTicketBody,
   notifyMaintenanceAssignees,
   notifyTicketCreator,
+  notifyTicketEnteredPlanner,
+  onMaintenanceTicketUpdated,
 } from '@/lib/maintenanceNotifications'
+import { normalizeTicketWorkflowStage } from '@/lib/maintenanceTicketAlerts'
+import {
+  applyStatusHistoryUpdate,
+  validateJourneyStatusPayload,
+  type JourneyStatus,
+  type StatusHistoryEntry,
+} from '@/lib/maintenanceJourneyStatus'
 import admin from 'firebase-admin'
 
 export const runtime = 'nodejs'
@@ -60,7 +69,13 @@ type UpdatePayload = {
   resolvedByArea?: 'administracio' | 'manteniment' | 'tecnic' | 'proveidor' | null
   statusStartTime?: string | null
   statusEndTime?: string | null
+  newSegmentEndTime?: string | null
   statusNote?: string | null
+  completionImages?: Array<{
+    url?: string | null
+    path?: string | null
+    meta?: { size?: number; type?: string } | null
+  }>
 }
 
 type MaintenanceTicketRecord = Record<string, unknown> & {
@@ -83,6 +98,8 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   externalized?: boolean
   plannedStart?: number | string | null
   plannedEnd?: number | string | null
+  statusHistory?: StatusHistoryEntry[]
+  imageUrls?: string[] | null
 }
 
 const normalizePriority = (value?: string) => {
@@ -172,10 +189,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const data = snap.data() as MaintenanceTicketRecord
-    const canViewAllTickets =
-      role === 'admin' ||
-      role === 'direccio' ||
-      (role === 'cap' && isMaintenanceCapDepartment(dept))
+    const canViewAllTickets = canManageMaintenanceTickets({ role, department: dept })
 
     const assignedIds = Array.isArray(data.assignedToIds) ? data.assignedToIds.map(String) : []
     const assignedNames = Array.isArray(data.assignedToNames)
@@ -217,7 +231,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .trim()
-  if (role !== 'admin' && role !== 'direccio' && role !== 'cap' && role !== 'treballador') {
+  const canManageTickets = canManageMaintenanceTickets({ role, department: dept })
+  if (
+    role !== 'admin' &&
+    role !== 'direccio' &&
+    role !== 'cap' &&
+    role !== 'treballador' &&
+    !(role === 'usuari' && canManageTickets)
+  ) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -231,8 +252,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
     const current = snap.data() as MaintenanceTicketRecord
+    const previousWorkflowStage = normalizeTicketWorkflowStage(current.workflowStage)
 
-    if (role === 'treballador') {
+    if (role === 'treballador' && !canManageTickets) {
       const assignedIds: string[] = Array.isArray(current.assignedToIds)
         ? current.assignedToIds
         : []
@@ -269,7 +291,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const nextPriority = body.priority ? normalizePriority(body.priority) : null
     const currentStatus = normalizeStatus(current.status)
     const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
-    const canReopen = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
+    const canReopen = canValidate
 
     const wantsDataEdit =
       body.assignedToIds !== undefined ||
@@ -428,7 +450,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     }
 
-    if (role === 'treballador' && nextStatus) {
+    if (role === 'treballador' && !canManageTickets && nextStatus) {
       if (current.externalized && nextStatus === 'fet') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
@@ -444,15 +466,68 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     if (nextStatus) {
-      updates.statusHistory = admin.firestore.FieldValue.arrayUnion({
-        status: nextStatus,
-        at: Date.now(),
-        byId: user.id,
-        byName: user.name || '',
-        startTime: body.statusStartTime ?? null,
-        endTime: body.statusEndTime ?? null,
-        note: body.statusNote ?? '',
-      })
+      if (role === 'treballador' && !canManageTickets) {
+        const journeyError = validateJourneyStatusPayload({
+          currentStatus: currentStatus as JourneyStatus,
+          nextStatus: nextStatus as JourneyStatus,
+          closeSegmentEndTime: body.statusEndTime ?? undefined,
+          newSegmentStartTime: body.statusStartTime ?? undefined,
+          newSegmentEndTime: body.newSegmentEndTime ?? body.statusEndTime ?? undefined,
+          note: body.statusNote ?? undefined,
+          completionImageCount: Array.isArray(body.completionImages)
+            ? body.completionImages.length
+            : 0,
+        })
+        if (journeyError) {
+          return NextResponse.json({ error: journeyError }, { status: 400 })
+        }
+      }
+
+      const history = Array.isArray(current.statusHistory)
+        ? (current.statusHistory as StatusHistoryEntry[])
+        : []
+
+      const closeEnd = String(body.statusEndTime || '').trim() || null
+      const newStart = String(body.statusStartTime || '').trim() || null
+      const newEnd =
+        String(body.newSegmentEndTime || body.statusEndTime || '').trim() || null
+
+      updates.statusHistory = applyStatusHistoryUpdate(
+        history,
+        currentStatus as JourneyStatus,
+        nextStatus as JourneyStatus,
+        {
+          closeSegmentEndTime: closeEnd,
+          newSegmentStartTime: newStart,
+          newSegmentEndTime: newEnd,
+          note: body.statusNote ?? null,
+          userId: user.id,
+          userName: user.name || '',
+        }
+      )
+
+      if (Array.isArray(body.completionImages) && body.completionImages.length > 0) {
+        const added = body.completionImages
+          .map((image) => String(image?.url || '').trim())
+          .filter(Boolean)
+        if (nextStatus === 'fet' && role === 'treballador' && !canManageTickets && added.length < 1) {
+          return NextResponse.json(
+            { error: 'Cal adjuntar com a minim una foto en marcar Fet.' },
+            { status: 400 }
+          )
+        }
+        const existing = Array.isArray(current.imageUrls)
+          ? current.imageUrls.map((url) => String(url || '').trim()).filter(Boolean)
+          : []
+        const merged = [...existing, ...added]
+        updates.imageUrls = merged
+        if (!current.imageUrl && merged[0]) updates.imageUrl = merged[0]
+      } else if (nextStatus === 'fet' && role === 'treballador' && !canManageTickets) {
+        return NextResponse.json(
+          { error: 'Cal adjuntar com a minim una foto en marcar Fet.' },
+          { status: 400 }
+        )
+      }
     }
 
     if (
@@ -476,6 +551,68 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     await ref.set(updates, { merge: true })
+
+    const updatedSnap = await ref.get()
+    const updated = (updatedSnap.data() || {}) as typeof current
+
+    const nextWorkflowStage = normalizeTicketWorkflowStage(
+      updates.workflowStage !== undefined
+        ? String(updates.workflowStage)
+        : current.workflowStage
+    )
+    const mergedTicket = {
+      createdAt: current.createdAt,
+      updatedAt: updated.updatedAt ?? current.updatedAt,
+      workflowStage: nextWorkflowStage,
+      status: nextStatus || updated.status || current.status,
+      assignedToIds:
+        body.assignedToIds !== undefined ? body.assignedToIds : current.assignedToIds,
+      plannedStart:
+        body.plannedStart !== undefined ? body.plannedStart : current.plannedStart,
+      plannedEnd: body.plannedEnd !== undefined ? body.plannedEnd : current.plannedEnd,
+      externalized: updated.externalized ?? current.externalized,
+      externalStatus: updated.externalStatus ?? current.externalStatus,
+      externalSentAt: updated.externalSentAt ?? current.externalSentAt,
+      externalizationHistory: updated.externalizationHistory ?? current.externalizationHistory,
+      statusHistory: updated.statusHistory ?? current.statusHistory,
+    }
+
+    await onMaintenanceTicketUpdated(id, mergedTicket)
+
+    if (
+      nextWorkflowStage === 'planner_queue' &&
+      previousWorkflowStage !== 'planner_queue'
+    ) {
+      const ticketCode = current.ticketCode || current.incidentNumber || null
+      const effectiveMachine =
+        body.machine !== undefined ? String(body.machine).trim() : (current.machine || '')
+      const effectiveLocation =
+        body.location !== undefined ? String(body.location).trim() : (current.location || '')
+      const effectiveDescription =
+        body.description !== undefined
+          ? String(body.description).trim()
+          : (current.description || '')
+
+      await notifyTicketEnteredPlanner({
+        payload: {
+          type: 'maintenance_ticket_new',
+          title: 'Ticket al planificador',
+          body: buildTicketBody({
+            machine: effectiveMachine,
+            location: effectiveLocation,
+            description: effectiveDescription,
+          }),
+          ticketId: id,
+          ticketCode,
+          status: mergedTicket.status ? String(mergedTicket.status) : current.status || null,
+          priority: updates.priority ? String(updates.priority) : current.priority || null,
+          location: effectiveLocation,
+          machine: effectiveMachine,
+          source: current.source || null,
+        },
+        excludeIds: [user.id],
+      })
+    }
 
     if (nextStatus === 'validat') {
       const ticketCode = current.ticketCode || current.incidentNumber || null
@@ -571,8 +708,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     }
 
     const data = snap.data() as MaintenanceTicketRecord
-    const canDeleteAny =
-      role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
+    const canDeleteAny = canManageMaintenanceTickets({ role, department: dept })
     if (data.createdById !== user.id && !canDeleteAny) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }

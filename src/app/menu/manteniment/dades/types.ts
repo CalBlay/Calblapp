@@ -12,6 +12,14 @@ export type MachineRow = {
   active?: boolean
 }
 
+export type CenterRow = {
+  id: string
+  name: string
+  code: string
+  tipus: string
+  travelMinutes: number
+}
+
 export type SupplierRow = {
   id: string
   name: string

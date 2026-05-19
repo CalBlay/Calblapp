@@ -24,9 +24,14 @@ type Props = {
   onClose: () => void
   onCreate: () => void
   createBusy: boolean
-  onImageChange: (file: File | null) => void | Promise<void>
+  canCreate: boolean
+  onImageChange: (files: FileList | null) => void | Promise<void>
+  imagePreviews: string[]
+  imageCount: number
+  maxImages: number
+  onRemoveImage: (index: number) => void
   imageError: string | null
-  imagePreview?: string | null
+  formError: string | null
 }
 
 export default function CreateTicketModal({
@@ -52,9 +57,14 @@ export default function CreateTicketModal({
   onClose,
   onCreate,
   createBusy,
+  canCreate,
   onImageChange,
+  imagePreviews,
+  imageCount,
+  maxImages,
+  onRemoveImage,
   imageError,
-  imagePreview,
+  formError,
 }: Props) {
   return (
     <div
@@ -73,6 +83,9 @@ export default function CreateTicketModal({
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 space-y-3">
               <h2 className="text-xl font-semibold text-slate-900">Nou ticket</h2>
+              <p className="text-sm text-slate-500">
+                Tots els camps son obligatoris. Cal adjuntar entre 1 i {maxImages} fotos.
+              </p>
               <div className="flex flex-wrap gap-2">
                 {(['urgent', 'alta', 'normal', 'baixa'] as TicketPriority[]).map((key) => (
                   <button
@@ -103,10 +116,14 @@ export default function CreateTicketModal({
         <div className="max-h-[75vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="relative">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Ubicacio *
+              </label>
               <input
                 className="h-12 w-full rounded-2xl border px-4 pr-10 text-base"
                 placeholder="Cerca ubicacio..."
                 value={locationQuery}
+                required
                 onFocus={() => setShowLocationList(true)}
                 onChange={(e) => {
                   setLocationQuery(e.target.value)
@@ -122,7 +139,7 @@ export default function CreateTicketModal({
                     setCreateLocation('')
                     setShowLocationList(false)
                   }}
-                  className="absolute right-3 top-3 text-base text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-9 text-base text-gray-400 hover:text-gray-600"
                   aria-label="Esborrar"
                 >
                   x
@@ -153,10 +170,14 @@ export default function CreateTicketModal({
             </div>
 
             <div className="relative">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Maquinaria *
+              </label>
               <input
                 className="h-12 w-full rounded-2xl border px-4 pr-10 text-base"
-                placeholder="Cerca maquinaria..."
+                placeholder="Cerca o escriu maquinaria..."
                 value={machineQuery}
+                required
                 onFocus={() => setShowMachineList(true)}
                 onChange={(e) => {
                   setMachineQuery(e.target.value)
@@ -172,7 +193,7 @@ export default function CreateTicketModal({
                     setCreateMachine('')
                     setShowMachineList(false)
                   }}
-                  className="absolute right-3 top-3 text-base text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-9 text-base text-gray-400 hover:text-gray-600"
                   aria-label="Esborrar"
                 >
                   x
@@ -197,32 +218,49 @@ export default function CreateTicketModal({
                       </button>
                     ))}
                   {machines.filter((machine) => machine.label.toLowerCase().includes(machineQuery.toLowerCase()))
-                    .length === 0 && <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>}
+                    .length === 0 && (
+                    <div className="px-4 py-3 text-sm text-gray-500">
+                      Sense resultats. Pots escriure el nom de la maquinaria al camp.
+                    </div>
+                  )}
                 </div>
               )}
               {machines.length === 0 && (
-                <div className="mt-1 text-xs text-amber-600">No s'ha pogut carregar la maquinaria.</div>
+                <div className="mt-1 text-xs text-amber-600">No s&apos;ha pogut carregar la maquinaria.</div>
               )}
             </div>
           </div>
 
-          <textarea
-            className="min-h-[140px] w-full rounded-2xl border px-4 py-3 text-base"
-            placeholder="Que s'ha d'arreglar?"
-            value={createDescription}
-            onChange={(e) => setCreateDescription(e.target.value)}
-          />
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Descripcio *
+            </label>
+            <textarea
+              className="min-h-[140px] w-full rounded-2xl border px-4 py-3 text-base"
+              placeholder="Que s'ha d'arreglar?"
+              value={createDescription}
+              required
+              onChange={(e) => setCreateDescription(e.target.value)}
+            />
+          </div>
 
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <label className="text-sm text-gray-500">Adjuntar</label>
+              <label className="text-sm font-medium text-slate-700">
+                Fotos * <span className="font-normal text-slate-500">(min. 1, max. {maxImages})</span>
+              </label>
               <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
                 Fitxer
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
-                  onChange={(e) => onImageChange(e.target.files?.[0] || null)}
+                  disabled={imageCount >= maxImages}
+                  onChange={(e) => {
+                    void onImageChange(e.target.files)
+                    e.currentTarget.value = ''
+                  }}
                 />
               </label>
               <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
@@ -232,23 +270,49 @@ export default function CreateTicketModal({
                   accept="image/*"
                   capture="environment"
                   className="hidden"
-                  onChange={(e) => onImageChange(e.target.files?.[0] || null)}
+                  disabled={imageCount >= maxImages}
+                  onChange={(e) => {
+                    void onImageChange(e.target.files)
+                    e.currentTarget.value = ''
+                  }}
                 />
               </label>
-              {imageError && <span className="text-sm text-red-600">{imageError}</span>}
+              <span className="text-sm text-slate-500">
+                {imageCount}/{maxImages}
+              </span>
+              {imageError ? <span className="text-sm text-red-600">{imageError}</span> : null}
             </div>
 
-            {imagePreview && (
-              <div className="relative h-56 w-full overflow-hidden rounded-2xl">
-                <Image
-                  src={imagePreview}
-                  alt="Previsualitzacio"
-                  fill
-                  className="object-cover"
-                />
+            {imagePreviews.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2">
+                {imagePreviews.map((preview, index) => (
+                  <div key={`${preview}-${index}`} className="relative overflow-hidden rounded-2xl border">
+                    <Image
+                      src={preview}
+                      alt={`Previsualitzacio ${index + 1}`}
+                      width={448}
+                      height={112}
+                      className="h-28 w-full object-cover"
+                      unoptimized
+                    />
+                    <button
+                      type="button"
+                      onClick={() => onRemoveImage(index)}
+                      className="absolute right-1 top-1 rounded-full bg-black/60 px-2 py-1 text-xs text-white"
+                    >
+                      X
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-800">
+                Cal adjuntar com a minim una imatge. Es comprimeix automaticament (max. 1 MB per foto).
               </div>
             )}
           </div>
+
+          {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
         </div>
 
         <div className="sticky bottom-0 flex flex-col gap-3 rounded-b-3xl border-t border-slate-100 bg-white px-5 py-4 sm:flex-row sm:justify-end md:px-6">
@@ -262,8 +326,8 @@ export default function CreateTicketModal({
           <button
             type="button"
             onClick={onCreate}
-            disabled={createBusy}
-            className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white"
+            disabled={createBusy || !canCreate}
+            className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {createBusy ? 'Desant...' : 'Crear ticket'}
           </button>

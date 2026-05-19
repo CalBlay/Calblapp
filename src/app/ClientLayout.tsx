@@ -10,7 +10,11 @@ import Link from 'next/link'
 import { LogOut, Settings } from 'lucide-react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { normalizeRole } from '@/lib/roles'
-import { getVisibleModules, isMaintenanceWorkerSpacesBlocked } from '@/lib/accessControl'
+import {
+  getVisibleModules,
+  isLogisticsMaintenanceTicketsManager,
+  isMaintenanceWorkerSpacesBlocked,
+} from '@/lib/accessControl'
 import { FiltersProvider } from '@/context/FiltersContext'
 import FilterSlideOver from '@/components/ui/filter-slide-over'
 import PWARegister from '@/components/PWARegister'
@@ -62,6 +66,15 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
     if (isMaintenanceWorkerSpacesBlocked({ role, department }) && pathname.startsWith('/menu/spaces')) {
       router.replace('/menu/manteniment')
     }
+    if (
+      isLogisticsMaintenanceTicketsManager({ role, department }) &&
+      (pathname.startsWith('/menu/incidents') || pathname.startsWith('/menu/modifications'))
+    ) {
+      router.replace('/menu')
+    }
+    if (pathname.startsWith('/menu/projects') && user.opsProjectsConfigurable === false) {
+      router.replace('/menu')
+    }
   }, [pathname, status, user, router])
 
   /* 🔓 Pantalla login sense layout */
@@ -81,7 +94,14 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
   const username = user.name || user.email || 'Usuari'
   const avatarLetter = username[0]?.toUpperCase() ?? 'U'
 
-  const visibleModules = getVisibleModules({ role, department })
+  const visibleModules = getVisibleModules({
+    role,
+    department,
+    canRespondSurveys: user.canRespondSurveys,
+    isDepartmentRobaLead: user.isDepartmentRobaLead,
+    robaLinkedPersonnelId: user.robaLinkedPersonnelId,
+    opsProjectsConfigurable: user.opsProjectsConfigurable,
+  })
   const sortedVisibleModules = [...visibleModules].sort((a, b) =>
     a.label.localeCompare(b.label, 'ca', { sensitivity: 'base' })
   )

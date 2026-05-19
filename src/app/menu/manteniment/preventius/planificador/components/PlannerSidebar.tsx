@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react'
 import type { DueTemplate, ScheduledItem, TicketCard } from '../types'
+import { isTicketStaleAlert, STALE_TICKET_CARD_CLASS_COMPACT } from '@/lib/maintenanceTicketAlerts'
 import { formatTicketCreatedAt, getAgeBadgeClass, getAgeLabel } from '../utils'
 
 function dayLabelForItem(dayIndex: number, dayLabels?: string[]) {
@@ -240,11 +241,19 @@ export default function PlannerSidebar({
 
         {tab === 'tickets' &&
           pendingTickets.map((item) => {
+            const isStale = isTicketStaleAlert({
+              createdAt: item.createdAt,
+              workflowStage: item.workflowStage || 'planner_queue',
+              status: item.status,
+            })
+
             if (desktop) {
               return (
                 <div
                   key={item.id}
-                  className="cursor-grab rounded-lg border bg-white px-2 py-2 text-[11px] hover:bg-slate-50"
+                  className={`cursor-grab rounded-lg border px-2 py-2 text-[11px] ${
+                    isStale ? STALE_TICKET_CARD_CLASS_COMPACT : 'border-slate-200 bg-white hover:bg-slate-50'
+                  }`}
                   draggable
                   title="Arrossega al calendari"
                   onClick={() => {
@@ -300,7 +309,12 @@ export default function PlannerSidebar({
             }
 
             return (
-              <div key={item.id} className="rounded-2xl border px-4 py-3">
+              <div
+                key={item.id}
+                className={`rounded-2xl border px-4 py-3 ${
+                  isStale ? STALE_TICKET_CARD_CLASS_COMPACT : 'border-slate-200 bg-white'
+                }`}
+              >
                 <div className="text-sm font-semibold text-gray-900">
                   {item.code} · {item.title}
                 </div>
@@ -375,12 +389,24 @@ export default function PlannerSidebar({
                 <div className="mt-1 text-[11px] text-violet-800">
                   {item.location || '-'}{item.machine ? ` · ${item.machine}` : ''}
                 </div>
-                <div className="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
-                  {item.externalStatus === 'closed'
-                    ? 'Tancat'
-                    : item.externalStatus === 'resent'
-                      ? 'Reenviat'
-                      : 'Enviat'}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
+                    {item.externalStatus === 'closed'
+                      ? 'Tancat'
+                      : item.externalStatus === 'resent'
+                        ? 'Reenviat'
+                        : item.externalStatus === 'answered'
+                          ? 'Resposta'
+                          : 'Enviat'}
+                  </span>
+                  {(item.externalStatus === 'sent' || item.externalStatus === 'resent') &&
+                  item.ageDays >= 3 ? (
+                    <span
+                      className={`rounded-full px-2 py-1 text-[10px] font-semibold ${getAgeBadgeClass(item.ageBucket)}`}
+                    >
+                      {getAgeLabel(item.ageDays)} sense resposta
+                    </span>
+                  ) : null}
                 </div>
               </button>
             ))}

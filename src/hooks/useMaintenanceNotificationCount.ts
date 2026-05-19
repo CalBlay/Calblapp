@@ -11,6 +11,8 @@ const MAINTENANCE_NOTIFICATION_TYPES = new Set([
   'maintenance_ticket_new',
   'maintenance_ticket_assigned',
   'maintenance_ticket_validated',
+  'maintenance_ticket_stale',
+  'maintenance_ticket_external_stale',
 ])
 
 type SessionUser = { id?: string }

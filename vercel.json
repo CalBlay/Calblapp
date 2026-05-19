@@ -13,6 +13,10 @@
     {
       "path": "/api/cleanup/zoho-attachments?mode=cron",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/maintenance/tickets/stale-alerts?mode=cron",
+      "schedule": "0 7 * * *"
     }
   ]
 }

@@ -3,12 +3,14 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
-import { isMaintenanceCapDepartment } from '@/lib/accessControl'
+import { canManageMaintenanceTickets } from '@/lib/accessControl'
 import {
   buildTicketBody,
-  notifyMaintenanceManagers,
+  notifyForNewMaintenanceTicket,
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
+import { resolveOpsChannelByLocationName } from '@/lib/opsMessagingChannels'
+import { resolveManualTicketRouting } from '@/lib/maintenanceTicketCreators'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -20,15 +22,23 @@ type SessionUser = {
   department?: string
 }
 
+type TicketImagePayload = {
+  url?: string | null
+  path?: string | null
+  meta?: { size?: number; type?: string } | null
+}
+
 type TicketPayload = {
   location?: string
   machine?: string
   description?: string
+  operatorTitle?: string | null
   priority?: 'urgent' | 'alta' | 'normal' | 'baixa'
   ticketType?: 'maquinaria' | 'deco'
   imageUrl?: string | null
   imagePath?: string | null
   imageMeta?: { size?: number; type?: string } | null
+  images?: TicketImagePayload[]
   source?: 'manual' | 'incidencia' | 'whatsblapp' | 'manual_cuina_central'
   intakeChannel?:
     | 'restaurant'
@@ -75,6 +85,34 @@ const normalizeStatus = (value?: string) => {
   if (v === 'resolut') return 'resolut'
   if (v === 'validat') return 'validat'
   return 'nou'
+}
+
+const MAX_TICKET_IMAGES = 3
+
+function normalizeTicketImages(body: TicketPayload): TicketImagePayload[] {
+  if (Array.isArray(body.images) && body.images.length > 0) {
+    return body.images
+      .map((image) => ({
+        url: String(image?.url || '').trim() || null,
+        path: String(image?.path || '').trim() || null,
+        meta: image?.meta || null,
+      }))
+      .filter((image) => image.url || image.path)
+  }
+
+  const legacyUrl = String(body.imageUrl || '').trim()
+  const legacyPath = String(body.imagePath || '').trim()
+  if (legacyUrl || legacyPath) {
+    return [
+      {
+        url: legacyUrl || null,
+        path: legacyPath || null,
+        meta: body.imageMeta || null,
+      },
+    ]
+  }
+
+  return []
 }
 
 const normalizeIntakeChannel = (value?: string, source?: string) => {
@@ -223,10 +261,7 @@ export async function GET(req: Request) {
   const cursorCreatedAt = Number(searchParams.get('cursorCreatedAt') || 0)
   const limit = Math.max(1, Math.min(200, Number(searchParams.get('limit') || 100)))
 
-  const canViewAllTickets =
-    role === 'admin' ||
-    role === 'direccio' ||
-    (role === 'cap' && isMaintenanceCapDepartment(dept))
+  const canViewAllTickets = canManageMaintenanceTickets({ role, department: deptRaw })
 
   try {
     let ref: FirebaseFirestore.Query = db.collection('maintenanceTickets')
@@ -394,21 +429,51 @@ export async function POST(req: Request) {
         : 'maquinaria'
 
     const isWhatsBlapp = body.source === 'whatsblapp'
-    const intakeChannel = normalizeIntakeChannel(body.intakeChannel, body.source)
+    const isIncidencia = body.source === 'incidencia'
+    const manualRouting =
+      !isWhatsBlapp && !isIncidencia
+        ? resolveManualTicketRouting({ department: user.department, location })
+        : null
+    const opsChannel = resolveOpsChannelByLocationName(location)
+    const source = manualRouting?.source || body.source || 'manual'
+    const intakeChannel = manualRouting
+      ? manualRouting.intakeChannel
+      : normalizeIntakeChannel(body.intakeChannel, body.source)
+    const sourceChannelId =
+      String(body.sourceChannelId || '').trim() || opsChannel?.channelId || null
+    const images = normalizeTicketImages(body)
+    const requiresManualImages = !isWhatsBlapp && !isIncidencia
 
     if (!location || !description || (!isWhatsBlapp && !machine)) {
       return NextResponse.json({ error: 'Falten camps obligatoris' }, { status: 400 })
     }
 
+    if (requiresManualImages) {
+      if (images.length < 1) {
+        return NextResponse.json(
+          { error: 'Cal adjuntar com a minim una foto (maxim 3).' },
+          { status: 400 }
+        )
+      }
+      if (images.length > MAX_TICKET_IMAGES) {
+        return NextResponse.json({ error: 'Com a maxim es permeten 3 fotos.' }, { status: 400 })
+      }
+    }
+
+    const primaryImage = images[0] || null
+    const imageUrls = images.map((image) => image.url).filter((url): url is string => Boolean(url))
+
     const now = Date.now()
     const incidentNumber = (body.incidentNumber || '').trim()
     const ticketCode = incidentNumber || (await generateTicketCode())
-    const workflowStage = getInitialWorkflowStage({
-      source: body.source,
-      intakeChannel,
-      assigned: Boolean(body.plannedStart && body.plannedEnd),
-      externalized: false,
-    })
+    const workflowStage =
+      manualRouting?.workflowStage ||
+      getInitialWorkflowStage({
+        source,
+        intakeChannel,
+        assigned: Boolean(body.plannedStart && body.plannedEnd),
+        externalized: false,
+      })
 
     const doc = await db.collection('maintenanceTickets').add({
       ticketCode,
@@ -417,7 +482,7 @@ export async function POST(req: Request) {
       workLocation: null,
       machine: machine || '',
       description,
-      operatorTitle: null,
+      operatorTitle: String(body.operatorTitle || body.machine || '').trim() || null,
       priority,
       status,
       createdAt: now,
@@ -432,12 +497,14 @@ export async function POST(req: Request) {
       plannedEnd: body.plannedEnd || null,
       estimatedMinutes: body.estimatedMinutes || null,
       ticketType,
-      source: body.source || 'manual',
+      source,
       intakeChannel,
+      sourceChannelId,
       workflowStage,
-      imageUrl: body.imageUrl || null,
-      imagePath: body.imagePath || null,
-      imageMeta: body.imageMeta || null,
+      imageUrl: primaryImage?.url || null,
+      imagePath: primaryImage?.path || null,
+      imageMeta: primaryImage?.meta || null,
+      imageUrls: imageUrls.length ? imageUrls : null,
       needsVehicle: false,
       vehicleType: null,
       vehicleId: null,
@@ -467,7 +534,8 @@ export async function POST(req: Request) {
       ],
     })
 
-    await notifyMaintenanceManagers({
+    await notifyForNewMaintenanceTicket({
+      workflowStage,
       payload: {
         type: 'maintenance_ticket_new',
         title: 'Nou ticket de manteniment',
@@ -478,23 +546,24 @@ export async function POST(req: Request) {
         priority,
         location,
         machine,
-        source: body.source || 'manual',
+        source,
       },
       excludeIds: [user.id],
     })
 
-    const mediaPath = String(body.imagePath || '').trim()
-    if (mediaPath) {
+    for (const image of images) {
+      const mediaPath = String(image.path || '').trim()
+      if (!mediaPath) continue
       void registerMediaRef({
         path: mediaPath,
         source: 'maintenance',
         firestoreDocId: doc.id,
-        url: body.imageUrl || null,
+        url: image.url || null,
         size:
-          typeof body.imageMeta?.size === 'number' && Number.isFinite(body.imageMeta.size)
-            ? body.imageMeta.size
+          typeof image.meta?.size === 'number' && Number.isFinite(image.meta.size)
+            ? image.meta.size
             : null,
-        contentType: body.imageMeta?.type ? String(body.imageMeta.type) : null,
+        contentType: image.meta?.type ? String(image.meta.type) : null,
         title: [ticketCode, location, description.slice(0, 80)].filter(Boolean).join(' · '),
         createdAt: now,
       })

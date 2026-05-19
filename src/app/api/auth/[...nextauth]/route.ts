@@ -25,6 +25,7 @@ interface FirestoreUser {
   canRespondSurveys?: boolean
   isDepartmentRobaLead?: boolean
   isTransportLead?: boolean
+  opsProjectsConfigurable?: boolean
 }
 
 // Extend JWT
@@ -58,6 +59,7 @@ declare module 'next-auth' {
       canRespondSurveys?: boolean
       isDepartmentRobaLead?: boolean
       isTransportLead?: boolean
+      opsProjectsConfigurable?: boolean
       robaLinkedPersonnelId?: string | null
       robaWorkerDeptNorm?: string | null
     } & User
@@ -148,6 +150,10 @@ export const authOptions = {
                 canRespondSurveys: Boolean(data.canRespondSurveys),
                 isDepartmentRobaLead: Boolean(data.isDepartmentRobaLead),
                 isTransportLead: Boolean(data.isTransportLead),
+                opsProjectsConfigurable:
+                  typeof data.opsProjectsConfigurable === 'boolean'
+                    ? data.opsProjectsConfigurable
+                    : true,
               }
             } else {
               console.log('[AUTH] Password incorrecte. Input:', passInput, 'Doc:', passDoc)
@@ -175,6 +181,7 @@ export const authOptions = {
           commercialName?: string
           isDepartmentRobaLead?: boolean
           isTransportLead?: boolean
+          opsProjectsConfigurable?: boolean
         }
 
         token.sub = u.id
@@ -186,6 +193,8 @@ export const authOptions = {
         token.commercialName = u.commercialName || ''
         token.isDepartmentRobaLead = Boolean(u.isDepartmentRobaLead)
         ;(token as JWT & { isTransportLead?: boolean }).isTransportLead = Boolean(u.isTransportLead)
+        token.opsProjectsConfigurable =
+          typeof u.opsProjectsConfigurable === 'boolean' ? u.opsProjectsConfigurable : true
         token.robaPersonnelLinkResolved = false
       }
 
@@ -210,6 +219,17 @@ export const authOptions = {
         }
       }
 
+      if (uid && typeof token.opsProjectsConfigurable !== 'boolean') {
+        try {
+          const snap = await firestore.collection('users').doc(uid).get()
+          const data = snap.exists ? (snap.data() as FirestoreUser) : null
+          token.opsProjectsConfigurable =
+            typeof data?.opsProjectsConfigurable === 'boolean' ? data.opsProjectsConfigurable : true
+        } catch {
+          token.opsProjectsConfigurable = true
+        }
+      }
+
       return token
     },
 
@@ -227,6 +247,8 @@ export const authOptions = {
           commercialName: token.commercialName,
           isDepartmentRobaLead: Boolean(token.isDepartmentRobaLead),
           isTransportLead: Boolean((token as JWT & { isTransportLead?: boolean }).isTransportLead),
+          opsProjectsConfigurable:
+            typeof token.opsProjectsConfigurable === 'boolean' ? token.opsProjectsConfigurable : true,
           robaLinkedPersonnelId: token.robaLinkedPersonnelId ?? null,
           robaWorkerDeptNorm: token.robaWorkerDeptNorm ?? null,
         },

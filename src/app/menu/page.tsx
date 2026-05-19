@@ -51,6 +51,7 @@ interface SessionUser {
   canRespondSurveys?: boolean
   isDepartmentRobaLead?: boolean
   robaLinkedPersonnelId?: string | null
+  opsProjectsConfigurable?: boolean
 }
 
 /* ─────────────────────────────────────────────

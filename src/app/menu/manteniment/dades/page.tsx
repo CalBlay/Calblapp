@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ClipboardList, Factory, Search, Truck, X } from 'lucide-react'
+import { Building2, ClipboardList, Factory, Search, Truck, X } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useFilters } from '@/context/FiltersContext'
 import FloatingAddButton from '@/components/ui/floating-add-button'
@@ -9,6 +9,7 @@ import { RoleGuard } from '@/lib/withRoleGuard'
 import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
 import MachinesPanel from './components/MachinesPanel'
 import SuppliersPanel from './components/SuppliersPanel'
+import CentersPanel from './components/CentersPanel'
 import { PreventiusTemplatesContent } from '../preventius/plantilles/page'
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
 import {
@@ -17,12 +18,20 @@ import {
   getTrackedMinutes,
   normalizeText,
 } from './utils'
-import { emptyMachine, emptySupplier, type MachineListStats, type MachineRow, type MachineView, type SupplierRow } from './types'
+import {
+  emptyMachine,
+  emptySupplier,
+  type CenterRow,
+  type MachineListStats,
+  type MachineRow,
+  type MachineView,
+  type SupplierRow,
+} from './types'
 import { parseFetchJson } from '@/lib/parseFetchJson'
 
 export default function MaintenanceDataPage() {
   const { setContent } = useFilters()
-  const [tab, setTab] = useState<'machines' | 'preventives' | 'suppliers'>('machines')
+  const [tab, setTab] = useState<'machines' | 'preventives' | 'suppliers' | 'centers'>('machines')
   const [machines, setMachines] = useState<MachineRow[]>([])
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([])
   const [tickets, setTickets] = useState<Ticket[]>([])
@@ -31,11 +40,15 @@ export default function MaintenanceDataPage() {
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null)
   const [machineSearch, setMachineSearch] = useState('')
   const [supplierSearch, setSupplierSearch] = useState('')
+  const [centerSearch, setCenterSearch] = useState('')
+  const [centerTipusFilter, setCenterTipusFilter] = useState<'all' | 'propi' | 'extern'>('all')
+  const [centers, setCenters] = useState<CenterRow[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [loadedTabs, setLoadedTabs] = useState({
     machines: false,
     suppliers: false,
+    centers: false,
   })
 
   const loadMachinesData = async () => {
@@ -70,6 +83,18 @@ export default function MaintenanceDataPage() {
     }
   }
 
+  const loadCentersData = async () => {
+    try {
+      setLoading(true)
+      const centersRes = await fetch('/api/maintenance/data/centers', { cache: 'no-store' })
+      const centersJson = await parseFetchJson(centersRes, { centers: [] as CenterRow[] })
+      setCenters(Array.isArray(centersJson?.centers) ? centersJson.centers : [])
+      setLoadedTabs((current) => ({ ...current, centers: true }))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const loadSuppliersData = async () => {
     try {
       setLoading(true)
@@ -96,6 +121,21 @@ export default function MaintenanceDataPage() {
       void loadSuppliersData()
     }
   }, [loadedTabs.machines, loadedTabs.suppliers, tab])
+
+  useEffect(() => {
+    if (tab === 'centers' && !loadedTabs.centers) {
+      void loadCentersData()
+    }
+  }, [loadedTabs.centers, tab])
+
+  const filteredCenters = useMemo(() => {
+    const q = normalizeText(centerSearch)
+    return centers.filter((row) => {
+      if (centerTipusFilter !== 'all' && row.tipus !== centerTipusFilter) return false
+      if (!q) return true
+      return normalizeText([row.name, row.code].join(' ')).includes(q)
+    })
+  }, [centerSearch, centerTipusFilter, centers])
 
   const filteredMachines = useMemo(() => {
     const q = machineSearch.trim().toLowerCase()
@@ -250,7 +290,7 @@ export default function MaintenanceDataPage() {
       <div className="mx-auto w-full max-w-7xl space-y-4 p-4">
         <ModuleHeader title="Manteniment" subtitle="Dades" mainHref="/menu/manteniment" />
 
-        {tab !== 'preventives' ? (
+        {tab !== 'preventives' && tab !== 'centers' ? (
           <MaintenanceToolbar
             rightSlot={
               <div className="flex w-full items-center justify-end gap-2">
@@ -294,7 +334,7 @@ export default function MaintenanceDataPage() {
           />
         ) : null}
 
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <button
             type="button"
             onClick={() => setTab('machines')}
@@ -354,6 +394,26 @@ export default function MaintenanceDataPage() {
               </div>
             </div>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setTab('centers')}
+            className={`rounded-2xl border p-4 text-left ${
+              tab === 'centers'
+                ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-100'
+                : 'bg-white'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-emerald-700 shadow">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-base font-semibold text-gray-900">Centres</div>
+                <div className="text-xs text-gray-500">Temps de desplaçament per finca</div>
+              </div>
+            </div>
+          </button>
         </div>
 
         {tab === 'machines' ? (
@@ -380,6 +440,44 @@ export default function MaintenanceDataPage() {
           />
         ) : tab === 'preventives' ? (
           <PreventiusTemplatesContent embedded hideFab />
+        ) : tab === 'centers' ? (
+          <>
+            <MaintenanceToolbar
+              rightSlot={
+                <div className="relative w-full max-w-xl">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={centerSearch}
+                    onChange={(e) => setCenterSearch(e.target.value)}
+                    placeholder="Cerca nom o codi de finca..."
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-10 text-sm text-slate-900"
+                  />
+                  {centerSearch.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => setCenterSearch('')}
+                      className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                      aria-label="Netejar cerca"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </div>
+              }
+            />
+            <CentersPanel
+              centers={filteredCenters}
+              allCentersForCounts={centers}
+              loading={loading}
+              tipusFilter={centerTipusFilter}
+              onTipusFilterChange={setCenterTipusFilter}
+              onSaved={(id, travelMinutes) => {
+                setCenters((prev) =>
+                  prev.map((row) => (row.id === id ? { ...row, travelMinutes } : row))
+                )
+              }}
+            />
+          </>
         ) : (
           <SuppliersPanel
             filteredSuppliers={filteredSuppliers}
@@ -408,6 +506,7 @@ export default function MaintenanceDataPage() {
           />
         )}
 
+        {tab !== 'centers' ? (
         <FloatingAddButton
           onClick={() => {
             if (tab === 'machines') {
@@ -424,6 +523,7 @@ export default function MaintenanceDataPage() {
             setSupplierForm(emptySupplier)
           }}
         />
+        ) : null}
       </div>
     </RoleGuard>
   )

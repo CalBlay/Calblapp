@@ -7,7 +7,7 @@ import admin from "firebase-admin";
 import type { Query } from "firebase-admin/firestore";
 import {
   buildTicketBody,
-  notifyMaintenanceManagers,
+  notifyForNewMaintenanceTicket,
 } from '@/lib/maintenanceNotifications'
 import { notifyMarketingManagersFor9xxIncident } from '@/lib/incidentNotifications'
 import { canAccessIncidentsModule, canPostIncident } from '@/lib/incidentPolicy'
@@ -484,6 +484,8 @@ export async function POST(req: Request) {
         needsVehicle: false,
         vehicleId: null,
         vehiclePlate: null,
+        workflowStage: 'tickets_inbox',
+        intakeChannel: 'incidencia',
         statusHistory: [
           {
             status: "nou",
@@ -494,7 +496,8 @@ export async function POST(req: Request) {
         ],
       });
 
-      await notifyMaintenanceManagers({
+      await notifyForNewMaintenanceTicket({
+        workflowStage: 'tickets_inbox',
         payload: {
           type: 'maintenance_ticket_new',
           title: 'Nou ticket de manteniment',

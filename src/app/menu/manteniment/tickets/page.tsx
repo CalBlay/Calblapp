@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
@@ -11,7 +11,14 @@ import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
 import { normalizeRole } from '@/lib/roles'
-import { isMaintenanceCapDepartment } from '@/lib/accessControl'
+import { canManageMaintenanceTickets } from '@/lib/accessControl'
+import {
+  isCuinaCentralDepartment,
+  isMaintenanceTicketCreatorDepartment,
+  isMaintenanceTicketCreatorOnlyUser,
+  isRestaurantOpsDepartment,
+} from '@/lib/maintenanceTicketCreators'
+import { OPS_CHANNEL_LOCATIONS } from '@/lib/opsMessagingChannels'
 import { markTicketSeen } from '@/lib/maintenanceSeen'
 import { formatDateOnly, formatDateTimeValue } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
@@ -98,20 +105,22 @@ export default function MaintenanceTicketsPage() {
   const userRole = normalizeRole(sessionUser.role || '')
   const isMaintenance = department === 'manteniment'
   const isMaintenanceWorker = userRole === 'treballador' && isMaintenance
-  const canManageAllTickets =
-    userRole === 'admin' ||
-    userRole === 'direccio' ||
-    (userRole === 'cap' && isMaintenanceCapDepartment(department))
+  const isTicketCreatorDept = isMaintenanceTicketCreatorDepartment(department)
+  const isOwnTicketsOnly = isMaintenanceTicketCreatorOnlyUser(sessionUser)
+  const canManageAllTickets = canManageMaintenanceTickets({
+    role: userRole,
+    department,
+  })
   const hasAccess =
     !isMaintenanceWorker &&
-    (
-    userRole === 'admin' ||
-    userRole === 'direccio' ||
-    userRole === 'cap' ||
-    userRole === 'treballador' ||
-    userRole === 'comercial' ||
-    userRole === 'usuari'
-    )
+    (userRole === 'admin' ||
+      userRole === 'direccio' ||
+      userRole === 'cap' ||
+      userRole === 'treballador' ||
+      userRole === 'comercial' ||
+      userRole === 'usuari' ||
+      (isTicketCreatorDept &&
+        (userRole === 'usuari' || userRole === 'treballador' || userRole === 'cap')))
 
   const formatDateTime = (value?: number | string | null) => formatDateTimeValue(value, '')
   const [dateResetSignal, setDateResetSignal] = useState(0)
@@ -136,7 +145,7 @@ export default function MaintenanceTicketsPage() {
     loadingMoreTickets,
     filters,
     setFilters,
-    locations,
+    locations: catalogLocations,
     machines,
     showCreate,
     setShowCreate,
@@ -156,9 +165,14 @@ export default function MaintenanceTicketsPage() {
     setCreateDescription,
     createPriority,
     setCreatePriority,
-    createImagePreview,
+    createImagePreviews,
+    createImageCount,
+    maxTicketImages,
     createBusy,
     imageError,
+    formError,
+    canCreateTicket,
+    removeImage,
     selected,
     setSelected,
     assignBusy,
@@ -203,6 +217,23 @@ export default function MaintenanceTicketsPage() {
     groupedTickets,
     ticketSummary,
   } = useMaintenanceTickets()
+
+  const normalizeLocationKey = (value: string) =>
+    value
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+      .trim()
+
+  const createLocations = useMemo(() => {
+    if (!isRestaurantOpsDepartment(department)) return catalogLocations
+    const restaurantKeys = new Set(
+      OPS_CHANNEL_LOCATIONS.filter((entry) => entry.source === 'restaurants').map((entry) =>
+        normalizeLocationKey(entry.location)
+      )
+    )
+    return catalogLocations.filter((loc) => restaurantKeys.has(normalizeLocationKey(loc)))
+  }, [catalogLocations, department])
 
   useEffect(() => {
     setContent(
@@ -261,7 +292,7 @@ export default function MaintenanceTicketsPage() {
             className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
           >
             <option value="__all__">Totes</option>
-            {locations.map((location) => (
+            {catalogLocations.map((location) => (
               <option key={location} value={location}>
                 {location}
               </option>
@@ -291,7 +322,7 @@ export default function MaintenanceTicketsPage() {
     )
 
     return () => setContent(null)
-  }, [canValidate, dateResetSignal, filters, locations, setContent, setFilters])
+  }, [canValidate, catalogLocations, dateResetSignal, filters, setContent, setFilters])
 
   const displayStatusLabels: Record<TicketStatus, string> = canValidate
     ? STATUS_LABELS
@@ -331,6 +362,7 @@ export default function MaintenanceTicketsPage() {
   }, [queryEnd, queryStart, setFilters])
 
   useEffect(() => {
+    if (isOwnTicketsOnly) return
     if (!queryTicketId) return
     if (selected?.id === queryTicketId) return
 
@@ -359,7 +391,7 @@ export default function MaintenanceTicketsPage() {
     return () => {
       cancelled = true
     }
-  }, [loading, queryTicketId, selected?.id, setSelected, tickets])
+  }, [isOwnTicketsOnly, loading, queryTicketId, selected?.id, setSelected, tickets])
 
   const canResolveDirectly = useCallback(
     (ticket: Ticket) =>
@@ -391,7 +423,7 @@ export default function MaintenanceTicketsPage() {
           subtitle="Tickets"
           mainHref="/menu/manteniment"
           actions={
-            hasAccess ? (
+            hasAccess && (canManageAllTickets || isOwnTicketsOnly) ? (
               <button
                 className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
                 onClick={() => setShowCreate(true)}
@@ -401,6 +433,14 @@ export default function MaintenanceTicketsPage() {
             ) : undefined
           }
         />
+
+        {isOwnTicketsOnly ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
+            {isCuinaCentralDepartment(department)
+              ? 'Veus nomes els teus tickets. En crear-ne un de nou, es deriva al planificador de manteniment i aqui en pots seguir l evolucio.'
+              : 'Veus nomes els teus tickets. Els nous entren a la safata de tickets de manteniment i aqui en pots seguir l evolucio.'}
+          </div>
+        ) : null}
 
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-3 xl:flex-nowrap">
@@ -511,11 +551,6 @@ export default function MaintenanceTicketsPage() {
 
         <TicketsList
           groupedTickets={groupedTickets}
-          onSelect={(ticket) => {
-            if (!canManageAllTickets) return
-            markTicketSeen(ticket.id, 'maquinaria')
-            setSelected(ticket)
-          }}
           onResolve={(ticket) => {
             if (!canResolveDirectly(ticket)) return
             markTicketSeen(ticket.id, 'maquinaria')
@@ -557,7 +592,7 @@ export default function MaintenanceTicketsPage() {
 
         {showCreate && (
           <CreateTicketModal
-            locations={locations}
+            locations={createLocations}
             machines={machines}
             createPriority={createPriority}
             setCreatePriority={setCreatePriority}
@@ -579,13 +614,18 @@ export default function MaintenanceTicketsPage() {
             onClose={() => setShowCreate(false)}
             onCreate={handleCreateTicket}
             createBusy={createBusy}
+            canCreate={canCreateTicket}
             onImageChange={handleImageChange}
+            imagePreviews={createImagePreviews}
+            imageCount={createImageCount}
+            maxImages={maxTicketImages}
+            onRemoveImage={removeImage}
             imageError={imageError}
-            imagePreview={createImagePreview}
+            formError={formError}
           />
         )}
 
-        {selected && (
+        {selected && !isOwnTicketsOnly && (
           <AssignTicketModal
             ticket={selected}
             assignBusy={assignBusy}
@@ -602,7 +642,7 @@ export default function MaintenanceTicketsPage() {
             availableNameNorms={availableNameNorms}
             availabilityLoading={availabilityLoading}
             furgonetes={furgonetes}
-            locations={locations}
+            locations={catalogLocations}
             machines={machines}
             detailsLocation={detailsLocation}
             setDetailsLocation={setDetailsLocation}

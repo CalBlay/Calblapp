@@ -15,6 +15,12 @@ export const INFORMES_DOMAINS: InformesDomainMeta[] = [
     comingSoon: false,
   },
   {
+    id: 'maintenance',
+    label: 'Manteniment',
+    sources: ['app'],
+    comingSoon: false,
+  },
+  {
     id: 'finances',
     label: 'Finances',
     sources: ['app', 'mcp_file', 'hybrid'],

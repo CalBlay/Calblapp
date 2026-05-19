@@ -13,6 +13,10 @@ interface SessionUser {
   email?: string | null
   role?: string
   department?: string | null
+  canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
+  robaLinkedPersonnelId?: string | null
+  opsProjectsConfigurable?: boolean
 }
 
 interface RoleGuardProps {
@@ -46,6 +50,10 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
     const visibleModules = getVisibleModules({
       role,
       department: user?.department || undefined,
+      canRespondSurveys: user?.canRespondSurveys,
+      isDepartmentRobaLead: user?.isDepartmentRobaLead,
+      robaLinkedPersonnelId: user?.robaLinkedPersonnelId,
+      opsProjectsConfigurable: user?.opsProjectsConfigurable,
     })
     const hasModuleAccess = pathname
       ? visibleModules.some((mod) => {

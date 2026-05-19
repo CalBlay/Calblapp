@@ -5,7 +5,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import {
   buildTicketBody,
-  notifyMaintenanceManagers,
+  notifyForNewMaintenanceTicket,
 } from '@/lib/maintenanceNotifications'
 
 export const runtime = 'nodejs'
@@ -152,6 +152,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       plannedEnd: null,
       estimatedMinutes: null,
       source: 'whatsblapp',
+      workflowStage: 'tickets_inbox',
+      intakeChannel: 'finca',
       sourceChannelId: channelId,
       sourceMessageId: id,
       sourceMessageText: description.slice(0, 200),
@@ -236,7 +238,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     await batch.commit()
 
-    await notifyMaintenanceManagers({
+    await notifyForNewMaintenanceTicket({
+      workflowStage: 'tickets_inbox',
       payload: {
         type: 'maintenance_ticket_new',
         title: 'Nou ticket de manteniment',

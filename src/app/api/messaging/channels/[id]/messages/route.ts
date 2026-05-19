@@ -5,7 +5,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import {
   buildTicketBody,
-  notifyMaintenanceManagers,
+  notifyForNewMaintenanceTicket,
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 
@@ -163,6 +163,8 @@ async function createTicketFromMessage(args: {
     plannedEnd: null,
     estimatedMinutes: null,
     source: 'whatsblapp',
+    workflowStage: 'tickets_inbox',
+    intakeChannel: 'finca',
     sourceChannelId: channelId,
     sourceMessageId: messageId,
     sourceMessageText: description.slice(0, 200),
@@ -213,7 +215,8 @@ async function createTicketFromMessage(args: {
 
   await batch.commit()
 
-  await notifyMaintenanceManagers({
+  await notifyForNewMaintenanceTicket({
+    workflowStage: 'tickets_inbox',
     payload: {
       type: 'maintenance_ticket_new',
       title: 'Nou ticket de manteniment',

@@ -16,7 +16,10 @@ import {
 import { useSession } from 'next-auth/react'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { normalizeRole } from '@/lib/roles'
-import { isMaintenanceCapDepartment } from '@/lib/accessControl'
+import {
+  isLogisticsMaintenanceTicketsManager,
+  isMaintenanceCapDepartment,
+} from '@/lib/accessControl'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useMaintenanceAssignedCount } from '@/hooks/useMaintenanceAssignedCount'
 import { getAblyClient } from '@/lib/ablyClient'
@@ -67,6 +70,8 @@ const MAINTENANCE_NOTIFICATION_TYPES = new Set([
   'maintenance_ticket_new',
   'maintenance_ticket_assigned',
   'maintenance_ticket_validated',
+  'maintenance_ticket_stale',
+  'maintenance_ticket_external_stale',
 ])
 
 const buildWeekQuery = (value?: number | string | null) => {
@@ -107,6 +112,10 @@ export default function MantenimentIndexPage() {
   const userId = String(sessionUser?.id || '').trim()
   const isMaintenanceWorker = userRole === 'treballador' && userDepartment === 'manteniment'
   const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(userDepartment)
+  const isLogisticsTicketsManager = isLogisticsMaintenanceTicketsManager({
+    role: userRole,
+    department: userDepartment,
+  })
   const isAdmin = userRole === 'admin' || userRole === 'direccio'
   const isProductionWorker = userRole === 'treballador' && userDepartment === 'produccio'
   const isCommercial = userRole === 'comercial'
@@ -168,6 +177,12 @@ export default function MantenimentIndexPage() {
     }
     if (notification.type === 'maintenance_ticket_validated') {
       return { prefix: 'Validat', primary, secondary }
+    }
+    if (notification.type === 'maintenance_ticket_stale') {
+      return { prefix: 'Retard', primary, secondary }
+    }
+    if (notification.type === 'maintenance_ticket_external_stale') {
+      return { prefix: 'Proveidor', primary, secondary }
     }
     return { prefix: 'Nou ticket', primary, secondary }
   }
@@ -282,7 +297,7 @@ export default function MantenimentIndexPage() {
         ) : null}
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {(isAdmin || isMaintenanceCap) && (
+          {(isAdmin || isMaintenanceCap || isLogisticsTicketsManager) && (
             <Link
               href="/menu/manteniment/tickets"
               className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-amber-50 to-yellow-100"

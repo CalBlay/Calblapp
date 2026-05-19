@@ -46,6 +46,7 @@ type PlannerTicketLike = Partial<Ticket> & {
   priority?: TicketCard['priority']
   workflowStage?: string | null
   externalStatus?: TicketCard['externalStatus']
+  externalSentAt?: number | string | null
 }
 
 type TemplateApiItem = {
@@ -131,7 +132,8 @@ function mapExternalizedTickets(list: PlannerTicketLike[]) {
       const code = t.ticketCode || t.incidentNumber || 'TIC'
       const title = t.operatorTitle || t.description || t.machine || t.location || ''
       const minutes = Number(t.estimatedMinutes || 60)
-      const ageDays = getAgeDays(t.createdAt)
+      const followUpAt = t.externalSentAt || t.createdAt
+      const ageDays = getAgeDays(followUpAt)
       return {
         id: String(t.id || code),
         code,
