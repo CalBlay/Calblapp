@@ -6,7 +6,6 @@ import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
 import {
   buildTicketBody,
-  notifyMaintenanceManagers,
   notifyMaintenanceAssignees,
   notifyTicketCreator,
 } from '@/lib/maintenanceNotifications'
@@ -524,36 +523,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         payload: {
           type: 'maintenance_ticket_assigned',
           title: 'Ticket assignat',
-          body: buildTicketBody({
-            machine: effectiveMachine,
-            location: effectiveLocation,
-            description: effectiveDescription,
-          }),
-          ticketId: id,
-          ticketCode,
-          status: updates.status ? String(updates.status) : current.status || null,
-          priority: updates.priority ? String(updates.priority) : current.priority || null,
-          location: effectiveLocation,
-          machine: effectiveMachine,
-          source: current.source || null,
-        },
-        excludeIds: [user.id],
-      })
-    }
-
-    if (body.externalStatus === 'answered') {
-      const effectiveMachine =
-        body.machine !== undefined ? String(body.machine).trim() : (current.machine || '')
-      const effectiveLocation =
-        body.location !== undefined ? String(body.location).trim() : (current.location || '')
-      const effectiveDescription =
-        body.description !== undefined ? String(body.description).trim() : (current.description || '')
-      const ticketCode = current.ticketCode || current.incidentNumber || null
-
-      await notifyMaintenanceManagers({
-        payload: {
-          type: 'maintenance_ticket_supplier_reply',
-          title: 'Resposta de proveidor',
           body: buildTicketBody({
             machine: effectiveMachine,
             location: effectiveLocation,

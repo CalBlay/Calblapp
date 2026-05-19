@@ -67,7 +67,6 @@ const MAINTENANCE_NOTIFICATION_TYPES = new Set([
   'maintenance_ticket_new',
   'maintenance_ticket_assigned',
   'maintenance_ticket_validated',
-  'maintenance_ticket_supplier_reply',
 ])
 
 const buildWeekQuery = (value?: number | string | null) => {
@@ -169,9 +168,6 @@ export default function MantenimentIndexPage() {
     }
     if (notification.type === 'maintenance_ticket_validated') {
       return { prefix: 'Validat', primary, secondary }
-    }
-    if (notification.type === 'maintenance_ticket_supplier_reply') {
-      return { prefix: 'Resposta proveidor', primary, secondary }
     }
     return { prefix: 'Nou ticket', primary, secondary }
   }

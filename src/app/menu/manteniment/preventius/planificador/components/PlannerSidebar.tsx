@@ -15,7 +15,6 @@ type Props = {
   visibleItems: DueTemplate[] | TicketCard[]
   externalizedItems?: TicketCard[]
   scheduledItems: ScheduledItem[]
-  /** Etiquetes de columna del calendari (`dl. 06/04`, …), mateix ordre que `dayIndex`. */
   dayLabels?: string[]
   showScheduledInSidebar: boolean
   onShowScheduledInSidebarChange: (value: boolean) => void
@@ -104,9 +103,9 @@ export default function PlannerSidebar({
       onDragOver={
         desktop
           ? (e) => {
-            e.preventDefault()
-            e.dataTransfer.dropEffect = 'move'
-          }
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+            }
           : undefined
       }
       onDrop={
@@ -134,14 +133,15 @@ export default function PlannerSidebar({
             : `Mostrar planificats (${scheduledCountForTab})`}
         </button>
       ) : null}
+
       <div className={[listClass, desktop ? 'min-h-0 flex-1 overflow-y-auto pr-1' : ''].join(' ')}>
         {tab === 'preventius' && pendingPreventius.length === 0 ? (
           <p className="py-4 text-center text-xs leading-relaxed text-gray-500">
             {scheduledPreventiusOnCalendar.length > 0
               ? showScheduledInSidebar
-                ? 'Cap preventiu pendent per afegir; els que tens planificats (auto o manual) son a la llista de sota.'
-                : 'Cap preventiu pendent per afegir. Els planificats son al calendari; prem «Mostrar planificats» per veure la llista.'
-              : 'No hi ha preventius pendents de planificar en aquesta setmana (o ja estan al calendari).'}
+                ? 'Cap preventiu pendent per afegir; els que tens planificats son a la llista de sota.'
+                : 'Cap preventiu pendent per afegir. Els planificats son al calendari; prem "Mostrar planificats" per veure la llista.'
+              : 'No hi ha preventius pendents de planificar en aquesta setmana o ja estan al calendari.'}
           </p>
         ) : null}
 
@@ -150,8 +150,8 @@ export default function PlannerSidebar({
             {scheduledTicketsOnCalendar.length > 0
               ? showScheduledInSidebar
                 ? 'Cap ticket pendent per afegir; els planificats son a la llista de sota.'
-                : 'Cap ticket pendent per afegir. Els planificats son al calendari; prem «Mostrar planificats» per veure la llista.'
-              : 'No hi ha tickets pendents de planificar (o ja estan al calendari).'}
+                : 'Cap ticket pendent per afegir. Els planificats son al calendari; prem "Mostrar planificats" per veure la llista.'
+              : 'No hi ha tickets pendents de planificar o ja estan al calendari.'}
           </p>
         ) : null}
 
@@ -190,13 +190,13 @@ export default function PlannerSidebar({
                   }}
                 >
                   <div className="font-semibold text-gray-900 leading-snug">{item.name}</div>
-                  {item.location && <div className="text-[10px] text-gray-600">{item.location}</div>}
+                  {item.location ? <div className="text-[10px] text-gray-600">{item.location}</div> : null}
                   <div className="mt-1 flex items-center justify-between text-[10px] text-gray-600">
-                    <span>{item.periodicity || '—'}</span>
+                    <span>{item.periodicity || '-'}</span>
                     {item.dueState === 'overdue' ? (
-                      <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5">Atenció</span>
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">Atencio</span>
                     ) : (
-                      <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5">
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-700">
                         Aquesta setmana
                       </span>
                     )}
@@ -208,16 +208,14 @@ export default function PlannerSidebar({
             return (
               <div key={item.id} className="rounded-2xl border px-4 py-3">
                 <div className="text-sm font-semibold text-gray-900">{item.name}</div>
-                {item.location && <div className="mt-1 text-sm text-gray-500">{item.location}</div>}
+                {item.location ? <div className="mt-1 text-sm text-gray-500">{item.location}</div> : null}
                 <div className="mt-3 flex items-center justify-between gap-2">
                   <span
                     className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      item.dueState === 'overdue'
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-amber-100 text-amber-700'
+                      item.dueState === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
                     }`}
                   >
-                    {item.dueState === 'overdue' ? 'Atenció' : 'Aquesta setmana'}
+                    {item.dueState === 'overdue' ? 'Atencio' : 'Aquesta setmana'}
                   </span>
                   <button
                     type="button"
@@ -278,12 +276,12 @@ export default function PlannerSidebar({
                     )
                   }}
                 >
-                  <div className="font-semibold text-gray-900 leading-snug">
+                  <div className="font-semibold leading-snug text-gray-900">
                     {item.code} · {item.title}
                   </div>
                   {(item.location || item.createdAt) && (
-                    <div className="mt-1 text-[10px] text-gray-600 leading-snug">
-                      {item.location ? `Ubicació: ${item.location}` : ''}
+                    <div className="mt-1 text-[10px] leading-snug text-gray-600">
+                      {item.location ? `Ubicacio: ${item.location}` : ''}
                       {item.location && item.createdAt ? ' · ' : ''}
                       {item.createdAt ? `Creat: ${formatTicketCreatedAt(item.createdAt)}` : ''}
                     </div>
@@ -308,16 +306,14 @@ export default function PlannerSidebar({
                 </div>
                 {(item.location || item.createdAt) && (
                   <div className="mt-1 text-sm text-gray-500">
-                    {item.location ? `Ubicació: ${item.location}` : ''}
+                    {item.location ? `Ubicacio: ${item.location}` : ''}
                     {item.location && item.createdAt ? ' · ' : ''}
                     {item.createdAt ? `Creat: ${formatTicketCreatedAt(item.createdAt)}` : ''}
                   </div>
                 )}
                 <div className="mt-3 flex items-center justify-between gap-2">
                   <div className="flex flex-wrap gap-2">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${getAgeBadgeClass(item.ageBucket)}`}
-                    >
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getAgeBadgeClass(item.ageBucket)}`}>
                       {getAgeLabel(item.ageDays)}
                     </span>
                     <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
@@ -353,40 +349,50 @@ export default function PlannerSidebar({
               Externalitzats
             </div>
             {externalizedTickets.map((item) => (
-              <div
+              <button
                 key={`external-${item.id}`}
-                className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-900"
+                type="button"
+                onClick={() =>
+                  onOpenPendingItem({
+                    kind: 'ticket',
+                    id: item.id,
+                    title: `${item.code} - ${item.title}`.trim(),
+                    minutes: item.minutes,
+                    priority: item.priority,
+                    location: item.location || '',
+                    machine: item.machine || '',
+                    createdAt: item.createdAt || null,
+                  })
+                }
+                className="w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-left text-xs text-violet-900 transition hover:bg-violet-100"
               >
-                <div className="font-semibold leading-snug">{item.code} - {item.title}</div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-semibold leading-snug">{item.code} - {item.title}</div>
+                  <span className="rounded-full border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
+                    Obrir
+                  </span>
+                </div>
                 <div className="mt-1 text-[11px] text-violet-800">
                   {item.location || '-'}{item.machine ? ` · ${item.machine}` : ''}
                 </div>
                 <div className="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
-                  {item.externalStatus === 'answered'
-                    ? 'Resposta rebuda'
-                    : item.externalStatus === 'closed'
-                      ? 'Tancat'
-                      : item.externalStatus === 'resent'
-                        ? 'Reenviat'
-                        : 'Enviat'}
+                  {item.externalStatus === 'closed'
+                    ? 'Tancat'
+                    : item.externalStatus === 'resent'
+                      ? 'Reenviat'
+                      : 'Enviat'}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         ) : null}
 
         {tab === 'preventius' && showScheduledInSidebar && scheduledPreventiusOnCalendar.length > 0 ? (
           <div className={desktop ? 'mt-3 border-t border-slate-200 pt-3' : 'mt-6 border-t border-slate-200 pt-4'}>
-            <div
-              className={
-                desktop ? 'text-[11px] font-semibold text-slate-700' : 'text-xs font-semibold text-slate-700'
-              }
-            >
+            <div className={desktop ? 'text-[11px] font-semibold text-slate-700' : 'text-xs font-semibold text-slate-700'}>
               Al calendari (aquesta setmana)
             </div>
-            <p
-              className={`mt-1 text-slate-500 ${desktop ? 'text-[10px] leading-snug' : 'text-[11px] leading-snug'}`}
-            >
+            <p className={`mt-1 text-slate-500 ${desktop ? 'text-[10px] leading-snug' : 'text-[11px] leading-snug'}`}>
               Inclou planificacio automatica i manual. Per desplanificar, arrossega la fitxa del calendari cap aqui.
             </p>
             <div className={desktop ? 'mt-2 space-y-1.5' : 'mt-3 space-y-2'}>
@@ -399,7 +405,7 @@ export default function PlannerSidebar({
                 >
                   <div className="font-semibold leading-snug">{s.title}</div>
                   <div className="mt-0.5 text-slate-600">
-                    {dayLabelForItem(s.dayIndex, dayLabels)} · {s.start}–{s.end}
+                    {dayLabelForItem(s.dayIndex, dayLabels)} · {s.start}-{s.end}
                     {s.location ? ` · ${s.location}` : ''}
                   </div>
                 </div>
@@ -410,16 +416,10 @@ export default function PlannerSidebar({
 
         {tab === 'tickets' && showScheduledInSidebar && scheduledTicketsOnCalendar.length > 0 ? (
           <div className={desktop ? 'mt-3 border-t border-slate-200 pt-3' : 'mt-6 border-t border-slate-200 pt-4'}>
-            <div
-              className={
-                desktop ? 'text-[11px] font-semibold text-slate-700' : 'text-xs font-semibold text-slate-700'
-              }
-            >
+            <div className={desktop ? 'text-[11px] font-semibold text-slate-700' : 'text-xs font-semibold text-slate-700'}>
               Al calendari (aquesta setmana)
             </div>
-            <p
-              className={`mt-1 text-slate-500 ${desktop ? 'text-[10px] leading-snug' : 'text-[11px] leading-snug'}`}
-            >
+            <p className={`mt-1 text-slate-500 ${desktop ? 'text-[10px] leading-snug' : 'text-[11px] leading-snug'}`}>
               Per desplanificar, arrossega la fitxa del calendari cap aqui.
             </p>
             <div className={desktop ? 'mt-2 space-y-1.5' : 'mt-3 space-y-2'}>
@@ -432,7 +432,7 @@ export default function PlannerSidebar({
                 >
                   <div className="font-semibold leading-snug">{s.title}</div>
                   <div className="mt-0.5 text-slate-600">
-                    {dayLabelForItem(s.dayIndex, dayLabels)} · {s.start}–{s.end}
+                    {dayLabelForItem(s.dayIndex, dayLabels)} · {s.start}-{s.end}
                     {s.location ? ` · ${s.location}` : ''}
                   </div>
                 </div>
@@ -441,6 +441,7 @@ export default function PlannerSidebar({
           </div>
         ) : null}
       </div>
+
       {desktop && (
         <div className="mt-3 shrink-0 text-[11px] text-gray-500">
           Arrossega cards al calendari i edita hora inici/fi i operari.
