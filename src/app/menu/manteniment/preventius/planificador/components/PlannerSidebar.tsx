@@ -13,6 +13,7 @@ function dayLabelForItem(dayIndex: number, dayLabels?: string[]) {
 type Props = {
   tab: 'preventius' | 'tickets'
   visibleItems: DueTemplate[] | TicketCard[]
+  externalizedItems?: TicketCard[]
   scheduledItems: ScheduledItem[]
   /** Etiquetes de columna del calendari (`dl. 06/04`, …), mateix ordre que `dayIndex`. */
   dayLabels?: string[]
@@ -46,6 +47,7 @@ type Props = {
 export default function PlannerSidebar({
   tab,
   visibleItems,
+  externalizedItems = [],
   scheduledItems,
   dayLabels,
   showScheduledInSidebar,
@@ -63,6 +65,11 @@ export default function PlannerSidebar({
     if (tab !== 'tickets') return []
     return visibleItems as TicketCard[]
   }, [tab, visibleItems])
+
+  const externalizedTickets = useMemo(() => {
+    if (tab !== 'tickets') return []
+    return externalizedItems
+  }, [externalizedItems, tab])
 
   const scheduledPreventiusOnCalendar = useMemo(() => {
     if (tab !== 'preventius') return []
@@ -339,6 +346,34 @@ export default function PlannerSidebar({
               </div>
             )
           })}
+
+        {tab === 'tickets' && externalizedTickets.length > 0 ? (
+          <div className="space-y-2 border-t border-slate-200 pt-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Externalitzats
+            </div>
+            {externalizedTickets.map((item) => (
+              <div
+                key={`external-${item.id}`}
+                className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-900"
+              >
+                <div className="font-semibold leading-snug">{item.code} - {item.title}</div>
+                <div className="mt-1 text-[11px] text-violet-800">
+                  {item.location || '-'}{item.machine ? ` · ${item.machine}` : ''}
+                </div>
+                <div className="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
+                  {item.externalStatus === 'answered'
+                    ? 'Resposta rebuda'
+                    : item.externalStatus === 'closed'
+                      ? 'Tancat'
+                      : item.externalStatus === 'resent'
+                        ? 'Reenviat'
+                        : 'Enviat'}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {tab === 'preventius' && showScheduledInSidebar && scheduledPreventiusOnCalendar.length > 0 ? (
           <div className={desktop ? 'mt-3 border-t border-slate-200 pt-3' : 'mt-6 border-t border-slate-200 pt-4'}>

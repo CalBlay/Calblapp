@@ -94,6 +94,7 @@ export function useMaintenanceTicketComposer({ refreshTickets }: Params) {
           priority: createPriority,
           ticketType: 'maquinaria',
           source: 'manual',
+          intakeChannel: 'manual_tickets',
           imageUrl: image.url,
           imagePath: image.path,
           imageMeta: image.meta,

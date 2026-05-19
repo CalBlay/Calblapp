@@ -16,7 +16,10 @@ type TicketSection = {
 type Props = {
   groupedTickets: TicketSection[]
   onSelect: (ticket: Ticket) => void
-  onOpenTicket: (ticket: Ticket) => void
+  onResolve: (ticket: Ticket) => void
+  onPlanify: (ticket: Ticket) => void
+  canResolveDirectly: (ticket: Ticket) => boolean
+  canPlanifyDirectly: (ticket: Ticket) => boolean
   onDelete: (ticket: Ticket) => void
   canDelete: (ticket: Ticket) => boolean
   formatDateTime: (value?: number | string | null) => string
@@ -102,7 +105,10 @@ const getPlanningActionLabel = (action: PlanningHistoryEntry['action']) => {
 export default function TicketsList({
   groupedTickets,
   onSelect,
-  onOpenTicket,
+  onResolve,
+  onPlanify,
+  canResolveDirectly,
+  canPlanifyDirectly,
   onDelete,
   canDelete,
   formatDateTime,
@@ -231,7 +237,25 @@ export default function TicketsList({
                         ) : null}
                       </div>
 
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        {canResolveDirectly(ticket) ? (
+                          <button
+                            type="button"
+                            onClick={() => onResolve(ticket)}
+                            className="rounded-full border border-emerald-300 bg-white/85 px-3 py-2 text-xs font-semibold text-emerald-700 shadow-sm hover:bg-white"
+                          >
+                            Resoldre
+                          </button>
+                        ) : null}
+                        {canPlanifyDirectly(ticket) ? (
+                          <button
+                            type="button"
+                            onClick={() => onPlanify(ticket)}
+                            className="rounded-full border border-sky-300 bg-white/85 px-3 py-2 text-xs font-semibold text-sky-700 shadow-sm hover:bg-white"
+                          >
+                            Planificar
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => setExpandedId((prev) => (prev === ticket.id ? null : ticket.id))}
@@ -402,13 +426,6 @@ export default function TicketsList({
                                   Obrir xat OPS
                                 </Link>
                               ) : null}
-                              <button
-                                type="button"
-                                onClick={() => onOpenTicket(ticket)}
-                                className="rounded-full border border-slate-200 bg-white/85 px-3 py-1.5 text-sm font-medium text-slate-700"
-                              >
-                                Obrir ticket
-                              </button>
                               {canDelete(ticket) ? (
                                 <button
                                   onClick={(e) => {

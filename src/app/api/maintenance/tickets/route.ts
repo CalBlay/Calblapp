@@ -29,7 +29,15 @@ type TicketPayload = {
   imageUrl?: string | null
   imagePath?: string | null
   imageMeta?: { size?: number; type?: string } | null
-  source?: 'manual' | 'incidencia' | 'whatsblapp'
+  source?: 'manual' | 'incidencia' | 'whatsblapp' | 'manual_cuina_central'
+  intakeChannel?:
+    | 'restaurant'
+    | 'finca'
+    | 'incidencia'
+    | 'ops'
+    | 'manual_tickets'
+    | 'manual_cuina_central'
+    | 'other'
   status?: string
   incidentNumber?: string
   plannedStart?: number | null
@@ -64,8 +72,37 @@ const normalizeStatus = (value?: string) => {
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut' || v === 'validat') return 'validat'
+  if (v === 'resolut') return 'resolut'
+  if (v === 'validat') return 'validat'
   return 'nou'
+}
+
+const normalizeIntakeChannel = (value?: string, source?: string) => {
+  const v = (value || '').trim().toLowerCase()
+  if (v === 'restaurant') return 'restaurant'
+  if (v === 'finca') return 'finca'
+  if (v === 'incidencia') return 'incidencia'
+  if (v === 'ops') return 'ops'
+  if (v === 'manual_cuina_central') return 'manual_cuina_central'
+  if (v === 'manual_tickets') return 'manual_tickets'
+  if (v === 'other') return 'other'
+  if (source === 'incidencia') return 'incidencia'
+  if (source === 'manual_cuina_central') return 'manual_cuina_central'
+  return 'manual_tickets'
+}
+
+const getInitialWorkflowStage = (params: {
+  source?: string
+  intakeChannel?: string
+  assigned?: boolean
+  externalized?: boolean
+}) => {
+  if (params.externalized) return 'externalized'
+  if (params.assigned) return 'planned_internal'
+  if (params.source === 'manual_cuina_central' || params.intakeChannel === 'manual_cuina_central') {
+    return 'planner_queue'
+  }
+  return 'tickets_inbox'
 }
 
 const normalizeName = (value?: string) =>
@@ -357,6 +394,7 @@ export async function POST(req: Request) {
         : 'maquinaria'
 
     const isWhatsBlapp = body.source === 'whatsblapp'
+    const intakeChannel = normalizeIntakeChannel(body.intakeChannel, body.source)
 
     if (!location || !description || (!isWhatsBlapp && !machine)) {
       return NextResponse.json({ error: 'Falten camps obligatoris' }, { status: 400 })
@@ -365,6 +403,13 @@ export async function POST(req: Request) {
     const now = Date.now()
     const incidentNumber = (body.incidentNumber || '').trim()
     const ticketCode = incidentNumber || (await generateTicketCode())
+    const workflowStage = getInitialWorkflowStage({
+      source: body.source,
+      intakeChannel,
+      assigned: Boolean(body.plannedStart && body.plannedEnd),
+      externalized: false,
+    })
+
     const doc = await db.collection('maintenanceTickets').add({
       ticketCode,
       incidentNumber: incidentNumber || null,
@@ -388,6 +433,8 @@ export async function POST(req: Request) {
       estimatedMinutes: body.estimatedMinutes || null,
       ticketType,
       source: body.source || 'manual',
+      intakeChannel,
+      workflowStage,
       imageUrl: body.imageUrl || null,
       imagePath: body.imagePath || null,
       imageMeta: body.imageMeta || null,
@@ -403,6 +450,12 @@ export async function POST(req: Request) {
       externalSentAt: null,
       externalSentById: null,
       externalSentByName: null,
+      resolutionCategory: null,
+      resolutionNote: null,
+      resolvedByArea: null,
+      resolvedAt: null,
+      resolvedById: null,
+      resolvedByName: null,
       externalizationHistory: [],
       statusHistory: [
         {

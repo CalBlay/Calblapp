@@ -65,7 +65,7 @@ const STATUS_LABELS = {
   espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
-  resolut: 'Validat',
+  resolut: 'Resolt',
   validat: 'Validat',
 } as const
 
@@ -442,6 +442,30 @@ export default function PlannerTicketModal({
     }
   }
 
+  const handleDirectResolution = async (
+    ticket: Ticket,
+    payload: { area: 'administracio' | 'manteniment'; category: string; note: string }
+  ) => {
+    try {
+      const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflowStage: 'resolved_planner',
+          resolvedByArea: 'manteniment',
+          resolutionCategory: payload.category.trim() || null,
+          resolutionNote: payload.note.trim() || null,
+          statusNote: payload.note.trim() || 'Resolt des del planificador',
+        }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await onRefresh()
+      onClose()
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'No s ha pogut resoldre el ticket')
+    }
+  }
+
   if (!selected) return null
 
   return (
@@ -488,6 +512,9 @@ export default function PlannerTicketModal({
       onAssignVehicle={handleAssignVehicle}
       onReopen={handleReopen}
       onExternalize={handleExternalize}
+      canResolveInCurrentModule
+      resolveArea="manteniment"
+      onResolveTicket={handleDirectResolution}
       destructiveAction={destructiveAction}
       onClose={onClose}
     />

@@ -18,6 +18,7 @@ import AssignTicketModalHeader from './assign-ticket-modal/AssignTicketModalHead
 import AssignTicketSummary from './assign-ticket-modal/AssignTicketSummary'
 import AssignTicketContextSection from './assign-ticket-modal/AssignTicketContextSection'
 import AssignTicketPlanningSection from './assign-ticket-modal/AssignTicketPlanningSection'
+import ResolveTicketModal from './ResolveTicketModal'
 import {
   buildEventMeta,
   buildSupplierMessage,
@@ -102,6 +103,17 @@ type Props = {
       }>
     }
   ) => Promise<void>
+  canResolveInCurrentModule?: boolean
+  resolveArea?: 'administracio' | 'manteniment'
+  onResolveTicket?: (
+    ticket: Ticket,
+    payload: {
+      area: 'administracio' | 'manteniment'
+      category: string
+      note: string
+    }
+  ) => void | Promise<void>
+  onSendToPlanner?: (ticket: Ticket) => void | Promise<void>
   destructiveAction?: {
     label: string
     title?: string
@@ -154,11 +166,15 @@ export default function AssignTicketModal({
   onAssignVehicle,
   onReopen,
   onExternalize,
+  canResolveInCurrentModule = false,
+  resolveArea = 'administracio',
+  onResolveTicket,
+  onSendToPlanner,
   destructiveAction,
   onClose,
 }: Props) {
   const isDeco = ticket.ticketType === 'deco'
-  const isValidated = ticket.status === 'validat' || ticket.status === 'resolut'
+  const isValidated = ticket.status === 'validat'
   const isPlanningStage = ticket.status === 'nou' || ticket.status === 'no_fet'
   const isAssignedStage = ticket.status === 'assignat'
   const machineLabel = isDeco ? 'Material' : 'Maquinaria'
@@ -173,6 +189,12 @@ export default function AssignTicketModal({
   const isExternallyManaged = Boolean(ticket.externalized || ticket.supplierEmail || ticket.supplierName)
   const providerBlockedByInternal = hasInternalAssignees && !isExternallyManaged
   const planningBlockedByProvider = isExternallyManaged
+  const workflowStage = String(ticket.workflowStage || 'tickets_inbox').trim()
+  const canSendCurrentToPlanner =
+    Boolean(onSendToPlanner) &&
+    !isValidated &&
+    !isExternallyManaged &&
+    (workflowStage === 'tickets_inbox' || workflowStage === '')
   const headerTitle = String(ticket.operatorTitle || ticket.description || ticket.machine || ticket.location || 'Ticket').trim()
   const originLocation = String(ticket.sourceEventLocation || ticket.location || detailsLocation || '').trim()
   const headerMeta = [ticket.ticketCode || ticket.incidentNumber || 'TIC', originLocation]
@@ -225,6 +247,8 @@ export default function AssignTicketModal({
   const [selectedVehicleType, setSelectedVehicleType] = useState<string>(
     String(ticket.vehicleType || '').trim()
   )
+  const [resolveOpen, setResolveOpen] = useState(false)
+  const [resolveBusy, setResolveBusy] = useState(false)
 
   const planningWindow = useMemo(() => {
     if (!assignDate || !assignStartTime || !assignDuration) return null
@@ -472,6 +496,7 @@ export default function AssignTicketModal({
   }
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:p-4">
       <div className="w-full max-w-3xl rounded-t-3xl bg-white shadow-2xl md:rounded-3xl">
         <AssignTicketModalHeader
@@ -537,7 +562,7 @@ export default function AssignTicketModal({
             ) : null}
           </section>
 
-          {(ticket.externalized || ticket.status === 'fet') && (
+          {(ticket.externalized || ticket.status === 'fet' || ticket.status === 'resolut') && (
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-wrap items-center gap-2">
                 {ticket.externalized ? (
@@ -580,7 +605,7 @@ export default function AssignTicketModal({
                 </div>
               ) : null}
 
-              {ticket.status === 'fet' && canValidate ? (
+              {(ticket.status === 'fet' || ticket.status === 'resolut') && canValidate ? (
                 <div className="flex flex-wrap items-center gap-3">
                   {ticket.externalized ? (
                     <div className="text-sm text-slate-600">
@@ -1062,6 +1087,26 @@ export default function AssignTicketModal({
             <div />
           )}
           <div className="flex items-center gap-2">
+            {canResolveInCurrentModule && onResolveTicket ? (
+              <button
+                type="button"
+                onClick={() => setResolveOpen(true)}
+                disabled={assignBusy || isValidated}
+                className="min-h-[48px] rounded-full border border-emerald-300 px-5 text-sm font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Resoldre
+              </button>
+            ) : null}
+            {canSendCurrentToPlanner ? (
+              <button
+                type="button"
+                onClick={() => void onSendToPlanner?.(ticket)}
+                disabled={assignBusy || isValidated}
+                className="min-h-[48px] rounded-full border border-sky-300 px-5 text-sm font-semibold text-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Enviar al planificador
+              </button>
+            ) : null}
             {isValidated && canReopen ? (
               <button
                 type="button"
@@ -1084,5 +1129,27 @@ export default function AssignTicketModal({
         </div>
       </div>
     </div>
+    {resolveOpen && onResolveTicket ? (
+      <ResolveTicketModal
+        ticket={ticket}
+        busy={resolveBusy}
+        onClose={() => setResolveOpen(false)}
+        onSubmit={async ({ category, note }) => {
+          try {
+            setResolveBusy(true)
+            await onResolveTicket(ticket, {
+              area: resolveArea,
+              category,
+              note,
+            })
+            setResolveOpen(false)
+            onClose()
+          } finally {
+            setResolveBusy(false)
+          }
+        }}
+      />
+    ) : null}
+    </>
   )
 }

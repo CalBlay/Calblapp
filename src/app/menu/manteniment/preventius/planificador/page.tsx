@@ -30,6 +30,52 @@ const HEADER_HEIGHT = 32
 const TIME_COL_WIDTH = 80
 const DAY_COUNT = 6
 
+const TICKET_STATUS_FILTER_STYLES: Record<
+  'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat',
+  { active: string; dot: string; label: string }
+> = {
+  all: {
+    active: 'bg-slate-900 text-white border-slate-900',
+    dot: 'bg-slate-400',
+    label: 'Tots els estats',
+  },
+  nou: {
+    active: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    dot: 'bg-emerald-500',
+    label: 'Nou',
+  },
+  assignat: {
+    active: 'bg-sky-100 text-sky-800 border-sky-200',
+    dot: 'bg-sky-500',
+    label: 'Assignat',
+  },
+  en_curs: {
+    active: 'bg-amber-100 text-amber-800 border-amber-200',
+    dot: 'bg-amber-500',
+    label: 'En curs',
+  },
+  espera: {
+    active: 'bg-slate-200 text-slate-800 border-slate-300',
+    dot: 'bg-slate-500',
+    label: 'Espera',
+  },
+  fet: {
+    active: 'bg-green-100 text-green-800 border-green-200',
+    dot: 'bg-green-500',
+    label: 'Fet',
+  },
+  no_fet: {
+    active: 'bg-rose-100 text-rose-800 border-rose-200',
+    dot: 'bg-rose-500',
+    label: 'No fet',
+  },
+  validat: {
+    active: 'bg-violet-100 text-violet-800 border-violet-200',
+    dot: 'bg-violet-500',
+    label: 'Validat',
+  },
+}
+
 function normalizePlannerTicketStatus(value?: string | null) {
   const v = String(value || '')
     .trim()
@@ -39,7 +85,8 @@ function normalizePlannerTicketStatus(value?: string | null) {
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut' || v === 'validat') return 'validat'
+  if (v === 'resolut') return 'resolut'
+  if (v === 'validat') return 'validat'
   return 'nou'
 }
 
@@ -58,6 +105,9 @@ export default function PreventiusPlanificadorPage() {
   const [preventiusFilter, setPreventiusFilter] = useState<'all' | 'due' | 'overdue'>('all')
   const [ticketsAgeFilter, setTicketsAgeFilter] = useState<
     'all' | 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus'
+  >('all')
+  const [ticketsStatusFilter, setTicketsStatusFilter] = useState<
+    'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat'
   >('all')
   const [showLegend, setShowLegend] = useState(false)
   const [showScheduledInSidebar, setShowScheduledInSidebar] = useState(false)
@@ -83,6 +133,7 @@ export default function PreventiusPlanificadorPage() {
     machines,
     users,
     ticketById,
+    externalizedTickets,
     scheduledItems,
     setScheduledItems,
     visibleItems,
@@ -119,13 +170,21 @@ export default function PreventiusPlanificadorPage() {
     return scheduledItems.filter((item) => item.kind === plannerViewFilter.slice(0, -1))
   }, [plannerViewFilter, scheduledItems])
 
+  const ticketStatusFilteredScheduledItems = useMemo(() => {
+    if (plannerViewFilter !== 'tickets' || ticketsStatusFilter === 'all') return kindFilteredScheduledItems
+    return kindFilteredScheduledItems.filter((item) => {
+      if (item.kind !== 'ticket') return true
+      return normalizePlannerTicketStatus(item.status) === ticketsStatusFilter
+    })
+  }, [kindFilteredScheduledItems, plannerViewFilter, ticketsStatusFilter])
+
   const filteredScheduledItems = useMemo(() => {
-    if (!selectedWorker || selectedWorker === '__all__') return kindFilteredScheduledItems
+    if (!selectedWorker || selectedWorker === '__all__') return ticketStatusFilteredScheduledItems
     const normalizedSelected = normalizeName(selectedWorker)
-    return kindFilteredScheduledItems.filter((item) =>
+    return ticketStatusFilteredScheduledItems.filter((item) =>
       item.workers.some((worker) => normalizeName(worker) === normalizedSelected)
     )
-  }, [kindFilteredScheduledItems, selectedWorker])
+  }, [selectedWorker, ticketStatusFilteredScheduledItems])
 
   const scheduledItemsByDay = useMemo(() => {
     const grouped = new Map<number, ScheduledItem[]>()
@@ -498,6 +557,7 @@ export default function PreventiusPlanificadorPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         status: nextStatus,
+        workflowStage: 'planner_queue',
         plannedStart: null,
         plannedEnd: null,
         estimatedMinutes: null,
@@ -808,6 +868,28 @@ export default function PreventiusPlanificadorPage() {
               </>
             )}
             <div className="ml-auto flex items-center gap-2">
+              {plannerViewFilter === 'tickets' && (
+                <>
+                  <div className="mr-1 h-6 w-px bg-slate-200" />
+                  {(['nou', 'assignat', 'en_curs', 'espera', 'fet', 'no_fet', 'validat'] as const).map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setTicketsStatusFilter(status)}
+                      className={[
+                        'rounded-full px-3 py-2 text-xs font-semibold border inline-flex items-center gap-2',
+                        ticketsStatusFilter === status
+                          ? TICKET_STATUS_FILTER_STYLES[status].active
+                          : 'bg-white text-gray-700 border-gray-200',
+                      ].join(' ')}
+                      title={`Mostrar tickets en estat ${TICKET_STATUS_FILTER_STYLES[status].label}`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${TICKET_STATUS_FILTER_STYLES[status].dot}`} />
+                      {TICKET_STATUS_FILTER_STYLES[status].label}
+                    </button>
+                  ))}
+                </>
+              )}
               <div className="text-xs font-semibold text-gray-500">Calendari</div>
               <button
                 type="button"
@@ -918,6 +1000,7 @@ export default function PreventiusPlanificadorPage() {
               <PlannerSidebar
                 tab={tab}
                 visibleItems={visibleItems}
+                externalizedItems={externalizedTickets}
                 scheduledItems={scheduledItems}
                 dayLabels={daySidebarLabels}
                 showScheduledInSidebar={showScheduledInSidebar}

@@ -20,6 +20,7 @@ import type { Ticket, TicketPriority, TicketStatus } from './types'
 import TicketsList from './components/TicketsList'
 import CreateTicketModal from './components/CreateTicketModal'
 import AssignTicketModal from './components/AssignTicketModal'
+import ResolveTicketModal from './components/ResolveTicketModal'
 
 type SessionUser = {
   id?: string
@@ -42,7 +43,7 @@ const STATUS_LABELS: Record<TicketStatus, string> = {
   espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
-  resolut: 'Validat',
+  resolut: 'Resolt',
   validat: 'Validat',
 }
 
@@ -61,8 +62,6 @@ const DATE_MODE_LABELS: Record<'all' | 'planned' | 'created' | 'updated' | 'comp
   completed: 'Data tancament',
 }
 
-const EXECUTION_STATUSES = new Set<TicketStatus>(['en_curs', 'espera', 'fet', 'validat'])
-
 const statusBadgeClasses: Record<TicketStatus, string> = {
   nou: 'bg-emerald-100 text-emerald-800',
   assignat: 'bg-blue-100 text-blue-800',
@@ -70,7 +69,7 @@ const statusBadgeClasses: Record<TicketStatus, string> = {
   espera: 'bg-slate-100 text-slate-700',
   fet: 'bg-green-100 text-green-800',
   no_fet: 'bg-rose-100 text-rose-700',
-  resolut: 'bg-purple-100 text-purple-800',
+  resolut: 'bg-teal-100 text-teal-800',
   validat: 'bg-purple-100 text-purple-800',
 }
 
@@ -116,6 +115,8 @@ export default function MaintenanceTicketsPage() {
 
   const formatDateTime = (value?: number | string | null) => formatDateTimeValue(value, '')
   const [dateResetSignal, setDateResetSignal] = useState(0)
+  const [resolveTicket, setResolveTicket] = useState<Ticket | null>(null)
+  const [resolveBusy, setResolveBusy] = useState(false)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -195,6 +196,8 @@ export default function MaintenanceTicketsPage() {
     handleAssignVehicle,
     handleUpdateDetails,
     handleExternalize,
+    handleSendToPlanner,
+    handleDirectResolution,
     handleDelete,
     fetchMoreTickets,
     groupedTickets,
@@ -232,6 +235,7 @@ export default function MaintenanceTicketsPage() {
             <option value="espera">{STATUS_LABELS.espera}</option>
             <option value="fet">{STATUS_LABELS.fet}</option>
             <option value="no_fet">{STATUS_LABELS.no_fet}</option>
+            <option value="resolut">{STATUS_LABELS.resolut}</option>
             {canValidate ? <option value="validat">{STATUS_LABELS.validat}</option> : null}
           </select>
         </label>
@@ -293,16 +297,14 @@ export default function MaintenanceTicketsPage() {
     ? STATUS_LABELS
     : {
         ...STATUS_LABELS,
-        resolut: 'Fet',
-        validat: 'Fet',
+        validat: 'Validat',
       }
 
   const displayStatusBadgeClasses: Record<TicketStatus, string> = canValidate
     ? statusBadgeClasses
     : {
         ...statusBadgeClasses,
-        resolut: statusBadgeClasses.fet,
-        validat: statusBadgeClasses.fet,
+        validat: statusBadgeClasses.validat,
       }
 
   const queryTicketId = (searchParams?.get('ticketId') || '').trim()
@@ -359,22 +361,24 @@ export default function MaintenanceTicketsPage() {
     }
   }, [loading, queryTicketId, selected?.id, setSelected, tickets])
 
-  const handleOpenTicket = useCallback(
-    (ticket: Ticket) => {
-      if (!canManageAllTickets) return
+  const canResolveDirectly = useCallback(
+    (ticket: Ticket) =>
+      canManageAllTickets &&
+      !ticket.externalized &&
+      (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
+      ticket.status !== 'validat' &&
+      ticket.status !== 'resolut',
+    [canManageAllTickets]
+  )
 
-      markTicketSeen(ticket.id, 'maquinaria')
-
-      if (EXECUTION_STATUSES.has(ticket.status)) {
-        const url = `/menu/manteniment/preventius/fulls?ticketId=${encodeURIComponent(ticket.id)}`
-        const win = window.open(url, '_blank', 'noopener')
-        if (win) win.opener = null
-        return
-      }
-
-      setSelected(ticket)
-    },
-    [canManageAllTickets, setSelected]
+  const canPlanifyDirectly = useCallback(
+    (ticket: Ticket) =>
+      canManageAllTickets &&
+      !ticket.externalized &&
+      (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
+      ticket.status !== 'validat' &&
+      ticket.status !== 'resolut',
+    [canManageAllTickets]
   )
 
   if (!hasAccess && status !== 'loading') return null
@@ -512,7 +516,18 @@ export default function MaintenanceTicketsPage() {
             markTicketSeen(ticket.id, 'maquinaria')
             setSelected(ticket)
           }}
-          onOpenTicket={handleOpenTicket}
+          onResolve={(ticket) => {
+            if (!canResolveDirectly(ticket)) return
+            markTicketSeen(ticket.id, 'maquinaria')
+            setResolveTicket(ticket)
+          }}
+          onPlanify={(ticket) => {
+            if (!canPlanifyDirectly(ticket)) return
+            markTicketSeen(ticket.id, 'maquinaria')
+            void handleSendToPlanner(ticket)
+          }}
+          canResolveDirectly={canResolveDirectly}
+          canPlanifyDirectly={canPlanifyDirectly}
           onDelete={handleDelete}
           canDelete={(ticket) =>
             ticket.createdById === userId ||
@@ -614,7 +629,32 @@ export default function MaintenanceTicketsPage() {
             onAssignVehicle={handleAssignVehicle}
             onReopen={handleReopen}
             onExternalize={handleExternalize}
+            canResolveInCurrentModule={(selected.workflowStage || 'tickets_inbox') === 'tickets_inbox'}
+            resolveArea="administracio"
+            onResolveTicket={handleDirectResolution}
+            onSendToPlanner={handleSendToPlanner}
             onClose={closeSelectedTicket}
+          />
+        )}
+
+        {resolveTicket && (
+          <ResolveTicketModal
+            ticket={resolveTicket}
+            busy={resolveBusy}
+            onClose={() => setResolveTicket(null)}
+            onSubmit={async ({ category, note }) => {
+              try {
+                setResolveBusy(true)
+                await handleDirectResolution(resolveTicket, {
+                  area: 'administracio',
+                  category,
+                  note,
+                })
+                setResolveTicket(null)
+              } finally {
+                setResolveBusy(false)
+              }
+            }}
           />
         )}
       </div>

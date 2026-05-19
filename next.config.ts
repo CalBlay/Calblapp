@@ -11,6 +11,18 @@ const nextConfig: NextConfig = {
     // 🚀 Permet continuar el build encara que hi hagi errors de tipus
     ignoreBuildErrors: true,
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'storage.googleapis.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'cal-blay-webapp.firebasestorage.app',
+      },
+    ],
+  },
   webpack(config) {
     config.resolve.fallback = {
       ...config.resolve.fallback,

@@ -64,7 +64,8 @@ const normalizeStatus = (value?: string) => {
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut' || v === 'validat') return 'validat'
+  if (v === 'resolut') return 'resolut'
+  if (v === 'validat') return 'validat'
   return 'nou'
 }
 
@@ -206,6 +207,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       updatedById: user.id,
       updatedByName: user.name || '',
       externalized: true,
+      workflowStage: 'externalized',
       supplierName,
       supplierEmail,
       externalReference: externalReference || null,

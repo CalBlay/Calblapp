@@ -22,6 +22,8 @@ export type TicketCard = {
   priority: 'urgent' | 'alta' | 'normal' | 'baixa'
   minutes: number
   status?: string
+  workflowStage?: string | null
+  externalStatus?: 'sent' | 'resent' | 'answered' | 'closed' | null
   createdAt?: string | number | null
   ageDays: number
   ageBucket: 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus'
@@ -46,6 +48,7 @@ export type ScheduledItem = {
   templateId?: string | null
   ticketId?: string | null
   status?: string
+  workflowStage?: string | null
   progress?: number
 }
 

@@ -527,6 +527,66 @@ export function useMaintenanceTickets() {
     }
   }
 
+  const handleSendToPlanner = async (ticket: Ticket) => {
+    try {
+      const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflowStage: 'planner_queue',
+          statusNote: 'Derivat al planificador des del modul de tickets',
+        }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await fetchTickets()
+      setSelected((prev) => (prev ? { ...prev, workflowStage: 'planner_queue' } : prev))
+    } catch (err: unknown) {
+      const error = err as ErrorWithMessage
+      alert(error?.message || 'No s ha pogut enviar al planificador')
+    }
+  }
+
+  const handleDirectResolution = async (
+    ticket: Ticket,
+    payload: {
+      area: 'administracio' | 'manteniment'
+      category: string
+      note: string
+    }
+  ) => {
+    try {
+      const workflowStage = payload.area === 'administracio' ? 'resolved_admin' : 'resolved_planner'
+      const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflowStage,
+          resolvedByArea: payload.area,
+          resolutionCategory: payload.category.trim() || null,
+          resolutionNote: payload.note.trim() || null,
+          statusNote: payload.note.trim() || `Resolt per ${payload.area}`,
+        }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await fetchTickets()
+      setSelected((prev) =>
+        prev
+          ? {
+              ...prev,
+              workflowStage,
+              resolvedByArea: payload.area,
+              resolutionCategory: payload.category.trim() || null,
+              resolutionNote: payload.note.trim() || null,
+              status: 'resolut',
+            }
+          : prev
+      )
+    } catch (err: unknown) {
+      const error = err as ErrorWithMessage
+      alert(error?.message || 'No s ha pogut resoldre el ticket')
+    }
+  }
+
   const groupedTickets = useMemo(() => {
     const start = parseISO(filters.start)
     const end = new Date(parseISO(filters.end).getTime() + 24 * 60 * 60 * 1000)
@@ -581,30 +641,49 @@ export function useMaintenanceTickets() {
         return tb - ta
       })
 
+    const ticketsInbox = inRange.filter(
+      (ticket) =>
+        !ticket.externalized &&
+        (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
+        (ticket.status === 'nou' || ticket.status === 'no_fet' || ticket.status === 'assignat')
+    )
+    const plannerQueue = inRange.filter(
+      (ticket) =>
+        !ticket.externalized &&
+        (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' &&
+        ticket.status !== 'validat' &&
+        ticket.status !== 'resolut'
+    )
+
     const sections = [
       {
         key: 'inbox',
         title: 'Nous i per decidir',
         note: 'Entrades noves o reobertes pendents d enfocar',
-        items: inRange.filter((ticket) => !ticket.externalized && (ticket.status === 'nou' || ticket.status === 'no_fet')),
+        items: ticketsInbox,
       },
       {
         key: 'planned',
-        title: 'Planificats',
-        note: 'Feines assignades amb franja o a punt de passar a execucio',
-        items: inRange.filter((ticket) => !ticket.externalized && ticket.status === 'assignat'),
+        title: 'Enviats al planificador',
+        note: 'Tickets derivats des de tickets o entrades directes de Cuina Central',
+        items: plannerQueue,
       },
       {
         key: 'active',
         title: 'En curs i en espera',
         note: 'Feines obertes que ja s estan executant o bloquejades',
-        items: inRange.filter((ticket) => !ticket.externalized && (ticket.status === 'en_curs' || ticket.status === 'espera')),
+        items: inRange.filter(
+          (ticket) =>
+            !ticket.externalized &&
+            (ticket.workflowStage === 'planned_internal' || ticket.workflowStage === 'planner_queue') &&
+            (ticket.status === 'assignat' || ticket.status === 'en_curs' || ticket.status === 'espera')
+        ),
       },
       {
         key: 'validation',
         title: 'Pendents de validar',
-        note: 'Tickets resolts per operari o proveidor pendents de revisio final',
-        items: inRange.filter((ticket) => !ticket.externalized && ticket.status === 'fet'),
+        note: 'Tickets fets o resolts pendents de revisio final',
+        items: inRange.filter((ticket) => !ticket.externalized && (ticket.status === 'fet' || ticket.status === 'resolut')),
       },
       {
         key: 'external',
@@ -616,7 +695,14 @@ export function useMaintenanceTickets() {
         key: 'closed',
         title: 'Validats',
         note: 'Feines tancades i validades',
-        items: inRange.filter((ticket) => ticket.status === 'validat' || ticket.status === 'resolut'),
+        items: inRange.filter(
+          (ticket) =>
+            ticket.status === 'validat' ||
+            ticket.status === 'resolut' ||
+            ticket.workflowStage === 'resolved_admin' ||
+            ticket.workflowStage === 'resolved_planner' ||
+            ticket.workflowStage === 'closed'
+        ),
       },
     ]
 
@@ -627,10 +713,10 @@ export function useMaintenanceTickets() {
 
   const ticketSummary = useMemo(
     () => ({
-      inbox: tickets.filter((ticket) => !ticket.externalized && (ticket.status === 'nou' || ticket.status === 'no_fet')).length,
-      planned: tickets.filter((ticket) => !ticket.externalized && ticket.status === 'assignat').length,
-      active: tickets.filter((ticket) => !ticket.externalized && (ticket.status === 'en_curs' || ticket.status === 'espera')).length,
-      pendingValidation: tickets.filter((ticket) => !ticket.externalized && ticket.status === 'fet').length,
+      inbox: tickets.filter((ticket) => !ticket.externalized && (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox').length,
+      planned: tickets.filter((ticket) => !ticket.externalized && (ticket.workflowStage || '') === 'planner_queue').length,
+      active: tickets.filter((ticket) => !ticket.externalized && (ticket.status === 'assignat' || ticket.status === 'en_curs' || ticket.status === 'espera')).length,
+      pendingValidation: tickets.filter((ticket) => !ticket.externalized && (ticket.status === 'fet' || ticket.status === 'resolut')).length,
       externalized: tickets.filter((ticket) => ticket.externalized).length,
     }),
     [tickets]
@@ -711,6 +797,8 @@ export function useMaintenanceTickets() {
     handleAssignVehicle,
     handleUpdateDetails,
     handleExternalize,
+    handleSendToPlanner,
+    handleDirectResolution,
     handleDelete,
     fetchMoreTickets: () =>
       nextTicketsCursor

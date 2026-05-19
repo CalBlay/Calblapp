@@ -6,6 +6,7 @@ import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
 import {
   buildTicketBody,
+  notifyMaintenanceManagers,
   notifyMaintenanceAssignees,
   notifyTicketCreator,
 } from '@/lib/maintenanceNotifications'
@@ -22,6 +23,22 @@ type SessionUser = {
 
 type UpdatePayload = {
   status?: 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
+  workflowStage?:
+    | 'tickets_inbox'
+    | 'planner_queue'
+    | 'planned_internal'
+    | 'externalized'
+    | 'resolved_admin'
+    | 'resolved_planner'
+    | 'closed'
+  intakeChannel?:
+    | 'restaurant'
+    | 'finca'
+    | 'incidencia'
+    | 'ops'
+    | 'manual_tickets'
+    | 'manual_cuina_central'
+    | 'other'
   assignedToIds?: string[]
   assignedToNames?: string[]
   needsVehicle?: boolean
@@ -38,6 +55,10 @@ type UpdatePayload = {
   plannedEnd?: number | null
   estimatedMinutes?: number | null
   supplierResolvedAt?: number | null
+  externalStatus?: 'sent' | 'resent' | 'answered' | 'closed' | null
+  resolutionCategory?: string | null
+  resolutionNote?: string | null
+  resolvedByArea?: 'administracio' | 'manteniment' | 'tecnic' | 'proveidor' | null
   statusStartTime?: string | null
   statusEndTime?: string | null
   statusNote?: string | null
@@ -59,6 +80,7 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   operatorTitle?: string | null
   priority?: string
   source?: string
+  workflowStage?: string | null
   externalized?: boolean
   plannedStart?: number | string | null
   plannedEnd?: number | string | null
@@ -79,7 +101,8 @@ const normalizeStatus = (value?: string) => {
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut' || v === 'validat') return 'validat'
+  if (v === 'resolut') return 'resolut'
+  if (v === 'validat') return 'validat'
   return 'nou'
 }
 
@@ -102,6 +125,17 @@ const toMillis = (value: unknown): number | null => {
     return Number.isNaN(parsed) ? null : parsed
   }
   return null
+}
+
+const normalizeWorkflowStage = (value?: string | null) => {
+  const v = (value || '').trim().toLowerCase()
+  if (v === 'planner_queue') return 'planner_queue'
+  if (v === 'planned_internal') return 'planned_internal'
+  if (v === 'externalized') return 'externalized'
+  if (v === 'resolved_admin') return 'resolved_admin'
+  if (v === 'resolved_planner') return 'resolved_planner'
+  if (v === 'closed') return 'closed'
+  return 'tickets_inbox'
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -258,7 +292,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     if (currentStatus === 'validat') {
       const onlyReopenRequest =
-        nextStatus === 'fet' &&
+        (nextStatus === 'fet' || nextStatus === 'resolut') &&
         !wantsDataEdit &&
         body.statusStartTime === undefined &&
         body.statusEndTime === undefined &&
@@ -277,6 +311,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     if (nextStatus) updates.status = nextStatus
+    if (body.workflowStage !== undefined) {
+      updates.workflowStage = normalizeWorkflowStage(body.workflowStage)
+    }
+    if (body.intakeChannel !== undefined) {
+      updates.intakeChannel = String(body.intakeChannel || '').trim() || null
+    }
     if (nextPriority) updates.priority = nextPriority
     if (body.location !== undefined) updates.location = String(body.location).trim()
     if (body.workLocation !== undefined) updates.workLocation = String(body.workLocation || '').trim() || null
@@ -293,6 +333,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (body.plannedEnd !== undefined) updates.plannedEnd = body.plannedEnd
     if (body.estimatedMinutes !== undefined) updates.estimatedMinutes = body.estimatedMinutes
     if (body.supplierResolvedAt !== undefined) updates.supplierResolvedAt = body.supplierResolvedAt
+    if (body.externalStatus !== undefined) updates.externalStatus = body.externalStatus
+    if (body.resolutionCategory !== undefined) {
+      updates.resolutionCategory = String(body.resolutionCategory || '').trim() || null
+    }
+    if (body.resolutionNote !== undefined) {
+      updates.resolutionNote = String(body.resolutionNote || '').trim() || null
+    }
+    if (body.resolvedByArea !== undefined) {
+      updates.resolvedByArea = String(body.resolvedByArea || '').trim() || null
+    }
 
     const planningTouched =
       body.plannedStart !== undefined ||
@@ -350,6 +400,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       updates.assignedAt = body.assignedToIds.length ? Date.now() : null
       updates.assignedById = user.id
       updates.assignedByName = user.name || ''
+      if (body.assignedToIds.length > 0) {
+        updates.workflowStage = 'planned_internal'
+      } else if (normalizeWorkflowStage(String(current.workflowStage || '')) === 'planned_internal') {
+        updates.workflowStage = 'planner_queue'
+      }
       const currentStatus = normalizeStatus(current.status)
       if (!nextStatus && body.assignedToIds.length > 0 && currentStatus === 'nou') {
         nextStatus = 'assignat'
@@ -361,8 +416,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       if (!canValidate) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
-      if (currentStatus !== 'fet') {
-        return NextResponse.json({ error: 'Nomes es pot validar des de Fet' }, { status: 400 })
+      const directResolutionStage =
+        updates.workflowStage === 'resolved_admin' || updates.workflowStage === 'resolved_planner'
+      if (currentStatus !== 'fet' && currentStatus !== 'resolut' && !directResolutionStage) {
+        return NextResponse.json({ error: 'Nomes es pot validar des de Fet o Resolt' }, { status: 400 })
+      }
+      updates.resolvedAt = Date.now()
+      updates.resolvedById = user.id
+      updates.resolvedByName = user.name || ''
+      if (!updates.workflowStage) {
+        updates.workflowStage = current.externalized ? 'externalized' : 'closed'
       }
     }
 
@@ -390,6 +453,26 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         startTime: body.statusStartTime ?? null,
         endTime: body.statusEndTime ?? null,
         note: body.statusNote ?? '',
+      })
+    }
+
+    if (
+      updates.workflowStage === 'resolved_admin' ||
+      updates.workflowStage === 'resolved_planner'
+    ) {
+      updates.resolvedAt = Date.now()
+      updates.resolvedById = user.id
+      updates.resolvedByName = user.name || ''
+      updates.status = 'resolut'
+      nextStatus = 'resolut'
+      updates.statusHistory = admin.firestore.FieldValue.arrayUnion({
+        status: 'resolut',
+        at: Date.now(),
+        byId: user.id,
+        byName: user.name || '',
+        startTime: body.statusStartTime ?? null,
+        endTime: body.statusEndTime ?? null,
+        note: body.statusNote ?? body.resolutionNote ?? '',
       })
     }
 
@@ -441,6 +524,36 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         payload: {
           type: 'maintenance_ticket_assigned',
           title: 'Ticket assignat',
+          body: buildTicketBody({
+            machine: effectiveMachine,
+            location: effectiveLocation,
+            description: effectiveDescription,
+          }),
+          ticketId: id,
+          ticketCode,
+          status: updates.status ? String(updates.status) : current.status || null,
+          priority: updates.priority ? String(updates.priority) : current.priority || null,
+          location: effectiveLocation,
+          machine: effectiveMachine,
+          source: current.source || null,
+        },
+        excludeIds: [user.id],
+      })
+    }
+
+    if (body.externalStatus === 'answered') {
+      const effectiveMachine =
+        body.machine !== undefined ? String(body.machine).trim() : (current.machine || '')
+      const effectiveLocation =
+        body.location !== undefined ? String(body.location).trim() : (current.location || '')
+      const effectiveDescription =
+        body.description !== undefined ? String(body.description).trim() : (current.description || '')
+      const ticketCode = current.ticketCode || current.incidentNumber || null
+
+      await notifyMaintenanceManagers({
+        payload: {
+          type: 'maintenance_ticket_supplier_reply',
+          title: 'Resposta de proveidor',
           body: buildTicketBody({
             machine: effectiveMachine,
             location: effectiveLocation,

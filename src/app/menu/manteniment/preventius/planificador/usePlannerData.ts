@@ -44,6 +44,8 @@ type PlannerTicketLike = Partial<Ticket> & {
   plannedEnd?: number | string
   assignedToNames?: unknown[]
   priority?: TicketCard['priority']
+  workflowStage?: string | null
+  externalStatus?: TicketCard['externalStatus']
 }
 
 type TemplateApiItem = {
@@ -88,13 +90,15 @@ function normalizePlannerTicketStatus(value?: unknown) {
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut' || v === 'validat') return 'validat'
+  if (v === 'resolut') return 'resolut'
+  if (v === 'validat') return 'validat'
   return 'nou'
 }
 
 function mapPendingTickets(list: PlannerTicketLike[]) {
   return list
     .filter((t) => !t.externalized)
+    .filter((t) => String(t.workflowStage || 'tickets_inbox') === 'planner_queue')
     .filter((t) => !t.plannedStart && !t.plannedEnd)
     .filter((t) => ['nou', 'no_fet'].includes(normalizePlannerTicketStatus(t.status)))
     .map((t) => {
@@ -109,6 +113,34 @@ function mapPendingTickets(list: PlannerTicketLike[]) {
         priority: (t.priority || 'normal') as TicketCard['priority'],
         minutes,
         status: normalizePlannerTicketStatus(t.status),
+        workflowStage: String(t.workflowStage || 'planner_queue'),
+        externalStatus: t.externalStatus || null,
+        createdAt: t.createdAt || null,
+        ageDays,
+        ageBucket: getAgeBucket(ageDays),
+        location: t.workLocation || t.location || '',
+        machine: t.machine || '',
+      }
+    })
+}
+
+function mapExternalizedTickets(list: PlannerTicketLike[]) {
+  return list
+    .filter((t) => Boolean(t.externalized) || String(t.workflowStage || '') === 'externalized')
+    .map((t) => {
+      const code = t.ticketCode || t.incidentNumber || 'TIC'
+      const title = t.operatorTitle || t.description || t.machine || t.location || ''
+      const minutes = Number(t.estimatedMinutes || 60)
+      const ageDays = getAgeDays(t.createdAt)
+      return {
+        id: String(t.id || code),
+        code,
+        title,
+        priority: (t.priority || 'normal') as TicketCard['priority'],
+        minutes,
+        status: normalizePlannerTicketStatus(t.status),
+        workflowStage: 'externalized',
+        externalStatus: t.externalStatus || null,
         createdAt: t.createdAt || null,
         ageDays,
         ageBucket: getAgeBucket(ageDays),
@@ -135,6 +167,14 @@ function mapPlannedTickets(
 ) {
   return ticketList
     .filter((t) => !t.externalized)
+    .filter((t) => {
+      const workflowStage = String(t.workflowStage || 'planner_queue')
+      const normalizedStatus = normalizePlannerTicketStatus(t.status)
+      return (
+        ['planner_queue', 'planned_internal'].includes(workflowStage) ||
+        normalizedStatus === 'validat'
+      )
+    })
     .filter((t) => t.plannedStart && t.plannedEnd)
     .map((t) => {
       const start = new Date(Number(t.plannedStart))
@@ -162,6 +202,8 @@ function mapPlannedTickets(
         createdAt: t.createdAt || null,
         templateId: null,
         ticketId: String(t.id || ''),
+        status: normalizePlannerTicketStatus(t.status),
+        workflowStage: String(t.workflowStage || 'planned_internal'),
       }
     })
     .filter(Boolean) as ScheduledItem[]
@@ -215,6 +257,7 @@ export default function usePlannerData({
   const [users, setUsers] = useState<Array<{ id: string; name: string; department?: string }>>([])
   const [scheduledItems, setScheduledItems] = useState<ScheduledItem[]>([])
   const [plannedPreventiuTemplateIds, setPlannedPreventiuTemplateIds] = useState<string[]>([])
+  const [externalizedTickets, setExternalizedTickets] = useState<TicketCard[]>([])
 
   const loadTicketsData = useCallback(async () => {
     const res = await fetch('/api/maintenance/tickets?ticketType=maquinaria', { cache: 'no-store' })
@@ -224,6 +267,7 @@ export default function usePlannerData({
       list,
       lookup: buildTicketLookup(list),
       pending: mapPendingTickets(list),
+      externalized: mapExternalizedTickets(list),
     }
   }, [])
 
@@ -351,6 +395,7 @@ export default function usePlannerData({
 
         setTicketById(ticketsData.lookup)
         setRealTickets(ticketsData.pending)
+        setExternalizedTickets(ticketsData.externalized)
       } catch {
         setTemplates([])
         setLocations([])
@@ -358,6 +403,7 @@ export default function usePlannerData({
         setUsers([])
         setTicketById({})
         setRealTickets([])
+        setExternalizedTickets([])
       }
     }
     void loadMasterData()
@@ -438,6 +484,7 @@ export default function usePlannerData({
       const ticketList = ticketsData.list
       setTicketById(ticketsData.lookup)
       setRealTickets(ticketsData.pending)
+      setExternalizedTickets(ticketsData.externalized)
       const ticketsMapped = mapPlannedTickets(ticketList, weekStart, dayCount, startStr, endStr)
 
       const workingPreventius = [...plannedMapped]
@@ -661,6 +708,7 @@ export default function usePlannerData({
           plannedStart,
           plannedEnd,
           estimatedMinutes: item.minutes,
+          workflowStage: 'planned_internal',
           location: item.location || undefined,
           machine: item.machine || undefined,
           assignedToNames: assignedToNames.length ? assignedToNames : undefined,
@@ -690,6 +738,7 @@ export default function usePlannerData({
     machines,
     users,
     ticketById,
+    externalizedTickets,
     scheduledItems,
     setScheduledItems,
     visibleItems,

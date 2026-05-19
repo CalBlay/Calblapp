@@ -6,6 +6,7 @@ type NotificationPayload = {
     | 'maintenance_ticket_new'
     | 'maintenance_ticket_assigned'
     | 'maintenance_ticket_validated'
+    | 'maintenance_ticket_supplier_reply'
   title: string
   body: string
   ticketId: string

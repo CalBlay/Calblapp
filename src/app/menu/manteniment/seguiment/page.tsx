@@ -15,7 +15,7 @@ import PlannerTicketModal from '@/app/menu/manteniment/preventius/planificador/c
 
 type TabKey = 'tickets' | 'preventius'
 type DateMode = 'all' | 'planned' | 'created' | 'updated' | 'completed'
-type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
+type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat'
 type WorkHistoryEntry = {
   status?: string | null
   at?: number | string | null
@@ -69,7 +69,7 @@ type PlannedPreventiuApiItem = {
 
 type SeguimentRow = Ticket | Preventiu
 
-const STATUSES: MaintenanceStatus[] = ['nou', 'assignat', 'en_curs', 'espera', 'fet', 'no_fet', 'validat']
+const STATUSES: MaintenanceStatus[] = ['nou', 'assignat', 'en_curs', 'espera', 'fet', 'no_fet', 'resolut', 'validat']
 const STATUS_LABELS: Record<MaintenanceStatus, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
@@ -77,6 +77,7 @@ const STATUS_LABELS: Record<MaintenanceStatus, string> = {
   espera: 'En espera',
   fet: 'Fet',
   no_fet: 'No fet',
+  resolut: 'Resolt',
   validat: 'Validat',
 }
 const DATE_MODE_LABELS: Record<DateMode, string> = {
@@ -113,7 +114,8 @@ const normalizeStatus = (value?: string | null): MaintenanceStatus => {
   if (raw === 'espera') return 'espera'
   if (raw === 'fet') return 'fet'
   if (raw === 'no_fet' || raw === 'no fet') return 'no_fet'
-  if (raw === 'validat' || raw === 'resolut') return 'validat'
+  if (raw === 'resolut') return 'resolut'
+  if (raw === 'validat') return 'validat'
   return 'assignat'
 }
 const getDaysOpen = (value?: number | string | null) => (parseDate(value) ? Math.max(0, differenceInCalendarDays(new Date(), parseDate(value) as Date)) : null)

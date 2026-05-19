@@ -1,6 +1,23 @@
 export type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
 export type TicketPriority = 'urgent' | 'alta' | 'normal' | 'baixa'
 export type TicketType = 'maquinaria' | 'deco'
+export type TicketIntakeChannel =
+  | 'restaurant'
+  | 'finca'
+  | 'incidencia'
+  | 'ops'
+  | 'manual_tickets'
+  | 'manual_cuina_central'
+  | 'other'
+export type TicketWorkflowStage =
+  | 'tickets_inbox'
+  | 'planner_queue'
+  | 'planned_internal'
+  | 'externalized'
+  | 'resolved_admin'
+  | 'resolved_planner'
+  | 'closed'
+export type TicketResolutionArea = 'administracio' | 'manteniment' | 'tecnic' | 'proveidor'
 
 export type Ticket = {
   id: string
@@ -45,6 +62,14 @@ export type Ticket = {
   supplierEmail?: string | null
   externalReference?: string | null
   externalStatus?: 'sent' | 'resent' | 'answered' | 'closed' | null
+  intakeChannel?: TicketIntakeChannel | null
+  workflowStage?: TicketWorkflowStage | null
+  resolutionCategory?: string | null
+  resolutionNote?: string | null
+  resolvedByArea?: TicketResolutionArea | null
+  resolvedAt?: number | string | null
+  resolvedById?: string | null
+  resolvedByName?: string | null
   externalSentAt?: number | string | null
   externalSentById?: string | null
   externalSentByName?: string | null
