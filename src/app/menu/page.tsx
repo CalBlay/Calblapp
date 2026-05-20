@@ -25,6 +25,7 @@ import {
   Sparkles,
   BookOpen,
   Shirt,
+  Factory,
 } from 'lucide-react'
 import type { LucideIcon, LucideProps } from 'lucide-react'
 import { getVisibleModules } from '@/lib/accessControl'
@@ -241,6 +242,11 @@ const UI_MAP: Record<
     icon: Leaf,
     color: 'from-amber-100 to-yellow-50',
     iconColor: 'text-amber-600',
+  },
+  '/menu/cuina-central': {
+    icon: Factory,
+    color: 'from-orange-100 to-amber-50',
+    iconColor: 'text-orange-700',
   },
 }
 

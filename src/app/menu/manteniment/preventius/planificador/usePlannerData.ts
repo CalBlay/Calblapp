@@ -630,7 +630,7 @@ export default function usePlannerData({
         void loadWeekSchedule()
       }
     }
-  }, [dayCount, dueTemplates, loadTicketsData, resolveWorkerIds, templates, weekStart])
+  }, [dayCount, dueTemplates, loadTicketsData, resolveWorkerIds, templates, users, weekStart])
 
   useEffect(() => {
     void loadWeekSchedule()

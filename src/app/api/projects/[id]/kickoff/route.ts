@@ -46,7 +46,7 @@ async function requireAdmin() {
   }
 
   const user = session.user as SessionUser
-  if (!canAccessProjects(user)) {
+  if (!canAccessProjects({ role: user.role, department: user.department ?? undefined })) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
 

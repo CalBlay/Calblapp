@@ -11,7 +11,10 @@ import {
   notifyTicketEnteredPlanner,
   onMaintenanceTicketUpdated,
 } from '@/lib/maintenanceNotifications'
-import { normalizeTicketWorkflowStage } from '@/lib/maintenanceTicketAlerts'
+import {
+  normalizeTicketWorkflowStage,
+  type TicketAlertSnapshot,
+} from '@/lib/maintenanceTicketAlerts'
 import {
   applyStatusHistoryUpdate,
   validateJourneyStatusPayload,
@@ -560,21 +563,31 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         ? String(updates.workflowStage)
         : current.workflowStage
     )
-    const mergedTicket = {
-      createdAt: current.createdAt,
-      updatedAt: updated.updatedAt ?? current.updatedAt,
+    const mergedTicket: TicketAlertSnapshot = {
+      createdAt: current.createdAt as TicketAlertSnapshot['createdAt'],
+      updatedAt: (updated.updatedAt ?? current.updatedAt) as TicketAlertSnapshot['updatedAt'],
       workflowStage: nextWorkflowStage,
-      status: nextStatus || updated.status || current.status,
+      status: nextStatus || (updated.status as string | undefined) || (current.status as string | undefined),
       assignedToIds:
-        body.assignedToIds !== undefined ? body.assignedToIds : current.assignedToIds,
+        body.assignedToIds !== undefined
+          ? body.assignedToIds
+          : (current.assignedToIds as string[] | undefined),
       plannedStart:
-        body.plannedStart !== undefined ? body.plannedStart : current.plannedStart,
-      plannedEnd: body.plannedEnd !== undefined ? body.plannedEnd : current.plannedEnd,
-      externalized: updated.externalized ?? current.externalized,
-      externalStatus: updated.externalStatus ?? current.externalStatus,
-      externalSentAt: updated.externalSentAt ?? current.externalSentAt,
-      externalizationHistory: updated.externalizationHistory ?? current.externalizationHistory,
-      statusHistory: updated.statusHistory ?? current.statusHistory,
+        body.plannedStart !== undefined
+          ? body.plannedStart
+          : (current.plannedStart as TicketAlertSnapshot['plannedStart']),
+      plannedEnd:
+        body.plannedEnd !== undefined
+          ? body.plannedEnd
+          : (current.plannedEnd as TicketAlertSnapshot['plannedEnd']),
+      externalized: Boolean(updated.externalized ?? current.externalized),
+      externalStatus:
+        (updated.externalStatus ?? current.externalStatus) as TicketAlertSnapshot['externalStatus'],
+      externalSentAt:
+        (updated.externalSentAt ?? current.externalSentAt) as TicketAlertSnapshot['externalSentAt'],
+      externalizationHistory: (updated.externalizationHistory ??
+        current.externalizationHistory) as TicketAlertSnapshot['externalizationHistory'],
+      statusHistory: (updated.statusHistory ?? current.statusHistory) as TicketAlertSnapshot['statusHistory'],
     }
 
     await onMaintenanceTicketUpdated(id, mergedTicket)

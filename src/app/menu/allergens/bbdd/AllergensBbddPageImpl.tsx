@@ -59,12 +59,6 @@ import {
   slugify,
   toAllergenKey,
 } from './utils'
-import { BasicDataPanel } from './components/BasicDataPanel'
-import { ClassificationPanel } from './components/ClassificationPanel'
-import { AllergensPanel } from './components/AllergensPanel'
-import { ImportConflictsPanel } from './components/ImportConflictsPanel'
-import { ActionsBar } from './components/ActionsBar'
-
 export default function AllergensBbddPage() {
   const { data: session } = useSession()
   const user = session?.user as SessionUser | undefined

@@ -15,7 +15,6 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { getVisibleModules } from '@/lib/accessControl'
-import { normalizeRole } from '@/lib/roles'
 
 const fetcher = (url: string) => fetch(url).then((response) => response.json())
 

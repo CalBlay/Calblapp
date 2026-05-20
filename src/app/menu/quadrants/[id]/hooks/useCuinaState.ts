@@ -202,6 +202,7 @@ export function useCuinaState({
   }, [
     createCuinaGroup,
     isCuina,
+    normalizeGroupDrivers,
     totalWorkers,
     numDrivers,
     meetingPoint,

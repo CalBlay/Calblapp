@@ -53,6 +53,7 @@ type TicketPayload = {
   plannedStart?: number | null
   plannedEnd?: number | null
   estimatedMinutes?: number | null
+  sourceChannelId?: string | null
 }
 
 type MaintenanceTicketRecord = Record<string, unknown> & {
@@ -227,11 +228,6 @@ export async function GET(req: Request) {
   const role = normalizeRole(user.role || '')
   const sessionName = normalizeName(user.name || '')
   const deptRaw = (user.department || '').toString()
-  const dept = deptRaw
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
   if (
     role !== 'admin' &&
     role !== 'direccio' &&

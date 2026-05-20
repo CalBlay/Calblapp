@@ -318,6 +318,19 @@ export const MODULES: ModuleDef[] = [
     roles: ['admin','direccio','cap','comercial','usuari'] },
 
   {
+    label: 'Cuina central',
+    path: '/menu/cuina-central',
+    roles: ['admin'],
+    submodules: [
+      { label: 'Dades', path: '/menu/cuina-central/dades', roles: ['admin'] },
+      { label: 'Producció', path: '/menu/cuina-central/produccio', roles: ['admin'] },
+      { label: 'Decisions diàries', path: '/menu/cuina-central/decisions', roles: ['admin'] },
+      { label: 'Informes', path: '/menu/cuina-central/informes', roles: ['admin'] },
+      { label: 'Planificador', path: '/menu/cuina-central/planificador', roles: ['admin'] },
+    ],
+  },
+
+  {
     label: 'Al·lèrgens',
     path: '/menu/allergens',
     roles: ['admin','direccio','cap','treballador','comercial','usuari'],

@@ -7,6 +7,12 @@ export function isCuinaCentralDepartment(raw?: string | null) {
   return dept === 'cuina central' || dept.replace(/\s+/g, '') === 'cuinacentral'
 }
 
+/** Ubicació del ticket (p. ex. des del mòdul Cuina central de la webapp). */
+export function isCuinaCentralLocation(raw?: string | null) {
+  const loc = normalizeDept(raw)
+  return loc === 'cuina central' || loc.replace(/\s+/g, '') === 'cuinacentral'
+}
+
 /** Personal de restaurant (OPS) que crea tickets al mòdul Tickets. */
 export function isRestaurantOpsDepartment(raw?: string | null) {
   const dept = normalizeDept(raw)
@@ -41,7 +47,7 @@ export function resolveManualTicketRouting(params: {
 }): ManualTicketRouting {
   const location = String(params.location || '').trim()
 
-  if (isCuinaCentralDepartment(params.department)) {
+  if (isCuinaCentralDepartment(params.department) || isCuinaCentralLocation(params.location)) {
     return {
       source: 'manual_cuina_central',
       intakeChannel: 'manual_cuina_central',

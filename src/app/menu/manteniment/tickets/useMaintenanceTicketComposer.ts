@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { compressRasterImageForUpload, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
-import { resolveManualTicketRouting } from '@/lib/maintenanceTicketCreators'
+import {
+  resolveManualTicketRouting,
+  type ManualTicketRouting,
+} from '@/lib/maintenanceTicketCreators'
 import type { TicketPriority } from './types'
 
 const MAX_TICKET_IMAGES = 3
 
 type Params = {
-  refreshTickets: () => Promise<void>
+  refreshTickets?: () => Promise<void>
+  /** Valors per defecte en obrir el modal (p. ex. Cuina central). */
+  defaultLocation?: string
+  defaultMachine?: string
+  /** Força encaminament cuina central encara que el departament de sessió sigui admin. */
+  routingOverride?: ManualTicketRouting
 }
 
 type SessionUser = {
@@ -19,7 +27,12 @@ type PendingImage = {
   preview: string
 }
 
-export function useMaintenanceTicketComposer({ refreshTickets }: Params) {
+export function useMaintenanceTicketComposer({
+  refreshTickets = async () => {},
+  defaultLocation = '',
+  defaultMachine = '',
+  routingOverride,
+}: Params) {
   const { data: session } = useSession()
   const sessionUser = (session?.user || {}) as SessionUser
   const [showCreate, setShowCreate] = useState(false)
@@ -54,6 +67,20 @@ export function useMaintenanceTicketComposer({ refreshTickets }: Params) {
       imagesRef.current.forEach((item) => URL.revokeObjectURL(item.preview))
     }
   }, [])
+
+  const applyDefaults = (preset?: { location?: string; machine?: string }) => {
+    const loc = preset?.location ?? defaultLocation
+    const mac = preset?.machine ?? defaultMachine
+    setCreateLocation(loc)
+    setCreateMachine(mac)
+    setLocationQuery(loc)
+    setMachineQuery(mac)
+  }
+
+  const openCreate = (preset?: { location?: string; machine?: string }) => {
+    applyDefaults(preset)
+    setShowCreate(true)
+  }
 
   const resetCreateState = () => {
     setShowCreate(false)
@@ -183,10 +210,12 @@ export function useMaintenanceTicketComposer({ refreshTickets }: Params) {
       }
 
       const primary = uploadedImages[0]
-      const routing = resolveManualTicketRouting({
-        department: sessionUser.department,
-        location: createLocation.trim(),
-      })
+      const routing =
+        routingOverride ||
+        resolveManualTicketRouting({
+          department: sessionUser.department,
+          location: createLocation.trim(),
+        })
       const res = await fetch('/api/maintenance/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -255,5 +284,6 @@ export function useMaintenanceTicketComposer({ refreshTickets }: Params) {
     handleImageChange,
     removeImage,
     handleCreateTicket,
+    openCreate,
   }
 }
