@@ -105,6 +105,22 @@ async function evaluateCase(c) {
     );
   }
 
+  if (expected.plannerOnly === true) {
+    return {
+      id: String(c?.id || ""),
+      skipped: false,
+      ok: failures.length === 0,
+      question,
+      strictBlocksFallback,
+      plan,
+      policy,
+      slots,
+      execution: null,
+      failures,
+      plannerOnly: true
+    };
+  }
+
   let execution = null;
   try {
     if (plan.metricId && plan.metricId !== "unknown") {

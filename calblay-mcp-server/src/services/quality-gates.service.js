@@ -206,6 +206,18 @@ export async function runDodChecks() {
       detail: metricCatalog
     },
     {
+      id: "metric_catalog_coverage",
+      title: "Metric catalog has minimum business coverage",
+      ok:
+        metricCatalog.ok &&
+        Number(metricCatalog.validation?.activeMetricsCount || 0) >=
+          parseNumberEnv("METRIC_CATALOG_MIN_ACTIVE", 20),
+      detail: {
+        activeMetricsCount: metricCatalog.validation?.activeMetricsCount || 0,
+        minimumRequired: parseNumberEnv("METRIC_CATALOG_MIN_ACTIVE", 20)
+      }
+    },
+    {
       id: "query_execution_policy_locked",
       title: "Query execution policy enforces deterministic/source lock",
       ok: executionPolicy.ok,

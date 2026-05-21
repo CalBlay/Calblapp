@@ -154,6 +154,24 @@ const { startFirestoreMappingNightlyScheduler } = await import(
 const nightlyScheduler = startFirestoreMappingNightlyScheduler();
 console.log("[startup] firestore mapping nightly scheduler:", nightlyScheduler);
 
+const runDeltaOnStartup = String(process.env.FIRESTORE_MAPPING_DELTA_ON_STARTUP || "1").toLowerCase() !== "0";
+if (runDeltaOnStartup) {
+  const { runFirestoreMappingDeltaJob } = await import("./services/firestore-mapping-delta.service.js");
+  runFirestoreMappingDeltaJob({ trigger: "startup", limit: 500, sampleLimit: 6 })
+    .then((out) => {
+      const n = Array.isArray(out?.run?.newCollections) ? out.run.newCollections.length : 0;
+      const missing = Array.isArray(out?.run?.rowsNeedingManualReview)
+        ? out.run.rowsNeedingManualReview.length
+        : 0;
+      console.log(
+        `[startup] firestore mapping delta: newCollections=${n} needsManualReview=${missing} store=${out.storePath || "-"}`
+      );
+    })
+    .catch((e) => {
+      console.error("[startup] firestore mapping delta failed:", e?.message || e);
+    });
+}
+
 const server = app.listen(port, host, () => {
   console.log(`MCP server listening on ${host}:${port}`);
 });

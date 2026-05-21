@@ -1,15 +1,11 @@
 {
   "version": "v1",
-  "updatedAt": "2026-04-25",
+  "updatedAt": "2026-05-21",
   "metrics": [
     {
       "metricId": "cost_subministraments_month",
       "domain": "finance_costs",
-      "sourceOfTruth": {
-        "system": "csv_finances",
-        "kind": "costos",
-        "dataset": "c_explotacio"
-      },
+      "sourceOfTruth": { "system": "csv_finances", "kind": "costos", "dataset": "c_explotacio" },
       "slotSchema": ["period"],
       "normalization": {
         "categoryCanonical": "subministr",
@@ -21,27 +17,18 @@
         "periodFormat": "YYYY-MM",
         "aggregation": "preferred_total_column"
       },
-      "outputContract": {
-        "unit": "EUR",
-        "confidence": "high",
-        "includeSource": true,
-        "includeTrace": true
-      },
+      "outputContract": { "unit": "EUR", "confidence": "high", "includeSource": true, "includeTrace": true },
       "owner": "Finances+IT",
       "active": true
     },
     {
       "metricId": "cost_personal_month",
       "domain": "finance_costs",
-      "sourceOfTruth": {
-        "system": "csv_finances",
-        "kind": "costos",
-        "dataset": "c_explotacio"
-      },
+      "sourceOfTruth": { "system": "csv_finances", "kind": "costos", "dataset": "c_explotacio" },
       "slotSchema": ["period"],
       "normalization": {
         "categoryCanonical": "personal",
-        "synonyms": ["personal", "rrhh", "rh", "recursos humans", "recursos humanos"]
+        "synonyms": ["personal", "rrhh", "rh", "recursos humans", "recursos humanos", "salari"]
       },
       "calculationRule": {
         "executor": "costs_by_department_period",
@@ -49,23 +36,14 @@
         "periodFormat": "YYYY-MM",
         "aggregation": "preferred_total_column"
       },
-      "outputContract": {
-        "unit": "EUR",
-        "confidence": "high",
-        "includeSource": true,
-        "includeTrace": true
-      },
+      "outputContract": { "unit": "EUR", "confidence": "high", "includeSource": true, "includeTrace": true },
       "owner": "Finances+IT",
       "active": true
     },
     {
       "metricId": "cost_compres_month",
       "domain": "finance_costs",
-      "sourceOfTruth": {
-        "system": "csv_finances",
-        "kind": "costos",
-        "dataset": "c_explotacio"
-      },
+      "sourceOfTruth": { "system": "csv_finances", "kind": "costos", "dataset": "c_explotacio" },
       "slotSchema": ["period"],
       "normalization": {
         "categoryCanonical": "compres",
@@ -77,13 +55,146 @@
         "periodFormat": "YYYY-MM",
         "aggregation": "preferred_total_column"
       },
-      "outputContract": {
-        "unit": "EUR",
-        "confidence": "high",
-        "includeSource": true,
-        "includeTrace": true
-      },
+      "outputContract": { "unit": "EUR", "confidence": "high", "includeSource": true, "includeTrace": true },
       "owner": "Finances+IT",
+      "active": true
+    },
+    {
+      "metricId": "cost_serveis_professionals_month",
+      "domain": "finance_costs",
+      "sourceOfTruth": { "system": "csv_finances", "kind": "costos", "dataset": "c_explotacio" },
+      "slotSchema": ["period"],
+      "normalization": {
+        "categoryCanonical": "serveis professional",
+        "synonyms": ["serveis professionals", "servicios profesionales", "honoraris"]
+      },
+      "calculationRule": {
+        "executor": "costs_by_department_period",
+        "departmentContains": "serveis professional",
+        "periodFormat": "YYYY-MM",
+        "aggregation": "preferred_total_column"
+      },
+      "outputContract": { "unit": "EUR", "confidence": "high", "includeSource": true, "includeTrace": true },
+      "owner": "Finances+IT",
+      "active": true
+    },
+    {
+      "metricId": "cost_assegurances_month",
+      "domain": "finance_costs",
+      "sourceOfTruth": { "system": "csv_finances", "kind": "costos", "dataset": "c_explotacio" },
+      "slotSchema": ["period"],
+      "normalization": {
+        "categoryCanonical": "assegur",
+        "synonyms": ["assegurances", "seguros", "segur"]
+      },
+      "calculationRule": {
+        "executor": "costs_by_department_period",
+        "departmentContains": "assegur",
+        "periodFormat": "YYYY-MM",
+        "aggregation": "preferred_total_column"
+      },
+      "outputContract": { "unit": "EUR", "confidence": "high", "includeSource": true, "includeTrace": true },
+      "owner": "Finances+IT",
+      "active": true
+    },
+    {
+      "metricId": "finance_result_ln_month",
+      "domain": "finance_pnl",
+      "sourceOfTruth": { "system": "csv_finances", "kind": "costos", "dataset": "c_explotacio" },
+      "slotSchema": ["yearMonth", "lnContains"],
+      "normalization": {
+        "lnSynonyms": ["LN0002", "LN0005", "events", "restaurants", "empresa", "foodlovers"]
+      },
+      "calculationRule": {
+        "executor": "finance_result_by_ln_month",
+        "aggregation": "row_match_ln_month"
+      },
+      "outputContract": { "unit": "EUR", "confidence": "high", "includeSource": true, "includeTrace": true },
+      "owner": "Finances+IT",
+      "active": true
+    },
+    {
+      "metricId": "sales_centre_month",
+      "domain": "finance_sales",
+      "sourceOfTruth": { "system": "csv_finances", "kind": "vendes", "dataset": "vendes" },
+      "slotSchema": ["year"],
+      "normalization": { "synonyms": ["vendes", "facturacio", "billing", "cobrades"] },
+      "calculationRule": {
+        "executor": "sales_by_centre_month",
+        "aggregation": "sum_by_centre_month"
+      },
+      "outputContract": { "unit": "EUR", "confidence": "medium", "includeSource": true, "includeTrace": true },
+      "owner": "Finances+IT",
+      "active": true
+    },
+    {
+      "metricId": "sales_article_centre_month",
+      "domain": "finance_sales",
+      "sourceOfTruth": { "system": "csv_finances", "kind": "vendes", "dataset": "vendes" },
+      "slotSchema": ["centreContains", "articleContains", "yearMonth"],
+      "normalization": { "synonyms": ["vendes article", "producte", "establiment"] },
+      "calculationRule": {
+        "executor": "sales_by_article_centre_month",
+        "aggregation": "filter_article_centre_month"
+      },
+      "outputContract": { "unit": "EUR", "confidence": "medium", "includeSource": true, "includeTrace": true },
+      "owner": "Finances+IT",
+      "active": true
+    },
+    {
+      "metricId": "purchases_ln_centre_period",
+      "domain": "finance_purchases",
+      "sourceOfTruth": { "system": "csv_finances", "kind": "compres", "dataset": "compres" },
+      "slotSchema": ["dateFrom", "dateTo"],
+      "normalization": { "synonyms": ["compres", "compras", "proveidor"] },
+      "calculationRule": {
+        "executor": "purchases_analytics_ln_centre",
+        "aggregation": "group_ln_centre"
+      },
+      "outputContract": { "unit": "EUR", "confidence": "medium", "includeSource": true, "includeTrace": true },
+      "owner": "Compres+IT",
+      "active": true
+    },
+    {
+      "metricId": "purchases_top_articles_amount",
+      "domain": "finance_purchases",
+      "sourceOfTruth": { "system": "csv_finances", "kind": "compres", "dataset": "compres" },
+      "slotSchema": ["yearMonth"],
+      "normalization": { "synonyms": ["top articles", "mes comprat", "imports compres"] },
+      "calculationRule": {
+        "executor": "purchases_top_articles_by_amount",
+        "aggregation": "top_n_amount"
+      },
+      "outputContract": { "unit": "EUR", "confidence": "medium", "includeSource": true, "includeTrace": true },
+      "owner": "Compres+IT",
+      "active": true
+    },
+    {
+      "metricId": "purchases_supplier_year",
+      "domain": "finance_purchases",
+      "sourceOfTruth": { "system": "csv_finances", "kind": "compres", "dataset": "compres" },
+      "slotSchema": ["year", "supplierCode_optional", "supplierName_optional"],
+      "normalization": { "synonyms": ["proveidor", "supplier", "P00"] },
+      "calculationRule": {
+        "executor": "purchases_supplier_year_summary",
+        "aggregation": "supplier_year_total"
+      },
+      "outputContract": { "unit": "EUR", "confidence": "medium", "includeSource": true, "includeTrace": true },
+      "owner": "Compres+IT",
+      "active": true
+    },
+    {
+      "metricId": "purchases_supplier_article_period",
+      "domain": "finance_purchases",
+      "sourceOfTruth": { "system": "csv_finances", "kind": "compres", "dataset": "compres" },
+      "slotSchema": ["yearMonth"],
+      "normalization": { "synonyms": ["proveidor article", "periode proveidor"] },
+      "calculationRule": {
+        "executor": "purchases_supplier_article_period_summary",
+        "aggregation": "supplier_article_period"
+      },
+      "outputContract": { "unit": "EUR", "confidence": "medium", "includeSource": true, "includeTrace": true },
+      "owner": "Compres+IT",
       "active": true
     },
     {
@@ -95,43 +206,89 @@
         "dateField": "date"
       },
       "slotSchema": ["date"],
-      "normalization": {
-        "dateFormatAccepted": ["DD-MM", "DD-MM-YY", "YYYY-MM-DD"]
-      },
+      "normalization": { "dateFormatAccepted": ["DD-MM", "DD-MM-YY", "YYYY-MM-DD"] },
       "calculationRule": {
         "executor": "preventius_planned_count_by_day",
         "aggregation": "count_documents"
       },
-      "outputContract": {
-        "unit": "count",
-        "confidence": "high",
-        "includeSource": true,
-        "includeTrace": true
-      },
+      "outputContract": { "unit": "count", "confidence": "high", "includeSource": true, "includeTrace": true },
       "owner": "Manteniment+IT",
+      "active": true
+    },
+    {
+      "metricId": "incidents_count_year",
+      "domain": "maintenance",
+      "sourceOfTruth": { "system": "firestore", "collection": "incidents" },
+      "slotSchema": ["year"],
+      "normalization": { "synonyms": ["incidencies", "incidentes"] },
+      "calculationRule": {
+        "executor": "incidents_count_by_year",
+        "aggregation": "count_documents"
+      },
+      "outputContract": { "unit": "count", "confidence": "high", "includeSource": true, "includeTrace": true },
+      "owner": "Manteniment+IT",
+      "active": true
+    },
+    {
+      "metricId": "audits_count_period",
+      "domain": "maintenance",
+      "sourceOfTruth": { "system": "firestore", "collection": "audits" },
+      "slotSchema": ["year_optional", "yearMonth_optional"],
+      "normalization": { "synonyms": ["auditories", "auditorias"] },
+      "calculationRule": { "executor": "audits_count", "aggregation": "count_documents" },
+      "outputContract": { "unit": "count", "confidence": "medium", "includeSource": true, "includeTrace": true },
+      "owner": "Manteniment+IT",
+      "active": true
+    },
+    {
+      "metricId": "events_count_year",
+      "domain": "events",
+      "sourceOfTruth": { "system": "firestore", "collection": "events" },
+      "slotSchema": ["year"],
+      "normalization": { "synonyms": ["esdeveniments", "eventos", "calendari"] },
+      "calculationRule": {
+        "executor": "events_count_by_year",
+        "aggregation": "count_documents"
+      },
+      "outputContract": { "unit": "count", "confidence": "high", "includeSource": true, "includeTrace": true },
+      "owner": "Events+IT",
+      "active": true
+    },
+    {
+      "metricId": "events_count_ln_month",
+      "domain": "events",
+      "sourceOfTruth": { "system": "firestore", "collection": "events" },
+      "slotSchema": ["yearMonth"],
+      "normalization": { "synonyms": ["esdeveniments per ln", "linia de negoci"] },
+      "calculationRule": {
+        "executor": "events_count_by_ln_month",
+        "aggregation": "count_by_ln_month"
+      },
+      "outputContract": { "unit": "count", "confidence": "high", "includeSource": true, "includeTrace": true },
+      "owner": "Events+IT",
+      "active": true
+    },
+    {
+      "metricId": "event_context_by_code",
+      "domain": "events",
+      "sourceOfTruth": { "system": "firestore", "collection": "events", "key": "code" },
+      "slotSchema": ["code"],
+      "normalization": { "codePattern": "C########" },
+      "calculationRule": { "executor": "event_context_by_code", "aggregation": "context_bundle" },
+      "outputContract": { "unit": "record", "confidence": "high", "includeSource": true, "includeTrace": true },
+      "owner": "Events+IT",
       "active": true
     },
     {
       "metricId": "personnel_count_by_department",
       "domain": "operations",
-      "sourceOfTruth": {
-        "system": "firestore",
-        "collection": "personnel"
-      },
+      "sourceOfTruth": { "system": "firestore", "collection": "personnel" },
       "slotSchema": ["department"],
       "normalization": {
         "departmentSynonyms": ["logistica", "cuina", "serveis", "rh", "rrhh"]
       },
-      "calculationRule": {
-        "executor": "personnel_search",
-        "aggregation": "count_rows"
-      },
-      "outputContract": {
-        "unit": "count",
-        "confidence": "high",
-        "includeSource": true,
-        "includeTrace": true
-      },
+      "calculationRule": { "executor": "personnel_search", "aggregation": "count_rows" },
+      "outputContract": { "unit": "count", "confidence": "high", "includeSource": true, "includeTrace": true },
       "owner": "Operativa+IT",
       "active": true
     },
@@ -144,44 +301,52 @@
         "field": "conductors[].plate"
       },
       "slotSchema": ["plate", "period_optional"],
-      "normalization": {
-        "platePattern": "####-AAA"
-      },
+      "normalization": { "platePattern": "####-AAA" },
       "calculationRule": {
         "executor": "vehicle_assignments_count_by_plate",
         "aggregation": "count_assignments"
       },
-      "outputContract": {
-        "unit": "count",
-        "confidence": "medium",
-        "includeSource": true,
-        "includeTrace": true
-      },
+      "outputContract": { "unit": "count", "confidence": "medium", "includeSource": true, "includeTrace": true },
       "owner": "Logistica+IT",
       "active": true
     },
     {
       "metricId": "worker_services_count",
       "domain": "operations",
-      "sourceOfTruth": {
-        "system": "firestore",
-        "collectionsPrefix": "quadrants"
-      },
+      "sourceOfTruth": { "system": "firestore", "collectionsPrefix": "quadrants" },
       "slotSchema": ["workerName", "period_optional", "department_optional"],
-      "normalization": {
-        "nameMatch": "accent_insensitive_contains"
-      },
+      "normalization": { "nameMatch": "accent_insensitive_contains" },
       "calculationRule": {
         "executor": "worker_services_count",
         "aggregation": "count_services"
       },
-      "outputContract": {
-        "unit": "count",
-        "confidence": "medium",
-        "includeSource": true,
-        "includeTrace": true
-      },
+      "outputContract": { "unit": "count", "confidence": "medium", "includeSource": true, "includeTrace": true },
       "owner": "Operativa+IT",
+      "active": true
+    },
+    {
+      "metricId": "finques_count",
+      "domain": "events",
+      "sourceOfTruth": { "system": "firestore", "collection": "finques" },
+      "slotSchema": [],
+      "normalization": { "synonyms": ["finques", "fincas"] },
+      "calculationRule": { "executor": "finques_count", "aggregation": "count_documents" },
+      "outputContract": { "unit": "count", "confidence": "medium", "includeSource": true, "includeTrace": true },
+      "owner": "Events+IT",
+      "active": true
+    },
+    {
+      "metricId": "food_safety_celiac_dishes",
+      "domain": "food_safety",
+      "sourceOfTruth": { "system": "firestore", "collection": "plats" },
+      "slotSchema": [],
+      "normalization": { "synonyms": ["celiac", "sense gluten", "gluten no"] },
+      "calculationRule": {
+        "executor": "food_safety_celiac_dishes",
+        "aggregation": "list_dishes"
+      },
+      "outputContract": { "unit": "count", "confidence": "high", "includeSource": true, "includeTrace": true },
+      "owner": "Cuina+IT",
       "active": true
     }
   ]

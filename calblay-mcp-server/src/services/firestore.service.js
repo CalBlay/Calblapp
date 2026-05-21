@@ -207,11 +207,15 @@ function inferDomainFromName(name) {
   if (n.includes("incident") || n.includes("ticket") || n.includes("manten")) return "maintenance";
   if (n.includes("quadrant") || n.includes("personnel") || n.includes("personal")) return "operations";
   if (n.includes("transport") || n.includes("vehicle") || n.includes("logistic")) return "logistics";
-  if (n.includes("allergen")) return "food_safety";
-  if (n.includes("project")) return "projects";
+  if (n.includes("channel") || n.includes("message") || n.includes("missatg")) return "messaging";
+  if (n.includes("cuina") || n.includes("production") || n.includes("plat")) return "food_safety";
+  if (n.includes("roba") || n.includes("uniform") || n.includes("entreg")) return "operations";
+  if (n.includes("allergen") || n.includes("alerg")) return "food_safety";
+  if (n.includes("project") || n.includes("room")) return "projects";
   if (n.includes("finance") || n.includes("cost") || n.includes("venda") || n.includes("compra"))
     return "finance";
-  if (n.includes("event") || n.startsWith("stage_")) return "events";
+  if (n.includes("event") || n.startsWith("stage_") || n.includes("finca")) return "events";
+  if (n.includes("user") || n.includes("notif")) return "operations";
   return "unknown";
 }
 

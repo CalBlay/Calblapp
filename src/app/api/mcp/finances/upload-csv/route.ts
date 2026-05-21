@@ -2,6 +2,7 @@ import path from 'node:path'
 import { NextRequest, NextResponse } from 'next/server'
 import { storageAdmin } from '@/lib/firebaseAdmin'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { financeGcsBase, financeKindSegment, type FinanceKind } from '@/lib/server/financeGcsPaths'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -10,21 +11,12 @@ export const maxDuration = 120
 const MAX_FILES = 120
 const MAX_FILE_BYTES = 60 * 1024 * 1024
 
-type FinanceKind = 'compres' | 'costos' | 'vendes' | 'rh'
-
 const normalizeSegment = (value: string) =>
   value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
-
-const kindSegment = (kind: FinanceKind) => {
-  if (kind === 'rh') return process.env.FINANCE_PATH_RH || 'recursos_humans'
-  if (kind === 'costos') return process.env.FINANCE_PATH_COSTOS || 'costos'
-  if (kind === 'vendes') return process.env.FINANCE_PATH_VENDES || 'vendes'
-  return process.env.FINANCE_PATH_COMPRES || 'compres'
-}
 
 const normalizeKind = (value: string): FinanceKind | null => {
   const v = normalizeSegment(value).replace(/[\s._-]+/g, '')
@@ -50,12 +42,6 @@ const isAllowedCsvName = (name: string) => {
   const lower = base.toLowerCase()
   return lower.endsWith('.csv') || lower.endsWith('.tsv')
 }
-
-const financeBase = () =>
-  String(process.env.GCS_FINANCE_BASE || 'finances')
-    .trim()
-    .replace(/^\/+/, '')
-    .replace(/\/+$/, '') || 'finances'
 
 function getFinanceBucket() {
   const bucketName =
@@ -96,7 +82,7 @@ export async function POST(req: NextRequest) {
   }
 
   const bucket = getFinanceBucket()
-  const base = financeBase()
+  const base = financeGcsBase()
   const uploaded: Array<{ name: string; path: string; kind: FinanceKind; size: number }> = []
   const skipped: Array<{ name: string; reason: string }> = []
 
@@ -116,7 +102,7 @@ export async function POST(req: NextRequest) {
     }
 
     const kind = inferKindFromRelativePath(relativePath, fallbackKind)
-    const objectPath = `${base}/${kindSegment(kind)}/${fileName}`.replace(/\/+/g, '/')
+    const objectPath = `${base}/${financeKindSegment(kind)}/${fileName}`.replace(/\/+/g, '/')
     const buffer = Buffer.from(await file.arrayBuffer())
 
     await bucket.file(objectPath).save(buffer, {

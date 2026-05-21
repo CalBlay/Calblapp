@@ -2,11 +2,10 @@ import path from 'node:path'
 import { NextRequest, NextResponse } from 'next/server'
 import { storageAdmin } from '@/lib/firebaseAdmin'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { financeGcsBase, financeKindSegment, type FinanceKind } from '@/lib/server/financeGcsPaths'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-
-type FinanceKind = 'compres' | 'costos' | 'vendes' | 'rh'
 
 const normalizeSegment = (value: string) =>
   value
@@ -24,13 +23,6 @@ const normalizeKind = (value: string): FinanceKind | null => {
   return null
 }
 
-const kindSegment = (kind: FinanceKind) => {
-  if (kind === 'rh') return process.env.FINANCE_PATH_RH || 'recursos_humans'
-  if (kind === 'costos') return process.env.FINANCE_PATH_COSTOS || 'costos'
-  if (kind === 'vendes') return process.env.FINANCE_PATH_VENDES || 'vendes'
-  return process.env.FINANCE_PATH_COMPRES || 'compres'
-}
-
 const inferKindFromRelativePath = (relativePath: string, fallback: FinanceKind): FinanceKind => {
   const parts = relativePath.replace(/\\/g, '/').split('/').filter(Boolean)
   for (const part of parts.slice(0, -1)) {
@@ -46,12 +38,6 @@ const isAllowedCsvName = (name: string) => {
   const lower = base.toLowerCase()
   return lower.endsWith('.csv') || lower.endsWith('.tsv')
 }
-
-const financeBase = () =>
-  String(process.env.GCS_FINANCE_BASE || 'finances')
-    .trim()
-    .replace(/^\/+/, '')
-    .replace(/\/+$/, '') || 'finances'
 
 function getFinanceBucket() {
   const bucketName =
@@ -84,7 +70,7 @@ export async function POST(req: NextRequest) {
   const fallbackKind = normalizeKind(String(body?.kind || 'compres')) || 'compres'
   const relativePath = String(body?.relativePath || fileName)
   const kind = inferKindFromRelativePath(relativePath, fallbackKind)
-  const objectPath = `${financeBase()}/${kindSegment(kind)}/${fileName}`.replace(/\/+/g, '/')
+  const objectPath = `${financeGcsBase()}/${financeKindSegment(kind)}/${fileName}`.replace(/\/+/g, '/')
   const contentType = String(body?.contentType || '').trim() || 'text/csv'
 
   const bucket = getFinanceBucket()

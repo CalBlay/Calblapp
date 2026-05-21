@@ -64,9 +64,9 @@ export function financeKindSegment(kind) {
   };
   const defaults = {
     compres: "compres",
-    costos: "costos",
+    costos: "c.explotacio",
     vendes: "vendes",
-    rh: "recursos_humans"
+    rh: "RRHH"
   };
   return String(envMap[k] || defaults[k] || defaults.compres)
     .trim()

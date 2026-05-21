@@ -416,3 +416,39 @@ export function getGoldenDriftStats({ traceLimit = 200 } = {}) {
   };
 }
 
+export async function getChatTraceReplay(traceId) {
+  const id = String(traceId || "").trim();
+  if (!id) return { ok: false, error: "Missing traceId" };
+
+  if (firestoreLearningEnabled()) {
+    try {
+      const { getDb } = await import("./firestore.service.js");
+      const db = getDb();
+      const snap = await db.collection(tracesFirestoreCollection()).doc(id).get();
+      if (snap.exists) {
+        const data = snap.data() || {};
+        return {
+          ok: true,
+          source: "firestore",
+          trace: {
+            traceId: id,
+            at: data.at?.toDate?.()?.toISOString?.() || data.at || null,
+            question: data.question || "",
+            queryPlan: data.queryPlan || null,
+            result: data.result || null,
+            toolOutcomes: data.toolOutcomes || [],
+            durationMs: data.durationMs ?? null
+          }
+        };
+      }
+    } catch (e) {
+      console.error("[ml-learning] Firestore trace read failed:", e?.message || e);
+    }
+  }
+
+  const rows = readJsonlRows(tracesPath());
+  const hit = [...rows].reverse().find((r) => String(r?.traceId || "") === id);
+  if (!hit) return { ok: false, error: "Trace not found", traceId: id };
+  return { ok: true, source: "jsonl", trace: hit };
+}
+

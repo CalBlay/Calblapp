@@ -89,7 +89,7 @@ export function canExtractCostDepartmentPeriodSlots(question) {
     .toLowerCase();
 
   const hasDepartment =
-    /\b(marketing|logistica|rrhh|rh|recursos humans|recursos humanos|transport|compres|compras|produccio|produccion|operativa|cuina|sala|personal|submin\w*|sumin\w*)\b/.test(
+    /\b(marketing|logistica|rrhh|rh|recursos humans|recursos humanos|transport|compres|compras|produccio|produccion|operativa|cuina|sala|personal|submin\w*|sumin\w*|serveis\s+professional\w*|assegur\w*)\b/.test(
       s
     );
   const hasPeriod =
@@ -117,7 +117,7 @@ export function extractCostDepartmentPeriodSlots(question) {
     .toLowerCase();
 
   const deptMatch = s.match(
-    /\b(marketing|logistica|rrhh|rh|recursos humans|recursos humanos|transport|compres|compras|produccio|produccion|operativa|cuina|sala|personal|submin\w*|sumin\w*)\b/
+    /\b(marketing|logistica|rrhh|rh|recursos humans|recursos humanos|transport|compres|compras|produccio|produccion|operativa|cuina|sala|personal|submin\w*|sumin\w*|serveis\s+professional\w*|assegur\w*)\b/
   );
   let departmentContains = deptMatch ? deptMatch[1] : "";
   if (departmentContains && /\b(subministr|suministr)/.test(departmentContains)) {
@@ -183,9 +183,56 @@ export function shouldForceFirestoreCatalog(question) {
   if (/\b(p\d{4,}|proveidor|compres?|cost|factura|vendes?|revenue|marge)\b/.test(s)) return false;
   if (/\b(c\d+)\b/.test(s)) return false; // event_context_by_code ja cobreix aquest cas
 
-  return /\b(alergen|celiac|celiacs|gluten|plats?|menu|menus|projecte|projectes|modul|moduls)\b/.test(
+  return /\b(alergen|celiac|celiacs|gluten|plats?|menu|menus|projecte|projectes|modul|moduls|channel|channels|missatg|message|cuina|roba|ticket|tickets)\b/.test(
     s
   );
+}
+
+export function shouldForceEventsCountYear(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksEvents = /\b(esdeveniment\w*|event\w*)\b/.test(s);
+  const asksCount = /\b(quants?|quantas?|cuantas?|total|nombre|numero|recompte)\b/.test(s);
+  const asksYear = /\b(20\d{2}|19\d{2}|aquest any)\b/.test(s);
+  const asksPreventive = /\b(prevenit\w*|preventiu|preventius)\b/.test(s);
+  return asksEvents && (asksCount || asksYear) && !asksPreventive;
+}
+
+export function shouldForceEventsCountLnMonth(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksEvents = /\b(esdeveniment\w*|event\w*)\b/.test(s);
+  const asksLn = /\b(ln\d{4,5}|linia de negoci|per ln)\b/.test(s) || /\b(events?|restaurants?|empresa|foodlovers?)\b/.test(s);
+  const hasMonth =
+    /\b20\d{2}[-/](0[1-9]|1[0-2])\b/.test(s) ||
+    /\b(gener|febrer|marc|abril|maig|juny|juliol|agost|setembre|octubre|desembre)\b.*\b20\d{2}\b/.test(s);
+  return asksEvents && asksLn && hasMonth;
+}
+
+export function shouldForceSalesArticleCentreMonth(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksSales = /\b(vendes?|ventas?|facturaci\w*|cobrades?)\b/.test(s);
+  const asksArticle = /\b(article|producte|aigua|plat)\b/.test(s);
+  const asksCentre = /\b(nautic|masia|centre|establiment|restaurant)\b/.test(s);
+  const hasMonth = Boolean(extractYearMonthFromQuestion(question));
+  return asksSales && asksArticle && asksCentre && hasMonth;
+}
+
+export function shouldForceSalesCentreMonth(question) {
+  const s = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  const asksSales = /\b(vendes?|ventas?|facturaci\w*|billing)\b/.test(s);
+  const asksYear = /\b(20\d{2})\b/.test(s);
+  return asksSales && asksYear && !shouldForceSalesArticleCentreMonth(question);
 }
 
 export function shouldForceIncidentsCountYear(question) {

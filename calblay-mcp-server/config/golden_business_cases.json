@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "updatedAt": "2026-05-08",
+  "updatedAt": "2026-05-21",
   "cases": [
     {
       "id": "maintenance_preventius_day_2026_05_04",
@@ -352,6 +352,104 @@
         "policyFinanceKind": "costos",
         "mustNotHaveWarning": true,
         "numericAssertions": [{ "path": "result.totalAmount", "op": "eq", "value": -30646.24 }]
+      }
+    },
+    {
+      "id": "cost_personal_2026_03_planner",
+      "question": "Quin cost de personal hem tingut el 03-26?",
+      "slots": { "departmentContains": "personal", "period": "2026-03" },
+      "expected": {
+        "metricId": "cost_personal_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "plannerOnly": true
+      }
+    },
+    {
+      "id": "cost_compres_2026_01_planner",
+      "question": "Quin és el total de compres al gener de 2026?",
+      "slots": { "departmentContains": "compres", "period": "2026-01" },
+      "expected": {
+        "metricId": "cost_compres_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "plannerOnly": true
+      }
+    },
+    {
+      "id": "finance_result_ln_events_2026_02",
+      "question": "Resultat financer LN Events al febrer 2026",
+      "slots": { "yearMonth": "2026-02", "lnContains": "events" },
+      "expected": {
+        "metricId": "finance_result_ln_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "costos",
+        "plannerOnly": true
+      }
+    },
+    {
+      "id": "incidents_count_2026",
+      "question": "Quantes incidències hem registrat el 2026?",
+      "slots": { "year": 2026 },
+      "expected": {
+        "metricId": "incidents_count_year",
+        "policySystem": "firestore",
+        "plannerOnly": true
+      }
+    },
+    {
+      "id": "events_count_year_2026",
+      "question": "Quants esdeveniments tenim el 2026?",
+      "slots": { "year": 2026 },
+      "expected": {
+        "metricId": "events_count_year",
+        "policySystem": "firestore",
+        "plannerOnly": true
+      }
+    },
+    {
+      "id": "events_count_ln_month_2026_02",
+      "question": "Quants esdeveniments per LN Events al 2026-02?",
+      "slots": { "yearMonth": "2026-02" },
+      "expected": {
+        "metricId": "events_count_ln_month",
+        "policySystem": "firestore",
+        "plannerOnly": true
+      }
+    },
+    {
+      "id": "sales_centre_year_2026",
+      "question": "Vendes totals per centre el 2026",
+      "slots": { "year": 2026 },
+      "expected": {
+        "metricId": "sales_centre_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "vendes",
+        "plannerOnly": true
+      }
+    },
+    {
+      "id": "sales_article_nautic_aigua_2026_02",
+      "question": "Vendes d'aigua al Nautic el 2026-02",
+      "slots": {
+        "centreContains": "nautic",
+        "articleContains": "aigua",
+        "yearMonth": "2026-02"
+      },
+      "expected": {
+        "metricId": "sales_article_centre_month",
+        "policySystem": "csv_finances",
+        "policyFinanceKind": "vendes",
+        "plannerOnly": true
+      }
+    },
+    {
+      "id": "food_safety_celiac_planner",
+      "question": "Quins plats són aptes per a celíacs?",
+      "expected": {
+        "metricId": "food_safety_celiac_dishes",
+        "policySystem": "firestore",
+        "plannerOnly": true
       }
     }
   ]

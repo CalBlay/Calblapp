@@ -10,8 +10,13 @@ import {
   shouldForceFinquesCount,
   shouldForceCostDepartmentPeriod,
   shouldForceEventsCountByDay,
+  shouldForceEventsCountYear,
+  shouldForceEventsCountLnMonth,
   shouldForceFinanceResultByLnMonth,
+  shouldForceIncidentsCountYear,
   shouldForcePersonnelSearch,
+  shouldForceSalesArticleCentreMonth,
+  shouldForceSalesCentreMonth,
   shouldForceVehicleAssignmentsByPlate,
   shouldForceWorkerServicesCount
 } from "./ai-chat/helpers.js";
@@ -22,6 +27,7 @@ function inferLnContains(question) {
     .replace(/\p{M}/gu, "")
     .toLowerCase();
   if (/\bfoodlovers?\b/.test(qNorm)) return "LN0005";
+  if (/\bevents?\b/.test(qNorm)) return "events";
   if (/\bfires?|festivals?\b/.test(qNorm)) return "fires";
   if (/\bempresa\b/.test(qNorm)) return "empresa";
   if (/\brestaurants?\b/.test(qNorm)) return "restaurants";
@@ -131,6 +137,33 @@ export function buildQueryPlan({ question, currentYear = new Date().getFullYear(
     return plan;
   }
 
+  if (shouldForceSalesArticleCentreMonth(q)) {
+    plan.metricId = "sales_article_centre_month";
+    plan.executor = "sales_by_article_centre_month";
+    plan.confidence = "medium";
+    plan.slots = {
+      centreContains: /\bnautic\b/.test(qNorm) ? "nautic" : "",
+      articleContains: /\baigua\b/.test(qNorm) ? "aigua" : "",
+      yearMonth: extractYearMonthFromQuestion(q) || ""
+    };
+    if (!plan.slots.yearMonth) {
+      plan.status = "ambiguous";
+      plan.reasoning.push("Sales article-centre-month intent but yearMonth missing.");
+    } else {
+      plan.reasoning.push("Detected sales by article, centre and month.");
+    }
+    return plan;
+  }
+
+  if (shouldForceSalesCentreMonth(q)) {
+    plan.metricId = "sales_centre_month";
+    plan.executor = "sales_by_centre_month";
+    plan.confidence = "medium";
+    plan.slots = { year: extractYearFromQuestion(q, currentYear) };
+    plan.reasoning.push("Detected sales by centre/year aggregation.");
+    return plan;
+  }
+
   if (shouldForceCostDepartmentPeriod(q) || asksCostLike) {
     const slots = extractCostDepartmentPeriodSlots(q) || {};
     const normalizedDept = normalizeCostDepartmentContains(slots.departmentContains || "");
@@ -139,11 +172,17 @@ export function buildQueryPlan({ question, currentYear = new Date().getFullYear(
       normalizedDept === "personal" ||
       /\b(cost.*personal|personal.*cost|cost de personal)\b/.test(qNorm);
     const isCompresDept = normalizedDept === "compres";
+    const isServeisPro = /\bserveis\s+professional/.test(qNorm) || normalizedDept.includes("serveis professional");
+    const isAssegurances = /\bassegur/.test(qNorm) || normalizedDept.includes("assegur");
     plan.metricId = isPersonalCost
       ? "cost_personal_month"
       : isCompresDept
         ? "cost_compres_month"
-        : "cost_subministraments_month";
+        : isServeisPro
+          ? "cost_serveis_professionals_month"
+          : isAssegurances
+            ? "cost_assegurances_month"
+            : "cost_subministraments_month";
     plan.executor = "costs_by_department_period";
     plan.confidence = "medium";
     plan.slots = {
@@ -178,8 +217,31 @@ export function buildQueryPlan({ question, currentYear = new Date().getFullYear(
     return plan;
   }
 
+  if (shouldForceEventsCountLnMonth(q)) {
+    plan.metricId = "events_count_ln_month";
+    plan.executor = "events_count_by_ln_month";
+    plan.confidence = "medium";
+    plan.slots = { yearMonth: extractYearMonthFromQuestion(q) || "" };
+    if (!plan.slots.yearMonth) {
+      plan.status = "ambiguous";
+      plan.reasoning.push("Events LN-month intent but yearMonth missing.");
+    } else {
+      plan.reasoning.push("Detected events count by LN and month.");
+    }
+    return plan;
+  }
+
+  if (shouldForceEventsCountYear(q)) {
+    plan.metricId = "events_count_year";
+    plan.executor = "events_count_by_year";
+    plan.confidence = "medium";
+    plan.slots = { year: extractYearFromQuestion(q, currentYear) };
+    plan.reasoning.push("Detected events count by year.");
+    return plan;
+  }
+
   if (shouldForceAuditsCount(q)) {
-    plan.metricId = "audits_count";
+    plan.metricId = "audits_count_period";
     plan.executor = "audits_count";
     plan.confidence = "medium";
     plan.reasoning.push("Detected audits count intent.");
@@ -195,15 +257,24 @@ export function buildQueryPlan({ question, currentYear = new Date().getFullYear(
   }
 
   const asksIncidents = /\b(inciden\w*|incident\w*)\b/.test(qNorm);
-  const asksIncidentCount = /\b(quants?|quantas?|cuantas?|total|nombre|numero|registrat|hem generat)\b/.test(
-    qNorm
-  );
+  const asksIncidentCount =
+    shouldForceIncidentsCountYear(q) ||
+    /\b(quants?|quantas?|cuantas?|total|nombre|numero|registrat|hem generat)\b/.test(qNorm);
   if (asksIncidents && asksIncidentCount) {
     plan.metricId = "incidents_count_year";
     plan.executor = "incidents_count_by_year";
     plan.confidence = "medium";
     plan.slots = { year: extractYearFromQuestion(q, currentYear) };
     plan.reasoning.push("Detected incidents count intent by year.");
+    return plan;
+  }
+
+  if (/\b(celiac|celíac|sense gluten|gluten)\b/.test(qNorm) && /\b(plats?|platos?|menjar)\b/.test(qNorm)) {
+    plan.metricId = "food_safety_celiac_dishes";
+    plan.executor = "food_safety_celiac_dishes";
+    plan.confidence = "high";
+    plan.slots = {};
+    plan.reasoning.push("Detected celiac-safe dishes query.");
     return plan;
   }
 

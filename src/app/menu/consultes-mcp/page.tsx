@@ -8,6 +8,7 @@ import { EventsListSection } from './EventsListSection'
 import { FincaRankingSection } from './FincaRankingSection'
 import { FinanceCsvUploadSection } from './FinanceCsvUploadSection'
 import { OpenConsultSection } from './OpenConsultSection'
+import { FirestoreMappingReviewSection } from './FirestoreMappingReviewSection'
 import { useConsultesMcpPage } from './useConsultesMcpPage'
 
 function ConsultesMcpPage() {
@@ -34,6 +35,8 @@ function ConsultesMcpPage() {
       </p>
 
       <FinanceCsvUploadSection />
+
+      <FirestoreMappingReviewSection />
 
       <OpenConsultSection
         openQuestion={p.openQuestion}

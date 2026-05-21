@@ -35,6 +35,45 @@ function OpenChatAnswerCardInner({
   const [feedbackNote, setFeedbackNote] = useState('')
   const [feedbackCorrected, setFeedbackCorrected] = useState('')
   const [showCorrectionForm, setShowCorrectionForm] = useState(false)
+  const [traceAudit, setTraceAudit] = useState<{
+    loading: boolean
+    error: string | null
+    metricId?: string
+    plannerStatus?: string
+    toolChoiceSource?: string
+  } | null>(null)
+
+  const loadTraceAudit = useCallback(async () => {
+    const traceId = openAnswer.traceId?.trim()
+    if (!traceId) return
+    setTraceAudit({ loading: true, error: null })
+    try {
+      const res = await fetch(`/api/mcp/chat/trace?${new URLSearchParams({ traceId })}`)
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        trace?: {
+          queryPlan?: { metricId?: string; status?: string }
+          result?: { toolChoiceSource?: string }
+        }
+        error?: string
+      }
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `${res.status}`)
+      }
+      setTraceAudit({
+        loading: false,
+        error: null,
+        metricId: data.trace?.queryPlan?.metricId,
+        plannerStatus: data.trace?.queryPlan?.status,
+        toolChoiceSource: data.trace?.result?.toolChoiceSource,
+      })
+    } catch (e) {
+      setTraceAudit({
+        loading: false,
+        error: e instanceof Error ? e.message : 'No s ha pogut carregar la traça',
+      })
+    }
+  }, [openAnswer.traceId])
 
   useEffect(() => {
     setFeedbackNote('')
@@ -42,6 +81,7 @@ function OpenChatAnswerCardInner({
     setShowCorrectionForm(false)
     setFeedbackState('idle')
     setFeedbackMsg(null)
+    setTraceAudit(null)
   }, [openAnswer.traceId])
 
   const sendFeedback = useCallback(
@@ -116,6 +156,24 @@ function OpenChatAnswerCardInner({
             {openAnswer.traceId ? (
               <span className="mt-1 block font-mono text-[10px] text-muted-foreground break-all">
                 Trace: {openAnswer.traceId}
+                <button
+                  type="button"
+                  className="ml-2 text-violet-700 underline underline-offset-2 hover:text-violet-900"
+                  onClick={() => void loadTraceAudit()}
+                  disabled={traceAudit?.loading}
+                >
+                  {traceAudit?.loading ? 'Carregant…' : 'Auditar traça'}
+                </button>
+              </span>
+            ) : null}
+            {traceAudit?.error ? (
+              <span className="mt-1 block text-[10px] text-red-600">{traceAudit.error}</span>
+            ) : null}
+            {traceAudit?.metricId ? (
+              <span className="mt-1 block text-[10px] text-muted-foreground">
+                Mètrica: <span className="font-mono">{traceAudit.metricId}</span>
+                {traceAudit.plannerStatus ? ` · pla: ${traceAudit.plannerStatus}` : ''}
+                {traceAudit.toolChoiceSource ? ` · ${traceAudit.toolChoiceSource}` : ''}
               </span>
             ) : null}
           </CardDescription>

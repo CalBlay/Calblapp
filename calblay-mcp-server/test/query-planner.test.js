@@ -59,3 +59,37 @@ test("query planner: cost intent without period is ambiguous", () => {
   assert.equal(plan.status, "ambiguous");
 });
 
+test("query planner: incidents count year", () => {
+  const plan = buildQueryPlan({
+    question: "Quantes incidències hem registrat el 2026?",
+    currentYear: 2026
+  });
+  assert.equal(plan.metricId, "incidents_count_year");
+  assert.equal(plan.executor, "incidents_count_by_year");
+});
+
+test("query planner: events count year", () => {
+  const plan = buildQueryPlan({
+    question: "Quants esdeveniments tenim el 2026?",
+    currentYear: 2026
+  });
+  assert.equal(plan.metricId, "events_count_year");
+});
+
+test("query planner: finance result LN month", () => {
+  const plan = buildQueryPlan({
+    question: "Resultat financer LN Events al febrer 2026",
+    currentYear: 2026
+  });
+  assert.equal(plan.metricId, "finance_result_ln_month");
+  assert.equal(plan.slots.yearMonth, "2026-02");
+});
+
+test("query planner: celiac dishes", () => {
+  const plan = buildQueryPlan({
+    question: "Quins plats són aptes per a celíacs?",
+    currentYear: 2026
+  });
+  assert.equal(plan.metricId, "food_safety_celiac_dishes");
+});
+

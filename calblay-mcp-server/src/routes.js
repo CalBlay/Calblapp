@@ -33,7 +33,12 @@ import {
   getMappingDeltaStatus,
   runFirestoreMappingDeltaJob
 } from "./services/firestore-mapping-delta.service.js";
-import { getMlLearningStatus, getToolChoiceSourceStats, logChatFeedback } from "./services/ml-learning.service.js";
+import {
+  getChatTraceReplay,
+  getMlLearningStatus,
+  getToolChoiceSourceStats,
+  logChatFeedback
+} from "./services/ml-learning.service.js";
 import { getControlledEvolutionChecklist, runDodChecks } from "./services/quality-gates.service.js";
 import { getDodHistory, writeDodSnapshot } from "./services/quality-history.service.js";
 import { getMetricCatalogStatus, readMetricCatalog } from "./services/metric-catalog.service.js";
@@ -308,6 +313,17 @@ export function registerRoutes(app) {
       const rich = Boolean(req.body?.rich);
       const result = await chatWithTools({ question, language, rich });
       res.json({ ok: true, ...result });
+    })
+  );
+
+  app.get(
+    "/chat/trace",
+    asyncHandler(async (req, res) => {
+      const traceId = String(req.query.traceId || "").trim();
+      if (!traceId) throw new HttpError(400, "Missing traceId query param");
+      const out = await getChatTraceReplay(traceId);
+      if (!out.ok) throw new HttpError(404, out.error || "Trace not found");
+      res.json({ ok: true, ...out });
     })
   );
 
