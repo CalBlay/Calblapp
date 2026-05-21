@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
-import { canAccessProjects } from '@/lib/projectAccess'
+import { canAccessProjects, sessionToAccessUser } from '@/lib/projectAccess'
 import { deriveProjectPhase } from '@/app/menu/projects/components/project-shared'
 import Ably from 'ably'
 
@@ -40,7 +40,7 @@ async function requireAdmin() {
   }
 
   const user = session.user as SessionUser
-  if (!canAccessProjects(user)) {
+  if (!canAccessProjects(sessionToAccessUser(user))) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
 

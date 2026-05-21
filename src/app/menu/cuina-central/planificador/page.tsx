@@ -55,7 +55,7 @@ export default function CuinaCentralPlanificadorPage() {
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   useEffect(() => {
     if (!planId) return

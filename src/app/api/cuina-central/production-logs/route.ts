@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   const to = url.searchParams.get('to')
   const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit')) || 200))
 
-  const snap = await db.collection(COL).orderBy('endedAt', 'desc').limit(limit)
+  const snap = await db.collection(COL).orderBy('endedAt', 'desc').limit(limit).get()
   let logs = snap.docs.map((doc) => mapLog(doc.id, doc.data() as Record<string, unknown>))
   if (from) logs = logs.filter((l) => l.endedAt >= from)
   if (to) logs = logs.filter((l) => l.endedAt <= to)

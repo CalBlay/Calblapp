@@ -161,22 +161,6 @@ const toEditableSurveyGroups = (premises: Premises): EditableSurveyGroup[] =>
     workerIds: Array.isArray(group.workerIds) ? group.workerIds : [],
   }))
 
-const hydrateConditionsWithPeople = (
-  items: EditableCondition[],
-  people: PersonnelOption[]
-): EditableCondition[] =>
-  items.map((condition) => {
-    if (condition.responsibleId) return condition
-    const matched = people.find((person) => norm(person.name) === norm(condition.responsible))
-    return matched
-      ? {
-          ...condition,
-          responsibleId: matched.id,
-          responsible: matched.name,
-        }
-      : condition
-  })
-
 export default function QuadrantPremisesPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
@@ -268,6 +252,7 @@ export default function QuadrantPremisesPage() {
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega premises quan canvia dept, no quan canvia people
   }, [status, department])
 
   useEffect(() => {
@@ -324,6 +309,8 @@ export default function QuadrantPremisesPage() {
     return () => {
       cancelled = true
     }
+    // people/driverCrews es llegeixen per sincronitzar amb premises; no re-executar en cada canvi local.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- premises és el disparador principal
   }, [status, department, premises])
 
   useEffect(() => {

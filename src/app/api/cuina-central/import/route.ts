@@ -67,7 +67,8 @@ export async function POST(req: Request) {
         },
         { merge: true }
       )
-      exists ? updated++ : created++
+      if (exists) updated++
+      else created++
     }
   } else if (entity === 'machines') {
     const col = CUINA_CENTRAL_COLLECTIONS.machines
@@ -102,7 +103,8 @@ export async function POST(req: Request) {
         },
         { merge: true }
       )
-      exists ? updated++ : created++
+      if (exists) updated++
+      else created++
     }
   } else if (entity === 'shifts') {
     const col = CUINA_CENTRAL_COLLECTIONS.shifts
@@ -139,7 +141,8 @@ export async function POST(req: Request) {
         },
         { merge: true }
       )
-      exists ? updated++ : created++
+      if (exists) updated++
+      else created++
     }
   } else if (entity === 'rates') {
     const articlesSnap = await db.collection(CUINA_CENTRAL_COLLECTIONS.articles).get()

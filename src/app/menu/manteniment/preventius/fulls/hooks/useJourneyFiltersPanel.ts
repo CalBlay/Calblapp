@@ -1,1 +1,1 @@
-export { useJourneyFiltersPanel } from './useJourneyFiltersPanel.tsx'
+export { useJourneyFiltersPanel } from './useJourneyFiltersPanel'

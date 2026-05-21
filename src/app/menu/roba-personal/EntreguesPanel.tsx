@@ -421,7 +421,7 @@ export function EntreguesPanel({
     [rrhhPrepareLines]
   )
 
-  const openRrhhPrepareFromLinked = () => {
+  const _openRrhhPrepareFromLinked = () => {
     if (!linkedRequest || linkedRequest.status !== 'submitted' || !isRobaAdminOrRrhh) return
     setRrhhPrepareLines(
       (linkedRequest.lines || []).map((l) => ({ productId: l.productId, qty: String(l.quantity) }))
@@ -844,7 +844,6 @@ export function EntreguesPanel({
       resetNewDeliveryForm()
       return
     }
-    const reqId = String(delivery.requestId || '').trim()
     setSelectedDeliveryId(delivery.id)
     setLinkedRequest(null)
     setWorkerId(delivery.workerId)

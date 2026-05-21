@@ -14,7 +14,6 @@ import { normalizeRole } from '@/lib/roles'
 import { canManageMaintenanceTickets } from '@/lib/accessControl'
 import {
   isCuinaCentralDepartment,
-  isMaintenanceTicketCreatorDepartment,
   isMaintenanceTicketCreatorOnlyUser,
   isRestaurantOpsDepartment,
 } from '@/lib/maintenanceTicketCreators'
@@ -105,7 +104,6 @@ export default function MaintenanceTicketsPage() {
   const userRole = normalizeRole(sessionUser.role || '')
   const isMaintenance = department === 'manteniment'
   const isMaintenanceWorker = userRole === 'treballador' && isMaintenance
-  const isTicketCreatorDept = isMaintenanceTicketCreatorDepartment(department)
   const isOwnTicketsOnly = isMaintenanceTicketCreatorOnlyUser(sessionUser)
   const canManageAllTickets = canManageMaintenanceTickets({
     role: userRole,
@@ -118,9 +116,7 @@ export default function MaintenanceTicketsPage() {
       userRole === 'cap' ||
       userRole === 'treballador' ||
       userRole === 'comercial' ||
-      userRole === 'usuari' ||
-      (isTicketCreatorDept &&
-        (userRole === 'usuari' || userRole === 'treballador' || userRole === 'cap')))
+      userRole === 'usuari')
 
   const formatDateTime = (value?: number | string | null) => formatDateTimeValue(value, '')
   const [dateResetSignal, setDateResetSignal] = useState(0)
