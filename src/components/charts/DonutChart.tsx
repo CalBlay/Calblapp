@@ -4,13 +4,17 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 
 interface Props {
   data?: { name: string; value: number }[]
+  colors?: string[]
+  className?: string
 }
 
 const COLORS = ['#10B981', '#3B82F6', '#FBBF24', '#EF4444']
 
-export function DonutChart({ data = [] }: Props) {
+export function DonutChart({ data = [], colors, className }: Props) {
+  const palette = colors?.length ? colors : COLORS
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <div className={className}>
+    <ResponsiveContainer width="100%" height="100%">
       <PieChart>
         <Pie
           data={data}
@@ -23,11 +27,12 @@ export function DonutChart({ data = [] }: Props) {
           paddingAngle={3}
         >
           {data.map((_, idx) => (
-            <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
+            <Cell key={idx} fill={palette[idx % palette.length]} />
           ))}
         </Pie>
         <Tooltip />
       </PieChart>
     </ResponsiveContainer>
+    </div>
   )
 }

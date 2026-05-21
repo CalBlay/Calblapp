@@ -16,30 +16,6 @@ import { useUpdatePersonnel } from '@/hooks/useUpdatePersonnel'
 import { usePersonnel, Personnel } from '@/hooks/usePersonnel'
 import { checkNameExists, generateSuggestions } from '@/lib/validateName'
 
-type UpdatePersonnelPayload = {
-  id: string
-  name?: string
-  role: string
-  department?: string
-  isJamonero: boolean
-  available: boolean
-  isDriver: boolean
-  driver: {
-    isDriver: boolean
-    camioGran: boolean
-    camioPetit: boolean
-  }
-  email: string | null
-  phone: string | null
-  maxHoursWeek: number
-  updatedAt: number
-  unavailableFrom: string | null
-  unavailableUntil: string | null
-  unavailableIndefinite: boolean
-  unavailableNotifiedFor: null
-  unavailableNotifiedAt: null
-}
-
 // Opcions de rol
 const ROLE_OPTIONS = [
   { value: 'equip', label: 'Equip' },

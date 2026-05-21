@@ -44,7 +44,7 @@ export async function userCanMarkRequestPickedUp(
     requestedByWorkerId?: string | null
   },
   sessionRole?: Role,
-  opts?: { linkedPersonnelId?: string }
+  _opts?: { linkedPersonnelId?: string }
 ): Promise<boolean> {
   if (!userId) return false
   if (sessionRole && normalizeRole(sessionRole) === 'admin') return true

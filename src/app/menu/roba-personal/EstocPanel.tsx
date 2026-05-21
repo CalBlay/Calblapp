@@ -52,11 +52,6 @@ type StockReservedReconcileResult = {
   discrepancies: StockReservedReconcileRow[]
 }
 
-type EstocPanelProps = {
-  /** Administrador / RRHH: eina per alinear «Reservat» amb sol·licituds preparades/recollides. */
-  canReconcileStockReserved?: boolean
-}
-
 export function EstocPanel() {
   const [products, setProducts] = useState<ProductRow[]>([])
   const [productId, setProductId] = useState('')

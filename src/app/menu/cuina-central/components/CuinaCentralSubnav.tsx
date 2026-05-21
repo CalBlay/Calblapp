@@ -19,7 +19,8 @@ export default function CuinaCentralSubnav() {
     <nav className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
       <div className="flex flex-wrap gap-2">
       {LINKS.map((link) => {
-        const active = pathname === link.href || pathname.startsWith(`${link.href}/`)
+        const active =
+          pathname === link.href || (pathname?.startsWith(`${link.href}/`) ?? false)
         return (
           <Link
             key={link.href}

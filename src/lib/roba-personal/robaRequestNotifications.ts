@@ -1,7 +1,6 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
-import { normDeptLabel } from '@/lib/roba-personal/requestPermissions'
 import { sendOutlookTextMail } from '@/services/graph/calendar'
 import * as XLSX from 'xlsx'
 
@@ -254,19 +253,6 @@ async function getProductMetaMap(
         size: String(d.size || '').trim(),
       })
     }
-  }
-  return out
-}
-
-async function getProductLabelMap(ids: string[]): Promise<Map<string, string>> {
-  const meta = await getProductMetaMap(ids)
-  const out = new Map<string, string>()
-  for (const [id, product] of meta) {
-    const base =
-      product.code && product.name
-        ? `${product.code} â€” ${product.name}${product.size ? ` (${product.size})` : ''}`
-        : product.code || product.name || id
-    out.set(id, base)
   }
   return out
 }

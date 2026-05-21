@@ -3,8 +3,6 @@ import { CUINA_CENTRAL_COLLECTIONS } from '../collections'
 import { ML_CONFIG, modelStateDocId } from './constants'
 import { extractLearningFeatures, type ProductionLogPayload } from './features'
 import { computeWindowStats, confidenceFromSampleCount, ema } from './stats'
-import type { ModelPairState } from './types'
-
 const DAY_MS = 86_400_000
 
 async function theoreticalQtyForPair(

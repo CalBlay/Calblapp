@@ -9,7 +9,6 @@ import type {
   PlanNeedLine,
   PlanSlot,
 } from './types'
-import { shiftDurationMinutes } from './utils'
 
 export type GeneratePlanInput = {
   weekStart: string
@@ -58,7 +57,7 @@ export function generateWeeklyPlan(input: GeneratePlanInput) {
         machineCode: string
         machineName: string
         minutes: number
-        source: 'ml' | 'learned' | 'theoretical' | 'blend' | 'unknown'
+        source: 'ml' | 'theoretical' | 'blend' | 'unknown'
       } | null = null
 
       for (const machine of activeMachines) {
@@ -79,7 +78,12 @@ export function generateWeeklyPlan(input: GeneratePlanInput) {
             rate?.qtyPerHour
           )
           minutes = est.minutes
-          source = est.source
+          source =
+            est.source === 'learned'
+              ? 'ml'
+              : est.source === 'theoretical'
+                ? 'theoretical'
+                : 'unknown'
         }
 
         if (source === 'unknown' || minutes <= 0) continue

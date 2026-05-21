@@ -118,11 +118,11 @@ export function useSpaces(
     fetchData()
   }, [
     filters.baseDate,
-    JSON.stringify(filters.comercial ?? []),
-    JSON.stringify(filters.finca ?? []),
-    JSON.stringify(filters.ln ?? []),
+    filters.comercial,
+    filters.finca,
+    filters.ln,
     filters.month,
-    JSON.stringify(filters.stage ?? []),
+    filters.stage,
     filters.year,
   ])
 

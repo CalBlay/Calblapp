@@ -42,17 +42,17 @@ export function WorkerReceiptConfirmationCard({
   const [issueNote, setIssueNote] = useState('')
   const [issueBusy, setIssueBusy] = useState(false)
 
-  const requestLines = request.lines || []
+  const requestLines = useMemo(() => request.lines || [], [request.lines])
   const [draftQty, setDraftQty] = useState<string[]>(() =>
     requestLines.map((l) => String(l.quantity))
   )
 
   useEffect(() => {
-    setDraftQty((request.lines || []).map((l) => String(l.quantity)))
+    setDraftQty(requestLines.map((l) => String(l.quantity)))
     setIssueNote('')
     setSig(null)
     setPadKey((k) => k + 1)
-  }, [request.id, request.lines])
+  }, [request.id, requestLines])
 
   const parsedDraftLines = useMemo(
     () =>
@@ -270,7 +270,7 @@ export function WorkerLeadDeliveryAckCard({
   onConfirmed: () => void
 }) {
   const { mutate } = useSWRConfig()
-  const lines = delivery.lines || []
+  const lines = useMemo(() => delivery.lines || [], [delivery.lines])
   const linesKey = lines.map((l) => `${l.productId}:${l.quantity}`).join('|')
 
   const [sig, setSig] = useState<string | null>(null)
@@ -282,11 +282,10 @@ export function WorkerLeadDeliveryAckCard({
   const [draftQty, setDraftQty] = useState<string[]>(() => lines.map((l) => String(l.quantity)))
 
   useEffect(() => {
-    const nextLines = delivery.lines || []
-    setDraftQty(nextLines.map((l) => String(l.quantity)))
+    setDraftQty(lines.map((l) => String(l.quantity)))
     setSig(null)
     setPadKey((k) => k + 1)
-  }, [delivery.id, linesKey])
+  }, [delivery.id, lines, linesKey])
 
   const parsedDraftLines = useMemo(
     () =>

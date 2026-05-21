@@ -375,6 +375,35 @@ export function SollicitudsPanel({
     [pickupLines]
   )
 
+  const load = useCallback(async () => {
+    try {
+      const [r, d, p, w, pref] = await Promise.all([
+        api<RequestRow[]>('/api/roba-personal/requests'),
+        api<DeliveryRow[]>('/api/roba-personal/deliveries'),
+        api<ProductRow[]>('/api/roba-personal/products'),
+        api<WorkerRow[]>('/api/roba-personal/workers'),
+        isRobaWorkerSelf
+          ? Promise.resolve({ savedEmail: '' })
+          : api<{ savedEmail?: string }>('/api/roba-personal/rrhh-email-preference').catch(() => ({ savedEmail: '' })),
+      ])
+      setRows(r)
+      setDeliveries(d)
+      setProducts(p.filter((x) => x.isActive !== false))
+      setWorkers(w.filter((x) => x.isActive !== false))
+      setSendToRrhhSavedEmail(String(pref.savedEmail || '').trim())
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    }
+  }, [isRobaWorkerSelf])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
   const confirmPrepare = async () => {
     if (!pickupDate.trim() || !prepareRequestId) return
     const payloadLines = prepareLines
@@ -419,7 +448,7 @@ export function SollicitudsPanel({
     }
   }
 
-  const sendToRrhh = async (id: string, extraEmail?: string) => {
+  const sendToRrhh = useCallback(async (id: string, extraEmail?: string) => {
     try {
       await api(`/api/roba-personal/requests/${id}`, {
         method: 'PATCH',
@@ -437,9 +466,9 @@ export function SollicitudsPanel({
         variant: 'destructive',
       })
     }
-  }
+  }, [load])
 
-  const sendToRrhhBatch = async (ids: string[], extraEmail?: string) => {
+  const sendToRrhhBatch = useCallback(async (ids: string[], extraEmail?: string) => {
     try {
       await api('/api/roba-personal/requests/send-to-rrhh-batch', {
         method: 'PATCH',
@@ -461,7 +490,7 @@ export function SollicitudsPanel({
         variant: 'destructive',
       })
     }
-  }
+  }, [load])
 
   const openSendToRrhhDialog = useCallback((requests: RequestRow[]) => {
     setSendToRrhhTargets(requests)
@@ -500,7 +529,7 @@ export function SollicitudsPanel({
     } finally {
       setSendToRrhhBusy(false)
     }
-  }, [closeSendToRrhhDialog, sendToRrhhEmail, sendToRrhhRememberEmail, sendToRrhhTargets])
+  }, [closeSendToRrhhDialog, sendToRrhh, sendToRrhhBatch, sendToRrhhEmail, sendToRrhhRememberEmail, sendToRrhhTargets])
 
   const markPickedUp = async (id: string, linesOverride?: { productId: string; quantity: number }[]) => {
     try {
@@ -606,7 +635,7 @@ export function SollicitudsPanel({
     } finally {
       setEditRequestBusy(false)
     }
-  }, [editRequestLines, editRequestTarget])
+  }, [editRequestLines, editRequestTarget, load])
 
   const cancelRequest = async (id: string) => {
     try {
@@ -656,41 +685,15 @@ export function SollicitudsPanel({
     return false
   }
 
-  const canSendToRrhhClient = (r: RequestRow) => {
-    if (r.status !== 'submitted') return false
-    if (isRobaAdminOrRrhh) return true
-    if (!isDeptLeadLimited) return false
-    return departmentsInSameRobaScope(String(r.requestingDepartment || ''), sessionDeptLabel)
-  }
-
-  const load = useCallback(async () => {
-    try {
-      const [r, d, p, w, pref] = await Promise.all([
-        api<RequestRow[]>('/api/roba-personal/requests'),
-        api<DeliveryRow[]>('/api/roba-personal/deliveries'),
-        api<ProductRow[]>('/api/roba-personal/products'),
-        api<WorkerRow[]>('/api/roba-personal/workers'),
-        isRobaWorkerSelf
-          ? Promise.resolve({ savedEmail: '' })
-          : api<{ savedEmail?: string }>('/api/roba-personal/rrhh-email-preference').catch(() => ({ savedEmail: '' })),
-      ])
-      setRows(r)
-      setDeliveries(d)
-      setProducts(p.filter((x) => x.isActive !== false))
-      setWorkers(w.filter((x) => x.isActive !== false))
-      setSendToRrhhSavedEmail(String(pref.savedEmail || '').trim())
-    } catch (e: unknown) {
-      toast({
-        title: 'Error',
-        description: e instanceof Error ? e.message : String(e),
-        variant: 'destructive',
-      })
-    }
-  }, [isRobaWorkerSelf])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+  const canSendToRrhhClient = useCallback(
+    (r: RequestRow) => {
+      if (r.status !== 'submitted') return false
+      if (isRobaAdminOrRrhh) return true
+      if (!isDeptLeadLimited) return false
+      return departmentsInSameRobaScope(String(r.requestingDepartment || ''), sessionDeptLabel)
+    },
+    [isRobaAdminOrRrhh, isDeptLeadLimited, sessionDeptLabel]
+  )
 
   const resetNewRequestForm = useCallback(() => {
     setSelectedRequestId('')
@@ -1073,7 +1076,7 @@ export function SollicitudsPanel({
 
   const batchSendableRows = useMemo(
     () => filteredListRows.filter((row) => isPickupMode && canSendToRrhhClient(row)),
-    [filteredListRows, isPickupMode]
+    [filteredListRows, isPickupMode, canSendToRrhhClient]
   )
 
   const selectedBatchRows = useMemo(
