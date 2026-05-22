@@ -5,6 +5,14 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 export const runtime = 'nodejs'
 
+type FincaFirestoreRow = {
+  _docId: string
+  nom?: unknown
+  codi?: unknown
+  code?: unknown
+  searchable?: unknown
+}
+
 /**
  * 🔍 Cerca intel·ligent dins la col·lecció "finques"
  * - Tolerant a accents, majúscules i espais.
@@ -21,9 +29,9 @@ export async function GET(req: Request) {
   try {
     // ✅ Cal fer servir "db" i no "firestore"
     const snap = await db.collection('finques').get()
-    const all = snap.docs.map((d) => ({
-      ...(d.data() as Record<string, unknown>),
+    const all: FincaFirestoreRow[] = snap.docs.map((d) => ({
       _docId: d.id,
+      ...(d.data() as Omit<FincaFirestoreRow, '_docId'>),
     }))
 
     // 🔤 Normalitza text (elimina accents, passa a minúscules)
