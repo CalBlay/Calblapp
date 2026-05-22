@@ -83,6 +83,7 @@ test("query planner: finance result LN month", () => {
   });
   assert.equal(plan.metricId, "finance_result_ln_month");
   assert.equal(plan.slots.yearMonth, "2026-02");
+  assert.equal(plan.slots.lnContains, "empresa");
 });
 
 test("query planner: celiac dishes", () => {

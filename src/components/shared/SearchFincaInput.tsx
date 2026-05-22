@@ -8,6 +8,7 @@ import { Search } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface Finca {
+  id: string
   nom: string
   codi: string
 }
@@ -32,12 +33,12 @@ export default function SearchFincaInput({ value = '', onChange }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const selectingRef = useRef(false)
 
-  // 🔄 Sincronitza amb el valor del pare
+  // 🔄 Sincronitza només quan el pare canvia (no mentre l'usuari escriu)
   useEffect(() => {
-    if (!selectingRef.current && value !== query) {
-      setQuery(value)
+    if (!selectingRef.current) {
+      setQuery(value || '')
     }
-  }, [value, query])
+  }, [value])
   useEffect(() => setMounted(true), [])
 
   // 🔍 Cerca amb debounce
@@ -83,17 +84,13 @@ export default function SearchFincaInput({ value = '', onChange }: Props) {
         ref={inputRef}
         value={query}
         onChange={(e) => {
-          setQuery(e.target.value)
+          const next = e.target.value
+          setQuery(next)
+          onChange(next)
           setOpen(true)
         }}
         onFocus={() => setOpen(true)}
-        onBlur={() => {
-          setTimeout(() => {
-            if (!document.activeElement?.closest('[data-finca-search]')) {
-              setOpen(false)
-            }
-          }, 150)
-        }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Cerca finca..."
         className="pl-8 w-full text-sm sm:text-base rounded-md border-gray-300 focus:ring-2 focus:ring-blue-500"
       />
@@ -110,19 +107,21 @@ export default function SearchFincaInput({ value = '', onChange }: Props) {
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.15, ease: 'easeOut' }}
                 className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-lg max-h-[250px] overflow-y-auto"
+                data-finca-dropdown
                 style={{
                   top: pos.top,
                   left: pos.left,
                   width: pos.width,
                 }}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => e.stopPropagation()}
               >
-                {results.map((f) => (
+                {results.map((f, index) => (
                   <div
-                    key={f.codi}
+                    key={f.id || `${f.codi}-${f.nom}` || `finca-${index}`}
                     onMouseEnter={(e) => e.currentTarget.classList.add('bg-gray-100')}
                     onMouseLeave={(e) => e.currentTarget.classList.remove('bg-gray-100')}
-                    onClick={(e) => {
+                    onMouseDown={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
                       selectingRef.current = true

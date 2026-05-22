@@ -16,7 +16,8 @@ import {
   shouldForceWorkerServicesCount,
   shouldForceFinanceResultByLnMonth,
   shouldForceCostDepartmentPeriod,
-  shouldForceFinquesCount
+  shouldForceFinquesCount,
+  inferLnContains
 } from "../src/services/ai-chat/helpers.js";
 
 test("canExtractCostDepartmentPeriodSlots: true with dept + natural quarter", () => {
@@ -87,6 +88,18 @@ test("shouldForceFinanceResultByLnMonth: true for financer+ln+month", () => {
     shouldForceFinanceResultByLnMonth("Resultat financer del gener 2026 de l'empresa per línia de negoci"),
     true
   );
+});
+
+test("shouldForceFinanceResultByLnMonth: true for LN Events (= Empresa)", () => {
+  assert.equal(
+    shouldForceFinanceResultByLnMonth("Resultat financer LN Events al febrer 2026"),
+    true
+  );
+});
+
+test("inferLnContains: Events maps to empresa", () => {
+  assert.equal(inferLnContains("Resultat financer LN Events al febrer 2026"), "empresa");
+  assert.equal(inferLnContains("Quants esdeveniments per LN Events al 2026-02?"), "empresa");
 });
 
 test("extractYearMonthFromQuestion: month name", () => {

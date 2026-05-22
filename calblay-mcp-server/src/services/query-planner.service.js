@@ -5,6 +5,7 @@ import {
   extractPlateFromQuestion,
   extractWorkerNameFromQuestion,
   extractYearMonthFromQuestion,
+  inferLnContains,
   normalizeCostDepartmentContains,
   shouldForceAuditsCount,
   shouldForceFinquesCount,
@@ -20,21 +21,6 @@ import {
   shouldForceVehicleAssignmentsByPlate,
   shouldForceWorkerServicesCount
 } from "./ai-chat/helpers.js";
-
-function inferLnContains(question) {
-  const qNorm = String(question || "")
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase();
-  if (/\bfoodlovers?\b/.test(qNorm)) return "LN0005";
-  if (/\bevents?\b/.test(qNorm)) return "events";
-  if (/\bfires?|festivals?\b/.test(qNorm)) return "fires";
-  if (/\bempresa\b/.test(qNorm)) return "empresa";
-  if (/\brestaurants?\b/.test(qNorm)) return "restaurants";
-  if (/\bcasaments?\b/.test(qNorm)) return "casaments";
-  if (/\bprecuinats?|menjar preparat\b/.test(qNorm)) return "precuinats";
-  return "";
-}
 
 function extractYearFromQuestion(question, fallbackYear = new Date().getFullYear()) {
   const qNorm = String(question || "")
@@ -269,7 +255,10 @@ export function buildQueryPlan({ question, currentYear = new Date().getFullYear(
     return plan;
   }
 
-  if (/\b(celiac|celíac|sense gluten|gluten)\b/.test(qNorm) && /\b(plats?|platos?|menjar)\b/.test(qNorm)) {
+  if (
+    /\b(celiac\w*|sense gluten|gluten)\b/.test(qNorm) &&
+    /\b(plats?|platos?|menjar|aptes?)\b/.test(qNorm)
+  ) {
     plan.metricId = "food_safety_celiac_dishes";
     plan.executor = "food_safety_celiac_dishes";
     plan.confidence = "high";

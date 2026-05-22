@@ -21,7 +21,10 @@ export async function GET(req: Request) {
   try {
     // ✅ Cal fer servir "db" i no "firestore"
     const snap = await db.collection('finques').get()
-    const all = snap.docs.map((d) => d.data() as Record<string, unknown>)
+    const all = snap.docs.map((d) => ({
+      ...(d.data() as Record<string, unknown>),
+      _docId: d.id,
+    }))
 
     // 🔤 Normalitza text (elimina accents, passa a minúscules)
     const normalize = (s: string) =>
@@ -36,7 +39,7 @@ export async function GET(req: Request) {
     // 🔍 Filtre flexible
     const filtered = all.filter((f) => {
       const nom = normalize(String(f.nom || ''))
-      const codi = normalize(String(f.codi || ''))
+      const codi = normalize(String(f.code || f.codi || f._docId || ''))
       const searchable = normalize(String(f.searchable || ''))
       return (
         nom.includes(nq) ||
@@ -56,8 +59,9 @@ export async function GET(req: Request) {
 
     // 🔢 Limita a 10 resultats
     const data = sorted.slice(0, 10).map((f) => ({
+      id: String(f._docId || ''),
       nom: String(f.nom || ''),
-      codi: String(f.codi || ''),
+      codi: String(f.code || f.codi || f._docId || ''),
     }))
 
     return NextResponse.json({ data })

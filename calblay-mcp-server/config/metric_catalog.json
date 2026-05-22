@@ -103,7 +103,7 @@
       "sourceOfTruth": { "system": "csv_finances", "kind": "costos", "dataset": "c_explotacio" },
       "slotSchema": ["yearMonth", "lnContains"],
       "normalization": {
-        "lnSynonyms": ["LN0002", "LN0005", "events", "restaurants", "empresa", "foodlovers"]
+        "lnSynonyms": ["LN0002", "LN0005", "events", "empresa", "restaurants", "foodlovers"]
       },
       "calculationRule": {
         "executor": "finance_result_by_ln_month",

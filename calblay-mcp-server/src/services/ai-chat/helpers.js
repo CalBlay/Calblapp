@@ -188,12 +188,32 @@ export function shouldForceFirestoreCatalog(question) {
   );
 }
 
+/**
+ * Text de filtre per línia de negoci al P&L (lnName / lnCode).
+ * La marca «Events» correspon a la línia Empresa, no al domini d'esdeveniments operatius.
+ */
+export function inferLnContains(question) {
+  const qNorm = String(question || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  if (/\bfoodlovers?\b/.test(qNorm)) return "LN0005";
+  if (/\bfires?|festivals?\b/.test(qNorm)) return "fires";
+  if (/\brestaurants?\b/.test(qNorm)) return "restaurants";
+  if (/\bcasaments?\b/.test(qNorm)) return "casaments";
+  if (/\bprecuinats?|menjar preparat\b/.test(qNorm)) return "precuinats";
+  if (/\bempresa\b/.test(qNorm)) return "empresa";
+  if (/\bln\s+events?\b/.test(qNorm) || /\bper\s+ln\s+events?\b/.test(qNorm)) return "empresa";
+  if (/\bevents?\b/.test(qNorm) && !/\besdeveniment\w*\b/.test(qNorm)) return "empresa";
+  return "";
+}
+
 export function shouldForceEventsCountYear(question) {
   const s = String(question || "")
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .toLowerCase();
-  const asksEvents = /\b(esdeveniment\w*|event\w*)\b/.test(s);
+  const asksEvents = /\b(esdeveniment\w*)\b/.test(s);
   const asksCount = /\b(quants?|quantas?|cuantas?|total|nombre|numero|recompte)\b/.test(s);
   const asksYear = /\b(20\d{2}|19\d{2}|aquest any)\b/.test(s);
   const asksPreventive = /\b(prevenit\w*|preventiu|preventius)\b/.test(s);
@@ -205,8 +225,14 @@ export function shouldForceEventsCountLnMonth(question) {
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .toLowerCase();
-  const asksEvents = /\b(esdeveniment\w*|event\w*)\b/.test(s);
-  const asksLn = /\b(ln\d{4,5}|linia de negoci|per ln)\b/.test(s) || /\b(events?|restaurants?|empresa|foodlovers?)\b/.test(s);
+  if (/\b(resultat financer|p&l|p\s*&\s*l|ebitda|facturacio|facturacion)\b/.test(s)) {
+    return false;
+  }
+  const asksEvents = /\b(esdeveniment\w*)\b/.test(s);
+  const asksLn =
+    /\b(ln\d{4,5}|linia de negoci|per ln)\b/.test(s) ||
+    /\b(restaurants?|empresa|foodlovers?)\b/.test(s) ||
+    /\bln\s+events?\b/.test(s);
   const hasMonth =
     /\b20\d{2}[-/](0[1-9]|1[0-2])\b/.test(s) ||
     /\b(gener|febrer|marc|abril|maig|juny|juliol|agost|setembre|octubre|desembre)\b.*\b20\d{2}\b/.test(s);
@@ -255,7 +281,9 @@ export function shouldForceFinanceResultByLnMonth(question) {
     /\b(resultat financer|p&l|p\s*&\s*l|ebitda|resultat abans d'impostos)\b/.test(s);
   const asksLn =
     /\b(linia de negoci|ln\d{5}|per ln|per linia)\b/.test(s) ||
-    /\b(foodlovers?|empresa|restaurants?|casaments?|fires?|precuinats?)\b/.test(s);
+    /\b(foodlovers?|empresa|restaurants?|casaments?|fires?|precuinats?)\b/.test(s) ||
+    /\bln\s+events?\b/.test(s) ||
+    /\bper\s+ln\s+events?\b/.test(s);
   const asksPeriod =
     /\b20[2-3]\d[-/](0[1-9]|1[0-2])\b/.test(s) ||
     /\b(gener|enero|febrer|febrero|marc|marzo|abril|maig|mayo|juny|junio|juliol|julio|agost|agosto|setembre|septiembre|octubre|novembre|noviembre|desembre|diciembre)\b.*\b20[2-3]\d\b/.test(

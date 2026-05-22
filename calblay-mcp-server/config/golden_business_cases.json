@@ -379,7 +379,7 @@
     {
       "id": "finance_result_ln_events_2026_02",
       "question": "Resultat financer LN Events al febrer 2026",
-      "slots": { "yearMonth": "2026-02", "lnContains": "events" },
+      "slots": { "yearMonth": "2026-02", "lnContains": "empresa" },
       "expected": {
         "metricId": "finance_result_ln_month",
         "policySystem": "csv_finances",

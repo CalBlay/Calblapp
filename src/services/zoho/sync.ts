@@ -141,6 +141,15 @@ function preserveLocalCalendarChanges(
     }
   }
 
+  // Regla de negoci: Marta Granato → Grups Restaurants (sempre, també si LN estava desada abans)
+  const commercial = String(out.Comercial ?? existing.Comercial ?? '')
+  if (isMartaGranatoCommercial(commercial)) {
+    out.LN = 'Grups Restaurants'
+    if (out.FincaLN !== undefined || existing.FincaLN !== undefined) {
+      out.FincaLN = 'Grups Restaurants'
+    }
+  }
+
   return out
 }
 
@@ -393,11 +402,35 @@ const normalizeCommercialName = (value?: string | null) =>
   String(value || '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
+    .replace(/[\u00a0\u2000-\u200b\u202f\u205f\u3000]/g, ' ')
+    .replace(/\s+/g, ' ')
     .toLowerCase()
     .trim()
 
-const isForcedGrupsRestaurantsCommercial = (value?: string | null) =>
-  normalizeCommercialName(value) === 'marta granato'
+/** Marta Granato → LN Grups Restaurants (Owner / Comercial). */
+const isMartaGranatoCommercial = (value?: string | null): boolean => {
+  const n = normalizeCommercialName(value)
+  if (!n || n === '—') return false
+  if (n === 'marta granato') return true
+  return n.includes('marta') && n.includes('granato')
+}
+
+const lnForMartaGranatoCommercial = (
+  ln: string,
+  commercial?: string | null
+): string => (isMartaGranatoCommercial(commercial) ? 'Grups Restaurants' : ln)
+
+const fincaLnForDeal = (
+  ln: string,
+  commercial: string | null | undefined,
+  forceGrupsRestaurants: boolean,
+  fincaLN?: string
+): string => {
+  if (forceGrupsRestaurants || isMartaGranatoCommercial(commercial)) {
+    return 'Grups Restaurants'
+  }
+  return fincaLN || ln
+}
 
 /** Si el Responsable operatiu és un camp API diferent del `Responsable` principal, definir-lo al `.env`. */
 const ZOHO_EXTRA_RESPONSABLE_FIELD = String(
@@ -832,9 +865,7 @@ export async function syncZohoDealsToFirestore(): Promise<{
 
     // LN base segons comercial (Owner)
     let LN = await getLN(d.Owner?.id)
-    if (isForcedGrupsRestaurantsCommercial(ownerCommercial)) {
-      LN = 'Grups Restaurants'
-    }
+    LN = lnForMartaGranatoCommercial(LN, ownerCommercial)
 
     // Ubicacions que venen de Zoho
     const ubicacions = [...(d.Espai_2 || []), ...(d.Finca_2 || [])]
@@ -858,13 +889,14 @@ const ubicacioLabel = stripCode(ubicacioRaw).trim()
       LN = 'Grups Restaurants'
     }
 
+    const comercial = ownerCommercial
+    LN = lnForMartaGranatoCommercial(LN, comercial)
 
     // Matching de finca només per codi
     const fincaMatch = findFincaForUbicacio(ubicacions, LN)
     const fincaId = fincaMatch?.id
     const fincaCode = fincaMatch?.code
     const fincaLN = fincaMatch?.ln
-    const comercial = ownerCommercial
     const comercialIntern = extractZohoDisplayName(d.Comercial_Interna) || ''
     const responsableZoho = operativeResponsableFromZohoDeal(
       d as ZohoDeal & Record<string, unknown>
@@ -891,7 +923,7 @@ const ubicacioLabel = stripCode(ubicacioRaw).trim()
       Ubicacio: ubicacioLabel,
       FincaId: fincaId,
       FincaCode: fincaCode,
-      FincaLN: forceGrupsRestaurants ? 'Grups Restaurants' : (fincaLN || LN),
+      FincaLN: fincaLnForDeal(LN, comercial, forceGrupsRestaurants, fincaLN),
       UbicacioCode: ubicacioCode,
 
 Color:

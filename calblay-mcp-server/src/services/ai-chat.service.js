@@ -698,7 +698,9 @@ export async function chatWithTools({ question, language = "ca", rich = false })
             .replace(/\p{M}/gu, "")
             .toLowerCase();
           if (!String(args?.lnContains || "").trim()) {
-            if (/\bempresa\b/.test(qn)) args = { ...args, lnContains: "empresa" };
+            if (/\bln\s+events?\b/.test(qn) || (/\bevents?\b/.test(qn) && !/\besdeveniment\w*\b/.test(qn))) {
+              args = { ...args, lnContains: "empresa" };
+            } else if (/\bempresa\b/.test(qn)) args = { ...args, lnContains: "empresa" };
             else if (/\brestaurants?\b/.test(qn)) args = { ...args, lnContains: "restaurants" };
             else if (/\bcasaments?\b/.test(qn)) args = { ...args, lnContains: "casaments" };
             else if (/\bfires?|festivals?\b/.test(qn)) args = { ...args, lnContains: "fires" };
