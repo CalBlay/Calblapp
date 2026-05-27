@@ -1,9 +1,9 @@
-export type SpacesHeaderStageScope = 'confirmed' | 'all'
 export type SpacesHeaderMetricMode = 'pax' | 'events' | 'either' | 'both'
+export type SpacesHeaderStage = 'verd' | 'taronja' | 'groc'
 
 export type SpacesHeaderRuleConfig = {
   enabled: boolean
-  stageScope: SpacesHeaderStageScope
+  stages: SpacesHeaderStage[]
   metricMode: SpacesHeaderMetricMode
   paxThreshold: number
   eventsThreshold: number
@@ -11,7 +11,7 @@ export type SpacesHeaderRuleConfig = {
 
 export const DEFAULT_SPACES_HEADER_RULE: SpacesHeaderRuleConfig = {
   enabled: true,
-  stageScope: 'confirmed',
+  stages: ['verd'],
   metricMode: 'pax',
   paxThreshold: 1000,
   eventsThreshold: 8,
@@ -20,14 +20,15 @@ export const DEFAULT_SPACES_HEADER_RULE: SpacesHeaderRuleConfig = {
 export function normalizeSpacesHeaderRuleConfig(
   input: unknown
 ): SpacesHeaderRuleConfig {
-  const source = (input || {}) as Partial<SpacesHeaderRuleConfig>
+  const source = (input || {}) as Partial<SpacesHeaderRuleConfig> & {
+    stageScope?: 'confirmed' | 'all'
+  }
   return {
     enabled:
       typeof source.enabled === 'boolean'
         ? source.enabled
         : DEFAULT_SPACES_HEADER_RULE.enabled,
-    stageScope:
-      source.stageScope === 'all' ? 'all' : DEFAULT_SPACES_HEADER_RULE.stageScope,
+    stages: normalizeStages(source.stages, source.stageScope),
     metricMode:
       source.metricMode === 'events' ||
       source.metricMode === 'either' ||
@@ -73,4 +74,23 @@ function sanitizeThreshold(value: unknown, fallback: number): number {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return fallback
   return Math.max(0, Math.round(numeric))
+}
+
+function normalizeStages(
+  stages: unknown,
+  legacyStageScope?: 'confirmed' | 'all'
+): SpacesHeaderStage[] {
+  if (Array.isArray(stages)) {
+    const validStages = stages.filter(
+      (stage): stage is SpacesHeaderStage =>
+        stage === 'verd' || stage === 'taronja' || stage === 'groc'
+    )
+    if (validStages.length > 0) return validStages
+  }
+
+  if (legacyStageScope === 'all') {
+    return ['verd', 'taronja', 'groc']
+  }
+
+  return DEFAULT_SPACES_HEADER_RULE.stages
 }

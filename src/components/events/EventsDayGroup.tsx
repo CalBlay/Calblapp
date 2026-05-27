@@ -12,6 +12,8 @@ export interface EventData {
   pax?: number | string
   start: string
   end: string | null
+  day?: string
+  occurrenceKey?: string
   location?: string
   lnKey?: 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
   lnLabel?: string
@@ -61,7 +63,7 @@ export default function EventsDayGroup({ date, events, onEventClick, onEventChat
       <div className="flex flex-col gap-2.5">
         {events.map(event => (
           <div
-            key={event.id}
+            key={event.occurrenceKey || `${event.id}-${event.day || event.start.slice(0, 10)}`}
             className="relative"
             role="button"
             tabIndex={0}

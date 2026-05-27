@@ -163,8 +163,12 @@ export default function SpaceGrid({
 
                 const scopedEvents = cell.events.filter((e: RawSpaceEvent) => {
                   const s = String(e.stage ?? e.StageGroup ?? '').toLowerCase()
-                  if (headerRule.stageScope === 'all') return true
-                  return s === 'verd' || s.includes('confirmat')
+                  return (
+                    (s === 'verd' && headerRule.stages.includes('verd')) ||
+                    (s === 'taronja' && headerRule.stages.includes('taronja')) ||
+                    (s === 'groc' && headerRule.stages.includes('groc')) ||
+                    (s.includes('confirmat') && headerRule.stages.includes('verd'))
+                  )
                 })
 
                 totalPaxScoped += scopedEvents.reduce(

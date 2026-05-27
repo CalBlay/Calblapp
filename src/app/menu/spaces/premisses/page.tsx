@@ -14,12 +14,18 @@ import {
   DEFAULT_SPACES_HEADER_RULE,
   type SpacesHeaderMetricMode,
   type SpacesHeaderRuleConfig,
-  type SpacesHeaderStageScope,
+  type SpacesHeaderStage,
 } from '@/lib/spacesHeaderRule'
 
 type SessionUser = {
   role?: string
 }
+
+const STAGE_OPTIONS: Array<{ value: SpacesHeaderStage; label: string }> = [
+  { value: 'verd', label: 'Confirmats' },
+  { value: 'taronja', label: 'Prereserva / Calentet' },
+  { value: 'groc', label: 'Pressupost enviat' },
+]
 
 export default function SpacesPremissesPage() {
   const router = useRouter()
@@ -52,7 +58,9 @@ export default function SpacesPremissesPage() {
         const res = await fetch('/api/spaces/header-rule', { cache: 'no-store' })
         const json = await res.json()
         if (!res.ok) {
-          throw new Error(String(json?.error || 'No s ha pogut carregar la configuracio'))
+          throw new Error(
+            String(json?.error || 'No s ha pogut carregar la configuracio')
+          )
         }
         if (!cancelled) {
           setConfig(json?.config || DEFAULT_SPACES_HEADER_RULE)
@@ -86,7 +94,9 @@ export default function SpacesPremissesPage() {
       })
       const json = await res.json()
       if (!res.ok) {
-        throw new Error(String(json?.error || 'No s ha pogut desar la configuracio'))
+        throw new Error(
+          String(json?.error || 'No s ha pogut desar la configuracio')
+        )
       }
       setConfig(json?.config || config)
       setSuccess('Premisses desades correctament.')
@@ -95,6 +105,18 @@ export default function SpacesPremissesPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const toggleStage = (stage: SpacesHeaderStage) => {
+    setConfig((prev) => {
+      const exists = prev.stages.includes(stage)
+      return {
+        ...prev,
+        stages: exists
+          ? prev.stages.filter((value) => value !== stage)
+          : [...prev.stages, stage],
+      }
+    })
   }
 
   if (status === 'loading') {
@@ -124,10 +146,10 @@ export default function SpacesPremissesPage() {
       <section className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-slate-900">
-            Regla de capçalera en vermell
+            Regla de capcalera en vermell
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            Configura quan els totals diaris de la capçalera de reserves d espais
+            Configura quan els totals diaris de la capcalera de reserves d espais
             s han de destacar en vermell.
           </p>
         </div>
@@ -156,30 +178,34 @@ export default function SpacesPremissesPage() {
                   setConfig((prev) => ({ ...prev, enabled: event.target.checked }))
                 }
               />
-              Activar ressaltat de capçalera
+              Activar ressaltat de capcalera
             </label>
 
             <div className="grid gap-5 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="spaces-stage-scope">Comptar sobre</Label>
-                <select
-                  id="spaces-stage-scope"
-                  value={config.stageScope}
-                  onChange={(event) =>
-                    setConfig((prev) => ({
-                      ...prev,
-                      stageScope: event.target.value as SpacesHeaderStageScope,
-                    }))
-                  }
-                  className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
-                >
-                  <option value="confirmed">Només confirmats</option>
-                  <option value="all">Tots els estats</option>
-                </select>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Estats a comptar</Label>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  {STAGE_OPTIONS.map((option) => (
+                    <label
+                      key={option.value}
+                      className="flex items-center gap-3 text-sm text-slate-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={config.stages.includes(option.value)}
+                        onChange={() => toggleStage(option.value)}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                  <p className="text-xs text-slate-500">
+                    Pots combinar diversos estats alhora.
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="spaces-metric-mode">Regla de decisió</Label>
+                <Label htmlFor="spaces-metric-mode">Regla de decisio</Label>
                 <select
                   id="spaces-metric-mode"
                   value={config.metricMode}
@@ -191,8 +217,8 @@ export default function SpacesPremissesPage() {
                   }
                   className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
                 >
-                  <option value="pax">Només per pax</option>
-                  <option value="events">Només per numero d events</option>
+                  <option value="pax">Nomes per pax</option>
+                  <option value="events">Nomes per numero d events</option>
                   <option value="either">Per pax o per events</option>
                   <option value="both">Per pax i per events</option>
                 </select>

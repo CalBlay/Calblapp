@@ -26,6 +26,13 @@ export async function GET(req: Request) {
 
   const department = searchParams.get('department')?.trim() ?? ''
   const status = searchParams.get('status')?.trim() ?? ''
+  const statusLabel = searchParams.get('statusLabel')?.trim() ?? ''
+  const statusCodes = status
+    ? status
+        .split(',')
+        .map((code) => code.trim())
+        .filter(Boolean)
+    : []
   const productId = searchParams.get('productId')?.trim() ?? ''
   const productLabel = searchParams.get('productLabel')?.trim() ?? ''
 
@@ -57,7 +64,8 @@ export async function GET(req: Request) {
       ? {
           department: department || undefined,
           status: status || undefined,
-          statusLabel: status ? ROBA_REQUEST_STATUS_LABEL[status] || status : undefined,
+          statusCodes: statusCodes.length > 0 ? statusCodes : undefined,
+          statusLabel: statusLabel || (status ? ROBA_REQUEST_STATUS_LABEL[status] || status : undefined),
           productId: productId || undefined,
           productLabel: productLabel || undefined,
         }

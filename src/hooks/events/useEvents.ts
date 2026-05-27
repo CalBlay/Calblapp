@@ -10,6 +10,7 @@ export interface EventData {
   start: string
   end: string | null
   day: string
+  occurrenceKey?: string
   location: string
   pax: number
   importAmount?: number
@@ -45,6 +46,8 @@ interface EventPayload {
   summary: string
   start: string
   end?: string
+  day?: string
+  occurrenceKey?: string
   location?: string
   pax?: number
   importAmount?: number
@@ -146,7 +149,8 @@ const eventsFetcher = async (url: string): Promise<EventsResult> => {
       name: ev.summary,
       pax,
       location,
-      day: ev.start.slice(0, 10),
+      day: String(ev.day || ev.start.slice(0, 10)),
+      occurrenceKey: ev.occurrenceKey || undefined,
       locationShort: computeLocationShort(location),
       mapsUrl: computeMapsUrl(location),
       state: normalizeStatus(ev.state || ev.status),

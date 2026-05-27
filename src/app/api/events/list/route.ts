@@ -40,6 +40,20 @@ const addDaysUTC = (isoDate: string, days: number) => {
   return d.toISOString()
 }
 
+const minIsoDay = (a: string, b: string) => (a <= b ? a : b)
+
+const maxIsoDay = (a: string, b: string) => (a >= b ? a : b)
+
+function listIsoDaysBetween(startDay: string, endDay: string): string[] {
+  const out: string[] = []
+  let cursor = startDay
+  while (cursor <= endDay) {
+    out.push(cursor)
+    cursor = addDaysUTC(cursor, 1).slice(0, 10)
+  }
+  return out
+}
+
 function normalizeColId(id: string): string {
   const rest = id.replace(/^quadrants?/i, '')
   return rest
@@ -238,9 +252,6 @@ const getEventsListCached = unstable_cache(
       else deptsToUse = []
     }
 
-    const timeMin = `${start}T00:00:00.000Z`
-    const timeMaxExclusive = addDaysUTC(end, 1)
-
     const stageDocs = await queryStageCollectionDocsInDateRange(
       db,
       'stage_verd',
@@ -335,10 +346,23 @@ const getEventsListCached = unstable_cache(
       }
     })
 
-    const filteredByRange = base.filter((ev) => {
-      if (!ev.start) return false
-      const s = new Date(ev.start as string).toISOString()
-      return s >= timeMin && s < timeMaxExclusive
+    const expandedByRange = base.flatMap((ev) => {
+      const startDay = dayKey(typeof ev.start === 'string' ? ev.start : '')
+      const rawEndDay = dayKey(typeof ev.end === 'string' ? ev.end : '')
+      if (!startDay) return []
+
+      const endDay = rawEndDay || startDay
+      const normalizedEndDay = endDay < startDay ? startDay : endDay
+      const visibleStart = maxIsoDay(startDay, start)
+      const visibleEnd = minIsoDay(normalizedEndDay, end)
+
+      if (visibleStart > visibleEnd) return []
+
+      return listIsoDaysBetween(visibleStart, visibleEnd).map((occurrenceDay) => ({
+        ...ev,
+        day: occurrenceDay,
+        occurrenceKey: `${ev.id}__${occurrenceDay}`,
+      }))
     })
 
     await loadCollectionsMap()
@@ -397,10 +421,10 @@ const getEventsListCached = unstable_cache(
     }
 
     const avisoMap = await fetchLatestAvisosByCodes(
-      filteredByRange.map((ev) => String(ev.eventCode || '').trim()).filter(Boolean)
+      expandedByRange.map((ev) => String(ev.eventCode || '').trim()).filter(Boolean)
     )
 
-    const enriched = filteredByRange.map((ev) => {
+    const enriched = expandedByRange.map((ev) => {
       const keyByCode = normCode(ev.eventCode || '')
       const responsablesForCode = Array.from(responsablesMap.get(keyByCode) || [])
       const fromZoho = String((ev as { responsableZoho?: string }).responsableZoho || '').trim()
@@ -444,7 +468,7 @@ const getEventsListCached = unstable_cache(
       locations: Array.from(new Set(finalEvents.map((e) => e.location).filter(Boolean) as string[])),
       _log: {
         baseRows: base.length,
-        filteredRows: filteredByRange.length,
+        filteredRows: expandedByRange.length,
         quadrantCollections: collNames.length,
       },
     }

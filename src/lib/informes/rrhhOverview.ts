@@ -45,9 +45,21 @@ export type RrhhReportContext = {
   productLabel?: string | null
 }
 
+const DELIVERY_FLOW_STATUS_CODES = new Set([
+  'ready_for_worker_delivery',
+  'picked_up',
+  'fulfilled',
+  'receipt_confirmed',
+])
+
 export type RrhhRobaOverview = {
   periodDays: number
   totalRequests: number
+  deliveriesCountInScope: number
+  deliveryUnitsInScope: number
+  deliveryWorkersInScope: number
+  deliveriesPendingAck: number
+  deliveriesConfirmed: number
   byStatus: Record<string, number>
   requestsInRequestsTab: number
   requestsInPreparationTab: number
@@ -84,4 +96,14 @@ export type RrhhRobaOverview = {
   dataSources: readonly ['app']
   /** Present quan es vol explicitar el tall (preset o informe a mida). */
   reportContext?: RrhhReportContext
+}
+
+export function isDeliveryFocusedRrhhReport(data: Pick<RrhhRobaOverview, 'reportContext'>): boolean {
+  const raw = data.reportContext?.status?.trim()
+  if (!raw) return false
+  const codes = raw
+    .split(',')
+    .map((code) => code.trim())
+    .filter(Boolean)
+  return codes.length > 0 && codes.every((code) => DELIVERY_FLOW_STATUS_CODES.has(code))
 }

@@ -1,6 +1,11 @@
 import type { Firestore } from 'firebase-admin/firestore'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import type { RrhhReportContext, RrhhRobaOverview, RrhhTopDepartment, RrhhTopProduct } from '@/lib/informes/rrhhOverview'
+import type {
+  RrhhReportContext,
+  RrhhRobaOverview,
+  RrhhTopDepartment,
+  RrhhTopProduct,
+} from '@/lib/informes/rrhhOverview'
 import {
   deliveredUnitsByRequestId,
   deliverySnapshotFromFirestore,
@@ -21,10 +26,18 @@ const DEFAULT_FETCH_LIMIT = 1_200
 const IN_QUERY_CHUNK = 10
 const DEFAULT_TOP_N = 10
 const DEPT_ARTICLE_TOP = 12
+const DELIVERY_FLOW_STATUSES = new Set([
+  'ready_for_worker_delivery',
+  'picked_up',
+  'fulfilled',
+  'receipt_confirmed',
+])
 
 function utcDayKey(ms: number): string {
   const x = new Date(ms)
-  return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}-${String(x.getUTCDate()).padStart(2, '0')}`
+  return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    x.getUTCDate()
+  ).padStart(2, '0')}`
 }
 
 function windowUtcRange(window: BuildRrhhOverviewWindow): { startMs: number; endMs: number } {
@@ -55,6 +68,7 @@ export type BuildRrhhOverviewWindow =
 export type BuildRrhhOverviewFilters = {
   department?: string
   status?: string
+  statusCodes?: string[]
   statusLabel?: string
   productId?: string
   productLabel?: string
@@ -66,6 +80,17 @@ export type BuildRrhhOverviewOptions = {
   filters?: BuildRrhhOverviewFilters
   fetchLimit?: number
   topN?: number
+}
+
+type ReqMeta = {
+  createdMs: number
+  status: string
+}
+
+type DailyBucket = {
+  requestCount: number
+  requestedUnits: number
+  productIds: Set<string>
 }
 
 function chunkIds(ids: string[], size: number): string[][] {
@@ -83,7 +108,6 @@ async function fetchDeliverySnapshotsForRequestIds(
   const uniq = [...new Set(requestIds.map((id) => id.trim()).filter(Boolean))]
   const out: DeliverySnapshot[] = []
   const seenDel = new Set<string>()
-
   const chunks = chunkIds(uniq, IN_QUERY_CHUNK)
   await Promise.all(
     chunks.map(async (ids) => {
@@ -99,14 +123,48 @@ async function fetchDeliverySnapshotsForRequestIds(
   return out
 }
 
+async function fetchDeliverySnapshotsInWindow(
+  db: Firestore,
+  window: BuildRrhhOverviewWindow,
+  fetchLimit: number
+): Promise<DeliverySnapshot[]> {
+  const { startMs, endMs } = windowUtcRange(window)
+  const snap = await db
+    .collection(DEL)
+    .where('deliveredAt', '>=', new Date(startMs))
+    .where('deliveredAt', '<=', new Date(endMs))
+    .orderBy('deliveredAt', 'desc')
+    .limit(fetchLimit)
+    .get()
+  return snap.docs.map((d) => deliverySnapshotFromFirestore(d.id, d.data() as Record<string, unknown>))
+}
+
+async function fetchRequestDocsByIds(
+  db: Firestore,
+  ids: string[]
+): Promise<Map<string, Record<string, unknown>>> {
+  const out = new Map<string, Record<string, unknown>>()
+  const uniq = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
+  if (uniq.length === 0) return out
+  for (let i = 0; i < uniq.length; i += 20) {
+    const slice = uniq.slice(i, i + 20)
+    const refs = slice.map((id) => db.collection(REQ).doc(id))
+    const snaps = await db.getAll(...refs)
+    for (const snap of snaps) {
+      if (!snap.exists) continue
+      out.set(snap.id, (snap.data() ?? {}) as Record<string, unknown>)
+    }
+  }
+  return out
+}
+
 async function productLabelsById(db: Firestore, ids: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>()
   const uniq = [...new Set(ids)].filter(Boolean)
   if (uniq.length === 0) return out
 
-  const chunkSize = 20
-  for (let i = 0; i < uniq.length; i += chunkSize) {
-    const slice = uniq.slice(i, i + chunkSize)
+  for (let i = 0; i < uniq.length; i += 20) {
+    const slice = uniq.slice(i, i + 20)
     const refs = slice.map((id) => db.collection(PROD).doc(id))
     const snaps = await db.getAll(...refs)
     for (const s of snaps) {
@@ -116,11 +174,7 @@ async function productLabelsById(db: Firestore, ids: string[]): Promise<Map<stri
       const name = String(p.name || '').trim()
       const size = String(p.size || '').trim()
       const label =
-        code && name
-          ? size
-            ? `${code} ${name} · ${size}`
-            : `${code} ${name}`
-          : name || code || s.id
+        code && name ? (size ? `${code} ${name} · ${size}` : `${code} ${name}`) : name || code || s.id
       out.set(s.id, label)
     }
   }
@@ -162,9 +216,49 @@ function buildReportContext(
   }
 }
 
-/**
- * Calcula l’overview RRHH roba (mateixa lògica que l’API) amb finestra temporal i filtres opcionals.
- */
+function shouldKeepStatus(
+  status: string,
+  requestedStatus: string,
+  requestedStatusCodes: string[]
+): boolean {
+  if (requestedStatusCodes.length > 0) return requestedStatusCodes.includes(status)
+  if (requestedStatus) return status === requestedStatus
+  return true
+}
+
+function accumulateActivity(
+  dailyBuckets: Map<string, DailyBucket>,
+  deptProductUnits: Map<string, { department: string; productId: string; units: number }>,
+  deptStats: Map<string, { requestCount: number; requestedUnits: number }>,
+  dept: string,
+  lines: { productId: string; quantity: number }[],
+  units: number,
+  dayMs: number
+) {
+  const day = utcDayKey(dayMs)
+  let bucket = dailyBuckets.get(day)
+  if (!bucket) {
+    bucket = { requestCount: 0, requestedUnits: 0, productIds: new Set() }
+    dailyBuckets.set(day, bucket)
+  }
+  bucket.requestCount += 1
+  bucket.requestedUnits += units
+
+  for (const line of lines) {
+    if (!line.productId) continue
+    bucket.productIds.add(line.productId)
+    const pk = `${dept}\0${line.productId}`
+    const row = deptProductUnits.get(pk) ?? { department: dept, productId: line.productId, units: 0 }
+    row.units += line.quantity
+    deptProductUnits.set(pk, row)
+  }
+
+  const cur = deptStats.get(dept) ?? { requestCount: 0, requestedUnits: 0 }
+  cur.requestCount += 1
+  cur.requestedUnits += units
+  deptStats.set(dept, cur)
+}
+
 export async function buildRrhhRobaOverview(opts: BuildRrhhOverviewOptions): Promise<RrhhRobaOverview> {
   const { db, window, filters } = opts
   const FETCH_LIMIT = opts.fetchLimit ?? DEFAULT_FETCH_LIMIT
@@ -172,9 +266,12 @@ export async function buildRrhhRobaOverview(opts: BuildRrhhOverviewOptions): Pro
 
   const fDept = filters?.department?.trim() || ''
   const fStatus = filters?.status?.trim() || ''
+  const fStatusCodes = (filters?.statusCodes ?? [])
+    .map((code) => String(code || '').trim())
+    .filter(Boolean)
   const fProduct = filters?.productId?.trim() || ''
-
-  const reqSnap = await db.collection(REQ).orderBy('createdAt', 'desc').limit(FETCH_LIMIT).get()
+  const isDeliveryFocusedFilter =
+    fStatusCodes.length > 0 && fStatusCodes.every((code) => DELIVERY_FLOW_STATUSES.has(code))
 
   const byStatus: Record<string, number> = {}
   let totalRequests = 0
@@ -182,70 +279,132 @@ export async function buildRrhhRobaOverview(opts: BuildRrhhOverviewOptions): Pro
   const requestIdsInPeriod: string[] = []
   const qtyByProduct = new Map<string, number>()
   const deptStats = new Map<string, { requestCount: number; requestedUnits: number }>()
-  const requestMetaById = new Map<string, { createdMs: number; status: string }>()
-  type DailyBucket = { requestCount: number; requestedUnits: number; productIds: Set<string> }
+  const requestMetaById = new Map<string, ReqMeta>()
   const dailyBuckets = new Map<string, DailyBucket>()
   const deptProductUnits = new Map<string, { department: string; productId: string; units: number }>()
 
-  for (const d of reqSnap.docs) {
-    const data = d.data() as Record<string, unknown>
-    const ms = firestoreDateToMs(data.createdAt)
-    if (!inTimeWindow(ms, window)) continue
+  let deliverySnapshots: DeliverySnapshot[] = []
 
-    const st = String(data.status || 'submitted').trim() || 'submitted'
-    if (fStatus && st !== fStatus) continue
+  if (isDeliveryFocusedFilter) {
+    const rawDeliverySnapshots = await fetchDeliverySnapshotsInWindow(db, window, FETCH_LIMIT)
+    const requestDocsById = await fetchRequestDocsByIds(
+      db,
+      rawDeliverySnapshots.map((snapshot) => String(snapshot.delivery.requestId || '').trim())
+    )
+    const seenRequests = new Set<string>()
 
-    const dept = String(data.requestingDepartment || '').trim() || '—'
-    if (fDept && dept !== fDept) continue
+    for (const snapshot of rawDeliverySnapshots) {
+      const rid = String(snapshot.delivery.requestId || '').trim()
+      if (!rid) continue
+      const requestDoc = requestDocsById.get(rid)
+      if (!requestDoc) continue
 
-    const lines = requestedLinesFromRequestDoc(data)
-    if (fProduct && !lines.some((l) => l.productId === fProduct)) continue
+      const status = String(requestDoc.status || 'submitted').trim() || 'submitted'
+      if (!shouldKeepStatus(status, fStatus, fStatusCodes)) continue
 
-    totalRequests += 1
-    requestIdsInPeriod.push(d.id)
+      const dept = String(requestDoc.requestingDepartment || '').trim() || '—'
+      if (fDept && dept !== fDept) continue
 
-    requestMetaById.set(d.id, { createdMs: ms!, status: st })
-    byStatus[st] = (byStatus[st] ?? 0) + 1
+      const deliveredLines = snapshot.delivery.lines
+      if (fProduct && !deliveredLines.some((line) => line.productId === fProduct)) continue
 
-    const u = sumLineQuantities(lines)
-    requestedUnitsInPeriod += u
-    mergeQtyMaps(qtyByProduct, lines)
+      deliverySnapshots.push(snapshot)
 
-    const day = utcDayKey(ms!)
-    let bucket = dailyBuckets.get(day)
-    if (!bucket) {
-      bucket = { requestCount: 0, requestedUnits: 0, productIds: new Set() }
-      dailyBuckets.set(day, bucket)
+      if (seenRequests.has(rid)) continue
+      seenRequests.add(rid)
+
+      const createdMs = firestoreDateToMs(requestDoc.createdAt) ?? snapshot.deliveredAtMs ?? 0
+      const requestedLines = requestedLinesFromRequestDoc(requestDoc)
+      const deliveredUnits = sumLineQuantities(deliveredLines)
+
+      totalRequests += 1
+      requestIdsInPeriod.push(rid)
+      requestMetaById.set(rid, { createdMs, status })
+      byStatus[status] = (byStatus[status] ?? 0) + 1
+      requestedUnitsInPeriod += sumLineQuantities(requestedLines)
+      mergeQtyMaps(qtyByProduct, deliveredLines)
+
+      if (snapshot.deliveredAtMs != null) {
+        accumulateActivity(
+          dailyBuckets,
+          deptProductUnits,
+          deptStats,
+          dept,
+          deliveredLines,
+          deliveredUnits,
+          snapshot.deliveredAtMs
+        )
+      }
     }
-    bucket.requestCount += 1
-    bucket.requestedUnits += u
-    for (const line of lines) {
-      if (!line.productId) continue
-      bucket.productIds.add(line.productId)
-      const pk = `${dept}\0${line.productId}`
-      const row = deptProductUnits.get(pk) ?? { department: dept, productId: line.productId, units: 0 }
-      row.units += line.quantity
-      deptProductUnits.set(pk, row)
+  } else {
+    const reqSnap = await db.collection(REQ).orderBy('createdAt', 'desc').limit(FETCH_LIMIT).get()
+
+    for (const d of reqSnap.docs) {
+      const data = d.data() as Record<string, unknown>
+      const createdMs = firestoreDateToMs(data.createdAt)
+      if (!inTimeWindow(createdMs, window)) continue
+
+      const status = String(data.status || 'submitted').trim() || 'submitted'
+      if (!shouldKeepStatus(status, fStatus, fStatusCodes)) continue
+
+      const dept = String(data.requestingDepartment || '').trim() || '—'
+      if (fDept && dept !== fDept) continue
+
+      const lines = requestedLinesFromRequestDoc(data)
+      if (fProduct && !lines.some((line) => line.productId === fProduct)) continue
+
+      totalRequests += 1
+      requestIdsInPeriod.push(d.id)
+      requestMetaById.set(d.id, { createdMs: createdMs ?? 0, status })
+      byStatus[status] = (byStatus[status] ?? 0) + 1
+
+      const requestedUnits = sumLineQuantities(lines)
+      requestedUnitsInPeriod += requestedUnits
+      mergeQtyMaps(qtyByProduct, lines)
+
+      if (createdMs != null) {
+        accumulateActivity(
+          dailyBuckets,
+          deptProductUnits,
+          deptStats,
+          dept,
+          lines,
+          requestedUnits,
+          createdMs
+        )
+      }
     }
 
-    const cur = deptStats.get(dept) ?? { requestCount: 0, requestedUnits: 0 }
-    cur.requestCount += 1
-    cur.requestedUnits += u
-    deptStats.set(dept, cur)
+    deliverySnapshots = await fetchDeliverySnapshotsForRequestIds(db, requestIdsInPeriod)
   }
 
-  const deliverySnapshots = await fetchDeliverySnapshotsForRequestIds(db, requestIdsInPeriod)
-  const deliveries = deliverySnapshots.map((s) => s.delivery)
+  const deliveries = deliverySnapshots.map((snapshot) => snapshot.delivery)
   const deliveredByReq = deliveredUnitsByRequestId(deliveries)
   const deliveredUnitsLinked = sumDeliveredForRequestIds(deliveredByReq, requestIdsInPeriod)
+  const deliveriesCountInScope = deliverySnapshots.length
+  const deliveryUnitsInScope = deliveries.reduce(
+    (acc, delivery) => acc + sumLineQuantities(delivery.lines),
+    0
+  )
+  const deliveryWorkersInScope = new Set(
+    deliveries.map((delivery) => String(delivery.workerId || '').trim()).filter(Boolean)
+  ).size
+  const deliveriesPendingAck = deliverySnapshots.filter(
+    (snapshot) =>
+      snapshot.delivery.workerReceiptAckExpected === true && snapshot.workerReceiptAckAtMs == null
+  ).length
+  const deliveriesConfirmed = deliverySnapshots.filter(
+    (snapshot) =>
+      snapshot.delivery.workerReceiptAckExpected !== true || snapshot.workerReceiptAckAtMs != null
+  ).length
 
   const firstDeliveredMsByRequest = new Map<string, number>()
-  for (const s of deliverySnapshots) {
-    const rid = String(s.delivery.requestId || '').trim()
-    if (!rid || s.deliveredAtMs == null) continue
+  for (const snapshot of deliverySnapshots) {
+    const rid = String(snapshot.delivery.requestId || '').trim()
+    if (!rid || snapshot.deliveredAtMs == null) continue
     const prev = firstDeliveredMsByRequest.get(rid)
-    if (prev == null || s.deliveredAtMs < prev) {
-      firstDeliveredMsByRequest.set(rid, s.deliveredAtMs)
+    if (prev == null || snapshot.deliveredAtMs < prev) {
+      firstDeliveredMsByRequest.set(rid, snapshot.deliveredAtMs)
     }
   }
 
@@ -255,15 +414,13 @@ export async function buildRrhhRobaOverview(opts: BuildRrhhOverviewOptions): Pro
   let countDaysToFirst = 0
 
   for (const rid of requestIdsInPeriod) {
-    const delU = deliveredByReq.get(rid) ?? 0
-    if (delU > 0) {
-      requestsWithSomeDelivery += 1
-    }
+    const deliveredUnits = deliveredByReq.get(rid) ?? 0
+    if (deliveredUnits > 0) requestsWithSomeDelivery += 1
     const meta = requestMetaById.get(rid)
-    if (meta && meta.status !== 'cancelled' && delU === 0) {
+    if (meta && meta.status !== 'cancelled' && deliveredUnits === 0) {
       requestsPendingNoDelivery += 1
     }
-    if (meta && delU > 0) {
+    if (meta && deliveredUnits > 0) {
       const firstMs = firstDeliveredMsByRequest.get(rid)
       if (firstMs != null && firstMs >= meta.createdMs) {
         sumDaysToFirst += (firstMs - meta.createdMs) / 86_400_000
@@ -273,10 +430,10 @@ export async function buildRrhhRobaOverview(opts: BuildRrhhOverviewOptions): Pro
   }
 
   let deliveriesWithOpenDispute = 0
-  for (const s of deliverySnapshots) {
-    if (!s.correctionOpen) continue
-    const rid = String(s.delivery.requestId || '').trim()
-    if (rid && requestMetaById.has(rid)) {
+  for (const snapshot of deliverySnapshots) {
+    if (!snapshot.correctionOpen) continue
+    const rid = String(snapshot.delivery.requestId || '').trim()
+    if (!rid || requestMetaById.has(rid)) {
       deliveriesWithOpenDispute += 1
     }
   }
@@ -286,38 +443,40 @@ export async function buildRrhhRobaOverview(opts: BuildRrhhOverviewOptions): Pro
   const requestsInPreparationTab = byStatus.sent_to_rrhh ?? 0
   const requestsInReceptionTab = byStatus.prepared ?? 0
   const requestsInDeliveriesTab =
-    (byStatus.ready_for_worker_delivery ?? 0) + (byStatus.picked_up ?? 0)
+    (byStatus.ready_for_worker_delivery ?? 0) +
+    (byStatus.picked_up ?? 0) +
+    (byStatus.fulfilled ?? 0) +
+    (byStatus.receipt_confirmed ?? 0)
   const requestsClosed = (byStatus.receipt_confirmed ?? 0) + (byStatus.fulfilled ?? 0)
 
   const avgDaysToFirstDelivery =
     countDaysToFirst > 0 ? Math.round((100 * sumDaysToFirst) / countDaysToFirst) / 100 : null
-
   const pctDeliveredVsRequested =
     requestedUnitsInPeriod > 0
       ? Math.round((1000 * deliveredUnitsLinked) / requestedUnitsInPeriod) / 10
       : null
 
   const topProdEntries = topNFromMap(qtyByProduct, TOP_N)
-  const labelByProduct = await productLabelsById(db, topProdEntries.map((e) => e.key))
+  const labelByProduct = await productLabelsById(db, topProdEntries.map((entry) => entry.key))
 
-  const topProducts: RrhhTopProduct[] = topProdEntries.map((e) => ({
-    productId: e.key,
-    label: labelByProduct.get(e.key) ?? e.key,
-    quantity: e.value,
+  const topProducts: RrhhTopProduct[] = topProdEntries.map((entry) => ({
+    productId: entry.key,
+    label: labelByProduct.get(entry.key) ?? entry.key,
+    quantity: entry.value,
     shareOfRequestedPct:
       requestedUnitsInPeriod > 0
-        ? Math.round((1000 * e.value) / requestedUnitsInPeriod) / 10
+        ? Math.round((1000 * entry.value) / requestedUnitsInPeriod) / 10
         : 0,
   }))
 
   const topDepartments: RrhhTopDepartment[] = [...deptStats.entries()]
-    .map(([department, v]) => ({
+    .map(([department, value]) => ({
       department,
-      requestCount: v.requestCount,
-      requestedUnits: v.requestedUnits,
+      requestCount: value.requestCount,
+      requestedUnits: value.requestedUnits,
       shareOfRequestedPct:
         requestedUnitsInPeriod > 0
-          ? Math.round((1000 * v.requestedUnits) / requestedUnitsInPeriod) / 10
+          ? Math.round((1000 * value.requestedUnits) / requestedUnitsInPeriod) / 10
           : 0,
     }))
     .sort((a, b) => b.requestedUnits - a.requestedUnits || b.requestCount - a.requestCount)
@@ -326,25 +485,25 @@ export async function buildRrhhRobaOverview(opts: BuildRrhhOverviewOptions): Pro
   const { startMs: winStart, endMs: winEnd } = windowUtcRange(window)
   const dayList = eachUtcCalendarDayBetween(winStart, winEnd)
   const dailyActivity = dayList.map((day) => {
-    const b = dailyBuckets.get(day)
+    const bucket = dailyBuckets.get(day)
     return {
       day,
-      requestCount: b?.requestCount ?? 0,
-      requestedUnits: b?.requestedUnits ?? 0,
-      distinctProductsRequested: b?.productIds.size ?? 0,
+      requestCount: bucket?.requestCount ?? 0,
+      requestedUnits: bucket?.requestedUnits ?? 0,
+      distinctProductsRequested: bucket?.productIds.size ?? 0,
     }
   })
 
   const mixSorted = [...deptProductUnits.values()]
     .sort((a, b) => b.units - a.units)
     .slice(0, DEPT_ARTICLE_TOP)
-  const mixIds = [...new Set(mixSorted.map((m) => m.productId))]
+  const mixIds = [...new Set(mixSorted.map((row) => row.productId))]
   const mixLabelById = await productLabelsById(db, mixIds)
-  const deptArticleMix = mixSorted.map((m) => ({
-    department: m.department,
-    productId: m.productId,
-    productLabel: mixLabelById.get(m.productId) ?? m.productId,
-    units: m.units,
+  const deptArticleMix = mixSorted.map((row) => ({
+    department: row.department,
+    productId: row.productId,
+    productLabel: mixLabelById.get(row.productId) ?? row.productId,
+    units: row.units,
   }))
 
   const periodDays =
@@ -352,9 +511,14 @@ export async function buildRrhhRobaOverview(opts: BuildRrhhOverviewOptions): Pro
       ? window.days
       : Math.max(1, Math.ceil((window.toMs - window.fromMs) / 86_400_000))
 
-  const payload: RrhhRobaOverview = {
+  return {
     periodDays,
     totalRequests,
+    deliveriesCountInScope,
+    deliveryUnitsInScope,
+    deliveryWorkersInScope,
+    deliveriesPendingAck,
+    deliveriesConfirmed,
     byStatus,
     requestsInRequestsTab,
     requestsInPreparationTab,
@@ -377,6 +541,4 @@ export async function buildRrhhRobaOverview(opts: BuildRrhhOverviewOptions): Pro
     dataSources: ['app'],
     reportContext: buildReportContext(window, filters),
   }
-
-  return payload
 }

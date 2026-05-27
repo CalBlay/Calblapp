@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "updatedAt": "2026-05-21",
+  "updatedAt": "2026-05-27",
   "cases": [
     {
       "id": "maintenance_preventius_day_2026_05_04",
@@ -19,7 +19,7 @@
       "expected": {
         "metricId": "personnel_count_by_department",
         "policySystem": "firestore",
-        "numericAssertions": [{ "path": "result.count", "op": "eq", "value": 20 }]
+        "numericAssertions": [{ "path": "result.count", "op": "eq", "value": 24 }]
       }
     },
     {

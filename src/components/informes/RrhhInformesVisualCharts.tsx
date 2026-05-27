@@ -17,7 +17,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { RrhhRobaOverview } from '@/lib/informes/rrhhOverview'
+import { isDeliveryFocusedRrhhReport, type RrhhRobaOverview } from '@/lib/informes/rrhhOverview'
 import { ROBA_REQUEST_STATUS_LABEL } from '@/app/menu/roba-personal/robaPersonalConstants'
 
 const PALETTE = ['#059669', '#0d9488', '#2563eb', '#7c3aed', '#d97706', '#e11d48', '#64748b', '#475569']
@@ -32,12 +32,19 @@ type Props = {
   data: RrhhRobaOverview
   chartMountReady: boolean
   chartKey: string
+  deliveryFocused?: boolean
 }
 
 /**
- * Bloc de gràfics per a informes RRHH (KPIs i informe a mida): tendència diària, donut d’estats, barres departament×article.
+ * Bloc de grafics per a informes RRHH (KPIs i informe a mida):
+ * tendencia diaria, donut d'estats i barres departament x article.
  */
-export function RrhhInformesVisualCharts({ data, chartMountReady, chartKey }: Props) {
+export function RrhhInformesVisualCharts({
+  data,
+  chartMountReady,
+  chartKey,
+  deliveryFocused = isDeliveryFocusedRrhhReport(data),
+}: Props) {
   const dailyChart = useMemo(
     () =>
       data.dailyActivity.map((r) => ({
@@ -61,15 +68,16 @@ export function RrhhInformesVisualCharts({ data, chartMountReady, chartKey }: Pr
       .sort((a, b) => a.units - b.units)
       .map((r) => ({
         ...r,
-        mixLabel: `${r.department.length > 16 ? `${r.department.slice(0, 16)}…` : r.department} · ${
-          r.productLabel.length > 42 ? `${r.productLabel.slice(0, 42)}…` : r.productLabel
+        mixLabel: `${r.department.length > 16 ? `${r.department.slice(0, 16)}...` : r.department} · ${
+          r.productLabel.length > 42 ? `${r.productLabel.slice(0, 42)}...` : r.productLabel
         }`,
       }))
   }, [data.deptArticleMix])
 
   const mixChartHeight = Math.min(440, 56 + deptArticleBars.length * 28)
+  const hasVisualData = deliveryFocused ? data.deliveriesCountInScope > 0 : data.totalRequests > 0
 
-  if (data.totalRequests === 0) {
+  if (!hasVisualData) {
     return null
   }
 
@@ -89,16 +97,21 @@ export function RrhhInformesVisualCharts({ data, chartMountReady, chartKey }: Pr
           5. Vista visual
         </h3>
         <p className="text-[11px] text-muted-foreground mb-3">
-          Sèrie diària (UTC), distribució d’estats i principals parells departament · article.
+          {deliveryFocused
+            ? "Serie diaria (UTC), distribucio d'estats d'entrega i principals parells departament · article."
+            : "Serie diaria (UTC), distribucio d'estats i principals parells departament · article."}
         </p>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2 rounded-xl border border-border bg-gradient-to-b from-card to-muted/20 p-4 shadow-sm">
-          <p className="text-sm font-medium text-foreground">Activitat diària</p>
+          <p className="text-sm font-medium text-foreground">
+            {deliveryFocused ? "Activitat d'entregues" : 'Activitat diaria'}
+          </p>
           <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">
-            Unitats sol·licitades (àrea), sol·licituds creades (línia) i referències de producte distintes (línia
-            puntejada).
+            {deliveryFocused
+              ? "Unitats lliurades (area), entregues registrades (linia) i referencies de producte distintes (linia puntejada)."
+              : "Unitats sollicitades (area), sollicituds creades (linia) i referencies de producte distintes (linia puntejada)."}
           </p>
           <div className="h-[300px] w-full min-w-0">
             <ResponsiveContainer width="100%" height={300} debounce={50}>
@@ -141,7 +154,7 @@ export function RrhhInformesVisualCharts({ data, chartMountReady, chartKey }: Pr
                   yAxisId="left"
                   type="monotone"
                   dataKey="requestedUnits"
-                  name="Unitats sol·lic."
+                  name={deliveryFocused ? 'Unitats lliurades' : 'Unitats sollic.'}
                   stroke="#059669"
                   strokeWidth={2}
                   fill={`url(#unitsGrad-${chartKey})`}
@@ -150,7 +163,7 @@ export function RrhhInformesVisualCharts({ data, chartMountReady, chartKey }: Pr
                   yAxisId="right"
                   type="monotone"
                   dataKey="requestCount"
-                  name="Sol·licituds"
+                  name={deliveryFocused ? 'Entregues' : 'Sollicituds'}
                   stroke="#4f46e5"
                   strokeWidth={2.5}
                   dot={false}
@@ -172,8 +185,10 @@ export function RrhhInformesVisualCharts({ data, chartMountReady, chartKey }: Pr
         </div>
 
         <div className="rounded-xl border border-border bg-gradient-to-b from-card to-muted/15 p-4 shadow-sm flex flex-col min-h-[320px]">
-          <p className="text-sm font-medium">Distribució per estat</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">Flux de sol·licituds al període</p>
+          <p className="text-sm font-medium">Distribucio per estat</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5 mb-2">
+            {deliveryFocused ? "Flux d'entregues al periode" : 'Flux de sollicituds al periode'}
+          </p>
           <div className="flex-1 min-h-[248px]">
             {statusDonut.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">Sense dades.</p>
@@ -191,7 +206,11 @@ export function RrhhInformesVisualCharts({ data, chartMountReady, chartKey }: Pr
                     paddingAngle={2}
                   >
                     {statusDonut.map((_, i) => (
-                      <Cell key={`${chartKey}-cell-${i}`} fill={PALETTE[i % PALETTE.length]} stroke="transparent" />
+                      <Cell
+                        key={`${chartKey}-cell-${i}`}
+                        fill={PALETTE[i % PALETTE.length]}
+                        stroke="transparent"
+                      />
                     ))}
                   </Pie>
                   <Tooltip
@@ -210,10 +229,12 @@ export function RrhhInformesVisualCharts({ data, chartMountReady, chartKey }: Pr
         <div className="xl:col-span-3 rounded-xl border border-border bg-gradient-to-b from-card to-muted/20 p-4 shadow-sm">
           <p className="text-sm font-medium">Departament × article</p>
           <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">
-            Top {deptArticleBars.length} combinacions per unitats sol·licitades (el més alt a dalt).
+            {deliveryFocused
+              ? `Top ${deptArticleBars.length} combinacions per unitats lliurades (el mes alt a dalt).`
+              : `Top ${deptArticleBars.length} combinacions per unitats sollicitades (el mes alt a dalt).`}
           </p>
           {deptArticleBars.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6">Sense línies al període.</p>
+            <p className="text-sm text-muted-foreground py-6">Sense linies al periode.</p>
           ) : (
             <div className="w-full min-w-0" style={{ height: mixChartHeight }}>
               <ResponsiveContainer width="100%" height={mixChartHeight} debounce={50}>
@@ -222,7 +243,11 @@ export function RrhhInformesVisualCharts({ data, chartMountReady, chartKey }: Pr
                   data={deptArticleBars}
                   margin={{ top: 4, right: 20, left: 4, bottom: 4 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border) / 0.6)" />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    horizontal={false}
+                    stroke="hsl(var(--border) / 0.6)"
+                  />
                   <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
                   <YAxis
                     type="category"
@@ -241,7 +266,10 @@ export function RrhhInformesVisualCharts({ data, chartMountReady, chartKey }: Pr
                   />
                   <Bar dataKey="units" name="Unitats" radius={[0, 6, 6, 0]} barSize={14}>
                     {deptArticleBars.map((_, i) => (
-                      <Cell key={`bar-${i}`} fill={PALETTE[(PALETTE.length - 1 - (i % PALETTE.length)) % PALETTE.length]} />
+                      <Cell
+                        key={`bar-${i}`}
+                        fill={PALETTE[(PALETTE.length - 1 - (i % PALETTE.length)) % PALETTE.length]}
+                      />
                     ))}
                   </Bar>
                 </BarChart>

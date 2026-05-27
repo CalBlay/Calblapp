@@ -1,6 +1,10 @@
 import { exportRowsToXlsx, robaExportFilename } from '@/lib/roba-personal/robaExport'
 import { ROBA_REQUEST_STATUS_LABEL } from '@/app/menu/roba-personal/robaPersonalConstants'
-import type { RrhhReportContext, RrhhRobaOverview } from '@/lib/informes/rrhhOverview'
+import {
+  isDeliveryFocusedRrhhReport,
+  type RrhhReportContext,
+  type RrhhRobaOverview,
+} from '@/lib/informes/rrhhOverview'
 import { deriveRrhhSignals } from '@/lib/informes/rrhhSignals'
 import type { jsPDF } from 'jspdf'
 
@@ -14,16 +18,21 @@ function criteriaRowsForExport(
   periodLabel: string
 ): { Criteri: string; Valor: string }[] {
   const ctx: RrhhReportContext | undefined = data.reportContext
+  const deliveryFocused = isDeliveryFocusedRrhhReport(data)
   const rows: { Criteri: string; Valor: string }[] = []
   if (ctx?.kind === 'range' && ctx.dateFrom && ctx.dateTo) {
     rows.push({
       Criteri: 'Finestra temporal',
-      Valor: `Sol·licituds creades del ${ctx.dateFrom} al ${ctx.dateTo} (filtre per data al client)`,
+      Valor: deliveryFocused
+        ? `Entregues registrades del ${ctx.dateFrom} al ${ctx.dateTo} (filtre per data al client)`
+        : `Sol·licituds creades del ${ctx.dateFrom} al ${ctx.dateTo} (filtre per data al client)`,
     })
   } else if (ctx?.kind === 'rolling' && ctx.rollingDays != null) {
     rows.push({
       Criteri: 'Finestra temporal',
-      Valor: `Últims ${ctx.rollingDays} dies (sol·licituds creades en aquest interval)`,
+      Valor: deliveryFocused
+        ? `Últims ${ctx.rollingDays} dies (entregues registrades en aquest interval)`
+        : `Últims ${ctx.rollingDays} dies (sol·licituds creades en aquest interval)`,
     })
   } else {
     rows.push({ Criteri: 'Finestra temporal', Valor: periodLabel })
@@ -35,7 +44,7 @@ function criteriaRowsForExport(
   const estat = (ctx?.statusLabel?.trim() || ctx?.status?.trim())
     ? ctx?.statusLabel || ctx?.status || '—'
     : 'Tots'
-  rows.push({ Criteri: 'Estat de la sol·licitud', Valor: estat })
+  rows.push({ Criteri: deliveryFocused ? 'Etapa del flux' : 'Estat de la sol·licitud', Valor: estat })
   rows.push({
     Criteri: 'Article (línia inclosa)',
     Valor:
@@ -669,17 +678,29 @@ export async function exportRrhhRobaInformePdf(
     data.avgDaysToFirstDelivery != null
       ? data.avgDaysToFirstDelivery.toLocaleString('ca-ES', { maximumFractionDigits: 1 })
       : '—'
+  const deliveryFocused = isDeliveryFocusedRrhhReport(data)
 
   const layoutCtx: PdfLayoutCtx = { pdf, margin, contentWidth, pageWidth, pageHeight, footerH }
 
   if (mode === 'custom') {
     sectionTitle('Resum del tall')
-    drawMetricCards([
-      { label: 'Sol·licituds', value: String(data.totalRequests) },
-      { label: 'Unitats sol·lic.', value: String(data.requestedUnitsInPeriod) },
-      { label: 'Unitats lliurades', value: String(data.deliveredUnitsLinked) },
-      { label: 'Compliment', value: pctCompl },
-    ])
+    drawMetricCards(
+      deliveryFocused
+        ? [
+            { label: 'Entregues', value: String(data.deliveriesCountInScope) },
+            { label: 'Treballadors', value: String(data.deliveryWorkersInScope) },
+            { label: 'Unitats lliurades', value: String(data.deliveryUnitsInScope) },
+            { label: 'Pendents firma', value: String(data.deliveriesPendingAck) },
+            { label: 'Confirmades', value: String(data.deliveriesConfirmed) },
+            { label: 'Incidències', value: String(data.deliveriesWithOpenDispute) },
+          ]
+        : [
+            { label: 'Sol·licituds', value: String(data.totalRequests) },
+            { label: 'Unitats sol·lic.', value: String(data.requestedUnitsInPeriod) },
+            { label: 'Unitats lliurades', value: String(data.deliveredUnitsLinked) },
+            { label: 'Compliment', value: pctCompl },
+          ]
+    )
     pdf.setFont('helvetica', 'italic')
     pdf.setFontSize(7)
     pdf.setTextColor(...PDF_THEME.muted)
@@ -700,7 +721,9 @@ export async function exportRrhhRobaInformePdf(
     pdf.setFontSize(7)
     pdf.setTextColor(...PDF_THEME.muted)
     const vistaNoteCustom = pdf.splitTextToSize(
-      'Aquest apartat coincideix amb la «Vista visual» de la pantalla (activitat diària, estats i departament × article).',
+      deliveryFocused
+        ? "Aquest apartat coincideix amb la Vista visual de la pantalla per a entregues (activitat d'entregues, estats i departament x article)."
+        : 'Aquest apartat coincideix amb la Vista visual de la pantalla (activitat diària, estats i departament x article).',
       contentWidth
     )
     y = pdfEnsure(pdf, y, vistaNoteCustom.length * 9 + 12, pageHeight, margin, footerH)
@@ -813,6 +836,7 @@ export async function exportRrhhRobaInformeXlsx(
   fileBase: string,
   mode: RrhhRobaInformeExportMode = 'kpis'
 ) {
+  const deliveryFocused = isDeliveryFocusedRrhhReport(data)
   const pctCompl =
     data.pctDeliveredVsRequested != null
       ? `${data.pctDeliveredVsRequested.toLocaleString('ca-ES', { maximumFractionDigits: 1 })}%`
@@ -851,31 +875,51 @@ export async function exportRrhhRobaInformeXlsx(
     { Metrica: 'Max sollicituds escanejades', Valor: data.datasetScanLimit },
   ]
 
-  const resumCustom = [
-    { Metrica: 'Periode', Valor: periodLabel },
-    { Metrica: 'Sollicituds', Valor: data.totalRequests },
-    { Metrica: 'A Sollicituds', Valor: data.requestsInRequestsTab },
-    { Metrica: 'A Preparacio', Valor: data.requestsInPreparationTab },
-    { Metrica: 'A Recepcions', Valor: data.requestsInReceptionTab },
-    { Metrica: 'A Entregues', Valor: data.requestsInDeliveriesTab },
-    { Metrica: 'Tancades', Valor: data.requestsClosed },
-    { Metrica: 'Unitats solicitades', Valor: data.requestedUnitsInPeriod },
-    { Metrica: 'Unitats lliurades', Valor: data.deliveredUnitsLinked },
-    { Metrica: 'Compliment %', Valor: pctCompl },
-    { Metrica: 'Cobertura max sollicituds', Valor: data.datasetScanLimit },
-  ]
+  const resumCustom = deliveryFocused
+    ? [
+        { Metrica: 'Periode', Valor: periodLabel },
+        { Metrica: 'Entregues', Valor: data.deliveriesCountInScope },
+        { Metrica: 'Treballadors', Valor: data.deliveryWorkersInScope },
+        { Metrica: 'Unitats lliurades', Valor: data.deliveryUnitsInScope },
+        { Metrica: 'Pendents firma', Valor: data.deliveriesPendingAck },
+        { Metrica: 'Confirmades', Valor: data.deliveriesConfirmed },
+        { Metrica: 'Incidencies', Valor: data.deliveriesWithOpenDispute },
+        { Metrica: 'Cobertura max sollicituds', Valor: data.datasetScanLimit },
+      ]
+    : [
+        { Metrica: 'Periode', Valor: periodLabel },
+        { Metrica: 'Sollicituds', Valor: data.totalRequests },
+        { Metrica: 'A Sollicituds', Valor: data.requestsInRequestsTab },
+        { Metrica: 'A Preparacio', Valor: data.requestsInPreparationTab },
+        { Metrica: 'A Recepcions', Valor: data.requestsInReceptionTab },
+        { Metrica: 'A Entregues', Valor: data.requestsInDeliveriesTab },
+        { Metrica: 'Tancades', Valor: data.requestsClosed },
+        { Metrica: 'Unitats solicitades', Valor: data.requestedUnitsInPeriod },
+        { Metrica: 'Unitats lliurades', Valor: data.deliveredUnitsLinked },
+        { Metrica: 'Compliment %', Valor: pctCompl },
+        { Metrica: 'Cobertura max sollicituds', Valor: data.datasetScanLimit },
+      ]
 
   const estats = Object.entries(data.byStatus).map(([codi, nombre]) => ({
     Estat: ROBA_REQUEST_STATUS_LABEL[codi] || codi,
     Nombre: nombre,
   }))
 
-  const activitatDiaria = data.dailyActivity.map((d) => ({
-    Dia: d.day,
-    Sollicituds: d.requestCount,
-    Unitats_solicitades: d.requestedUnits,
-    Productes_distints: d.distinctProductsRequested,
-  }))
+  const activitatDiaria = data.dailyActivity.map((d) =>
+    deliveryFocused
+      ? {
+          Dia: d.day,
+          Entregues: d.requestCount,
+          Unitats_lliurades: d.requestedUnits,
+          Productes_distints: d.distinctProductsRequested,
+        }
+      : {
+          Dia: d.day,
+          Sollicituds: d.requestCount,
+          Unitats_solicitades: d.requestedUnits,
+          Productes_distints: d.distinctProductsRequested,
+        }
+  )
 
   const deptArticle = data.deptArticleMix.map((r) => ({
     Departament: r.department,

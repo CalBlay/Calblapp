@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { INFORMES_DOMAINS } from '@/lib/informes/domains'
-import { ROBA_REQUEST_STATUS_LABEL } from '@/app/menu/roba-personal/robaPersonalConstants'
 import { DataSourceLegend } from '../DataSourceLegend'
 import { InformesProductFilterCombobox } from '../InformesProductFilterCombobox'
 import { RrhhInformesVisualCharts } from '../RrhhInformesVisualCharts'
@@ -17,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import type { RrhhRobaOverview } from '@/lib/informes/rrhhOverview'
+import { isDeliveryFocusedRrhhReport, type RrhhRobaOverview } from '@/lib/informes/rrhhOverview'
 import { deriveRrhhSignals } from '@/lib/informes/rrhhSignals'
 import {
   exportRrhhRobaInformePdf,
@@ -29,6 +28,20 @@ import { toast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
 
 const RRHH_META = INFORMES_DOMAINS.find((d) => d.id === 'rrhh')!
+const RRHH_STAGE_FILTER_OPTIONS = [
+  { value: 'submitted', label: 'Sol·licituds' },
+  { value: 'sent_to_rrhh', label: 'Preparació' },
+  { value: 'prepared', label: 'Recepcions' },
+  {
+    value: 'ready_for_worker_delivery,picked_up,fulfilled,receipt_confirmed',
+    label: 'Entregues',
+  },
+  {
+    value: 'fulfilled,receipt_confirmed',
+    label: 'Tancades',
+  },
+  { value: 'cancelled', label: 'Cancel·lades' },
+] as const
 
 function toYmd(d: Date): string {
   const y = d.getFullYear()
@@ -207,7 +220,13 @@ export function RrhhInformesPanel() {
       params.set('dateFrom', customDateFrom)
       params.set('dateTo', customDateTo)
       if (customDept.trim()) params.set('department', customDept.trim())
-      if (customStatus.trim()) params.set('status', customStatus.trim())
+      if (customStatus.trim()) {
+        params.set('status', customStatus.trim())
+        const stageLabel = RRHH_STAGE_FILTER_OPTIONS.find(
+          (option) => option.value === customStatus.trim()
+        )?.label
+        if (stageLabel) params.set('statusLabel', stageLabel)
+      }
       if (customProductId.trim()) {
         params.set('productId', customProductId.trim())
         const lbl = productOptions.find((p) => p.id === customProductId.trim())?.label
@@ -248,6 +267,10 @@ export function RrhhInformesPanel() {
     () => `c-${customDateFrom}-${customDateTo}-${customDept}-${customStatus}-${customProductId}`,
     [customDateFrom, customDateTo, customDept, customStatus, customProductId]
   )
+
+  const customIsDeliveryFocused = useMemo(() => {
+    return customData ? isDeliveryFocusedRrhhReport(customData) : false
+  }, [customData])
 
   const productRowsPareto = useMemo(() => {
     if (!kpiData?.topProducts.length) return []
@@ -762,8 +785,8 @@ export function RrhhInformesPanel() {
             <div>
               <p className="font-medium">Informe a mida</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Talleu per dates (creació de la sol·licitud), departament, estat i article. Els exports inclouen el
-                bloc «Criteris de tall» amb el límit de lectura per auditoria.
+                Talleu per dates, departament, etapa del flux i article. A `Entregues` i `Tancades`, el tall es fa per
+                data d&apos;entrega; a la resta, per data de creació de la sol·licitud.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -808,7 +831,7 @@ export function RrhhInformesPanel() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Estat</Label>
+                <Label className="text-xs text-muted-foreground">Etapa del flux</Label>
                 <Select
                   value={customStatus || '__all__'}
                   onValueChange={(v) => setCustomStatus(v === '__all__' ? '' : v)}
@@ -819,9 +842,9 @@ export function RrhhInformesPanel() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">Tots</SelectItem>
-                    {Object.keys(ROBA_REQUEST_STATUS_LABEL).map((k) => (
-                      <SelectItem key={k} value={k}>
-                        {ROBA_REQUEST_STATUS_LABEL[k] || k}
+                    {RRHH_STAGE_FILTER_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -850,7 +873,58 @@ export function RrhhInformesPanel() {
                   <p className="text-sm font-semibold">Resum del tall</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{overviewPeriodLabel(customData)}</p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+                {customIsDeliveryFocused ? (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 [&>*:nth-last-child(-n+2)]:hidden">
+                    <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Entregues</p>
+                      <p className="text-xl font-semibold tabular-nums mt-0.5">
+                        {customData.deliveriesCountInScope}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Treballadors</p>
+                      <p className="text-xl font-semibold tabular-nums mt-0.5">
+                        {customData.deliveryWorkersInScope}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Unitats lliurades</p>
+                      <p className="text-xl font-semibold tabular-nums mt-0.5">
+                        {customData.deliveryUnitsInScope}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Pendents firma</p>
+                      <p className="text-xl font-semibold tabular-nums mt-0.5">
+                        {customData.deliveriesPendingAck}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Confirmades</p>
+                      <p className="text-xl font-semibold tabular-nums mt-0.5">
+                        {customData.deliveriesConfirmed}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Incidències</p>
+                      <p className="text-xl font-semibold tabular-nums mt-0.5">
+                        {customData.deliveriesWithOpenDispute}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Sol·licituds</p>
+                      <p className="text-xl font-semibold tabular-nums mt-0.5">{customData.totalRequests}</p>
+                    </div>
+                    <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Tancades</p>
+                      <p className="text-xl font-semibold tabular-nums mt-0.5">
+                        {customData.requestsClosed}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+                {!customIsDeliveryFocused ? (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
                   <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Sol·licituds</p>
                     <p className="text-xl font-semibold tabular-nums mt-0.5">{customData.totalRequests}</p>
@@ -905,18 +979,20 @@ export function RrhhInformesPanel() {
                         : '—'}
                     </p>
                   </div>
-                </div>
+                  </div>
+                ) : null}
                 <p className="text-[10px] text-muted-foreground border-t border-border pt-3">
                   Useu la icona impressora per exportar PDF o Excel amb criteris i logo Cal Blay. Cobertura: fins a{' '}
                   {customData.datasetScanLimit} sol·licituds més recents.
                 </p>
               </div>
-              {customData.totalRequests > 0 ? (
+              {(customIsDeliveryFocused ? customData.deliveriesCountInScope > 0 : customData.totalRequests > 0) ? (
                 <RrhhInformesVisualCharts
                   key={customChartKey}
                   data={customData}
                   chartMountReady={chartMountReady}
                   chartKey={customChartKey}
+                  deliveryFocused={customIsDeliveryFocused}
                 />
               ) : null}
             </>

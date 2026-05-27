@@ -24,6 +24,7 @@ export function firestoreDateToMs(raw: unknown): number | null {
 export type DeliverySnapshot = {
   delivery: DeliveryRow
   deliveredAtMs: number | null
+  workerReceiptAckAtMs: number | null
   correctionOpen: boolean
 }
 
@@ -32,6 +33,7 @@ export function deliverySnapshotFromFirestore(id: string, data: Record<string, u
   return {
     delivery,
     deliveredAtMs: firestoreDateToMs(data.deliveredAt),
+    workerReceiptAckAtMs: firestoreDateToMs(data.workerReceiptAckAt),
     correctionOpen: data.workerReceiptCorrectionOpen === true,
   }
 }

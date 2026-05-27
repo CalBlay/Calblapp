@@ -215,7 +215,7 @@ export default function EventsPage() {
   })
 
   const grouped = enhancedEvents.reduce<Record<string, typeof enhancedEvents>>((acc, ev) => {
-    const day = ev.start.slice(0, 10)
+    const day = ev.day || ev.start.slice(0, 10)
     acc[day] ||= []
     acc[day].push(ev)
     return acc
