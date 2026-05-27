@@ -769,13 +769,28 @@ export function EntreguesPanel({
       return
     }
     if (selectedDeliveryId && entFilteredRows.some((r) => r.id === selectedDeliveryId)) return
-    setSelectedDeliveryId(entFilteredRows[0]?.id ?? '')
+    if (selectedDeliveryId) setSelectedDeliveryId('')
   }, [entFilteredRows, prefillDeliveryId, selectedDeliveryId])
 
   const selectedDelivery = useMemo(
     () => rows.find((r) => r.id === selectedDeliveryId) ?? null,
     [rows, selectedDeliveryId]
   )
+  const selectedDeliverySignatureDataUrl = useMemo(
+    () =>
+      selectedDelivery?.workerReceiptAckSignatureDataUrl ||
+      selectedDelivery?.acknowledgmentSignatureDataUrl ||
+      null,
+    [selectedDelivery]
+  )
+  const selectedDeliveryDepartment = useMemo(() => {
+    if (!selectedDelivery) return '-'
+    return (
+      String(selectedDelivery.requestRequestingDepartment || '').trim() ||
+      workers.find((w) => w.id === selectedDelivery.workerId)?.department ||
+      '-'
+    )
+  }, [selectedDelivery, workers])
 
   const resetNewDeliveryForm = useCallback(() => {
     setSelectedDeliveryId('')
@@ -1026,7 +1041,86 @@ export function EntreguesPanel({
         </>
       ) : null}
 
-      {!isRobaWorkerSelf ? (
+      {selectedDelivery ? (
+        <section className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <h2 className="font-semibold text-base">Detall de l&apos;entrega</h2>
+              <p className="text-xs text-muted-foreground">
+                {selectedDelivery.reference ?? `E-${selectedDelivery.id}`}
+              </p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={resetNewDeliveryForm}>
+              Tancar detall
+            </Button>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border border-border bg-muted/20 px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Treballador</p>
+              <p className="mt-1 text-sm font-medium">{workerNameOnly(selectedDelivery.workerId)}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/20 px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Departament</p>
+              <p className="mt-1 text-sm font-medium">{selectedDeliveryDepartment}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/20 px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Preparador</p>
+              <p className="mt-1 text-sm font-medium">
+                {String(selectedDelivery.requestPreparedByName || '').trim() ||
+                  String(selectedDelivery.requestCreatedByUserName || '').trim() ||
+                  '-'}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/20 px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Estat</p>
+              <p className="mt-1 text-sm font-medium">{entregaEstatLabelForLead(selectedDelivery)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="rounded-lg border border-border bg-background px-3 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Material lliurat
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Qt. sol·licitada: {entregaRequestedTotalUnits(selectedDelivery)} · Qt. lliurada:{' '}
+                  {entregaDeliveredTotalUnits(selectedDelivery)}
+                </p>
+              </div>
+              <div className="mt-3 space-y-2">
+                {(selectedDelivery.lines || []).map((line, index) => (
+                  <div
+                    key={`${selectedDelivery.id}-${line.productId}-${index}`}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2"
+                  >
+                    <span className="text-sm">{prodLabel(line.productId)}</span>
+                    <span className="text-sm font-medium tabular-nums">x {line.quantity}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-background px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Signatura</p>
+              {selectedDeliverySignatureDataUrl ? (
+                <div className="mt-3 rounded-lg border border-border bg-white p-3">
+                  <img
+                    src={selectedDeliverySignatureDataUrl}
+                    alt="Signatura de recepció"
+                    className="max-h-40 w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">Aquesta entrega encara no té signatura registrada.</p>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {!isRobaWorkerSelf && !selectedDelivery ? (
         <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 w-full">
           <h2 className="font-semibold text-base">Nova entrega</h2>
           {linkedRequest ? (

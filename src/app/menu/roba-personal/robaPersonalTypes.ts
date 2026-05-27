@@ -4,6 +4,7 @@ export type TabId =
   | 'productes'
   | 'treballadors'
   | 'estoc'
+  | 'informes'
   | 'sollicituds'
   | 'preparacio'
   | 'recollides'

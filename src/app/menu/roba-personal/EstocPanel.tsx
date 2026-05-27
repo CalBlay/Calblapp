@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils'
 import { ChevronDown, Loader2, Search, Trash2 } from 'lucide-react'
 import { DEFAULT_DOTACIO_MAGATZEM } from '@/lib/roba-personal/dotacioDefaults'
 import { exportRowsToPdf, exportRowsToXlsx, robaExportFilename } from '@/lib/roba-personal/robaExport'
+import ExportMenu from '@/components/export/ExportMenu'
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
 import { ProductSearchCombobox } from './ProductSearchCombobox'
 import { robaPersonalApi as api } from './robaPersonalApi'
@@ -422,6 +423,38 @@ export function EstocPanel() {
     }
   }, [buildEstocPdfRows])
 
+  const handleMovimentsExportXlsx = useCallback(async () => {
+    try {
+      const base = robaExportFilename('roba-estoc-moviments')
+      await exportRowsToXlsx([{ name: 'Moviments', rows: buildEstocMovimentsExportRows() }], base)
+      toast({ title: 'Exportació XLSX de moviments completada.' })
+    } catch (e: unknown) {
+      toast({
+        title: 'Error exportant moviments a XLSX',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    }
+  }, [buildEstocMovimentsExportRows])
+
+  const handleMovimentsExportPdf = useCallback(async () => {
+    try {
+      const base = robaExportFilename('roba-estoc-moviments')
+      await exportRowsToPdf(
+        buildEstocMovimentsExportRows(),
+        'Roba personal · Tots els moviments d’estoc',
+        base
+      )
+      toast({ title: 'Exportació PDF de moviments completada.' })
+    } catch (e: unknown) {
+      toast({
+        title: 'Error exportant moviments a PDF',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    }
+  }, [buildEstocMovimentsExportRows])
+
   const estocExportMenuItems = useMemo(
     () => [
       { label: 'Exportar PDF', onClick: handleEstocExportPdf },
@@ -430,6 +463,14 @@ export function EstocPanel() {
     [handleEstocExportPdf, handleEstocExportXlsx]
   )
   useRegisterModuleExportMenu(estocExportMenuItems)
+
+  const movimentsExportMenuItems = useMemo(
+    () => [
+      { label: 'Exportar moviments PDF', onClick: handleMovimentsExportPdf },
+      { label: 'Exportar moviments XLSX', onClick: handleMovimentsExportXlsx },
+    ],
+    [handleMovimentsExportPdf, handleMovimentsExportXlsx]
+  )
 
   const runReservedReconcileCheck = useCallback(async (opts?: { silentCoherentToast?: boolean }) => {
     setReconcileBusy(true)
@@ -997,6 +1038,9 @@ export function EstocPanel() {
               setMovListFiltersResetSignal((n) => n + 1)
             }}
           />
+          <div className="ml-auto">
+            <ExportMenu items={movimentsExportMenuItems} ariaLabel="Exportar moviments d'estoc" />
+          </div>
         </div>
         {movementTypeOptions.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2">

@@ -4,6 +4,7 @@ export const ROBA_TAB_IDS = new Set<TabId>([
   'productes',
   'treballadors',
   'estoc',
+  'informes',
   'sollicituds',
   'preparacio',
   'recollides',

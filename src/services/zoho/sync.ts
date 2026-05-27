@@ -222,6 +222,16 @@ function sanitizeStorageName(raw?: string | null): string {
   return normalized || `attachment-${Date.now()}`
 }
 
+const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = ['FT', 'FG', 'FE', 'FM'] as const
+
+function shouldImportZohoAttachment(fileName?: string | null): boolean {
+  const normalized = String(fileName || '').trim().toUpperCase()
+  if (!normalized) return false
+  return ZOHO_ATTACHMENT_ALLOWED_PREFIXES.some((prefix) =>
+    normalized.startsWith(prefix)
+  )
+}
+
 function zohoAttachmentSlotKeys(baseKey: string) {
   return {
     url: baseKey,
@@ -303,6 +313,9 @@ async function buildZohoAttachmentFields(
   }
 }> {
   const attachments = await listZohoAttachments(moduleName, dealId)
+  const filteredAttachments = attachments.filter((attachment) =>
+    shouldImportZohoAttachment(attachment.File_Name)
+  )
   const out: Record<string, unknown> = {}
   const currentKeys = new Set<string>()
   const bucket = storageAdmin.bucket()
@@ -310,8 +323,8 @@ async function buildZohoAttachmentFields(
   let reusedCount = 0
   let deletedFromStorage = 0
 
-  for (let i = 0; i < attachments.length; i++) {
-    const attachment = attachments[i]
+  for (let i = 0; i < filteredAttachments.length; i++) {
+    const attachment = filteredAttachments[i]
     const slot = `zohoFile${i + 1}`
     const keys = zohoAttachmentSlotKeys(slot)
     const fileName =

@@ -13,6 +13,7 @@ import { EstocPanel } from './EstocPanel'
 import { SollicitudsPanel } from './SollicitudsPanel'
 import { EntreguesPanel } from './EntreguesPanel'
 import { CompresPanel } from './CompresPanel'
+import { RrhhInformesPanel } from '@/components/informes/domains/RrhhInformesPanel'
 
 export default function RobaPersonalDashboard() {
   const searchParams = useSearchParams()
@@ -73,7 +74,12 @@ export default function RobaPersonalDashboard() {
     setTab(id)
     const p = new URLSearchParams(searchParams?.toString() || '')
     p.set('tab', id)
-    if (id !== 'entregues' && id !== 'sollicituds' && id !== 'preparacio' && id !== 'recollides') {
+    if (
+      id !== 'entregues' &&
+      id !== 'sollicituds' &&
+      id !== 'preparacio' &&
+      id !== 'recollides'
+    ) {
       p.delete('requestId')
       p.delete('deliveryId')
     }
@@ -158,6 +164,7 @@ export default function RobaPersonalDashboard() {
                 ['productes', 'Productes'],
                 ['treballadors', 'Treballadors'],
                 ['estoc', 'Estoc'],
+                ['informes', 'Informes'],
                 ['sollicituds', 'Sol·licituds'],
                 ['preparacio', 'Preparació'],
                 ['recollides', 'Recepcions'],
@@ -200,7 +207,7 @@ export default function RobaPersonalDashboard() {
               </button>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Feu sol·licituds i confirmeu recepcions.
           </p>
         </div>
@@ -209,6 +216,7 @@ export default function RobaPersonalDashboard() {
       {tab === 'productes' && <ProductesPanel />}
       {tab === 'treballadors' && <TreballadorsPanel />}
       {tab === 'estoc' && <EstocPanel />}
+      {tab === 'informes' && isRobaFullUser && <RrhhInformesPanel />}
       {tab === 'sollicituds' && (
         <SollicitudsPanel mode="requests" highlightRequestId={requestIdFromUrl} />
       )}
