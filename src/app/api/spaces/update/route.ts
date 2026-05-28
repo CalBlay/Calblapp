@@ -1,33 +1,15 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { normalizeRole } from '@/lib/roles'
 import { registerFinquesProduccioImagesInIndex } from '@/lib/media/storageMediaIndex'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { requireSpacesBbddMutation } from '@/lib/server/spacesApiAuth'
 
 export const runtime = 'nodejs'
-
-type SessionUser = {
-  departmentLower?: string
-  deptLower?: string
-  department?: string
-}
 
 type ProduccioPayload = Record<
   string,
   string | string[] | number | boolean | null | undefined
 >
-
-const normalizeDept = (raw?: string) => {
-  const base = (raw || '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-  const compact = base.replace(/\s+/g, '')
-  if (compact === 'foodlover' || compact === 'foodlovers') return 'foodlovers'
-  return base
-}
 
 const normalizeSpaceCode = (raw?: unknown) =>
   String(raw || '')
@@ -50,22 +32,10 @@ async function codeAlreadyExists(code: string, currentId?: string): Promise<bool
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    const sessionUser = session?.user as SessionUser | undefined
-    const role = normalizeRole(session?.user?.role)
-    const dept = normalizeDept(
-      sessionUser?.departmentLower || sessionUser?.deptLower || sessionUser?.department
-    )
-    const canEdit =
-      role === 'admin' ||
-      role === 'direccio' ||
-      role === 'comercial' ||
-      dept === 'produccio' ||
-      (role === 'cap' &&
-        (dept === 'empresa' || dept === 'casaments' || dept === 'foodlovers'))
-
-    // Permisos d'edició d'espais
-    if (!canEdit) {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const canUpdate = await requireSpacesBbddMutation(auth, 'update')
+    if (!canUpdate) {
       return NextResponse.json(
         { error: 'No tens permisos per editar espais.' },
         { status: 403 }

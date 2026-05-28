@@ -1,10 +1,10 @@
 export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
-import { normalizeRole } from '@/lib/roles'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { SPACES_PREMISSES_PATH, SPACES_RESERVES_PATH } from '@/lib/spacesPermissions'
+import { requireSpacesEdit, requireSpacesView } from '@/lib/server/spacesApiAuth'
 import {
   DEFAULT_SPACES_HEADER_RULE,
   normalizeSpacesHeaderRuleConfig,
@@ -13,23 +13,14 @@ import {
 const COLLECTION = 'space_settings'
 const DOC_ID = 'reserve_header_rule'
 
-async function getAuth() {
-  const session = await getServerSession(authOptions)
-  const user = session?.user as { id?: string; role?: string } | undefined
-  if (!user?.id) {
-    return {
-      error: NextResponse.json({ error: 'No autenticat' }, { status: 401 }),
-    }
-  }
-
-  const role = normalizeRole(user.role || '')
-  return { user, role }
-}
-
 export async function GET() {
   try {
-    const auth = await getAuth()
-    if ('error' in auth) return auth.error
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const canView = await requireSpacesView(auth, SPACES_RESERVES_PATH)
+    if (!canView) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const snap = await firestoreAdmin.collection(COLLECTION).doc(DOC_ID).get()
     const stored = snap.exists ? snap.data()?.config : null
@@ -46,9 +37,10 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const auth = await getAuth()
-    if ('error' in auth) return auth.error
-    if (auth.role !== 'admin') {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const canEdit = await requireSpacesEdit(auth, SPACES_PREMISSES_PATH)
+    if (!canEdit) {
       return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
     }
 
@@ -59,7 +51,7 @@ export async function PATCH(request: Request) {
       {
         config,
         updatedAt: Date.now(),
-        updatedBy: auth.user.id,
+        updatedBy: auth.user.id as string,
       },
       { merge: true }
     )

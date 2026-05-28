@@ -14,7 +14,9 @@ import {
   type CommercialReservation,
   type CommercialReservationStatus,
 } from '@/lib/commercialReservations'
-import { normalizeRole } from '@/lib/roles'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { baseCanValidateReservaComercials } from '@/lib/reservaComercialsPermissions'
+import { PERM } from '@/lib/permissionKeys'
 import type {
   AssignmentItem,
   AssignmentRow,
@@ -59,14 +61,29 @@ type UseReservaComercialsPageResult = ReservationPageState & {
   pendingReservationsByDay: Map<string, number>
 }
 
+const RESERVA_UI_PATH = '/menu/logistica/reserva-comercials'
+
 export function useReservaComercialsPage(): UseReservaComercialsPageResult {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { data: session } = useSession()
   const user = (session?.user || {}) as SessionUser
-  const canValidate =
-    ['admin', 'direccio', 'cap'].includes(normalizeRole(String(user.role || ''))) ||
-    user.isTransportLead === true
+  const { uiActions, ready: permsReady } = useUiPermissions()
+
+  const legacyCanValidate = baseCanValidateReservaComercials({
+    role: user.role,
+    isTransportLead: user.isTransportLead,
+  })
+
+  const canRequest = useMemo(() => {
+    if (!permsReady) return true
+    return uiActions[PERM.action(RESERVA_UI_PATH, 'request')] === true
+  }, [permsReady, uiActions])
+
+  const canValidate = useMemo(() => {
+    if (!permsReady) return legacyCanValidate
+    return uiActions[PERM.action(RESERVA_UI_PATH, 'validate')] === true
+  }, [permsReady, uiActions, legacyCanValidate])
 
   const initialFilters = useMemo<FiltersState>(() => {
     const start = startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -629,6 +646,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
 
   return {
     tab,
+    canRequest,
     canValidate,
     filters,
     requestFilters,

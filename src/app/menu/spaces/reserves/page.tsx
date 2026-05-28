@@ -4,8 +4,6 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { useSession } from 'next-auth/react'
-
 import { useSpaces, type SpaceApiRow } from '@/hooks/spaces/useSpaces'
 import SpaceGrid from '@/components/spaces/SpaceGrid'
 import ModuleHeader from '@/components/layout/ModuleHeader'
@@ -13,7 +11,12 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import FilterButton from '@/components/ui/filter-button'
 import { useFilters } from '@/context/FiltersContext'
 import SpacesFilters, { type SpacesFilterState } from '@/components/spaces/SpacesFilters'
-import { normalizeRole } from '@/lib/roles'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import {
+  SPACES_PREMISSES_PATH,
+  SPACES_RESERVES_PATH,
+} from '@/lib/spacesPermissions'
+import SpacesSectionGate from '../SpacesSectionGate'
 import {
   DEFAULT_SPACES_HEADER_RULE,
   type SpacesHeaderRuleConfig,
@@ -24,9 +27,8 @@ function getDefaultLnSelection(lns: string[]): string[] {
 }
 
 export default function SpacesPage() {
-  const { data: session } = useSession()
-  const userRole = normalizeRole(String(session?.user?.role || ''))
-  const isAdmin = userRole === 'admin'
+  const { ready: permsReady, canEditPath } = useUiPermissions()
+  const canPremisses = !permsReady || canEditPath(SPACES_PREMISSES_PATH)
   const toISODate = (date: Date) => date.toISOString().split('T')[0]
   const [headerRule, setHeaderRule] = useState<SpacesHeaderRuleConfig>(
     DEFAULT_SPACES_HEADER_RULE
@@ -199,13 +201,12 @@ const {
   // ðŸ”¹ Render
   // -------------------------------
   return (
-    <>
-      {/* CapÃ§alera general */}
+    <SpacesSectionGate subpath={SPACES_RESERVES_PATH}>
       <ModuleHeader
         title="Espais / Reserves"
         subtitle="Disponibilitat setmanal de finques"
         actions={
-          isAdmin ? (
+          canPremisses ? (
             <Link
               href="/menu/spaces/premisses"
               className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
@@ -324,7 +325,7 @@ const {
         )}
 
       </section>
-    </>
+    </SpacesSectionGate>
   )
 }
 

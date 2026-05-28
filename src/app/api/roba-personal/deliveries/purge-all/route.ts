@@ -5,7 +5,8 @@ import { FieldPath, type QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import { resolveRobaAccess } from '@/lib/roba-personal/guard'
+import { requireRobaTabViewAccess } from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import { adminDeleteDeliveryTransaction } from '@/lib/roba-personal/adminDeleteDelivery'
 import { DELIVERIES_PURGE_CONFIRM_PHRASE } from '@/lib/roba-personal/deliveriesPurgeConstants'
 
@@ -19,7 +20,7 @@ const PAGE = 200
  * Només rol administrador (mateix criteri que DELETE d’una entrega).
  */
 export async function POST(req: Request) {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaTabViewAccess(ROBA_SUBMODULE_PATHS.entregues)
   if (!auth.ok) return auth.res
   if (auth.access.scope !== 'full' || auth.access.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

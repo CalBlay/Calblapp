@@ -1,46 +1,20 @@
 ﻿import { NextResponse } from 'next/server'
 import type { DocumentReference } from 'firebase-admin/firestore'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { normalizeRole } from '@/lib/roles'
-import { isProductionWorker } from '@/lib/accessControl'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { SPACES_ACTION } from '@/lib/spacesPermissions'
+import { requireSpacesAction } from '@/lib/server/spacesApiAuth'
 
 export const runtime = 'nodejs'
-
-const normalizeDept = (raw?: string) => {
-  const base = (raw || '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-  const compact = base.replace(/\s+/g, '')
-  if (compact === 'foodlover' || compact === 'foodlovers') return 'foodlovers'
-  return base
-}
 
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    const role = normalizeRole(session?.user?.role)
-    const dept = normalizeDept(
-      (session?.user as {
-        departmentLower?: string
-        deptLower?: string
-        department?: string
-      })?.departmentLower ||
-        (session?.user as { deptLower?: string })?.deptLower ||
-        (session?.user as { department?: string })?.department
-    )
-    const canDelete =
-      role === 'admin' ||
-      (role === 'cap' &&
-        dept === 'produccio' &&
-        !isProductionWorker({ role, department: dept }))
-
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const canDelete = await requireSpacesAction(auth, SPACES_ACTION.BBDD_DELETE)
     if (!canDelete) {
       return NextResponse.json(
         { error: 'No tens permisos per eliminar espais.' },

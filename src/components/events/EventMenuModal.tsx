@@ -38,6 +38,8 @@ import EventSpacesModal from './EventSpacesModal'
 import EventAvisosModal from './EventAvisosModal'
 import EventClosingModal from './EventClosingModal'
 import { normalizeAuditDepartment } from '@/lib/auditDepartment'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
 
 /** ───────────────────────── Helpers ───────────────────────── */
 const norm = (s?: string | number | null) =>
@@ -206,6 +208,7 @@ export default function EventMenuModal({
 }: EventMenuModalProps) {
 
   const router = useRouter()
+  const { uiActions, ready: permsReady } = useUiPermissions()
 
   // Internals
   const [pendingDocsOpen, setPendingDocsOpen] = useState(false)
@@ -298,7 +301,7 @@ const treballadorsPersons =
 
 
   const canSeeIncidents = isAdmin || isDireccio || isCapDept || roleN === 'comercial'
-  const canSeeKitchenDocs = isAdmin || isDireccio || isCuina
+  const baseCanSeeKitchenDocs = isAdmin || isDireccio || isCuina
 
   const canCreateIncident =
     isAdmin ||
@@ -331,6 +334,28 @@ const treballadorsPersons =
     isDireccio ||
     isProduccio ||
     (isCapDept && ['logistica', 'cuina'].includes(norm(deptN)))
+
+  const canUiViewDocs = useMemo(() => {
+    if (!permsReady) return true
+    return uiActions[PERM.action('/menu/events', 'docs:view')] === true
+  }, [permsReady, uiActions])
+  const canUiKitchenDocs = useMemo(() => {
+    if (!permsReady) return true
+    return uiActions[PERM.action('/menu/events', 'docs:attach:kitchen')] === true
+  }, [permsReady, uiActions])
+  const canUiRegisterModifications = useMemo(() => {
+    if (!permsReady) return true
+    return uiActions[PERM.action('/menu/events', 'modifications:register')] === true
+  }, [permsReady, uiActions])
+  const canUiCloseEvent = useMemo(() => {
+    if (!permsReady) return true
+    return uiActions[PERM.action('/menu/events', 'event:close')] === true
+  }, [permsReady, uiActions])
+
+  const canDocs = canUiViewDocs
+  const canSeeKitchenDocs = baseCanSeeKitchenDocs && canUiKitchenDocs
+  const canCreateModificationPerm = canCreateModification && canUiRegisterModifications
+  const canCloseEventPerm = canCloseEvent && canUiCloseEvent
 
   const navigateTo = useCallback(
     (path: string) => {
@@ -385,7 +410,7 @@ const operativa = useMemo(
           }
         : null,
 
-      canCreateModification
+      canCreateModificationPerm
         ? {
             key: 'create-mod',
             label: 'Registrar modificació',
@@ -407,7 +432,7 @@ const operativa = useMemo(
           }
         : null,
 
-      canCloseEvent
+      canCloseEventPerm
         ? {
             key: 'closing',
             label: 'Tancament (hores reals)',
@@ -434,10 +459,10 @@ const operativa = useMemo(
   [
     canCreateIncident,
     canSeeIncidents,
-    canCreateModification,
+    canCreateModificationPerm,
     canSeeModifications,
     canWriteAvisos,
-    canCloseEvent,
+    canCloseEventPerm,
     onClose,
     onOpenAuditExecution,
   ]
@@ -471,17 +496,18 @@ const recursos = useMemo(
       tone: 'info' as const,
       onClick: () => setShowPersonnel(true),
     },
-    {
-      key: 'docs',
-      label: 'Veure documents',
-      badge: 'Docs',
-      icon: FileText,
-      tone: 'info' as const,
-      onClick: () => {
-        setPendingDocsOpen(true)
-      }
-
-    },
+    canDocs
+      ? {
+          key: 'docs',
+          label: 'Veure documents',
+          badge: 'Docs',
+          icon: FileText,
+          tone: 'info' as const,
+          onClick: () => {
+            setPendingDocsOpen(true)
+          },
+        }
+      : null,
       canSeeKitchenDocs
         ? {
             key: 'docs-cuina',
@@ -493,7 +519,7 @@ const recursos = useMemo(
           }
         : null,
     ].filter(Boolean) as MenuActionItem[],
-  [event, canSeeKitchenDocs]
+  [event, canSeeKitchenDocs, canDocs]
 )
 
   const economic = useMemo(

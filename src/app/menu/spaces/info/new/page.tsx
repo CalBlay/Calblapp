@@ -2,7 +2,8 @@
 export const dynamic = 'force-dynamic'
 
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import SpaceDetailClient, { EspaiDetall } from '../SpaceDetailClient'
+import SpaceDetailShell from '../SpaceDetailShell'
+import type { EspaiDetall } from '../SpaceDetailClient'
 
 export default function SpaceCreatePage() {
   const espai: EspaiDetall = {
@@ -20,7 +21,7 @@ export default function SpaceCreatePage() {
   return (
     <>
       <ModuleHeader title="Espais" subtitle="Crear espai" />
-      <SpaceDetailClient espai={espai} />
+      <SpaceDetailShell espai={espai} />
     </>
   )
 }

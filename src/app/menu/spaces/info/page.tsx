@@ -1,7 +1,7 @@
 // file: src/app/menu/spaces/info/page.tsx
 export const dynamic = 'force-dynamic'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
-import SpacesInfoClient from './SpacesInfoClient'
+import SpacesInfoShell from './SpacesInfoShell'
 
 type FincaDoc = {
   code?: string
@@ -64,6 +64,6 @@ export default async function SpacesInfoPage() {
   // RENDER (Server → Client component)
   // ────────────────────────────────────────────────
   return (
-    <SpacesInfoClient espais={espais} lnOptions={lnOptions} />
+    <SpacesInfoShell espais={espais} lnOptions={lnOptions} />
   )
 }

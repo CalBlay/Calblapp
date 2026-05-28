@@ -6,6 +6,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import { adjustmentStockMovementReferenceFromDocId } from '@/lib/roba-personal/dotacioReferenceCodes'
 import { enrichStockMovementsDeliveryContext } from '@/lib/roba-personal/stockMovementsEnrich'
@@ -51,7 +52,7 @@ const ALLOWED_MANUAL_POST_REASONS = new Set([
 ])
 
 export async function GET(req: Request) {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.estoc)
   if (!auth.ok) return auth.res
 
   const { searchParams } = new URL(req.url)
@@ -82,7 +83,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.estoc)
   if (!auth.ok) return auth.res
 
   const body = (await req.json()) as {

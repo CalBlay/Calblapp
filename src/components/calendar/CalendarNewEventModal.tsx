@@ -17,6 +17,8 @@ import SearchFincaInput from '@/components/shared/SearchFincaInput'
 import SearchServeiInput from '@/components/shared/SearchServeiInput'
 import { ExternalLink } from 'lucide-react'
 import AttachFileButton from '@/components/calendar/AttachFileButton'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
 
 interface Props {
   date: string           // data de la casella clicada
@@ -79,6 +81,7 @@ type ComercialCandidate = { name: string; department: string; roleBucket: string
  */
 export default function CalendarNewEventModal({ date, trigger, onSaved }: Props) {
   const { data: session } = useSession()
+  const { uiEdit, uiActions, ready: permsReady } = useUiPermissions()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [createdId, setCreatedId] = useState<string | null>(null)
@@ -104,7 +107,30 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
     role === 'capdepartament' ||
     role.includes('cap')
 
-  const canEdit = isAdmin || isDireccio || isProduccio || isComercial || isCapDepartament
+  const calendarPath = '/menu/calendar'
+  const baseCanEdit = isAdmin || isDireccio || isProduccio || isComercial || isCapDepartament
+  const permCalendarEdit = uiEdit[calendarPath] === true
+  const canCreate = useMemo(() => {
+    if (!permsReady) return true
+    return (
+      permCalendarEdit ||
+      uiActions[PERM.action(calendarPath, 'manual:create')] === true
+    )
+  }, [permsReady, uiActions, permCalendarEdit])
+  const canAttach = useMemo(() => {
+    if (!permsReady) return true
+    return (
+      permCalendarEdit ||
+      uiActions[PERM.action(calendarPath, 'attach:sharepoint')] === true
+    )
+  }, [permsReady, uiActions, permCalendarEdit])
+
+  const canEdit = useMemo(() => {
+    if (!permsReady) return baseCanEdit
+    if (uiEdit[calendarPath] === false) return false
+    if (permCalendarEdit) return true
+    return baseCanEdit && canCreate
+  }, [permsReady, uiEdit, baseCanEdit, canCreate, permCalendarEdit])
 
   // Dades del nou esdeveniment
   const [formData, setFormData] = useState<EventFormData>({
@@ -571,7 +597,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
             <AttachFileButton
               collection="stage_verd"
               docId={createdId || ''}
-              disabled={!createdId || !canEdit}
+              disabled={!createdId || !canEdit || !canAttach}
               existingKeys={files.map((f) => f.key)}
               onAdded={(att) => {
                 setFiles((prev) => [...prev, { key: att.key, url: att.url }])

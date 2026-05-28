@@ -6,6 +6,10 @@ import { useSession } from 'next-auth/react'
 import { usePathname, useRouter } from 'next/navigation'
 import { normalizeRole } from '@/lib/roles'
 import { getVisibleModules } from '@/lib/accessControl'
+import { isUiPathBlocked } from '@/lib/uiPathAccess'
+import useSWR from 'swr'
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface SessionUser {
   id: string
@@ -33,6 +37,9 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
   const { data: session, status } = useSession()
   const router = useRouter()
   const pathname = usePathname()
+  const user = session?.user as SessionUser | undefined
+  const { data: uiPermData } = useSWR(user?.id ? '/api/permissions/ui' : null, fetcher)
+  const uiMap = (uiPermData?.map || {}) as Record<string, boolean>
 
   // Normalitzem la llista per si arriba algun rol amb majÇ§scules o accents
   const normalizedAllowed = React.useMemo(
@@ -43,7 +50,6 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
   React.useEffect(() => {
     if (status === 'loading') return
 
-    const user = session?.user as SessionUser | undefined
     const role = normalizeRole(user?.role || '')
 
     // Si el mÇ?dul actual ja surt com a visible, deixem passar encara que hi hagi desajust als allowedRoles
@@ -65,11 +71,19 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
         })
       : false
 
+    // Overrides UI (per sobre del codi base)
+    if (uiPermData) {
+      if (pathname && isUiPathBlocked(pathname, uiMap)) {
+        router.replace('/menu')
+        return
+      }
+    }
+
     if (!session || (!normalizedAllowed.includes(role) && !hasModuleAccess)) {
       router.replace('/menu')
       return
     }
-  }, [status, session, router, normalizedAllowed, pathname])
+  }, [status, session, user, router, normalizedAllowed, pathname, uiPermData, uiMap])
 
   if (status === 'loading') return <p>Carregantƒ?Ý</p>
 

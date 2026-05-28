@@ -6,6 +6,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import { isReversibleManualStockReason } from '@/lib/roba-personal/stockMovementLabels'
 
 const MOV = DOTACIO_COLLECTIONS.stockMovements
@@ -19,7 +20,7 @@ export async function DELETE(
   _req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.estoc)
   if (!auth.ok) return auth.res
 
   const { id } = await ctx.params

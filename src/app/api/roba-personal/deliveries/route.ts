@@ -9,7 +9,8 @@ import {
 } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import { resolveRobaAccess, robaLinkedWorkerActor } from '@/lib/roba-personal/guard'
+import { requireRobaTabViewAccess, robaLinkedWorkerActor } from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import {
   departmentsInSameRobaScope,
@@ -234,7 +235,7 @@ async function filterDeliveriesForDeptLead(
 }
 
 export async function GET() {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaTabViewAccess(ROBA_SUBMODULE_PATHS.entregues)
   if (!auth.ok) return auth.res
 
   let items: ReturnType<typeof serializeFirestoreDoc>[]
@@ -269,7 +270,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaTabViewAccess(ROBA_SUBMODULE_PATHS.entregues)
   if (!auth.ok) return auth.res
   const access = auth.access
 

@@ -1,14 +1,11 @@
 // file: src/app/api/sync/ada-to-firestore/route.ts
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { syncAdaEventsToFirestore } from '@/services/sync/adaSync'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { PERM } from '@/lib/permissionKeys'
+import { isAllowedByClientOverride } from '@/lib/server/permissions'
 
 export const runtime = 'nodejs'
-
-type SessionUser = {
-  department?: string
-}
 
 const isIsoDate = (value: string | null) =>
   !!value && /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -33,21 +30,14 @@ export async function GET(req: Request) {
       })
     }
 
-    const session = await getServerSession(authOptions)
-    const sessionUser = session?.user as SessionUser | undefined
-    const normalize = (value: string) =>
-      value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
-    const role = normalize(String(session?.user?.role || ''))
-    const department = normalize(String(sessionUser?.department || ''))
-    const canManualSync =
-      role === 'admin' || (role.includes('cap') && department === 'produccio')
-
-    if (!canManualSync) {
-      return NextResponse.json(
-        { error: 'Acces denegat: nomes admin o cap produccio pot sincronitzar manualment.' },
-        { status: 403 }
-      )
-    }
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const ok = await isAllowedByClientOverride({
+      userId: auth.user.id,
+      role: auth.user.role,
+      permission: PERM.action('/menu/calendar', 'sync:ada'),
+    })
+    if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const result = await syncAdaEventsToFirestore({ startDate, endDate })
 

@@ -1,29 +1,43 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
 import admin from 'firebase-admin'
 
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { requireAuth } from '@/lib/server/apiAuth'
+import type { AccessUser } from '@/lib/accessControl'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   COMMERCIAL_RESERVATIONS_COLLECTION,
   getCommercialReservationEndDate,
   type CommercialReservation,
 } from '@/lib/commercialReservations'
+import { PERM } from '@/lib/permissionKeys'
 import { normalizeRole } from '@/lib/roles'
+import { RESERVA_COMERCIALS_UI_PATH } from '@/lib/reservaComercialsPermissions'
+import { canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
 
-type SessionUser = {
-  id?: string
-  name?: string | null
-  role?: string | null
-  department?: string | null
-  isTransportLead?: boolean | null
-}
+const RESERVA_UI_PATH = RESERVA_COMERCIALS_UI_PATH
 
 type ReservationDoc = Record<string, unknown>
 
-function canAccess(user?: SessionUser | null) {
-  const role = normalizeRole(String(user?.role || ''))
-  return Boolean(user?.id) && ['admin', 'direccio', 'cap', 'treballador', 'comercial', 'usuari'].includes(role)
+function accessUserFromAuth(user: {
+  id: string
+  role?: string | null
+  department?: string | null
+  name?: string | null
+  canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
+  robaLinkedPersonnelId?: string | null
+  isTransportLead?: boolean
+}): AccessUser & { id: string; name?: string | null } {
+  return {
+    id: user.id,
+    role: user.role,
+    department: user.department,
+    name: user.name,
+    canRespondSurveys: Boolean(user.canRespondSurveys),
+    isDepartmentRobaLead: Boolean(user.isDepartmentRobaLead),
+    robaLinkedPersonnelId: user.robaLinkedPersonnelId ?? null,
+    isTransportLead: Boolean(user.isTransportLead),
+  }
 }
 
 function normalizeTimestamp(ts: unknown): string {
@@ -74,7 +88,7 @@ async function getTransportLeadUserIds() {
   return snap.docs
     .filter((doc) => {
       const data = doc.data() as { role?: string; isTransportLead?: boolean }
-      return normalizeRole(String(data.role || '')) === 'cap'
+      return normalizeRole(String(data.role || '')) === 'cap' && data.isTransportLead === true
     })
     .map((doc) => doc.id)
 }
@@ -101,9 +115,11 @@ async function createUserNotification(params: {
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    const user = (session?.user || null) as SessionUser | null
-    if (!canAccess(user)) {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const accessUser = accessUserFromAuth(auth.user)
+    const canView = await canViewUiPath({ user: accessUser, path: RESERVA_UI_PATH })
+    if (!canView) {
       return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
     }
 
@@ -121,11 +137,18 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = (session?.user || null) as SessionUser | null
-    if (!canAccess(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const sessionUser = auth.user as Parameters<typeof accessUserFromAuth>[0]
+    const accessUser = accessUserFromAuth(sessionUser)
+    const canRequest = await isUiPermissionGranted({
+      user: accessUser,
+      permission: PERM.action(RESERVA_UI_PATH, 'request'),
+    })
+    if (!canRequest) {
+      return NextResponse.json({ error: 'Sense permisos de sol·licitud' }, { status: 403 })
     }
+    const user = auth.user
 
     const body = (await req.json()) as Partial<CommercialReservation>
     const date = String(body.date || '').trim()

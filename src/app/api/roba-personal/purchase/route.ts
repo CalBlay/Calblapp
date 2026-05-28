@@ -6,6 +6,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import {
   buildRobaInventoryContext,
   purchaseDraftToText,
@@ -53,7 +54,7 @@ function parseExtraEmails(raw: string): string[] {
 }
 
 export async function GET() {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.compres)
   if (!auth.ok) return auth.res
 
   const draft = await buildRobaInventoryContext()
@@ -62,7 +63,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.compres)
   if (!auth.ok) return auth.res
 
   const body = (await req.json()) as {

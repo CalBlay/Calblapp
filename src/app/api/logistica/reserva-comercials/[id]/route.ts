@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
 import admin from 'firebase-admin'
 
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { requireAuth } from '@/lib/server/apiAuth'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   COMMERCIAL_RESERVATIONS_COLLECTION,
   getCommercialReservationEndDate,
   type CommercialReservation,
 } from '@/lib/commercialReservations'
-import { normalizeRole } from '@/lib/roles'
+import type { AccessUser } from '@/lib/accessControl'
 import { normalizeTransportType } from '@/lib/transportTypes'
+import { PERM } from '@/lib/permissionKeys'
+import { RESERVA_COMERCIALS_UI_PATH } from '@/lib/reservaComercialsPermissions'
+import { canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
+
+const RESERVA_UI_PATH = RESERVA_COMERCIALS_UI_PATH
 
 type SessionUser = {
   id?: string
@@ -26,14 +30,24 @@ type VehicleDoc = {
   available?: boolean
 }
 
-function canAccess(user?: SessionUser | null) {
-  const role = normalizeRole(String(user?.role || ''))
-  return Boolean(user?.id) && ['admin', 'direccio', 'cap', 'treballador', 'comercial', 'usuari'].includes(role)
-}
-
-function canValidate(user?: SessionUser | null) {
-  const role = normalizeRole(String(user?.role || ''))
-  return Boolean(user?.id) && (['admin', 'direccio', 'cap'].includes(role) || user?.isTransportLead === true)
+function accessUserFromAuth(user: {
+  id: string
+  role?: string | null
+  department?: string | null
+  canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
+  robaLinkedPersonnelId?: string | null
+  isTransportLead?: boolean
+}): AccessUser & { id: string } {
+  return {
+    id: user.id,
+    role: user.role ?? undefined,
+    department: user.department ?? undefined,
+    canRespondSurveys: Boolean(user.canRespondSurveys),
+    isDepartmentRobaLead: Boolean(user.isDepartmentRobaLead),
+    robaLinkedPersonnelId: user.robaLinkedPersonnelId ?? null,
+    isTransportLead: Boolean(user.isTransportLead),
+  }
 }
 
 function normalizeTimestamp(ts: unknown): string {
@@ -189,11 +203,23 @@ export async function PATCH(
   ctx: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = (session?.user || null) as SessionUser | null
-    if (!canAccess(user)) {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const user = auth.user as SessionUser & { id: string }
+    const accessUser = accessUserFromAuth(user)
+    const canView = await canViewUiPath({ user: accessUser, path: RESERVA_UI_PATH })
+    if (!canView) {
       return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
     }
+
+    const canRequest = await isUiPermissionGranted({
+      user: accessUser,
+      permission: PERM.action(RESERVA_UI_PATH, 'request'),
+    })
+    const canValidate = await isUiPermissionGranted({
+      user: accessUser,
+      permission: PERM.action(RESERVA_UI_PATH, 'validate'),
+    })
 
     const { id } = await ctx.params
     const reservationId = String(id || '').trim()
@@ -213,11 +239,15 @@ export async function PATCH(
     const actorIsRequester = String(user?.id || '') === current.requesterId
 
     if (nextStatus === 'confirmed' || nextStatus === 'rejected') {
-      if (!canValidate(user)) {
+      if (!canValidate) {
         return NextResponse.json({ error: 'Sense permisos de validació' }, { status: 403 })
       }
     } else if (nextStatus === 'cancelled') {
-      if (!actorIsRequester && !canValidate(user)) {
+      if (actorIsRequester) {
+        if (!canRequest) {
+          return NextResponse.json({ error: 'Sense permisos per anul·lar aquesta reserva' }, { status: 403 })
+        }
+      } else if (!canValidate) {
         return NextResponse.json({ error: 'Sense permisos per anul·lar aquesta reserva' }, { status: 403 })
       }
     } else {

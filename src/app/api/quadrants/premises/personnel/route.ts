@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken } from 'next-auth/jwt'
-import { normalizeRole } from '@/lib/roles'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { requireQuadrantsPremissesEdit } from '@/lib/server/quadrantsApiAuth'
+import { QUADRANTS_ALLOWED_DEPARTMENTS } from '@/lib/quadrantsPermissions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { jwtDepartmentFields, jwtRoleFields, readAppJwt } from '@/lib/appJwtPayload'
 
 export const runtime = 'nodejs'
 
@@ -13,51 +13,28 @@ const norm = (s?: string | null) =>
     .toLowerCase()
     .trim()
 
-const ALLOWED_DEPARTMENTS = new Set(['serveis', 'logistica', 'cuina'])
-
 type PersonnelItem = {
   id: string
   name: string
   isDriver: boolean
 }
 
-function canAccessDepartment(params: {
-  role: string
-  sessionDept: string
-  requestedDept: string
-}) {
-  const { role, sessionDept, requestedDept } = params
-  if (role === 'admin' || role === 'direccio') return true
-  if (role === 'cap') return sessionDept === requestedDept
-  return false
-}
-
-async function getSessionContext(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-  if (!token) return null
-
-  const t = readAppJwt(token)
-  const role = normalizeRole(jwtRoleFields(t))
-  const sessionDept = norm(jwtDepartmentFields(t))
-
-  return { role, sessionDept }
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const session = await getSessionContext(req)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
 
     const { searchParams } = new URL(req.url)
-    const requestedDept = norm(searchParams.get('department') || session.sessionDept || '')
+    const requestedDept = norm(
+      searchParams.get('department') || auth.user.department || ''
+    )
 
-    if (!ALLOWED_DEPARTMENTS.has(requestedDept)) {
+    if (!QUADRANTS_ALLOWED_DEPARTMENTS.has(requestedDept)) {
       return NextResponse.json({ error: 'Departament no vàlid' }, { status: 400 })
     }
 
-    if (!canAccessDepartment({ ...session, requestedDept })) {
+    const canAccess = await requireQuadrantsPremissesEdit(auth, requestedDept)
+    if (!canAccess) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

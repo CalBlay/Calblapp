@@ -4,6 +4,7 @@
 import React, { useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { normalizeRole, type Role } from '@/lib/roles'
 
 /** Rols amb accés al mòdul Documentació (mateix conjunt que `accessControl`). */
@@ -82,7 +83,9 @@ export function withRobaPersonalAccess<P extends object>(Component: React.Compon
           ?.robaLinkedPersonnelId || ''
       ).trim()
     )
-    const ok = roleNorm === 'admin' || deptNorm === RRHH || isDeptRobaLead || robaLinked
+    const legacyOk = roleNorm === 'admin' || deptNorm === RRHH || isDeptRobaLead || robaLinked
+    const { uiMap, ready: permsReady } = useUiPermissions()
+    const ok = permsReady ? uiMap['/menu/roba-personal'] === true : legacyOk
 
     useEffect(() => {
       if (isLoading) return

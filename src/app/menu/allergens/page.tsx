@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { useSession } from 'next-auth/react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { ClipboardList, Search } from 'lucide-react'
-import { getVisibleModules } from '@/lib/accessControl'
+import { MODULES } from '@/lib/accessControl'
+import { useMemo } from 'react'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 
 type HubCardStyle = {
   bg: string
@@ -15,15 +16,14 @@ type HubCardStyle = {
 }
 
 export default function AllergensHubPage() {
-  const { data: session } = useSession()
-  const user = session?.user
+  const { map: uiMap, data: uiPermData } = useUiPermissions()
 
-  const allergensModule = getVisibleModules({
-    role: user?.role,
-    department: user?.department,
-  }).find(m => m.path === '/menu/allergens')
-
-  const submodules = allergensModule?.submodules ?? []
+  const allergensModule = MODULES.find((m) => m.path === '/menu/allergens')
+  const allSubmodules = allergensModule?.submodules ?? []
+  const allowedSubmodules = useMemo(() => {
+    if (!uiPermData) return allSubmodules
+    return allSubmodules.filter((s) => uiMap[s.path] !== false)
+  }, [uiPermData, allSubmodules, uiMap])
 
   return (
     <>
@@ -31,7 +31,7 @@ export default function AllergensHubPage() {
 
       <section className="w-full h-full flex flex-col items-center justify-center p-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl">
-          {submodules.map(sub => {
+          {allowedSubmodules.map(sub => {
             const key = sub.path.split('/').pop() || sub.path
 
             const styleMap: Record<string, HubCardStyle> = {
@@ -82,7 +82,7 @@ export default function AllergensHubPage() {
             )
           })}
 
-          {!submodules.length && (
+          {!allowedSubmodules.length && (
             <p className="text-sm text-gray-500 text-center col-span-full">
               No tens accés a cap secció d'Al·lèrgens.
             </p>

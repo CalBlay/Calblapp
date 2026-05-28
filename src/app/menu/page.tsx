@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -26,9 +26,11 @@ import {
   BookOpen,
   Shirt,
   Factory,
+  Settings,
 } from 'lucide-react'
 import type { LucideIcon, LucideProps } from 'lucide-react'
-import { getVisibleModules } from '@/lib/accessControl'
+import { getVisibleModules, MODULES } from '@/lib/accessControl'
+import useSWR from 'swr'
 import {
   useAdminUserRequestCount,
   useLogisticsReservationNotificationCount,
@@ -213,6 +215,11 @@ const UI_MAP: Record<
     color: 'from-gray-200 to-gray-50',
     iconColor: 'text-gray-600',
   },
+  '/menu/settings': {
+    icon: Settings,
+    color: 'from-slate-100 to-gray-50',
+    iconColor: 'text-slate-700',
+  },
   '/menu/documentacio': {
     icon: BookOpen,
     color: 'from-teal-100 to-cyan-50',
@@ -297,8 +304,32 @@ function MenuContent({ user }: { user: SessionUser }) {
   const maintenanceBadge = maintenanceNotificationCount
 
   // 🔑 ÚNICA FONT DE MÒDULS
-  const modules = getVisibleModules(user)
-  const sortedModules = [...modules].sort((a, b) =>
+  const baseModules = getVisibleModules(user)
+  const fetcher = (url: string) => fetch(url).then((r) => r.json())
+  const { data: uiPermData } = useSWR(user?.id ? '/api/permissions/ui' : null, fetcher)
+  const uiMap = (uiPermData?.map || {}) as Record<string, boolean>
+
+  const filteredModules = useMemo(() => {
+    if (!uiPermData) return baseModules
+    // IMPORTANT: usem `MODULES` com a catàleg per poder afegir mòduls via overrides (allow)
+    return MODULES
+      .filter((m) => uiMap[m.path] === true)
+      .map((m) => ({
+        ...m,
+        submodules: (m.submodules || []).filter((s) => uiMap[s.path] === true),
+      }))
+  }, [uiPermData, baseModules, uiMap])
+
+  const lastStableModulesRef = useRef(filteredModules)
+  useEffect(() => {
+    if (uiPermData) {
+      lastStableModulesRef.current = filteredModules
+    }
+  }, [uiPermData, filteredModules])
+
+  const stableModules = uiPermData ? filteredModules : lastStableModulesRef.current ?? baseModules
+
+  const sortedModules = [...stableModules].sort((a, b) =>
     a.label.localeCompare(b.label, 'ca', { sensitivity: 'base' })
   )
 

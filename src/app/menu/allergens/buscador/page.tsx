@@ -14,9 +14,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { DEFAULT_ALLERGENS, sortAllergensByStandardOrder } from '@/data/allergens'
-import { getVisibleModules } from '@/lib/accessControl'
 import { db } from '@/lib/firebaseClient'
 import { collection, getDocs, orderBy, query } from 'firebase/firestore'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 
 type AllergenFilter = 'ANY' | 'NO' | 'T' | 'SI'
 
@@ -74,14 +74,13 @@ const buildAllergenFilters = (list: readonly AllergenItem[]) =>
 export default function AllergensSearchPage() {
   const { data: session } = useSession()
   const user = session?.user
+  const { canViewPath, isLoading: uiPermLoading } = useUiPermissions()
 
   const allowed = useMemo(() => {
-    const visibleModule = getVisibleModules({
-      role: user?.role,
-      department: user?.department,
-    }).find(mod => mod.path === '/menu/allergens')
-    return visibleModule?.submodules?.some(sub => sub.path === '/menu/allergens/buscador')
-  }, [user?.role, user?.department])
+    // If we don't have permissions loaded yet, avoid false negatives (flicker).
+    if (uiPermLoading) return true
+    return canViewPath('/menu/allergens/buscador')
+  }, [canViewPath, uiPermLoading])
 
   const [plats, setPlats] = useState<Plat[]>([])
   const [categories, setCategories] = useState<OptionItem[]>([])

@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { DEPARTMENTS } from '@/data/departments'
+import { getUserDepartmentSelectOptions } from '@/data/departments'
 import { DOCUMENTACIO_ROLE_OPTIONS } from '@/lib/documentacio-access'
 import {
   DOCUMENTACIO_AMBITS,
@@ -71,6 +71,8 @@ export function DocumentacioPublishDialog({
   const [newTopicTitle, setNewTopicTitle] = useState('')
   const [newTopicSlug, setNewTopicSlug] = useState('')
   const [newTopicSlugTouched, setNewTopicSlugTouched] = useState(false)
+
+  const departmentSelectOptions = useMemo(() => getUserDepartmentSelectOptions(), [])
 
   const resolvedAmbitForData = useMemo(() => {
     if (ambit === NEW_AMBIT_SELECT) {
@@ -174,7 +176,7 @@ export function DocumentacioPublishDialog({
   }
 
   function selectAllDepartments() {
-    setDepartments([...DEPARTMENTS])
+    setDepartments([...departmentSelectOptions])
   }
 
   function selectAllRoles() {
@@ -557,7 +559,7 @@ export function DocumentacioPublishDialog({
             </div>
             <div className="max-h-52 overflow-y-auto rounded-md border border-slate-200 p-3 text-sm sm:max-h-64">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {DEPARTMENTS.map((d) => (
+                {departmentSelectOptions.map((d) => (
                   <label key={d} className="flex cursor-pointer items-center gap-2">
                     <input
                       type="checkbox"

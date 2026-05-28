@@ -3,13 +3,13 @@ export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { resolveRobaAccess } from '@/lib/roba-personal/guard'
+import { requireRobaWorkflowAccess } from '@/lib/roba-personal/guard'
 
 const USERS = 'users'
 const FIELD = 'robaRrhhEmailPreference'
 
 export async function GET() {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaWorkflowAccess()
   if (!auth.ok) return auth.res
   if (auth.access.scope === 'workerSelf') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -24,7 +24,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaWorkflowAccess()
   if (!auth.ok) return auth.res
   if (auth.access.scope === 'workerSelf') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

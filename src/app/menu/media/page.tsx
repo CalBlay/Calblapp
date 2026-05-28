@@ -1,10 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { withAdmin } from '@/hooks/withAdmin'
+import { useSession } from 'next-auth/react'
+import { usePathname, useRouter } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import { Images, RefreshCw, Trash2 } from 'lucide-react'
+import useSWR from 'swr'
+import { PERM } from '@/lib/permissionKeys'
 
 type MediaSource = 'incidents' | 'maintenance' | 'messaging' | 'audits' | 'spaces'
 
@@ -50,6 +53,45 @@ function formatSize(bytes: number | null) {
 }
 
 function MediaPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const pathname = usePathname()
+  const user = session?.user
+  const fetcher = (url: string) => fetch(url).then((r) => r.json())
+  const { data: uiPermData } = useSWR(user?.id ? '/api/permissions/ui' : null, fetcher)
+  const uiMap = (uiPermData?.map || {}) as Record<string, boolean>
+  const uiActions = (uiPermData?.actions || {}) as Record<string, boolean>
+
+  useEffect(() => {
+    if (status === 'loading') return
+    if (!user) {
+      router.replace('/login')
+      return
+    }
+    if (uiPermData && uiMap['/menu/media'] === false) {
+      router.replace('/menu')
+    }
+  }, [status, user, router, uiPermData, uiMap, pathname])
+
+  if (status === 'loading') return <div className="p-4">Comprovant sessió…</div>
+  if (!user) return <div className="p-4">No autoritzat.</div>
+  if (uiPermData && uiMap['/menu/media'] === false) return null
+
+  const allowedSources = useMemo(() => {
+    if (!uiPermData) return (Object.keys(SOURCE_LABELS) as MediaSource[])
+    const keys = Object.keys(SOURCE_LABELS) as MediaSource[]
+    return keys.filter((k) => uiActions[`ui:action:/menu/media:source:${k}`] === true)
+  }, [uiPermData, uiActions])
+
+  const canDelete = useMemo(() => {
+    if (!uiPermData) return true
+    return uiActions[PERM.action('/menu/media', 'delete')] === true
+  }, [uiPermData, uiActions])
+
+  const sourceOptions = useMemo(() => {
+    return ['all' as const, ...allowedSources]
+  }, [allowedSources])
+
   const [items, setItems] = useState<MediaItem[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -73,6 +115,13 @@ function MediaPage() {
     },
     [source, auditEventFilter]
   )
+  useEffect(() => {
+    // Si la font seleccionada deixa d'estar permesa, tornem a 'all'
+    if (source !== 'all' && !allowedSources.includes(source)) {
+      setSource('all')
+    }
+  }, [allowedSources, source])
+
 
   const loadMedia = useCallback(
     async (mode: 'initial' | 'refresh' = 'initial') => {
@@ -227,11 +276,13 @@ function MediaPage() {
             className="w-full rounded-lg border px-3 py-2 text-sm"
           >
             <option value="all">Totes les fonts</option>
-            {Object.entries(SOURCE_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
+            {Object.entries(SOURCE_LABELS)
+              .filter(([key]) => allowedSources.includes(key as MediaSource))
+              .map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
           </select>
         </div>
         {nextCursor ? (
@@ -313,7 +364,7 @@ function MediaPage() {
                   <Button
                     variant="destructive"
                     onClick={() => void handleDelete(item)}
-                    disabled={deletingPath === item.path}
+                    disabled={deletingPath === item.path || !canDelete}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     {deletingPath === item.path ? 'Eliminant...' : 'Eliminar'}
@@ -328,5 +379,5 @@ function MediaPage() {
   )
 }
 
-export default withAdmin(MediaPage)
+export default MediaPage
 import Image from 'next/image'

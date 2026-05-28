@@ -1,6 +1,17 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/server/apiAuth'
+import { requireAuth, type AuthSuccess } from '@/lib/server/apiAuth'
 import { type Role } from '@/lib/roles'
+import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
+import {
+  accessUserFromAuth,
+  requireRobaAnyTabView,
+  requireRobaWorkflowView,
+  robaTabForbiddenResponse,
+} from '@/lib/server/robaApiAuth'
+import {
+  ROBA_SUBMODULE_PATHS,
+  ROBA_WORKFLOW_UI_PATHS,
+} from '@/lib/robaPersonalPermissions'
 import { normDeptLabel } from '@/lib/roba-personal/deptScope'
 import {
   getUserDoc,
@@ -133,13 +144,100 @@ export async function resolveRobaAccess(): Promise<ResolveRobaAccessOk | Resolve
   return { ok: false, res: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
 }
 
+async function assertRobaTabViewForAuth(
+  auth: AuthSuccess,
+  uiPath: string
+): Promise<RobaPersonalAdminFail | null> {
+  const accessUser = accessUserFromAuth(
+    auth.user as Parameters<typeof accessUserFromAuth>[0]
+  )
+  if (!(await canViewUiPath({ user: accessUser, path: uiPath }))) {
+    return { ok: false, res: robaTabForbiddenResponse() }
+  }
+  return null
+}
+
+async function assertRobaTabEditForAuth(
+  auth: AuthSuccess,
+  uiPath: string
+): Promise<RobaPersonalAdminFail | null> {
+  const accessUser = accessUserFromAuth(
+    auth.user as Parameters<typeof accessUserFromAuth>[0]
+  )
+  if (!(await canEditUiPath({ user: accessUser, path: uiPath }))) {
+    return { ok: false, res: robaTabForbiddenResponse() }
+  }
+  return null
+}
+
+/**
+ * Accés de lectura al mòdul + permís UI de veure la pestanya (matriu d’admin).
+ */
+export async function requireRobaTabViewAccess(
+  uiPath: string
+): Promise<ResolveRobaAccessOk | ResolveRobaAccessFail> {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth
+  const viewDenied = await assertRobaTabViewForAuth(auth, uiPath)
+  if (viewDenied) return viewDenied
+  return resolveRobaAccess()
+}
+
+/**
+ * Flux sol·licituds / preparació / recepcions / entregues (API compartida).
+ */
+export async function requireRobaWorkflowAccess(): Promise<
+  ResolveRobaAccessOk | ResolveRobaAccessFail
+> {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth
+  if (!(await requireRobaWorkflowView(auth))) {
+    return { ok: false, res: robaTabForbiddenResponse() }
+  }
+  return resolveRobaAccess()
+}
+
+/** Lectura de productes (pestanya Productes o flux operatiu). */
+export async function requireRobaProductsReadAccess(): Promise<
+  ResolveRobaAccessOk | ResolveRobaAccessFail
+> {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth
+  const paths = [ROBA_SUBMODULE_PATHS.productes, ...ROBA_WORKFLOW_UI_PATHS]
+  if (!(await requireRobaAnyTabView(auth, paths))) {
+    return { ok: false, res: robaTabForbiddenResponse() }
+  }
+  return resolveRobaAccess()
+}
+
+/** Lectura de treballadors (pestanya Treballadors o flux operatiu). */
+export async function requireRobaWorkersReadAccess(): Promise<
+  ResolveRobaAccessOk | ResolveRobaAccessFail
+> {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth
+  const paths = [ROBA_SUBMODULE_PATHS.treballadors, ...ROBA_WORKFLOW_UI_PATHS]
+  if (!(await requireRobaAnyTabView(auth, paths))) {
+    return { ok: false, res: robaTabForbiddenResponse() }
+  }
+  return resolveRobaAccess()
+}
+
 /**
  * Accés complet al mòdul Roba personal (totes les APIs de gestió): administradors
  * o personal del departament Recursos Humans (sessió o document d’usuari).
  */
-export async function requireRobaPersonalAdmin(): Promise<
-  RobaPersonalAdminOk | RobaPersonalAdminFail
-> {
+export async function requireRobaPersonalAdmin(
+  uiPath?: string
+): Promise<RobaPersonalAdminOk | RobaPersonalAdminFail> {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth
+
+  if (uiPath) {
+    const editDenied = await assertRobaTabEditForAuth(auth, uiPath)
+    if (editDenied) return editDenied
+  }
+
   const r = await resolveRobaAccess()
   if (!r.ok) return r
   if (r.access.scope !== 'full') {

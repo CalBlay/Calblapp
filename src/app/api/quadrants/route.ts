@@ -6,6 +6,9 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
 import { findQuadrantOverlapConflicts } from '@/lib/quadrantOverlapGuard'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { PERM } from '@/lib/permissionKeys'
+import { canViewUiPath, isAllowedByClientOverride } from '@/lib/server/permissions'
 import {
   commitQuadrantConfirmedFirestoreBatch,
   deferQuadrantConfirmSideEffects,
@@ -809,6 +812,11 @@ function buildLogisticaManualAssignmentOnly(
 /* ================= Handler ================= */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const canView = await canViewUiPath({ user: auth.user, path: '/menu/quadrants' })
+    if (!canView) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
+
     const body = await req.json()
     const canonicalEventId = normalizeEventId(String(body?.eventId || ''))
     let cachedDepartmentPeople:
@@ -852,6 +860,22 @@ export async function POST(req: NextRequest) {
 
     const confirmImmediatelyRequested = Boolean(body?.confirmImmediately === true)
     let jwtSessionForInlineConfirm: { user?: { email?: string }; email?: string } | null = null
+
+    const canSave = await isAllowedByClientOverride({
+      userId: auth.user.id,
+      role: auth.user.role,
+      permission: PERM.action('/menu/quadrants', 'save'),
+    })
+    if (canSave !== true) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
+
+    if (confirmImmediatelyRequested) {
+      const canConfirm = await isAllowedByClientOverride({
+        userId: auth.user.id,
+        role: auth.user.role,
+        permission: PERM.action('/menu/quadrants', 'confirm'),
+      })
+      if (canConfirm !== true) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
+    }
 
     if (confirmImmediatelyRequested && (mode !== 'manual' || !isQuadrantCoreDepartment(deptNorm))) {
       return NextResponse.json(

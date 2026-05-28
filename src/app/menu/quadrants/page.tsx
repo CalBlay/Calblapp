@@ -19,6 +19,9 @@ import QuadrantCard from './drafts/components/QuadrantCard'
 import { useQuadrantsPageData } from './hooks/useQuadrantsPageData'
 import type { UnifiedEvent } from './types'
 import type { Draft } from './drafts/page'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
+import { QUADRANTS_ACTION, QUADRANTS_UI_PATH } from '@/lib/quadrantsPermissions'
 
 type SessionDepartmentSource = {
   department?: string
@@ -166,6 +169,10 @@ export default function QuadrantsPage() {
   }))
 
   const { data: session } = useSession()
+  const { ready: permsReady, hasAction } = useUiPermissions()
+  const canPremisses =
+    !permsReady ||
+    hasAction(PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT))
   const sessionUser = session?.user as SessionDepartmentSource | undefined
   const department =
     (
@@ -527,12 +534,14 @@ export default function QuadrantsPage() {
         subtitle="Gestió setmanal per departament"
         actions={
           <div className="flex items-center gap-2">
-            <Link
-              href="/menu/quadrants/premisses"
-              className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              Premisses
-            </Link>
+            {canPremisses ? (
+              <Link
+                href="/menu/quadrants/premisses"
+                className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Premisses
+              </Link>
+            ) : null}
             <ExportMenu items={exportItems} />
           </div>
         }

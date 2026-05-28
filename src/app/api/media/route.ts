@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { PERM } from '@/lib/permissionKeys'
+import { isAllowedByClientOverride } from '@/lib/server/permissions'
 import { normalizeRole } from '@/lib/roles'
 import {
   aggregateMedia,
@@ -23,13 +24,32 @@ import {
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-type SessionUser = {
-  id?: string
-  role?: string
+async function canViewMedia(auth: { user: { id: string; role?: string } }): Promise<boolean> {
+  const allowed = await isAllowedByClientOverride({
+    userId: auth.user.id,
+    role: auth.user.role,
+    permission: PERM.view('/menu/media'),
+  })
+  return allowed === true
 }
 
-function requireAdmin(role?: string) {
-  return normalizeRole(role || '') === 'admin'
+async function allowedMediaSources(auth: { user: { id: string; role?: string } }): Promise<Set<MediaSource>> {
+  const all = new Set<MediaSource>(MEDIA_SOURCES)
+  if (normalizeRole(auth.user.role) === 'admin') return all
+
+  const allowed = new Set<MediaSource>()
+  for (const src of MEDIA_SOURCES) {
+    const perm = PERM.action('/menu/media', `source:${src}`)
+    const ok = await isAllowedByClientOverride({
+      userId: auth.user.id,
+      role: auth.user.role,
+      permission: perm,
+    })
+    if (ok === true) {
+      allowed.add(src)
+    }
+  }
+  return allowed
 }
 
 const MEDIA_SOURCES: MediaSource[] = ['incidents', 'maintenance', 'messaging', 'audits', 'spaces']
@@ -139,14 +159,10 @@ async function clearSpaceRefs(path: string) {
 }
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions)
-  const user = session?.user as SessionUser | undefined
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
 
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  if (!requireAdmin(user?.role)) {
+  if (!(await canViewMedia(auth))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -181,6 +197,16 @@ export async function GET(req: Request) {
     const limit = Math.min(Math.max(Number(searchParams.get('limit')) || 60, 1), 200)
     const cursor = cleanText(searchParams.get('cursor'))
     const source = parseMediaSource(searchParams.get('source'))
+    const allowedSources = await allowedMediaSources(auth)
+    if (!allowedSources.size) {
+      return NextResponse.json(
+        { media: [], fromIndex: true, indexEmpty: false, nextCursor: null, hasMore: false },
+        { status: 200 }
+      )
+    }
+    if (source && !allowedSources.has(source)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     const auditEventId = cleanText(searchParams.get('auditEventId'))
     const incidentEventId = cleanText(searchParams.get('incidentEventId'))
 
@@ -192,9 +218,15 @@ export async function GET(req: Request) {
       incidentEventId: incidentEventId || null,
     })
 
+    const filtered = items.filter((it: any) =>
+      Array.isArray(it?.sourceKinds)
+        ? it.sourceKinds.some((k: string) => allowedSources.has(k as MediaSource))
+        : true
+    )
+
     return NextResponse.json(
       {
-        media: items,
+        media: filtered,
         fromIndex: true,
         indexEmpty: false,
         nextCursor,
@@ -209,16 +241,15 @@ export async function GET(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const session = await getServerSession(authOptions)
-  const user = session?.user as SessionUser | undefined
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
 
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  if (!requireAdmin(user?.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const ok = await isAllowedByClientOverride({
+    userId: auth.user.id,
+    role: auth.user.role,
+    permission: PERM.action('/menu/media', 'delete'),
+  })
+  if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
     const body = (await req.json()) as { path?: string }

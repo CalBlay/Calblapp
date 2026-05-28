@@ -9,17 +9,21 @@ export default function RowActions({
   onEdit,
   onDelete,
   disabled,
+  canEdit = true,
+  canDelete = true,
 }: {
   onEdit: () => void
   onDelete: () => void
   disabled: boolean
+  canEdit?: boolean
+  canDelete?: boolean
 }) {
   return (
     <div className="flex items-center justify-end gap-2 sm:gap-1 ml-1 sm:ml-2">
       {/* Editar */}
       <Button
         onClick={onEdit}
-        disabled={disabled}
+        disabled={disabled || !canEdit}
         variant="outline"
         className="rounded-full px-3 py-1 sm:size-icon"
       >
@@ -29,7 +33,7 @@ export default function RowActions({
       {/* Esborrar */}
       <Button
         onClick={onDelete}
-        disabled={disabled}
+        disabled={disabled || !canDelete}
         variant="ghost"
         className="rounded-full px-3 py-1 sm:size-icon"
       >

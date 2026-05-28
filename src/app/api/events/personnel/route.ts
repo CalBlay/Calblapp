@@ -2,6 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { QuerySnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { PERM } from '@/lib/permissionKeys'
+import { isAllowedByClientOverride } from '@/lib/server/permissions'
 
 export const runtime = 'nodejs'
 
@@ -132,6 +135,15 @@ const toMillis = (value: unknown) => {
 
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const ok = await isAllowedByClientOverride({
+      userId: auth.user.id,
+      role: auth.user.role,
+      permission: PERM.view('/menu/events'),
+    })
+    if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
     const url = new URL(req.url)
     const eventId = url.searchParams.get('eventId')
     if (!eventId) {

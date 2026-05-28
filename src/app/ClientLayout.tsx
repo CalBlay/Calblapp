@@ -1,7 +1,7 @@
 // file: src/app/ClientLayout.tsx
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Providers } from '@/app/providers'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
@@ -12,12 +12,17 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { normalizeRole } from '@/lib/roles'
 import {
   getVisibleModules,
+  MODULES,
   isLogisticsMaintenanceTicketsManager,
   isMaintenanceWorkerSpacesBlocked,
 } from '@/lib/accessControl'
+import { isUiPathBlocked } from '@/lib/uiPathAccess'
 import { FiltersProvider } from '@/context/FiltersContext'
 import FilterSlideOver from '@/components/ui/filter-slide-over'
 import PWARegister from '@/components/PWARegister'
+import useSWR from 'swr'
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
@@ -50,6 +55,12 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const user = session?.user
+  const isLogin = pathname.startsWith('/login')
+  const { data: uiPermData } = useSWR(
+    user?.id ? '/api/permissions/ui' : null,
+    fetcher
+  )
+  const uiMap = (uiPermData?.map || {}) as Record<string, boolean>
 
   /* 🔐 Protecció de sessió */
   useEffect(() => {
@@ -77,8 +88,55 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, status, user, router])
 
+  const role = normalizeRole(user?.role)
+  const department = user?.department || ''
+  const username = user?.name || user?.email || 'Usuari'
+  const avatarLetter = username[0]?.toUpperCase() ?? 'U'
+
+  const baseVisibleModules = user
+    ? getVisibleModules({
+        role,
+        department,
+        canRespondSurveys: user.canRespondSurveys,
+        isDepartmentRobaLead: user.isDepartmentRobaLead,
+        robaLinkedPersonnelId: user.robaLinkedPersonnelId,
+        opsProjectsConfigurable: user.opsProjectsConfigurable,
+      })
+    : []
+
+  const filteredVisibleModules = useMemo(() => {
+    if (!uiPermData) return baseVisibleModules
+    return MODULES
+      .filter((m) => uiMap[m.path] === true)
+      .map((m) => ({
+        ...m,
+        submodules: (m.submodules || []).filter((s) => uiMap[s.path] === true),
+      }))
+  }, [uiPermData, baseVisibleModules, uiMap])
+
+  const lastStableVisibleModulesRef = useRef(filteredVisibleModules)
+  useEffect(() => {
+    if (uiPermData) {
+      lastStableVisibleModulesRef.current = filteredVisibleModules
+    }
+  }, [uiPermData, filteredVisibleModules])
+
+  const stableVisibleModules = uiPermData
+    ? filteredVisibleModules
+    : lastStableVisibleModulesRef.current ?? baseVisibleModules
+
+  const sortedVisibleModules = [...stableVisibleModules].sort((a, b) =>
+    a.label.localeCompare(b.label, 'ca', { sensitivity: 'base' })
+  )
+
+  // Si estem en una ruta que l'usuari ha denegat via overrides UI, redirigim a /menu
+  useEffect(() => {
+    if (!uiPermData || isLogin) return
+    if (isUiPathBlocked(pathname, uiMap)) router.replace('/menu')
+  }, [uiPermData, uiMap, pathname, router, isLogin])
+
   /* 🔓 Pantalla login sense layout */
-  if (pathname.startsWith('/login')) {
+  if (isLogin) {
     return (
       <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background text-foreground">
         <Image src="/logo.png" alt="Cal Blay" width={200} height={80} />
@@ -88,23 +146,6 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) return null
-
-  const role = normalizeRole(user.role)
-  const department = user.department || ''
-  const username = user.name || user.email || 'Usuari'
-  const avatarLetter = username[0]?.toUpperCase() ?? 'U'
-
-  const visibleModules = getVisibleModules({
-    role,
-    department,
-    canRespondSurveys: user.canRespondSurveys,
-    isDepartmentRobaLead: user.isDepartmentRobaLead,
-    robaLinkedPersonnelId: user.robaLinkedPersonnelId,
-    opsProjectsConfigurable: user.opsProjectsConfigurable,
-  })
-  const sortedVisibleModules = [...visibleModules].sort((a, b) =>
-    a.label.localeCompare(b.label, 'ca', { sensitivity: 'base' })
-  )
 
   return (
       <div className="min-h-[100dvh] bg-background text-foreground">

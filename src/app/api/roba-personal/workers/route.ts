@@ -5,7 +5,11 @@ import { NextResponse } from 'next/server'
 import { FieldValue } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import { requireRobaPersonalAdmin, resolveRobaAccess } from '@/lib/roba-personal/guard'
+import {
+  requireRobaPersonalAdmin,
+  requireRobaWorkersReadAccess,
+} from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import {
   departmentsInSameRobaScope,
@@ -22,7 +26,7 @@ import { isRobaProductDepartmentValue } from '@/data/departments'
 const COL = DOTACIO_COLLECTIONS.workers
 
 export async function GET() {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaWorkersReadAccess()
   if (!auth.ok) return auth.res
 
   let items: ReturnType<typeof serializeRobaWorkerRow>[]
@@ -57,7 +61,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.treballadors)
   if (!auth.ok) return auth.res
 
   try {

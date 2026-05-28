@@ -44,6 +44,7 @@ export type ReservationTimelineSlot = {
 
 export type ReservationPageState = {
   tab: TabId
+  canRequest: boolean
   canValidate: boolean
   filters: FiltersState
   requestFilters: FiltersState

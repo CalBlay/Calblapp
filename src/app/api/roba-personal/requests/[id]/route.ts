@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { FieldValue } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import { resolveRobaAccess } from '@/lib/roba-personal/guard'
+import { requireRobaWorkflowAccess } from '@/lib/roba-personal/guard'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
 import {
@@ -127,7 +127,7 @@ export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaWorkflowAccess()
   if (!auth.ok) return auth.res
   const access = auth.access
 
@@ -702,7 +702,7 @@ export async function DELETE(
   _req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaWorkflowAccess()
   if (!auth.ok) return auth.res
   const access = auth.access
   if (access.scope !== 'full' || access.role !== 'admin') {

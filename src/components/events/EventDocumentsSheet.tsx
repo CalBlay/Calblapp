@@ -12,6 +12,8 @@ import {
   Image as ImgIcon,
 } from 'lucide-react'
 import useEventDocuments, { EventDoc } from '@/hooks/events/useEventDocuments'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
 
 /* Icons */
 function DocIcon({ d }: { d: EventDoc }) {
@@ -97,9 +99,15 @@ export default function EventDocumentsSheet({
   onOpenChange: (v: boolean) => void
   embedded?: boolean
 }) {
+  const { uiActions, ready: permsReady } = useUiPermissions()
+  const canViewDocs = useMemo(() => {
+    if (!permsReady) return true
+    return uiActions[PERM.action('/menu/events', 'docs:view')] === true
+  }, [permsReady, uiActions])
+
   const { docs, loading, error } = useEventDocuments(
-    eventId,
-    eventCode || undefined,
+    canViewDocs ? eventId : undefined,
+    canViewDocs ? (eventCode || undefined) : undefined,
     'all'
   )
 
@@ -147,6 +155,23 @@ export default function EventDocumentsSheet({
   const linkRel = linkTarget === '_blank' ? 'noopener noreferrer' : undefined
 
   if (!open) return null
+
+  if (!canViewDocs) {
+    const content = (
+      <div className="relative w-full">
+        <div className="mx-auto w-full max-w-[560px] rounded-[24px] border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100">
+            <h3 className="text-base font-semibold">Documents</h3>
+          </div>
+          <div className="px-5 py-4">
+            <p className="text-sm text-slate-700">No tens permís per veure documents.</p>
+          </div>
+        </div>
+      </div>
+    )
+
+    return embedded ? content : <Portal>{content}</Portal>
+  }
 
   if (embedded) {
     return (

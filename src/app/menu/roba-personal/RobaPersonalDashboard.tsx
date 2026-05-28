@@ -1,9 +1,11 @@
 'use client'
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { normalizeRole } from '@/lib/roles'
+import { robaTabUiPath } from '@/lib/robaPersonalPermissions'
 import { ProductesPanel } from './ProductesPanel'
 import type { TabId } from './robaPersonalTypes'
 import { parseRobaTab } from './robaPersonalConstants'
@@ -45,11 +47,63 @@ export default function RobaPersonalDashboard() {
     !isDeptLeadLimited
   const isRobaDeptLeadTabs = isDeptLeadLimited
 
+  const { canViewPath, ready: permsReady } = useUiPermissions()
+
+  const roleTabDefs = useMemo((): ReadonlyArray<readonly [TabId, string]> => {
+    if (isRobaWorkerSelf) {
+      return [
+        ['sollicituds', 'Sol·licituds'],
+        ['entregues', 'Entregues'],
+      ] as const
+    }
+    if (isRobaDeptLeadTabs) {
+      return [
+        ['sollicituds', 'Sol·licituds'],
+        ['recollides', 'Recepcions'],
+        ['entregues', 'Entregues'],
+      ] as const
+    }
+    return [
+      ['productes', 'Productes'],
+      ['treballadors', 'Treballadors'],
+      ['estoc', 'Estoc'],
+      ['informes', 'Informes'],
+      ['sollicituds', 'Sol·licituds'],
+      ['preparacio', 'Preparació'],
+      ['recollides', 'Recepcions'],
+      ['entregues', 'Entregues'],
+      ['compres', 'Compres'],
+    ] as const
+  }, [isRobaWorkerSelf, isRobaDeptLeadTabs])
+
+  const visibleTabs = useMemo(() => {
+    return roleTabDefs.filter(([id]) => {
+      if (id === 'informes' && !isRobaFullUser) return false
+      if (!permsReady) return true
+      return canViewPath(robaTabUiPath(id))
+    })
+  }, [roleTabDefs, isRobaFullUser, permsReady, canViewPath])
+
   const [tab, setTab] = useState<TabId>('productes')
 
   useEffect(() => {
     if (urlTab) setTab(urlTab)
   }, [urlTab])
+
+  useEffect(() => {
+    if (!permsReady) return
+    if (canViewPath(robaTabUiPath(tab))) return
+    const fallback = visibleTabs[0]?.[0]
+    if (!fallback) return
+    setTab(fallback)
+    const p = new URLSearchParams(searchParams?.toString() || '')
+    p.set('tab', fallback)
+    if (fallback !== 'entregues' && fallback !== 'sollicituds' && fallback !== 'preparacio' && fallback !== 'recollides') {
+      p.delete('requestId')
+      p.delete('deliveryId')
+    }
+    router.replace(`/menu/roba-personal?${p.toString()}`, { scroll: false })
+  }, [permsReady, canViewPath, tab, visibleTabs, router, searchParams])
 
   useEffect(() => {
     if (isRobaWorkerSelf) {
@@ -154,24 +208,7 @@ export default function RobaPersonalDashboard() {
 
       {!isRobaWorkerSelf ? (
         <div className="flex flex-wrap gap-2 border-b border-border pb-3">
-          {(isRobaDeptLeadTabs
-            ? ([
-                ['sollicituds', 'Sol·licituds'],
-                ['recollides', 'Recepcions'],
-                ['entregues', 'Entregues'],
-              ] as const)
-            : ([
-                ['productes', 'Productes'],
-                ['treballadors', 'Treballadors'],
-                ['estoc', 'Estoc'],
-                ['informes', 'Informes'],
-                ['sollicituds', 'Sol·licituds'],
-                ['preparacio', 'Preparació'],
-                ['recollides', 'Recepcions'],
-                ['entregues', 'Entregues'],
-                ['compres', 'Compres'],
-              ] as const)
-          ).map(([id, label]) => (
+          {visibleTabs.map(([id, label]) => (
             <button
               key={id}
               type="button"
@@ -185,14 +222,16 @@ export default function RobaPersonalDashboard() {
               {label}
             </button>
           ))}
+          {permsReady && visibleTabs.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No tens cap pestanya de Roba personal habilitada.
+            </p>
+          )}
         </div>
       ) : (
         <div className="border-b border-border pb-3">
           <div className="flex flex-wrap gap-2">
-            {([
-              ['sollicituds', 'Sol·licituds'],
-              ['entregues', 'Entregues'],
-            ] as const).map(([id, label]) => (
+            {visibleTabs.map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -213,30 +252,36 @@ export default function RobaPersonalDashboard() {
         </div>
       )}
 
-      {tab === 'productes' && <ProductesPanel />}
-      {tab === 'treballadors' && <TreballadorsPanel />}
-      {tab === 'estoc' && <EstocPanel />}
-      {tab === 'informes' && isRobaFullUser && <RrhhInformesPanel />}
-      {tab === 'sollicituds' && (
+      {tab === 'productes' && (!permsReady || canViewPath(robaTabUiPath('productes'))) && (
+        <ProductesPanel />
+      )}
+      {tab === 'treballadors' && (!permsReady || canViewPath(robaTabUiPath('treballadors'))) && (
+        <TreballadorsPanel />
+      )}
+      {tab === 'estoc' && (!permsReady || canViewPath(robaTabUiPath('estoc'))) && <EstocPanel />}
+      {tab === 'informes' &&
+        isRobaFullUser &&
+        (!permsReady || canViewPath(robaTabUiPath('informes'))) && <RrhhInformesPanel />}
+      {tab === 'sollicituds' && (!permsReady || canViewPath(robaTabUiPath('sollicituds'))) && (
         <SollicitudsPanel mode="requests" highlightRequestId={requestIdFromUrl} />
       )}
-      {tab === 'preparacio' && (
+      {tab === 'preparacio' && (!permsReady || canViewPath(robaTabUiPath('preparacio'))) && (
         <SollicitudsPanel mode="prepare" highlightRequestId={requestIdFromUrl} />
       )}
-      {tab === 'recollides' && (
+      {tab === 'recollides' && (!permsReady || canViewPath(robaTabUiPath('recollides'))) && (
         <SollicitudsPanel
           mode="pickup"
           highlightRequestId={requestIdFromUrl}
           highlightDeliveryId={deliveryIdFromUrl}
         />
       )}
-      {tab === 'entregues' && (
+      {tab === 'entregues' && (!permsReady || canViewPath(robaTabUiPath('entregues'))) && (
         <EntreguesPanel
           prefillRequestId={requestIdFromUrl}
           prefillDeliveryId={deliveryIdFromUrl}
         />
       )}
-      {tab === 'compres' && <CompresPanel />}
+      {tab === 'compres' && (!permsReady || canViewPath(robaTabUiPath('compres'))) && <CompresPanel />}
     </div>
   )
 }

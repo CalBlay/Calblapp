@@ -18,6 +18,8 @@ import { ExternalLink } from 'lucide-react'
 import SearchFincaInput from '@/components/shared/SearchFincaInput'
 import SearchServeiInput from '@/components/shared/SearchServeiInput'
 import AttachFileButton from '@/components/calendar/AttachFileButton'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
 
 interface Props {
   deal: Deal
@@ -97,6 +99,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
 
   const dealRecord = deal as CalendarDealRecord
   const { data: session } = useSession()
+  const { uiEdit, uiActions, ready: permsReady } = useUiPermissions()
   const [open, setOpen] = useState(false)
   const [comercialPool, setComercialPool] = useState<ComercialCandidate[]>([])
   const [comercialLoading, setComercialLoading] = useState(false)
@@ -181,7 +184,34 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     isManual &&
     (isAdmin || isDireccio || isProduccio || isComercial || isCapCalendarDept)
 
-  const canEdit = !readonly && (canEditStageVerd || canEditManual)
+  const calendarPath = '/menu/calendar'
+  const permCalendarEdit = uiEdit[calendarPath] === true
+  const baseCanEdit = !readonly && (canEditStageVerd || canEditManual)
+  const canUpdate = useMemo(() => {
+    if (!permsReady) return true
+    return (
+      permCalendarEdit ||
+      uiActions[PERM.action(calendarPath, 'manual:update')] === true
+    )
+  }, [permsReady, uiActions, permCalendarEdit])
+  const canAttach = useMemo(() => {
+    if (!permsReady) return true
+    return (
+      permCalendarEdit ||
+      uiActions[PERM.action(calendarPath, 'attach:sharepoint')] === true
+    )
+  }, [permsReady, uiActions, permCalendarEdit])
+  const canDeleteManual = useMemo(() => {
+    if (!permsReady) return true
+    return uiActions[PERM.action(calendarPath, 'manual:delete')] === true
+  }, [permsReady, uiActions])
+
+  const canEdit = useMemo(() => {
+    if (!permsReady) return baseCanEdit
+    if (uiEdit[calendarPath] === false) return false
+    if (permCalendarEdit && !readonly && (isManual || isZohoVerd)) return true
+    return baseCanEdit && canUpdate
+  }, [permsReady, uiEdit, baseCanEdit, canUpdate, permCalendarEdit, isManual, isZohoVerd, readonly])
   const isOwnCommercialEvent = useMemo(() => {
     if (!isComercialRole) return false
     const eventCommercial = normalizeLoose(editData.Comercial)
@@ -193,9 +223,9 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     !readonly && (isZohoVerd || isManual) && (isAdmin || isProduccio || isOwnCommercialEvent)
   const canEditComercialIntern =
     !readonly && (isZohoVerd || isManual) && (isAdmin || isCapProduccio)
-  const canManageDocuments = !readonly && (canEdit || isOwnCommercialEvent)
-  const canSave = canEdit || canEditCode || canEditComercialIntern
-  const canDeleteEvent = canEdit && !isProductionOperationalWorker
+  const canManageDocuments = !readonly && canAttach && (canEdit || isOwnCommercialEvent)
+  const canSave = (canEdit || canEditCode || canEditComercialIntern) && canUpdate
+  const canDeleteEvent = canEdit && canDeleteManual && !isProductionOperationalWorker
 
   const allowedDepartments = useMemo(() => {
     const bucket = normalizeDeptForLnBucket(editData.LN)

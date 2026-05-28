@@ -7,9 +7,10 @@ import {
   listCompresCapRecipients,
 } from '@/lib/roba-personal/purchaseRecipient'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 
 export async function GET() {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.compres)
   if (!auth.ok) return auth.res
 
   const recipients = await listCompresCapRecipients()

@@ -1,5 +1,10 @@
 //file: src/lib/accessControl.ts
 import { normalizeRole, type Role } from '@/lib/roles'
+import {
+  ROBA_PERSONAL_SUBMODULE_DEFS,
+  ROBA_SUBMODULE_ROLES,
+  robaVisibleSubmodulePaths,
+} from '@/lib/robaPersonalPermissions'
 
 /** Tipus d’usuari mínim */
 export interface AccessUser {
@@ -11,6 +16,8 @@ export interface AccessUser {
   /** Treballador amb `personnel` vinculat i usuari d’app (roba personal). */
   robaLinkedPersonnelId?: string | null
   opsProjectsConfigurable?: boolean
+  /** Cap de transports (logística) — validació de reserves comercials. */
+  isTransportLead?: boolean
 }
 
 export interface SubModuleDef {
@@ -235,10 +242,29 @@ export const MODULES: ModuleDef[] = [
     roles: ['admin'] },
 
   {
+    label: 'Settings',
+    path: '/menu/settings',
+    roles: ['admin'],
+    submodules: [
+      {
+        label: 'Permisos',
+        path: '/menu/settings/permisos',
+        roles: ['admin'],
+      },
+    ],
+  },
+
+  {
     label: 'Roba personal',
     path: '/menu/roba-personal',
     roles: ['admin', 'cap', 'treballador'],
     departments: ['recursos humans'],
+    submodules: ROBA_PERSONAL_SUBMODULE_DEFS.map((sub) => ({
+      label: sub.label,
+      path: sub.path,
+      roles: ROBA_SUBMODULE_ROLES,
+      departments: ['recursos humans'],
+    })),
   },
 
   {
@@ -314,8 +340,28 @@ export const MODULES: ModuleDef[] = [
     roles: ['admin', 'direccio', 'cap', 'usuari', 'comercial'],
   },
 
-  { label: 'Espais', path: '/menu/spaces',
-    roles: ['admin','direccio','cap','comercial','usuari'] },
+  {
+    label: 'Espais',
+    path: '/menu/spaces',
+    roles: ['admin', 'direccio', 'cap', 'comercial', 'usuari'],
+    submodules: [
+      {
+        label: 'Consulta de reserves',
+        path: '/menu/spaces/reserves',
+        roles: ['admin', 'direccio', 'cap', 'comercial', 'usuari'],
+      },
+      {
+        label: 'Consulta BBDD',
+        path: '/menu/spaces/info',
+        roles: ['admin', 'direccio', 'cap', 'comercial', 'usuari'],
+      },
+      {
+        label: 'Premisses reserves',
+        path: '/menu/spaces/premisses',
+        roles: ['admin'],
+      },
+    ],
+  },
 
   {
     label: 'Cuina central',
@@ -469,8 +515,18 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
           return sub.path === '/menu/incidents/quadre'
         }
 
+        if (isProductionOperationalWorker && mod.path === '/menu/spaces') {
+          return (
+            sub.path === '/menu/spaces/reserves' || sub.path === '/menu/spaces/info'
+          )
+        }
+
         if (sub.path === '/menu/allergens/bbdd') {
           return role === 'admin' || dept === 'qualitat'
+        }
+
+        if (mod.path === '/menu/roba-personal') {
+          return robaVisibleSubmodulePaths(user).has(sub.path)
         }
 
         if (!sub.roles.includes(role)) return false

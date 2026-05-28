@@ -15,7 +15,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { DEFAULT_ALLERGENS, sortAllergensByStandardOrder } from '@/data/allergens'
-import { getVisibleModules } from '@/lib/accessControl'
 import { db } from '@/lib/firebaseClient'
 import {
   collection,
@@ -44,7 +43,6 @@ import type {
   PlatDocData,
   PlatExport,
   PlatLookupItem,
-  SessionUser,
 } from './types'
 import {
   ALLERGEN_OPTIONS,
@@ -59,17 +57,36 @@ import {
   slugify,
   toAllergenKey,
 } from './utils'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
 export default function AllergensBbddPage() {
-  const { data: session } = useSession()
-  const user = session?.user as SessionUser | undefined
+  useSession()
+  const { uiMap, uiEdit, uiActions, data: uiPermData } = useUiPermissions()
 
   const allowed = useMemo(() => {
-    const visibleModule = getVisibleModules({
-      role: user?.role,
-      department: user?.department,
-    }).find(mod => mod.path === '/menu/allergens')
-    return visibleModule?.submodules?.some(sub => sub.path === '/menu/allergens/bbdd')
-  }, [user?.role, user?.department])
+    if (!uiPermData) return true
+    return uiMap['/menu/allergens/bbdd'] !== false
+  }, [uiPermData, uiMap])
+
+  const canEdit = useMemo(() => {
+    if (!uiPermData) return true
+    return uiMap['/menu/allergens/bbdd'] !== false && uiEdit['/menu/allergens/bbdd'] !== false
+  }, [uiPermData, uiMap, uiEdit])
+
+  const canImport = useMemo(() => {
+    if (!uiPermData) return true
+    return uiActions[PERM.action('/menu/allergens/bbdd', 'import')] === true
+  }, [uiPermData, uiActions])
+
+  const canReplace = useMemo(() => {
+    if (!uiPermData) return true
+    return uiActions[PERM.action('/menu/allergens/bbdd', 'replace')] === true
+  }, [uiPermData, uiActions])
+
+  const canExport = useMemo(() => {
+    if (!uiPermData) return true
+    return uiActions[PERM.action('/menu/allergens/bbdd', 'export')] === true
+  }, [uiPermData, uiActions])
 
   const [form, setForm] = useState<FormState>(defaultFormState)
   const [categories, setCategories] = useState<OptionItem[]>([])
@@ -1228,12 +1245,12 @@ export default function AllergensBbddPage() {
                   {
                     label: 'Exportar PDF',
                     onClick: handleExportPdf,
-                    disabled: loading,
+                    disabled: loading || !canExport,
                   },
                   {
                     label: 'Exportar XLSX',
                     onClick: handleExportXlsx,
-                    disabled: loading,
+                    disabled: loading || !canExport,
                   },
                 ]}
               />
@@ -1245,7 +1262,7 @@ export default function AllergensBbddPage() {
                   setPendingImportMode('incremental')
                   importFileRef.current?.click()
                 }}
-                disabled={loading}
+                disabled={loading || !canImport}
               >
                 Importar
               </Button>
@@ -1257,7 +1274,7 @@ export default function AllergensBbddPage() {
                   setPendingImportMode('replace')
                   importFileRef.current?.click()
                 }}
-                disabled={loading}
+                disabled={loading || !canReplace}
               >
                 Reemplaçar
               </Button>

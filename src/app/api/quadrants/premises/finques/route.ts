@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken } from 'next-auth/jwt'
-import { normalizeRole } from '@/lib/roles'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { requireQuadrantsPremissesEdit } from '@/lib/server/quadrantsApiAuth'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { jwtRoleFields, readAppJwt } from '@/lib/appJwtPayload'
 
 export const runtime = 'nodejs'
 
@@ -13,23 +12,15 @@ const norm = (s?: string | null) =>
     .toLowerCase()
     .trim()
 
-async function getSessionContext(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-  if (!token) return null
-
-  const role = normalizeRole(jwtRoleFields(readAppJwt(token)))
-
-  return { role }
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const session = await getSessionContext(req)
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
 
-    if (!['admin', 'direccio', 'cap'].includes(session.role)) {
+    const { searchParams } = new URL(req.url)
+    const requestedDept = norm(searchParams.get('department') || auth.user.department || 'serveis')
+    const canAccess = await requireQuadrantsPremissesEdit(auth, requestedDept)
+    if (!canAccess) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

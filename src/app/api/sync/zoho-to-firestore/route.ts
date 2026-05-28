@@ -1,14 +1,11 @@
 // filename: src/app/api/sync/zoho-to-firestore/route.ts
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { syncZohoDealsToFirestore } from '@/services/zoho/sync'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { PERM } from '@/lib/permissionKeys'
+import { isAllowedByClientOverride } from '@/lib/server/permissions'
 
 export const runtime = 'nodejs'
-
-type SessionUser = {
-  department?: string
-}
 
 export async function GET(req: Request) {
   try {
@@ -26,22 +23,14 @@ export async function GET(req: Request) {
       })
     }
 
-    // Si no es cron, es manual: validar permisos
-    const session = await getServerSession(authOptions)
-    const sessionUser = session?.user as SessionUser | undefined
-    const normalize = (value: string) =>
-      value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
-    const role = normalize(String(session?.user?.role || ''))
-    const department = normalize(String(sessionUser?.department || ''))
-    const canManualSync =
-      role === 'admin' || (role.includes('cap') && department === 'produccio')
-
-    if (!canManualSync) {
-      return NextResponse.json(
-        { error: 'Acces denegat: nomes admin o cap produccio pot sincronitzar manualment.' },
-        { status: 403 }
-      )
-    }
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const ok = await isAllowedByClientOverride({
+      userId: auth.user.id,
+      role: auth.user.role,
+      permission: PERM.action('/menu/calendar', 'sync:zoho'),
+    })
+    if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const result = await syncZohoDealsToFirestore()
 

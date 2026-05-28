@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { FieldValue } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import { resolveRobaAccess } from '@/lib/roba-personal/guard'
+import { requireRobaWorkflowAccess } from '@/lib/roba-personal/guard'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import { requestReferenceFromDocId } from '@/lib/roba-personal/dotacioReferenceCodes'
 import { notifyRobaDepartmentLeadsNewRequest } from '@/lib/roba-personal/robaRequestNotifications'
@@ -114,7 +114,7 @@ async function getProductsById(ids: string[]): Promise<Map<string, Record<string
 }
 
 export async function GET() {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaWorkflowAccess()
   if (!auth.ok) return auth.res
 
   let items: ReturnType<typeof serializeFirestoreDoc>[]
@@ -197,7 +197,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaWorkflowAccess()
   if (!auth.ok) return auth.res
 
   const body = (await req.json()) as {

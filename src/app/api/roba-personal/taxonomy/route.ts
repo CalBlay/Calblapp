@@ -6,6 +6,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 
 const COL = DOTACIO_COLLECTIONS.productTaxonomy
@@ -17,7 +18,7 @@ function str(v: unknown): string {
 }
 
 export async function GET() {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.productes)
   if (!auth.ok) return auth.res
 
   try {
@@ -34,7 +35,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.productes)
   if (!auth.ok) return auth.res
 
   try {

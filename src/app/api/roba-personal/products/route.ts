@@ -6,7 +6,11 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { SUPPLIERS_COLLECTION } from '@/lib/companySuppliers/constants'
-import { requireRobaPersonalAdmin, resolveRobaAccess } from '@/lib/roba-personal/guard'
+import {
+  requireRobaPersonalAdmin,
+  requireRobaProductsReadAccess,
+} from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import {
   productDepartmentsVisibleToRobaLead,
@@ -29,7 +33,7 @@ async function resolveSupplierName(supplierId: string): Promise<string | null> {
 }
 
 export async function GET() {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaProductsReadAccess()
   if (!auth.ok) return auth.res
 
   let items: ReturnType<typeof serializeFirestoreDoc>[]
@@ -79,7 +83,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.productes)
   if (!auth.ok) return auth.res
 
   try {

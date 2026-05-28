@@ -4,12 +4,16 @@
 import { useCallback, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useEffect } from 'react'
-import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { canEditFinca, isProductionWorker } from '@/lib/accessControl'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
 import { Trash2 } from 'lucide-react'
-import { normalizeRole } from '@/lib/roles'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
+import {
+  SPACES_BBDD_ACTION_PATH,
+  SPACES_BBDD_PATH,
+  SPACES_ACTION,
+} from '@/lib/spacesPermissions'
 
 
 
@@ -44,12 +48,6 @@ export type EspaiDetall = {
   }
 }
 
-type SessionUser = {
-  role?: string
-  department?: string
-  departmentLower?: string
-}
-
 type Props = {
   espai: EspaiDetall
   lnOptions?: string[]
@@ -69,31 +67,24 @@ export default function SpaceDetailClient({
   // 1) Estat local (còpia editable de la finca)
   // ─────────────────────────────────────────────
   const router = useRouter()
-  const { data: session } = useSession()
-  const sessionUser = session?.user as SessionUser | undefined
-
-  const canEditRole = canEditFinca({
-    role: session?.user?.role,
-    department: sessionUser?.departmentLower ?? sessionUser?.department,
-  })
-  const normalizedRole = normalizeRole(session?.user?.role)
-  const normalizedDepartment = String(
-    sessionUser?.departmentLower ?? sessionUser?.department ?? ''
-  )
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-  const canDeleteRole =
-    normalizedRole === 'admin' ||
-    (normalizedRole === 'cap' &&
-      normalizedDepartment === 'produccio' &&
-      !isProductionWorker({
-        role: session?.user?.role,
-        department: sessionUser?.departmentLower ?? sessionUser?.department,
-      }))
-  const canEdit = !forceReadOnly && canEditRole
+  const { ready: permsReady, canEditPath, hasAction } = useUiPermissions()
   const isNew = !espai.id
+  const canEditSubmodule = !permsReady || canEditPath(SPACES_BBDD_PATH)
+  const canMutate =
+    canEditSubmodule &&
+    (!permsReady ||
+      hasAction(
+        PERM.action(
+          SPACES_BBDD_ACTION_PATH,
+          isNew ? SPACES_ACTION.BBDD_CREATE : SPACES_ACTION.BBDD_UPDATE
+        )
+      ))
+  const canDeletePerm =
+    canEditSubmodule &&
+    (!permsReady ||
+      hasAction(PERM.action(SPACES_BBDD_ACTION_PATH, SPACES_ACTION.BBDD_DELETE)))
+  const canEdit = !forceReadOnly && canMutate
+  const canDeleteRole = canDeletePerm
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [checkingCode, setCheckingCode] = useState(false)

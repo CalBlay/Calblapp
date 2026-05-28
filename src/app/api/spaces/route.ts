@@ -1,9 +1,18 @@
 // src/app/api/spaces/route.ts
 import { NextResponse } from 'next/server'
 import { getSpacesByWeek } from '@/services/spaces/spaces'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { SPACES_RESERVES_PATH } from '@/lib/spacesPermissions'
+import { requireSpacesView } from '@/lib/server/spacesApiAuth'
 
 export async function GET(request: Request): Promise<Response> {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const ok = await requireSpacesView(auth, SPACES_RESERVES_PATH)
+    if (!ok) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     const { searchParams } = new URL(request.url)
 
     // ───────────────────────────────

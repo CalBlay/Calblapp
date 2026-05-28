@@ -7,6 +7,8 @@ import { GraduationCap, Truck, User, Car } from 'lucide-react'
 import type { Row } from './types'
 import { normalizeTransportType } from '@/lib/transportTypes'
 import { getExternalWorkerBaseLabel } from '@/lib/quadrantExternalWorkers'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
 
 const roleIcon: Record<'responsable'|'conductor'|'treballador', React.ReactNode> = {
   responsable: <GraduationCap className="text-blue-700" size={20} />,
@@ -48,6 +50,11 @@ export default function DraftRow({
   onEdit: () => void
   onDelete: () => void
 }) {
+  const { ready, canViewPath, hasAction } = useUiPermissions()
+  const canView = canViewPath('/menu/quadrants')
+  const canEditRow = ready && canView && hasAction(PERM.action('/menu/quadrants', 'draft:save'))
+  const canDeleteRow = ready && canView && hasAction(PERM.action('/menu/quadrants', 'draft:delete'))
+
   const formatDate = (d: string) => (d ? d.split('-').slice(1).reverse().join('/') : '--/--')
   const formatTime = (t?: string) => (t ? t.substring(0, 5) : '--:--')
   const displayName = row.isExternal
@@ -109,7 +116,13 @@ export default function DraftRow({
         </div>
 
         {/* Accions mobil */}
-        <RowActions onEdit={onEdit} onDelete={onDelete} disabled={isLocked} />
+        <RowActions
+          onEdit={onEdit}
+          onDelete={onDelete}
+          disabled={isLocked}
+          canEdit={canEditRow}
+          canDelete={canDeleteRow}
+        />
       </div>
 
       {/* DESKTOP LAYOUT */}
@@ -141,7 +154,13 @@ export default function DraftRow({
       </div>
 
       <div className="hidden sm:block">
-        <RowActions onEdit={onEdit} onDelete={onDelete} disabled={isLocked} />
+        <RowActions
+          onEdit={onEdit}
+          onDelete={onDelete}
+          disabled={isLocked}
+          canEdit={canEditRow}
+          canDelete={canDeleteRow}
+        />
       </div>
     </div>
   )

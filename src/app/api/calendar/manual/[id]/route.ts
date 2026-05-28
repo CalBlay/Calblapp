@@ -1,19 +1,31 @@
 // ✅ file: src/app/api/calendar/manual/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import { normalizeRole } from '@/lib/roles'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { PERM } from '@/lib/permissionKeys'
+import type { AccessUser } from '@/lib/accessControl'
+import { isUiPermissionGranted } from '@/lib/server/permissions'
+
+function accessUserFromSession(user: {
+  id: string
+  role?: string | null
+  department?: string | null
+  canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
+  robaLinkedPersonnelId?: string | null
+}): AccessUser & { id: string } {
+  return {
+    id: user.id,
+    role: user.role,
+    department: user.department,
+    canRespondSurveys: Boolean(user.canRespondSurveys),
+    isDepartmentRobaLead: Boolean(user.isDepartmentRobaLead),
+    robaLinkedPersonnelId: user.robaLinkedPersonnelId ?? null,
+  }
+}
 
 
 export const runtime = 'nodejs'
-
-const normalizeDept = (raw?: string | null) =>
-  String(raw || '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
 
 const MODAL_OVERRIDE_FIELDS = new Set([
   'LN',
@@ -44,6 +56,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const { id } = await params
 
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const ok = await isUiPermissionGranted({
+      user: accessUserFromSession(auth.user),
+      permission: PERM.action('/menu/calendar', 'attach:sharepoint'),
+    })
+    if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
     const body = await req.json()
     const { collection = 'stage_verd', field = 'file1', url } = body as {
       collection?: string
@@ -78,6 +98,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const { id } = await params
 
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const ok = await isUiPermissionGranted({
+      user: accessUserFromSession(auth.user),
+      permission: PERM.action('/menu/calendar', 'manual:update'),
+    })
+    if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
     const body = await req.json()
     const { collection, ...data } = body as Record<string, unknown>
 
@@ -139,25 +167,13 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
  */
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'No autoritzat' }, { status: 401 })
-    }
-
-    const role = normalizeRole((session.user as { role?: string })?.role || '')
-    const department = normalizeDept((session.user as { department?: string })?.department || '')
-    const isProductionOperationalWorker = role === 'treballador' && department === 'produccio'
-    const canDelete =
-      role === 'admin' ||
-      role === 'direccio' ||
-      role === 'comercial' ||
-      department === 'produccio' ||
-      (role === 'cap' &&
-        ['casaments', 'empresa', 'restauracio', 'restaurants', 'grups restaurants', 'foodlovers', 'food lover'].includes(department))
-
-    if (!canDelete || isProductionOperationalWorker) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const ok = await isUiPermissionGranted({
+      user: accessUserFromSession(auth.user),
+      permission: PERM.action('/menu/calendar', 'manual:delete'),
+    })
+    if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { id } = await params
     const url = new URL(req.url)

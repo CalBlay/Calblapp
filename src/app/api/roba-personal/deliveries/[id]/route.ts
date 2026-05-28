@@ -6,10 +6,11 @@ import { FieldValue, type DocumentReference } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import {
-  resolveRobaAccess,
+  requireRobaTabViewAccess,
   robaLinkedWorkerActor,
   type RobaLinkedWorkerActor,
 } from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import { serializeFirestoreDoc } from '@/lib/roba-personal/serialize'
 import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
 import {
@@ -471,7 +472,7 @@ export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaTabViewAccess(ROBA_SUBMODULE_PATHS.entregues)
   if (!auth.ok) return auth.res
   const access = auth.access
 
@@ -599,7 +600,7 @@ export async function DELETE(
   _req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaTabViewAccess(ROBA_SUBMODULE_PATHS.entregues)
   if (!auth.ok) return auth.res
   const access = auth.access
   if (access.scope !== 'full' || access.role !== 'admin') {

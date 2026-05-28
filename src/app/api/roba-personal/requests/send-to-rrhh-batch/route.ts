@@ -6,7 +6,8 @@ import { FieldValue } from 'firebase-admin/firestore'
 
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
-import { resolveRobaAccess } from '@/lib/roba-personal/guard'
+import { requireRobaTabViewAccess } from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
 import {
   notifyRecursosHumansRobaRequestBatchSentToRrhh,
@@ -34,7 +35,7 @@ function normalizeLines(lines: unknown): Array<{ productId: string; quantity: nu
 }
 
 export async function PATCH(req: Request) {
-  const auth = await resolveRobaAccess()
+  const auth = await requireRobaTabViewAccess(ROBA_SUBMODULE_PATHS.preparacio)
   if (!auth.ok) return auth.res
 
   const access = auth.access

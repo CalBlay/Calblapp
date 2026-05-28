@@ -1,16 +1,34 @@
 'use client'
 
+import { useMemo } from 'react'
 import { CarFront } from 'lucide-react'
 
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Card, CardContent } from '@/components/ui/card'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 import RequestTab from './components/RequestTab'
 import ReservationDialog from './components/ReservationDialog'
 import ValidationTab from './components/ValidationTab'
 import { useReservaComercialsPage } from './hooks/useReservaComercialsPage'
 
+const RESERVA_PATH = '/menu/logistica/reserva-comercials'
+
 export default function ReservaComercialsPage() {
+  const { canViewPath, isLoading: uiPermLoading } = useUiPermissions()
+  const allowed = useMemo(() => {
+    if (uiPermLoading) return true
+    return canViewPath(RESERVA_PATH)
+  }, [canViewPath, uiPermLoading])
+
   const page = useReservaComercialsPage()
+
+  if (!uiPermLoading && !allowed) {
+    return (
+      <div className="p-4 text-sm text-slate-600">
+        No tens permisos per accedir a Reserva comercials.
+      </div>
+    )
+  }
 
   return (
     <div className="w-full flex flex-col gap-6 sm:gap-8">
@@ -56,7 +74,15 @@ export default function ReservaComercialsPage() {
           </Card>
         ) : null}
 
-        {page.tab === 'sollicitud' ? (
+        {page.tab === 'sollicitud' && !page.canRequest ? (
+          <Card className="rounded-2xl border-amber-200 bg-amber-50">
+            <CardContent className="px-4 py-3 text-sm text-amber-900">
+              No tens permís de sol·licitud per a reserves comercials.
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {page.tab === 'sollicitud' && page.canRequest ? (
           <RequestTab
             monthLabel={page.monthLabel}
             monthDate={page.monthDate}

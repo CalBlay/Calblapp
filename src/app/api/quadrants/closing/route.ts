@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken, type JWT } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { PERM } from '@/lib/permissionKeys'
+import { isAllowedByClientOverride } from '@/lib/server/permissions'
 
 type Dept =
   | 'serveis'
@@ -67,6 +70,15 @@ function updateArray(
 
 export async function PUT(req: NextRequest) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const ok = await isAllowedByClientOverride({
+      userId: auth.user.id,
+      role: auth.user.role,
+      permission: PERM.action('/menu/events', 'event:close'),
+    })
+    if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
     if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

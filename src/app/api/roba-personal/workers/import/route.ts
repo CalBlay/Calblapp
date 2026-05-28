@@ -7,6 +7,7 @@ import Papa from 'papaparse'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 import {
   personnelCreateFromRobaCsvLine,
   personnelPatchFromRobaCsvLine,
@@ -38,7 +39,7 @@ function workerCodeFromDoc(data: Record<string, unknown>): string {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.treballadors)
   if (!auth.ok) return auth.res
 
   const contentType = req.headers.get('content-type') || ''

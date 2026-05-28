@@ -10,10 +10,11 @@ import {
   normalizeSupplierDepartmentsInput,
 } from '@/lib/companySuppliers/server'
 import { requireRobaPersonalAdmin } from '@/lib/roba-personal/guard'
+import { ROBA_SUBMODULE_PATHS } from '@/lib/robaPersonalPermissions'
 
 /** Mateixa col·lecció que Manteniment → Dades → proveïdors (`SUPPLIERS_COLLECTION`). */
 export async function GET() {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.compres)
   if (!auth.ok) return auth.res
 
   try {
@@ -28,7 +29,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireRobaPersonalAdmin()
+  const auth = await requireRobaPersonalAdmin(ROBA_SUBMODULE_PATHS.compres)
   if (!auth.ok) return auth.res
 
   try {

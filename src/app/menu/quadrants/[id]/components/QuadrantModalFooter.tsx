@@ -5,6 +5,8 @@ import { DialogFooter } from '@/components/ui/dialog'
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { AutoPreviewResponse, QuadrantMode } from './quadrantModalTypes'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
 
 type Props = {
   loading: boolean
@@ -31,6 +33,11 @@ export default function QuadrantModalFooter({
   onCancel,
   onSave,
 }: Props) {
+  const { ready, canViewPath, hasAction } = useUiPermissions()
+  const canView = canViewPath('/menu/quadrants')
+  const canSave = canView && hasAction(PERM.action('/menu/quadrants', 'save'))
+  const canConfirm = canView && hasAction(PERM.action('/menu/quadrants', 'confirm'))
+
   const autoHasEnoughData = mode === 'auto' && Boolean(autoPreview?.learningStatus?.hasEnoughData)
   const autoInsufficient =
     mode === 'auto' &&
@@ -39,7 +46,15 @@ export default function QuadrantModalFooter({
     !autoPreview.learningStatus.hasEnoughData
   const showManualLikeButtons = mode === 'manual' || autoHasEnoughData
   const primaryDisabled =
-    !canAutoGen || loading || autoPreviewLoading || autoInsufficient === true
+    !canAutoGen || loading || autoPreviewLoading || autoInsufficient === true || !ready || !canSave
+  const confirmDisabled =
+    !canAutoGen ||
+    loading ||
+    autoPreviewLoading ||
+    autoInsufficient === true ||
+    !ready ||
+    !canSave ||
+    !canConfirm
 
   return (
     <>
@@ -67,7 +82,7 @@ export default function QuadrantModalFooter({
               variant="outline"
               className="gap-2 border-emerald-200 text-emerald-800 hover:bg-emerald-50 sm:min-w-[200px]"
               onClick={() => onSave(true)}
-              disabled={primaryDisabled}
+              disabled={confirmDisabled}
               title="Desa el borrador i el confirma alhora, sense editar-lo a la taula de borradors."
             >
               {loading ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}

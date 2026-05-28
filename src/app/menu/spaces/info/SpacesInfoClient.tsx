@@ -10,6 +10,13 @@ import { Map } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import FloatingAddButton from '@/components/ui/floating-add-button'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
+import {
+  SPACES_BBDD_ACTION_PATH,
+  SPACES_BBDD_PATH,
+  SPACES_ACTION,
+} from '@/lib/spacesPermissions'
 
 type Espai = {
   id: string
@@ -28,6 +35,17 @@ type Props = {
 
 export default function SpacesInfoClient({ espais, lnOptions }: Props) {
   const router = useRouter()
+  const { ready, canViewPath, canEditPath, hasAction } = useUiPermissions()
+  const canView = !ready || canViewPath(SPACES_BBDD_PATH)
+  const canEdit = !ready || canEditPath(SPACES_BBDD_PATH)
+  const canExport =
+    canView &&
+    (!ready ||
+      hasAction(PERM.action(SPACES_BBDD_ACTION_PATH, SPACES_ACTION.BBDD_EXPORT)))
+  const canCreate =
+    canEdit &&
+    (!ready ||
+      hasAction(PERM.action(SPACES_BBDD_ACTION_PATH, SPACES_ACTION.BBDD_CREATE)))
 
   const [search, setSearch] = useState('')
   const [tipus, setTipus] = useState<'tots' | 'Propi' | 'Extern'>('tots')
@@ -138,7 +156,7 @@ export default function SpacesInfoClient({ espais, lnOptions }: Props) {
           icon={<Map className="h-7 w-7 text-emerald-600" />}
           title="Espais"
           subtitle="Consulta i filtra els espais disponibles"
-          actions={<ExportMenu items={exportItems} />}
+          actions={canExport ? <ExportMenu items={exportItems} /> : undefined}
         />
       </div>
       <style>{`
@@ -267,7 +285,9 @@ export default function SpacesInfoClient({ espais, lnOptions }: Props) {
         </table>
       </div>
       </div>
-      <FloatingAddButton onClick={() => router.push('/menu/spaces/info/new')} />
+      {canCreate && (
+        <FloatingAddButton onClick={() => router.push('/menu/spaces/info/new')} />
+      )}
     </section>
   )
 }

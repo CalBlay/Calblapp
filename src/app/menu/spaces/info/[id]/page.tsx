@@ -3,7 +3,8 @@
 export const dynamic = 'force-dynamic'   // ⭐ Evita el warning
 
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
-import SpaceDetailClient, { EspaiDetall } from '../SpaceDetailClient'
+import SpaceDetailShell from '../SpaceDetailShell'
+import type { EspaiDetall } from '../SpaceDetailClient'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 
 interface Props {
@@ -45,7 +46,7 @@ export default async function SpaceDetailPage(props: Props) {
   return (
     <>
       <ModuleHeader title="Espais" subtitle={espai.nom || 'Detall'} />
-      <SpaceDetailClient espai={espai} forceReadOnly={forceReadOnly} />
+      <SpaceDetailShell espai={espai} forceReadOnly={forceReadOnly} />
     </>
   )
 }

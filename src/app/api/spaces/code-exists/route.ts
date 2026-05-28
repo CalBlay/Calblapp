@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { SPACES_ACTION } from '@/lib/spacesPermissions'
+import { requireSpacesAction } from '@/lib/server/spacesApiAuth'
 
 export const runtime = 'nodejs'
 
@@ -12,12 +13,16 @@ const normalizeSpaceCode = (raw?: unknown) =>
 
 export async function GET(req: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    }
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
 
     const { searchParams } = new URL(req.url)
+    const canCreate = await requireSpacesAction(auth, SPACES_ACTION.BBDD_CREATE)
+    const canUpdate = await requireSpacesAction(auth, SPACES_ACTION.BBDD_UPDATE)
+    if (!canCreate && !canUpdate) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const code = normalizeSpaceCode(searchParams.get('code'))
     const excludeId = String(searchParams.get('excludeId') || '').trim()
 

@@ -1,6 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
+import { useSession } from 'next-auth/react'
+import { Shield } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -12,7 +15,10 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { normalizeRole } from '@/lib/roles'
-import { DEFAULT_USER_DEPARTMENT, DEPARTMENTS } from '@/data/departments'
+import {
+  DEFAULT_USER_DEPARTMENT,
+  getUserDepartmentSelectOptions,
+} from '@/data/departments'
 import useSWR from 'swr'
 
 export interface User {
@@ -92,6 +98,10 @@ const RANKS = [
 ] as const
 
 export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props) {
+  const { data: session } = useSession()
+  const sessionRole = normalizeRole(session?.user?.role || '')
+  const isSessionAdmin = sessionRole === 'admin'
+
   const [loading, setLoading] = React.useState(false)
 
   const [name, setName] = React.useState('')
@@ -136,6 +146,11 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim() === 'logistica'
+
+  const departmentOptions = React.useMemo(
+    () => getUserDepartmentSelectOptions(department),
+    [department],
+  )
 
   React.useEffect(() => {
     let active = true
@@ -347,7 +362,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
               >
-                {DEPARTMENTS.map((item) => (
+                {departmentOptions.map((item) => (
                   <option key={item} value={item}>
                     {item}
                   </option>
@@ -569,6 +584,25 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                 ) : null}
               </div>
             </div>
+
+            {isSessionAdmin && user?.id ? (
+              <div className="border-t pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-xl border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
+                  asChild
+                >
+                  <Link
+                    href={`/menu/settings/permisos/${user.id}`}
+                    className="inline-flex items-center gap-2"
+                  >
+                    <Shield className="h-4 w-4" />
+                    Gestionar permisos
+                  </Link>
+                </Button>
+              </div>
+            ) : null}
 
             <div className="mt-6 flex items-center justify-end gap-3">
               <Button

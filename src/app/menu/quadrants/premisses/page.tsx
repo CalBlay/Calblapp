@@ -15,6 +15,9 @@ import type {
   Premises,
   SurveyGroupPremise,
 } from '@/services/premises'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
+import { QUADRANTS_ACTION, QUADRANTS_UI_PATH } from '@/lib/quadrantsPermissions'
 
 type SessionUserData = {
   role?: string
@@ -164,6 +167,10 @@ const toEditableSurveyGroups = (premises: Premises): EditableSurveyGroup[] =>
 export default function QuadrantPremisesPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
+  const { ready: permsReady, hasAction } = useUiPermissions()
+  const canPremisses =
+    !permsReady ||
+    hasAction(PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT))
   const sessionUser = session?.user as SessionUserData | undefined
   const role = normalizeRole(String(sessionUser?.role || ''))
   const rawSessionDept = norm(String(sessionUser?.department || ''))
@@ -193,12 +200,16 @@ export default function QuadrantPremisesPage() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
+    if (permsReady && !canPremisses) {
+      router.replace('/menu/quadrants')
+      return
+    }
     if (sessionDept && ALLOWED_DEPARTMENTS.has(sessionDept)) {
       setDepartment(sessionDept)
       return
     }
     setDepartment((prev) => prev || 'serveis')
-  }, [status, canSelectDepartment, sessionDept])
+  }, [status, permsReady, canPremisses, router, canSelectDepartment, sessionDept])
 
   useEffect(() => {
     if (status !== 'authenticated' || !department || !ALLOWED_DEPARTMENTS.has(department)) return

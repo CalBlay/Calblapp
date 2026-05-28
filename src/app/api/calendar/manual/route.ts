@@ -1,6 +1,10 @@
 ﻿// âœ… file: src/app/api/calendar/manual/route.ts
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { PERM } from '@/lib/permissionKeys'
+import type { AccessUser } from '@/lib/accessControl'
+import { isUiPermissionGranted } from '@/lib/server/permissions'
 
 export const runtime = 'nodejs'
 
@@ -9,6 +13,24 @@ export const runtime = 'nodejs'
 ---------------------------------------------------- */
 export async function POST(req: Request) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const accessUser: AccessUser & { id: string } = {
+      id: auth.user.id,
+      role: auth.user.role,
+      department: auth.user.department,
+      canRespondSurveys: Boolean(auth.user.canRespondSurveys),
+      isDepartmentRobaLead: Boolean(auth.user.isDepartmentRobaLead),
+      robaLinkedPersonnelId: auth.user.robaLinkedPersonnelId ?? null,
+    }
+    const ok = await isUiPermissionGranted({
+      user: accessUser,
+      permission: PERM.action('/menu/calendar', 'manual:create'),
+    })
+    if (!ok) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const body = (await req.json()) as Record<string, unknown>
 
     if (!body.NomEvent || !body.DataInici) {
@@ -65,6 +87,24 @@ export async function POST(req: Request) {
 ---------------------------------------------------- */
 export async function GET() {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const accessUser: AccessUser & { id: string } = {
+      id: auth.user.id,
+      role: auth.user.role,
+      department: auth.user.department,
+      canRespondSurveys: Boolean(auth.user.canRespondSurveys),
+      isDepartmentRobaLead: Boolean(auth.user.isDepartmentRobaLead),
+      robaLinkedPersonnelId: auth.user.robaLinkedPersonnelId ?? null,
+    }
+    const ok = await isUiPermissionGranted({
+      user: accessUser,
+      permission: PERM.view('/menu/calendar'),
+    })
+    if (!ok) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const snapshot = await db
       .collection('stage_verd')
       .where('origen', '==', 'manual')

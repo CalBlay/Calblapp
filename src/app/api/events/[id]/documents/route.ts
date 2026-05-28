@@ -4,6 +4,9 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { getDownloadURL } from 'firebase-admin/storage'
 import { storageAdmin } from '@/lib/firebaseAdmin'
 import { getGraphToken, getSiteAndDrive } from '@/services/sharepoint/graph'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { PERM } from '@/lib/permissionKeys'
+import { isAllowedByClientOverride } from '@/lib/server/permissions'
 
 export type EventDoc = {
   id: string
@@ -87,6 +90,17 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const canViewDocs = await isAllowedByClientOverride({
+      userId: auth.user.id,
+      role: auth.user.role,
+      permission: PERM.action('/menu/events', 'docs:view'),
+    })
+    if (canViewDocs !== true) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { id } = await ctx.params
     const url = new URL(req.url)
     const eventCode = url.searchParams.get('eventCode')
@@ -95,6 +109,23 @@ export async function GET(
       prefixParam === 'all'
         ? ['file', 'cuinaFile', 'zohoFile']
         : prefixParam.split(',').map((p) => p.trim()).filter(Boolean)
+
+    const wantsKitchen = prefixes.some((p) => p.toLowerCase() === 'cuinafile')
+    if (wantsKitchen) {
+      const canKitchen = await isAllowedByClientOverride({
+        userId: auth.user.id,
+        role: auth.user.role,
+        permission: PERM.action('/menu/events', 'docs:attach:kitchen'),
+      })
+      if (canKitchen !== true) {
+        // if user can't access kitchen docs, silently drop that prefix
+        // (still allows general docs via docs:view)
+        const filtered = prefixes.filter((p) => p.toLowerCase() !== 'cuinafile')
+        // if the request was ONLY for kitchen docs, return empty list
+        if (filtered.length === 0) return NextResponse.json({ docs: [] })
+        ;(prefixes as string[]).splice(0, prefixes.length, ...filtered)
+      }
+    }
 
     let snap = await db.collection('stage_verd').doc(id).get()
 

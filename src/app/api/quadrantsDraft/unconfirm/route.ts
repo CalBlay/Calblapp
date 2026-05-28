@@ -4,6 +4,9 @@ import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import { listAllCollectionIds } from '@/lib/firestoreCollections'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { PERM } from '@/lib/permissionKeys'
+import { canViewUiPath, isAllowedByClientOverride } from '@/lib/server/permissions'
 
 export const runtime = 'nodejs'
 
@@ -66,6 +69,17 @@ async function getRoleAndDept(token: TokenLike) {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const canView = await canViewUiPath({ user: auth.user, path: '/menu/quadrants' })
+    if (!canView) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
+    const canUnconfirm = await isAllowedByClientOverride({
+      userId: auth.user.id,
+      role: auth.user.role,
+      permission: PERM.action('/menu/quadrants', 'draft:unconfirm'),
+    })
+    if (canUnconfirm !== true) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
+
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
     if (!token) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })

@@ -9,17 +9,15 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { normalizeRole } from '@/lib/roles'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { SPACES_PREMISSES_PATH } from '@/lib/spacesPermissions'
+import SpacesSectionGate from '../SpacesSectionGate'
 import {
   DEFAULT_SPACES_HEADER_RULE,
   type SpacesHeaderMetricMode,
   type SpacesHeaderRuleConfig,
   type SpacesHeaderStage,
 } from '@/lib/spacesHeaderRule'
-
-type SessionUser = {
-  role?: string
-}
 
 const STAGE_OPTIONS: Array<{ value: SpacesHeaderStage; label: string }> = [
   { value: 'verd', label: 'Confirmats' },
@@ -29,10 +27,9 @@ const STAGE_OPTIONS: Array<{ value: SpacesHeaderStage; label: string }> = [
 
 export default function SpacesPremissesPage() {
   const router = useRouter()
-  const { data: session, status } = useSession()
-  const role = normalizeRole(
-    String((session?.user as SessionUser | undefined)?.role || '')
-  )
+  const { status } = useSession()
+  const { ready: permsReady, canEditPath } = useUiPermissions()
+  const canPremisses = !permsReady || canEditPath(SPACES_PREMISSES_PATH)
 
   const [config, setConfig] = useState<SpacesHeaderRuleConfig>(
     DEFAULT_SPACES_HEADER_RULE
@@ -44,7 +41,7 @@ export default function SpacesPremissesPage() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
-    if (role !== 'admin') {
+    if (permsReady && !canPremisses) {
       router.replace('/menu/spaces/reserves')
       return
     }
@@ -80,7 +77,7 @@ export default function SpacesPremissesPage() {
     return () => {
       cancelled = true
     }
-  }, [role, router, status])
+  }, [permsReady, canPremisses, router, status])
 
   const saveConfig = async () => {
     setSaving(true)
@@ -123,11 +120,12 @@ export default function SpacesPremissesPage() {
     return <div className="p-6 text-sm text-slate-500">Carregant...</div>
   }
 
-  if (role !== 'admin') {
+  if (permsReady && !canPremisses) {
     return null
   }
 
   return (
+    <SpacesSectionGate subpath={SPACES_PREMISSES_PATH}>
     <main className="space-y-6 px-4 pb-12">
       <ModuleHeader
         title="Espais"
@@ -269,5 +267,6 @@ export default function SpacesPremissesPage() {
         )}
       </section>
     </main>
+    </SpacesSectionGate>
   )
 }

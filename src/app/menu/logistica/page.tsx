@@ -14,7 +14,7 @@ import {
   CarFront,
   type LucideIcon,
 } from 'lucide-react'
-import { getVisibleModules } from '@/lib/accessControl'
+import { getVisibleModules, MODULES } from '@/lib/accessControl'
 
 const fetcher = (url: string) => fetch(url).then((response) => response.json())
 
@@ -26,6 +26,8 @@ export default function LogisticsHubPage() {
     fetcher,
     { refreshInterval: user?.id ? 15000 : 0 }
   )
+  const { data: uiPermData } = useSWR(user?.id ? '/api/permissions/ui' : null, fetcher)
+  const uiMap = (uiPermData?.map || {}) as Record<string, boolean>
 
   const reservationNotificationCount = Array.isArray(reservationNotificationData?.notifications)
     ? reservationNotificationData.notifications.filter(
@@ -36,12 +38,15 @@ export default function LogisticsHubPage() {
       ).length
     : 0
 
-  const logisticaModule = getVisibleModules({
+  const baseLogistica = getVisibleModules({
     role: user?.role,
     department: user?.department,
-  }).find(m => m.path === '/menu/logistica')
+  }).find((m) => m.path === '/menu/logistica')
 
-  const submodules = logisticaModule?.submodules ?? []
+  const catalogLogistica = MODULES.find((m) => m.path === '/menu/logistica')
+  const submodules = uiPermData
+    ? (catalogLogistica?.submodules || []).filter((sub) => uiMap[sub.path] === true)
+    : baseLogistica?.submodules ?? []
 
   return (
     <>
