@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import { Images, RefreshCw, Trash2 } from 'lucide-react'
+import Image from 'next/image'
 import useSWR from 'swr'
 import { PERM } from '@/lib/permissionKeys'
 
@@ -59,23 +60,14 @@ function MediaPage() {
   const user = session?.user
   const fetcher = (url: string) => fetch(url).then((r) => r.json())
   const { data: uiPermData } = useSWR(user?.id ? '/api/permissions/ui' : null, fetcher)
-  const uiMap = (uiPermData?.map || {}) as Record<string, boolean>
-  const uiActions = (uiPermData?.actions || {}) as Record<string, boolean>
-
-  useEffect(() => {
-    if (status === 'loading') return
-    if (!user) {
-      router.replace('/login')
-      return
-    }
-    if (uiPermData && uiMap['/menu/media'] === false) {
-      router.replace('/menu')
-    }
-  }, [status, user, router, uiPermData, uiMap, pathname])
-
-  if (status === 'loading') return <div className="p-4">Comprovant sessió…</div>
-  if (!user) return <div className="p-4">No autoritzat.</div>
-  if (uiPermData && uiMap['/menu/media'] === false) return null
+  const uiMap = useMemo(
+    () => (uiPermData?.map ?? {}) as Record<string, boolean>,
+    [uiPermData]
+  )
+  const uiActions = useMemo(
+    () => (uiPermData?.actions ?? {}) as Record<string, boolean>,
+    [uiPermData]
+  )
 
   const allowedSources = useMemo(() => {
     if (!uiPermData) return (Object.keys(SOURCE_LABELS) as MediaSource[])
@@ -145,31 +137,26 @@ function MediaPage() {
     [buildListParams]
   )
 
-  useEffect(() => {
-    void loadMedia('initial')
-  }, [loadMedia])
+  const canAccessPage =
+    status !== 'loading' &&
+    Boolean(user) &&
+    !(uiPermData && uiMap['/menu/media'] === false)
 
-  const loadMore = async () => {
-    if (!nextCursor || loadingMore) return
-    setLoadingMore(true)
-    setError(null)
-    try {
-      const res = await fetch(`/api/media?${buildListParams(nextCursor)}`, { cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json?.error || "No s'han pogut carregar més imatges")
-      const chunk: MediaItem[] = Array.isArray(json?.media) ? json.media : []
-      setItems((prev) => {
-        const seen = new Set(prev.map((i) => i.path))
-        const extra = chunk.filter((m) => m.path && !seen.has(m.path))
-        return [...prev, ...extra]
-      })
-      setNextCursor(typeof json?.nextCursor === 'string' ? json.nextCursor : null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error carregant més imatges")
-    } finally {
-      setLoadingMore(false)
+  useEffect(() => {
+    if (status === 'loading') return
+    if (!user) {
+      router.replace('/login')
+      return
     }
-  }
+    if (uiPermData && uiMap['/menu/media'] === false) {
+      router.replace('/menu')
+    }
+  }, [status, user, router, uiPermData, uiMap, pathname])
+
+  useEffect(() => {
+    if (!canAccessPage) return
+    void loadMedia('initial')
+  }, [loadMedia, canAccessPage])
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
@@ -196,6 +183,32 @@ function MediaPage() {
     () => filteredItems.reduce((acc, item) => acc + Number(item.size || 0), 0),
     [filteredItems]
   )
+
+  if (status === 'loading') return <div className="p-4">Comprovant sessió…</div>
+  if (!user) return <div className="p-4">No autoritzat.</div>
+  if (uiPermData && uiMap['/menu/media'] === false) return null
+
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore) return
+    setLoadingMore(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/media?${buildListParams(nextCursor)}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error || "No s'han pogut carregar més imatges")
+      const chunk: MediaItem[] = Array.isArray(json?.media) ? json.media : []
+      setItems((prev) => {
+        const seen = new Set(prev.map((i) => i.path))
+        const extra = chunk.filter((m) => m.path && !seen.has(m.path))
+        return [...prev, ...extra]
+      })
+      setNextCursor(typeof json?.nextCursor === 'string' ? json.nextCursor : null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error carregant més imatges")
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   const handleDelete = async (item: MediaItem) => {
     const confirmed = window.confirm(
@@ -380,4 +393,3 @@ function MediaPage() {
 }
 
 export default MediaPage
-import Image from 'next/image'

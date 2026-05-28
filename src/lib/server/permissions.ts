@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { getVisibleModules, type AccessUser } from '@/lib/accessControl'
 import {
@@ -49,17 +50,34 @@ function isClientScopeOverride(o: AssignmentOverride | null | undefined) {
   return String(o?.scope || 'client') === 'client' && !String(o?.scopeId || '').trim()
 }
 
+function clientScopeOverrideEffect(o: AssignmentOverride): OverrideEffect {
+  return o.effect === 'deny' ? 'deny' : 'allow'
+}
+
+/** One Firestore read per request per userId (React `cache` dedupes within the request). */
+const loadClientScopeOverrideEffectsByPermission = cache(
+  async (userId: string): Promise<Map<string, OverrideEffect>> => {
+    const snap = await firestoreAdmin.collection('user_access_assignments').doc(String(userId)).get()
+    const map = new Map<string, OverrideEffect>()
+    if (!snap.exists) return map
+    const data = snap.data() as UserAccessAssignment | undefined
+    const list = Array.isArray(data?.overrides) ? data.overrides : []
+    for (const o of list) {
+      if (!isClientScopeOverride(o)) continue
+      const permission = String(o?.permission || '').trim()
+      if (!permission || map.has(permission)) continue
+      map.set(permission, clientScopeOverrideEffect(o))
+    }
+    return map
+  }
+)
+
 export async function getClientOverrideEffectForPermission(
   userId: string,
   permission: string
 ): Promise<OverrideEffect | null> {
-  const snap = await firestoreAdmin.collection('user_access_assignments').doc(String(userId)).get()
-  if (!snap.exists) return null
-  const data = snap.data() as UserAccessAssignment | undefined
-  const list = Array.isArray(data?.overrides) ? data?.overrides : []
-  const found = list.find((o) => isClientScopeOverride(o) && String(o?.permission || '').trim() === permission)
-  if (!found) return null
-  return found.effect === 'deny' ? 'deny' : 'allow'
+  const map = await loadClientScopeOverrideEffectsByPermission(userId)
+  return map.get(permission) ?? null
 }
 
 /**

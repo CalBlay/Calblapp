@@ -60,7 +60,10 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
     user?.id ? '/api/permissions/ui' : null,
     fetcher
   )
-  const uiMap = (uiPermData?.map || {}) as Record<string, boolean>
+  const uiMap = useMemo(
+    () => (uiPermData?.map ?? {}) as Record<string, boolean>,
+    [uiPermData]
+  )
 
   /* 🔐 Protecció de sessió */
   useEffect(() => {
@@ -93,16 +96,25 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
   const username = user?.name || user?.email || 'Usuari'
   const avatarLetter = username[0]?.toUpperCase() ?? 'U'
 
-  const baseVisibleModules = user
-    ? getVisibleModules({
-        role,
-        department,
-        canRespondSurveys: user.canRespondSurveys,
-        isDepartmentRobaLead: user.isDepartmentRobaLead,
-        robaLinkedPersonnelId: user.robaLinkedPersonnelId,
-        opsProjectsConfigurable: user.opsProjectsConfigurable,
-      })
-    : []
+  const baseVisibleModules = useMemo(() => {
+    if (!user) return []
+    return getVisibleModules({
+      role,
+      department,
+      canRespondSurveys: user.canRespondSurveys,
+      isDepartmentRobaLead: user.isDepartmentRobaLead,
+      robaLinkedPersonnelId: user.robaLinkedPersonnelId,
+      opsProjectsConfigurable: user.opsProjectsConfigurable,
+    })
+  }, [
+    user,
+    role,
+    department,
+    user?.canRespondSurveys,
+    user?.isDepartmentRobaLead,
+    user?.robaLinkedPersonnelId,
+    user?.opsProjectsConfigurable,
+  ])
 
   const filteredVisibleModules = useMemo(() => {
     if (!uiPermData) return baseVisibleModules

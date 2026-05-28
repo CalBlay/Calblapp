@@ -21,6 +21,22 @@ type UserAccessAssignment = {
   updatedBy?: string
 }
 
+function parseOverrideInput(raw: unknown): AssignmentOverride | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const permission = String(o.permission ?? '').trim()
+  if (!permission) return null
+  const effect: AssignmentOverride['effect'] =
+    String(o.effect ?? 'allow') === 'deny' ? 'deny' : 'allow'
+  const scopeRaw = String(o.scope ?? 'client')
+  const scope: AssignmentOverride['scope'] =
+    scopeRaw === 'centre' || scopeRaw === 'project' ? scopeRaw : 'client'
+  const scopeId =
+    o.scopeId != null && o.scopeId !== '' ? String(o.scopeId).trim() : null
+  const note = o.note != null && o.note !== '' ? String(o.note).trim() : null
+  return { permission, effect, scope, scopeId, note }
+}
+
 async function getUserName(userId: string): Promise<string | undefined> {
   const uSnap = await firestoreAdmin.collection('users').doc(userId).get()
   if (!uSnap.exists) return undefined
@@ -85,18 +101,8 @@ export async function PUT(
 
   const overrides = Array.isArray(body.overrides)
     ? body.overrides
-        .map((o) => ({
-          permission: String((o as any)?.permission || '').trim(),
-          effect: (String((o as any)?.effect || 'allow') === 'deny' ? 'deny' : 'allow') as
-            | 'allow'
-            | 'deny',
-          scope: (['client', 'centre', 'project'].includes(String((o as any)?.scope))
-            ? String((o as any)?.scope)
-            : 'client') as 'client' | 'centre' | 'project',
-          scopeId: (o as any)?.scopeId ? String((o as any)?.scopeId).trim() : null,
-          note: (o as any)?.note ? String((o as any)?.note).trim() : null,
-        }))
-        .filter((o) => o.permission)
+        .map(parseOverrideInput)
+        .filter((o): o is AssignmentOverride => o != null)
     : []
 
   const ref = firestoreAdmin.collection('user_access_assignments').doc(id)
