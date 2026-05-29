@@ -513,7 +513,18 @@ export default function AllergensBbddPage() {
     setStatus('')
 
     try {
-      await deleteDoc(doc(db, 'allergens_import_conflicts', conflictId))
+      const response = await fetch(
+        `/api/allergens/bbdd/conflicts/${encodeURIComponent(conflictId)}`,
+        { method: 'DELETE' }
+      )
+      const result = (await response.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null
+
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || 'Delete failed')
+      }
+
       setImportConflicts(prev => prev.filter(item => item.id !== conflictId))
       setStatus('Conflicte eliminat.')
     } catch (err) {
@@ -524,54 +535,6 @@ export default function AllergensBbddPage() {
     }
   }
 
-  const clearCollectionClient = async (collectionName: string) => {
-    while (true) {
-      const snap = await getDocs(collection(db, collectionName))
-      if (snap.empty) break
-
-      let batch = writeBatch(db)
-      let batchCount = 0
-
-      for (const docSnap of snap.docs) {
-        batch.delete(docSnap.ref)
-        batchCount++
-        if (batchCount >= 450) {
-          await batch.commit()
-          batch = writeBatch(db)
-          batchCount = 0
-        }
-      }
-
-      if (batchCount > 0) {
-        await batch.commit()
-      }
-
-      if (snap.size < 450) break
-    }
-  }
-
-  const seedDefaultAllergensClient = async () => {
-    let batch = writeBatch(db)
-    let batchCount = 0
-
-    for (const allergen of DEFAULT_ALLERGENS) {
-      batch.set(
-        doc(db, 'allergens', allergen.key),
-        { label: allergen.label, updatedAt: serverTimestamp(), source: 'manual-import' },
-        { merge: true }
-      )
-      batchCount++
-      if (batchCount >= 450) {
-        await batch.commit()
-        batch = writeBatch(db)
-        batchCount = 0
-      }
-    }
-
-    if (batchCount > 0) {
-      await batch.commit()
-    }
-  }
 
   const handleManualImport = async (file: File, mode: 'replace' | 'incremental') => {
     setLoading(true)
@@ -603,6 +566,9 @@ export default function AllergensBbddPage() {
         return []
       })
 
+      const rowsToImport = [...validRows]
+      const existingConflicts: ImportConflictItem[] = []
+
       if (mode === 'replace') {
         const confirmed = window.confirm(
           `Aixo reemplaçara tota la base actual amb el contingut de ${file.name}. Vols continuar?`
@@ -611,114 +577,70 @@ export default function AllergensBbddPage() {
           setStatus('Importacio cancel.lada.')
           return
         }
-
-        for (const collectionName of [
-          'plats',
-          'categories',
-          'family',
-          'menus',
-          'allergens',
-          'allergens_import_conflicts',
-        ]) {
-          await clearCollectionClient(collectionName)
-        }
-      } else {
-        await clearCollectionClient('allergens_import_conflicts')
       }
 
-      await seedDefaultAllergensClient()
+      if (mode === 'incremental') {
+        const existingByCode = new Map(
+          platsIndex.map(item => [item.code, item.nameCa || item.nameEs || item.nameEn || ''])
+        )
 
-      let batch = writeBatch(db)
-      let batchCount = 0
-      const flushBatch = async () => {
-        if (batchCount === 0) return
-        await batch.commit()
-        batch = writeBatch(db)
-        batchCount = 0
-      }
+        for (let index = rowsToImport.length - 1; index >= 0; index--) {
+          const row = rowsToImport[index]
+          const existingName = existingByCode.get(row.code)
+          if (!existingName) continue
 
-      for (const [id, label] of familyMap.entries()) {
-        batch.set(doc(db, 'family', id), {
-          label,
-          updatedAt: serverTimestamp(),
-          source: 'manual-import',
-        }, { merge: true })
-        batchCount++
-        if (batchCount >= 450) await flushBatch()
-      }
+          const shouldUpdate = window.confirm(
+            `El codi ${row.code} ja existeix (${existingName || row.nameCa}). Vols actualitzar-lo?`
+          )
 
-      for (const [id, label] of categoryMap.entries()) {
-        batch.set(doc(db, 'categories', id), {
-          label,
-          updatedAt: serverTimestamp(),
-          source: 'manual-import',
-        }, { merge: true })
-        batchCount++
-        if (batchCount >= 450) await flushBatch()
-      }
+          if (shouldUpdate) continue
 
-      for (const [id, label] of menuMap.entries()) {
-        batch.set(doc(db, 'menus', id), {
-          label,
-          updatedAt: serverTimestamp(),
-          source: 'manual-import',
-        }, { merge: true })
-        batchCount++
-        if (batchCount >= 450) await flushBatch()
-      }
-
-      for (const conflict of duplicateConflicts) {
-        batch.set(doc(db, 'allergens_import_conflicts', conflict.id), {
-          code: conflict.code || conflict.id,
-          reason: conflict.reason || 'duplicate-code-in-excel',
-          status: 'pending',
-          entries: conflict.entries || [],
-          createdAt: serverTimestamp(),
-          source: file.name,
-        })
-        batchCount++
-        if (batchCount >= 450) await flushBatch()
-      }
-
-      await flushBatch()
-
-      let imported = 0
-      let existingConflicts = 0
-
-      for (const row of validRows) {
-        const platRef = doc(db, 'plats', row.code)
-        if (mode === 'incremental') {
-          const existing = await getDoc(platRef)
-          if (existing.exists()) {
-            const shouldUpdate = window.confirm(
-              `El codi ${row.code} ja existeix (${String(existing.data()?.name?.ca || row.nameCa)}). Vols actualitzar-lo?`
-            )
-
-            if (!shouldUpdate) {
-              await setDoc(doc(db, 'allergens_import_conflicts', `${slugify(row.code)}-existing`), {
+          existingConflicts.push({
+            id: `${slugify(row.code)}-existing`,
+            code: row.code,
+            reason: 'existing-code-conflict',
+            status: 'pending',
+            existingNameCa: existingName || row.nameCa,
+            entries: [
+              {
                 code: row.code,
-                reason: 'existing-code-conflict',
-                status: 'pending',
-                existingNameCa: String(existing.data()?.name?.ca || ''),
-                entries: [
-                  {
-                    code: row.code,
-                    sheet: row.sheetKey,
-                    row: row.rowIndex,
-                    nameCa: row.nameCa,
-                  },
-                ],
-                createdAt: serverTimestamp(),
-                source: file.name,
-              })
-              existingConflicts++
-              continue
-            }
-          }
+                sheet: row.sheetKey,
+                row: row.rowIndex,
+                nameCa: row.nameCa,
+              },
+            ],
+          })
+          rowsToImport.splice(index, 1)
         }
+      }
 
-        await setDoc(platRef, { ...row.data, updatedAt: serverTimestamp() }, { merge: mode !== 'replace' })
-        imported++
+      const response = await fetch('/api/allergens/bbdd/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          source: file.name,
+          categoryEntries: Array.from(categoryMap.entries()),
+          familyEntries: Array.from(familyMap.entries()),
+          menuEntries: Array.from(menuMap.entries()),
+          duplicateConflicts,
+          existingConflicts,
+          rowsToImport,
+        }),
+      })
+
+      const result = (await response.json().catch(() => null)) as
+        | {
+            ok?: boolean
+            error?: string
+            imported?: number
+            duplicateConflicts?: number
+            existingConflicts?: number
+          }
+        | null
+
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || 'Import failed')
       }
 
       await Promise.all([
@@ -761,9 +683,9 @@ export default function AllergensBbddPage() {
       ])
 
       setStatus(
-        `Importacio manual completada. Plats importats: ${imported}. ` +
-          `Conflictes duplicats: ${duplicateConflicts.length}. ` +
-          `Conflictes per existents: ${existingConflicts}.`
+        `Importacio manual completada. Plats importats: ${result.imported || 0}. ` +
+          `Conflictes duplicats: ${result.duplicateConflicts || 0}. ` +
+          `Conflictes per existents: ${result.existingConflicts || 0}.`
       )
     } catch (err) {
       console.error(err)
@@ -775,7 +697,6 @@ export default function AllergensBbddPage() {
       if (importFileRef.current) importFileRef.current.value = ''
     }
   }
-
   const toggleMenu = (menuId: string) => {
     setForm(prev => {
       const exists = prev.menus.includes(menuId)
@@ -1768,3 +1689,4 @@ export default function AllergensBbddPage() {
     </>
   )
 }
+

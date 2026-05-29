@@ -125,3 +125,14 @@ export type ParsedImportRow = {
     updatedAt: number
   }
 }
+
+export type ManualImportRequest = {
+  mode: 'replace' | 'incremental'
+  source: string
+  categoryEntries: Array<[string, string]>
+  familyEntries: Array<[string, string]>
+  menuEntries: Array<[string, string]>
+  duplicateConflicts: ImportConflictItem[]
+  existingConflicts: ImportConflictItem[]
+  rowsToImport: ParsedImportRow[]
+}
