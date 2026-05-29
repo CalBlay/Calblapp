@@ -123,7 +123,7 @@ export async function GET() {
   if (!auth.ok) return auth.res
 
   // Construïm l'usuari base des de la sessió
-  const u = auth.user as any
+  const u = auth.user
   const accessUser: AccessUser = {
     role: u?.role,
     department: u?.department,
@@ -336,4 +336,3 @@ export async function GET() {
 
   return NextResponse.json({ map, edit, actions })
 }
-

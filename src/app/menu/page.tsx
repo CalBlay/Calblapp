@@ -307,7 +307,10 @@ function MenuContent({ user }: { user: SessionUser }) {
   const baseModules = getVisibleModules(user)
   const fetcher = (url: string) => fetch(url).then((r) => r.json())
   const { data: uiPermData } = useSWR(user?.id ? '/api/permissions/ui' : null, fetcher)
-  const uiMap = (uiPermData?.map || {}) as Record<string, boolean>
+  const uiMap = useMemo(
+    () => (uiPermData?.map || {}) as Record<string, boolean>,
+    [uiPermData]
+  )
 
   const filteredModules = useMemo(() => {
     if (!uiPermData) return baseModules

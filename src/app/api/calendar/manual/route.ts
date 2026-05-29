@@ -17,8 +17,8 @@ export async function POST(req: Request) {
     if (!auth.ok) return auth.res
     const accessUser: AccessUser & { id: string } = {
       id: auth.user.id,
-      role: auth.user.role,
-      department: auth.user.department,
+      role: auth.user.role ?? undefined,
+      department: auth.user.department ?? undefined,
       canRespondSurveys: Boolean(auth.user.canRespondSurveys),
       isDepartmentRobaLead: Boolean(auth.user.isDepartmentRobaLead),
       robaLinkedPersonnelId: auth.user.robaLinkedPersonnelId ?? null,
@@ -91,8 +91,8 @@ export async function GET() {
     if (!auth.ok) return auth.res
     const accessUser: AccessUser & { id: string } = {
       id: auth.user.id,
-      role: auth.user.role,
-      department: auth.user.department,
+      role: auth.user.role ?? undefined,
+      department: auth.user.department ?? undefined,
       canRespondSurveys: Boolean(auth.user.canRespondSurveys),
       isDepartmentRobaLead: Boolean(auth.user.isDepartmentRobaLead),
       robaLinkedPersonnelId: auth.user.robaLinkedPersonnelId ?? null,

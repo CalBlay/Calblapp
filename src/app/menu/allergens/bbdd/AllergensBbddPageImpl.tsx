@@ -61,17 +61,12 @@ import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 export default function AllergensBbddPage() {
   useSession()
-  const { uiMap, uiEdit, uiActions, data: uiPermData } = useUiPermissions()
+  const { uiMap, uiActions, data: uiPermData } = useUiPermissions()
 
   const allowed = useMemo(() => {
     if (!uiPermData) return true
     return uiMap['/menu/allergens/bbdd'] !== false
   }, [uiPermData, uiMap])
-
-  const canEdit = useMemo(() => {
-    if (!uiPermData) return true
-    return uiMap['/menu/allergens/bbdd'] !== false && uiEdit['/menu/allergens/bbdd'] !== false
-  }, [uiPermData, uiMap, uiEdit])
 
   const canImport = useMemo(() => {
     if (!uiPermData) return true

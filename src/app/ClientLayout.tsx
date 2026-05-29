@@ -106,15 +106,7 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
       robaLinkedPersonnelId: user.robaLinkedPersonnelId,
       opsProjectsConfigurable: user.opsProjectsConfigurable,
     })
-  }, [
-    user,
-    role,
-    department,
-    user?.canRespondSurveys,
-    user?.isDepartmentRobaLead,
-    user?.robaLinkedPersonnelId,
-    user?.opsProjectsConfigurable,
-  ])
+  }, [user, role, department])
 
   const filteredVisibleModules = useMemo(() => {
     if (!uiPermData) return baseVisibleModules

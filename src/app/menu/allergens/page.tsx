@@ -19,11 +19,11 @@ export default function AllergensHubPage() {
   const { map: uiMap, data: uiPermData } = useUiPermissions()
 
   const allergensModule = MODULES.find((m) => m.path === '/menu/allergens')
-  const allSubmodules = allergensModule?.submodules ?? []
   const allowedSubmodules = useMemo(() => {
+    const allSubmodules = allergensModule?.submodules ?? []
     if (!uiPermData) return allSubmodules
     return allSubmodules.filter((s) => uiMap[s.path] !== false)
-  }, [uiPermData, allSubmodules, uiMap])
+  }, [allergensModule, uiPermData, uiMap])
 
   return (
     <>

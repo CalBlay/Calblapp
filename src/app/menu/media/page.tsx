@@ -80,10 +80,6 @@ function MediaPage() {
     return uiActions[PERM.action('/menu/media', 'delete')] === true
   }, [uiPermData, uiActions])
 
-  const sourceOptions = useMemo(() => {
-    return ['all' as const, ...allowedSources]
-  }, [allowedSources])
-
   const [items, setItems] = useState<MediaItem[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)

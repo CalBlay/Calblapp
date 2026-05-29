@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import React, { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { toast } from '@/components/ui/use-toast'
@@ -1106,9 +1107,11 @@ export function EntreguesPanel({
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Signatura</p>
               {selectedDeliverySignatureDataUrl ? (
                 <div className="mt-3 rounded-lg border border-border bg-white p-3">
-                  <img
+                  <Image
                     src={selectedDeliverySignatureDataUrl}
                     alt="Signatura de recepció"
+                    width={1200}
+                    height={320}
                     className="max-h-40 w-full object-contain"
                   />
                 </div>

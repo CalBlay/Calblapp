@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { useSession } from 'next-auth/react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -72,8 +71,6 @@ const buildAllergenFilters = (list: readonly AllergenItem[]) =>
   }, {})
 
 export default function AllergensSearchPage() {
-  const { data: session } = useSession()
-  const user = session?.user
   const { canViewPath, isLoading: uiPermLoading } = useUiPermissions()
 
   const allowed = useMemo(() => {

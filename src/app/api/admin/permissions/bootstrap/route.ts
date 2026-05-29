@@ -40,7 +40,10 @@ export async function POST() {
   }
 
   const usersSnap = await firestoreAdmin.collection('users').get()
-  const users = usersSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }))
+  const users = usersSnap.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() as Record<string, unknown>),
+  })) as Array<{ id: string; role?: unknown; department?: unknown }>
 
   const assignmentsCol = firestoreAdmin.collection('user_access_assignments')
   let usersWritten = 0
@@ -92,4 +95,3 @@ export async function POST() {
   }
   return NextResponse.json(res)
 }
-

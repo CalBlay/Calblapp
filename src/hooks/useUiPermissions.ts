@@ -2,7 +2,7 @@
 
 import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { isUiPathAllowed, isUiPathBlocked } from '@/lib/uiPathAccess'
 
 export type UiPermissionsResponse = {
@@ -29,9 +29,9 @@ export function useUiPermissions() {
     { revalidateOnFocus: false }
   )
 
-  const map = (data?.map || {}) as Record<string, boolean>
-  const edit = (data?.edit || {}) as Record<string, boolean>
-  const actions = (data?.actions || {}) as Record<string, boolean>
+  const map = useMemo(() => (data?.map || {}) as Record<string, boolean>, [data])
+  const edit = useMemo(() => (data?.edit || {}) as Record<string, boolean>, [data])
+  const actions = useMemo(() => (data?.actions || {}) as Record<string, boolean>, [data])
 
   const canViewPath = useCallback((path: string) => map[path] !== false, [map])
   const isPathBlocked = useCallback((path: string) => isUiPathBlocked(path, map), [map])
@@ -64,4 +64,3 @@ export function useUiPermissions() {
     mutate,
   }
 }
-

@@ -12,8 +12,13 @@ export type SessionUserForApi = {
   id: string
   name?: string | null
   email?: string | null
-  role?: string
-  department?: string
+  role?: string | null
+  department?: string | null
+  canRespondSurveys?: boolean | null
+  isDepartmentRobaLead?: boolean | null
+  robaLinkedPersonnelId?: string | null
+  opsProjectsConfigurable?: boolean | null
+  isTransportLead?: boolean | null
 }
 
 export type AuthSuccess = {

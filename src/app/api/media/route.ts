@@ -20,6 +20,7 @@ import {
   isMediaIndexEmpty,
   loadMediaIndexPage,
 } from '@/lib/media/storageMediaIndex'
+import type { AggregatedMediaItem } from '@/lib/media/collectMediaRefs'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -218,7 +219,7 @@ export async function GET(req: Request) {
       incidentEventId: incidentEventId || null,
     })
 
-    const filtered = items.filter((it: any) =>
+    const filtered = items.filter((it: AggregatedMediaItem) =>
       Array.isArray(it?.sourceKinds)
         ? it.sourceKinds.some((k: string) => allowedSources.has(k as MediaSource))
         : true
