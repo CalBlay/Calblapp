@@ -4,7 +4,11 @@
   "crons": [
     {
       "path": "/api/sync/zoho-to-firestore?mode=cron",
-      "schedule": "0 3 * * *"
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/sync/zoho-to-firestore?mode=cron",
+      "schedule": "0 19 * * *"
     },
     {
       "path": "/api/sync/ada-to-firestore?mode=cron",
