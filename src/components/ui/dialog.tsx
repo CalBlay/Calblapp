@@ -52,6 +52,8 @@ function DialogContent({
   onInteractOutside,
   ...props
 }: DialogContentProps) {
+  const mobileSafe = lockDismissOnOutside ? dialogContentPropsMobileCameraSafe : null
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -68,6 +70,8 @@ function DialogContent({
             e.preventDefault()
             return
           }
+          mobileSafe?.onPointerDownOutside?.(e)
+          if (e.defaultPrevented) return
           onPointerDownOutside?.(e)
         }}
         onInteractOutside={(e) => {
@@ -75,9 +79,11 @@ function DialogContent({
             e.preventDefault()
             return
           }
+          mobileSafe?.onInteractOutside?.(e)
+          if (e.defaultPrevented) return
           onInteractOutside?.(e)
         }}
-        {...(lockDismissOnOutside ? dialogContentPropsMobileCameraSafe : {})}
+        onFocusOutside={mobileSafe?.onFocusOutside}
       >
         {children}
       </DialogPrimitive.Content>

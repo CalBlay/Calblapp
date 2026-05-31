@@ -18,8 +18,8 @@ export function isDialogComboboxPortalTarget(target: EventTarget | null): boolea
  */
 export function getDialogComboboxPortalContainer(
   anchor: HTMLElement | null
-): HTMLElement {
-  if (typeof document === 'undefined') return document.body
+): HTMLElement | null {
+  if (typeof document === 'undefined') return null
   const dialogContent = anchor?.closest(DIALOG_CONTENT_SELECTOR)
   return (dialogContent as HTMLElement | null) ?? document.body
 }

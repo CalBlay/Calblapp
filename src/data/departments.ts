@@ -46,9 +46,9 @@ const DEPARTMENTS_RAW = [
   'Agenda',
 ] as const
 
-export const DEPARTMENTS: readonly string[] = dedupeDepartmentLabels(DEPARTMENTS_RAW)
-
 export type DepartmentId = (typeof DEPARTMENTS_RAW)[number]
+
+export const DEPARTMENTS = dedupeDepartmentLabels(DEPARTMENTS_RAW) as readonly DepartmentId[]
 
 /** Departament per defecte en formularis nous. */
 export const DEFAULT_USER_DEPARTMENT = 'Empresa' as DepartmentId

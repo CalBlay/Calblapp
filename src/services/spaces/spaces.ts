@@ -4,6 +4,8 @@ import { manualIdToCreatedAtIso } from '@/services/spaces/manualReserveZohoMatch
 import type { Timestamp } from 'firebase-admin/firestore'
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
 
+type FirestoreDateLike = { toDate: () => Date }
+
 function normalizeText(value: unknown): string {
   return (value || '').toString().trim()
 }
@@ -70,6 +72,15 @@ function toCreatedAtMs(value: unknown): number {
   return 0
 }
 
+function isFirestoreDateLike(value: unknown): value is FirestoreDateLike {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    'toDate' in value &&
+    typeof (value as { toDate?: unknown }).toDate === 'function'
+  )
+}
+
 /** Milliseconds for ordering events in a cell (oldest first). */
 function eventCreatedAtMs(
   data: Record<string, unknown>,
@@ -124,6 +135,7 @@ interface RawEvent {
   createdAtMs: number
   createdBy?: string
   createdAt?: string
+  NomEvent?: string
   NomClient?: string
   Comercial?: string
   Comentari?: string
@@ -218,20 +230,20 @@ export async function getSpacesByWeek(
       snap.forEach((doc) => {
         const data = doc.data() as Record<string, unknown>
         const createdAtMs = eventCreatedAtMs(data, doc.id, doc.createTime)
-        let start = data.DataInici
-        const endRaw = data.DataFinal || data.DataFi || data.DataInici
+        let start: unknown = data.DataInici
+        const endRaw: unknown = data.DataFinal || data.DataFi || data.DataInici
 
-        if (start?.toDate) start = start.toDate()
+        if (isFirestoreDateLike(start)) start = start.toDate()
         else if (typeof start === 'string') start = new Date(start)
 
-        let end = endRaw
-        if (endRaw?.toDate) end = endRaw.toDate()
+        let end: unknown = endRaw
+        if (isFirestoreDateLike(endRaw)) end = endRaw.toDate()
         else if (typeof endRaw === 'string') end = new Date(endRaw)
 
         if (!(start instanceof Date) || Number.isNaN(start.getTime())) return
         if (!(end instanceof Date) || Number.isNaN(end.getTime())) return
 
-        const finca = normalizeText((data.Ubicacio || '').split('(')[0])
+        const finca = normalizeText(data.Ubicacio).split('(')[0]
         const commercial = normalizeText(data.Comercial)
         const ln = normalizeText(data.LN)
 
