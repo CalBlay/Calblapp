@@ -46,7 +46,7 @@ interface ZohoDeal {
   Amount?: number | string | null
   Observacions?: string | null
   Description?: string | null
-
+  Fulla_d_enc_rrec?: unknown
 }
 
 interface ZohoAttachment {
@@ -232,7 +232,7 @@ function sanitizeStorageName(raw?: string | null): string {
   return normalized || `attachment-${Date.now()}`
 }
 
-const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = ['FT', 'FG', 'FE', 'FM'] as const
+const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = ['FT ', 'FG ', 'FE ', 'FM '] as const
 
 function shouldImportZohoAttachment(fileName?: string | null): boolean {
   const normalized = String(fileName || '').trim().toUpperCase()
@@ -262,27 +262,85 @@ function listExistingZohoAttachmentBaseKeys(
   return Object.keys(existing).filter((key) => /^zohoFile\d+$/i.test(key))
 }
 
-async function listZohoAttachments(
-  moduleName: string,
-  recordId: string
-): Promise<ZohoAttachment[]> {
-  const res = await zohoFetch<{ data?: ZohoAttachment[] }>(
-    `/${moduleName}/${recordId}/Attachments`
-  )
-  return Array.isArray(res.data) ? res.data : []
+function extractZohoFieldAttachments(rawFieldValue: unknown): ZohoAttachment[] {
+  const rawItems = Array.isArray(rawFieldValue)
+    ? rawFieldValue
+    : rawFieldValue
+      ? [rawFieldValue]
+      : []
+
+  return rawItems.flatMap((item) => {
+    if (!item) return []
+    if (typeof item === 'string') {
+      const id = item.trim()
+      return id ? [{ id }] : []
+    }
+    if (typeof item !== 'object') return []
+
+    const record = item as Record<string, unknown>
+    const id = String(
+      record.File_Id__s ||
+        record.file_Id__s ||
+        record.file_id ||
+        record.$file_id ||
+        record.id ||
+        ''
+    ).trim()
+    if (!id) return []
+
+    const fileName = String(
+      record.File_Name ||
+        record.file_Name ||
+        record.file_name ||
+        record.name ||
+        record.Name ||
+        ''
+    ).trim()
+    const size = Number(record.Size)
+    const modifiedTime = String(record.Modified_Time || '').trim()
+
+    return [
+      {
+        id,
+        File_Name: fileName || undefined,
+        Size: Number.isFinite(size) ? size : undefined,
+        Modified_Time: modifiedTime || undefined,
+      },
+    ]
+  })
+}
+
+function extractFileNameFromContentDisposition(headerValue: string | null): string {
+  const value = String(headerValue || '').trim()
+  if (!value) return ''
+
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]).trim()
+    } catch {
+      return utf8Match[1].trim()
+    }
+  }
+
+  const quotedMatch = value.match(/filename=\"([^\"]+)\"/i)
+  if (quotedMatch?.[1]) return quotedMatch[1].trim()
+
+  const plainMatch = value.match(/filename=([^;]+)/i)
+  return plainMatch?.[1]?.trim() || ''
 }
 
 async function downloadZohoAttachment(
   moduleName: string,
   recordId: string,
   attachmentId: string
-): Promise<{ buffer: Buffer; mimeType: string }> {
+): Promise<{ buffer: Buffer; mimeType: string; fileName: string }> {
   const token = await getZohoAccessToken()
   const base = String(process.env.ZOHO_API_BASE || '').trim().replace(/\/$/, '')
   if (!base) throw new Error('❌ Falta ZOHO_API_BASE')
 
   const res = await fetch(
-    `${base}/${moduleName}/${recordId}/Attachments/${attachmentId}`,
+    `${base}/${moduleName}/${recordId}/actions/download_fields_attachment?fields_attachment_id=${encodeURIComponent(attachmentId)}`,
     {
       headers: {
         Authorization: `Zoho-oauthtoken ${token}`,
@@ -294,7 +352,7 @@ async function downloadZohoAttachment(
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     throw new Error(
-      `Error descarregant attachment Zoho ${attachmentId}: ${res.status} ${text}`
+      `Error descarregant fulla d'encarrec Zoho ${attachmentId}: ${res.status} ${text}`
     )
   }
 
@@ -302,16 +360,21 @@ async function downloadZohoAttachment(
   const mimeType =
     String(res.headers.get('content-type') || '').split(';')[0].trim() ||
     'application/octet-stream'
+  const fileName = extractFileNameFromContentDisposition(
+    res.headers.get('content-disposition')
+  )
 
   return {
     buffer: Buffer.from(arrayBuffer),
     mimeType,
+    fileName,
   }
 }
 
 async function buildZohoAttachmentFields(
   moduleName: string,
   dealId: string,
+  rawFieldValue: unknown,
   existing?: FirebaseFirestore.DocumentData
 ): Promise<{
   fields: Record<string, unknown>
@@ -322,23 +385,46 @@ async function buildZohoAttachmentFields(
     deletedFromStorage: number
   }
 }> {
-  const attachments = await listZohoAttachments(moduleName, dealId)
-  const filteredAttachments = attachments.filter((attachment) =>
-    shouldImportZohoAttachment(attachment.File_Name)
-  )
+  const attachments = extractZohoFieldAttachments(rawFieldValue)
   const out: Record<string, unknown> = {}
   const currentKeys = new Set<string>()
   const bucket = storageAdmin.bucket()
   let downloadedCount = 0
   let reusedCount = 0
   let deletedFromStorage = 0
+  let slotIndex = 0
 
-  for (let i = 0; i < filteredAttachments.length; i++) {
-    const attachment = filteredAttachments[i]
-    const slot = `zohoFile${i + 1}`
+  for (const attachment of attachments) {
+    const metadataName = String(attachment.File_Name || '').trim()
+    if (metadataName && !shouldImportZohoAttachment(metadataName)) continue
+
+    const slot = `zohoFile${slotIndex + 1}`
     const keys = zohoAttachmentSlotKeys(slot)
-    const fileName =
-      String(attachment.File_Name || '').trim() || `${attachment.id}.bin`
+    const existingName = String(existing?.[keys.name] || '').trim()
+    let fileName =
+      metadataName ||
+      existingName ||
+      `${attachment.id}.bin`
+    let fileBuffer: Buffer | null = null
+    let initialMimeType = ''
+
+    if (!metadataName) {
+      if (existingName) {
+        if (!shouldImportZohoAttachment(fileName)) continue
+      } else {
+        const downloaded = await downloadZohoAttachment(
+          moduleName,
+          dealId,
+          String(attachment.id)
+        )
+        fileName = downloaded.fileName.trim() || fileName
+        if (!shouldImportZohoAttachment(fileName)) continue
+        fileBuffer = downloaded.buffer
+        initialMimeType = downloaded.mimeType
+      }
+    }
+
+    slotIndex += 1
     const storageName = sanitizeStorageName(fileName)
     const storagePath = `events/zoho/${dealId}/${attachment.id}-${storageName}`
     const modifiedTime = String(attachment.Modified_Time || '').trim()
@@ -355,17 +441,21 @@ async function buildZohoAttachmentFields(
       !String(existing?.[keys.url] || '').trim()
 
     let publicUrl = String(existing?.[keys.url] || '').trim()
-    let mimeType = String(existing?.[keys.mimeType] || '').trim()
+    let mimeType =
+      initialMimeType || String(existing?.[keys.mimeType] || '').trim()
 
     if (needsRefresh) {
-      const downloaded = await downloadZohoAttachment(
-        moduleName,
-        dealId,
-        String(attachment.id)
-      )
-      mimeType = downloaded.mimeType
-      await bucket.file(storagePath).save(downloaded.buffer, {
-        contentType: mimeType,
+      if (!fileBuffer) {
+        const downloaded = await downloadZohoAttachment(
+          moduleName,
+          dealId,
+          String(attachment.id)
+        )
+        fileBuffer = downloaded.buffer
+        mimeType = downloaded.mimeType
+      }
+      await bucket.file(storagePath).save(fileBuffer, {
+        contentType: mimeType || 'application/octet-stream',
         resumable: false,
       })
       ;[publicUrl] = await bucket.file(storagePath).getSignedUrl({
@@ -384,7 +474,7 @@ async function buildZohoAttachmentFields(
     out[keys.modifiedTime] = modifiedTime
     out[keys.size] = size
     out[keys.path] = storagePath
-    out[keys.source] = 'zoho-attachment'
+    out[keys.source] = 'zoho-field-attachment'
     currentKeys.add(slot)
   }
 
@@ -665,7 +755,7 @@ export async function syncZohoDealsToFirestore(): Promise<{
   let attachmentsReused = 0
   let attachmentsDeletedFromStorage = 0
   const baseFields =
-    'id,Deal_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description'
+    'id,Deal_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec'
   const fields = ZOHO_EXTRA_RESPONSABLE_FIELD
     ? `${baseFields},${ZOHO_EXTRA_RESPONSABLE_FIELD}`
     : baseFields
@@ -1082,6 +1172,7 @@ StageGroup:
     const zohoAttachments = await buildZohoAttachmentFields(
       moduleName,
       deal.idZoho,
+      zohoById.get(deal.idZoho)?.Fulla_d_enc_rrec,
       existingDoc
     )
     attachmentsChecked += zohoAttachments.stats.checked
@@ -1124,6 +1215,7 @@ StageGroup:
     const zohoAttachments = await buildZohoAttachmentFields(
       moduleName,
       id,
+      zohoById.get(id)?.Fulla_d_enc_rrec,
       existingDoc
     )
     attachmentsChecked += zohoAttachments.stats.checked
