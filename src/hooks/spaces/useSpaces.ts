@@ -47,7 +47,8 @@ function buildFacetValues(rows: SpaceApiRow[]) {
 }
 
 export function useSpaces(
-  filters: SpacesFilterState & { baseDate: string; month?: number; year?: number }
+  filters: SpacesFilterState & { baseDate: string; month?: number; year?: number },
+  refreshKey = 0
 ) {
   const [spaces, setSpaces] = useState<SpaceApiRow[]>([])
   const [totals, setTotals] = useState<number[]>([])
@@ -83,8 +84,23 @@ export function useSpaces(
           fetch(`/api/spaces?${facetParams.toString()}`),
         ])
 
-        if (!filteredRes.ok) throw new Error(`HTTP ${filteredRes.status}`)
-        if (!facetRes.ok) throw new Error(`HTTP ${facetRes.status}`)
+        if (!filteredRes.ok) {
+          const json = await filteredRes.json().catch(() => ({}))
+          throw new Error(
+            filteredRes.status === 403
+              ? 'No tens permisos per veure les reserves d’espais'
+              : json?.error || `HTTP ${filteredRes.status}`
+          )
+        }
+
+        if (!facetRes.ok) {
+          const json = await facetRes.json().catch(() => ({}))
+          throw new Error(
+            facetRes.status === 403
+              ? 'No tens permisos per carregar els filtres d’espais'
+              : json?.error || `HTTP ${facetRes.status}`
+          )
+        }
 
         const filteredJson = await filteredRes.json()
         const facetJson = await facetRes.json()
@@ -104,7 +120,7 @@ export function useSpaces(
         setLns(facets.lns)
       } catch (err: unknown) {
         console.error('Error carregant espais:', err)
-        setError('No s han pogut carregar les dades')
+        setError(err instanceof Error ? err.message : 'No s han pogut carregar les dades')
         setSpaces([])
         setTotals([])
         setFincas([])
@@ -124,6 +140,7 @@ export function useSpaces(
     filters.month,
     filters.stage,
     filters.year,
+    refreshKey,
   ])
 
   return {

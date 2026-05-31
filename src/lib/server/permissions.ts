@@ -200,6 +200,18 @@ export async function isUiPermissionGranted(params: {
     }
   }
 
+  if (
+    parsed?.path === SPACES_RESERVES_PATH &&
+    parsed.action === SPACES_ACTION.RESERVES_MANUAL_CREATE
+  ) {
+    const canViewReserves = await canViewUiPath({
+      user: params.user,
+      path: SPACES_RESERVES_PATH,
+    })
+    if (!canViewReserves) return false
+    return canEditUiPath({ user: params.user, path: SPACES_RESERVES_PATH })
+  }
+
   if (parsed?.path === QUADRANTS_UI_PATH && parsed.action === QUADRANTS_ACTION.PREMISSES_EDIT) {
     const canView = await canViewUiPath({ user: params.user, path: QUADRANTS_UI_PATH })
     if (!canView) return false

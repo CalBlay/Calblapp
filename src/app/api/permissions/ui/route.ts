@@ -88,6 +88,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: SPACES_UI_PATH, action: SPACES_ACTION.BBDD_UPDATE },
   { path: SPACES_UI_PATH, action: SPACES_ACTION.BBDD_DELETE },
   { path: SPACES_UI_PATH, action: SPACES_ACTION.PREMISSES_EDIT },
+  { path: SPACES_RESERVES_PATH, action: SPACES_ACTION.RESERVES_MANUAL_CREATE },
 ]
 
 function spacesActionEffect(
@@ -299,6 +300,19 @@ export async function GET() {
     spacesActionEffect(assignment, SPACES_ACTION.PREMISSES_EDIT) !== 'deny'
   ) {
     actions[PERM.action(SPACES_UI_PATH, SPACES_ACTION.PREMISSES_EDIT)] = true
+  }
+
+  if (
+    map[SPACES_RESERVES_PATH] === true &&
+    edit[SPACES_RESERVES_PATH] === true &&
+    spacesActionEffect(
+      assignment,
+      SPACES_ACTION.RESERVES_MANUAL_CREATE,
+      SPACES_RESERVES_PATH
+    ) !== 'deny'
+  ) {
+    actions[PERM.action(SPACES_RESERVES_PATH, SPACES_ACTION.RESERVES_MANUAL_CREATE)] =
+      true
   }
 
   if (

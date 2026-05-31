@@ -126,9 +126,10 @@ export const colorByStage = (stage?: string): string => {
   const s = (stage || '').trim().toLowerCase()
 
   // 🔒 Valors interns normalitzats
-  if (s === 'verd') return COLORS_STAGE.confirmat
-  if (s === 'taronja') return COLORS_STAGE.calentet
-  if (s === 'groc') return COLORS_STAGE.pressupost
+  if (s === 'verd') return STAGE_COLORS.verd
+  if (s === 'taronja') return STAGE_COLORS.taronja
+  if (s === 'groc') return STAGE_COLORS.groc
+  if (s === 'lila' || s === 'manual') return STAGE_COLORS.lila
 
   // 🔹 Textos reals (Zoho / Firestore)
   if (s.includes('confirmat') || s.includes('guanyat'))

@@ -68,6 +68,14 @@ export default function FiltersBar({
 
   const [resetSignal, setResetSignal] = useState(0)
 
+  const applyFiltersAndClose = useCallback(
+    (next: Partial<FiltersState>) => {
+      setFilters(next)
+      setOpen(false)
+    },
+    [setFilters, setOpen]
+  )
+
   const handleDatesChange = useCallback(
     (f: SmartFiltersChange) => {
       if (f.start) {
@@ -184,7 +192,7 @@ export default function FiltersBar({
                     <select
                       className="h-10 rounded-xl border bg-white px-3"
                       value={filters.ln ?? '__all__'}
-                      onChange={(e) => setFilters({ ln: e.target.value })}
+                      onChange={(e) => applyFiltersAndClose({ ln: e.target.value })}
                     >
                       <option value="__all__">Totes</option>
                       {lnOptions.map((o) => (
@@ -202,7 +210,7 @@ export default function FiltersBar({
                     <select
                       className="h-10 rounded-xl border bg-white px-3"
                       value={filters.status ?? '__all__'}
-                      onChange={(e) => setFilters({ status: e.target.value })}
+                      onChange={(e) => applyFiltersAndClose({ status: e.target.value })}
                     >
                       {isQuadrants ? (
                         <>
@@ -228,7 +236,7 @@ export default function FiltersBar({
                     <select
                       className="h-10 rounded-xl border bg-white px-3"
                       value={filters.priority ?? '__all__'}
-                      onChange={(e) => setFilters({ priority: e.target.value })}
+                      onChange={(e) => applyFiltersAndClose({ priority: e.target.value })}
                     >
                       {priorityOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>
@@ -246,7 +254,7 @@ export default function FiltersBar({
                     <select
                       className="h-10 rounded-xl border bg-white px-3"
                       value={filters.responsable ?? '__all__'}
-                      onChange={(e) => setFilters({ responsable: e.target.value })}
+                      onChange={(e) => applyFiltersAndClose({ responsable: e.target.value })}
                     >
                       <option value="__all__">Tots</option>
                       {responsables.map((o) => (
@@ -264,7 +272,7 @@ export default function FiltersBar({
                     <select
                       className="h-10 rounded-xl border bg-white px-3"
                       value={filters.commercial ?? '__all__'}
-                      onChange={(e) => setFilters({ commercial: e.target.value })}
+                      onChange={(e) => applyFiltersAndClose({ commercial: e.target.value })}
                     >
                       <option value="__all__">Tots</option>
                       {commercials.map((o) => (
@@ -282,7 +290,7 @@ export default function FiltersBar({
                     <select
                       className="h-10 rounded-xl border bg-white px-3"
                       value={filters.location ?? '__all__'}
-                      onChange={(e) => setFilters({ location: e.target.value })}
+                      onChange={(e) => applyFiltersAndClose({ location: e.target.value })}
                     >
                       <option value="__all__">Totes</option>
                       {locations.map((o) => (

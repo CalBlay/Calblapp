@@ -1,4 +1,6 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { SPACES_MANUAL_RESERVES_COLLECTION } from '@/lib/spacesPermissions'
+import type { Timestamp } from 'firebase-admin/firestore'
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
 
 function normalizeText(value: unknown): string {
@@ -16,6 +18,17 @@ function matchesAnyFilter(value: string, filters: string[]): boolean {
   if (filters.length === 0) return true
   const normalizedValue = normalizeText(value).toLowerCase()
   return filters.some((filter) => normalizedValue.includes(filter))
+}
+
+/** LN filter: empty/missing LN still passes (manual reserves, legacy rows). */
+function matchesLnFilter(ln: string, filters: string[]): boolean {
+  if (filters.length === 0) return true
+  const normalizedValue = normalizeText(ln).toLowerCase()
+  if (!normalizedValue) return true
+  return filters.some(
+    (filter) =>
+      normalizedValue.includes(filter) || filter.includes(normalizedValue)
+  )
 }
 
 function isWedding(ln?: string): boolean {
@@ -43,13 +56,47 @@ function diffHours(a: number, b: number) {
   return Math.abs(a - b) / 60
 }
 
+function toCreatedAtMs(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = new Date(value).getTime()
+    return Number.isNaN(parsed) ? 0 : parsed
+  }
+  if (value && typeof value === 'object' && 'toDate' in (value as object)) {
+    const date = (value as { toDate?: () => Date }).toDate?.()
+    return date && !Number.isNaN(date.getTime()) ? date.getTime() : 0
+  }
+  return 0
+}
+
+/** Milliseconds for ordering events in a cell (oldest first). */
+function eventCreatedAtMs(
+  data: Record<string, unknown>,
+  docId: string,
+  firestoreCreateTime?: Timestamp
+): number {
+  const fromCreatedAt = toCreatedAtMs(data.createdAt)
+  if (fromCreatedAt > 0) return fromCreatedAt
+
+  const fromDataPeticio = toCreatedAtMs(data.DataPeticio)
+  if (fromDataPeticio > 0) return fromDataPeticio
+
+  if (firestoreCreateTime) return firestoreCreateTime.toMillis()
+
+  const manualMatch = /^manual_(\d+)$/.exec(docId)
+  if (manualMatch) return Number(manualMatch[1])
+
+  return Number.MAX_SAFE_INTEGER
+}
+
 interface RawEvent {
   id: string
   finca: string
   date: string
   dateEnd?: string
   ln?: string
-  stage: 'verd' | 'taronja' | 'groc'
+  stage: 'verd' | 'taronja' | 'groc' | 'lila'
+  isManual?: boolean
   eventName: string
   commercial: string
   numPax: number
@@ -57,6 +104,14 @@ interface RawEvent {
   code?: string
   service?: string
   observacions?: string
+  createdAtMs: number
+  createdBy?: string
+  createdAt?: string
+  NomClient?: string
+  Comercial?: string
+  Comentari?: string
+  Ubicacio?: string
+  DataInici?: string
 }
 
 interface EventOut extends RawEvent {
@@ -130,7 +185,8 @@ export async function getSpacesByWeek(
     finquesSnap.forEach((doc) => {
       const data = doc.data() as { nom?: string }
       const name = normalizeText(data.nom || doc.id)
-      if (name) fincaIdMap.set(name.toLowerCase(), doc.id)
+      if (!name) return
+      fincaIdMap.set(name.toLowerCase(), doc.id)
     })
 
     const rawEvents: RawEvent[] = []
@@ -143,7 +199,8 @@ export async function getSpacesByWeek(
         .get()
 
       snap.forEach((doc) => {
-        const data = doc.data()
+        const data = doc.data() as Record<string, unknown>
+        const createdAtMs = eventCreatedAtMs(data, doc.id, doc.createTime)
         let start = data.DataInici
         const endRaw = data.DataFinal || data.DataFi || data.DataInici
 
@@ -164,7 +221,7 @@ export async function getSpacesByWeek(
         if (
           !matchesAnyFilter(finca, fincaFilters) ||
           !matchesAnyFilter(commercial, comercialFilters) ||
-          !matchesAnyFilter(ln, lnFilters)
+          !matchesLnFilter(ln, lnFilters)
         ) {
           return
         }
@@ -193,8 +250,73 @@ export async function getSpacesByWeek(
               data.observacions ||
               ''
           ),
+          createdAtMs,
         })
       })
+    }
+
+    if (shouldIncludeManualReserves(stageFilters)) {
+      try {
+        const manualSnap = await db
+          .collection(SPACES_MANUAL_RESERVES_COLLECTION)
+          .where('DataInici', '<=', endStr)
+          .where('DataFi', '>=', startStr)
+          .get()
+
+        manualSnap.forEach((doc) => {
+          const data = doc.data() as Record<string, unknown>
+          const createdAtMs = eventCreatedAtMs(data, doc.id, doc.createTime)
+          const dataInici = normalizeText(data.DataInici)
+          const dataFi = normalizeText(data.DataFi || data.DataInici)
+          if (!dataInici) return
+
+          const finca = normalizeText((data.Ubicacio || '').toString().split('(')[0])
+          const commercial = normalizeText(data.Comercial)
+          const clientName = normalizeText(data.NomClient)
+
+          if (
+            !matchesAnyFilter(finca, fincaFilters) ||
+            !matchesAnyFilter(commercial, comercialFilters)
+          ) {
+            return
+          }
+
+          const comentari = normalizeText(data.Comentari || data.comentari)
+          const ubicacioRaw = normalizeText(data.Ubicacio)
+
+          rawEvents.push({
+            id: doc.id,
+            finca,
+            date: dataInici,
+            dateEnd: dataFi || dataInici,
+            ln: '',
+            stage: 'lila',
+            isManual: true,
+            eventName: clientName,
+            NomEvent: clientName,
+            NomClient: clientName,
+            commercial,
+            Comercial: commercial,
+            numPax: 0,
+            code: '',
+            service: '',
+            observacions: comentari,
+            Comentari: comentari,
+            Ubicacio: ubicacioRaw,
+            DataInici: dataInici,
+            createdBy: normalizeText(data.createdBy),
+            createdAt:
+              typeof data.createdAt === 'string'
+                ? data.createdAt
+                : data.createdAt && typeof data.createdAt === 'object' && 'toDate' in (data.createdAt as object)
+                  ? (data.createdAt as { toDate: () => Date }).toDate().toISOString()
+                  : undefined,
+            createdAtMs,
+          })
+        })
+      } catch (manualErr) {
+        console.error('[getSpacesByWeek] manual reserves query failed', manualErr)
+      }
     }
 
     const expanded: RawEvent[] = []
@@ -218,7 +340,9 @@ export async function getSpacesByWeek(
     const result: SpaceRow[] = []
     const totalPaxPerDia = Array(7).fill(0)
 
-    for (const [finca, days] of byFinca.entries()) {
+    for (const finca of byFinca.keys()) {
+      if (!matchesAnyFilter(finca, fincaFilters)) continue
+      const days = byFinca.get(finca) || new Map<string, RawEvent[]>()
       const dies: DayOut[] = Array.from({ length: 7 }, (_, index) => ({
         date: format(addDays(startRange, index), 'yyyy-MM-dd'),
         events: [],
@@ -279,17 +403,21 @@ export async function getSpacesByWeek(
             }
           }
 
-          eventsOut.push({ ...event, warning, reason })
-          totalPaxPerDia[index] += event.numPax || 0
+          eventsOut.push({
+            ...event,
+            warning: event.stage === 'lila' ? false : warning,
+            reason: event.stage === 'lila' ? '' : reason,
+          })
+          if (event.stage !== 'lila') {
+            totalPaxPerDia[index] += event.numPax || 0
+          }
         }
 
-        const order: Record<RawEvent['stage'], number> = {
-          verd: 0,
-          taronja: 1,
-          groc: 2,
-        }
-
-        eventsOut.sort((a, b) => order[a.stage] - order[b.stage])
+        eventsOut.sort((a, b) => {
+          const byCreated = a.createdAtMs - b.createdAtMs
+          if (byCreated !== 0) return byCreated
+          return a.id.localeCompare(b.id)
+        })
         dies[index].events = eventsOut
       }
 
@@ -309,4 +437,9 @@ export async function getSpacesByWeek(
   }
 }
 
-export type Stage = 'verd' | 'taronja' | 'groc'
+export type Stage = 'verd' | 'taronja' | 'groc' | 'lila'
+
+function shouldIncludeManualReserves(stageFilters: string[]): boolean {
+  if (stageFilters.length === 0) return true
+  return stageFilters.includes('manual') || stageFilters.includes('reserva_manual')
+}

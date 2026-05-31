@@ -13,10 +13,14 @@ import { useFilters } from '@/context/FiltersContext'
 import SpacesFilters, { type SpacesFilterState } from '@/components/spaces/SpacesFilters'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import {
+  SPACES_ACTION,
   SPACES_PREMISSES_PATH,
   SPACES_RESERVES_PATH,
 } from '@/lib/spacesPermissions'
 import SpacesSectionGate from '../SpacesSectionGate'
+import FloatingAddButton from '@/components/ui/floating-add-button'
+import SpacesManualReserveModal from '@/components/spaces/SpacesManualReserveModal'
+import { PERM } from '@/lib/permissionKeys'
 import {
   DEFAULT_SPACES_HEADER_RULE,
   type SpacesHeaderRuleConfig,
@@ -27,7 +31,8 @@ function getDefaultLnSelection(lns: string[]): string[] {
 }
 
 export default function SpacesPage() {
-  const { ready: permsReady, canEditPath } = useUiPermissions()
+  const { ready: permsReady, canEditPath, uiActions } = useUiPermissions()
+  const [refreshKey, setRefreshKey] = useState(0)
   const canPremisses = !permsReady || canEditPath(SPACES_PREMISSES_PATH)
   const toISODate = (date: Date) => date.toISOString().split('T')[0]
   const [headerRule, setHeaderRule] = useState<SpacesHeaderRuleConfig>(
@@ -63,8 +68,16 @@ const {
   fincas,
   comercials,
   lns,        // âœ… AFEGIT
-  loading
-} = useSpaces(filters)
+  loading,
+  error,
+} = useSpaces(filters, refreshKey)
+
+  const canCreateManual =
+    !permsReady ||
+    canEditPath(SPACES_RESERVES_PATH) ||
+    uiActions[
+      PERM.action(SPACES_RESERVES_PATH, SPACES_ACTION.RESERVES_MANUAL_CREATE)
+    ] === true
 
   useEffect(() => {
     if (lns.length === 0) return
@@ -321,6 +334,21 @@ const {
             totals={totals}
             baseDate={filters.baseDate}
             headerRule={headerRule}
+            onEventMutated={() => setRefreshKey((value) => value + 1)}
+          />
+        )}
+
+        {!loading && error && (
+          <div className="mx-4 mt-4 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
+        )}
+
+        {canCreateManual && (
+          <SpacesManualReserveModal
+            defaultDate={filters.baseDate}
+            onSaved={() => setRefreshKey((value) => value + 1)}
+            trigger={<FloatingAddButton onClick={() => {}} />}
           />
         )}
 

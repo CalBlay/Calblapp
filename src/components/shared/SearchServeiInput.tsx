@@ -90,7 +90,8 @@ export default function SearchServeiInput({ value, onChange }: Props) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -4 }}
           transition={{ duration: 0.15, ease: 'easeOut' }}
-          className="fixed z-[9999] bg-white border border-gray-200 rounded-md shadow-md max-h-[250px] overflow-y-auto scroll-smooth"
+          className="fixed z-[120] bg-white border border-gray-200 rounded-md shadow-md max-h-[250px] overflow-y-auto scroll-smooth"
+          data-servei-dropdown
           style={{
             top: pos.top,
             left: pos.left,

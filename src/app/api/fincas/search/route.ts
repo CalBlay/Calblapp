@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   const qRaw = searchParams.get('q') || ''
   const q = qRaw.toLowerCase().trim()
 
-  if (q.length < 2) return NextResponse.json({ data: [] })
+  if (q.length < 3) return NextResponse.json({ data: [] })
 
   try {
     // ✅ Cal fer servir "db" i no "firestore"

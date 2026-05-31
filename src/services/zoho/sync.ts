@@ -1,6 +1,15 @@
 // file: src/services/zoho/sync.ts
 import { FieldValue } from 'firebase-admin/firestore'
 import { firestoreAdmin as firestore, storageAdmin } from '@/lib/firebaseAdmin'
+import {
+  SPACES_MANUAL_RESERVES_COLLECTION,
+} from '@/lib/spacesPermissions'
+import { syncZohoClientsFromDealNames } from '@/services/spaces/zohoClients'
+import {
+  applyManualCreatedAtPreserve,
+  resolveManualReserveReplacements,
+  type ManualReserveDoc,
+} from '@/services/spaces/manualReserveZohoMatch'
 import { getZohoAccessToken, zohoFetch } from '@/services/zoho/auth'
 
 interface ZohoOwner {
@@ -640,6 +649,7 @@ export async function syncZohoDealsToFirestore(): Promise<{
   totalCount: number
   createdCount: number
   deletedCount: number
+  manualReplacedCount: number
   attachmentsChecked: number
   attachmentsDownloaded: number
   attachmentsReused: number
@@ -972,6 +982,51 @@ StageGroup:
 
   console.info(`✅ Oportunitats vàlides: ${normalized.length}`)
 
+  let manualReplacedCount = 0
+  let manualReplacements = new Map<
+    string,
+    { createdAt: string; mergedFromManualId: string }
+  >()
+
+  try {
+    const manualSnap = await firestore
+      .collection(SPACES_MANUAL_RESERVES_COLLECTION)
+      .get()
+    const manuals: ManualReserveDoc[] = manualSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Omit<ManualReserveDoc, 'id'>),
+    }))
+    const replacementResult = resolveManualReserveReplacements(
+      manuals,
+      normalized.map((deal) => ({
+        idZoho: deal.idZoho,
+        Comercial: deal.Comercial,
+        Ubicacio: deal.Ubicacio,
+        DataInici: deal.DataInici,
+      }))
+    )
+    manualReplacements = replacementResult.byZohoId
+    manualReplacedCount = replacementResult.replacedCount
+
+    if (replacementResult.manualIdsToDelete.length > 0) {
+      const manualDeleteBatch = firestore.batch()
+      for (const manualId of replacementResult.manualIdsToDelete) {
+        manualDeleteBatch.delete(
+          firestore.collection(SPACES_MANUAL_RESERVES_COLLECTION).doc(manualId)
+        )
+      }
+      await manualDeleteBatch.commit()
+      console.info(
+        `🟣 Reserves manuals substituïdes per Zoho: ${manualReplacedCount}`
+      )
+    }
+  } catch (manualErr) {
+    console.error(
+      '⚠️ Error reconciliant reserves manuals amb Zoho (sync continua):',
+      manualErr
+    )
+  }
+
   const zohoById = new Map<string, ZohoDeal>()
   for (const d of allDeals) {
     if (d?.id) zohoById.set(String(d.id), d)
@@ -1027,10 +1082,15 @@ StageGroup:
     attachmentsDownloaded += zohoAttachments.stats.downloaded
     attachmentsReused += zohoAttachments.stats.reused
     attachmentsDeletedFromStorage += zohoAttachments.stats.deletedFromStorage
-    const dataToSave = {
-      ...preserveLocalCalendarChanges(cleanUndefined(deal), existingDoc),
-      ...zohoAttachments.fields,
-    }
+    const dataToSave = applyManualCreatedAtPreserve(
+      {
+        ...preserveLocalCalendarChanges(cleanUndefined(deal), existingDoc),
+        ...zohoAttachments.fields,
+      },
+      deal.idZoho,
+      manualReplacements,
+      existingDoc
+    )
     batchVerd.set(ref, dataToSave, { merge: true })
   }
 
@@ -1057,27 +1117,27 @@ StageGroup:
     attachmentsDownloaded += zohoAttachments.stats.downloaded
     attachmentsReused += zohoAttachments.stats.reused
     attachmentsDeletedFromStorage += zohoAttachments.stats.deletedFromStorage
-    const dataToSave = {
-      ...cleanUndefined(deal),
-      ...zohoAttachments.fields,
-    }
+    const dataToSave = applyManualCreatedAtPreserve(
+      {
+        ...preserveLocalCalendarChanges(
+          cleanUndefined(deal),
+          existingDoc
+        ),
+        ...zohoAttachments.fields,
+      },
+      id,
+      manualReplacements,
+      existingDoc
+    )
 
     if (deal.collection === 'groc') {
       const ref = firestore.collection('stage_groc').doc(id)
-      batchOthers.set(
-        ref,
-        preserveLocalCalendarChanges(dataToSave, existingDoc),
-        { merge: true }
-      )
+      batchOthers.set(ref, dataToSave, { merge: true })
     }
 
     if (deal.collection === 'taronja') {
       const ref = firestore.collection('stage_taronja').doc(id)
-      batchOthers.set(
-        ref,
-        preserveLocalCalendarChanges(dataToSave, existingDoc),
-        { merge: true }
-      )
+      batchOthers.set(ref, dataToSave, { merge: true })
     }
   }
 
@@ -1273,11 +1333,32 @@ StageGroup:
     console.error('⚠️ Error actualitzant serveis:', err)
   }
 
+  // ─────────────────────────────────────────────
+  // 🔟 Actualitzar col·lecció CLIENTS (Deal_Name)
+  // ─────────────────────────────────────────────
+
+  try {
+    const dealNames: string[] = []
+    for (const d of allDeals) {
+      const name = (d.Deal_Name || '').trim()
+      if (name) dealNames.push(name)
+    }
+    const { upserted } = await syncZohoClientsFromDealNames(dealNames)
+    if (upserted > 0) {
+      console.info(`👤 Clients Zoho: ${upserted} actualitzats a spaces_zoho_clients.`)
+    } else {
+      console.info('👤 Clients Zoho: cap nom nou per desar.')
+    }
+  } catch (err) {
+    console.error('⚠️ Error actualitzant clients Zoho:', err)
+  }
+
   console.info('🔥 Firestore sincronitzat correctament')
   return {
     totalCount: allDeals.length,
     createdCount: normalized.length,
     deletedCount: deleted,
+    manualReplacedCount,
     attachmentsChecked,
     attachmentsDownloaded,
     attachmentsReused,

@@ -13,7 +13,14 @@ export const SPACES_ACTION = {
   BBDD_UPDATE: 'bbdd:update',
   BBDD_DELETE: 'bbdd:delete',
   PREMISSES_EDIT: 'premisses:edit',
+  RESERVES_MANUAL_CREATE: 'reserves:manual:create',
 } as const
+
+/** Col·lecció Firestore per reserves manuals del mòdul Espais / Reserves. */
+export const SPACES_MANUAL_RESERVES_COLLECTION = 'spaces_manual_reserves'
+
+/** Noms de client (Deal_Name Zoho) per desplegable de reserves manuals. */
+export const SPACES_ZOHO_CLIENTS_COLLECTION = 'spaces_zoho_clients'
 
 /** Permisos d’acció antics (consultes com a checkbox); es resolen via submòduls view. */
 export const SPACES_LEGACY_CONSULTA_ACTION = {

@@ -31,7 +31,9 @@ const readNumber = (value: unknown, fallback = 0): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback
 
 const readStage = (value: unknown, fallback: Stage = 'verd'): Stage => {
-  if (value === 'verd' || value === 'taronja' || value === 'groc') return value
+  if (value === 'verd' || value === 'taronja' || value === 'groc' || value === 'lila') {
+    return value
+  }
   return fallback
 }
 
@@ -54,6 +56,7 @@ interface SpaceGridProps {
   totals?: number[]
   baseDate?: string
   headerRule?: SpacesHeaderRuleConfig
+  onEventMutated?: () => void
 }
 
 /**
@@ -66,6 +69,7 @@ export default function SpaceGrid({
   totals = [],
   baseDate,
   headerRule = DEFAULT_SPACES_HEADER_RULE,
+  onEventMutated,
 }: SpaceGridProps) {
   void totals
   const [selectedEvent, setSelectedEvent] = useState<RawSpaceEvent | null>(null)
@@ -93,12 +97,16 @@ export default function SpaceGrid({
   }
 
   const handleEventClick = (ev: RawSpaceEvent) => {
+    const isManual =
+      ev.isManual === true ||
+      readString(ev.stage).toLowerCase() === 'lila'
+
     if (typeof window !== 'undefined') {
       const isMobile = window.innerWidth < 768
       const targetCode = readString(ev.code) || readString(ev.Code) || readString(ev.id)
 
       // En mÃ²bil obrim en una finestra nova per no tapar la graella
-      if (isMobile && targetCode) {
+      if (isMobile && targetCode && !isManual) {
         const url = `/menu/events/${targetCode}`
         window.open(url, '_blank', 'noopener,noreferrer')
         return
@@ -289,6 +297,7 @@ export default function SpaceGrid({
         open={modalOpen}
         onOpenChange={setModalOpen}
         event={selectedEvent}
+        onMutated={onEventMutated}
       />
     </div>
   )

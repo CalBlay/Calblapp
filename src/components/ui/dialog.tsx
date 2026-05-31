@@ -5,6 +5,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
 import { dialogContentPropsMobileCameraSafe } from "@/lib/dialogMobileCameraSafe";
+import { isDialogComboboxPortalTarget } from "@/lib/dialogComboboxPortal";
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -47,6 +48,8 @@ function DialogContent({
   className,
   children,
   lockDismissOnOutside = false,
+  onPointerDownOutside,
+  onInteractOutside,
   ...props
 }: DialogContentProps) {
   return (
@@ -60,6 +63,20 @@ function DialogContent({
           className
         )}
         {...props}
+        onPointerDownOutside={(e) => {
+          if (isDialogComboboxPortalTarget(e.target)) {
+            e.preventDefault()
+            return
+          }
+          onPointerDownOutside?.(e)
+        }}
+        onInteractOutside={(e) => {
+          if (isDialogComboboxPortalTarget(e.target)) {
+            e.preventDefault()
+            return
+          }
+          onInteractOutside?.(e)
+        }}
         {...(lockDismissOnOutside ? dialogContentPropsMobileCameraSafe : {})}
       >
         {children}
