@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import admin from 'firebase-admin'
 
-import { requireAuth } from '@/lib/server/apiAuth'
+import { requireAuth, type SessionUserForApi } from '@/lib/server/apiAuth'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   COMMERCIAL_RESERVATIONS_COLLECTION,
@@ -16,13 +16,6 @@ import { canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
 
 const RESERVA_UI_PATH = RESERVA_COMERCIALS_UI_PATH
 
-type SessionUser = {
-  id?: string
-  name?: string | null
-  role?: string | null
-  isTransportLead?: boolean | null
-}
-
 type ReservationDoc = Record<string, unknown>
 type VehicleDoc = {
   id: string
@@ -30,15 +23,7 @@ type VehicleDoc = {
   available?: boolean
 }
 
-function accessUserFromAuth(user: {
-  id: string
-  role?: string | null
-  department?: string | null
-  canRespondSurveys?: boolean
-  isDepartmentRobaLead?: boolean
-  robaLinkedPersonnelId?: string | null
-  isTransportLead?: boolean
-}): AccessUser & { id: string } {
+function accessUserFromAuth(user: SessionUserForApi): AccessUser & { id: string } {
   return {
     id: user.id,
     role: user.role ?? undefined,
@@ -205,7 +190,7 @@ export async function PATCH(
   try {
     const auth = await requireAuth()
     if (!auth.ok) return auth.res
-    const user = auth.user as SessionUser & { id: string }
+    const user = auth.user
     const accessUser = accessUserFromAuth(user)
     const canView = await canViewUiPath({ user: accessUser, path: RESERVA_UI_PATH })
     if (!canView) {

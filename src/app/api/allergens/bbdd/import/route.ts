@@ -25,8 +25,8 @@ const COLLECTIONS_TO_CLEAR = [
 function buildAccessUser(authUser: SessionUserForApi): AccessUser & { id: string } {
   return {
     id: authUser.id,
-    role: authUser.role,
-    department: authUser.department,
+    role: authUser.role ?? undefined,
+    department: authUser.department ?? undefined,
     canRespondSurveys: Boolean((authUser as { canRespondSurveys?: boolean }).canRespondSurveys),
     isDepartmentRobaLead: Boolean((authUser as { isDepartmentRobaLead?: boolean }).isDepartmentRobaLead),
     robaLinkedPersonnelId: (authUser as { robaLinkedPersonnelId?: string | null }).robaLinkedPersonnelId ?? null,

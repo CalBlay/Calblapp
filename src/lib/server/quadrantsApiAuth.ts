@@ -1,4 +1,3 @@
-import type { AccessUser } from '@/lib/accessControl'
 import { PERM } from '@/lib/permissionKeys'
 import {
   QUADRANTS_ACTION,

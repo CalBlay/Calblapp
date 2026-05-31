@@ -134,17 +134,21 @@ export default function SearchFincaInput({
           onMouseDown={(e) => e.preventDefault()}
           onPointerDown={(e) => e.preventDefault()}
         >
-          {results.map((f, index) => (
+          {results.map((f, index) => {
+            const label = String(f.nom || '').trim() || String(f.codi || '').trim()
+            return (
             <div
               key={f.id || `${f.codi}-${f.nom}` || `finca-${index}`}
               role="option"
+              aria-selected={label === query.trim()}
               onPointerDown={(e) => handleOptionPointerDown(e, f)}
               className="px-3 py-2 text-sm cursor-pointer transition-colors hover:bg-blue-100"
             >
               <div className="font-medium">{f.nom}</div>
               <div className="text-xs text-gray-500">{f.codi}</div>
             </div>
-          ))}
+            )
+          })}
         </motion.div>
       </AnimatePresence>
     ) : null

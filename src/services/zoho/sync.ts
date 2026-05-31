@@ -8,6 +8,7 @@ import { syncZohoClientsFromDealNames } from '@/services/spaces/zohoClients'
 import {
   applyManualCreatedAtPreserve,
   resolveManualReserveReplacements,
+  stripInvalidManualMerge,
   type ManualReserveDoc,
 } from '@/services/spaces/manualReserveZohoMatch'
 import { getZohoAccessToken, zohoFetch } from '@/services/zoho/auth'
@@ -987,12 +988,13 @@ StageGroup:
     string,
     { createdAt: string; mergedFromManualId: string }
   >()
+  let manuals: ManualReserveDoc[] = []
 
   try {
     const manualSnap = await firestore
       .collection(SPACES_MANUAL_RESERVES_COLLECTION)
       .get()
-    const manuals: ManualReserveDoc[] = manualSnap.docs.map((doc) => ({
+    manuals = manualSnap.docs.map((doc) => ({
       id: doc.id,
       ...(doc.data() as Omit<ManualReserveDoc, 'id'>),
     }))
@@ -1001,6 +1003,7 @@ StageGroup:
       normalized.map((deal) => ({
         idZoho: deal.idZoho,
         Comercial: deal.Comercial,
+        NomEvent: deal.NomEvent,
         Ubicacio: deal.Ubicacio,
         DataInici: deal.DataInici,
       }))
@@ -1067,12 +1070,15 @@ StageGroup:
   const existingGroc = await readStageDocs('stage_groc')
   const existingTaronja = await readStageDocs('stage_taronja')
 
+  const getExistingStageDoc = (id: string) =>
+    existingVerd.get(id) || existingGroc.get(id) || existingTaronja.get(id)
+
   const batchVerd = firestore.batch()
 
   for (const deal of normalized) {
     if (deal.collection !== 'verd') continue
     const ref = firestore.collection('stage_verd').doc(deal.idZoho)
-    const existingDoc = existingVerd.get(deal.idZoho)
+    const existingDoc = getExistingStageDoc(deal.idZoho)
     const zohoAttachments = await buildZohoAttachmentFields(
       moduleName,
       deal.idZoho,
@@ -1089,7 +1095,17 @@ StageGroup:
       },
       deal.idZoho,
       manualReplacements,
-      existingDoc
+      stripInvalidManualMerge(
+        existingDoc,
+        {
+          idZoho: deal.idZoho,
+          Comercial: deal.Comercial,
+          NomEvent: deal.NomEvent,
+          Ubicacio: deal.Ubicacio,
+          DataInici: deal.DataInici,
+        },
+        manuals
+      )
     )
     batchVerd.set(ref, dataToSave, { merge: true })
   }
@@ -1104,10 +1120,7 @@ StageGroup:
     const id = deal.idZoho
     if (idsVerd.has(id)) continue
 
-    const existingDoc =
-      deal.collection === 'groc'
-        ? existingVerd.get(id) || existingGroc.get(id)
-        : existingVerd.get(id) || existingTaronja.get(id)
+    const existingDoc = getExistingStageDoc(id)
     const zohoAttachments = await buildZohoAttachmentFields(
       moduleName,
       id,
@@ -1127,7 +1140,17 @@ StageGroup:
       },
       id,
       manualReplacements,
-      existingDoc
+      stripInvalidManualMerge(
+        existingDoc,
+        {
+          idZoho: deal.idZoho,
+          Comercial: deal.Comercial,
+          NomEvent: deal.NomEvent,
+          Ubicacio: deal.Ubicacio,
+          DataInici: deal.DataInici,
+        },
+        manuals
+      )
     )
 
     if (deal.collection === 'groc') {

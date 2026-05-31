@@ -109,6 +109,7 @@ export default function SearchZohoClientInput({
             <div
               key={name}
               role="option"
+              aria-selected={name === query.trim()}
               onPointerDown={(e) => {
                 e.preventDefault()
                 e.stopPropagation()

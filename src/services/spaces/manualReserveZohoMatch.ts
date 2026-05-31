@@ -2,8 +2,9 @@
  * Matching entre reserves manuals (spaces_manual_reserves) i esdeveniments Zoho (stage_*).
  * Usat durant syncZohoDealsToFirestore per substituir la reserva lila i conservar createdAt.
  *
- * Coincidència (3 criteris):
+ * Coincidència (4 criteris):
  * - Comercial (trim, sense accents, case-insensitive)
+ * - Nom client (NomClient manual = NomEvent Zoho, normalitzat)
  * - Dia d'event (DataInici, yyyy-MM-dd)
  * - Ubicació (nom finca sense codi entre parèntesis)
  *
@@ -13,6 +14,7 @@
 export interface ManualReserveDoc {
   id: string
   Comercial?: string
+  NomClient?: string
   Ubicacio?: string
   DataInici?: string
   DataFi?: string
@@ -24,6 +26,7 @@ export interface ManualReserveDoc {
 export interface ZohoDealMatchInput {
   idZoho: string
   Comercial: string
+  NomEvent: string
   Ubicacio: string
   DataInici: string | null
 }
@@ -31,6 +34,7 @@ export interface ZohoDealMatchInput {
 export interface ManualReplacementEntry {
   createdAt: string
   mergedFromManualId: string
+  nomClient?: string
 }
 
 export interface ManualReplacementResult {
@@ -64,21 +68,47 @@ export function normalizeUbicacioKey(raw: unknown): string {
   return unaccent(base).toLowerCase().trim()
 }
 
-export function manualReserveCreatedAtIso(
-  manual: ManualReserveDoc
-): string | null {
-  const raw = manual.createdAt
+/** Sufixos societat (S.A., S.L., …) per comparar NomClient amb NomEvent Zoho. */
+const LEGAL_ENTITY_SUFFIX =
+  /,?\s*(s\.?\s*a\.?(?:\s*u\.?)?|s\.?\s*l\.?(?:\s*u\.?)?|s\.?\s*c\.?|sa|sl|slu|sc|sau|ltd|inc|corp)\.?\s*$/i
+
+export function normalizeClientNameKey(raw: unknown): string {
+  let value = unaccent(String(raw || '').trim().toLowerCase())
+  value = value.replace(/\s+/g, ' ').trim()
+  value = value.replace(LEGAL_ENTITY_SUFFIX, '').trim()
+  value = value.replace(/[,.\s]+$/g, '').trim()
+  return value
+}
+
+/** Normalitza qualsevol valor de createdAt (string, Timestamp, ms) a ISO. */
+export function docCreatedAtIso(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) {
     const parsed = new Date(raw).getTime()
     return Number.isNaN(parsed) ? raw.trim() : new Date(parsed).toISOString()
+  }
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const date = new Date(raw)
+    return Number.isNaN(date.getTime()) ? null : date.toISOString()
   }
   if (raw && typeof raw === 'object' && 'toDate' in raw) {
     const date = (raw as { toDate?: () => Date }).toDate?.()
     if (date && !Number.isNaN(date.getTime())) return date.toISOString()
   }
-  const legacy = /^spaces_manual_(\d+)$/.exec(manual.id)
-  if (legacy) return new Date(Number(legacy[1])).toISOString()
   return null
+}
+
+export function manualIdToCreatedAtIso(manualId: string): string | null {
+  const legacy = /^spaces_manual_(\d+)$/.exec(manualId)
+  if (!legacy) return null
+  return new Date(Number(legacy[1])).toISOString()
+}
+
+export function manualReserveCreatedAtIso(
+  manual: ManualReserveDoc
+): string | null {
+  const fromField = docCreatedAtIso(manual.createdAt)
+  if (fromField) return fromField
+  return manualIdToCreatedAtIso(manual.id)
 }
 
 export function manualReserveCreatedAtMs(manual: ManualReserveDoc): number {
@@ -105,6 +135,11 @@ export function manualReserveMatchesZohoDeal(
   const ubicDeal = normalizeUbicacioKey(deal.Ubicacio)
   if (!ubicManual || !ubicDeal) return false
   if (ubicManual !== ubicDeal) return false
+
+  const clientManual = normalizeClientNameKey(manual.NomClient)
+  const clientDeal = normalizeClientNameKey(deal.NomEvent)
+  if (!clientManual || !clientDeal) return false
+  if (clientManual !== clientDeal) return false
 
   return true
 }
@@ -156,6 +191,7 @@ export function resolveManualReserveReplacements(
     byZohoId.set(deal.idZoho, {
       createdAt,
       mergedFromManualId: manual.id,
+      nomClient: manual.NomClient,
     })
   }
 
@@ -164,6 +200,20 @@ export function resolveManualReserveReplacements(
     manualIdsToDelete,
     replacedCount: manualIdsToDelete.length,
   }
+}
+
+/** createdAt autoritatiu quan el doc ve d'una reserva manual fusionada. */
+export function mergedManualCreatedAtIso(
+  mergedFromManualId: string,
+  replacement?: ManualReplacementEntry,
+  existingCreatedAt?: unknown
+): string | null {
+  if (replacement?.createdAt) return replacement.createdAt
+
+  const fromManualId = manualIdToCreatedAtIso(mergedFromManualId)
+  if (fromManualId) return fromManualId
+
+  return docCreatedAtIso(existingCreatedAt)
 }
 
 export function applyManualCreatedAtPreserve(
@@ -175,23 +225,63 @@ export function applyManualCreatedAtPreserve(
   const replacement = replacements.get(dealId)
   const out = { ...data }
 
-  const existingMerged = existing?.mergedFromManualId
-  const existingCreatedAt =
-    existingMerged && existing?.createdAt != null
-      ? String(existing.createdAt)
-      : null
+  const mergedFromManualId =
+    (replacement?.mergedFromManualId as string | undefined) ||
+    (existing?.mergedFromManualId as string | undefined)
 
-  const createdAt = existingCreatedAt || replacement?.createdAt
+  if (mergedFromManualId) {
+    out.mergedFromManualId = mergedFromManualId
+    if (replacement?.nomClient) {
+      out.mergedFromManualNomClient = replacement.nomClient
+    } else if (existing?.mergedFromManualNomClient) {
+      out.mergedFromManualNomClient = existing.mergedFromManualNomClient
+    }
+    const createdAt = mergedManualCreatedAtIso(
+      mergedFromManualId,
+      replacement,
+      existing?.createdAt
+    )
+    if (createdAt) {
+      out.createdAt = createdAt
+    }
+    return out
+  }
+
+  const createdAt =
+    replacement?.createdAt || docCreatedAtIso(existing?.createdAt)
+
   if (createdAt) {
     out.createdAt = createdAt
   }
 
-  const mergedFromManualId =
-    (replacement?.mergedFromManualId as string | undefined) ||
-    (existingMerged as string | undefined)
-  if (mergedFromManualId) {
-    out.mergedFromManualId = mergedFromManualId
+  return out
+}
+
+/** Elimina metadades de fusió si el manual encara existeix però no correspon al deal. */
+export function stripInvalidManualMerge(
+  existing: Record<string, unknown> | undefined,
+  deal: ZohoDealMatchInput,
+  manuals: ManualReserveDoc[]
+): Record<string, unknown> | undefined {
+  if (!existing?.mergedFromManualId) return existing
+
+  const mergeId = String(existing.mergedFromManualId)
+  const manual = manuals.find((m) => m.id === mergeId)
+  if (manual && !manualReserveMatchesZohoDeal(manual, deal)) {
+    const { mergedFromManualId, createdAt, ...rest } = existing
+    return rest
   }
 
-  return out
+  const storedClient = existing.mergedFromManualNomClient
+  if (
+    storedClient &&
+    normalizeClientNameKey(storedClient) !==
+      normalizeClientNameKey(deal.NomEvent)
+  ) {
+    const { mergedFromManualId, mergedFromManualNomClient, createdAt, ...rest } =
+      existing
+    return rest
+  }
+
+  return existing
 }

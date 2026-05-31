@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import admin from 'firebase-admin'
 
-import { requireAuth } from '@/lib/server/apiAuth'
+import { requireAuth, type SessionUserForApi } from '@/lib/server/apiAuth'
 import type { AccessUser } from '@/lib/accessControl'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
@@ -18,20 +18,11 @@ const RESERVA_UI_PATH = RESERVA_COMERCIALS_UI_PATH
 
 type ReservationDoc = Record<string, unknown>
 
-function accessUserFromAuth(user: {
-  id: string
-  role?: string | null
-  department?: string | null
-  name?: string | null
-  canRespondSurveys?: boolean
-  isDepartmentRobaLead?: boolean
-  robaLinkedPersonnelId?: string | null
-  isTransportLead?: boolean
-}): AccessUser & { id: string; name?: string | null } {
+function accessUserFromAuth(user: SessionUserForApi): AccessUser & { id: string; name?: string | null } {
   return {
     id: user.id,
-    role: user.role,
-    department: user.department,
+    role: user.role ?? undefined,
+    department: user.department ?? undefined,
     name: user.name,
     canRespondSurveys: Boolean(user.canRespondSurveys),
     isDepartmentRobaLead: Boolean(user.isDepartmentRobaLead),
@@ -139,8 +130,7 @@ export async function POST(req: Request) {
   try {
     const auth = await requireAuth()
     if (!auth.ok) return auth.res
-    const sessionUser = auth.user as Parameters<typeof accessUserFromAuth>[0]
-    const accessUser = accessUserFromAuth(sessionUser)
+    const accessUser = accessUserFromAuth(auth.user)
     const canRequest = await isUiPermissionGranted({
       user: accessUser,
       permission: PERM.action(RESERVA_UI_PATH, 'request'),

@@ -1,5 +1,6 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { SPACES_MANUAL_RESERVES_COLLECTION } from '@/lib/spacesPermissions'
+import { manualIdToCreatedAtIso } from '@/services/spaces/manualReserveZohoMatch'
 import type { Timestamp } from 'firebase-admin/firestore'
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
 
@@ -75,6 +76,19 @@ function eventCreatedAtMs(
   docId: string,
   firestoreCreateTime?: Timestamp
 ): number {
+  const mergedFromManualId = data.mergedFromManualId
+    ? String(data.mergedFromManualId)
+    : ''
+  if (mergedFromManualId) {
+    const fromManualId = manualIdToCreatedAtIso(mergedFromManualId)
+    if (fromManualId) {
+      const ms = new Date(fromManualId).getTime()
+      if (!Number.isNaN(ms)) return ms
+    }
+    if (firestoreCreateTime) return firestoreCreateTime.toMillis()
+    return Number.MAX_SAFE_INTEGER
+  }
+
   const fromCreatedAt = toCreatedAtMs(data.createdAt)
   if (fromCreatedAt > 0) return fromCreatedAt
 
@@ -83,8 +97,11 @@ function eventCreatedAtMs(
 
   if (firestoreCreateTime) return firestoreCreateTime.toMillis()
 
-  const manualMatch = /^manual_(\d+)$/.exec(docId)
+  const manualMatch = /^spaces_manual_(\d+)$/.exec(docId)
   if (manualMatch) return Number(manualMatch[1])
+
+  const legacyManualMatch = /^manual_(\d+)$/.exec(docId)
+  if (legacyManualMatch) return Number(legacyManualMatch[1])
 
   return Number.MAX_SAFE_INTEGER
 }

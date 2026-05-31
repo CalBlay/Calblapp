@@ -39,7 +39,10 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
   const pathname = usePathname()
   const user = session?.user as SessionUser | undefined
   const { data: uiPermData } = useSWR(user?.id ? '/api/permissions/ui' : null, fetcher)
-  const uiMap = (uiPermData?.map || {}) as Record<string, boolean>
+  const uiMap = React.useMemo(
+    () => (uiPermData?.map || {}) as Record<string, boolean>,
+    [uiPermData?.map]
+  )
 
   // Normalitzem la llista per si arriba algun rol amb majÇ§scules o accents
   const normalizedAllowed = React.useMemo(
