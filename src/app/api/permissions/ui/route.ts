@@ -126,8 +126,8 @@ export async function GET() {
   // Construïm l'usuari base des de la sessió
   const u = auth.user
   const accessUser: AccessUser = {
-    role: u?.role,
-    department: u?.department,
+    role: u?.role ?? undefined,
+    department: u?.department ?? undefined,
     canRespondSurveys: Boolean(u?.canRespondSurveys),
     isDepartmentRobaLead: Boolean(u?.isDepartmentRobaLead),
     robaLinkedPersonnelId: u?.robaLinkedPersonnelId ?? null,

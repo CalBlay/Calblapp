@@ -268,7 +268,7 @@ export function stripInvalidManualMerge(
   const mergeId = String(existing.mergedFromManualId)
   const manual = manuals.find((m) => m.id === mergeId)
   if (manual && !manualReserveMatchesZohoDeal(manual, deal)) {
-    const { mergedFromManualId, createdAt, ...rest } = existing
+    const { mergedFromManualId: _mergedFromManualId, createdAt: _createdAt, ...rest } = existing
     return rest
   }
 
@@ -278,7 +278,12 @@ export function stripInvalidManualMerge(
     normalizeClientNameKey(storedClient) !==
       normalizeClientNameKey(deal.NomEvent)
   ) {
-    const { mergedFromManualId, mergedFromManualNomClient, createdAt, ...rest } =
+    const {
+      mergedFromManualId: _mergedFromManualId,
+      mergedFromManualNomClient: _mergedFromManualNomClient,
+      createdAt: _createdAt,
+      ...rest
+    } =
       existing
     return rest
   }

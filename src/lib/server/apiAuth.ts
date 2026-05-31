@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import type { Session } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import type { AccessUser } from '@/lib/accessControl'
 import { normalizeRole, type Role } from '@/lib/roles'
 
 export type SessionUserForApi = {
@@ -21,10 +22,16 @@ export type SessionUserForApi = {
   isTransportLead?: boolean | null
 }
 
+export type AuthenticatedApiUser = AccessUser & {
+  id: string
+  name?: string | null
+  email?: string | null
+}
+
 export type AuthSuccess = {
   ok: true
   session: Session
-  user: SessionUserForApi
+  user: AuthenticatedApiUser
   role: Role
 }
 
@@ -41,10 +48,26 @@ export async function requireAuth(): Promise<AuthSuccess | AuthFailure> {
   if (!id) {
     return { ok: false, res: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
+  const user: AuthenticatedApiUser = {
+    id,
+    name: raw.name ?? null,
+    email: raw.email ?? null,
+    role: raw.role ?? undefined,
+    department: raw.department ?? undefined,
+    canRespondSurveys:
+      typeof raw.canRespondSurveys === 'boolean' ? raw.canRespondSurveys : undefined,
+    isDepartmentRobaLead:
+      typeof raw.isDepartmentRobaLead === 'boolean' ? raw.isDepartmentRobaLead : undefined,
+    robaLinkedPersonnelId: raw.robaLinkedPersonnelId ?? null,
+    opsProjectsConfigurable:
+      typeof raw.opsProjectsConfigurable === 'boolean' ? raw.opsProjectsConfigurable : undefined,
+    isTransportLead:
+      typeof raw.isTransportLead === 'boolean' ? raw.isTransportLead : undefined,
+  }
   return {
     ok: true,
     session: session as unknown as Session,
-    user: { ...raw, id },
+    user,
     role: normalizeRole(raw.role),
   }
 }

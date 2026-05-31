@@ -19,8 +19,8 @@ export function accessUserFromAuth(user: {
 }): AccessUser & { id: string } {
   return {
     id: user.id,
-    role: user.role,
-    department: user.department,
+    role: user.role ?? undefined,
+    department: user.department ?? undefined,
     canRespondSurveys: Boolean(user.canRespondSurveys),
     isDepartmentRobaLead: Boolean(user.isDepartmentRobaLead),
     robaLinkedPersonnelId: user.robaLinkedPersonnelId ?? null,
