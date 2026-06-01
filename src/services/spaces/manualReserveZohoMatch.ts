@@ -37,6 +37,8 @@ export interface ManualReplacementEntry {
   nomClient?: string
 }
 
+const MANUAL_RESERVE_CREATED_AT_FIELD = 'manualReserveCreatedAt'
+
 export interface ManualReplacementResult {
   byZohoId: Map<string, ManualReplacementEntry>
   manualIdsToDelete: string[]
@@ -243,6 +245,10 @@ export function applyManualCreatedAtPreserve(
     )
     if (createdAt) {
       out.createdAt = createdAt
+      out[MANUAL_RESERVE_CREATED_AT_FIELD] = createdAt
+    } else if (existing?.[MANUAL_RESERVE_CREATED_AT_FIELD] !== undefined) {
+      out[MANUAL_RESERVE_CREATED_AT_FIELD] =
+        existing[MANUAL_RESERVE_CREATED_AT_FIELD]
     }
     return out
   }
@@ -252,6 +258,11 @@ export function applyManualCreatedAtPreserve(
 
   if (createdAt) {
     out.createdAt = createdAt
+  }
+
+  if (existing?.[MANUAL_RESERVE_CREATED_AT_FIELD] !== undefined) {
+    out[MANUAL_RESERVE_CREATED_AT_FIELD] =
+      existing[MANUAL_RESERVE_CREATED_AT_FIELD]
   }
 
   return out
@@ -268,7 +279,12 @@ export function stripInvalidManualMerge(
   const mergeId = String(existing.mergedFromManualId)
   const manual = manuals.find((m) => m.id === mergeId)
   if (manual && !manualReserveMatchesZohoDeal(manual, deal)) {
-    const { mergedFromManualId: _mergedFromManualId, createdAt: _createdAt, ...rest } = existing
+    const {
+      mergedFromManualId: _mergedFromManualId,
+      createdAt: _createdAt,
+      manualReserveCreatedAt: _manualReserveCreatedAt,
+      ...rest
+    } = existing
     return rest
   }
 
@@ -282,6 +298,7 @@ export function stripInvalidManualMerge(
       mergedFromManualId: _mergedFromManualId,
       mergedFromManualNomClient: _mergedFromManualNomClient,
       createdAt: _createdAt,
+      manualReserveCreatedAt: _manualReserveCreatedAt,
       ...rest
     } =
       existing

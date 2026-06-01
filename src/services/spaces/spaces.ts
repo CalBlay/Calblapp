@@ -87,6 +87,9 @@ function eventCreatedAtMs(
   docId: string,
   firestoreCreateTime?: Timestamp
 ): number {
+  const fromManualReserveCreatedAt = toCreatedAtMs(data.manualReserveCreatedAt)
+  if (fromManualReserveCreatedAt > 0) return fromManualReserveCreatedAt
+
   const mergedFromManualId = data.mergedFromManualId
     ? String(data.mergedFromManualId)
     : ''

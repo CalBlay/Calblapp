@@ -54,6 +54,7 @@ interface ZohoAttachment {
   File_Name?: string
   Size?: number
   Modified_Time?: string
+  Download_Url?: string
 }
 
 interface NormalizedDeal {
@@ -279,8 +280,13 @@ function extractZohoFieldAttachments(rawFieldValue: unknown): ZohoAttachment[] {
 
     const record = item as Record<string, unknown>
     const id = String(
-      record.File_Id__s ||
+      record.attachment_Id ||
+        record.attachment_id ||
+        record.Attachment_Id ||
+        record.File_Id__s ||
         record.file_Id__s ||
+        record.file_Id ||
+        record.File_Id ||
         record.file_id ||
         record.$file_id ||
         record.id ||
@@ -292,12 +298,16 @@ function extractZohoFieldAttachments(rawFieldValue: unknown): ZohoAttachment[] {
       record.File_Name ||
         record.file_Name ||
         record.file_name ||
+        record.fileName ||
         record.name ||
         record.Name ||
         ''
     ).trim()
-    const size = Number(record.Size)
+    const size = Number(record.Size || record.original_Size_Byte || record.size)
     const modifiedTime = String(record.Modified_Time || '').trim()
+    const downloadUrl = String(
+      record.download_Url || record.download_url || ''
+    ).trim()
 
     return [
       {
@@ -305,9 +315,21 @@ function extractZohoFieldAttachments(rawFieldValue: unknown): ZohoAttachment[] {
         File_Name: fileName || undefined,
         Size: Number.isFinite(size) ? size : undefined,
         Modified_Time: modifiedTime || undefined,
+        Download_Url: downloadUrl || undefined,
       },
     ]
   })
+}
+
+async function getZohoFieldAttachmentValue(
+  moduleName: string,
+  recordId: string,
+  fieldApiName: string
+): Promise<unknown> {
+  const res = await zohoFetch<{ data?: Array<Record<string, unknown>> }>(
+    `/${moduleName}/${recordId}?fields=${fieldApiName}`
+  )
+  return res.data?.[0]?.[fieldApiName]
 }
 
 function extractFileNameFromContentDisposition(headerValue: string | null): string {
@@ -333,21 +355,33 @@ function extractFileNameFromContentDisposition(headerValue: string | null): stri
 async function downloadZohoAttachment(
   moduleName: string,
   recordId: string,
-  attachmentId: string
+  attachmentId: string,
+  fallbackDownloadUrl?: string
 ): Promise<{ buffer: Buffer; mimeType: string; fileName: string }> {
   const token = await getZohoAccessToken()
   const base = String(process.env.ZOHO_API_BASE || '').trim().replace(/\/$/, '')
   if (!base) throw new Error('❌ Falta ZOHO_API_BASE')
+  if (!base) throw new Error('❌ Falta ZOHO_API_BASE')
+  const baseOrigin = new URL(base).origin
 
-  const res = await fetch(
-    `${base}/${moduleName}/${recordId}/actions/download_fields_attachment?fields_attachment_id=${encodeURIComponent(attachmentId)}`,
-    {
+  const fetchBinary = async (url: string) =>
+    fetch(url, {
       headers: {
         Authorization: `Zoho-oauthtoken ${token}`,
       },
       cache: 'no-store',
-    }
+    })
+
+  let res = await fetchBinary(
+    `${base}/${moduleName}/${recordId}/actions/download_fields_attachment?fields_attachment_id=${encodeURIComponent(attachmentId)}`
   )
+
+  if (!res.ok && fallbackDownloadUrl) {
+    const fallbackUrl = fallbackDownloadUrl.startsWith('http')
+      ? fallbackDownloadUrl
+      : `${baseOrigin}${fallbackDownloadUrl.startsWith('/') ? '' : '/'}${fallbackDownloadUrl}`
+    res = await fetchBinary(fallbackUrl)
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
@@ -385,7 +419,15 @@ async function buildZohoAttachmentFields(
     deletedFromStorage: number
   }
 }> {
-  const attachments = extractZohoFieldAttachments(rawFieldValue)
+  let attachments = extractZohoFieldAttachments(rawFieldValue)
+  if (attachments.length === 0) {
+    const freshFieldValue = await getZohoFieldAttachmentValue(
+      moduleName,
+      dealId,
+      'Fulla_d_enc_rrec'
+    )
+    attachments = extractZohoFieldAttachments(freshFieldValue)
+  }
   const out: Record<string, unknown> = {}
   const currentKeys = new Set<string>()
   const bucket = storageAdmin.bucket()
@@ -415,7 +457,8 @@ async function buildZohoAttachmentFields(
         const downloaded = await downloadZohoAttachment(
           moduleName,
           dealId,
-          String(attachment.id)
+          String(attachment.id),
+          attachment.Download_Url
         )
         fileName = downloaded.fileName.trim() || fileName
         if (!shouldImportZohoAttachment(fileName)) continue
@@ -449,7 +492,8 @@ async function buildZohoAttachmentFields(
         const downloaded = await downloadZohoAttachment(
           moduleName,
           dealId,
-          String(attachment.id)
+          String(attachment.id),
+          attachment.Download_Url
         )
         fileBuffer = downloaded.buffer
         mimeType = downloaded.mimeType
