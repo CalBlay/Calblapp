@@ -1,6 +1,6 @@
 /**
  * Proves helpers de fitxers Zoho (sense Firebase ni Storage).
- * Executar: npx ts-node --transpile-only scripts/test-zoho-attachments.ts
+ * Executar: npx ts-node --transpile-only --compiler-options '{"module":"commonjs"}' scripts/test-zoho-attachments.ts
  */
 import {
   canPruneMissingZohoAttachmentSlots,

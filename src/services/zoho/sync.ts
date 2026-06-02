@@ -17,7 +17,6 @@ import {
   listExistingZohoAttachmentBaseKeys,
   shouldImportZohoAttachment,
   zohoAttachmentSlotKeys,
-  type ZohoAttachment,
 } from '@/services/zoho/attachments'
 import { getZohoAccessToken, zohoFetch } from '@/services/zoho/auth'
 
