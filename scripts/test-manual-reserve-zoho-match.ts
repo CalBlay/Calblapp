@@ -14,6 +14,7 @@ import {
   type ManualReserveDoc,
   type ZohoDealMatchInput,
 } from '../src/services/spaces/manualReserveZohoMatch'
+import { eventCreatedAtMs } from '../src/services/spaces/eventOrdering'
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message)
@@ -138,17 +139,23 @@ const staleMerge = stripInvalidManualMerge(
   {
     mergedFromManualId: 'spaces_manual_1780055302796',
     createdAt: '2026-05-29T11:48:22.796Z',
+    manualReserveCreatedAt: '2026-05-29T11:48:22.796Z',
   },
   marbetDeal,
   [affinityManual]
 )
 assert(!staleMerge?.mergedFromManualId, 'clears wrong merge when affinity manual still exists')
+assert(
+  !('manualReserveCreatedAt' in (staleMerge || {})),
+  'clears manualReserveCreatedAt for wrong live merge'
+)
 
 const storedClientMismatch = stripInvalidManualMerge(
   {
     mergedFromManualId: 'spaces_manual_1780055302796',
     mergedFromManualNomClient: 'AFFINITY PETCARE',
     createdAt: '2026-05-29T11:48:22.796Z',
+    manualReserveCreatedAt: '2026-05-29T11:48:22.796Z',
   },
   marbetDeal,
   []
@@ -156,6 +163,10 @@ const storedClientMismatch = stripInvalidManualMerge(
 assert(
   !storedClientMismatch?.mergedFromManualId,
   'clears merge when stored client differs from deal NomEvent'
+)
+assert(
+  !('manualReserveCreatedAt' in (storedClientMismatch || {})),
+  'clears manualReserveCreatedAt when stored client differs'
 )
 
 const freshMerge = applyManualCreatedAtPreserve(
@@ -171,6 +182,25 @@ assert(
 assert(
   freshMerge.mergedFromManualId === 'spaces_manual_1000',
   'applyManualCreatedAtPreserve sets mergedFromManualId'
+)
+assert(
+  freshMerge.manualReserveCreatedAt === '2026-05-01T10:00:00.000Z',
+  'applyManualCreatedAtPreserve sets manualReserveCreatedAt'
+)
+
+const preserveManualReserveCreatedAt = applyManualCreatedAtPreserve(
+  { NomEvent: 'Zoho deal', DataPeticio: '2026-05-20' },
+  'z9',
+  new Map(),
+  {
+    createdAt: '2026-05-15T09:00:00.000Z',
+    manualReserveCreatedAt: '2026-05-01T10:00:00.000Z',
+  }
+)
+assert(
+  preserveManualReserveCreatedAt.manualReserveCreatedAt ===
+    '2026-05-01T10:00:00.000Z',
+  'preserves existing manualReserveCreatedAt without a fresh replacement'
 )
 
 const mergedId = 'spaces_manual_1714550400000'
@@ -217,6 +247,34 @@ const legacyFallback = applyManualCreatedAtPreserve(
 assert(
   docCreatedAtIso(legacyFallback.createdAt) === '1970-01-01T00:00:01.000Z',
   'legacy manual id fallback for createdAt'
+)
+
+assert(
+  eventCreatedAtMs(
+    {
+      manualReserveCreatedAt: '2026-05-01T10:00:00.000Z',
+      mergedFromManualId: 'spaces_manual_1714550400000',
+      createdAt: '2026-06-01T10:00:00.000Z',
+    },
+    'stage_z1'
+  ) === new Date('2026-05-01T10:00:00.000Z').getTime(),
+  'event ordering prefers manualReserveCreatedAt'
+)
+
+assert(
+  eventCreatedAtMs(
+    {
+      mergedFromManualId: 'spaces_manual_1714550400000',
+      createdAt: '2026-06-01T10:00:00.000Z',
+    },
+    'stage_z1'
+  ) === 1714550400000,
+  'event ordering falls back to merged manual id before createdAt'
+)
+
+assert(
+  eventCreatedAtMs({}, 'manual_1714550500000') === 1714550500000,
+  'event ordering supports legacy manual doc ids'
 )
 
 console.log('✅ manualReserveZohoMatch tests OK')
