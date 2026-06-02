@@ -4,6 +4,7 @@
  */
 import {
   applyManualCreatedAtPreserve,
+  clientNamesMatch,
   docCreatedAtIso,
   manualReserveMatchesZohoDeal,
   normalizeClientNameKey,
@@ -46,6 +47,18 @@ assert(
   normalizeClientNameKey('AFFINITY PETCARE, S.A.') === 'affinity petcare',
   'client suffix normalize'
 )
+assert(
+  clientNamesMatch('AFFINITY PETCARE', 'AFFINITY PETCARE, S.A.'),
+  'client suffix may be present on only one side'
+)
+assert(
+  clientNamesMatch('ACME S.L.', 'ACME SL'),
+  'same legal suffix matches'
+)
+assert(
+  !clientNamesMatch('ACME S.L.', 'ACME S.A.'),
+  'different legal suffixes do not match'
+)
 assert(manualReserveMatchesZohoDeal(manual, deal), '4-criteria match')
 
 assert(
@@ -70,6 +83,20 @@ assert(
     NomEvent: 'Other Client',
   }),
   'different client'
+)
+
+assert(
+  !manualReserveMatchesZohoDeal(
+    {
+      ...manual,
+      NomClient: 'ACME S.L.',
+    },
+    {
+      ...deal,
+      NomEvent: 'ACME S.A.',
+    }
+  ),
+  'same base client with different legal suffix does not match'
 )
 
 const result = resolveManualReserveReplacements(

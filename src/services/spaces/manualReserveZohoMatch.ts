@@ -74,12 +74,35 @@ export function normalizeUbicacioKey(raw: unknown): string {
 const LEGAL_ENTITY_SUFFIX =
   /,?\s*(s\.?\s*a\.?(?:\s*u\.?)?|s\.?\s*l\.?(?:\s*u\.?)?|s\.?\s*c\.?|sa|sl|slu|sc|sau|ltd|inc|corp)\.?\s*$/i
 
-export function normalizeClientNameKey(raw: unknown): string {
+function normalizeLegalEntitySuffix(raw: string): string {
+  return unaccent(raw).toLowerCase().replace(/[^a-z]/g, '')
+}
+
+function splitClientNameKey(raw: unknown): { base: string; suffix: string } {
   let value = unaccent(String(raw || '').trim().toLowerCase())
   value = value.replace(/\s+/g, ' ').trim()
-  value = value.replace(LEGAL_ENTITY_SUFFIX, '').trim()
+  const suffixMatch = value.match(LEGAL_ENTITY_SUFFIX)
+  const suffix = suffixMatch?.[1]
+    ? normalizeLegalEntitySuffix(suffixMatch[1])
+    : ''
+  if (suffixMatch) value = value.slice(0, suffixMatch.index).trim()
   value = value.replace(/[,.\s]+$/g, '').trim()
-  return value
+  return { base: value, suffix }
+}
+
+export function normalizeClientNameKey(raw: unknown): string {
+  return splitClientNameKey(raw).base
+}
+
+export function clientNamesMatch(manualRaw: unknown, dealRaw: unknown): boolean {
+  const manual = splitClientNameKey(manualRaw)
+  const deal = splitClientNameKey(dealRaw)
+  if (!manual.base || !deal.base) return false
+  if (manual.base !== deal.base) return false
+  if (manual.suffix && deal.suffix && manual.suffix !== deal.suffix) {
+    return false
+  }
+  return true
 }
 
 /** Normalitza qualsevol valor de createdAt (string, Timestamp, ms) a ISO. */
@@ -138,10 +161,7 @@ export function manualReserveMatchesZohoDeal(
   if (!ubicManual || !ubicDeal) return false
   if (ubicManual !== ubicDeal) return false
 
-  const clientManual = normalizeClientNameKey(manual.NomClient)
-  const clientDeal = normalizeClientNameKey(deal.NomEvent)
-  if (!clientManual || !clientDeal) return false
-  if (clientManual !== clientDeal) return false
+  if (!clientNamesMatch(manual.NomClient, deal.NomEvent)) return false
 
   return true
 }
