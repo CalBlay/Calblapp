@@ -1035,6 +1035,7 @@ StageGroup:
     string,
     { createdAt: string; mergedFromManualId: string }
   >()
+  let manualIdsToDeleteAfterStageWrite: string[] = []
   let manuals: ManualReserveDoc[] = []
 
   try {
@@ -1057,19 +1058,7 @@ StageGroup:
     )
     manualReplacements = replacementResult.byZohoId
     manualReplacedCount = replacementResult.replacedCount
-
-    if (replacementResult.manualIdsToDelete.length > 0) {
-      const manualDeleteBatch = firestore.batch()
-      for (const manualId of replacementResult.manualIdsToDelete) {
-        manualDeleteBatch.delete(
-          firestore.collection(SPACES_MANUAL_RESERVES_COLLECTION).doc(manualId)
-        )
-      }
-      await manualDeleteBatch.commit()
-      console.info(
-        `🟣 Reserves manuals substituïdes per Zoho: ${manualReplacedCount}`
-      )
-    }
+    manualIdsToDeleteAfterStageWrite = replacementResult.manualIdsToDelete
   } catch (manualErr) {
     console.error(
       '⚠️ Error reconciliant reserves manuals amb Zoho (sync continua):',
@@ -1423,6 +1412,19 @@ StageGroup:
     }
   } catch (err) {
     console.error('⚠️ Error actualitzant clients Zoho:', err)
+  }
+
+  if (manualIdsToDeleteAfterStageWrite.length > 0) {
+    const manualDeleteBatch = firestore.batch()
+    for (const manualId of manualIdsToDeleteAfterStageWrite) {
+      manualDeleteBatch.delete(
+        firestore.collection(SPACES_MANUAL_RESERVES_COLLECTION).doc(manualId)
+      )
+    }
+    await manualDeleteBatch.commit()
+    console.info(
+      `🟣 Reserves manuals substituïdes per Zoho: ${manualReplacedCount}`
+    )
   }
 
   console.info('🔥 Firestore sincronitzat correctament')
