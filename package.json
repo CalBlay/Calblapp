@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test:spaces": "ts-node --transpile-only --compiler-options '{\"module\":\"commonjs\"}' scripts/test-manual-reserve-zoho-match.ts",
     "seed:users": "node scripts/seedUsers.js",
     "cleanup:notifications": "tsc scripts/cleanupNotifications.ts --outDir dist && node dist/scripts/cleanupNotifications.js",
     "import:maintenance-machines": "node scripts/importMaintenanceMachines.cjs",
