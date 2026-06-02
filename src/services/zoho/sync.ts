@@ -11,6 +11,14 @@ import {
   stripInvalidManualMerge,
   type ManualReserveDoc,
 } from '@/services/spaces/manualReserveZohoMatch'
+import {
+  canPruneMissingZohoAttachmentSlots,
+  extractZohoFieldAttachments,
+  listExistingZohoAttachmentBaseKeys,
+  shouldImportZohoAttachment,
+  zohoAttachmentSlotKeys,
+  type ZohoAttachment,
+} from '@/services/zoho/attachments'
 import { getZohoAccessToken, zohoFetch } from '@/services/zoho/auth'
 
 interface ZohoOwner {
@@ -47,14 +55,6 @@ interface ZohoDeal {
   Observacions?: string | null
   Description?: string | null
   Fulla_d_enc_rrec?: unknown
-}
-
-interface ZohoAttachment {
-  id: string
-  File_Name?: string
-  Size?: number
-  Modified_Time?: string
-  Download_Url?: string
 }
 
 interface NormalizedDeal {
@@ -231,94 +231,6 @@ function sanitizeStorageName(raw?: string | null): string {
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '')
   return normalized || `attachment-${Date.now()}`
-}
-
-const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = ['FT ', 'FG ', 'FE ', 'FM '] as const
-
-function shouldImportZohoAttachment(fileName?: string | null): boolean {
-  const normalized = String(fileName || '').trim().toUpperCase()
-  if (!normalized) return false
-  return ZOHO_ATTACHMENT_ALLOWED_PREFIXES.some((prefix) =>
-    normalized.startsWith(prefix)
-  )
-}
-
-function zohoAttachmentSlotKeys(baseKey: string) {
-  return {
-    url: baseKey,
-    name: `${baseKey}Name`,
-    mimeType: `${baseKey}MimeType`,
-    attachmentId: `${baseKey}AttachmentId`,
-    modifiedTime: `${baseKey}ModifiedTime`,
-    size: `${baseKey}Size`,
-    path: `${baseKey}Path`,
-    source: `${baseKey}Source`,
-  }
-}
-
-function listExistingZohoAttachmentBaseKeys(
-  existing?: FirebaseFirestore.DocumentData
-): string[] {
-  if (!existing) return []
-  return Object.keys(existing).filter((key) => /^zohoFile\d+$/i.test(key))
-}
-
-function extractZohoFieldAttachments(rawFieldValue: unknown): ZohoAttachment[] {
-  const rawItems = Array.isArray(rawFieldValue)
-    ? rawFieldValue
-    : rawFieldValue
-      ? [rawFieldValue]
-      : []
-
-  return rawItems.flatMap((item) => {
-    if (!item) return []
-    if (typeof item === 'string') {
-      const id = item.trim()
-      return id ? [{ id }] : []
-    }
-    if (typeof item !== 'object') return []
-
-    const record = item as Record<string, unknown>
-    const id = String(
-      record.attachment_Id ||
-        record.attachment_id ||
-        record.Attachment_Id ||
-        record.File_Id__s ||
-        record.file_Id__s ||
-        record.file_Id ||
-        record.File_Id ||
-        record.file_id ||
-        record.$file_id ||
-        record.id ||
-        ''
-    ).trim()
-    if (!id) return []
-
-    const fileName = String(
-      record.File_Name ||
-        record.file_Name ||
-        record.file_name ||
-        record.fileName ||
-        record.name ||
-        record.Name ||
-        ''
-    ).trim()
-    const size = Number(record.Size || record.original_Size_Byte || record.size)
-    const modifiedTime = String(record.Modified_Time || '').trim()
-    const downloadUrl = String(
-      record.download_Url || record.download_url || ''
-    ).trim()
-
-    return [
-      {
-        id,
-        File_Name: fileName || undefined,
-        Size: Number.isFinite(size) ? size : undefined,
-        Modified_Time: modifiedTime || undefined,
-        Download_Url: downloadUrl || undefined,
-      },
-    ]
-  })
 }
 
 async function getZohoFieldAttachmentValue(
@@ -522,26 +434,28 @@ async function buildZohoAttachmentFields(
     currentKeys.add(slot)
   }
 
-  for (const existingBaseKey of listExistingZohoAttachmentBaseKeys(existing)) {
-    if (currentKeys.has(existingBaseKey)) continue
-    const keys = zohoAttachmentSlotKeys(existingBaseKey)
-    const oldPath = String(existing?.[keys.path] || '').trim()
-    if (oldPath) {
-      try {
-        await bucket.file(oldPath).delete({ ignoreNotFound: true })
-        deletedFromStorage += 1
-      } catch {
-        // Ignorem errors de neteja del bucket i continuem amb la neteja de metadades.
+  if (canPruneMissingZohoAttachmentSlots(currentKeys)) {
+    for (const existingBaseKey of listExistingZohoAttachmentBaseKeys(existing)) {
+      if (currentKeys.has(existingBaseKey)) continue
+      const keys = zohoAttachmentSlotKeys(existingBaseKey)
+      const oldPath = String(existing?.[keys.path] || '').trim()
+      if (oldPath) {
+        try {
+          await bucket.file(oldPath).delete({ ignoreNotFound: true })
+          deletedFromStorage += 1
+        } catch {
+          // Ignorem errors de neteja del bucket i continuem amb la neteja de metadades.
+        }
       }
+      out[keys.url] = FieldValue.delete()
+      out[keys.name] = FieldValue.delete()
+      out[keys.mimeType] = FieldValue.delete()
+      out[keys.attachmentId] = FieldValue.delete()
+      out[keys.modifiedTime] = FieldValue.delete()
+      out[keys.size] = FieldValue.delete()
+      out[keys.path] = FieldValue.delete()
+      out[keys.source] = FieldValue.delete()
     }
-    out[keys.url] = FieldValue.delete()
-    out[keys.name] = FieldValue.delete()
-    out[keys.mimeType] = FieldValue.delete()
-    out[keys.attachmentId] = FieldValue.delete()
-    out[keys.modifiedTime] = FieldValue.delete()
-    out[keys.size] = FieldValue.delete()
-    out[keys.path] = FieldValue.delete()
-    out[keys.source] = FieldValue.delete()
   }
 
   return {
