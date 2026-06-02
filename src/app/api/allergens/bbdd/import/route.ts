@@ -13,16 +13,13 @@ import { DEFAULT_ALLERGENS } from '@/data/allergens'
 
 const ALLERGENS_BBDD_PATH = '/menu/allergens/bbdd'
 
-const COLLECTIONS_TO_CLEAR = [
-  'plats',
-  'categories',
-  'family',
-  'menus',
-  'allergens',
-  'allergens_import_conflicts',
-] as const
-
-type ImportCollectionName = (typeof COLLECTIONS_TO_CLEAR)[number]
+type ImportCollectionName =
+  | 'plats'
+  | 'categories'
+  | 'family'
+  | 'menus'
+  | 'allergens'
+  | 'allergens_import_conflicts'
 
 function buildAccessUser(authUser: SessionUserForApi): AccessUser & { id: string } {
   return {
