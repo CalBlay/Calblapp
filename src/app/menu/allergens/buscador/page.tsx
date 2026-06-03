@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { DEFAULT_ALLERGENS, sortAllergensByStandardOrder } from '@/data/allergens'
+import { parseMenus } from '../bbdd/utils'
 import { db } from '@/lib/firebaseClient'
 import { collection, getDocs, orderBy, query } from 'firebase/firestore'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
@@ -37,6 +38,7 @@ type Plat = {
   family?: string | null
   familyLabel?: string | null
   menus?: string[]
+  onEstanRaw?: string | null
   allergens?: Record<string, string | null>
   consumption?: {
     vegan?: boolean
@@ -69,6 +71,45 @@ const buildAllergenFilters = (list: readonly AllergenItem[]) =>
     acc[allergen.key] = 'ANY'
     return acc
   }, {})
+
+type FirestorePlatDoc = Omit<Plat, 'id' | 'name' | 'menus'> & {
+  name?: Plat['name']
+  nameCa?: string
+  nameEs?: string
+  nameEn?: string
+  menus?: string[]
+  onEstanRaw?: string | null
+}
+
+const mapPlatFromFirestore = (id: string, data: FirestorePlatDoc): Plat => {
+  const nameEs = data.name?.es?.trim() || data.nameEs?.trim() || ''
+  const nameEn = data.name?.en?.trim() || data.nameEn?.trim() || ''
+  const menus =
+    Array.isArray(data.menus) && data.menus.length > 0
+      ? data.menus
+      : parseMenus(data.onEstanRaw || '')
+
+  return {
+    id,
+    code: data.code || id,
+    name: {
+      ca: data.name?.ca?.trim() || data.nameCa?.trim() || '',
+      es: nameEs || undefined,
+      en: nameEn || undefined,
+    },
+    category: data.category ?? null,
+    categoryLabel: data.categoryLabel ?? null,
+    family: data.family ?? null,
+    familyLabel: data.familyLabel ?? null,
+    menus,
+    onEstanRaw: data.onEstanRaw ?? null,
+    allergens: data.allergens,
+    consumption: data.consumption,
+  }
+}
+
+const resolvePlatMenus = (plat: Plat) =>
+  plat.menus && plat.menus.length > 0 ? plat.menus : parseMenus(plat.onEstanRaw || '')
 
 export default function AllergensSearchPage() {
   const { canViewPath, isLoading: uiPermLoading } = useUiPermissions()
@@ -109,14 +150,9 @@ export default function AllergensSearchPage() {
       ])
 
       setPlats(
-        platsSnap.docs.map(docSnap => {
-          const data = docSnap.data() as Omit<Plat, 'id'>
-          return {
-            id: docSnap.id,
-            ...data,
-            code: data.code || docSnap.id,
-          }
-        })
+        platsSnap.docs.map(docSnap =>
+          mapPlatFromFirestore(docSnap.id, docSnap.data() as FirestorePlatDoc)
+        )
       )
 
       setCategories(
@@ -154,7 +190,7 @@ export default function AllergensSearchPage() {
 
   const menuOptions = useMemo(() => {
     const set = new Set<string>()
-    plats.forEach(plat => plat.menus?.forEach(menu => set.add(menu)))
+    plats.forEach(plat => resolvePlatMenus(plat).forEach(menu => set.add(menu)))
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ca'))
   }, [plats])
 
@@ -207,7 +243,7 @@ export default function AllergensSearchPage() {
           plat.name?.en || '',
           plat.categoryLabel || '',
           plat.familyLabel || '',
-          ...(plat.menus || []),
+          ...resolvePlatMenus(plat),
         ]
           .map(value => normalize(value))
           .join(' ')
@@ -219,7 +255,7 @@ export default function AllergensSearchPage() {
       if (familyFilter !== 'all' && plat.family !== familyFilter) return false
 
       if (menuFilters.length) {
-        const menus = plat.menus || []
+        const menus = resolvePlatMenus(plat)
         if (!menuFilters.every(menu => menus.includes(menu))) return false
       }
 
@@ -484,6 +520,7 @@ export default function AllergensSearchPage() {
         <div className="grid grid-cols-1 gap-4">
           {filteredPlats.map(plat => {
             const name = plat.name?.ca || plat.name?.es || plat.name?.en || plat.code || ''
+            const menus = resolvePlatMenus(plat)
             const allergenBadges = allAllergenItems
               .map(allergen => {
                 const value = plat.allergens?.[allergen.key]
@@ -510,10 +547,10 @@ export default function AllergensSearchPage() {
                     <h3 className="text-base font-semibold text-slate-800">{name}</h3>
                     <p className="text-xs text-slate-500">{plat.code}</p>
                     {plat.name?.es && (
-                      <p className="text-xs text-slate-500">ESP: {plat.name.es}</p>
+                      <p className="text-xs text-slate-500">CAST: {plat.name.es}</p>
                     )}
                     {plat.name?.en && (
-                      <p className="text-xs text-slate-500">ENG: {plat.name.en}</p>
+                      <p className="text-xs text-slate-500">ANG: {plat.name.en}</p>
                     )}
                   </div>
 
@@ -527,13 +564,16 @@ export default function AllergensSearchPage() {
                   </div>
                 </div>
 
-                {plat.menus && plat.menus.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {plat.menus.map(menu => (
-                      <Badge key={`${plat.id}-${menu}`} variant="outline">
-                        {menu}
-                      </Badge>
-                    ))}
+                {menus.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs font-medium text-slate-600 mb-1">Menú</p>
+                    <div className="flex flex-wrap gap-2">
+                      {menus.map(menu => (
+                        <Badge key={`${plat.id}-${menu}`} variant="outline">
+                          {menu}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
                 )}
 

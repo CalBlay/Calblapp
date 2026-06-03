@@ -150,7 +150,44 @@ const parseApt = (value) => {
 
 const isMarkedMenuCell = (value) => {
   const raw = normalize(value)
-  return raw === "x" || raw === "si" || raw === "s"
+  return raw === "x" || raw === "si" || raw === "s" || raw === "1" || raw === "true"
+}
+
+const findColumnIndexIncludes = (headers, needlesList) => {
+  const idx = headers.findIndex((header) =>
+    needlesList.every((needle) => header.includes(needle))
+  )
+  return idx >= 0 ? idx : -1
+}
+
+const findOnEstanColumn = (headers) => {
+  const byPhrase = findColumnIndexIncludes(headers, [
+    ["menus", "troben"],
+    ["menus", "estan"],
+    ["menu", "troben"],
+    ["on", "troben"],
+  ])
+  if (byPhrase >= 0) return byPhrase
+
+  return findColumnIndex(headers, [
+    "menus on es troben",
+    "menus on estan",
+    "on es troben",
+    "on estan",
+    "on son",
+    "on sonen",
+  ])
+}
+
+const parseMenusFromRawText = (value) => {
+  const raw = toString(value)
+  if (!raw) return []
+  const menus = new Set()
+  raw.split(/[|,;]+/).forEach((part) => {
+    const label = part.trim()
+    if (label) menus.add(label)
+  })
+  return Array.from(menus)
 }
 
 const getGroupLabelForSheet = (sheetKey) => {
@@ -178,6 +215,9 @@ const resolveReportPath = (targetPath) => {
 }
 
 const findColumnIndex = (headers, candidates) => {
+  const exactIdx = headers.findIndex((header) => candidates.includes(header))
+  if (exactIdx >= 0) return exactIdx
+
   for (const candidate of candidates) {
     const idx = headers.findIndex(
       (header) => header === candidate || header.startsWith(candidate)
@@ -187,37 +227,113 @@ const findColumnIndex = (headers, candidates) => {
   return -1
 }
 
+const TRANSLATION_ES_CANDIDATES = ["esp", "castella", "castellano", "cast", "spanish"]
+const TRANSLATION_EN_CANDIDATES = ["ang", "eng", "angles", "english"]
+
 const inferHeaderRowIndex = (rows) =>
   rows.findIndex((row) => {
     const normalizedRow = row.map((cell) => normalize(cell))
     const allergenCount = normalizedRow.filter((cell) => ALLERGEN_HEADERS[cell]).length
-    const hasCode = normalizedRow.some((cell) => cell === "num codi" || cell === "codi")
+    const hasCode = normalizedRow.some(
+      (cell) => cell === "num codi" || cell === "codi" || cell.startsWith("num codi")
+    )
     const hasName = normalizedRow.some((cell) =>
       ["referencies", "articles", "article"].some((candidate) => cell.startsWith(candidate))
     )
     return allergenCount >= 4 && hasCode && hasName
   })
 
-const buildMenuColumns = (sheetKey, rows, headerRowIndex) => {
-  if (headerRowIndex !== 0 || rows.length < 2) return []
-  const topHeaders = rows[0] || []
-  const menuHeaders = rows[1] || []
-  const typeCol = findColumnIndex(topHeaders.map((cell) => normalize(cell)), ["tipus"])
-  const startIndex = typeCol >= 0 ? typeCol + 17 : 19
-  const columns = []
+const isTranslationHeader = (label) => {
+  const key = normalize(label)
+  return (
+    TRANSLATION_ES_CANDIDATES.includes(key) || TRANSLATION_EN_CANDIDATES.includes(key)
+  )
+}
 
-  for (let index = startIndex; index < menuHeaders.length; index++) {
-    const label = toString(menuHeaders[index])
-    if (!label) continue
-    if (label === "ESP" || label === "ENG") continue
-    columns.push({ index, label })
+const resolveTranslationColumns = (rows, headerRowIndex) => {
+  const headerCells = (rows[headerRowIndex] || []).map((cell) => normalize(cell))
+  let nameEs = findColumnIndex(headerCells, TRANSLATION_ES_CANDIDATES)
+  let nameEn = findColumnIndex(headerCells, TRANSLATION_EN_CANDIDATES)
+
+  const subHeaderRows = [headerRowIndex + 1, headerRowIndex - 1].filter(
+    (index) => index >= 0 && index < rows.length && index !== headerRowIndex
+  )
+
+  for (const rowIndex of subHeaderRows) {
+    const cells = (rows[rowIndex] || []).map((cell) => normalize(cell))
+    if (nameEs < 0) nameEs = findColumnIndex(cells, TRANSLATION_ES_CANDIDATES)
+    if (nameEn < 0) nameEn = findColumnIndex(cells, TRANSLATION_EN_CANDIDATES)
+    if (nameEs >= 0 && nameEn >= 0) break
   }
 
-  if (columns.length === 0 && normalize(sheetKey).includes("aperitius")) {
+  return { nameEs, nameEn }
+}
+
+const buildMenuColumns = (sheetKey, rows, headerRowIndex, headers, allergenCols) => {
+  if (rows.length < 2) return []
+
+  const typeCol = findColumnIndex(headers, ["tipus"])
+  const vegetarianCol = findColumnIndex(headers, ["vegetaria"])
+  const veganCol = findColumnIndex(headers, ["vega"])
+  const translationCols = resolveTranslationColumns(rows, headerRowIndex)
+
+  const skipIndices = new Set()
+  ;[
+    findColumnIndex(headers, ["num codi", "codi"]),
+    findColumnIndex(headers, ["referencies", "articles", "article"]),
+    typeCol,
+    vegetarianCol,
+    veganCol,
+    translationCols.nameEs,
+    translationCols.nameEn,
+    findOnEstanColumn(headers),
+    ...Object.values(allergenCols),
+  ].forEach((index) => {
+    if (index >= 0) skipIndices.add(index)
+  })
+
+  let startIndex = -1
+  if (veganCol >= 0) startIndex = veganCol + 1
+  else if (vegetarianCol >= 0) startIndex = vegetarianCol + 1
+
+  if (startIndex < 0) {
+    const allergenIndices = Object.values(allergenCols)
+    if (allergenIndices.length) {
+      startIndex = Math.max(...allergenIndices) + 1
+    } else {
+      startIndex = typeCol >= 0 ? typeCol + 17 : 19
+    }
+  }
+
+  const maxColumns = Math.max(
+    headers.length,
+    ...rows.slice(0, Math.min(rows.length, headerRowIndex + 3)).map((row) => row.length)
+  )
+
+  const labelRowCandidates = [headerRowIndex + 1, headerRowIndex]
+  if (headerRowIndex > 0) labelRowCandidates.push(headerRowIndex - 1)
+
+  for (const labelRowIndex of labelRowCandidates) {
+    if (labelRowIndex < 0 || labelRowIndex >= rows.length) continue
+    const menuHeaders = rows[labelRowIndex] || []
+    const columns = []
+
+    for (let index = startIndex; index < maxColumns; index++) {
+      if (skipIndices.has(index)) continue
+      const label = toString(menuHeaders[index])
+      if (!label || isTranslationHeader(label)) continue
+      if (ALLERGEN_HEADERS[normalize(label)]) continue
+      columns.push({ index, label })
+    }
+
+    if (columns.length >= 1) return columns
+  }
+
+  if (normalize(sheetKey).includes("aperitius")) {
     console.warn(`No menu columns detected in sheet '${sheetKey}'.`)
   }
 
-  return columns
+  return []
 }
 
 const parseRows = (workbook, selectedSheetName) => {
@@ -247,14 +363,15 @@ const parseRows = (workbook, selectedSheetName) => {
     }
 
     const headers = (rows[headerRowIndex] || []).map((cell) => normalize(cell))
+    const translationCols = resolveTranslationColumns(rows, headerRowIndex)
     const cols = {
       code: findColumnIndex(headers, ["num codi", "codi"]),
       nameCa: findColumnIndex(headers, ["referencies", "articles", "article"]),
       type: findColumnIndex(headers, ["tipus"]),
       vegetarian: findColumnIndex(headers, ["vegetaria"]),
       vegan: findColumnIndex(headers, ["vega"]),
-      nameEs: findColumnIndex(headers, ["esp"]),
-      nameEn: findColumnIndex(headers, ["eng"]),
+      nameEs: translationCols.nameEs,
+      nameEn: translationCols.nameEn,
     }
 
     if (cols.code === -1 || cols.nameCa === -1) {
@@ -268,7 +385,11 @@ const parseRows = (workbook, selectedSheetName) => {
       if (key) allergenCols[key] = index
     })
 
-    const menuColumns = buildMenuColumns(sheetKey, rows, headerRowIndex)
+    const onEstanCol = findOnEstanColumn(headers)
+    const menuColumns =
+      onEstanCol >= 0
+        ? []
+        : buildMenuColumns(sheetKey, rows, headerRowIndex, headers, allergenCols)
     const groupLabel = getGroupLabelForSheet(sheetKey)
     const groupId = slugify(groupLabel)
     if (groupId) {
@@ -289,9 +410,12 @@ const parseRows = (workbook, selectedSheetName) => {
         typeCatalog.set(typeId, typeLabel)
       }
 
-      const menus = menuColumns
+      const menusFromMarks = menuColumns
         .filter(({ index }) => isMarkedMenuCell(row[index]))
         .map(({ label }) => label)
+      const menuText = onEstanCol >= 0 ? toString(row[onEstanCol]) : ""
+      const menusFromText = parseMenusFromRawText(menuText)
+      const menus = Array.from(new Set([...menusFromMarks, ...menusFromText]))
       menus.forEach((label) => menuCatalog.set(label, label))
 
       const allergens = {}
@@ -321,7 +445,7 @@ const parseRows = (workbook, selectedSheetName) => {
           family: groupId || null,
           familyLabel: groupLabel || null,
           menus,
-          onEstanRaw: menus.length ? menus.join(" | ") : null,
+          onEstanRaw: menuText || (menus.length ? menus.join(" | ") : null),
           allergens,
           consumption: {
             vegan: vegan ?? null,
