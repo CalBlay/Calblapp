@@ -185,6 +185,23 @@ assert(
   'clears merge when stored client differs from deal NomEvent'
 )
 
+const storedClientSuffixMismatch = stripInvalidManualMerge(
+  {
+    mergedFromManualId: 'spaces_manual_acme_sl',
+    mergedFromManualNomClient: 'ACME S.L.',
+    createdAt: '2026-05-29T11:48:22.796Z',
+  },
+  {
+    ...deal,
+    NomEvent: 'ACME S.A.',
+  },
+  []
+)
+assert(
+  !storedClientSuffixMismatch?.mergedFromManualId,
+  'clears merge when stored client and deal have conflicting legal suffixes'
+)
+
 const freshMerge = applyManualCreatedAtPreserve(
   { NomEvent: 'Zoho deal', DataPeticio: '2026-05-20' },
   'z1',

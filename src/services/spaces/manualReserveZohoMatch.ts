@@ -309,11 +309,7 @@ export function stripInvalidManualMerge(
   }
 
   const storedClient = existing.mergedFromManualNomClient
-  if (
-    storedClient &&
-    normalizeClientNameKey(storedClient) !==
-      normalizeClientNameKey(deal.NomEvent)
-  ) {
+  if (storedClient && !clientNamesMatch(storedClient, deal.NomEvent)) {
     const {
       mergedFromManualId: _mergedFromManualId,
       mergedFromManualNomClient: _mergedFromManualNomClient,
