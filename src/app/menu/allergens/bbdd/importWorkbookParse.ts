@@ -84,13 +84,16 @@ export const isMarkedMenuCell = (value: string) => {
 }
 
 export const findOnEstanColumn = (headers: string[]) => {
-  const byPhrase = findColumnIndexIncludes(headers, [
+  const phraseNeedles: string[][] = [
     ['menus', 'troben'],
     ['menus', 'estan'],
     ['menu', 'troben'],
     ['on', 'troben'],
-  ])
-  if (byPhrase >= 0) return byPhrase
+  ]
+  for (const needles of phraseNeedles) {
+    const byPhrase = findColumnIndexIncludes(headers, needles)
+    if (byPhrase >= 0) return byPhrase
+  }
 
   return findColumnIndex(headers, [
     'menus on es troben',
