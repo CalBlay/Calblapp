@@ -689,6 +689,38 @@ const nextCEUCode = (currentMaxNum: number | null): string =>
   formatCeuCode((currentMaxNum ?? CEU_BASE_FALLBACK) + 1)
 
 
+async function cleanupGrocTaronjaStageDocs(
+  idsVerd: Set<string>,
+  idsGroc: Set<string>,
+  idstaronja: Set<string>
+): Promise<void> {
+  const colNeteja = [
+    { name: 'stage_groc', idsActuals: idsGroc },
+    { name: 'stage_taronja', idsActuals: idstaronja },
+  ] as const
+
+  for (const { name, idsActuals } of colNeteja) {
+    const snap = await firestore.collection(name).get()
+
+    for (const doc of snap.docs) {
+      const id = doc.id
+
+      if (idsVerd.has(id)) {
+        await doc.ref.delete()
+        console.log(`🧹 Eliminat de ${name} (ara és verd): ${id}`)
+        continue
+      }
+
+      if (!idsActuals.has(id)) {
+        await doc.ref.delete()
+        console.log(`🧹 Eliminat de ${name} (ja no és ${name} a Zoho): ${id}`)
+      }
+    }
+  }
+
+  console.info('✨ Neteja stage_groc i stage_taronja completada')
+}
+
 // ─────────────────────────────
 // SYNC PRINCIPAL
 // ─────────────────────────────
@@ -1150,8 +1182,13 @@ StageGroup:
   await batchVerd.commit()
   console.info(`🟢 stage_verd actualitzat: ${idsVerd.size} deals`)
 
+  // 7.1b — Neteja groc/taronja just després de verd (abans d’escriure groc/taronja).
+  // Si el sync falla o expira més endavant, no deixem el mateix idZoho a verd i groc.
+  await cleanupGrocTaronjaStageDocs(idsVerd, idsGroc, idstaronja)
+
   // 7.2 — Escriure groc/taronja només si no són verds
   const batchOthers = firestore.batch()
+  let batchOthersCount = 0
 
   for (const deal of normalized) {
     const id = deal.idZoho
@@ -1194,45 +1231,25 @@ StageGroup:
     if (deal.collection === 'groc') {
       const ref = firestore.collection('stage_groc').doc(id)
       batchOthers.set(ref, dataToSave, { merge: true })
+      batchOthersCount += 1
     }
 
     if (deal.collection === 'taronja') {
       const ref = firestore.collection('stage_taronja').doc(id)
       batchOthers.set(ref, dataToSave, { merge: true })
+      batchOthersCount += 1
     }
   }
 
-  await batchOthers.commit()
-  console.info('🟠🔵 Groc/taronja escrits respectant la prioritat de verd')
-
-  // 7.3 — Neteja: només groc i taronja (mai verd)
-  const colNeteja = [
-    { name: 'stage_groc', idsActuals: idsGroc },
-    { name: 'stage_taronja', idsActuals: idstaronja },
-  ]
-
-  for (const { name, idsActuals } of colNeteja) {
-    const snap = await firestore.collection(name).get()
-
-    for (const doc of snap.docs) {
-      const id = doc.id
-
-      // Si ara és verd → treure de groc/taronja
-      if (idsVerd.has(id)) {
-        await doc.ref.delete()
-        console.log(`🧹 Eliminat de ${name} (ara és verd): ${id}`)
-        continue
-      }
-
-      // Si ja no existeix a aquest estat a Zoho → eliminar
-      if (!idsActuals.has(id)) {
-        await doc.ref.delete()
-        console.log(`🧹 Eliminat de ${name} (ja no és ${name} a Zoho): ${id}`)
-      }
-    }
+  if (batchOthersCount > 0) {
+    await batchOthers.commit()
+    console.info('🟠🔵 Groc/taronja escrits respectant la prioritat de verd')
+  } else {
+    console.info('🟠🔵 Cap actualització groc/taronja en aquest sync')
   }
 
-  console.info('✨ Neteja final de stage_groc i stage_taronja completada')
+  // 7.3 — Repetir neteja després d’escriure groc/taronja (stale docs nous o obsolets)
+  await cleanupGrocTaronjaStageDocs(idsVerd, idsGroc, idstaronja)
 
   // 7.4 — Neteja stage_verd: només si Zoho indica que ja no és verd (origen zoho)
   const verdSnap = await firestore.collection('stage_verd').get()

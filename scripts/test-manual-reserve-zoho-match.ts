@@ -12,6 +12,7 @@ import {
   normalizeUbicacioKey,
   resolveManualReserveReplacements,
   stripInvalidManualMerge,
+  zohoDealClientNameForMatch,
   type ManualReserveDoc,
   type ZohoDealMatchInput,
 } from '../src/services/spaces/manualReserveZohoMatch'
@@ -60,6 +61,31 @@ assert(
   'different legal suffixes do not match'
 )
 assert(manualReserveMatchesZohoDeal(manual, deal), '4-criteria match')
+
+assert(
+  zohoDealClientNameForMatch('CLUB JOVENTUT BADALONA / 01/07/26 / 500') ===
+    'CLUB JOVENTUT BADALONA',
+  'extracts client segment from Zoho Deal_Name'
+)
+assert(
+  manualReserveMatchesZohoDeal(
+    {
+      ...manual,
+      NomClient: 'CLUB JOVENTUT BADALONA',
+      Comercial: 'Laia Montserrat',
+      Ubicacio: "Pavello Olímpic Arena Badalona",
+      DataInici: '2026-07-01',
+    },
+    {
+      ...deal,
+      NomEvent: 'CLUB JOVENTUT BADALONA / 01/07/26 / 500',
+      Comercial: 'Laia Montserrat',
+      Ubicacio: "Pavello Olímpic Arena Badalona",
+      DataInici: '2026-07-01',
+    }
+  ),
+  'manual client matches Zoho Deal_Name with date and pax suffix'
+)
 
 assert(
   !manualReserveMatchesZohoDeal(manual, {

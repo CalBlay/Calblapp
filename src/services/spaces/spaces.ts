@@ -351,8 +351,10 @@ export async function getSpacesByWeek(
       }
     }
 
+    const dedupedEvents = dedupeStageEventsByPriority(rawEvents)
+
     const expanded: RawEvent[] = []
-    for (const event of rawEvents) {
+    for (const event of dedupedEvents) {
       const start = parseISO(event.date)
       const end = parseISO(event.dateEnd || event.date)
       for (let day = start; day <= end; day = addDays(day, 1)) {
@@ -470,6 +472,28 @@ export async function getSpacesByWeek(
 }
 
 export type Stage = 'verd' | 'taronja' | 'groc' | 'lila'
+
+const STAGE_READ_PRIORITY: Record<Stage, number> = {
+  verd: 3,
+  taronja: 2,
+  groc: 1,
+  lila: 0,
+}
+
+/** Un mateix idZoho no ha d’aparèixer en dues col·leccions stage_*; prioritzem verd. */
+function dedupeStageEventsByPriority(events: RawEvent[]): RawEvent[] {
+  const byId = new Map<string, RawEvent>()
+  for (const event of events) {
+    const prev = byId.get(event.id)
+    if (
+      !prev ||
+      STAGE_READ_PRIORITY[event.stage] > STAGE_READ_PRIORITY[prev.stage]
+    ) {
+      byId.set(event.id, event)
+    }
+  }
+  return Array.from(byId.values())
+}
 
 function shouldIncludeManualReserves(stageFilters: string[]): boolean {
   if (stageFilters.length === 0) return true
