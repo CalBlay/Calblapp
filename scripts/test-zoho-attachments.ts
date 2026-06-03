@@ -2,11 +2,11 @@
  * Proves de les regles d'adjunts Zoho (sense Firebase).
  * Executar: npx ts-node --transpile-only scripts/test-zoho-attachments.ts
  */
-import {
+const {
   extractZohoFieldAttachments,
   shouldCleanupMissingZohoAttachmentSlots,
   shouldImportZohoAttachment,
-} from '../src/services/zoho/attachments'
+} = require('../src/services/zoho/attachments')
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message)
