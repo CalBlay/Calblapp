@@ -1,6 +1,6 @@
 /**
  * Proves de matching manual ↔ Zoho (sense Firestore).
- * Executar: npx ts-node --transpile-only scripts/test-manual-reserve-zoho-match.ts
+ * Executar: npm run test:manual-reserve-zoho-match
  */
 import {
   applyManualCreatedAtPreserve,
