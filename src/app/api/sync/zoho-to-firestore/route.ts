@@ -4,6 +4,7 @@ import { syncZohoDealsToFirestore } from '@/services/zoho/sync'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isAllowedByClientOverride } from '@/lib/server/permissions'
+import { validateCronSecretRequest } from '@/lib/server/cronAuth'
 
 export const runtime = 'nodejs'
 
@@ -12,8 +13,10 @@ export async function GET(req: Request) {
     const url = new URL(req.url)
     const mode = url.searchParams.get('mode')
 
-    // Si es cron, saltem auth completament
     if (mode === 'cron') {
+      const cronAuthError = validateCronSecretRequest(req)
+      if (cronAuthError) return cronAuthError
+
       const result = await syncZohoDealsToFirestore()
       return NextResponse.json({
         ok: true,
