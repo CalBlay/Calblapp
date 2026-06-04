@@ -156,7 +156,7 @@ export const authOptions = {
                     : true,
               }
             } else {
-              console.log('[AUTH] Password incorrecte. Input:', passInput, 'Doc:', passDoc)
+              console.log('[AUTH] Password incorrecte per:', data.name)
             }
           }
         } catch (err) {

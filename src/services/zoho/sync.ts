@@ -101,6 +101,27 @@ function cleanUndefined(obj: NormalizedDeal): Record<string, unknown> {
   return clean
 }
 
+function markStrippedManualMergeFieldsForDelete(
+  dataToSave: Record<string, unknown>,
+  existing: FirebaseFirestore.DocumentData | undefined,
+  strippedExisting: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  if (!existing || strippedExisting === existing) return dataToSave
+
+  const out: Record<string, unknown> = { ...dataToSave }
+  for (const field of [
+    'mergedFromManualId',
+    'mergedFromManualNomClient',
+    'createdAt',
+    'manualReserveCreatedAt',
+  ]) {
+    if (existing[field] !== undefined && out[field] === undefined) {
+      out[field] = FieldValue.delete()
+    }
+  }
+  return out
+}
+
 const LOCAL_CALENDAR_FIELDS = new Set([
   'LN',
   'code',
@@ -1123,6 +1144,7 @@ StageGroup:
     { createdAt: string; mergedFromManualId: string }
   >()
   let manuals: ManualReserveDoc[] = []
+  let manualIdsToDeleteAfterStageWrite: string[] = []
 
   try {
     const manualSnap = await firestore
@@ -1144,19 +1166,7 @@ StageGroup:
     )
     manualReplacements = replacementResult.byZohoId
     manualReplacedCount = replacementResult.replacedCount
-
-    if (replacementResult.manualIdsToDelete.length > 0) {
-      const manualDeleteBatch = firestore.batch()
-      for (const manualId of replacementResult.manualIdsToDelete) {
-        manualDeleteBatch.delete(
-          firestore.collection(SPACES_MANUAL_RESERVES_COLLECTION).doc(manualId)
-        )
-      }
-      await manualDeleteBatch.commit()
-      console.info(
-        `🟣 Reserves manuals substituïdes per Zoho: ${manualReplacedCount}`
-      )
-    }
+    manualIdsToDeleteAfterStageWrite = replacementResult.manualIdsToDelete
   } catch (manualErr) {
     console.error(
       '⚠️ Error reconciliant reserves manuals amb Zoho (sync continua):',
@@ -1213,6 +1223,17 @@ StageGroup:
     if (deal.collection !== 'verd') continue
     const ref = firestore.collection('stage_verd').doc(deal.idZoho)
     const existingDoc = getExistingStageDoc(deal.idZoho)
+    const manualMergeExisting = stripInvalidManualMerge(
+      existingDoc,
+      {
+        idZoho: deal.idZoho,
+        Comercial: deal.Comercial,
+        NomEvent: deal.NomEvent,
+        Ubicacio: deal.Ubicacio,
+        DataInici: deal.DataInici,
+      },
+      manuals
+    )
     const zohoAttachments = await buildZohoAttachmentFields(
       moduleName,
       deal.idZoho,
@@ -1223,24 +1244,18 @@ StageGroup:
     attachmentsDownloaded += zohoAttachments.stats.downloaded
     attachmentsReused += zohoAttachments.stats.reused
     attachmentsDeletedFromStorage += zohoAttachments.stats.deletedFromStorage
-    const dataToSave = applyManualCreatedAtPreserve(
-      {
-        ...preserveLocalCalendarChanges(cleanUndefined(deal), existingDoc),
-        ...zohoAttachments.fields,
-      },
-      deal.idZoho,
-      manualReplacements,
-      stripInvalidManualMerge(
-        existingDoc,
+    const dataToSave = markStrippedManualMergeFieldsForDelete(
+      applyManualCreatedAtPreserve(
         {
-          idZoho: deal.idZoho,
-          Comercial: deal.Comercial,
-          NomEvent: deal.NomEvent,
-          Ubicacio: deal.Ubicacio,
-          DataInici: deal.DataInici,
+          ...preserveLocalCalendarChanges(cleanUndefined(deal), existingDoc),
+          ...zohoAttachments.fields,
         },
-        manuals
-      )
+        deal.idZoho,
+        manualReplacements,
+        manualMergeExisting
+      ),
+      existingDoc,
+      manualMergeExisting
     )
     batchVerd.set(ref, dataToSave, { merge: true })
   }
@@ -1256,6 +1271,17 @@ StageGroup:
     if (idsVerd.has(id)) continue
 
     const existingDoc = getExistingStageDoc(id)
+    const manualMergeExisting = stripInvalidManualMerge(
+      existingDoc,
+      {
+        idZoho: deal.idZoho,
+        Comercial: deal.Comercial,
+        NomEvent: deal.NomEvent,
+        Ubicacio: deal.Ubicacio,
+        DataInici: deal.DataInici,
+      },
+      manuals
+    )
     const zohoAttachments = await buildZohoAttachmentFields(
       moduleName,
       id,
@@ -1266,27 +1292,21 @@ StageGroup:
     attachmentsDownloaded += zohoAttachments.stats.downloaded
     attachmentsReused += zohoAttachments.stats.reused
     attachmentsDeletedFromStorage += zohoAttachments.stats.deletedFromStorage
-    const dataToSave = applyManualCreatedAtPreserve(
-      {
-        ...preserveLocalCalendarChanges(
-          cleanUndefined(deal),
-          existingDoc
-        ),
-        ...zohoAttachments.fields,
-      },
-      id,
-      manualReplacements,
-      stripInvalidManualMerge(
-        existingDoc,
+    const dataToSave = markStrippedManualMergeFieldsForDelete(
+      applyManualCreatedAtPreserve(
         {
-          idZoho: deal.idZoho,
-          Comercial: deal.Comercial,
-          NomEvent: deal.NomEvent,
-          Ubicacio: deal.Ubicacio,
-          DataInici: deal.DataInici,
+          ...preserveLocalCalendarChanges(
+            cleanUndefined(deal),
+            existingDoc
+          ),
+          ...zohoAttachments.fields,
         },
-        manuals
-      )
+        id,
+        manualReplacements,
+        manualMergeExisting
+      ),
+      existingDoc,
+      manualMergeExisting
     )
 
     if (deal.collection === 'groc') {
@@ -1302,6 +1322,26 @@ StageGroup:
 
   await batchOthers.commit()
   console.info('🟠🔵 Groc/taronja escrits respectant la prioritat de verd')
+
+  if (manualIdsToDeleteAfterStageWrite.length > 0) {
+    try {
+      const manualDeleteBatch = firestore.batch()
+      for (const manualId of manualIdsToDeleteAfterStageWrite) {
+        manualDeleteBatch.delete(
+          firestore.collection(SPACES_MANUAL_RESERVES_COLLECTION).doc(manualId)
+        )
+      }
+      await manualDeleteBatch.commit()
+      console.info(
+        `🟣 Reserves manuals substituïdes per Zoho: ${manualReplacedCount}`
+      )
+    } catch (manualDeleteErr) {
+      console.error(
+        '⚠️ Error esborrant reserves manuals substituïdes (es reintentarà en una propera sync):',
+        manualDeleteErr
+      )
+    }
+  }
 
   // 7.3 — Neteja: només groc i taronja (mai verd)
   const colNeteja = [
