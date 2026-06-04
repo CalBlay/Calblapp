@@ -157,6 +157,10 @@ assert(
   !storedClientMismatch?.mergedFromManualId,
   'clears merge when stored client differs from deal NomEvent'
 )
+assert(
+  storedClientMismatch?.manualReserveCreatedAt === undefined,
+  'clears stored manualReserveCreatedAt when stored client differs from deal NomEvent'
+)
 
 const freshMerge = applyManualCreatedAtPreserve(
   { NomEvent: 'Zoho deal', DataPeticio: '2026-05-20' },
@@ -172,6 +176,10 @@ assert(
   freshMerge.mergedFromManualId === 'spaces_manual_1000',
   'applyManualCreatedAtPreserve sets mergedFromManualId'
 )
+assert(
+  freshMerge.manualReserveCreatedAt === '2026-05-01T10:00:00.000Z',
+  'applyManualCreatedAtPreserve records manualReserveCreatedAt on first merge'
+)
 
 const mergedId = 'spaces_manual_1714550400000'
 const subsequentSync = applyManualCreatedAtPreserve(
@@ -181,12 +189,17 @@ const subsequentSync = applyManualCreatedAtPreserve(
   {
     mergedFromManualId: mergedId,
     createdAt: '2026-04-01T08:00:00.000Z',
+    manualReserveCreatedAt: '2024-05-01T00:00:00.000Z',
   }
 )
 assert(
   docCreatedAtIso(subsequentSync.createdAt) ===
     new Date(1714550400000).toISOString(),
   'subsequent sync repairs createdAt from mergedFromManualId'
+)
+assert(
+  subsequentSync.manualReserveCreatedAt === new Date(1714550400000).toISOString(),
+  'subsequent sync repairs manualReserveCreatedAt from mergedFromManualId'
 )
 
 const timestampLike = {
@@ -207,6 +220,11 @@ assert(
   !wrongExistingCreatedAt.createdAt?.toString().includes('Timestamp'),
   'createdAt is ISO not Timestamp.toString()'
 )
+assert(
+  wrongExistingCreatedAt.manualReserveCreatedAt ===
+    new Date(1714550400000).toISOString(),
+  'manualReserveCreatedAt is ISO not Timestamp.toString()'
+)
 
 const legacyFallback = applyManualCreatedAtPreserve(
   { DataPeticio: '2026-05-20' },
@@ -217,6 +235,28 @@ const legacyFallback = applyManualCreatedAtPreserve(
 assert(
   docCreatedAtIso(legacyFallback.createdAt) === '1970-01-01T00:00:01.000Z',
   'legacy manual id fallback for createdAt'
+)
+assert(
+  legacyFallback.manualReserveCreatedAt === '1970-01-01T00:00:01.000Z',
+  'legacy manual id fallback for manualReserveCreatedAt'
+)
+
+const nonMergedExisting = applyManualCreatedAtPreserve(
+  { NomEvent: 'Zoho only' },
+  'z9',
+  new Map(),
+  {
+    createdAt: '2026-04-10T09:30:00.000Z',
+    manualReserveCreatedAt: '2026-03-01T00:00:00.000Z',
+  }
+)
+assert(
+  nonMergedExisting.createdAt === '2026-04-10T09:30:00.000Z',
+  'non-merged existing createdAt is preserved'
+)
+assert(
+  nonMergedExisting.manualReserveCreatedAt === '2026-03-01T00:00:00.000Z',
+  'non-merged existing manualReserveCreatedAt is preserved'
 )
 
 console.log('✅ manualReserveZohoMatch tests OK')

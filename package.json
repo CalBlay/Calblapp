@@ -13,7 +13,8 @@
     "import:maintenance-machines": "node scripts/importMaintenanceMachines.cjs",
     "import:allergens": "node scripts/import_plats_allergens.js",
     "import:allergens:dry": "node scripts/import_plats_allergens.js --dry-run --report-file tmp/allergens-import-report.json",
-    "import:allergens:replace": "node scripts/import_plats_allergens.js --replace-all --report-file tmp/allergens-import-report.json"
+    "import:allergens:replace": "node scripts/import_plats_allergens.js --replace-all --report-file tmp/allergens-import-report.json",
+    "test:manual-reserve-zoho-match": "ts-node --transpile-only scripts/test-manual-reserve-zoho-match.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.2",
