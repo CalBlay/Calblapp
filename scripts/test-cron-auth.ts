@@ -1,5 +1,5 @@
 /**
- * Executar: npx ts-node --transpile-only scripts/test-cron-auth.ts
+ * Executar: npx ts-node --transpile-only --compiler-options '{"module":"commonjs"}' scripts/test-cron-auth.ts
  */
 import { validateCronSecretRequest } from '../src/lib/server/cronAuth'
 
