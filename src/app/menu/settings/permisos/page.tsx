@@ -1,9 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
+import {
+  DEPARTMENTS,
+  getUserDepartmentSelectOptions,
+  normalizeDepartmentLabel,
+} from '@/data/departments'
 import { normalizeRole } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,12 +27,54 @@ type ListUsersResponse = { users: UserRow[] }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
+const fold = (s?: string | null) =>
+  String(s ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+
+const formatDepartmentLabel = (value?: string) => {
+  const raw = String(value || '').trim()
+  if (!raw) return '-'
+  const key = normalizeDepartmentLabel(raw)
+  const exact = DEPARTMENTS.find((dep) => normalizeDepartmentLabel(dep) === key)
+  if (exact) return exact
+  if (key.includes('recursos') && key.includes('humans')) return 'Recursos Humans'
+  return raw
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ')
+}
+
+function matchesUserSearch(user: UserRow, query: string) {
+  const q = fold(query)
+  if (!q) return true
+  const haystack = [user.name, user.email, user.role, user.department, user.id]
+    .map((v) => fold(v))
+    .join(' ')
+  return haystack.includes(q)
+}
+
+function matchesDepartmentFilter(user: UserRow, departmentFilter: string) {
+  if (!departmentFilter || departmentFilter === '__all__') return true
+  return (
+    normalizeDepartmentLabel(user.department) === normalizeDepartmentLabel(departmentFilter)
+  )
+}
+
+const selectClassName =
+  'flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]'
+
 export default function AdminPermisosPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const role = normalizeRole(session?.user?.role || '')
   const [bootLoading, setBootLoading] = useState(false)
   const [bootMsg, setBootMsg] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [departmentFilter, setDepartmentFilter] = useState('__all__')
 
   useEffect(() => {
     if (status === 'loading') return
@@ -42,6 +89,32 @@ export default function AdminPermisosPage() {
     role === 'admin' ? '/api/admin/permissions/users' : null,
     fetcher
   )
+
+  const users = data?.users || []
+
+  const departmentOptions = useMemo(
+    () =>
+      getUserDepartmentSelectOptions(
+        ...users.map((u) => formatDepartmentLabel(u.department)).filter((d) => d && d !== '-')
+      ),
+    [users]
+  )
+
+  const filteredUsers = useMemo(
+    () =>
+      users.filter(
+        (u) => matchesUserSearch(u, searchQuery) && matchesDepartmentFilter(u, departmentFilter)
+      ),
+    [users, searchQuery, departmentFilter]
+  )
+
+  const hasActiveFilters =
+    Boolean(searchQuery.trim()) || (departmentFilter && departmentFilter !== '__all__')
+
+  const clearFilters = () => {
+    setSearchQuery('')
+    setDepartmentFilter('__all__')
+  }
 
   const bootstrapDefaults = async () => {
     setBootLoading(true)
@@ -84,18 +157,49 @@ export default function AdminPermisosPage() {
       </div>
 
       <div className="rounded-xl border border-border bg-background p-4 space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label>Cerca (MVP)</Label>
-            <Input placeholder="Nom, email, rol..." disabled />
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 min-w-0">
+            <div className="space-y-1">
+              <Label htmlFor="permisos-search">Cerca</Label>
+              <Input
+                id="permisos-search"
+                placeholder="Nom, email, rol..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="permisos-department">Departament</Label>
+              <select
+                id="permisos-department"
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                className={selectClassName}
+              >
+                <option value="__all__">Tots els departaments</option>
+                {departmentOptions.map((dep) => (
+                  <option key={dep} value={dep}>
+                    {dep}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="space-y-1">
-            <Label>Scope</Label>
-            <Input value="Client/Empresa (base)" disabled />
-          </div>
+          {hasActiveFilters ? (
+            <Button type="button" variant="outline" className="shrink-0" onClick={clearFilters}>
+              Neteja filtres
+            </Button>
+          ) : null}
         </div>
         <p className="text-xs text-muted-foreground">
-          L’API guarda `permissions_defaults/v1` (si no existeix) i `user_access_assignments/{'{userId}'}` per cada usuari.
+          Filtra per text i departament; després obre un usuari per ajustar visualització, edició i accions.
+          {users.length > 0 && (
+            <>
+              {' '}
+              Mostrant {filteredUsers.length} de {users.length} usuaris.
+            </>
+          )}
         </p>
         {bootMsg && (
           <div className="rounded-lg border border-border bg-muted/30 p-2 text-sm">
@@ -118,7 +222,7 @@ export default function AdminPermisosPage() {
           <div className="col-span-3">Departament</div>
         </div>
         <div className="divide-y">
-          {(data?.users || []).map((u) => (
+          {filteredUsers.map((u) => (
             <div key={u.id} className="grid grid-cols-12 px-3 py-2 text-sm">
               <div className="col-span-3 truncate">
                 <Link
@@ -137,8 +241,13 @@ export default function AdminPermisosPage() {
               <div className="col-span-3 truncate">{u.department || '-'}</div>
             </div>
           ))}
-          {!isLoading && (data?.users?.length || 0) === 0 && (
+          {!isLoading && users.length === 0 && (
             <div className="px-3 py-6 text-sm text-muted-foreground">No hi ha usuaris.</div>
+          )}
+          {!isLoading && users.length > 0 && filteredUsers.length === 0 && (
+            <div className="px-3 py-6 text-sm text-muted-foreground">
+              Cap usuari coincideix amb els filtres.
+            </div>
           )}
           {isLoading && <div className="px-3 py-6 text-sm text-muted-foreground">Carregant…</div>}
         </div>
