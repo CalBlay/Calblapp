@@ -6,6 +6,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import type { Timestamp as AdminTimestamp } from 'firebase-admin/firestore'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 
 export const QUADRANT_TRAINING_COLLECTION = 'quadrantTrainingSamples'
 
@@ -389,7 +390,7 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
       validUsers.map((u) =>
         fetch(`${ctx.requestOrigin}/api/push/send`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: internalApiHeaders(),
           body: JSON.stringify({
             userId: u.userId,
             title: pushTitle,

@@ -8,6 +8,7 @@ import {
   notifyForNewMaintenanceTicket,
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
+import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -51,7 +52,7 @@ async function sendPushToUids(baseUrl: string, uids: string[], title: string, bo
     uids.map((uid) =>
       fetch(`${baseUrl}/api/push/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalApiHeaders(),
         body: JSON.stringify({ userId: uid, title, body, url }),
       }).catch(() => {})
     )

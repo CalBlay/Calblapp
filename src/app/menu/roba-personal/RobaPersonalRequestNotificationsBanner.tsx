@@ -7,7 +7,7 @@ import { useSession } from 'next-auth/react'
 import { subscribeToAblyEvent } from '@/lib/ablyClient'
 import { Badge } from '@/components/ui/badge'
 import type { DeliveryRow, RequestRow, RobaPersonalRequestNotification } from './robaPersonalTypes'
-import { normalizeRole } from '@/lib/roles'
+import { useRobaPersonalApiAccess } from '@/hooks/useRobaPersonalApiAccess'
 
 const swrFetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -80,33 +80,21 @@ export function RobaPersonalRequestNotificationsBanner({
 }) {
   const { data: session } = useSession()
   const userId = String((session?.user as { id?: string })?.id || '').trim()
-  const sessionRoleNorm = normalizeRole((session?.user as { role?: string })?.role)
-  const sessionDeptNorm = String((session?.user as { department?: string })?.department || '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-  const isFullUser = sessionRoleNorm === 'admin' || sessionDeptNorm === 'recursos humans'
-  const isDeptLeadLimited =
-    Boolean((session?.user as { isDepartmentRobaLead?: boolean })?.isDepartmentRobaLead) &&
-    !isFullUser
-  const isWorkerSelf =
-    Boolean(
-      String(
-        (session?.user as { robaLinkedPersonnelId?: string | null })?.robaLinkedPersonnelId || ''
-      ).trim()
-    ) &&
-    !isFullUser &&
-    !isDeptLeadLimited
-  const shouldLoadDeliveries = !isFullUser
+  const {
+    isFullUser,
+    isDeptLeadLimited,
+    isWorkerSelf,
+    canFetchRequests,
+    canFetchDeliveries,
+  } = useRobaPersonalApiAccess()
 
   const { data, mutate } = useSWR(userId ? '/api/notifications?mode=list' : null, swrFetcher)
   const { data: requestsData } = useSWR<RequestRow[]>(
-    userId ? '/api/roba-personal/requests' : null,
+    canFetchRequests ? '/api/roba-personal/requests' : null,
     swrFetcher
   )
   const { data: deliveriesData } = useSWR<DeliveryRow[]>(
-    userId && shouldLoadDeliveries ? '/api/roba-personal/deliveries' : null,
+    canFetchDeliveries ? '/api/roba-personal/deliveries' : null,
     swrFetcher
   )
 

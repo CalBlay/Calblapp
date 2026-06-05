@@ -1,7 +1,10 @@
 import { normalizeRole } from '@/lib/roles'
 import { isProductionWorker, normalizeDept } from '@/lib/accessControl'
 
-/** Mateix criteri que el mòdul Incidències al menú (API / pantalles). */
+/**
+ * Criteri base rol/departament (client i comprovacions síncrones).
+ * Les APIs han d’usar `requireIncidentsModuleView` (inclou overrides de Settings).
+ */
 export function canAccessIncidentsModule(user: { role?: string | null; department?: string | null }): boolean {
   const role = normalizeRole(user.role || '')
   const dept = normalizeDept(user.department || '')

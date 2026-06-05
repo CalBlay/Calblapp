@@ -3,6 +3,7 @@ import { unstable_cache } from 'next/cache'
 import { isIsoDateDayParam } from '@/lib/firestoreStageRangeQuery'
 import { computeQuadrantsGet } from '@/lib/api/quadrantsGetRange'
 import { QUADRANTS_LIST_CACHE_TAG } from '@/lib/quadrantsListCache'
+import { requireQuadrantsModuleRead } from '@/lib/server/quadrantsReadAuth'
 
 const RANGE_REVALIDATE_SEC = 90
 
@@ -21,6 +22,9 @@ const normalize = (s?: string | null): string =>
     .trim()
 
 export async function GET(req: Request) {
+  const auth = await requireQuadrantsModuleRead()
+  if (!auth.ok) return auth.res
+
   try {
     const { searchParams } = new URL(req.url)
     const start = searchParams.get('start')

@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { getToken } from 'next-auth/jwt'
 import { requireAuth } from '@/lib/server/apiAuth'
+import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { canViewUiPath, isAllowedByClientOverride } from '@/lib/server/permissions'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
@@ -150,7 +151,7 @@ async function sendPushToUids(params: {
     uids.map(uid =>
       fetch(`${baseUrl}/api/push/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalApiHeaders(),
         body: JSON.stringify({ userId: uid, title, body, url }),
       }).catch(() => {})
     )

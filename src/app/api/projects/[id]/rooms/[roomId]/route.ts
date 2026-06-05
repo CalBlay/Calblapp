@@ -12,6 +12,7 @@ import {
   sendTaskAssignmentEmail,
 } from '@/services/graph/calendar'
 import Ably from 'ably'
+import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 import type { ProjectBlockLike, ProjectRoomLike } from '@/lib/projectRoomOps'
 
 type SessionUser = {
@@ -137,7 +138,7 @@ async function notifyTaskOwnerAssignment(params: {
   try {
     await fetch(`${baseUrl}/api/push/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalApiHeaders(),
       body: JSON.stringify({
         userId,
         title,

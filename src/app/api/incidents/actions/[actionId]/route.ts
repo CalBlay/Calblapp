@@ -1,11 +1,10 @@
 export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
-import { canAccessIncidentsModule, normalizeIncidentActionStatus } from '@/lib/incidentPolicy'
+import { normalizeIncidentActionStatus } from '@/lib/incidentPolicy'
+import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
 
 function tsToIso(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -18,18 +17,9 @@ function tsToIso(ts: unknown): string {
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: string }> }) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as {
-      id?: string
-      role?: string
-      department?: string
-      name?: string | null
-      email?: string | null
-    } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canAccessIncidentsModule(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsModuleView()
+    if (!auth.ok) return auth.res
+    const user = auth.user
 
     const { actionId } = await ctx.params
     const id = String(actionId || '').trim()

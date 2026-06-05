@@ -9,6 +9,7 @@ import { normalizeRole } from '@/lib/roles'
 import type { JWT } from 'next-auth/jwt'
 import type { AdapterUser } from 'next-auth/adapters'
 import { resolveRobaPersonnelLinkForUser } from '@/lib/roba-personal/resolvePersonnelLink'
+import { verifyPasswordWithMigration } from '@/lib/server/passwords'
 
 // Helpers
 const normLower = (s?: string) => (s || '').toString().trim().toLowerCase()
@@ -128,11 +129,15 @@ export const authOptions = {
               continue
             }
 
-            if (passDoc === passInput) {
+            const passwordCheck = await verifyPasswordWithMigration(passInput, passDoc)
+            if (passwordCheck.ok) {
               console.log('[AUTH] Password correcte per:', data.name)
 
-              if (!data.userId) {
-                await doc.ref.set({ userId: doc.id }, { merge: true })
+              const mergeFields: Record<string, unknown> = {}
+              if (!data.userId) mergeFields.userId = doc.id
+              if (passwordCheck.rehash) mergeFields.password = passwordCheck.rehash
+              if (Object.keys(mergeFields).length > 0) {
+                await doc.ref.set(mergeFields, { merge: true })
               }
 
               const roleNorm = normalizeRole(data.role)
@@ -156,7 +161,7 @@ export const authOptions = {
                     : true,
               }
             } else {
-              console.log('[AUTH] Password incorrecte. Input:', passInput, 'Doc:', passDoc)
+              console.log('[AUTH] Password incorrecte per:', data.name)
             }
           }
         } catch (err) {
@@ -252,7 +257,6 @@ export const authOptions = {
           robaLinkedPersonnelId: token.robaLinkedPersonnelId ?? null,
           robaWorkerDeptNorm: token.robaWorkerDeptNorm ?? null,
         },
-        accessToken: token,
       }
     },
   },

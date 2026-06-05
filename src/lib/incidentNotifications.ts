@@ -1,5 +1,6 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 
 type IncidentNotificationPayload = {
   type: 'incident_marketing_9xx_new'
@@ -74,7 +75,7 @@ export async function notifyMarketingManagersFor9xxIncident(params: {
       targets.map((userId) =>
         fetch(`${baseUrl}/api/push/send`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: internalApiHeaders(),
           body: JSON.stringify({
             userId,
             title: payload.title,

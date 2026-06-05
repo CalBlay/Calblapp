@@ -4,6 +4,7 @@ import {
   createTransportItvCalendarEvent,
   createTransportReviewCalendarEvent,
 } from '@/services/graph/calendar'
+import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 
 type TransportMonthlyMileageEntry = {
   month?: string
@@ -196,7 +197,7 @@ async function sendPush(baseUrl: string, userId: string, title: string, body: st
   try {
     await fetch(`${baseUrl}/api/push/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalApiHeaders(),
       body: JSON.stringify({
         userId,
         title,

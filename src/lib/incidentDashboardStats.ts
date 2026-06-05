@@ -16,6 +16,7 @@ export type IncidentDashboardRow = {
   importance?: string | null
   eventDate?: string | null
   createdAt?: string | null
+  ln?: string | null
 }
 
 const STATUS_ORDER: IncidentWorkflowStatus[] = ['obert', 'en_curs', 'resolt', 'tancat']

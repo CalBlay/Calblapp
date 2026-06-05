@@ -4,6 +4,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { AlertTriangle, FileText } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
@@ -19,6 +20,13 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { useIncidents } from '@/hooks/useIncidents'
 import IncidentsTable from './components/IncidentsTable'
+import IncidentsLnFilterBadges from './components/IncidentsLnFilterBadges'
+import { incidentMatchesLnFilter } from '@/lib/incidentLn'
+import {
+  INCIDENTS_MEETING_MINUTES_PERM,
+  INCIDENTS_QUADRE_PATH,
+  INCIDENTS_UI_PATH,
+} from '@/lib/incidentsPermissions'
 import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
@@ -83,9 +91,13 @@ export default function IncidentsPage() {
   )
   const isMarketingUser = MARKETING_DEPARTMENTS.has(normalizeDept(accessUser.department || ''))
   const actaAuthorLabel = sessionUser?.name?.trim() || sessionUser?.email?.trim()
-  const canEditTipologies = canManageIncidentCategories(
-    accessUser
-  )
+  const canEditTipologies = canManageIncidentCategories(accessUser)
+  const { ready: uiPermsReady, canViewPath, canEditPath, hasAction } = useUiPermissions()
+  const canSeeQuadre = uiPermsReady && canViewPath(INCIDENTS_QUADRE_PATH)
+  const canMeetingMinutes =
+    uiPermsReady &&
+    canEditPath(INCIDENTS_UI_PATH) &&
+    hasAction(INCIDENTS_MEETING_MINUTES_PERM)
   const [meetingMinutesOpen, setMeetingMinutesOpen] = useState(false)
   const initialRange = useMemo(() => thisWeekRange(), [])
   const [dateResetSignal, setDateResetSignal] = useState(0)
@@ -98,6 +110,7 @@ export default function IncidentsPage() {
     importance: 'all' as string,
     categoryLabel: 'all' as string,
     status: 'all' as 'all' | 'obert' | 'en_curs' | 'resolt' | 'tancat',
+    ln: 'all' as string,
   })
 
   const effectiveCategoryLabel =
@@ -146,7 +159,12 @@ export default function IncidentsPage() {
     setDefaultFiltersReady(true)
   }, [sessionStatus])
 
-  const totalIncidencies = incidents.length
+  const visibleIncidents = useMemo(
+    () => incidents.filter((inc) => incidentMatchesLnFilter(inc.ln, filters.ln)),
+    [incidents, filters.ln]
+  )
+
+  const totalIncidencies = visibleIncidents.length
 
   const canDeleteRow = React.useCallback(
     (incident: import('@/hooks/useIncidents').Incident) =>
@@ -291,6 +309,7 @@ export default function IncidentsPage() {
                 importance: 'all',
                 categoryLabel: 'all',
                 status: 'all',
+                ln: 'all',
               })
             }}
           />
@@ -312,7 +331,7 @@ export default function IncidentsPage() {
 
   const exportRows = useMemo(
     () =>
-      incidents.map((i) => ({
+      visibleIncidents.map((i) => ({
         DataEvent: (i.eventDate || '').slice(0, 10),
         Event: i.eventTitle || '',
         Codi: i.eventCode || '',
@@ -328,7 +347,7 @@ export default function IncidentsPage() {
         Pax: i.pax ?? '',
         Servei: i.serviceType || '',
       })),
-    [incidents]
+    [visibleIncidents]
   )
 
   const handleExportExcel = async () => {
@@ -434,12 +453,14 @@ export default function IncidentsPage() {
         subtitle="Tauler de treball setmanal"
         actions={
           <div className="flex flex-wrap items-center gap-2 justify-end">
-            <Link
-              href="/menu/incidents/quadre"
-              className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
-            >
-              Quadre de comandament
-            </Link>
+            {canSeeQuadre ? (
+              <Link
+                href={INCIDENTS_QUADRE_PATH}
+                className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
+              >
+                Quadre de comandament
+              </Link>
+            ) : null}
             {canEditTipologies ? (
               <Link
                 href="/menu/incidents/tipologies"
@@ -448,29 +469,33 @@ export default function IncidentsPage() {
                 Tipologies
               </Link>
             ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="whitespace-nowrap gap-1.5"
-              disabled={loading}
-              onClick={() => setMeetingMinutesOpen(true)}
-            >
-              <FileText className="h-4 w-4 shrink-0" aria-hidden />
-              Acta reunió
-            </Button>
+            {canMeetingMinutes ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="whitespace-nowrap gap-1.5"
+                disabled={loading}
+                onClick={() => setMeetingMinutesOpen(true)}
+              >
+                <FileText className="h-4 w-4 shrink-0" aria-hidden />
+                Acta reunió
+              </Button>
+            ) : null}
             <ExportMenu items={exportItems} />
           </div>
         }
       />
 
-      <MeetingMinutesDialog
-        open={meetingMinutesOpen}
-        onOpenChange={setMeetingMinutesOpen}
-        incidents={incidents}
-        filters={{ ...filters, categoryLabel: effectiveCategoryLabel }}
-        generatedByLabel={actaAuthorLabel}
-      />
+      {canMeetingMinutes ? (
+        <MeetingMinutesDialog
+          open={meetingMinutesOpen}
+          onOpenChange={setMeetingMinutesOpen}
+          incidents={visibleIncidents}
+          filters={{ ...filters, categoryLabel: effectiveCategoryLabel }}
+          generatedByLabel={actaAuthorLabel}
+        />
+      ) : null}
 
       {/* Total incidències de la setmana */}
       <div className={`px-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${typography('bodyMd')}`}>
@@ -500,6 +525,10 @@ export default function IncidentsPage() {
           initialEnd={filters.to}
           resetSignal={dateResetSignal}
         />
+        <IncidentsLnFilterBadges
+          value={filters.ln}
+          onChange={(ln) => setFilters((prev) => ({ ...prev, ln }))}
+        />
         <div className="min-w-[8px] flex-1" />
         <FilterButton onClick={openFiltersPanel} />
       </div>
@@ -515,7 +544,7 @@ export default function IncidentsPage() {
       {!loading && !error && (
         <div id="incidencies-print-root" className="w-full">
           <IncidentsTable
-            incidents={incidents}
+            incidents={visibleIncidents}
             onUpdate={updateIncident}
             onDelete={handleDeleteIncident}
             canDeleteIncident={canDeleteRow}

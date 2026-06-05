@@ -1,7 +1,6 @@
 // src/app/api/personnel/[id]/route.ts
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 
 
@@ -25,6 +24,9 @@ export async function GET(
   _req: Request,
   context: { params: { id: string } | Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+
   const { params } = context
   const { id: personnelId } = await params
   if (!personnelId) {
@@ -63,12 +65,13 @@ export async function PUT(
   request: Request,
   context: { params: { id: string } | Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+  const denied = requireRoles(auth, ['admin', 'direccio', 'cap'])
+  if (denied) return denied.res
+
   const { params } = context
   const { id: personnelId } = await params
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
 
   try {
     const body = await request.json()
@@ -101,12 +104,13 @@ export async function DELETE(
   _req: Request,
   context: { params: { id: string } | Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+  const denied = requireRoles(auth, ['admin', 'direccio', 'cap'])
+  if (denied) return denied.res
+
   const { params } = context
   const { id: personnelId } = await params
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
 
   try {
     await firestoreAdmin.collection('personnel').doc(personnelId).delete()

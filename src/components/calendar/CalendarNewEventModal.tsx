@@ -170,7 +170,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
     const load = async () => {
       try {
         setComercialLoading(true)
-        const res = await fetch('/api/users')
+        const res = await fetch('/api/users?view=commercial-options')
         const data = await res.json()
         if (!Array.isArray(data)) return
 

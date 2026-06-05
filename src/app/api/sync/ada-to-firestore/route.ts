@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { syncAdaEventsToFirestore } from '@/services/sync/adaSync'
 import { requireAuth } from '@/lib/server/apiAuth'
+import { requireCronAuth } from '@/lib/server/internalApiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isAllowedByClientOverride } from '@/lib/server/permissions'
 
@@ -21,6 +22,9 @@ export async function GET(req: Request) {
     const endDate = isIsoDate(end) ? end! : undefined
 
     if (mode === 'cron') {
+      const cronDenied = requireCronAuth(req)
+      if (cronDenied) return cronDenied
+
       const result = await syncAdaEventsToFirestore({ startDate, endDate })
       return NextResponse.json({
         ok: true,

@@ -25,6 +25,10 @@ import { normalizeRole } from '@/lib/roles'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 import {
+  INCIDENTS_MEETING_MINUTES_PERM,
+  INCIDENTS_UI_PATH,
+} from '@/lib/incidentsPermissions'
+import {
   CALENDAR_EDIT_IMPLIED_ACTIONS,
   PERM,
   actionPermKey,
@@ -68,6 +72,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/events', action: 'docs:attach:kitchen' },
   { path: '/menu/events', action: 'modifications:register' },
   { path: '/menu/events', action: 'event:close' },
+  { path: INCIDENTS_UI_PATH, action: 'meeting-minutes' },
   { path: '/menu/quadrants', action: 'save' },
   { path: '/menu/quadrants', action: 'confirm' },
   { path: '/menu/quadrants', action: 'draft:save' },
@@ -294,6 +299,18 @@ export async function GET() {
     effectFor(assignment, PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT)) !== 'deny'
   ) {
     actions[PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT)] = true
+  }
+
+  // Incidències: acta reunió només amb edició del tauler (no només visualització)
+  if (map[INCIDENTS_UI_PATH] === true && edit[INCIDENTS_UI_PATH] === true) {
+    if (effectFor(assignment, INCIDENTS_MEETING_MINUTES_PERM) !== 'deny') {
+      actions[INCIDENTS_MEETING_MINUTES_PERM] = true
+    }
+  } else {
+    const actaEff = effectFor(assignment, INCIDENTS_MEETING_MINUTES_PERM)
+    if (actaEff !== 'allow') {
+      actions[INCIDENTS_MEETING_MINUTES_PERM] = false
+    }
   }
 
   // Reserva comercials: veure el submòdul implica sol·licitud; validació només admin / cap transports

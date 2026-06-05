@@ -1,4 +1,5 @@
 import { MODULES } from '@/lib/accessControl'
+import { INCIDENTS_MEETING_MINUTES_PERM } from '@/lib/incidentsPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import type { MatrixRow } from '@/lib/permissions/types'
 
@@ -135,6 +136,19 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       { key: PERM.action('/menu/quadrants', 'draft:confirm'), label: 'Esborranys · confirmar' },
       { key: PERM.action('/menu/quadrants', 'draft:unconfirm'), label: 'Esborranys · desconfirmar' },
       { key: PERM.action('/menu/quadrants', 'draft:delete'), label: 'Esborranys · eliminar' },
+    ],
+  },
+  {
+    id: 'incidentsActions',
+    title: 'Incidències · Accions',
+    subtitle:
+      'Requereix edició del tauler setmanal. Només visualització no n’és suficient (llevat d’allow explícit).',
+    visibleWhen: { path: '/menu/incidents' },
+    actions: [
+      {
+        key: INCIDENTS_MEETING_MINUTES_PERM,
+        label: 'Acta reunió',
+      },
     ],
   },
   {

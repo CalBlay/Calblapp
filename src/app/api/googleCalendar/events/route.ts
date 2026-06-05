@@ -1,6 +1,7 @@
 // src/app/api/googleCalendar/events/route.ts
 import { NextResponse } from 'next/server'
 import { getCalendarEvents } from '@/services/googleCalendar'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 // 🔹 Tipo mínimo de evento de Google Calendar
 export interface CalendarEvent {
@@ -14,6 +15,9 @@ export interface CalendarEvent {
 }
 
 export async function GET(request: Request) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+
   const { searchParams } = new URL(request.url)
   const from = searchParams.get('from')
   const to   = searchParams.get('to')

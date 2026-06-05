@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { normalizeRole } from '@/lib/roles'
 import { useEffect } from 'react'
 import { subscribeToAblyEvent } from '@/lib/ablyClient'
+import { useRobaPersonalApiAccess } from '@/hooks/useRobaPersonalApiAccess'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -139,30 +140,20 @@ export function useTornNotificationCount() {
   }
 }
 
-const normDept = (s?: string) =>
-  String(s || '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-
 export function useRobaPersonalRequestNotificationCount() {
   const { data: session, status } = useSession()
-  const isAuth = status === 'authenticated'
-  const user = session?.user as SessionUser | undefined
-  const userId = user?.id
-  const dept = normDept(user?.department)
-  const role = normalizeRole(user?.role)
-  const isFullUser = role === 'admin' || dept === 'recursos humans'
-  const isDeptLeadLimited = Boolean(user?.isDepartmentRobaLead) && !isFullUser
-  const isWorkerSelf =
-    Boolean(String(user?.robaLinkedPersonnelId || '').trim()) &&
-    !isFullUser &&
-    !isDeptLeadLimited
-  const canUseRobaPersonal = isFullUser || isDeptLeadLimited || isWorkerSelf
+  const {
+    isAuth,
+    userId,
+    isFullUser,
+    isDeptLeadLimited,
+    isWorkerSelf,
+    canFetchRequests,
+    canFetchDeliveries,
+  } = useRobaPersonalApiAccess()
 
-  const requestsUrl = isAuth && userId && canUseRobaPersonal ? '/api/roba-personal/requests' : null
-  const deliveriesUrl = isAuth && userId && canUseRobaPersonal ? '/api/roba-personal/deliveries' : null
+  const requestsUrl = canFetchRequests ? '/api/roba-personal/requests' : null
+  const deliveriesUrl = canFetchDeliveries ? '/api/roba-personal/deliveries' : null
 
   const { data: requestsData, error: requestsError, mutate: mutateRequests } = useSWR(
     requestsUrl,
@@ -180,11 +171,11 @@ export function useRobaPersonalRequestNotificationCount() {
   )
 
   useEffect(() => {
-    if (!isAuth || !userId || !canUseRobaPersonal) return
+    if (!isAuth || !userId || (!canFetchRequests && !canFetchDeliveries)) return
 
     const handler = () => {
-      mutateRequests().catch(() => {})
-      mutateDeliveries().catch(() => {})
+      if (canFetchRequests) mutateRequests().catch(() => {})
+      if (canFetchDeliveries) mutateDeliveries().catch(() => {})
     }
 
     return subscribeToAblyEvent({
@@ -192,7 +183,14 @@ export function useRobaPersonalRequestNotificationCount() {
       eventName: 'created',
       handler,
     })
-  }, [isAuth, userId, canUseRobaPersonal, mutateRequests, mutateDeliveries])
+  }, [
+    isAuth,
+    userId,
+    canFetchRequests,
+    canFetchDeliveries,
+    mutateRequests,
+    mutateDeliveries,
+  ])
 
   return {
     count: (() => {
@@ -228,8 +226,8 @@ export function useRobaPersonalRequestNotificationCount() {
     })(),
     loading:
       status === 'loading' ||
-      (isAuth && !!userId && canUseRobaPersonal && !requestsData && !requestsError) ||
-      (isAuth && !!userId && canUseRobaPersonal && !deliveriesData && !deliveriesError),
+      (canFetchRequests && !requestsData && !requestsError) ||
+      (canFetchDeliveries && !deliveriesData && !deliveriesError),
     error: requestsError || deliveriesError,
     isRrhh: isFullUser,
   }

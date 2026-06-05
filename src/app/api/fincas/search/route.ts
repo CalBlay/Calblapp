@@ -1,6 +1,7 @@
 // ✅ file: src/app/api/fincas/search/route.ts
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 
 export const runtime = 'nodejs'
@@ -20,6 +21,9 @@ type FincaFirestoreRow = {
  * - Retorna màxim 10 coincidències ordenades per rellevància.
  */
 export async function GET(req: Request) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+
   const { searchParams } = new URL(req.url)
   const qRaw = searchParams.get('q') || ''
   const q = qRaw.toLowerCase().trim()

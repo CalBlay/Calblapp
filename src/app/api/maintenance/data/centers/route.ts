@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeMaintenanceLocationKey } from '@/lib/maintenanceCenterTravel'
+import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,6 +20,9 @@ const normalizeTipus = (raw?: unknown) => {
 }
 
 export async function GET(req: Request) {
+  const auth = await requireMaintenanceDataAccess()
+  if (!auth.ok) return auth.res
+
   try {
     const { searchParams } = new URL(req.url)
     const q = normalizeMaintenanceLocationKey(searchParams.get('q') || '')

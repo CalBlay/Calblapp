@@ -14,8 +14,7 @@ import {
 } from '@/components/ui/select'
 import { DEFAULT_ALLERGENS, sortAllergensByStandardOrder } from '@/data/allergens'
 import { parseMenus } from '../bbdd/utils'
-import { db } from '@/lib/firebaseClient'
-import { collection, getDocs, orderBy, query } from 'firebase/firestore'
+import { fetchAllergensCatalog, fetchAllPlatsForExport } from '@/lib/allergens/bbddClient'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 
 type AllergenFilter = 'ANY' | 'NO' | 'T' | 'SI'
@@ -142,43 +141,20 @@ export default function AllergensSearchPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      const [platsSnap, categorySnap, familySnap, allergenSnap] = await Promise.all([
-        getDocs(collection(db, 'plats')),
-        getDocs(query(collection(db, 'categories'), orderBy('label'))),
-        getDocs(query(collection(db, 'family'), orderBy('label'))),
-        getDocs(query(collection(db, 'allergens'), orderBy('label'))),
+      const [catalog, platsRaw] = await Promise.all([
+        fetchAllergensCatalog(),
+        fetchAllPlatsForExport(),
       ])
 
       setPlats(
-        platsSnap.docs.map(docSnap =>
-          mapPlatFromFirestore(docSnap.id, docSnap.data() as FirestorePlatDoc)
+        platsRaw.map(row =>
+          mapPlatFromFirestore(String(row.id), row as FirestorePlatDoc)
         )
       )
 
-      setCategories(
-        categorySnap.docs.map(docSnap => ({
-          id: docSnap.id,
-          label: (docSnap.data().label as string) || docSnap.id,
-        }))
-      )
-
-      setFamilies(
-        familySnap.docs.map(docSnap => ({
-          id: docSnap.id,
-          label: (docSnap.data().label as string) || docSnap.id,
-        }))
-      )
-
-      const dbAllergens = allergenSnap.docs.map(docSnap => ({
-        key: docSnap.id,
-        label: (docSnap.data().label as string) || docSnap.id,
-      }))
-
-      if (dbAllergens.length) {
-        setAllergensCatalog(sortAllergensByStandardOrder(dbAllergens))
-      } else {
-        setAllergensCatalog([...DEFAULT_ALLERGENS])
-      }
+      setCategories(catalog.categories)
+      setFamilies(catalog.families)
+      setAllergensCatalog(catalog.allergens)
     }
 
     loadData()

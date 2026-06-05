@@ -5,16 +5,25 @@ export const revalidate = 0
 
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const { userId, token, platform } = await req.json()
 
     if (!userId || !token) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
     }
 
-    const ref = db.collection('users').doc(String(userId)).collection('fcmTokens')
+    const uid = String(userId)
+    if (uid !== auth.user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const ref = db.collection('users').doc(uid).collection('fcmTokens')
     const snap = await ref.where('token', '==', token).limit(1).get()
     if (snap.empty) {
       await ref.add({
@@ -24,7 +33,7 @@ export async function POST(req: Request) {
       })
     }
 
-    await db.collection('users').doc(String(userId)).set(
+    await db.collection('users').doc(uid).set(
       { pushToken: token, pushEnabled: true, updatedAt: Date.now() },
       { merge: true }
     )

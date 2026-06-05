@@ -10,6 +10,9 @@ import Ably from 'ably'
 
 import { normalizeRole } from '@/lib/roles'
 import { saveUserAccessAssignment } from '@/lib/server/userAccessAssignment'
+import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { hashPassword } from '@/lib/server/passwords'
+import { stripPassword } from '@/lib/server/userApiSerialization'
 import type { UserAccessAssignmentInput } from '@/lib/permissions/types'
 
 const unaccent = (s: string) =>
@@ -85,7 +88,7 @@ async function notifyRequester(params: {
     try {
       await fetch(`${baseUrl}/api/push/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalApiHeaders(),
         body: JSON.stringify({
           userId: requesterId,
           title,
@@ -216,6 +219,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
 
     const passwordPlain =
       (passwordFromBody || '').toString().trim() || Math.random().toString(36).slice(-8)
+    const passwordHashed = await hashPassword(passwordPlain)
 
     const commercialName = (body.commercialName || '').toString().trim()
     const departmentLower = normLower(department || p?.departmentLower)
@@ -224,7 +228,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const userPayload: Record<string, unknown> = {
       name: desiredUsername,
       nameFold: normLower(desiredUsername),
-      password: passwordPlain,
+      password: passwordHashed,
       role,
       isAdmin,
       department,
@@ -267,7 +271,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
       Object.entries(userPayload).filter(([, v]) => v !== undefined)
     )
 
-    console.log('[approve] Creant usuari a Firestore.users:', cleanedPayload)
+    console.log('[approve] Creant usuari a Firestore.users:', stripPassword(cleanedPayload))
 
     // Crear usuari amb docId = personId
     await userRef.set(cleanedPayload, { merge: true })
@@ -314,12 +318,15 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     await notifyRequester({
       requesterId: reqData?.requestedByUserId,
       title: 'Usuari aprovat',
-      body: `S'ha creat l'usuari ${userPayload.name}. Contrasenya temporal: ${passwordPlain}`,
+      body: `S'ha creat l'usuari ${userPayload.name}. Contacta amb administració per obtenir la contrasenya d'accés.`,
       personId,
       baseUrl: req.nextUrl.origin,
     })
 
-    return NextResponse.json({ success: true, user: { id: personId, ...cleanedPayload } })
+    return NextResponse.json({
+      success: true,
+      user: stripPassword({ id: personId, ...cleanedPayload }),
+    })
   } catch (error: unknown) {
     console.error('[approve user request] error:', error)
     const message = error instanceof Error ? error.message : 'Error intern'

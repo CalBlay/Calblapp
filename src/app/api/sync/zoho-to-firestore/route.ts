@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { syncZohoDealsToFirestore } from '@/services/zoho/sync'
 import { requireAuth } from '@/lib/server/apiAuth'
+import { requireCronAuth } from '@/lib/server/internalApiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isAllowedByClientOverride } from '@/lib/server/permissions'
 
@@ -12,8 +13,10 @@ export async function GET(req: Request) {
     const url = new URL(req.url)
     const mode = url.searchParams.get('mode')
 
-    // Si es cron, saltem auth completament
     if (mode === 'cron') {
+      const cronDenied = requireCronAuth(req)
+      if (cronDenied) return cronDenied
+
       const result = await syncZohoDealsToFirestore()
       return NextResponse.json({
         ok: true,

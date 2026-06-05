@@ -10,7 +10,8 @@ import {
   notifyForNewMaintenanceTicket,
 } from '@/lib/maintenanceNotifications'
 import { notifyMarketingManagersFor9xxIncident } from '@/lib/incidentNotifications'
-import { canAccessIncidentsModule, canPostIncident } from '@/lib/incidentPolicy'
+import { canPostIncident } from '@/lib/incidentPolicy'
+import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { normalizeRole } from '@/lib/roles'
 
@@ -549,12 +550,8 @@ export async function POST(req: Request) {
  * ----------------------------------------------------- */
 export async function GET(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined;
-    if (!user?.id) return NextResponse.json({ error: "No autenticat" }, { status: 401 });
-    if (!canAccessIncidentsModule(user)) {
-      return NextResponse.json({ error: "Sense permisos" }, { status: 403 });
-    }
+    const auth = await requireIncidentsModuleView();
+    if (!auth.ok) return auth.res;
 
     const { searchParams } = new URL(req.url);
     const from = searchParams.get("from");

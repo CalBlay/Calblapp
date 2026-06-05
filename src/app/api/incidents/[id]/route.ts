@@ -5,7 +5,8 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin, storageAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
 import { deleteMediaIndexByPath } from '@/lib/media/storageMediaIndex'
-import { canAccessIncidentsModule, canDeleteIncident, normalizeIncidentStatus } from '@/lib/incidentPolicy'
+import { canDeleteIncident, normalizeIncidentStatus } from '@/lib/incidentPolicy'
+import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
 
 function normalizeTimestamp(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -76,12 +77,8 @@ async function buildIncidentImagePayload(
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canAccessIncidentsModule(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsModuleView()
+    if (!auth.ok) return auth.res
 
     const { id } = await ctx.params
     const incidentId = String(id || '').trim()
@@ -128,12 +125,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canAccessIncidentsModule(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsModuleView()
+    if (!auth.ok) return auth.res
+    const user = auth.user
 
     const { id } = await ctx.params
     const incidentId = String(id || '').trim()

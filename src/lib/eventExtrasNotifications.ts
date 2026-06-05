@@ -1,5 +1,6 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { lookupUidByNameLoose } from '@/lib/eventExtras'
+import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 
 type NotifyEventExtrasParams = {
   commercialInternalName?: string | null
@@ -57,7 +58,7 @@ export async function notifyCommercialInternalForEventExtras(
   if (params.baseUrl) {
     await fetch(`${params.baseUrl}/api/push/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalApiHeaders(),
       body: JSON.stringify({
         userId: uid,
         title,

@@ -1,6 +1,7 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
 import type { SurveyNoResponseDefault } from '@/services/premises'
+import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 
 const SURVEYS_COLLECTION = 'quadrantSurveys'
 const RESPONSES_COLLECTION = 'quadrantSurveyResponses'
@@ -373,7 +374,7 @@ async function publishSurveyMessages(params: {
       Array.from(new Set(pushRecipients)).map((userId) =>
         fetch(`${baseUrl}/api/push/send`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: internalApiHeaders(),
           body: JSON.stringify({
             userId,
             title: channelName ? `Sondeig: ${channelName}` : 'Nou sondeig de disponibilitat',
@@ -436,7 +437,7 @@ async function createSurveyNotifications(
       userIds.map((userId) =>
         fetch(`${baseUrl}/api/push/send`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: internalApiHeaders(),
           body: JSON.stringify({
             userId,
             title: payload.title,

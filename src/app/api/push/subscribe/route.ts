@@ -5,9 +5,13 @@ export const revalidate = 0
 
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const { userId, subscription } = await req.json()
 
     if (!userId || !subscription) {
@@ -18,6 +22,10 @@ export async function POST(req: Request) {
     }
 
     const uid = String(userId)
+    if (uid !== auth.user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     await db.collection('users').doc(uid).collection('pushSubscriptions').add({
       subscription,
       createdAt: Date.now(),

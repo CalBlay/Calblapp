@@ -8,6 +8,7 @@ import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
 import { canAccessProjects, sessionToAccessUser } from '@/lib/projectAccess'
 import { deriveProjectPhase } from '@/app/menu/projects/components/project-shared'
 import Ably from 'ably'
+import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 
 type SessionUser = {
   id: string
@@ -139,7 +140,7 @@ async function notifyProjectOwner(params: {
   try {
     await fetch(`${baseUrl}/api/push/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalApiHeaders(),
       body: JSON.stringify({
         userId,
         title,

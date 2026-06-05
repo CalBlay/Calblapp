@@ -6,10 +6,8 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
 import type { DocumentData, QueryDocumentSnapshot } from 'firebase-admin/firestore'
-import {
-  canFetchIncidentCategories,
-  canManageIncidentCategories,
-} from '@/lib/incidentPolicy'
+import { canManageIncidentCategories } from '@/lib/incidentPolicy'
+import { requireIncidentCategoriesRead } from '@/lib/server/incidentsApiAuth'
 import { DEFAULT_INCIDENT_CATEGORIES } from '@/lib/incidentTypology'
 
 export type IncidentCategoryRow = {
@@ -56,12 +54,8 @@ function mergeCategories(fireDocs: QueryDocumentSnapshot<DocumentData>[]): Incid
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canFetchIncidentCategories(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentCategoriesRead()
+    if (!auth.ok) return auth.res
 
     const snap = await firestoreAdmin.collection('incident_categories').get()
     const categories = mergeCategories(snap.docs)

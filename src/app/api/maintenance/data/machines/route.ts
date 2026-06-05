@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,6 +15,9 @@ const buildLabel = (code?: string, name?: string) => {
 }
 
 export async function GET() {
+  const auth = await requireMaintenanceDataAccess()
+  if (!auth.ok) return auth.res
+
   try {
     const snap = await db.collection(COLLECTION).orderBy('name', 'asc').get()
     const machines = snap.docs.map((doc) => {
@@ -42,6 +46,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireMaintenanceDataAccess()
+  if (!auth.ok) return auth.res
+
   try {
     const body = await req.json().catch(() => ({}))
     const code = String(body?.code || '').trim()

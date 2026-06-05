@@ -6,10 +6,19 @@ export const revalidate = 0
 
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db, messagingAdmin } from '@/lib/firebaseAdmin'
+import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { isInternalApiAuthorized } from '@/lib/server/internalApiAuth'
 import webpush from 'web-push'
 
 export async function POST(req: Request) {
   try {
+    if (!isInternalApiAuthorized(req)) {
+      const auth = await requireAuth()
+      if (!auth.ok) return auth.res
+      const denied = requireRoles(auth, ['admin'])
+      if (denied) return denied.res
+    }
+
     const { userId, title, body, url } = await req.json()
 
     if (!userId || !title || !body) {

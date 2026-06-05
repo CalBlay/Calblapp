@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { combineTravelParts } from '@/lib/maintenanceCenterTravel'
+import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -12,6 +13,9 @@ type PatchBody = {
 }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const auth = await requireMaintenanceDataAccess()
+  if (!auth.ok) return auth.res
+
   try {
     const { id } = await ctx.params
     const body = (await req.json().catch(() => ({}))) as PatchBody

@@ -9,6 +9,7 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import Ably from 'ably'
 
 import { normalizeRole } from '@/lib/roles'
+import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 
 interface SessionUser {
   id?: string
@@ -147,7 +148,7 @@ async function notifyAdmins(params: {
     for (const d of admins) {
       await fetch(`${baseUrl}/api/push/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalApiHeaders(),
         body: JSON.stringify({
           userId: d.id,
           title: 'Nova sol·licitud d’usuari',
