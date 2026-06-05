@@ -20,6 +20,13 @@ import {
   getUserDepartmentSelectOptions,
 } from '@/data/departments'
 import useSWR from 'swr'
+import type { AccessUser } from '@/lib/accessControl'
+import type { AssignmentOverride } from '@/lib/permissions/types'
+import { UserPermissionsEditor } from '@/components/permissions/UserPermissionsEditor'
+import { buildEffectiveBaseMap, baseForPath } from '@/lib/permissions/effectiveBase'
+import { applyOverrideEffect } from '@/lib/permissions/overrideState'
+import { buildMatrixRows } from '@/lib/permissions/matrixConfig'
+import { PERM } from '@/lib/permissionKeys'
 
 export interface User {
   id?: string
@@ -61,6 +68,9 @@ export interface NewUserPayload {
   workerRank?: string
   phone?: string
   email?: string
+  accessAssignment?: {
+    overrides: AssignmentOverride[]
+  }
 }
 
 type Props = {
@@ -121,6 +131,42 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const [canRespondSurveys, setCanRespondSurveys] = React.useState(false)
   const [isDepartmentRobaLead, setIsDepartmentRobaLead] = React.useState(false)
   const [isTransportLead, setIsTransportLead] = React.useState(false)
+  const [step, setStep] = React.useState<1 | 2>(1)
+  const [permissionOverrides, setPermissionOverrides] = React.useState<AssignmentOverride[]>([])
+
+  const isPendingApproval = Boolean(user?.personId)
+  const isNewUser = !user?.id && !isPendingApproval
+  const showPermissionsStep = isSessionAdmin && (isNewUser || isPendingApproval) && !isAdmin
+
+  const previewAccessUser = React.useMemo<AccessUser>(
+    () => ({
+      role,
+      department,
+      canRespondSurveys,
+      isDepartmentRobaLead,
+      isTransportLead,
+      opsProjectsConfigurable,
+    }),
+    [
+      role,
+      department,
+      canRespondSurveys,
+      isDepartmentRobaLead,
+      isTransportLead,
+      opsProjectsConfigurable,
+    ]
+  )
+
+  React.useEffect(() => {
+    setStep(1)
+    setPermissionOverrides([])
+  }, [user])
+
+  React.useEffect(() => {
+    if (!showPermissionsStep && step === 2) {
+      setStep(1)
+    }
+  }, [showPermissionsStep, step])
 
   const { data: channelsData } = useSWR('/api/messaging/channels?scope=all', (url: string) =>
     fetch(url).then((r) => r.json())
@@ -221,15 +267,73 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     }
   }, [canBeTransportLead, isTransportLead])
 
+  function validateStepOne(): boolean {
+    if (!name.trim()) {
+      alert('El nom és obligatori')
+      return false
+    }
+    if ((isNewUser || isPendingApproval) && !password.trim()) {
+      alert('La contrasenya és obligatòria')
+      return false
+    }
+    if (requiresCorporateEmail && !email.trim()) {
+      alert('Email corporatiu obligatori per aquest nivell')
+      return false
+    }
+    return true
+  }
+
+  function goToPermissionsStep() {
+    if (!validateStepOne()) return
+
+    // Alta / aprovació: començar denegant el que el rol donaria per defecte (whitelist).
+    const baseMap = buildEffectiveBaseMap(previewAccessUser)
+    let initialDenies: AssignmentOverride[] = []
+    for (const row of buildMatrixRows()) {
+      if (baseForPath(baseMap, row.path).view) {
+        initialDenies = applyOverrideEffect(initialDenies, PERM.view(row.path), 'deny')
+      }
+    }
+    setPermissionOverrides(initialDenies)
+    setStep(2)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
     if (user?.personId) {
+      if (!validateStepOne()) return
+
       try {
+        const approveBody: Record<string, unknown> = {
+          password,
+          name,
+          role,
+          isAdmin,
+          department,
+          commercialName,
+          phone,
+          email,
+          opsChannelsConfigurable,
+          opsEventsConfigurable,
+          opsProjectsConfigurable,
+          canRespondSurveys,
+          isDepartmentRobaLead,
+          isTransportLead,
+        }
+        if (isWorker) {
+          approveBody.available = available
+          approveBody.isDriver = isDriver
+          approveBody.workerRank = workerRank
+        }
+        if (showPermissionsStep) {
+          approveBody.accessAssignment = { overrides: permissionOverrides }
+        }
+
         const res = await fetch(`/api/user-requests/${user.personId}/approve`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password }),
+          body: JSON.stringify(approveBody),
         })
         const data = (await res.json()) as ApproveUserRequestResponse
         if (!res.ok) {
@@ -273,6 +377,8 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       return
     }
 
+    if (!validateStepOne()) return
+
     const payload: NewUserPayload = {
       name,
       password,
@@ -294,18 +400,82 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       payload.isDriver = isDriver
       payload.workerRank = workerRank
     }
+    if (showPermissionsStep) {
+      payload.accessAssignment = { overrides: permissionOverrides }
+    }
     await onSubmit(payload)
   }
 
+  const dialogTitle = user?.id
+    ? 'Editar Usuari'
+    : isPendingApproval
+      ? step === 2
+        ? 'Aprovar sol·licitud · Permisos'
+        : 'Aprovar sol·licitud'
+      : step === 2
+        ? 'Nou Usuari · Permisos'
+        : 'Nou Usuari'
+
+  const createSubmitLabel = isPendingApproval ? 'Aprovar i crear usuari' : 'Crear Usuari'
+
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent
+        className={cn(
+          step === 2 ? 'sm:max-w-5xl max-h-[90vh] overflow-y-auto' : 'sm:max-w-xl'
+        )}
+      >
         <DialogHeader>
-          <DialogTitle>{user?.id ? 'Editar Usuari' : 'Nou Usuari'}</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
+          {showPermissionsStep ? (
+            <p className="text-sm text-muted-foreground">
+              Pas {step} de 2 · {step === 1 ? 'Dades bàsiques' : 'Permisos d’accés'}
+            </p>
+          ) : null}
         </DialogHeader>
 
         {loading ? (
           <p className="text-center text-gray-500">Carregant dades...</p>
+        ) : step === 2 && showPermissionsStep ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="rounded-xl border p-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{name.trim()}</span>
+              {' · '}
+              {role}
+              {' · '}
+              {department}
+            </div>
+
+            <UserPermissionsEditor
+              accessUser={previewAccessUser}
+              overrides={permissionOverrides}
+              onOverridesChange={setPermissionOverrides}
+              compact
+              intro={
+                isPendingApproval
+                  ? 'Configura els permisos abans d’aprovar la sol·licitud. Per defecte segons el nivell i departament del pas anterior.'
+                  : 'Configura els permisos abans de crear l’usuari. Per defecte segons el nivell i departament del pas anterior.'
+              }
+            />
+
+            <div className="mt-6 flex items-center justify-between gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
+                onClick={() => setStep(1)}
+              >
+                Enrere
+              </Button>
+
+              <Button
+                type="submit"
+                className="rounded-xl bg-indigo-400 px-6 py-2 font-semibold text-white shadow-md hover:bg-indigo-500"
+              >
+                {createSubmitLabel}
+              </Button>
+            </div>
+          </form>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -614,15 +784,29 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                 Cancella
               </Button>
 
-              <Button
-                type="submit"
-                className={cn(
-                  'rounded-xl px-6 py-2 font-semibold text-white shadow-md',
-                  user?.id ? 'bg-emerald-400 hover:bg-emerald-500' : 'bg-indigo-400 hover:bg-indigo-500'
-                )}
-              >
-                {user?.id ? 'Desar Canvis' : 'Crear Usuari'}
-              </Button>
+              {showPermissionsStep ? (
+                <Button
+                  type="button"
+                  className="rounded-xl bg-indigo-400 px-6 py-2 font-semibold text-white shadow-md hover:bg-indigo-500"
+                  onClick={goToPermissionsStep}
+                >
+                  Següent · Permisos
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  className={cn(
+                    'rounded-xl px-6 py-2 font-semibold text-white shadow-md',
+                    user?.id
+                      ? 'bg-emerald-400 hover:bg-emerald-500'
+                      : isPendingApproval
+                        ? 'bg-indigo-400 hover:bg-indigo-500'
+                        : 'bg-indigo-400 hover:bg-indigo-500'
+                  )}
+                >
+                  {user?.id ? 'Desar Canvis' : isPendingApproval ? 'Aprovar i crear usuari' : 'Crear Usuari'}
+                </Button>
+              )}
             </div>
           </form>
         )}

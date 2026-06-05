@@ -23,6 +23,7 @@ import {
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useMaintenanceAssignedCount } from '@/hooks/useMaintenanceAssignedCount'
 import { getAblyClient } from '@/lib/ablyClient'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 
 const normalizeDept = (raw?: string) =>
   (raw || '')
@@ -119,6 +120,8 @@ export default function MantenimentIndexPage() {
   const isAdmin = userRole === 'admin' || userRole === 'direccio'
   const isProductionWorker = userRole === 'treballador' && userDepartment === 'produccio'
   const isCommercial = userRole === 'comercial'
+  const { canViewPath } = useUiPermissions()
+  const canViewTickets = canViewPath('/menu/manteniment/tickets')
   const { count: assignedTicketsCount } = useMaintenanceAssignedCount()
   const { data: notificationsData, mutate: mutateNotifications } = useSWR(
     userId ? '/api/notifications?mode=list' : null,
@@ -297,7 +300,7 @@ export default function MantenimentIndexPage() {
         ) : null}
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {(isAdmin || isMaintenanceCap || isLogisticsTicketsManager) && (
+          {(isAdmin || isMaintenanceCap || isLogisticsTicketsManager || canViewTickets) && (
             <Link
               href="/menu/manteniment/tickets"
               className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-amber-50 to-yellow-100"

@@ -11,12 +11,12 @@ import { LogOut, Settings } from 'lucide-react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { normalizeRole } from '@/lib/roles'
 import {
-  getVisibleModules,
   MODULES,
   isLogisticsMaintenanceTicketsManager,
   isMaintenanceWorkerSpacesBlocked,
 } from '@/lib/accessControl'
-import { isUiPathBlocked } from '@/lib/uiPathAccess'
+import { isUiPathAllowed } from '@/lib/uiPathAccess'
+import { resolveModuleMenuHref } from '@/lib/moduleMenuNavigation'
 import { FiltersProvider } from '@/context/FiltersContext'
 import FilterSlideOver from '@/components/ui/filter-slide-over'
 import PWARegister from '@/components/PWARegister'
@@ -96,27 +96,13 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
   const username = user?.name || user?.email || 'Usuari'
   const avatarLetter = username[0]?.toUpperCase() ?? 'U'
 
-  const baseVisibleModules = useMemo(() => {
-    if (!user) return []
-    return getVisibleModules({
-      role,
-      department,
-      canRespondSurveys: user.canRespondSurveys,
-      isDepartmentRobaLead: user.isDepartmentRobaLead,
-      robaLinkedPersonnelId: user.robaLinkedPersonnelId,
-      opsProjectsConfigurable: user.opsProjectsConfigurable,
-    })
-  }, [user, role, department])
-
   const filteredVisibleModules = useMemo(() => {
-    if (!uiPermData) return baseVisibleModules
-    return MODULES
-      .filter((m) => uiMap[m.path] === true)
-      .map((m) => ({
-        ...m,
-        submodules: (m.submodules || []).filter((s) => uiMap[s.path] === true),
-      }))
-  }, [uiPermData, baseVisibleModules, uiMap])
+    if (!uiPermData) return []
+    return MODULES.filter((m) => uiMap[m.path] === true).map((m) => ({
+      ...m,
+      submodules: (m.submodules || []).filter((s) => uiMap[s.path] === true),
+    }))
+  }, [uiPermData, uiMap])
 
   const lastStableVisibleModulesRef = useRef(filteredVisibleModules)
   useEffect(() => {
@@ -127,7 +113,7 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
 
   const stableVisibleModules = uiPermData
     ? filteredVisibleModules
-    : lastStableVisibleModulesRef.current ?? baseVisibleModules
+    : lastStableVisibleModulesRef.current ?? []
 
   const sortedVisibleModules = [...stableVisibleModules].sort((a, b) =>
     a.label.localeCompare(b.label, 'ca', { sensitivity: 'base' })
@@ -136,7 +122,9 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
   // Si estem en una ruta que l'usuari ha denegat via overrides UI, redirigim a /menu
   useEffect(() => {
     if (!uiPermData || isLogin) return
-    if (isUiPathBlocked(pathname, uiMap)) router.replace('/menu')
+    if (pathname?.startsWith('/menu/') && !isUiPathAllowed(pathname, uiMap)) {
+      router.replace('/menu')
+    }
   }, [uiPermData, uiMap, pathname, router, isLogin])
 
   /* 🔓 Pantalla login sense layout */
@@ -206,7 +194,7 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
               {sortedVisibleModules.map(mod => (
                 <Link
                   key={mod.path}
-                  href={mod.path}
+                  href={resolveModuleMenuHref(mod, uiMap)}
                   onClick={() => setMenuOpen(false)}
                   className="px-3 py-2 rounded-md hover:bg-muted"
                 >

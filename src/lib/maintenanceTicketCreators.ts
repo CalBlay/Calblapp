@@ -16,7 +16,11 @@ export function isCuinaCentralLocation(raw?: string | null) {
 /** Personal de restaurant (OPS) que crea tickets al mòdul Tickets. */
 export function isRestaurantOpsDepartment(raw?: string | null) {
   const dept = normalizeDept(raw)
-  return dept === 'serveis' || dept.includes('restaurant')
+  return (
+    dept === 'serveis' ||
+    dept === 'restauracio' ||
+    dept.includes('restaurant')
+  )
 }
 
 export function isMaintenanceTicketCreatorDepartment(raw?: string | null) {

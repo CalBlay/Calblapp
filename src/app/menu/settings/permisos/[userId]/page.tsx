@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MODULES } from '@/lib/accessControl'
+import { applyOverrideEffects } from '@/lib/permissions/overrideState'
 import { CALENDAR_EDIT_IMPLIED_ACTIONS, PERM } from '@/lib/permissionKeys'
 
 type AssignmentOverride = {
@@ -325,23 +326,14 @@ export default function PermisosUserPage() {
     return baseAllowed
   }
 
+  const setOverrideEffects = (
+    updates: Array<{ permission: string; effect: 'allow' | 'deny' | null }>
+  ) => {
+    setOverrides((prev) => applyOverrideEffects(prev, updates))
+  }
+
   const setOverrideEffect = (permission: string, effect: 'allow' | 'deny' | null) => {
-    setOverrides((prev) => {
-      const next = prev.filter(
-        (o) => !(o.permission === permission && (o.scope || 'client') === 'client' && !o.scopeId)
-      )
-      if (!effect) return next
-      return [
-        ...next,
-        {
-          permission,
-          effect,
-          scope: 'client',
-          scopeId: null,
-          note: 'UI matrix',
-        },
-      ]
-    })
+    setOverrideEffects([{ permission, effect }])
   }
 
   useEffect(() => {
@@ -518,15 +510,28 @@ export default function PermisosUserPage() {
                       checked={viewChecked}
                       onChange={(e) => {
                         const desired = e.target.checked
-                        // si coincideix amb base, traiem override; si no, posem allow/deny
-                        setOverrideEffect(
-                          PERM.view(r.path),
-                          desired === base.view ? null : desired ? 'allow' : 'deny'
-                        )
+                        const updates: Array<{ permission: string; effect: 'allow' | 'deny' | null }> =
+                          [
+                            {
+                              permission: PERM.view(r.path),
+                              effect: desired === base.view ? null : desired ? 'allow' : 'deny',
+                            },
+                          ]
                         if (!desired) {
-                          // si traiem view, no té sentit tenir edit allow
-                          setOverrideEffect(PERM.edit(r.path), null)
+                          updates.push({ permission: PERM.edit(r.path), effect: null })
+                          if (r.level === 'module') {
+                            const mod = MODULES.find((m) => m.path === r.path)
+                            for (const sub of mod?.submodules || []) {
+                              const subBase = baseFor(sub.path)
+                              updates.push({
+                                permission: PERM.view(sub.path),
+                                effect: subBase.view ? 'deny' : null,
+                              })
+                              updates.push({ permission: PERM.edit(sub.path), effect: null })
+                            }
+                          }
                         }
+                        setOverrideEffects(updates)
                       }}
                     />
                   </div>

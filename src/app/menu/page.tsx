@@ -29,7 +29,8 @@ import {
   Settings,
 } from 'lucide-react'
 import type { LucideIcon, LucideProps } from 'lucide-react'
-import { getVisibleModules, MODULES } from '@/lib/accessControl'
+import { MODULES } from '@/lib/accessControl'
+import { resolveModuleMenuHref } from '@/lib/moduleMenuNavigation'
 import useSWR from 'swr'
 import {
   useAdminUserRequestCount,
@@ -303,8 +304,6 @@ function MenuContent({ user }: { user: SessionUser }) {
   const { count: logisticsReservationNotificationCount } = useLogisticsReservationNotificationCount()
   const maintenanceBadge = maintenanceNotificationCount
 
-  // 🔑 ÚNICA FONT DE MÒDULS
-  const baseModules = getVisibleModules(user)
   const fetcher = (url: string) => fetch(url).then((r) => r.json())
   const { data: uiPermData } = useSWR(user?.id ? '/api/permissions/ui' : null, fetcher)
   const uiMap = useMemo(
@@ -313,15 +312,12 @@ function MenuContent({ user }: { user: SessionUser }) {
   )
 
   const filteredModules = useMemo(() => {
-    if (!uiPermData) return baseModules
-    // IMPORTANT: usem `MODULES` com a catàleg per poder afegir mòduls via overrides (allow)
-    return MODULES
-      .filter((m) => uiMap[m.path] === true)
-      .map((m) => ({
-        ...m,
-        submodules: (m.submodules || []).filter((s) => uiMap[s.path] === true),
-      }))
-  }, [uiPermData, baseModules, uiMap])
+    if (!uiPermData) return []
+    return MODULES.filter((m) => uiMap[m.path] === true).map((m) => ({
+      ...m,
+      submodules: (m.submodules || []).filter((s) => uiMap[s.path] === true),
+    }))
+  }, [uiPermData, uiMap])
 
   const lastStableModulesRef = useRef(filteredModules)
   useEffect(() => {
@@ -330,7 +326,7 @@ function MenuContent({ user }: { user: SessionUser }) {
     }
   }, [uiPermData, filteredModules])
 
-  const stableModules = uiPermData ? filteredModules : lastStableModulesRef.current ?? baseModules
+  const stableModules = uiPermData ? filteredModules : lastStableModulesRef.current ?? []
 
   const sortedModules = [...stableModules].sort((a, b) =>
     a.label.localeCompare(b.label, 'ca', { sensitivity: 'base' })
@@ -342,6 +338,10 @@ function MenuContent({ user }: { user: SessionUser }) {
         Accedeix als teus mòduls
       </h1>
 
+      {!uiPermData ? (
+        <p className="text-center text-muted-foreground">Carregant mòduls…</p>
+      ) : null}
+
       <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-3">
         {sortedModules.map(mod => {
           const ui = UI_MAP[mod.path]
@@ -350,10 +350,12 @@ function MenuContent({ user }: { user: SessionUser }) {
           const Icon = ui.icon
           const isActive = pathname?.startsWith(mod.path)
 
+          const moduleHref = resolveModuleMenuHref(mod, uiMap)
+
           return (
             <Link
               key={mod.path}
-              href={mod.path}
+              href={moduleHref}
               className={cn(
                 `group rounded-2xl bg-gradient-to-br ${ui.color} p-4 flex flex-col items-center justify-center transition-all shadow hover:shadow-lg hover:scale-105 active:scale-95 border border-blue-200`,
                 isActive && 'ring-2 ring-blue-400 scale-105',

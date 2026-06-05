@@ -4,6 +4,9 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { saveUserAccessAssignment } from '@/lib/server/userAccessAssignment'
+import type { UserAccessAssignmentInput } from '@/lib/permissions/types'
 
 // ──────────────────────────────────────────────────────────────
 // Helpers
@@ -141,6 +144,8 @@ export async function POST(req: Request) {
       available?: boolean
       isDriver?: boolean
       workerRank?: string
+      isDepartmentRobaLead?: boolean
+      accessAssignment?: UserAccessAssignmentInput
     }
 
     const {
@@ -162,6 +167,8 @@ export async function POST(req: Request) {
       available,
       isDriver,
       workerRank,
+      isDepartmentRobaLead = false,
+      accessAssignment,
     } = body
 
     if (requiresCorporateEmail(role, isAdmin) && !email.trim()) {
@@ -191,6 +198,7 @@ export async function POST(req: Request) {
         ? opsChannelsConfigurable.map(String).filter(Boolean)
         : [],
       canRespondSurveys: Boolean(canRespondSurveys),
+      isDepartmentRobaLead: Boolean(isDepartmentRobaLead),
       isTransportLead:
         isCapDepartament(role) && normLower(department) === 'logistica'
           ? Boolean(isTransportLead)
@@ -246,6 +254,21 @@ export async function POST(req: Request) {
 
       if (!snap.exists) await personRef.set(person)
       else await personRef.set(person, { merge: true })
+    }
+
+    if (accessAssignment && !id) {
+      const auth = await requireAuth()
+      if (!auth.ok) return auth.res
+      const denied = requireRoles(auth, ['admin'])
+      if (denied) return denied.res
+
+      await saveUserAccessAssignment({
+        userId,
+        role: userPayload.role,
+        department: userPayload.department,
+        overrides: accessAssignment.overrides ?? [],
+        updatedBy: auth.user.id,
+      })
     }
 
     // 🔹 Retornar resultat

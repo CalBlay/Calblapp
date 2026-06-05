@@ -30,6 +30,7 @@ import {
   isSpacesBbddActionPath,
 } from '@/lib/spacesPermissions'
 import { normalizeRole } from '@/lib/roles'
+import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 
 const EDIT_ROLES = new Set(['admin', 'direccio', 'cap', 'usuari', 'comercial'])
 
@@ -45,6 +46,13 @@ type AssignmentOverride = {
 type UserAccessAssignment = {
   overrides?: AssignmentOverride[]
 }
+
+const loadUserAccessAssignment = cache(async (userId: string): Promise<UserAccessAssignment | null> => {
+  const id = String(userId || '').trim()
+  if (!id) return null
+  const snap = await firestoreAdmin.collection('user_access_assignments').doc(id).get()
+  return snap.exists ? (snap.data() as UserAccessAssignment) : null
+})
 
 function isClientScopeOverride(o: AssignmentOverride | null | undefined) {
   return String(o?.scope || 'client') === 'client' && !String(o?.scopeId || '').trim()
@@ -230,33 +238,22 @@ export async function canViewUiPath(params: { user: AccessUser & { id: string };
   const roleNorm = normalizeRole(params.user.role || undefined)
   if (roleNorm === 'admin') return true
 
-  const baseVisiblePaths = new Set<string>()
-  for (const mod of getVisibleModules(params.user)) {
-    baseVisiblePaths.add(mod.path)
-    for (const sub of mod.submodules || []) baseVisiblePaths.add(sub.path)
-  }
-  const base = baseVisiblePaths.has(path)
+  const assignment = await loadUserAccessAssignment(params.user.id)
+  const map = buildUiViewMap(params.user, assignment)
+  if (map[path] === true) return true
 
-  const eff = await getClientOverrideEffectForPermission(params.user.id, PERM.view(path))
-  if (eff === 'allow') return true
-  if (eff === 'deny') return false
-
-  if (!base) {
-    const legacyConsulta =
-      (path === SPACES_RESERVES_PATH &&
-        (await getClientOverrideEffectForPermission(
-          params.user.id,
-          PERM.action(SPACES_UI_PATH, SPACES_LEGACY_CONSULTA_ACTION.RESERVES)
-        )) === 'allow') ||
-      (path === SPACES_BBDD_PATH &&
-        (await getClientOverrideEffectForPermission(
-          params.user.id,
-          PERM.action(SPACES_UI_PATH, SPACES_LEGACY_CONSULTA_ACTION.BBDD)
-        )) === 'allow')
-    if (legacyConsulta) return true
-  }
-
-  return base
+  const legacyConsulta =
+    (path === SPACES_RESERVES_PATH &&
+      (await getClientOverrideEffectForPermission(
+        params.user.id,
+        PERM.action(SPACES_UI_PATH, SPACES_LEGACY_CONSULTA_ACTION.RESERVES)
+      )) === 'allow') ||
+    (path === SPACES_BBDD_PATH &&
+      (await getClientOverrideEffectForPermission(
+        params.user.id,
+        PERM.action(SPACES_UI_PATH, SPACES_LEGACY_CONSULTA_ACTION.BBDD)
+      )) === 'allow')
+  return legacyConsulta
 }
 
 export async function canEditUiPath(params: { user: AccessUser & { id: string }; path: string }): Promise<boolean> {

@@ -16,5 +16,10 @@ export function isUiPathBlocked(pathname: string, uiMap: Record<string, boolean>
 }
 
 export function isUiPathAllowed(pathname: string, uiMap: Record<string, boolean>): boolean {
-  return !isUiPathBlocked(pathname, uiMap)
+  const path = String(pathname || '').trim()
+  if (!path) return false
+  const matches = matchingUiPaths(path, uiMap)
+  if (matches.length === 0) return false
+  matches.sort((a, b) => b.length - a.length)
+  return uiMap[matches[0]] === true
 }

@@ -22,6 +22,7 @@ import {
   baseCanMutateSpacesBbdd,
 } from '@/lib/spacesPermissions'
 import { normalizeRole } from '@/lib/roles'
+import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import {
   CALENDAR_EDIT_IMPLIED_ACTIONS,
   PERM,
@@ -30,7 +31,6 @@ import {
   isActionPerm,
   isEditPerm,
   isViewPerm,
-  viewPathFromPerm,
 } from '@/lib/permissionKeys'
 
 type UiPermissionMap = Record<string, boolean>
@@ -146,17 +146,9 @@ export async function GET() {
   const aSnap = await firestoreAdmin.collection('user_access_assignments').doc(auth.user.id).get()
   const assignment = (aSnap.exists ? (aSnap.data() as UserAccessAssignment) : null) as UserAccessAssignment | null
 
-  const map: UiPermissionMap = {}
+  const map: UiPermissionMap = buildUiViewMap(accessUser, assignment)
   const edit: UiEditMap = {}
   const actions: UiActionMap = {}
-
-  // Default: tot el catàleg UI (mòduls + submòduls) segons lògica base
-  for (const mod of MODULES) {
-    map[mod.path] = baseVisiblePaths.has(mod.path)
-    for (const sub of mod.submodules || []) {
-      map[sub.path] = baseVisiblePaths.has(sub.path)
-    }
-  }
 
   // Default: edició per rol (només si el path és visible per base)
   const roleNorm = normalizeRole(accessUser.role)
@@ -180,22 +172,8 @@ export async function GET() {
       if (String(o?.scope || 'client') !== 'client') continue
       if (String(o?.scopeId || '').trim()) continue
 
-      // View overrides
+      // View overrides (ja aplicats a `map` via buildUiViewMap)
       if (isViewPerm(o?.permission)) {
-        const path = viewPathFromPerm(String(o?.permission || ''))
-        if (!path) continue
-        map[path] = o.effect === 'deny' ? false : true
-
-        // Si és un submòdul permès, assegurem el mòdul pare visible (el primer prefix de /menu/xxx)
-        if (o.effect !== 'deny' && path.startsWith('/menu/')) {
-          const parts = path.split('/').filter(Boolean) // ['menu', 'allergens', 'bbdd']
-          if (parts.length >= 2) {
-            const parent = `/${parts[0]}/${parts[1]}`
-            if (parent.startsWith('/menu/')) {
-              map[parent] = true
-            }
-          }
-        }
         continue
       }
 
@@ -213,15 +191,6 @@ export async function GET() {
         if (!path) continue
         edit[path] = o.effect === 'deny' ? false : true
         continue
-      }
-    }
-  }
-
-  // Si un submòdul és visible, el mòdul pare també (encara que hi hagi un deny anterior al pare)
-  for (const mod of MODULES) {
-    for (const sub of mod.submodules || []) {
-      if (map[sub.path] === true) {
-        map[mod.path] = true
       }
     }
   }

@@ -5,6 +5,7 @@ import {
   ROBA_SUBMODULE_ROLES,
   robaVisibleSubmodulePaths,
 } from '@/lib/robaPersonalPermissions'
+import { isMaintenanceTicketCreatorDepartment } from '@/lib/maintenanceTicketCreators'
 
 /** Tipus d’usuari mínim */
 export interface AccessUser {
@@ -38,12 +39,6 @@ export interface ModuleDef {
 /** 🔐 CATÀLEG ÚNIC DE MÒDULS */
 const TORNS_CAP_DEPARTMENTS = new Set(['logistica', 'cuina', 'serveis'])
 const MAINTENANCE_CAP_DEPARTMENTS = new Set(['manteniment', 'logistica'])
-
-const isMaintenanceTicketCreatorDept = (dept: string) =>
-  dept === 'cuina central' ||
-  dept.replace(/\s+/g, '') === 'cuinacentral' ||
-  dept === 'serveis' ||
-  dept.includes('restaurant')
 
 export const normalizeDept = (raw?: string | null) => {
   const base = (raw || '')
@@ -411,13 +406,12 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
     '/menu/spaces',
   ])
 
-  const robaLinked = Boolean(String(user.robaLinkedPersonnelId || '').trim())
   const isLogisticsTicketsManager = isLogisticsMaintenanceTicketsManager(user)
 
   return MODULES
     .filter(mod => {
       if (isMaintenanceWorker) {
-        return mod.path === '/menu/manteniment' || (robaLinked && mod.path === '/menu/roba-personal')
+        return mod.path === '/menu/manteniment'
       }
 
       if (isLogisticsTicketsManager && LOGISTICS_TICKETS_MANAGER_HIDDEN_PATHS.has(mod.path)) {
@@ -432,7 +426,7 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
     })
     .filter(mod => {
       if (isMaintenanceWorker) {
-        return mod.path === '/menu/manteniment' || (robaLinked && mod.path === '/menu/roba-personal')
+        return mod.path === '/menu/manteniment'
       }
 
       if (isLogisticsTicketsManager && LOGISTICS_TICKETS_MANAGER_HIDDEN_PATHS.has(mod.path)) {
@@ -445,7 +439,7 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
 
       if (mod.path === '/menu/manteniment') {
         if (
-          isMaintenanceTicketCreatorDept(dept) &&
+          isMaintenanceTicketCreatorDepartment(dept) &&
           (role === 'usuari' || role === 'treballador' || role === 'cap')
         ) {
           return true
@@ -469,7 +463,6 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
 
       if (mod.path === '/menu/roba-personal') {
         if (role === 'admin' || role === 'direccio') return true
-        if (robaLinked) return true
         if (!mod.roles.includes(role)) return false
         if (mod.departments?.some(matchesDept)) return true
         if (user.isDepartmentRobaLead) return true
@@ -501,7 +494,7 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
       }
 
       if (
-        (isMaintenanceTicketCreatorDept(dept) || isLogisticsMaintenanceTicketsManager(user)) &&
+        (isMaintenanceTicketCreatorDepartment(dept) || isLogisticsMaintenanceTicketsManager(user)) &&
         mod.path === '/menu/manteniment'
       ) {
         return {
