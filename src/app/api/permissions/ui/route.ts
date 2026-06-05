@@ -23,6 +23,7 @@ import {
 } from '@/lib/spacesPermissions'
 import { normalizeRole } from '@/lib/roles'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
+import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 import {
   CALENDAR_EDIT_IMPLIED_ACTIONS,
   PERM,
@@ -144,7 +145,9 @@ export async function GET() {
 
   // Overrides guardats per usuari (client-scope)
   const aSnap = await firestoreAdmin.collection('user_access_assignments').doc(auth.user.id).get()
-  const assignment = (aSnap.exists ? (aSnap.data() as UserAccessAssignment) : null) as UserAccessAssignment | null
+  const assignment: UserAccessAssignmentDoc = aSnap.exists
+    ? (aSnap.data() as UserAccessAssignmentDoc)
+    : null
 
   const map: UiPermissionMap = buildUiViewMap(accessUser, assignment)
   const edit: UiEditMap = {}

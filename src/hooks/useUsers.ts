@@ -63,7 +63,7 @@ export function useUsers() {
     const workerRank: User['workerRank'] | undefined =
       rankRaw === 'equip' || rankRaw === 'responsable' ? rankRaw : undefined
 
-    const payload: Partial<User> = {
+    const payload: SaveUserInput = {
       name:       data.name,
       password:   data.password,
       role:       data.role,

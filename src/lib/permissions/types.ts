@@ -14,6 +14,9 @@ export type UserAccessAssignmentInput = {
   permissionSets?: string[]
 }
 
+/** Document Firestore `user_access_assignments` (o equivalent per calcular permisos UI). */
+export type UserAccessAssignmentDoc = UserAccessAssignmentInput | null
+
 export type EffectiveBaseEntry = {
   view: boolean
   edit: boolean

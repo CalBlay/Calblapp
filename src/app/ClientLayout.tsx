@@ -91,8 +91,6 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, status, user, router])
 
-  const role = normalizeRole(user?.role)
-  const department = user?.department || ''
   const username = user?.name || user?.email || 'Usuari'
   const avatarLetter = username[0]?.toUpperCase() ?? 'U'
 

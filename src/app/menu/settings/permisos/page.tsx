@@ -90,7 +90,7 @@ export default function AdminPermisosPage() {
     fetcher
   )
 
-  const users = data?.users || []
+  const users = useMemo(() => data?.users ?? [], [data?.users])
 
   const departmentOptions = useMemo(
     () =>

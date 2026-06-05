@@ -31,6 +31,7 @@ import {
 } from '@/lib/spacesPermissions'
 import { normalizeRole } from '@/lib/roles'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
+import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 
 const EDIT_ROLES = new Set(['admin', 'direccio', 'cap', 'usuari', 'comercial'])
 
@@ -47,11 +48,11 @@ type UserAccessAssignment = {
   overrides?: AssignmentOverride[]
 }
 
-const loadUserAccessAssignment = cache(async (userId: string): Promise<UserAccessAssignment | null> => {
+const loadUserAccessAssignment = cache(async (userId: string): Promise<UserAccessAssignmentDoc> => {
   const id = String(userId || '').trim()
   if (!id) return null
   const snap = await firestoreAdmin.collection('user_access_assignments').doc(id).get()
-  return snap.exists ? (snap.data() as UserAccessAssignment) : null
+  return snap.exists ? (snap.data() as UserAccessAssignmentDoc) : null
 })
 
 function isClientScopeOverride(o: AssignmentOverride | null | undefined) {

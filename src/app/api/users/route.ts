@@ -74,6 +74,7 @@ interface UserPayload {
   opsProjectsConfigurable?: boolean
   opsChannelsConfigurable?: string[]
   canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
   isTransportLead?: boolean
   available?: boolean
   isDriver?: boolean

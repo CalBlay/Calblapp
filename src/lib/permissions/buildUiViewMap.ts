@@ -1,12 +1,8 @@
 import { MODULES, getVisibleModules, type AccessUser } from '@/lib/accessControl'
 import { finalizeModuleVisibilityMap } from '@/lib/moduleMenuNavigation'
 import { getClientOverrideEffect } from '@/lib/permissions/overrideState'
-import type { AssignmentOverride } from '@/lib/permissions/types'
+import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 import { PERM } from '@/lib/permissionKeys'
-
-type Assignment = {
-  overrides?: AssignmentOverride[]
-} | null
 
 /**
  * Mòduls que abans s'obrien per vincle `personnel` / regles legacy.
@@ -15,7 +11,7 @@ type Assignment = {
 const EXPLICIT_ALLOW_ONLY_MODULE_PATHS = ['/menu/roba-personal'] as const
 
 function viewOverrideEffect(
-  assignment: Assignment,
+  assignment: UserAccessAssignmentDoc,
   path: string
 ): 'allow' | 'deny' | null {
   const overrides = assignment?.overrides ?? []
@@ -29,7 +25,7 @@ function viewOverrideEffect(
  */
 export function buildUiViewMap(
   accessUser: AccessUser,
-  assignment: Assignment
+  assignment: UserAccessAssignmentDoc
 ): Record<string, boolean> {
   const visibleModules = getVisibleModules(accessUser)
   const baseVisiblePaths = new Set<string>()
@@ -88,7 +84,7 @@ export function buildUiViewMap(
 
 function enforceExplicitAllowOnlyModules(
   map: Record<string, boolean>,
-  assignment: Assignment
+  assignment: UserAccessAssignmentDoc
 ): void {
   for (const modPath of EXPLICIT_ALLOW_ONLY_MODULE_PATHS) {
     const mod = MODULES.find((m) => m.path === modPath)
