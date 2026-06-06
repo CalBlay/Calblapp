@@ -16,7 +16,7 @@
     "import:allergens:replace": "node scripts/import_plats_allergens.js --replace-all --report-file tmp/allergens-import-report.json",
     "migrate:passwords": "node scripts/migrate-passwords-to-bcrypt.mjs",
     "migrate:passwords:dry-run": "node scripts/migrate-passwords-to-bcrypt.mjs --dry-run",
-    "test:security-helpers": "npx ts-node --skip-project --transpile-only --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"target\":\"es2022\"}' scripts/test-security-helpers.ts"
+    "test:security-helpers": "npx ts-node --skip-project --transpile-only --compiler-options '{\"module\":\"Node16\",\"moduleResolution\":\"node16\",\"target\":\"es2022\"}' scripts/test-security-helpers.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.2",
