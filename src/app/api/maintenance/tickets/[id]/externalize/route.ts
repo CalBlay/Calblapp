@@ -1,15 +1,13 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
 import admin from 'firebase-admin'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import {
   isLogisticsMaintenanceTicketsManager,
   isMaintenanceCapDepartment,
 } from '@/lib/accessControl'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { normalizeRole } from '@/lib/roles'
 import { sendMaintenanceSupplierEmail } from '@/services/graph/calendar'
 import { clearExternalStaleMaintenanceTicketNotifications } from '@/lib/maintenanceNotifications'
+import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
 
@@ -96,13 +94,11 @@ async function findUserEmail(userId: string) {
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireMaintenanceTicketApiView()
+  if (!auth.ok) return auth.res
 
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
+  const user = auth.user as SessionUser
+  const role = auth.role
   const dept = normalizeDept(user.department)
   const logisticsTicketsManager = isLogisticsMaintenanceTicketsManager({
     role,

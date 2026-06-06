@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { canManageMaintenanceTickets, isMaintenanceCapDepartment } from '@/lib/accessControl'
-import { normalizeRole } from '@/lib/roles'
+import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
 import {
   buildTicketBody,
   notifyMaintenanceAssignees,
@@ -158,13 +156,11 @@ const normalizeWorkflowStage = (value?: string | null) => {
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireMaintenanceTicketApiView()
+  if (!auth.ok) return auth.res
 
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
+  const user = auth.user as SessionUser
+  const role = auth.role
   const dept = (user.department || '')
     .toString()
     .normalize('NFD')
@@ -221,13 +217,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireMaintenanceTicketApiView()
+  if (!auth.ok) return auth.res
 
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
+  const user = auth.user as SessionUser
+  const role = auth.role
   const dept = (user.department || '')
     .toString()
     .normalize('NFD')
@@ -698,13 +692,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 }
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireMaintenanceTicketApiView()
+  if (!auth.ok) return auth.res
 
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
+  const user = auth.user as SessionUser
+  const role = auth.role
   const dept = (user.department || '')
     .toString()
     .normalize('NFD')

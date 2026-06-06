@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { normalizeRole } from '@/lib/roles'
 import { canManageMaintenanceTickets } from '@/lib/accessControl'
+import {
+  MAINTENANCE_TICKETS_PATH,
+  requireMaintenanceTicketApiView,
+} from '@/lib/server/maintenanceApiAuth'
 import {
   buildTicketBody,
   notifyForNewMaintenanceTicket,
@@ -219,13 +220,11 @@ function getTicketDateByMode(
 
 export async function GET(req: Request) {
   const startedAt = Date.now()
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireMaintenanceTicketApiView()
+  if (!auth.ok) return auth.res
 
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
+  const user = auth.user as SessionUser
+  const role = auth.role
   const sessionName = normalizeName(user.name || '')
   const deptRaw = (user.department || '').toString()
   if (
@@ -394,13 +393,11 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireMaintenanceTicketApiView([MAINTENANCE_TICKETS_PATH])
+  if (!auth.ok) return auth.res
 
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
+  const user = auth.user as SessionUser
+  const role = auth.role
   if (
     role !== 'admin' &&
     role !== 'direccio' &&
