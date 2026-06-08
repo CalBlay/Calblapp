@@ -28,6 +28,8 @@ export async function GET(request: Request): Promise<Response> {
     // 🔑 filtres CLAU
     const stage = searchParams.getAll('stage')
     const ln = searchParams.getAll('ln')
+    const excludeGrupsRestaurants =
+      searchParams.get('excludeGrupsRestaurants') === '1'
 
     // ───────────────────────────────
     // 📅 Mes / any per defecte
@@ -55,7 +57,8 @@ export async function GET(request: Request): Promise<Response> {
       comercial,
       baseDate,
       stage,
-      ln
+      ln,
+      excludeGrupsRestaurants
     )
 
     return NextResponse.json(

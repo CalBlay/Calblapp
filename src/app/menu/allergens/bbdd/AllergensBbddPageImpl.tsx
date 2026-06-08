@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { DEFAULT_ALLERGENS, sortAllergensByStandardOrder } from '@/data/allergens'
+import { DEFAULT_ALLERGENS } from '@/data/allergens'
 import {
   deleteAllergen,
   deletePlat,
@@ -33,7 +33,6 @@ import type {
   AllergenValue,
   FormState,
   ImportConflictItem,
-  NamedLabelDoc,
   NameMeta,
   OptionItem,
   PlatDocData,

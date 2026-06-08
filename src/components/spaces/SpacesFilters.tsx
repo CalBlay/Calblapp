@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
+import { isGrupsRestaurantsLn } from '@/lib/spacesLn'
 
 export type SpacesStageFilter = 'confirmat' | 'pressupost' | 'calentet'
 
@@ -11,6 +12,8 @@ export interface SpacesFilterState {
   finca?: string[]
   comercial?: string[]
   ln?: string[]
+  /** Per defecte: amaga Grups Restaurants sense llista blanca de LN. */
+  excludeGrupsRestaurants?: boolean
 }
 
 interface SpacesFiltersProps {
@@ -19,10 +22,6 @@ interface SpacesFiltersProps {
   comercials?: string[]
   lns?: string[]
   onChange: (patch: SpacesFilterState) => void
-}
-
-function getDefaultLnSelection(lns: string[]): string[] {
-  return lns.filter((ln) => !ln.toLowerCase().includes('restaurant'))
 }
 
 export default function SpacesFilters({
@@ -37,6 +36,7 @@ export default function SpacesFilters({
     finca: value?.finca ?? [],
     comercial: value?.comercial ?? [],
     ln: value?.ln ?? [],
+    excludeGrupsRestaurants: value?.excludeGrupsRestaurants ?? false,
   }))
 
   useEffect(() => {
@@ -45,6 +45,7 @@ export default function SpacesFilters({
       finca: value?.finca ?? [],
       comercial: value?.comercial ?? [],
       ln: value?.ln ?? [],
+      excludeGrupsRestaurants: value?.excludeGrupsRestaurants ?? false,
     })
   }, [value])
 
@@ -57,11 +58,51 @@ export default function SpacesFilters({
       stage: [],
       finca: [],
       comercial: [],
-      ln: getDefaultLnSelection(lns),
+      ln: [],
+      excludeGrupsRestaurants: true,
+    })
+  }
+
+  const toggleLn = (nextValue: string) => {
+    setFilters((prev) => {
+      const currentValues = prev.ln ?? []
+      const inExcludeDefault =
+        prev.excludeGrupsRestaurants === true && currentValues.length === 0
+
+      if (inExcludeDefault) {
+        if (isGrupsRestaurantsLn(nextValue)) {
+          return {
+            ...prev,
+            excludeGrupsRestaurants: false,
+            ln: [],
+          }
+        }
+        return {
+          ...prev,
+          excludeGrupsRestaurants: false,
+          ln: lns.filter(
+            (ln) => ln !== nextValue && !isGrupsRestaurantsLn(ln)
+          ),
+        }
+      }
+
+      const exists = currentValues.includes(nextValue)
+      return {
+        ...prev,
+        excludeGrupsRestaurants: false,
+        ln: exists
+          ? currentValues.filter((value) => value !== nextValue)
+          : [...currentValues, nextValue],
+      }
     })
   }
 
   const toggleValue = (key: keyof SpacesFilterState, nextValue: string) => {
+    if (key === 'ln') {
+      toggleLn(nextValue)
+      return
+    }
+
     setFilters((prev) => {
       const currentValues = Array.isArray(prev[key]) ? prev[key] : []
       const exists = currentValues.includes(nextValue as never)
@@ -78,8 +119,17 @@ export default function SpacesFilters({
   const clearGroup = (key: keyof SpacesFilterState) => {
     setFilters((prev) => ({
       ...prev,
+      excludeGrupsRestaurants: key === 'ln' ? false : prev.excludeGrupsRestaurants,
       [key]: [],
     }))
+  }
+
+  const lnValues = filters.ln ?? []
+  const lnExcludeDefault = filters.excludeGrupsRestaurants === true && lnValues.length === 0
+  const isLnChecked = (optionValue: string) => {
+    if (lnValues.includes(optionValue)) return true
+    if (lnExcludeDefault && !isGrupsRestaurantsLn(optionValue)) return true
+    return false
   }
 
   return (
@@ -105,6 +155,8 @@ export default function SpacesFilters({
         label="Linies de negoci"
         allLabel="Totes les linies de negoci"
         values={filters.ln ?? []}
+        allChecked={lnValues.length === 0 && !lnExcludeDefault}
+        isOptionChecked={isLnChecked}
         options={lns.map((ln) => ({ value: ln, label: ln }))}
         onClear={() => clearGroup('ln')}
         onToggle={(nextValue) => toggleValue('ln', nextValue)}
@@ -139,6 +191,8 @@ type FilterGroupProps = {
   label: string
   allLabel: string
   values: string[]
+  allChecked?: boolean
+  isOptionChecked?: (value: string) => boolean
   options: Array<{ value: string; label: string }>
   onClear: () => void
   onToggle: (value: string) => void
@@ -148,10 +202,15 @@ function FilterGroup({
   label,
   allLabel,
   values,
+  allChecked,
+  isOptionChecked,
   options,
   onClear,
   onToggle,
 }: FilterGroupProps) {
+  const showAll = allChecked ?? values.length === 0
+  const optionChecked = isOptionChecked ?? ((value: string) => values.includes(value))
+
   return (
     <div>
       <label className="text-[11px] text-gray-500">{label}</label>
@@ -159,7 +218,7 @@ function FilterGroup({
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            checked={values.length === 0}
+            checked={showAll}
             onChange={onClear}
           />
           {allLabel}
@@ -168,7 +227,7 @@ function FilterGroup({
           <label key={option.value} className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
-              checked={values.includes(option.value)}
+              checked={optionChecked(option.value)}
               onChange={() => onToggle(option.value)}
             />
             {option.label}

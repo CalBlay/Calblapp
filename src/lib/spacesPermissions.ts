@@ -19,7 +19,10 @@ export const SPACES_ACTION = {
 /** Col·lecció Firestore per reserves manuals del mòdul Espais / Reserves. */
 export const SPACES_MANUAL_RESERVES_COLLECTION = 'spaces_manual_reserves'
 
-/** Noms de client (Deal_Name Zoho) per desplegable de reserves manuals. */
+/** Comptes CRM Zoho (Account_Name) importats en sincronitzar oportunitats. */
+export const SPACES_ZOHO_ACCOUNTS_COLLECTION = 'spaces_zoho_accounts'
+
+/** Noms de client afegits manualment des de reserves d'espais (no confondre amb comptes Zoho). */
 export const SPACES_ZOHO_CLIENTS_COLLECTION = 'spaces_zoho_clients'
 
 /** Permisos d’acció antics (consultes com a checkbox); es resolen via submòduls view. */

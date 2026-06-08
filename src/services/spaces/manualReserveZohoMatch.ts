@@ -27,6 +27,8 @@ export interface ZohoDealMatchInput {
   idZoho: string
   Comercial: string
   NomEvent: string
+  /** Nom de client extret (Account_Name o primer segment de Deal_Name). */
+  NomClient?: string
   Ubicacio: string
   DataInici: string | null
 }
@@ -96,12 +98,22 @@ export function normalizeClientNameKey(raw: unknown): string {
 
 /**
  * Zoho Deal_Name sol ser "CLIENT / dd/mm/yy / pax". Per matching manual només el segment client.
+ * Si comença per data (p. ex. "/ 03/10/26 / finca") no hi ha client al Deal_Name → cadena buida.
  */
 export function zohoDealClientNameForMatch(nomEvent: unknown): string {
   const raw = String(nomEvent || '').trim()
   if (!raw) return ''
-  const firstSegment = raw.split(/\s*\/\s*/)[0]?.trim()
-  return firstSegment || raw
+  const firstSegment = raw.split(/\s*\/\s*/)[0]?.trim() ?? ''
+  return firstSegment
+}
+
+export function resolveZohoDealClientName(deal: {
+  NomClient?: string
+  NomEvent?: string
+}): string {
+  const explicit = String(deal.NomClient || '').trim()
+  if (explicit) return explicit
+  return zohoDealClientNameForMatch(deal.NomEvent)
 }
 
 export function clientNamesMatch(manualRaw: unknown, dealRaw: unknown): boolean {
@@ -171,9 +183,7 @@ export function manualReserveMatchesZohoDeal(
   if (!ubicManual || !ubicDeal) return false
   if (ubicManual !== ubicDeal) return false
 
-  if (
-    !clientNamesMatch(manual.NomClient, zohoDealClientNameForMatch(deal.NomEvent))
-  ) {
+  if (!clientNamesMatch(manual.NomClient, resolveZohoDealClientName(deal))) {
     return false
   }
 
@@ -325,7 +335,7 @@ export function stripInvalidManualMerge(
   const storedClient = existing.mergedFromManualNomClient
   if (
     storedClient &&
-    !clientNamesMatch(storedClient, zohoDealClientNameForMatch(deal.NomEvent))
+    !clientNamesMatch(storedClient, resolveZohoDealClientName(deal))
   ) {
     const {
       mergedFromManualId: _mergedFromManualId,

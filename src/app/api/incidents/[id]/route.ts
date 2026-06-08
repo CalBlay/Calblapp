@@ -127,7 +127,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   try {
     const auth = await requireIncidentsModuleView()
     if (!auth.ok) return auth.res
-    const user = auth.user
 
     const { id } = await ctx.params
     const incidentId = String(id || '').trim()

@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { DEFAULT_ALLERGENS, sortAllergensByStandardOrder } from '@/data/allergens'
+import { DEFAULT_ALLERGENS } from '@/data/allergens'
 import { parseMenus } from '../bbdd/utils'
 import { fetchAllergensCatalog, fetchAllPlatsForExport } from '@/lib/allergens/bbddClient'
 import { useUiPermissions } from '@/hooks/useUiPermissions'

@@ -4,7 +4,10 @@ import { firestoreAdmin as firestore, storageAdmin } from '@/lib/firebaseAdmin'
 import {
   SPACES_MANUAL_RESERVES_COLLECTION,
 } from '@/lib/spacesPermissions'
-import { syncZohoClientsFromDealNames } from '@/services/spaces/zohoClients'
+import {
+  extractZohoClientNameFromDeal,
+  syncZohoAccountsFromDeals,
+} from '@/services/spaces/zohoClients'
 import {
   applyManualCreatedAtPreserve,
   resolveManualReserveReplacements,
@@ -34,6 +37,7 @@ interface ZohoNamedValue {
 interface ZohoDeal {
   id: string
   Deal_Name: string
+  Account_Name?: string | ZohoNamedValue | null
   Stage: string
   Servicio_texto?: string | null
   Men_texto?: string | null
@@ -59,6 +63,8 @@ interface ZohoDeal {
 interface NormalizedDeal {
   idZoho: string
   NomEvent: string
+  /** Nom de client (Account_Name Zoho, o fallback Deal_Name). */
+  NomClient?: string
   Stage: string
   LN: string
   Servei: string
@@ -744,7 +750,7 @@ export async function syncZohoDealsToFirestore(): Promise<{
   let attachmentsReused = 0
   let attachmentsDeletedFromStorage = 0
   const baseFields =
-    'id,Deal_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec'
+    'id,Deal_Name,Account_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec'
   const fields = ZOHO_EXTRA_RESPONSABLE_FIELD
     ? `${baseFields},${ZOHO_EXTRA_RESPONSABLE_FIELD}`
     : baseFields
@@ -1005,9 +1011,12 @@ const ubicacioLabel = stripCode(ubicacioRaw).trim()
       d as ZohoDeal & Record<string, unknown>
     )
 
+    const nomClient = extractZohoClientNameFromDeal(d)
+
     normalized.push({
       idZoho: String(d.id),
       NomEvent: d.Deal_Name || 'Sense nom',
+      NomClient: nomClient || undefined,
       Stage: d.Stage,
       LN,
       Servei: d.Servicio_texto || d.Men_texto || '',
@@ -1084,6 +1093,7 @@ StageGroup:
         idZoho: deal.idZoho,
         Comercial: deal.Comercial,
         NomEvent: deal.NomEvent,
+        NomClient: deal.NomClient,
         Ubicacio: deal.Ubicacio,
         DataInici: deal.DataInici,
       }))
@@ -1170,6 +1180,7 @@ StageGroup:
           idZoho: deal.idZoho,
           Comercial: deal.Comercial,
           NomEvent: deal.NomEvent,
+          NomClient: deal.NomClient,
           Ubicacio: deal.Ubicacio,
           DataInici: deal.DataInici,
         },
@@ -1221,6 +1232,7 @@ StageGroup:
           idZoho: deal.idZoho,
           Comercial: deal.Comercial,
           NomEvent: deal.NomEvent,
+          NomClient: deal.NomClient,
           Ubicacio: deal.Ubicacio,
           DataInici: deal.DataInici,
         },
@@ -1412,23 +1424,20 @@ StageGroup:
   }
 
   // ─────────────────────────────────────────────
-  // 🔟 Actualitzar col·lecció CLIENTS (Deal_Name)
+  // 🔟 Actualitzar col·lecció COMPTES (Account_Name)
   // ─────────────────────────────────────────────
 
   try {
-    const dealNames: string[] = []
-    for (const d of allDeals) {
-      const name = (d.Deal_Name || '').trim()
-      if (name) dealNames.push(name)
-    }
-    const { upserted } = await syncZohoClientsFromDealNames(dealNames)
+    const { upserted } = await syncZohoAccountsFromDeals(allDeals)
     if (upserted > 0) {
-      console.info(`👤 Clients Zoho: ${upserted} actualitzats a spaces_zoho_clients.`)
+      console.info(
+        `👤 Comptes Zoho: ${upserted} actualitzats a spaces_zoho_accounts.`
+      )
     } else {
-      console.info('👤 Clients Zoho: cap nom nou per desar.')
+      console.info('👤 Comptes Zoho: cap Account_Name nou per desar.')
     }
   } catch (err) {
-    console.error('⚠️ Error actualitzant clients Zoho:', err)
+    console.error('⚠️ Error actualitzant comptes Zoho:', err)
   }
 
   if (manualIdsToDeleteAfterStageWrite.length > 0) {

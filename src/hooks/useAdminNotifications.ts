@@ -141,7 +141,7 @@ export function useTornNotificationCount() {
 }
 
 export function useRobaPersonalRequestNotificationCount() {
-  const { data: session, status } = useSession()
+  const { status } = useSession()
   const {
     isAuth,
     userId,

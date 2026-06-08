@@ -1,4 +1,5 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { spacesLnFilterMatches } from '@/lib/spacesLn'
 import { SPACES_MANUAL_RESERVES_COLLECTION } from '@/lib/spacesPermissions'
 import { manualIdToCreatedAtIso } from '@/services/spaces/manualReserveZohoMatch'
 import type { Timestamp } from 'firebase-admin/firestore'
@@ -23,15 +24,12 @@ function matchesAnyFilter(value: string, filters: string[]): boolean {
   return filters.some((filter) => normalizedValue.includes(filter))
 }
 
-/** LN filter: empty/missing LN still passes (manual reserves, legacy rows). */
-function matchesLnFilter(ln: string, filters: string[]): boolean {
-  if (filters.length === 0) return true
-  const normalizedValue = normalizeText(ln).toLowerCase()
-  if (!normalizedValue) return true
-  return filters.some(
-    (filter) =>
-      normalizedValue.includes(filter) || filter.includes(normalizedValue)
-  )
+function matchesLnFilter(
+  ln: string,
+  filters: string[],
+  excludeGrupsRestaurants = false
+): boolean {
+  return spacesLnFilterMatches(ln, filters, excludeGrupsRestaurants)
 }
 
 function isWedding(ln?: string): boolean {
@@ -175,7 +173,8 @@ export async function getSpacesByWeek(
   comercialFilter: string | string[] = '',
   baseDate?: string,
   stage: string | string[] = 'all',
-  lnFilter: string | string[] = ''
+  lnFilter: string | string[] = '',
+  excludeGrupsRestaurants = false
 ): Promise<SpacesResult> {
   try {
     const fincaFilters = toFilterArray(fincaFilter)
@@ -253,7 +252,7 @@ export async function getSpacesByWeek(
         if (
           !matchesAnyFilter(finca, fincaFilters) ||
           !matchesAnyFilter(commercial, comercialFilters) ||
-          !matchesLnFilter(ln, lnFilters)
+          !matchesLnFilter(ln, lnFilters, excludeGrupsRestaurants)
         ) {
           return
         }

@@ -26,10 +26,6 @@ import {
   type SpacesHeaderRuleConfig,
 } from '@/lib/spacesHeaderRule'
 
-function getDefaultLnSelection(lns: string[]): string[] {
-  return lns.filter((ln) => !ln.toLowerCase().includes('restaurant'))
-}
-
 export default function SpacesPage() {
   const { ready: permsReady, canEditPath, uiActions } = useUiPermissions()
   const [refreshKey, setRefreshKey] = useState(0)
@@ -53,6 +49,7 @@ export default function SpacesPage() {
       finca: [],
       comercial: [],
       ln: [],
+      excludeGrupsRestaurants: true,
       baseDate: toISODate(today),  // Setmana inicial
       month: today.getMonth(),
       year: today.getFullYear(),
@@ -78,22 +75,6 @@ const {
     uiActions[
       PERM.action(SPACES_RESERVES_PATH, SPACES_ACTION.RESERVES_MANUAL_CREATE)
     ] === true
-
-  useEffect(() => {
-    if (lns.length === 0) return
-
-    setFilters((prev) => {
-      if ((prev.ln ?? []).length > 0) return prev
-
-      const defaultLn = getDefaultLnSelection(lns)
-      if (defaultLn.length === 0) return prev
-
-      return {
-        ...prev,
-        ln: defaultLn,
-      }
-    })
-  }, [lns])
 
   const normalizedSpaces: Array<{
     fincaId?: string
