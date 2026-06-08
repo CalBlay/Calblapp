@@ -926,7 +926,7 @@ export default function CalendarPage() {
                   dateIso={selectedDay}
                   deals={visibleDeals}
                   showCodeStatus={canManageCodes}
-                  selectedDealId={panelDeal?.id}
+                  selectedDealId={null}
                   onSelectDeal={handleRequestPanel}
                   onClose={() => setSelectedDay(null)}
                   onCreated={reload}
