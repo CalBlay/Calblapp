@@ -97,23 +97,6 @@ export default function SpaceGrid({
   }
 
   const handleEventClick = (ev: RawSpaceEvent) => {
-    const isManual =
-      ev.isManual === true ||
-      readString(ev.stage).toLowerCase() === 'lila'
-
-    if (typeof window !== 'undefined') {
-      const isMobile = window.innerWidth < 768
-      const targetCode = readString(ev.code) || readString(ev.Code) || readString(ev.id)
-
-      // En mÃ²bil obrim en una finestra nova per no tapar la graella
-      if (isMobile && targetCode && !isManual) {
-        const url = `/menu/events/${targetCode}`
-        window.open(url, '_blank', 'noopener,noreferrer')
-        return
-      }
-    }
-
-    // Desktop o sense identificador: modal in-place
     setSelectedEvent(ev)
     setModalOpen(true)
   }

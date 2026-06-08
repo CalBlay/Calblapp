@@ -140,8 +140,8 @@ export default function SpaceEventModal({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md w-[95vw] rounded-2xl p-4">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[min(90dvh,720px)] w-[min(95vw,28rem)] flex-col overflow-hidden rounded-2xl p-4">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="text-lg font-semibold text-gray-800">
               {eventName}
             </DialogTitle>
@@ -150,7 +150,7 @@ export default function SpaceEventModal({
             </p>
           </DialogHeader>
 
-          <div className="mt-3 space-y-2 text-[13px] sm:text-sm">
+          <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain text-[13px] sm:text-sm">
             {isManual ? (
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">Tipus:</span>
