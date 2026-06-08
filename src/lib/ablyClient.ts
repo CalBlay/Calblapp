@@ -79,7 +79,8 @@ export function subscribeToAblyEvent(params: {
     channel = realtime.channels.get(name)
   }
 
-  const onChannelFailed = (error: Ably.ErrorInfo) => {
+  const onChannelFailed = (stateChange: Ably.ChannelStateChange) => {
+    const error = stateChange.reason
     console.warn(`[ably] channel failed ${name}`, error)
     if (String(error?.message || '').toLowerCase().includes('capability')) {
       resetAblyClient()

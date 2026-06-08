@@ -8,6 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import CalendarModal from './CalendarModal'
 import type { Deal } from '@/hooks/useCalendarData'
 import { colorByLN } from '@/lib/colors'
+import {
+  CALENDAR_BADGE_TEXT,
+  CALENDAR_EVENT_TEXT,
+  CALENDAR_WEEK_HEADER,
+} from '@/lib/calendarTypography'
 import { useCalendarVisibleLanes } from '@/hooks/useCalendarVisibleLanes'
 
 const VISIBLE_LANES_MOBILE = 4
@@ -59,11 +64,13 @@ export default function CalendarWeekView({
   start,
   onCreated,
   showCodeStatus,
+  onRequestPanel,
 }: {
   deals: Deal[]
   start?: string
   onCreated?: () => void
   showCodeStatus?: boolean
+  onRequestPanel?: (deal: Deal) => void
 }) {
   const [layout, setLayout] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
 
@@ -152,7 +159,7 @@ export default function CalendarWeekView({
       >
         {/* Header */}
         <div
-          className="grid border-b bg-slate-50 text-[10px] text-gray-600 sm:text-xs"
+          className={`grid border-b bg-slate-50 ${CALENDAR_WEEK_HEADER} text-gray-600`}
           style={{ gridTemplateColumns: gridCols }}
         >
           {weekDays.map((d) => (
@@ -187,6 +194,7 @@ export default function CalendarWeekView({
                   key={`${span.ev.id}-${idx}`}
                   deal={span.ev}
                   onSaved={onCreated}
+                  onRequestPanel={onRequestPanel}
                   trigger={
                     <div
                       onClick={(e) => e.stopPropagation()}
@@ -197,7 +205,7 @@ export default function CalendarWeekView({
                         rounded-md
                         ring-1 ring-inset ring-slate-200
                         flex items-center gap-2
-                        text-[11px] font-medium sm:text-[12px]
+                        ${CALENDAR_EVENT_TEXT}
                         ${colorByLN(span.ev.LN)}
                       `}
                       style={{
@@ -213,7 +221,7 @@ export default function CalendarWeekView({
                       </span>
                       {badge && (
                         <span
-                          className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] text-[10px] font-semibold ${badge.className}`}
+                          className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
                         >
                           {badge.label}
                         </span>
@@ -246,6 +254,7 @@ export default function CalendarWeekView({
                     date={d}
                     events={hidden.map((h) => h.ev)}
                     showCodeStatus={showCodeStatus}
+                    onRequestPanel={onRequestPanel}
                   />
                 </div>
               )
@@ -261,10 +270,12 @@ function MoreEventsPopup({
   date,
   events,
   showCodeStatus,
+  onRequestPanel,
 }: {
   date: Date
   events: Deal[]
   showCodeStatus?: boolean
+  onRequestPanel?: (deal: Deal) => void
 }) {
   const [open, setOpen] = useState(false)
 
@@ -295,17 +306,18 @@ function MoreEventsPopup({
               <CalendarModal
                 key={`more-${ev.id}`}
                 deal={ev}
+                onRequestPanel={onRequestPanel}
                 trigger={
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="flex items-center gap-2 truncate rounded-md ring-1 ring-inset ring-slate-200 bg-white px-2 py-1 text-[11px] sm:text-[12px]"
+                    className={`flex items-center gap-2 truncate rounded-md ring-1 ring-inset ring-slate-200 bg-white px-2 py-1 ${CALENDAR_EVENT_TEXT}`}
                     style={{ transform: 'translateZ(0)' }}
                   >
                     <span className={`h-2 w-2 shrink-0 rounded-full ${dotColorByCollection(ev.collection)}`} />
                     <span className="truncate flex-1">{ev.NomEvent}</span>
                     {badge && (
                       <span
-                        className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] text-[10px] font-semibold ${badge.className}`}
+                        className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
                       >
                         {badge.label}
                       </span>

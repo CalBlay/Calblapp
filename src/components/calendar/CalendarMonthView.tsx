@@ -7,6 +7,12 @@ import CalendarModal from './CalendarModal'
 import CalendarNewEventModal from './CalendarNewEventModal'
 import type { Deal } from '@/hooks/useCalendarData'
 import { colorByLN } from '@/lib/colors'
+import {
+  CALENDAR_BADGE_TEXT,
+  CALENDAR_DAY_HEADER,
+  CALENDAR_DAY_NUMBER,
+  CALENDAR_EVENT_TEXT,
+} from '@/lib/calendarTypography'
 import { useCalendarVisibleLanes } from '@/hooks/useCalendarVisibleLanes'
 
 function dotColorByCollection(collection?: string) {
@@ -71,11 +77,17 @@ export default function CalendarMonthView({
   start,
   onCreated,
   showCodeStatus,
+  onRequestPanel,
+  selectedDay,
+  onSelectDay,
 }: {
   deals: Deal[]
   start?: string
   onCreated?: () => void
   showCodeStatus?: boolean
+  onRequestPanel?: (deal: Deal) => void
+  selectedDay?: string | null
+  onSelectDay?: (iso: string) => void
 }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const firstIso = deals.length ? pickDateIso(deals[0], ['DataInici', 'Data']) : ''
@@ -126,7 +138,7 @@ export default function CalendarMonthView({
         {monthLabel}
       </div>
 
-      <div className="grid grid-cols-7 text-[10px] sm:text-xs text-gray-600 bg-gray-50 border-b">
+      <div className={`grid grid-cols-7 ${CALENDAR_DAY_HEADER} text-gray-600 bg-gray-50 border-b`}>
         {['Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds', 'Dg'].map((d) => (
           <div key={d} className="py-1 sm:py-2 text-center font-medium">
             {d}
@@ -170,7 +182,7 @@ export default function CalendarMonthView({
 
           const laneCount = laneEnds.length
           const visibleLaneCount = Math.min(visibleLanes, laneCount)
-          const minHeight = Math.max(130, visibleLaneCount * 30 + 70)
+          const minHeight = Math.max(130, visibleLaneCount * 32 + 72)
           const visibleSpans = spans.filter((s) => s.lane < visibleLaneCount)
 
           return (
@@ -188,16 +200,24 @@ export default function CalendarMonthView({
               {week.map((c) => (
                 <div
                   key={c.iso}
-                  onClick={() => !c.isOther && setSelectedDate(c.iso)}
+                  onClick={() => {
+                    if (c.isOther) return
+                    if (onSelectDay) {
+                      onSelectDay(c.iso)
+                      return
+                    }
+                    setSelectedDate(c.iso)
+                  }}
                   className={`
                     relative border-r p-1 
-                    flex flex-col 
+                    flex flex-col cursor-pointer
                     ${c.isOther ? 'bg-gray-50 text-gray-400' : 'bg-white'}
+                    ${!c.isOther && selectedDay === c.iso ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/60' : ''}
                   `}
                 >
                   <div
                     className={`
-                      text-[11px] sm:text-xs font-semibold leading-none
+                      ${CALENDAR_DAY_NUMBER}
                       ${c.isOther ? 'text-gray-300' : 'text-slate-600'}
                     `}
                   >
@@ -225,6 +245,7 @@ export default function CalendarMonthView({
                       key={`${span.ev.id}-${idx}`}
                       deal={span.ev}
                       onSaved={onCreated}
+                      onRequestPanel={onRequestPanel}
                       trigger={
                         <div
                           onClick={(e) => e.stopPropagation()}
@@ -233,7 +254,7 @@ export default function CalendarMonthView({
                             truncate ${isSingleDay ? 'px-2 py-[2px]' : 'px-2 py-[4px]'}
                             rounded-md border 
                             flex items-center ${isSingleDay ? 'justify-start' : 'justify-center'} gap-2
-                            text-[10px] sm:text-[12px] font-medium
+                            ${CALENDAR_EVENT_TEXT}
                             ${colorByLN(span.ev.LN)}
                           `}
                           style={{
@@ -249,7 +270,7 @@ export default function CalendarMonthView({
                           </span>
                           {badge && (
                             <span
-                              className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] text-[10px] font-semibold ${badge.className}`}
+                              className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
                             >
                               {badge.label}
                             </span>
@@ -281,6 +302,7 @@ export default function CalendarMonthView({
                         events={hidden.map((h) => h.ev)}
                         date={c.date}
                         showCodeStatus={showCodeStatus}
+                        onRequestPanel={onRequestPanel}
                       />
                     </div>
                   )
@@ -291,7 +313,7 @@ export default function CalendarMonthView({
         })}
       </div>
 
-      {selectedDate && (
+      {!onSelectDay && selectedDate && (
         <CalendarNewEventModal
           key={selectedDate}
           date={selectedDate}
@@ -310,10 +332,12 @@ function MoreEventsPopup({
   events,
   date,
   showCodeStatus,
+  onRequestPanel,
 }: {
   events: Deal[]
   date: Date
   showCodeStatus?: boolean
+  onRequestPanel?: (deal: Deal) => void
 }) {
   const [open, setOpen] = useState(false)
 
@@ -346,13 +370,14 @@ function MoreEventsPopup({
               <CalendarModal
                 key={ev.id}
                 deal={ev}
+                onRequestPanel={onRequestPanel}
                 trigger={
                   <div
                     onClick={(e) => e.stopPropagation()}
                     className={`
                       flex items-center gap-2
                       truncate px-1.5 py-[3px] rounded-md border
-                      text-[11px] sm:text-[12px]
+                      ${CALENDAR_EVENT_TEXT}
                       ${colorByLN(ev.LN)}
                     `}
                   >
@@ -362,7 +387,7 @@ function MoreEventsPopup({
                     <span className="truncate flex-1">{ev.NomEvent}</span>
                     {badge && (
                       <span
-                        className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] text-[10px] font-semibold ${badge.className}`}
+                        className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
                       >
                         {badge.label}
                       </span>

@@ -363,8 +363,11 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
   try {
     const doc = ctx.firstPrev || {}
     const eventName =
-      resolveEventDisplayName(ctx.stageData, doc.eventName, doc.summary) ||
-      'Nou esdeveniment'
+      resolveEventDisplayName(
+        ctx.stageData,
+        safeString(doc.eventName),
+        safeString(doc.summary)
+      ) || 'Nou esdeveniment'
     const pushTitle = 'Tens un nou torn assignat'
     const pushBody = formatTornNotificationLabel(eventName, ctx.firstPrev?.startDate)
     if (validUsers.length === 0) return

@@ -73,14 +73,18 @@ const ZOHO_EXTRA_CLIENT_FIELD = String(
   process.env.ZOHO_DEAL_FIELD_CLIENT || ''
 ).trim()
 
+export type ZohoDealClientFields = {
+  Deal_Name?: string | null
+  Account_Name?: ZohoLookup
+}
+
 /**
  * Compte CRM (Account_Name) d'una oportunitat Zoho.
  * Només per omplir `spaces_zoho_accounts`; no usa Deal_Name.
  */
-export function extractZohoAccountFromDeal(deal: {
-  Account_Name?: ZohoLookup
-  [key: string]: unknown
-}): { nom: string; zohoAccountId?: string } | null {
+export function extractZohoAccountFromDeal(
+  deal: ZohoDealClientFields
+): { nom: string; zohoAccountId?: string } | null {
   const account = extractZohoLookup(deal.Account_Name)
   if (account) {
     return {
@@ -90,7 +94,9 @@ export function extractZohoAccountFromDeal(deal: {
   }
 
   if (ZOHO_EXTRA_CLIENT_FIELD) {
-    const extra = extractZohoLookup(deal[ZOHO_EXTRA_CLIENT_FIELD] as ZohoLookup)
+    const extra = extractZohoLookup(
+      (deal as Record<string, unknown>)[ZOHO_EXTRA_CLIENT_FIELD] as ZohoLookup
+    )
     if (extra) {
       return {
         nom: extra.nom,
@@ -105,11 +111,7 @@ export function extractZohoAccountFromDeal(deal: {
 /**
  * Nom de client per matching manual ↔ Zoho (Account_Name o segment de Deal_Name).
  */
-export function extractZohoClientNameFromDeal(deal: {
-  Deal_Name?: string | null
-  Account_Name?: ZohoLookup
-  [key: string]: unknown
-}): string {
+export function extractZohoClientNameFromDeal(deal: ZohoDealClientFields): string {
   const account = extractZohoAccountFromDeal(deal)
   if (account?.nom) return account.nom
   return zohoDealClientNameForMatch(deal.Deal_Name)
@@ -146,10 +148,7 @@ function aggregateAccountNames(
 
 /** Upsert comptes Zoho (Account_Name) a `spaces_zoho_accounts`. */
 export async function syncZohoAccountsFromDeals(
-  deals: Iterable<{
-    Account_Name?: ZohoLookup
-    [key: string]: unknown
-  }>
+  deals: Iterable<ZohoDealClientFields>
 ): Promise<{ upserted: number }> {
   const accounts: { nom: string; zohoAccountId?: string }[] = []
   for (const deal of deals) {

@@ -23,9 +23,14 @@ import { PERM } from '@/lib/permissionKeys'
 
 interface Props {
   deal: Deal
-  trigger: React.ReactNode
+  trigger?: React.ReactNode
   onSaved?: () => void
   readonly?: boolean
+  embedded?: boolean
+  onEmbeddedClose?: () => void
+  onRequestPanel?: (deal: Deal) => void
+  onBack?: () => void
+  backLabel?: string
 }
 
 type ComercialCandidate = {
@@ -78,6 +83,21 @@ const normalizeDept = (value?: string | null) => {
   return base
 }
 
+function bindTriggerClick(
+  trigger: React.ReactNode,
+  onTrigger: (e: React.MouseEvent) => void
+) {
+  if (!React.isValidElement(trigger)) return trigger
+  const child = trigger as React.ReactElement<{ onClick?: (e: React.MouseEvent) => void }>
+  const prevOnClick = child.props.onClick
+  return React.cloneElement(child, {
+    onClick: (e: React.MouseEvent) => {
+      prevOnClick?.(e)
+      onTrigger(e)
+    },
+  })
+}
+
 const normalizeDeptForLnBucket = (value?: string | null) => {
   const base = normalizeDept(value)
   if (!base) return ''
@@ -94,13 +114,42 @@ const normalizeDeptForLnBucket = (value?: string | null) => {
  * - Llista enllaços guardats i permet obrir-los / eliminar-los
  * - Manté l’edició de camps bàsics si l’esdeveniment és Confirmat o manual
  */
-export default function CalendarModal({ deal, trigger, onSaved, readonly }: Props) {
-  console.log('🧩 Dades rebudes al modal:', deal)
-
+export default function CalendarModal({
+  deal,
+  trigger,
+  onSaved,
+  readonly,
+  embedded = false,
+  onEmbeddedClose,
+  onRequestPanel,
+  onBack,
+  backLabel = 'Tornar',
+}: Props) {
   const dealRecord = deal as CalendarDealRecord
   const { data: session } = useSession()
   const { uiEdit, uiActions, ready: permsReady } = useUiPermissions()
   const [open, setOpen] = useState(false)
+  const [preferPanel, setPreferPanel] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      Boolean(onRequestPanel) &&
+      window.innerWidth >= 1024
+  )
+
+  useEffect(() => {
+    if (!onRequestPanel) {
+      setPreferPanel(false)
+      return
+    }
+    const update = () => setPreferPanel(window.innerWidth >= 1024)
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [onRequestPanel])
+
+  useEffect(() => {
+    if (preferPanel && open) setOpen(false)
+  }, [preferPanel, open])
   const [comercialPool, setComercialPool] = useState<ComercialCandidate[]>([])
   const [comercialLoading, setComercialLoading] = useState(false)
   const [codeDirty, setCodeDirty] = useState(false)
@@ -251,8 +300,10 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     return exists ? filteredComercialOptions : [current, ...filteredComercialOptions]
   }, [filteredComercialOptions, editData.Comercial])
 
+  const isActive = embedded || open
+
   useEffect(() => {
-    if (!open) return
+    if (!isActive) return
     if (comercialPool.length > 0) return
 
     let active = true
@@ -298,7 +349,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     return () => {
       active = false
     }
-  }, [open, comercialPool.length])
+  }, [isActive, comercialPool.length])
 
   // Col·lecció: sempre guardem a stage_verd (segons decisió)
   const COLLECTION = 'stage_verd' as const
@@ -546,7 +597,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
       )
       if (!res.ok) throw new Error('Error eliminant')
       alert('🗑️ Esdeveniment eliminat correctament')
-      setOpen(false)
+      handleClose()
       document.dispatchEvent(new CustomEvent('calendar:reload'))
       onSaved?.()
     } catch (err) {
@@ -563,44 +614,28 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     alert('🔁 Canvis restaurats')
   }
 
-  return (
-    <Dialog modal={false} open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        asChild
-        onClick={(e) => {
-          e.stopPropagation()
-          setOpen(true)
-        }}
-      >
-        {trigger}
-      </DialogTrigger>
+  const handleClose = () => {
+    if (embedded) onEmbeddedClose?.()
+    else setOpen(false)
+  }
 
-      <DialogContent
-        className="
-          w-full
-          max-w-lg
+  const handleTriggerClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const usePanel =
+      Boolean(onRequestPanel) &&
+      typeof window !== 'undefined' &&
+      window.innerWidth >= 1024
+    if (usePanel && onRequestPanel) {
+      onRequestPanel(deal)
+      return
+    }
+    setOpen(true)
+  }
 
-          /* 📱 Mòbil: modal fullscreen vertical */
-          h-[92dvh]
-          max-h-[92dvh]
-          overflow-y-auto
-          rounded-none
-          pt-10
+  const title = editData.NomEvent || 'Esdeveniment'
 
-          /* 🖥 Desktop: modal centrat */
-          sm:rounded-lg
-          sm:h-auto
-          sm:max-h-[85vh]
-          sm:pt-6
-        "
-        onClick={(e) => e.stopPropagation()}
-      >
-        <DialogHeader>
-          <DialogTitle className="text-base font-semibold">
-            {editData.NomEvent || 'Esdeveniment'}
-          </DialogTitle>
-        </DialogHeader>
-
+  const body = (
         <div className="space-y-3 text-sm text-gray-700">
         
 
@@ -937,9 +972,10 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
             )}
           </div>
         </div>
+  )
 
-        {/* Botons d’acció */}
-        <DialogFooter className="mt-4 flex flex-col gap-2">
+  const footer = (
+        <div className="mt-4 flex flex-col gap-2">
           {canSave && (
             <>
               <Button onClick={handleSave} className="w-full">
@@ -963,11 +999,83 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
           )}
 
           {!canSave && (
-            <Button variant="outline" className="w-full" onClick={() => setOpen(false)}>
+            <Button variant="outline" className="w-full" onClick={handleClose}>
               Tancar
             </Button>
           )}
-        </DialogFooter>
+        </div>
+  )
+
+  if (embedded) {
+    return (
+      <div className="flex h-full min-h-0 w-full flex-col bg-white">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3">
+          <div className="min-w-0">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="mb-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+              >
+                ← {backLabel}
+              </button>
+            )}
+            <h2 className="truncate text-base font-semibold">{title}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="shrink-0 rounded-full p-1.5 text-gray-500 hover:bg-gray-100"
+            aria-label="Tancar detall"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">{body}</div>
+        <div className="shrink-0 border-t px-4 py-3">{footer}</div>
+      </div>
+    )
+  }
+
+  if (preferPanel && onRequestPanel && trigger) {
+    return bindTriggerClick(trigger, handleTriggerClick)
+  }
+
+  return (
+    <Dialog modal={false} open={open} onOpenChange={setOpen}>
+      {trigger ? (
+        <DialogTrigger asChild>
+          {bindTriggerClick(trigger, handleTriggerClick)}
+        </DialogTrigger>
+      ) : null}
+
+      <DialogContent
+        className="
+          w-full
+          max-w-lg
+
+          /* 📱 Mòbil: modal fullscreen vertical */
+          h-[92dvh]
+          max-h-[92dvh]
+          overflow-y-auto
+          rounded-none
+          pt-10
+
+          /* 🖥 Desktop: modal centrat */
+          sm:rounded-lg
+          sm:h-auto
+          sm:max-h-[85vh]
+          sm:pt-6
+        "
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DialogHeader>
+          <DialogTitle className="text-base font-semibold">{title}</DialogTitle>
+        </DialogHeader>
+
+        {body}
+
+        <DialogFooter>{footer}</DialogFooter>
       </DialogContent>
     </Dialog>
   )
