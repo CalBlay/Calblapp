@@ -152,7 +152,12 @@ export default function CalendarWeekView({
   const gridCols = `repeat(${weekDays.length}, minmax(0, 1fr))`
 
   return (
-    <div className="w-full overflow-x-auto pb-2">
+    <div className="w-full overflow-x-auto pb-2 [-webkit-overflow-scrolling:touch]">
+      {layout === 'mobile' && (
+        <p className="mb-2 px-1 text-[11px] text-slate-500">
+          Llisca horizontalment per veure tots els dies.
+        </p>
+      )}
       <div
         className="relative min-w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
         style={{ minHeight, minWidth: gridMinWidth }}
@@ -163,8 +168,15 @@ export default function CalendarWeekView({
           style={{ gridTemplateColumns: gridCols }}
         >
           {weekDays.map((d) => (
-            <div key={d.toISOString()} className="py-1 text-center font-medium sm:py-2">
-              {format(d, 'EEE d', { locale: es })}
+            <div
+              key={d.toISOString()}
+              className={`min-h-11 py-2 text-center font-medium leading-tight ${
+                layout === 'mobile' ? 'whitespace-pre-line text-[11px]' : ''
+              }`}
+            >
+              {layout === 'mobile'
+                ? `${format(d, 'EEE', { locale: es })}\n${format(d, 'd', { locale: es })}`
+                : format(d, 'EEE d', { locale: es })}
             </div>
           ))}
         </div>
@@ -283,7 +295,7 @@ function MoreEventsPopup({
     <Dialog open={open} onOpenChange={setOpen}>
       <button
         type="button"
-        className="rounded px-2 py-1 text-xs italic text-gray-400 hover:text-blue-500"
+        className="min-h-9 rounded-md px-2 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50"
         onClick={(e) => {
           e.stopPropagation()
           setOpen(true)

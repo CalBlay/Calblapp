@@ -73,6 +73,7 @@ type SessionUserLike = {
 
 const STORAGE_KEY = 'calblay.calendar.filters.v1'
 const MODE_STORAGE_KEY = 'calblay.calendar.mode.v1'
+const MOBILE_BREAKPOINT = 768
 const DESKTOP_BREAKPOINT = 1024
 const toIso = (d: Date) => format(d, 'yyyy-MM-dd')
 const EMPTY_FILTER_LIST: CalendarLN[] = []
@@ -103,6 +104,14 @@ const toArray = (value: unknown) => {
     return [trimmed as CalendarLN]
   }
   return [] as CalendarLN[]
+}
+
+const resolveInitialContentLayout = (): ContentLayout => {
+  if (typeof window === 'undefined') return 'grid'
+  try {
+    if (window.innerWidth < MOBILE_BREAKPOINT) return 'list'
+  } catch {}
+  return 'grid'
 }
 
 const resolveInitialMode = (): ViewMode => {
@@ -328,7 +337,7 @@ export default function CalendarPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [panelDeal, setPanelDeal] = useState<Deal | null>(null)
   const [mobileDetailDeal, setMobileDetailDeal] = useState<Deal | null>(null)
-  const [contentLayout, setContentLayout] = useState<ContentLayout>('grid')
+  const [contentLayout, setContentLayout] = useState<ContentLayout>(resolveInitialContentLayout)
 
   useEffect(() => {
     if (mode === 'range') setContentLayout('grid')
@@ -344,6 +353,7 @@ export default function CalendarPage() {
     isDesktop && mode === 'month' && contentLayout === 'grid'
   const showDayPanel = monthSplitActive && selectedDay && !panelDeal
   const showDesktopPanel = Boolean(panelDeal || showDayPanel)
+  const showMobileDaySheet = isMobile && mode === 'month' && selectedDay && !mobileDetailDeal
 
   const handleRequestPanel = useCallback((deal: Deal) => {
     if (typeof window !== 'undefined' && window.innerWidth >= DESKTOP_BREAKPOINT) {
@@ -357,6 +367,14 @@ export default function CalendarPage() {
     setSelectedDay(iso)
     setPanelDeal(null)
   }, [])
+
+  const handleMobileDayDealSelect = useCallback(
+    (deal: Deal) => {
+      setSelectedDay(null)
+      setMobileDetailDeal(deal)
+    },
+    []
+  )
 
   const handleSelectFromList = useCallback((deal: Deal) => {
     handleRequestPanel(deal)
@@ -391,7 +409,7 @@ export default function CalendarPage() {
   /* Detectar mobile / desktop */
   useEffect(() => {
     const update = () => {
-      setIsMobile(window.innerWidth < 768)
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
       setIsDesktop(window.innerWidth >= DESKTOP_BREAKPOINT)
     }
     update()
@@ -660,7 +678,7 @@ export default function CalendarPage() {
   ]
 
   return (
-    <div className="relative flex w-full flex-col lg:h-[calc(100dvh-3.5rem-1.5rem)] lg:min-h-[480px]">
+    <div className="relative flex w-full flex-col pb-24 sm:pb-0 lg:h-[calc(100dvh-3.5rem-1.5rem)] lg:min-h-[480px]">
       {/* CAPÇALERA */}
       <div className="mb-3 mt-2 flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -791,26 +809,26 @@ export default function CalendarPage() {
         }
       `}</style>
 
-      <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2 print:hidden">
+      <div className="mb-3 flex shrink-0 flex-col gap-2 print:hidden sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-full bg-gray-100 p-1">
-            <button onClick={switchToMonth} className={`rounded-full px-3 py-1 text-sm ${mode === 'month' ? 'bg-white shadow' : ''}`}>Mes</button>
-            <button onClick={switchToWeek} className={`rounded-full px-3 py-1 text-sm ${mode === 'week' ? 'bg-white shadow' : ''}`}>Setmana</button>
-            <button onClick={() => switchToRange()} className={`rounded-full px-3 py-1 text-sm ${mode === 'range' ? 'bg-white shadow' : ''}`}>6-12 mesos</button>
+          <div className="inline-flex w-full rounded-full bg-gray-100 p-1 sm:w-auto">
+            <button onClick={switchToMonth} className={`min-h-10 flex-1 rounded-full px-3 py-1.5 text-sm sm:flex-none sm:min-h-0 ${mode === 'month' ? 'bg-white shadow' : ''}`}>Mes</button>
+            <button onClick={switchToWeek} className={`min-h-10 flex-1 rounded-full px-3 py-1.5 text-sm sm:flex-none sm:min-h-0 ${mode === 'week' ? 'bg-white shadow' : ''}`}>Setmana</button>
+            <button onClick={() => switchToRange()} className={`min-h-10 flex-1 rounded-full px-3 py-1.5 text-sm sm:flex-none sm:min-h-0 ${mode === 'range' ? 'bg-white shadow' : ''}`}>6-12 mesos</button>
           </div>
           {mode !== 'range' && (
-            <div className="hidden rounded-full bg-gray-100 p-1 lg:inline-flex">
+            <div className="inline-flex w-full rounded-full bg-gray-100 p-1 sm:w-auto">
               <button
                 type="button"
                 onClick={() => setContentLayout('grid')}
-                className={`rounded-full px-3 py-1 text-sm ${contentLayout === 'grid' ? 'bg-white shadow' : ''}`}
+                className={`min-h-10 flex-1 rounded-full px-3 py-1.5 text-sm sm:flex-none sm:min-h-0 ${contentLayout === 'grid' ? 'bg-white shadow' : ''}`}
               >
                 Graella
               </button>
               <button
                 type="button"
                 onClick={() => setContentLayout('list')}
-                className={`rounded-full px-3 py-1 text-sm ${contentLayout === 'list' ? 'bg-white shadow' : ''}`}
+                className={`min-h-10 flex-1 rounded-full px-3 py-1.5 text-sm sm:flex-none sm:min-h-0 ${contentLayout === 'list' ? 'bg-white shadow' : ''}`}
               >
                 Llista
               </button>
@@ -902,8 +920,13 @@ export default function CalendarPage() {
                   onCreated={reload}
                   showCodeStatus={canManageCodes}
                   onRequestPanel={handleRequestPanel}
-                  selectedDay={monthSplitActive ? selectedDay : null}
-                  onSelectDay={monthSplitActive ? handleSelectDay : undefined}
+                  selectedDay={monthSplitActive || (isMobile && contentLayout === 'grid') ? selectedDay : null}
+                  onSelectDay={
+                    monthSplitActive || (isMobile && contentLayout === 'grid')
+                      ? handleSelectDay
+                      : undefined
+                  }
+                  compactMobile={isMobile && contentLayout === 'grid'}
                 />
               )}
             </div>
@@ -937,13 +960,35 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      {showMobileDaySheet && selectedDay && (
+        <div className="fixed inset-0 z-[60] lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setSelectedDay(null)}
+            aria-hidden
+          />
+          <div className="absolute inset-x-0 bottom-0 flex max-h-[min(88dvh,720px)] flex-col rounded-t-2xl bg-white shadow-xl">
+            <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-slate-200" />
+            <CalendarDayPanel
+              dateIso={selectedDay}
+              deals={visibleDeals}
+              showCodeStatus={canManageCodes}
+              selectedDealId={null}
+              onSelectDeal={handleMobileDayDealSelect}
+              onClose={() => setSelectedDay(null)}
+              onCreated={reload}
+            />
+          </div>
+        </div>
+      )}
+
       {mobileDetailDeal && (
         <div className="fixed inset-0 z-[70] lg:hidden">
           <div
             className="absolute inset-0 bg-black/40"
             onClick={() => setMobileDetailDeal(null)}
           />
-          <div className="absolute inset-y-0 right-0 flex w-full max-w-lg flex-col bg-white shadow-xl">
+          <div className="absolute inset-0 flex flex-col bg-white">
             <CalendarModal
               key={mobileDetailDeal.id}
               embedded
