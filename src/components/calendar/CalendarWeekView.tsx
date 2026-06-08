@@ -8,8 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import CalendarModal from './CalendarModal'
 import type { Deal } from '@/hooks/useCalendarData'
 import { colorByLN } from '@/lib/colors'
+import { useCalendarVisibleLanes } from '@/hooks/useCalendarVisibleLanes'
 
-const VISIBLE_LANES_DESKTOP = 6
 const VISIBLE_LANES_MOBILE = 4
 const BREAKPOINT_TABLET = 1024
 const BREAKPOINT_MOBILE = 640
@@ -119,9 +119,11 @@ export default function CalendarWeekView({
     return spans
   }, [deals, weekDays])
 
+  const dynamicLanes = useCalendarVisibleLanes({ mode: 'week' })
+
   const maxLane = spans.reduce((m, s) => Math.max(m, s.lane), -1)
   const laneCount = maxLane + 1
-  const laneLimit = layout === 'mobile' ? VISIBLE_LANES_MOBILE : VISIBLE_LANES_DESKTOP
+  const laneLimit = layout === 'mobile' ? VISIBLE_LANES_MOBILE : dynamicLanes
   const visibleLaneCount = Math.min(laneLimit, laneCount)
   const visibleSpans = spans.filter((s) => s.lane < visibleLaneCount)
 

@@ -211,16 +211,14 @@ const {
         }
       />
 
-      <section className="relative w-full h-full bg-white">
+      <section className="relative w-full h-full bg-white min-h-0">
 
-        {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-             ðŸ“… Controls de setmana + Filtres
-           â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-        <div className="flex items-center justify-between mt-4 mb-2 px-4">
+        {/* Controls de setmana + Filtres */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mt-3 lg:mt-4 mb-2 px-2 sm:px-4">
 
           {/* Controls esquerra */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 lg:gap-4">
+            <div className="flex items-center gap-2 lg:gap-3">
               <button
                 onClick={() => shiftWeek('prev')}
                 className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-sm"
@@ -228,7 +226,7 @@ const {
                 {'<'}
               </button>
 
-              <span className="font-semibold text-gray-700 text-sm sm:text-base">
+              <span className="font-semibold text-gray-700 text-sm sm:text-base lg:text-lg whitespace-nowrap">
                 Setmana: {weekLabel}
               </span>
 

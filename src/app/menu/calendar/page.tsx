@@ -566,9 +566,9 @@ export default function CalendarPage() {
   ]
 
   return (
-    <div className="relative w-full">
+    <div className="relative flex w-full flex-col lg:h-[calc(100dvh-3.5rem-1.5rem)] lg:min-h-[480px]">
       {/* CAPÇALERA */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-2 mb-3">
+      <div className="mb-3 mt-2 flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700">
             <CalendarDays size={18} />
@@ -622,7 +622,7 @@ export default function CalendarPage() {
       {/* LLEGENDA */}
       <button
         onClick={() => setShowLegend((v) => !v)}
-        className="text-xs sm:text-sm text-gray-600 mb-2 flex items-center gap-1"
+        className="mb-2 flex shrink-0 items-center gap-1 text-xs text-gray-600 sm:text-sm"
       >
         {showLegend ? (
           <>Amagar llegenda <ChevronUp size={14} /></>
@@ -632,10 +632,12 @@ export default function CalendarPage() {
       </button>
 
       {showLegend && (
-        <Legend
-          showCodeStatus={canManageCodes}
-          codeCounts={codeCounts}
-        />
+        <div className="mb-2 shrink-0">
+          <Legend
+            showCodeStatus={canManageCodes}
+            codeCounts={codeCounts}
+          />
+        </div>
       )}
 
       {/* MODE */}
@@ -663,7 +665,7 @@ export default function CalendarPage() {
         }
       `}</style>
 
-      <div className="flex justify-between items-center mb-3 print:hidden">
+      <div className="mb-3 flex shrink-0 items-center justify-between print:hidden">
         <div className="inline-flex bg-gray-100 rounded-full p-1">
           <button onClick={switchToMonth} className={`px-3 py-1 text-sm rounded-full ${mode === 'month' ? 'bg-white shadow' : ''}`}>Mes</button>
           <button onClick={switchToWeek} className={`px-3 py-1 text-sm rounded-full ${mode === 'week' ? 'bg-white shadow' : ''}`}>Setmana</button>
@@ -708,10 +710,10 @@ export default function CalendarPage() {
       </div>
 
       {/* CONTINGUT */}
-      {error && <p className="text-red-600 text-sm">{error}</p>}
-      {loading && <p className="text-gray-500 text-sm">Carregant dades...</p>}
+      {error && <p className="shrink-0 text-sm text-red-600">{error}</p>}
+      {loading && <p className="shrink-0 text-sm text-gray-500">Carregant dades...</p>}
 
-      <div id="calendar-print-root" className="space-y-3">
+      <div id="calendar-print-root" className="flex min-h-0 flex-1 flex-col print:block">
         <div className="hidden print:block">
           <h1 className="text-xl font-semibold">Calendari comercial</h1>
           <p className="text-sm text-gray-600">
@@ -719,24 +721,26 @@ export default function CalendarPage() {
           </p>
         </div>
 
-        <div className="rounded-xl bg-white border shadow-sm overflow-hidden">
-        {mode === 'range' ? (
-          <CalendarRangeView deals={visibleDeals} start={start} months={rangeMonths} />
-        ) : mode === 'week' ? (
-          <CalendarWeekView
-            deals={visibleDeals}
-            start={start}
-            onCreated={reload}
-            showCodeStatus={canManageCodes}
-          />
-        ) : (
-          <CalendarMonthView
-            deals={visibleDeals}
-            start={start}
-            onCreated={reload}
-            showCodeStatus={canManageCodes}
-          />
-        )}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white shadow-sm print:overflow-visible">
+          <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto print:overflow-visible">
+            {mode === 'range' ? (
+              <CalendarRangeView deals={visibleDeals} start={start} months={rangeMonths} />
+            ) : mode === 'week' ? (
+              <CalendarWeekView
+                deals={visibleDeals}
+                start={start}
+                onCreated={reload}
+                showCodeStatus={canManageCodes}
+              />
+            ) : (
+              <CalendarMonthView
+                deals={visibleDeals}
+                start={start}
+                onCreated={reload}
+                showCodeStatus={canManageCodes}
+              />
+            )}
+          </div>
         </div>
       </div>
 

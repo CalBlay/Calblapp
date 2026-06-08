@@ -341,7 +341,9 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
     /* ignore */
   }
 
-    resolveValidUsersFromQuadrant(ctx.firstPrev),
+  const validUsers = await resolveValidUsersFromQuadrant(ctx.firstPrev)
+
+  await Promise.all([
     (async () => {
       try {
         await db.collection(QUADRANT_TRAINING_COLLECTION).doc().set(buildTrainingSamplePayload(ctx))

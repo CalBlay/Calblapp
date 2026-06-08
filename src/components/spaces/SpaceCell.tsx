@@ -56,8 +56,10 @@ export default function SpaceCell({ event }: SpaceCellProps) {
   /* ──────────────────────────────
      Textos i tooltip
      ────────────────────────────── */
-  const shortEvent =
+  const shortEventMobile =
     eventName.length > 26 ? `${eventName.slice(0, 26).trim()}…` : eventName
+  const shortEventDesktop =
+    eventName.length > 48 ? `${eventName.slice(0, 48).trim()}…` : eventName
 
   const tooltip = [
     eventName,
@@ -75,10 +77,10 @@ export default function SpaceCell({ event }: SpaceCellProps) {
     <div
       className={`
         rounded-md
-        px-2 py-1
-        min-h-[38px]
+        px-2 py-1 lg:px-2.5 lg:py-1.5
+        min-h-[38px] lg:min-h-[44px]
         flex flex-col justify-center
-        text-[11px]
+        text-[11px] lg:text-xs
         ${baseColor}
         cursor-pointer
         shadow-sm
@@ -88,14 +90,21 @@ export default function SpaceCell({ event }: SpaceCellProps) {
       title={tooltip || 'Esdeveniment'}
     >
       {/* Nom de l’esdeveniment */}
-      {shortEvent && (
+      {eventName && (
         <div className="flex items-center justify-center sm:justify-start gap-1 leading-tight">
           <span
-            className={`font-semibold truncate ${
+            className={`font-semibold lg:hidden truncate ${
               isDiscarded ? 'text-red-800' : 'text-inherit'
             }`}
           >
-            {shortEvent}
+            {shortEventMobile}
+          </span>
+          <span
+            className={`font-semibold hidden lg:block line-clamp-2 ${
+              isDiscarded ? 'text-red-800' : 'text-inherit'
+            }`}
+          >
+            {shortEventDesktop}
           </span>
 
           {hasWarning && (
@@ -111,7 +120,7 @@ export default function SpaceCell({ event }: SpaceCellProps) {
       {/* Comercial */}
       {commercial && (
         <span
-          className={`text-[10px] truncate opacity-70 ${
+          className={`text-[10px] lg:text-[11px] truncate opacity-70 ${
             isDiscarded ? 'text-red-700' : ''
           }`}
         >
@@ -122,7 +131,7 @@ export default function SpaceCell({ event }: SpaceCellProps) {
       {/* PAX */}
       {numPax > 0 && (
         <span
-          className={`text-[10px] font-medium opacity-80 ${
+          className={`text-[10px] lg:text-[11px] font-medium opacity-80 ${
             isDiscarded ? 'text-red-700' : ''
           }`}
         >

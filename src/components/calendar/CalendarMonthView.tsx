@@ -7,6 +7,7 @@ import CalendarModal from './CalendarModal'
 import CalendarNewEventModal from './CalendarNewEventModal'
 import type { Deal } from '@/hooks/useCalendarData'
 import { colorByLN } from '@/lib/colors'
+import { useCalendarVisibleLanes } from '@/hooks/useCalendarVisibleLanes'
 
 function dotColorByCollection(collection?: string) {
   const c = (collection || '').toLowerCase()
@@ -65,8 +66,6 @@ const endOfWeekMon = (d: Date) => {
   return r
 }
 
-const VISIBLE_LANES = 6
-
 export default function CalendarMonthView({
   deals,
   start,
@@ -119,6 +118,8 @@ export default function CalendarMonthView({
     return out
   }, [month, year])
 
+  const visibleLanes = useCalendarVisibleLanes({ mode: 'month', weekCount: weeks.length })
+
   return (
     <div className="flex flex-col w-full h-auto">
       <div className="sm:hidden sticky top-0 z-10 bg-white py-3 text-center font-semibold text-lg border-b shadow-sm">
@@ -168,7 +169,7 @@ export default function CalendarMonthView({
           })
 
           const laneCount = laneEnds.length
-          const visibleLaneCount = Math.min(VISIBLE_LANES, laneCount)
+          const visibleLaneCount = Math.min(visibleLanes, laneCount)
           const minHeight = Math.max(130, visibleLaneCount * 30 + 70)
           const visibleSpans = spans.filter((s) => s.lane < visibleLaneCount)
 
