@@ -53,6 +53,9 @@ const BATCH_LIMIT = 400
 const SKIP_NAMES = new Set(['sense nom'])
 
 type ZohoLookup = string | { id?: string; name?: string | null } | null | undefined
+type ZohoAccountInput = {
+  Account_Name?: ZohoLookup
+}
 
 function extractZohoLookup(value: ZohoLookup): { nom: string; id?: string } | null {
   if (typeof value === 'string') {
@@ -79,7 +82,6 @@ const ZOHO_EXTRA_CLIENT_FIELD = String(
  */
 export function extractZohoAccountFromDeal(deal: {
   Account_Name?: ZohoLookup
-  [key: string]: unknown
 }): { nom: string; zohoAccountId?: string } | null {
   const account = extractZohoLookup(deal.Account_Name)
   if (account) {
@@ -90,7 +92,8 @@ export function extractZohoAccountFromDeal(deal: {
   }
 
   if (ZOHO_EXTRA_CLIENT_FIELD) {
-    const extra = extractZohoLookup(deal[ZOHO_EXTRA_CLIENT_FIELD] as ZohoLookup)
+    const dynamicDeal = deal as unknown as Record<string, unknown>
+    const extra = extractZohoLookup(dynamicDeal[ZOHO_EXTRA_CLIENT_FIELD] as ZohoLookup)
     if (extra) {
       return {
         nom: extra.nom,
@@ -108,7 +111,6 @@ export function extractZohoAccountFromDeal(deal: {
 export function extractZohoClientNameFromDeal(deal: {
   Deal_Name?: string | null
   Account_Name?: ZohoLookup
-  [key: string]: unknown
 }): string {
   const account = extractZohoAccountFromDeal(deal)
   if (account?.nom) return account.nom
@@ -146,10 +148,7 @@ function aggregateAccountNames(
 
 /** Upsert comptes Zoho (Account_Name) a `spaces_zoho_accounts`. */
 export async function syncZohoAccountsFromDeals(
-  deals: Iterable<{
-    Account_Name?: ZohoLookup
-    [key: string]: unknown
-  }>
+  deals: Iterable<ZohoAccountInput>
 ): Promise<{ upserted: number }> {
   const accounts: { nom: string; zohoAccountId?: string }[] = []
   for (const deal of deals) {
