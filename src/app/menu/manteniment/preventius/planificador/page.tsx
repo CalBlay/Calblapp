@@ -1,11 +1,13 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
 import { ca } from 'date-fns/locale'
-import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp, Ticket } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { RoleGuard } from '@/lib/withRoleGuard'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
 import { typography } from '@/lib/typography'
 import type { PlannerDraft, ScheduledItem } from './types'
@@ -90,7 +92,11 @@ function normalizePlannerTicketStatus(value?: string | null) {
   return 'nou'
 }
 
+const MAINTENANCE_TICKETS_PATH = '/menu/manteniment/tickets'
+
 export default function PreventiusPlanificadorPage() {
+  const { isPathAllowed } = useUiPermissions()
+  const canViewTickets = isPathAllowed(MAINTENANCE_TICKETS_PATH)
   const [filters, setFiltersState] = useState<FiltersState>(() => {
     const base = startOfWeek(new Date(), { weekStartsOn: 1 })
     const end = endOfWeek(base, { weekStartsOn: 1 })
@@ -611,6 +617,17 @@ export default function PreventiusPlanificadorPage() {
           title="Manteniment"
           subtitle="Planificador"
           mainHref="/menu/manteniment"
+          actions={
+            canViewTickets ? (
+              <Link
+                href={MAINTENANCE_TICKETS_PATH}
+                className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50"
+              >
+                <Ticket className="h-4 w-4" />
+                Tickets
+              </Link>
+            ) : undefined
+          }
         />
 
         <FiltersBar

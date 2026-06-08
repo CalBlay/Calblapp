@@ -20,6 +20,7 @@ import {
   getUserDepartmentSelectOptions,
   normalizeDepartmentLabel,
 } from '@/data/departments'
+import { matchesUserSearch } from '@/lib/userSearch'
 
 
 // 🔥 Model unificat amb UserFormModal (id opcional)
@@ -154,6 +155,22 @@ function UsersPage() {
 
   // Aplicar filtres
   const filteredUsers = users.filter((u) => {
+    const displayRole = formatRoleLabel(u.role, u.isAdmin)
+    const displayDepartment = formatDepartmentLabel(u.department)
+
+    const okSearch = matchesUserSearch(
+      {
+        name: u.name,
+        email: u.email,
+        phone: u.phone,
+        commercialName: u.commercialName,
+        role: displayRole,
+        department: displayDepartment,
+        id: u.id,
+      },
+      filters.search || ''
+    )
+
     const okDept =
       !filters.department ||
       filters.department === '__all__' ||
@@ -162,9 +179,9 @@ function UsersPage() {
     const okRole =
       !filters.role ||
       filters.role === '__all__' ||
-      formatRoleLabel(u.role, u.isAdmin) === filters.role
+      displayRole === filters.role
 
-    return okDept && okRole
+    return okSearch && okDept && okRole
   })
 
   const displayUsers = filteredUsers.map((u) => ({
@@ -250,35 +267,40 @@ function UsersPage() {
       </div>
 
       {/* Filtres + CTA */}
-      <div className="flex items-center justify-between rounded-xl bg-white shadow-sm border p-4">
-        <UserFilters
-          filters={filters}
-          setFilters={(f) => setFilters((prev) => ({ ...prev, ...f }))}
-          departmentOptions={deptOptions}
-          roleOptions={roleOptions}
-          users={users.map((u) => ({
-            ...u,
-            role: formatRoleLabel(u.role, u.isAdmin),
-            department: formatDepartmentLabel(u.department),
-          }))}
-        />
+      <div className="rounded-xl bg-white shadow-sm border p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <UserFilters
+            filters={filters}
+            setFilters={(f) => setFilters((prev) => ({ ...prev, ...f }))}
+            departmentOptions={deptOptions}
+            roleOptions={roleOptions}
+            totalCount={users.length}
+            filteredCount={filteredUsers.length}
+            users={users.map((u) => ({
+              ...u,
+              role: formatRoleLabel(u.role, u.isAdmin),
+              department: formatDepartmentLabel(u.department),
+            }))}
+          />
 
-   <FloatingAddButton
-  onClick={() =>
-    setModalUser({
-      id: undefined,
-      name: '',
-      role: 'Treballador',
-      isAdmin: false,
-      department: DEFAULT_USER_DEPARTMENT,
-      phone: '',
-      available: true,
-      isDriver: false,
-    workerRank: 'equip',
-    })
-  }
-/>
-
+          <div className="flex shrink-0 justify-end lg:pt-6">
+            <FloatingAddButton
+              onClick={() =>
+                setModalUser({
+                  id: undefined,
+                  name: '',
+                  role: 'Treballador',
+                  isAdmin: false,
+                  department: DEFAULT_USER_DEPARTMENT,
+                  phone: '',
+                  available: true,
+                  isDriver: false,
+                  workerRank: 'equip',
+                })
+              }
+            />
+          </div>
+        </div>
       </div>
 
       {/* Taula */}

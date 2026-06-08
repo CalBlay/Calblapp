@@ -930,6 +930,96 @@ export async function sendProjectMissedActivityEmail(input: SendProjectMissedAct
   }
 }
 
+type MaintenanceTicketCalendarEventInput = {
+  assigneeEmail: string
+  eventId?: string
+  subject: string
+  bodyHtml: string
+  startDateTime: string
+  endDateTime: string
+}
+
+export async function upsertMaintenanceTicketCalendarEvent(
+  input: MaintenanceTicketCalendarEventInput
+): Promise<{ id: string; webLink: string }> {
+  const assigneeEmail = String(input.assigneeEmail || '').trim()
+  const startDateTime = String(input.startDateTime || '').trim()
+  const endDateTime = String(input.endDateTime || '').trim()
+  if (!assigneeEmail || !startDateTime || !endDateTime) {
+    return { id: '', webLink: '' }
+  }
+
+  const accessToken = await getAccessToken()
+  const eventId = String(input.eventId || '').trim()
+  const payload = {
+    subject: input.subject,
+    body: {
+      contentType: 'HTML',
+      content: input.bodyHtml,
+    },
+    start: {
+      dateTime: startDateTime,
+      timeZone: 'Europe/Madrid',
+    },
+    end: {
+      dateTime: endDateTime,
+      timeZone: 'Europe/Madrid',
+    },
+    isReminderOn: true,
+  }
+
+  const response = await fetch(
+    eventId
+      ? `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events/${encodeURIComponent(eventId)}`
+      : `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
+    {
+      method: eventId ? 'PATCH' : 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(
+      `No s'ha pogut ${eventId ? 'actualitzar' : 'crear'} el ticket al calendari Outlook: ${response.status} ${text}`
+    )
+  }
+
+  const data = (await response.json()) as GraphEventResponse
+  return {
+    id: data.id || eventId || '',
+    webLink: data.webLink || '',
+  }
+}
+
+export async function deleteOutlookCalendarEvent(assigneeEmail: string, eventId: string) {
+  const email = String(assigneeEmail || '').trim()
+  const id = String(eventId || '').trim()
+  if (!email || !id) return
+
+  const accessToken = await getAccessToken()
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}/events/${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text()
+    throw new Error(`No s'ha pogut eliminar l'esdeveniment del calendari: ${response.status} ${text}`)
+  }
+}
+
 export async function sendMaintenanceSupplierEmail(input: SendMaintenanceSupplierEmailInput) {
   const recipientEmail = String(input.recipient.email || '').trim()
   const senderEmail = String(input.senderEmail || '').trim()

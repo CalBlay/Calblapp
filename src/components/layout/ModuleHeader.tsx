@@ -98,7 +98,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
 
   return (
     <div className={`w-full bg-gradient-to-r ${color} border-b border-gray-200 px-4 py-3`}>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
         {/* LEFT SIDE */}
         <div className="flex items-center gap-2">
@@ -147,7 +147,9 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
         </div>
 
         {/* RIGHT SIDE */}
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {actions && (
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">{actions}</div>
+        )}
       </div>
     </div>
   )

@@ -30,6 +30,14 @@ import {
   isSpacesBbddActionPath,
 } from '@/lib/spacesPermissions'
 import { normalizeRole } from '@/lib/roles'
+import {
+  INCIDENTS_ACTION,
+  INCIDENTS_COMMAND_BOARD_PERM,
+  INCIDENTS_MEETING_MINUTES_PERM,
+  INCIDENTS_QUADRE_PATH,
+  INCIDENTS_UI_PATH,
+  incidentsActionBaseAccess,
+} from '@/lib/incidentsPermissions'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 
@@ -227,6 +235,36 @@ export async function isUiPermissionGranted(params: {
     const canEdit = await canEditUiPath({ user: params.user, path: QUADRANTS_UI_PATH })
     if (!canEdit) return false
     return baseCanEditQuadrantsPremisses(params.user)
+  }
+
+  if (parsed?.path === INCIDENTS_UI_PATH) {
+    const canViewIncidents = await canViewUiPath({ user: params.user, path: INCIDENTS_UI_PATH })
+    const canEditIncidents = await canEditUiPath({ user: params.user, path: INCIDENTS_UI_PATH })
+    const assignment = await loadUserAccessAssignment(params.user.id)
+    const map = buildUiViewMap(params.user, assignment)
+    const base = {
+      canViewIncidents,
+      canEditIncidents,
+      canViewQuadrePath: map[INCIDENTS_QUADRE_PATH] === true,
+    }
+
+    if (parsed.action === INCIDENTS_ACTION.MEETING_MINUTES) {
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        INCIDENTS_MEETING_MINUTES_PERM
+      )
+      if (eff !== 'allow') return false
+      return incidentsActionBaseAccess(params.user, base, INCIDENTS_ACTION.MEETING_MINUTES)
+    }
+
+    if (parsed.action === INCIDENTS_ACTION.COMMAND_BOARD) {
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        INCIDENTS_COMMAND_BOARD_PERM
+      )
+      if (eff !== 'allow') return false
+      return incidentsActionBaseAccess(params.user, base, INCIDENTS_ACTION.COMMAND_BOARD)
+    }
   }
 
   return false

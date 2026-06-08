@@ -65,6 +65,17 @@ export function isLogisticsMaintenanceTicketsManager(user?: AccessUser): boolean
   return normalizeRole(user.role) === 'usuari' && normalizeDept(user.department) === 'logistica'
 }
 
+/**
+ * Usuari extern (restaurant, centre, etc.) que només crea i segueix els seus tickets.
+ * No és logística ni manteniment.
+ */
+export function isExternalMaintenanceTicketReporter(user?: AccessUser): boolean {
+  if (!user) return false
+  if (canManageMaintenanceTickets(user)) return false
+  const dept = normalizeDept(user.department)
+  return dept !== 'logistica' && dept !== 'manteniment'
+}
+
 /** Pot veure i gestionar tots els tickets (no només els propis). */
 export function canManageMaintenanceTickets(user?: AccessUser): boolean {
   if (!user) return false

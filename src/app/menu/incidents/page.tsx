@@ -23,6 +23,7 @@ import IncidentsTable from './components/IncidentsTable'
 import IncidentsLnFilterBadges from './components/IncidentsLnFilterBadges'
 import { incidentMatchesLnFilter } from '@/lib/incidentLn'
 import {
+  INCIDENTS_COMMAND_BOARD_PERM,
   INCIDENTS_MEETING_MINUTES_PERM,
   INCIDENTS_QUADRE_PATH,
   INCIDENTS_UI_PATH,
@@ -93,11 +94,8 @@ export default function IncidentsPage() {
   const actaAuthorLabel = sessionUser?.name?.trim() || sessionUser?.email?.trim()
   const canEditTipologies = canManageIncidentCategories(accessUser)
   const { ready: uiPermsReady, canViewPath, canEditPath, hasAction } = useUiPermissions()
-  const canSeeQuadre = uiPermsReady && canViewPath(INCIDENTS_QUADRE_PATH)
-  const canMeetingMinutes =
-    uiPermsReady &&
-    canEditPath(INCIDENTS_UI_PATH) &&
-    hasAction(INCIDENTS_MEETING_MINUTES_PERM)
+  const canSeeQuadre = uiPermsReady && hasAction(INCIDENTS_COMMAND_BOARD_PERM)
+  const canMeetingMinutes = uiPermsReady && hasAction(INCIDENTS_MEETING_MINUTES_PERM)
   const [meetingMinutesOpen, setMeetingMinutesOpen] = useState(false)
   const initialRange = useMemo(() => thisWeekRange(), [])
   const [dateResetSignal, setDateResetSignal] = useState(0)

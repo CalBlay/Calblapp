@@ -197,13 +197,13 @@ const {
   return (
     <SpacesSectionGate subpath={SPACES_RESERVES_PATH}>
       <ModuleHeader
-        title="Espais / Reserves"
-        subtitle="Disponibilitat setmanal de finques"
+        title="Espais"
+        subtitle="Reserves · Disponibilitat setmanal de finques"
         actions={
           canPremisses ? (
             <Link
               href="/menu/spaces/premisses"
-              className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               Premisses
             </Link>
@@ -211,64 +211,73 @@ const {
         }
       />
 
-      <section className="relative w-full h-full bg-white min-h-0">
+      <section className="relative w-full min-h-0 bg-white pb-24 sm:pb-8">
 
         {/* Controls de setmana + Filtres */}
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mt-3 lg:mt-4 mb-2 px-2 sm:px-4">
+        <div className="mb-2 mt-3 flex flex-col gap-3 px-2 sm:px-4 lg:mt-4 lg:flex-row lg:items-center lg:justify-between">
 
           {/* Controls esquerra */}
-          <div className="flex flex-wrap items-center gap-3 lg:gap-4">
-            <div className="flex items-center gap-2 lg:gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:gap-4">
+            <div className="flex items-center justify-between gap-2 sm:justify-start sm:gap-3">
               <button
+                type="button"
                 onClick={() => shiftWeek('prev')}
-                className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-sm"
+                aria-label="Setmana anterior"
+                className="flex h-11 min-w-11 items-center justify-center rounded-lg bg-gray-100 px-3 text-base font-semibold hover:bg-gray-200"
               >
                 {'<'}
               </button>
 
-              <span className="font-semibold text-gray-700 text-sm sm:text-base lg:text-lg whitespace-nowrap">
+              <span className="flex-1 text-center text-sm font-semibold text-gray-700 sm:flex-none sm:text-base lg:text-lg">
                 Setmana: {weekLabel}
               </span>
 
               <button
+                type="button"
                 onClick={() => shiftWeek('next')}
-                className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-sm"
+                aria-label="Setmana següent"
+                className="flex h-11 min-w-11 items-center justify-center rounded-lg bg-gray-100 px-3 text-base font-semibold hover:bg-gray-200"
               >
                 {'>'}
               </button>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-gray-500">Mes</span>
-              <select
-                value={filters.month}
-                onChange={(e) => updateMonth(Number(e.target.value))}
-                className="border rounded-md px-2 py-1 text-xs bg-white"
-              >
-                {monthOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2">
+              <label className="flex min-h-11 flex-col justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 sm:min-h-0 sm:flex-row sm:items-center sm:gap-2 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Mes</span>
+                <select
+                  value={filters.month}
+                  onChange={(e) => updateMonth(Number(e.target.value))}
+                  className="h-10 w-full rounded-md border bg-white px-2 text-sm sm:h-auto sm:w-auto sm:py-1 sm:text-xs"
+                >
+                  {monthOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-              <span className="text-xs font-semibold text-gray-500">Any</span>
-              <select
-                value={filters.year}
-                onChange={(e) => updateYear(Number(e.target.value))}
-                className="border rounded-md px-2 py-1 text-xs bg-white"
-              >
-                {yearOptions.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
+              <label className="flex min-h-11 flex-col justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 sm:min-h-0 sm:flex-row sm:items-center sm:gap-2 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Any</span>
+                <select
+                  value={filters.year}
+                  onChange={(e) => updateYear(Number(e.target.value))}
+                  className="h-10 w-full rounded-md border bg-white px-2 text-sm sm:h-auto sm:w-auto sm:py-1 sm:text-xs"
+                >
+                  {yearOptions.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
 
-          {/* BotÃ³ filtres */}
-          <FilterButton
+          {/* Botó filtres */}
+          <div className="flex justify-end">
+            <FilterButton
             onClick={() => {
               setFiltersContent(
                 <SpacesFilters
@@ -286,7 +295,8 @@ const {
               )
               openFilters(true)
             }}
-          />
+            />
+          </div>
         </div>
 
         {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -10,6 +10,7 @@ import {
   normalizeDepartmentLabel,
 } from '@/data/departments'
 import { normalizeRole } from '@/lib/roles'
+import { matchesUserSearch } from '@/lib/userSearch'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,13 +28,6 @@ type ListUsersResponse = { users: UserRow[] }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
-const fold = (s?: string | null) =>
-  String(s ?? '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-
 const formatDepartmentLabel = (value?: string) => {
   const raw = String(value || '').trim()
   if (!raw) return '-'
@@ -46,15 +40,6 @@ const formatDepartmentLabel = (value?: string) => {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ')
-}
-
-function matchesUserSearch(user: UserRow, query: string) {
-  const q = fold(query)
-  if (!q) return true
-  const haystack = [user.name, user.email, user.role, user.department, user.id]
-    .map((v) => fold(v))
-    .join(' ')
-  return haystack.includes(q)
 }
 
 function matchesDepartmentFilter(user: UserRow, departmentFilter: string) {
@@ -103,7 +88,17 @@ export default function AdminPermisosPage() {
   const filteredUsers = useMemo(
     () =>
       users.filter(
-        (u) => matchesUserSearch(u, searchQuery) && matchesDepartmentFilter(u, departmentFilter)
+        (u) =>
+          matchesUserSearch(
+            {
+              name: u.name,
+              email: u.email,
+              role: u.role,
+              department: formatDepartmentLabel(u.department),
+              id: u.id,
+            },
+            searchQuery
+          ) && matchesDepartmentFilter(u, departmentFilter)
       ),
     [users, searchQuery, departmentFilter]
   )

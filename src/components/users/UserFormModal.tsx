@@ -27,6 +27,11 @@ import { buildEffectiveBaseMap, baseForPath } from '@/lib/permissions/effectiveB
 import { applyOverrideEffect } from '@/lib/permissions/overrideState'
 import { buildMatrixRows } from '@/lib/permissions/matrixConfig'
 import { PERM } from '@/lib/permissionKeys'
+import {
+  cloneAssignmentOverrides,
+  type UserConfigTemplate,
+  type UserConfigTemplateProfile,
+} from '@/lib/permissions/userConfigTemplate'
 
 export interface User {
   id?: string
@@ -87,9 +92,32 @@ type MessagingChannel = {
   name?: string
 }
 
+type PermissionUserOption = {
+  id: string
+  name?: string
+  email?: string
+  role?: string
+  department?: string
+}
+
+type PermissionUsersResponse = {
+  users?: PermissionUserOption[]
+}
+
 type ApproveUserRequestResponse = {
   error?: string
   user?: User
+}
+
+async function fetchUserConfigTemplate(userId: string): Promise<UserConfigTemplate> {
+  const res = await fetch(`/api/admin/permissions/templates/${encodeURIComponent(userId)}`, {
+    cache: 'no-store',
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(String(json?.error || 'No s’ha pogut carregar la plantilla'))
+  }
+  return json as UserConfigTemplate
 }
 
 const ROLES = [
@@ -133,9 +161,13 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const [isTransportLead, setIsTransportLead] = React.useState(false)
   const [step, setStep] = React.useState<1 | 2>(1)
   const [permissionOverrides, setPermissionOverrides] = React.useState<AssignmentOverride[]>([])
+  const [templateUserId, setTemplateUserId] = React.useState('')
+  const [templateSourceName, setTemplateSourceName] = React.useState('')
+  const [templateLoading, setTemplateLoading] = React.useState(false)
 
   const isPendingApproval = Boolean(user?.personId)
   const isNewUser = !user?.id && !isPendingApproval
+  const canUseConfigTemplate = isSessionAdmin && (isNewUser || isPendingApproval)
   const showPermissionsStep = isSessionAdmin && (isNewUser || isPendingApproval) && !isAdmin
 
   const previewAccessUser = React.useMemo<AccessUser>(
@@ -160,7 +192,75 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   React.useEffect(() => {
     setStep(1)
     setPermissionOverrides([])
+    setTemplateUserId('')
+    setTemplateSourceName('')
   }, [user])
+
+  const { data: permissionUsersData } = useSWR<PermissionUsersResponse>(
+    canUseConfigTemplate ? '/api/admin/permissions/users' : null,
+    (url: string) => fetch(url).then((r) => r.json())
+  )
+
+  const templateUserOptions = React.useMemo(() => {
+    const list = Array.isArray(permissionUsersData?.users) ? permissionUsersData.users : []
+    return [...list].sort((a, b) =>
+      String(a.name || a.email || '').localeCompare(String(b.name || b.email || ''), 'ca', {
+        sensitivity: 'base',
+      })
+    )
+  }, [permissionUsersData])
+
+  function formatTemplateUserLabel(option: PermissionUserOption): string {
+    const name = String(option.name || option.email || option.id).trim()
+    const role = String(option.role || '').trim()
+    const dept = String(option.department || '').trim()
+    const meta = [role, dept].filter(Boolean).join(' · ')
+    return meta ? `${name} (${meta})` : name
+  }
+
+  function applyProfileFromTemplate(profile: UserConfigTemplateProfile) {
+    setOpsChannelsConfigurable(profile.opsChannelsConfigurable)
+    setOpsEventsConfigurable(profile.opsEventsConfigurable)
+    setOpsProjectsConfigurable(profile.opsProjectsConfigurable)
+    setCanRespondSurveys(profile.canRespondSurveys)
+    setIsDepartmentRobaLead(profile.isDepartmentRobaLead)
+    setIsTransportLead(profile.isTransportLead)
+    setAvailable(profile.available)
+    setIsDriver(profile.isDriver)
+    setWorkerRank(profile.workerRank)
+  }
+
+  function buildDefaultPermissionDenies(): AssignmentOverride[] {
+    const baseMap = buildEffectiveBaseMap(previewAccessUser)
+    let initialDenies: AssignmentOverride[] = []
+    for (const row of buildMatrixRows()) {
+      if (baseForPath(baseMap, row.path).view) {
+        initialDenies = applyOverrideEffect(initialDenies, PERM.view(row.path), 'deny')
+      }
+    }
+    return initialDenies
+  }
+
+  async function applySelectedTemplate(options?: { permissionsOnly?: boolean }) {
+    const sourceId = String(templateUserId || '').trim()
+    if (!sourceId) return false
+
+    setTemplateLoading(true)
+    try {
+      const template = await fetchUserConfigTemplate(sourceId)
+      if (!options?.permissionsOnly) {
+        applyProfileFromTemplate(template.profile)
+      }
+      setPermissionOverrides(cloneAssignmentOverrides(template.overrides))
+      setTemplateSourceName(template.sourceName)
+      return true
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'No s’ha pogut carregar la plantilla')
+      return false
+    } finally {
+      setTemplateLoading(false)
+    }
+  }
 
   React.useEffect(() => {
     if (!showPermissionsStep && step === 2) {
@@ -286,16 +386,19 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   function goToPermissionsStep() {
     if (!validateStepOne()) return
 
-    // Alta / aprovació: començar denegant el que el rol donaria per defecte (whitelist).
-    const baseMap = buildEffectiveBaseMap(previewAccessUser)
-    let initialDenies: AssignmentOverride[] = []
-    for (const row of buildMatrixRows()) {
-      if (baseForPath(baseMap, row.path).view) {
-        initialDenies = applyOverrideEffect(initialDenies, PERM.view(row.path), 'deny')
+    void (async () => {
+      if (templateUserId) {
+        const ok = await applySelectedTemplate()
+        if (!ok) {
+          setPermissionOverrides(buildDefaultPermissionDenies())
+          setTemplateSourceName('')
+        }
+      } else {
+        setPermissionOverrides(buildDefaultPermissionDenies())
+        setTemplateSourceName('')
       }
-    }
-    setPermissionOverrides(initialDenies)
-    setStep(2)
+      setStep(2)
+    })()
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -418,6 +521,63 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
 
   const createSubmitLabel = isPendingApproval ? 'Aprovar i crear usuari' : 'Crear Usuari'
 
+  function renderConfigTemplatePicker(options?: {
+    showApplyButton?: boolean
+    permissionsOnly?: boolean
+    applyLabel?: string
+  }) {
+    if (!canUseConfigTemplate) return null
+
+    return (
+      <div className="space-y-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-3">
+        <div>
+          <Label className="text-sm">Copiar configuració de (opcional)</Label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Copia permisos UI i opcions operatives (canals ops, enquestes, etc.). No copia nom,
+            email, contrasenya ni rol.
+          </p>
+        </div>
+        <select
+          className="w-full rounded-md border bg-white p-2 text-sm"
+          value={templateUserId}
+          onChange={(e) => {
+            setTemplateUserId(e.target.value)
+            if (!e.target.value) setTemplateSourceName('')
+          }}
+          disabled={templateLoading}
+        >
+          <option value="">Cap — configurar manualment</option>
+          {templateUserOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {formatTemplateUserLabel(option)}
+            </option>
+          ))}
+        </select>
+        {templateSourceName ? (
+          <p className="text-xs text-emerald-700">
+            Plantilla aplicada des de{' '}
+            <span className="font-medium">{templateSourceName}</span>.
+          </p>
+        ) : null}
+        {options?.showApplyButton && templateUserId ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={templateLoading}
+            onClick={() =>
+              void applySelectedTemplate({ permissionsOnly: options.permissionsOnly })
+            }
+          >
+            {templateLoading
+              ? 'Carregant…'
+              : options.applyLabel || 'Aplicar plantilla ara'}
+          </Button>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent
@@ -438,6 +598,12 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
           <p className="text-center text-gray-500">Carregant dades...</p>
         ) : step === 2 && showPermissionsStep ? (
           <form onSubmit={handleSubmit} className="space-y-4">
+            {renderConfigTemplatePicker({
+              showApplyButton: true,
+              permissionsOnly: true,
+              applyLabel: 'Actualitzar permisos des de plantilla',
+            })}
+
             <div className="rounded-xl border p-3 text-sm text-muted-foreground">
               <span className="font-medium text-foreground">{name.trim()}</span>
               {' · '}
@@ -452,9 +618,11 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
               onOverridesChange={setPermissionOverrides}
               compact
               intro={
-                isPendingApproval
-                  ? 'Configura els permisos abans d’aprovar la sol·licitud. Per defecte segons el nivell i departament del pas anterior.'
-                  : 'Configura els permisos abans de crear l’usuari. Per defecte segons el nivell i departament del pas anterior.'
+                templateSourceName
+                  ? `Permisos copiats de ${templateSourceName}. Revisa i ajusta abans de crear l’usuari.`
+                  : isPendingApproval
+                    ? 'Configura els permisos abans d’aprovar la sol·licitud. Per defecte segons el nivell i departament del pas anterior.'
+                    : 'Configura els permisos abans de crear l’usuari. Per defecte segons el nivell i departament del pas anterior.'
               }
             />
 
@@ -478,6 +646,11 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
           </form>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
+            {renderConfigTemplatePicker({
+              showApplyButton: true,
+              applyLabel: 'Aplicar plantilla ara',
+            })}
+
             <div>
               <Label>Nom complet</Label>
               <input
@@ -789,8 +962,9 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                   type="button"
                   className="rounded-xl bg-indigo-400 px-6 py-2 font-semibold text-white shadow-md hover:bg-indigo-500"
                   onClick={goToPermissionsStep}
+                  disabled={templateLoading}
                 >
-                  Següent · Permisos
+                  {templateLoading ? 'Carregant plantilla…' : 'Següent · Permisos'}
                 </Button>
               ) : (
                 <Button

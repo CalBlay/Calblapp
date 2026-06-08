@@ -1,4 +1,5 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { formatDateTimeValue } from '@/lib/date-format'
 import { normalizeRole } from '@/lib/roles'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import {
@@ -184,6 +185,24 @@ export function buildTicketBody(params: {
     (params.machine || '').trim(),
     (params.location || '').trim(),
     (params.description || '').trim(),
+  ].filter(Boolean)
+
+  return parts.join(' \u00B7 ')
+}
+
+export function buildAssignedTicketBodyForCreator(params: {
+  machine?: string | null
+  location?: string | null
+  description?: string | null
+  operatorNames?: Array<string | null | undefined>
+  plannedStart?: number | string | null
+}) {
+  const operators = (params.operatorNames || []).map((name) => String(name || '').trim()).filter(Boolean)
+  const planned = formatDateTimeValue(params.plannedStart, '')
+  const parts = [
+    buildTicketBody(params),
+    operators.length ? `Operari: ${operators.join(', ')}` : '',
+    planned ? `Previst: ${planned}` : '',
   ].filter(Boolean)
 
   return parts.join(' \u00B7 ')

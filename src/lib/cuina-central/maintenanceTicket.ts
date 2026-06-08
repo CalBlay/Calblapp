@@ -24,7 +24,7 @@ export function cuinaCentralMachineToTicketItem(
   const code = String(machine.code || '').trim()
   const name = String(machine.name || '').trim()
   const label = machineLabel(machine)
-  return { code, name, label }
+  return { code, name, label, location: CUINA_CENTRAL_TICKET_LOCATION }
 }
 
 export function mergeTicketMachines(

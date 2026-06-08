@@ -19,6 +19,8 @@ export type FiltersState = {
   location?: string
   status?: string
   priority?: string
+  /** Agrupacio simplificada per usuaris externs de tickets (nou, assignat, fet, externalitzat). */
+  ticketBucket?: string
 }
 
 type FilterKey = 'ln' | 'responsable' | 'commercial' | 'location'

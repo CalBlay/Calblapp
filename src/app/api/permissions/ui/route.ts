@@ -25,8 +25,12 @@ import { normalizeRole } from '@/lib/roles'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 import {
+  INCIDENTS_ACTION,
+  INCIDENTS_COMMAND_BOARD_PERM,
   INCIDENTS_MEETING_MINUTES_PERM,
+  INCIDENTS_QUADRE_PATH,
   INCIDENTS_UI_PATH,
+  incidentsActionBaseAccess,
 } from '@/lib/incidentsPermissions'
 import {
   CALENDAR_EDIT_IMPLIED_ACTIONS,
@@ -72,6 +76,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/events', action: 'docs:attach:kitchen' },
   { path: '/menu/events', action: 'modifications:register' },
   { path: '/menu/events', action: 'event:close' },
+  { path: INCIDENTS_UI_PATH, action: 'command-board' },
   { path: INCIDENTS_UI_PATH, action: 'meeting-minutes' },
   { path: '/menu/quadrants', action: 'save' },
   { path: '/menu/quadrants', action: 'confirm' },
@@ -301,15 +306,33 @@ export async function GET() {
     actions[PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT)] = true
   }
 
-  // Incidències: acta reunió només amb edició del tauler (no només visualització)
-  if (map[INCIDENTS_UI_PATH] === true && edit[INCIDENTS_UI_PATH] === true) {
-    if (effectFor(assignment, INCIDENTS_MEETING_MINUTES_PERM) !== 'deny') {
-      actions[INCIDENTS_MEETING_MINUTES_PERM] = true
-    }
-  } else {
-    const actaEff = effectFor(assignment, INCIDENTS_MEETING_MINUTES_PERM)
-    if (actaEff !== 'allow') {
-      actions[INCIDENTS_MEETING_MINUTES_PERM] = false
+  // Incidències: quadre i acta només amb allow explícit (Settings → permisos)
+  const incidentsActionBase = {
+    canViewIncidents: map[INCIDENTS_UI_PATH] === true,
+    canEditIncidents: edit[INCIDENTS_UI_PATH] === true,
+    canViewQuadrePath: map[INCIDENTS_QUADRE_PATH] === true,
+  }
+
+  if (
+    effectFor(assignment, INCIDENTS_MEETING_MINUTES_PERM) === 'allow' &&
+    incidentsActionBaseAccess(accessUser, incidentsActionBase, INCIDENTS_ACTION.MEETING_MINUTES)
+  ) {
+    actions[INCIDENTS_MEETING_MINUTES_PERM] = true
+  }
+
+  if (
+    effectFor(assignment, INCIDENTS_COMMAND_BOARD_PERM) === 'allow' &&
+    incidentsActionBaseAccess(accessUser, incidentsActionBase, INCIDENTS_ACTION.COMMAND_BOARD)
+  ) {
+    actions[INCIDENTS_COMMAND_BOARD_PERM] = true
+  }
+
+  // Menú / URL del submòdul alineats amb l’acció (override del view base del catàleg)
+  if (map[INCIDENTS_UI_PATH] === true || map[INCIDENTS_QUADRE_PATH] === true) {
+    if (actions[INCIDENTS_COMMAND_BOARD_PERM] === true) {
+      map[INCIDENTS_QUADRE_PATH] = true
+    } else if (actions[INCIDENTS_COMMAND_BOARD_PERM] === false) {
+      map[INCIDENTS_QUADRE_PATH] = false
     }
   }
 

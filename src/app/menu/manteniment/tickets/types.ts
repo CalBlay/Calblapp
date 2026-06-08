@@ -119,6 +119,7 @@ export type MachineItem = {
   code: string
   name: string
   label: string
+  location?: string
 }
 
 export type TransportItem = {

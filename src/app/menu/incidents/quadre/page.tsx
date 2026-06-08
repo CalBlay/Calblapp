@@ -28,7 +28,7 @@ import {
   type IncidentWorkflowStatus,
 } from '@/lib/incidentPolicy'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
-import { INCIDENTS_QUADRE_PATH, INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
+import { INCIDENTS_COMMAND_BOARD_PERM, INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
 import { normalizeDept } from '@/lib/accessControl'
 import { INCIDENT_ORIGIN_DEPARTMENTS } from '@/lib/incidentOriginDepartments'
 import {
@@ -94,9 +94,9 @@ function incidentMatchesSearch(inc: IncidentDashboardRow, q: string) {
 export default function IncidentsQuadrePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const { ready: uiPermsReady, canViewPath } = useUiPermissions()
-  const canSeeQuadre = uiPermsReady && canViewPath(INCIDENTS_QUADRE_PATH)
-  const canSeeBoard = uiPermsReady && canViewPath(INCIDENTS_UI_PATH)
+  const { ready: uiPermsReady, canViewPath, canEditPath, hasAction } = useUiPermissions()
+  const canSeeQuadre = uiPermsReady && hasAction(INCIDENTS_COMMAND_BOARD_PERM)
+  const canSeeBoard = uiPermsReady && canViewPath(INCIDENTS_UI_PATH) && canEditPath(INCIDENTS_UI_PATH)
   const isMarketingUser = MARKETING_DEPARTMENTS.has(
     normalizeDept((session?.user as { department?: string } | undefined)?.department || '')
   )

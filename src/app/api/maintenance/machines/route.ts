@@ -9,6 +9,7 @@ type MachineRow = {
   code: string
   name: string
   label: string
+  location: string
   active: boolean
 }
 
@@ -30,6 +31,7 @@ export async function GET() {
             code,
             name,
             label: code && name ? `${code} · ${name}` : code || name,
+            location: String(data.location || '').trim(),
             active: data.active !== false,
           }
         })

@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
 import { useSession } from 'next-auth/react'
-import { isMaintenanceCapDepartment } from '@/lib/accessControl'
+import {
+  isExternalMaintenanceTicketReporter,
+  isMaintenanceCapDepartment,
+} from '@/lib/accessControl'
+import {
+  getExternalReporterTicketBucket,
+  matchesExternalReporterTicketBucket,
+  resolveDefaultTicketLocationFromUserName,
+  type ExternalReporterTicketBucket,
+} from '@/lib/maintenanceTicketCreators'
 import { normalizeRole } from '@/lib/roles'
 import type { Ticket, TicketPriority, TicketStatus } from './types'
 import type { FiltersState } from '@/components/layout/FiltersBar'
@@ -11,6 +20,7 @@ import { normalizeName } from '@/app/menu/manteniment/preventius/planificador/ut
 
 type SessionUser = {
   id?: string
+  name?: string
   role?: string
   department?: string
 }
@@ -40,6 +50,10 @@ export function useMaintenanceTickets() {
   const userId = sessionUser.id || ''
 
   const isMaintenanceCap = role === 'cap' && isMaintenanceCapDepartment(department)
+  const isExternalReporter = isExternalMaintenanceTicketReporter({
+    role,
+    department,
+  })
   const canValidate = role === 'admin' || isMaintenanceCap
   const canReopen = canValidate
   const canExternalize =
@@ -64,6 +78,7 @@ export function useMaintenanceTickets() {
       status: '__all__',
       priority: '__all__',
       location: '__all__',
+      ticketBucket: '__all__',
     }
   }, [])
 
@@ -72,6 +87,7 @@ export function useMaintenanceTickets() {
   const priorityFilter = filters.priority ?? '__all__'
   const locationFilter = filters.location ?? '__all__'
   const dateModeFilter = filters.dateMode ?? 'all'
+  const ticketBucketFilter = filters.ticketBucket ?? '__all__'
 
   const [selected, setSelected] = useState<Ticket | null>(null)
   const [assignBusy, setAssignBusy] = useState(false)
@@ -91,6 +107,11 @@ export function useMaintenanceTickets() {
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
 
   const { locations, machines, maintenanceUsers, furgonetes } = useMaintenanceTicketCatalog()
+
+  const defaultCreateLocation = useMemo(
+    () => resolveDefaultTicketLocationFromUserName(sessionUser.name, locations) || '',
+    [locations, sessionUser.name]
+  )
 
   const fetchTickets = useCallback(
     async (opts?: { append?: boolean; cursorCreatedAt?: number }) => {
@@ -177,8 +198,10 @@ export function useMaintenanceTickets() {
     handleImageChange,
     removeImage,
     handleCreateTicket,
+    openCreate,
   } = useMaintenanceTicketComposer({
     refreshTickets: () => fetchTickets(),
+    defaultLocation: defaultCreateLocation,
   })
 
   useEffect(() => {
@@ -611,13 +634,19 @@ export function useMaintenanceTickets() {
       }
       return ticket.plannedStart || ticket.assignedAt || ticket.createdAt || null
     }
-    const inRange = tickets.filter((ticket) => {
-      if (dateModeFilter === 'all') return true
-      const base = getFilterDate(ticket)
-      const date = typeof base === 'string' ? new Date(base) : new Date(Number(base))
-      if (Number.isNaN(date.getTime())) return false
-      return date >= start && date <= end
-    })
+    const inRange = tickets
+      .filter((ticket) => {
+        if (dateModeFilter === 'all') return true
+        const base = getFilterDate(ticket)
+        const date = typeof base === 'string' ? new Date(base) : new Date(Number(base))
+        if (Number.isNaN(date.getTime())) return false
+        return date >= start && date <= end
+      })
+      .filter((ticket) =>
+        isExternalReporter
+          ? matchesExternalReporterTicketBucket(ticket, ticketBucketFilter)
+          : true
+      )
 
     const sortTickets = (list: Ticket[]) =>
       [...list].sort((a, b) => {
@@ -645,6 +674,28 @@ export function useMaintenanceTickets() {
         }
         return tb - ta
       })
+
+    if (isExternalReporter) {
+      const bucketSections: Array<{
+        key: ExternalReporterTicketBucket
+        title: string
+        note: string
+      }> = [
+        { key: 'nou', title: 'Nous', note: 'Pendents de gestio per manteniment' },
+        { key: 'assignat', title: 'Assignats', note: 'Amb operari i data prevista' },
+        { key: 'fet', title: 'Fets', note: 'Feina completada o tancada' },
+        { key: 'externalitzat', title: 'Externalitzats', note: 'Derivats a proveidor' },
+      ]
+
+      const sections = bucketSections.map((section) => ({
+        ...section,
+        items: sortTickets(
+          inRange.filter((ticket) => getExternalReporterTicketBucket(ticket) === section.key)
+        ),
+      }))
+
+      return sections.filter((section) => section.items.length > 0)
+    }
 
     const ticketsInbox = inRange.filter(
       (ticket) =>
@@ -714,7 +765,19 @@ export function useMaintenanceTickets() {
     return sections
       .map((section) => ({ ...section, items: sortTickets(section.items) }))
       .filter((section) => section.items.length > 0)
-  }, [dateModeFilter, filters.end, filters.start, tickets])
+  }, [dateModeFilter, filters.end, filters.start, isExternalReporter, ticketBucketFilter, tickets])
+
+  const externalReporterSummary = useMemo(() => {
+    const countBucket = (bucket: ExternalReporterTicketBucket) =>
+      tickets.filter((ticket) => getExternalReporterTicketBucket(ticket) === bucket).length
+
+    return {
+      nou: countBucket('nou'),
+      assignat: countBucket('assignat'),
+      fet: countBucket('fet'),
+      externalitzat: countBucket('externalitzat'),
+    }
+  }, [tickets])
 
   const ticketSummary = useMemo(
     () => ({
@@ -731,6 +794,7 @@ export function useMaintenanceTickets() {
     role,
     department,
     userId,
+    isExternalReporter,
     canValidate,
     canReopen,
     canExternalize,
@@ -746,6 +810,7 @@ export function useMaintenanceTickets() {
     machines,
     showCreate,
     setShowCreate,
+    openCreate,
     createLocation,
     setCreateLocation,
     createMachine,
@@ -816,5 +881,6 @@ export function useMaintenanceTickets() {
         : Promise.resolve(),
     groupedTickets,
     ticketSummary,
+    externalReporterSummary,
   }
 }

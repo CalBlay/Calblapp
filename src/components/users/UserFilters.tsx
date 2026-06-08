@@ -1,11 +1,12 @@
-// file: src/components/users/UserFilters.tsx
-// file: src/components/users/UserFilters.tsx
 'use client'
 
 import React, { useMemo } from 'react'
+import { Search } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
-// ❗ Tipus definit aquí (no importem de page.tsx)
 export interface UserFiltersState {
+  search?: string
   department?: string
   role?: string
 }
@@ -16,7 +17,12 @@ type Props = {
   departmentOptions: string[]
   roleOptions: string[]
   users: { department?: string; role?: string }[]
+  totalCount?: number
+  filteredCount?: number
 }
+
+const selectClassName =
+  'rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-h-11'
 
 export default function UserFilters({
   filters,
@@ -24,11 +30,11 @@ export default function UserFilters({
   departmentOptions,
   roleOptions,
   users,
+  totalCount,
+  filteredCount,
 }: Props) {
-  // 🔒 Evitar recrear arrays
   const safeUsers = useMemo(() => users || [], [users])
 
-  // 🔽 Rols dinàmics filtrats
   const dynamicRoles = useMemo(() => {
     let base = safeUsers
     if (filters.department && filters.department !== '__all__') {
@@ -39,7 +45,6 @@ export default function UserFilters({
     return roles.length ? Array.from(new Set(roles)) : roleOptions
   }, [filters.department, safeUsers, roleOptions])
 
-  // 🔽 Departaments dinàmics filtrats
   const dynamicDepartments = useMemo(() => {
     let base = safeUsers
     if (filters.role && filters.role !== '__all__') {
@@ -47,53 +52,97 @@ export default function UserFilters({
     }
 
     const depts = base.map((u) => u.department).filter(Boolean) as string[]
-    return depts.length
-      ? Array.from(new Set(depts))
-      : departmentOptions
+    return depts.length ? Array.from(new Set(depts)) : departmentOptions
   }, [filters.role, safeUsers, departmentOptions])
 
-  // Reset
+  const hasActiveFilters =
+    Boolean(String(filters.search || '').trim()) ||
+    (filters.department && filters.department !== '__all__') ||
+    (filters.role && filters.role !== '__all__')
+
   const clearFilters = () => {
-    setFilters({ department: '__all__', role: '__all__' })
+    setFilters({ search: '', department: '__all__', role: '__all__' })
   }
 
   return (
-    <div className="flex flex-wrap gap-3 items-center bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-      {/* Departament */}
-      <select
-        value={filters.department || '__all__'}
-        onChange={(e) => setFilters({ department: e.target.value })}
-        className="rounded-lg border px-3 py-2 text-sm"
-      >
-        <option value="__all__">🌐 Tots els departaments</option>
-        {dynamicDepartments.map((dep) => (
-          <option key={dep} value={dep}>
-            {dep}
-          </option>
-        ))}
-      </select>
+    <div className="flex flex-1 flex-col gap-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-1 md:col-span-2 xl:col-span-2">
+          <Label htmlFor="users-search" className="text-xs font-semibold text-gray-600">
+            Cerca intel·ligent
+          </Label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Input
+              id="users-search"
+              placeholder="Nom, email, telèfon, comercial, rol, departament..."
+              value={filters.search || ''}
+              onChange={(e) => setFilters({ search: e.target.value })}
+              autoComplete="off"
+              className="min-h-11 pl-9"
+            />
+          </div>
+        </div>
 
-      {/* Rol */}
-      <select
-        value={filters.role || '__all__'}
-        onChange={(e) => setFilters({ role: e.target.value })}
-        className="rounded-lg border px-3 py-2 text-sm"
-      >
-        <option value="__all__">👥 Tots els rols</option>
-        {dynamicRoles.map((role) => (
-          <option key={role} value={role}>
-            {role}
-          </option>
-        ))}
-      </select>
+        <div className="space-y-1">
+          <Label htmlFor="users-department" className="text-xs font-semibold text-gray-600">
+            Departament
+          </Label>
+          <select
+            id="users-department"
+            value={filters.department || '__all__'}
+            onChange={(e) => setFilters({ department: e.target.value })}
+            className={`${selectClassName} w-full`}
+          >
+            <option value="__all__">Tots els departaments</option>
+            {dynamicDepartments.map((dep) => (
+              <option key={dep} value={dep}>
+                {dep}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      {/* Botó Neteja */}
-      <button
-        onClick={clearFilters}
-        className="ml-auto px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50 transition"
-      >
-        Neteja
-      </button>
+        <div className="space-y-1">
+          <Label htmlFor="users-role" className="text-xs font-semibold text-gray-600">
+            Rol
+          </Label>
+          <select
+            id="users-role"
+            value={filters.role || '__all__'}
+            onChange={(e) => setFilters({ role: e.target.value })}
+            className={`${selectClassName} w-full`}
+          >
+            <option value="__all__">Tots els rols</option>
+            {dynamicRoles.map((role) => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-gray-500">
+          Cerca sense accents; es poden usar diverses paraules.
+          {typeof totalCount === 'number' && typeof filteredCount === 'number' ? (
+            <>
+              {' '}
+              Mostrant {filteredCount} de {totalCount} usuaris.
+            </>
+          ) : null}
+        </p>
+        {hasActiveFilters ? (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-50"
+          >
+            Neteja filtres
+          </button>
+        ) : null}
+      </div>
     </div>
   )
 }

@@ -11,6 +11,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MODULES } from '@/lib/accessControl'
 import { applyOverrideEffects } from '@/lib/permissions/overrideState'
+import {
+  INCIDENTS_COMMAND_BOARD_PERM,
+  INCIDENTS_MEETING_MINUTES_PERM,
+} from '@/lib/incidentsPermissions'
 import { CALENDAR_EDIT_IMPLIED_ACTIONS, PERM } from '@/lib/permissionKeys'
 
 type AssignmentOverride = {
@@ -188,6 +192,23 @@ const ACTION_GROUPS: Array<{
       { key: PERM.action('/menu/quadrants', 'draft:confirm'), label: 'Esborranys · confirmar' },
       { key: PERM.action('/menu/quadrants', 'draft:unconfirm'), label: 'Esborranys · desconfirmar' },
       { key: PERM.action('/menu/quadrants', 'draft:delete'), label: 'Esborranys · eliminar' },
+    ],
+  },
+  {
+    id: 'incidentsActions',
+    title: 'Incidències · Accions',
+    subtitle:
+      'Cal marcar explícitament per usuari (opt-in). Requereix veure/editar incidències; treballadors producció: només quadre amb allow. Cal desar.',
+    visibleWhen: { path: '/menu/incidents' },
+    actions: [
+      {
+        key: INCIDENTS_COMMAND_BOARD_PERM,
+        label: 'Quadre de comandament',
+      },
+      {
+        key: INCIDENTS_MEETING_MINUTES_PERM,
+        label: 'Acta reunió',
+      },
     ],
   },
   {

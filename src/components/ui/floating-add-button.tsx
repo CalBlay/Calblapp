@@ -19,9 +19,11 @@ export default function FloatingAddButton({ onClick, className }: FloatingAddBut
       whileTap={{ scale: 0.9 }}
       className={cn(
         `
-        fixed 
-        bottom-6 right-10 
-        h-14 w-14 
+        fixed
+        bottom-[max(1.25rem,env(safe-area-inset-bottom))]
+        right-4
+        sm:right-10
+        h-14 w-14
         rounded-full
         bg-blue-600 
         text-white 

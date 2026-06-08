@@ -1,11 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
+import { CalendarCheck2 } from 'lucide-react'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
@@ -94,11 +97,29 @@ const KPI_STYLES = {
   external: 'border-violet-200 bg-violet-50/70',
 } as const
 
+const EXTERNAL_BUCKET_LABELS = {
+  nou: 'Nous',
+  assignat: 'Assignats',
+  fet: 'Fets',
+  externalitzat: 'Externalitzats',
+} as const
+
+const EXTERNAL_KPI_STYLES = {
+  nou: KPI_STYLES.inbox,
+  assignat: KPI_STYLES.active,
+  fet: KPI_STYLES.validation,
+  externalitzat: KPI_STYLES.external,
+} as const
+
+const MAINTENANCE_PLANNER_PATH = '/menu/manteniment/preventius/planificador'
+
 export default function MaintenanceTicketsPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setContent } = useFilters()
+  const { isPathAllowed } = useUiPermissions()
+  const canViewPlanner = isPathAllowed(MAINTENANCE_PLANNER_PATH)
   const sessionUser = (session?.user || {}) as SessionUser
   const department = normalizeDept(sessionUser.department || '')
   const userRole = normalizeRole(sessionUser.role || '')
@@ -131,6 +152,7 @@ export default function MaintenanceTicketsPage() {
   const {
     role: ticketRole,
     userId,
+    isExternalReporter,
     canValidate,
     canReopen,
     canExternalize,
@@ -145,6 +167,7 @@ export default function MaintenanceTicketsPage() {
     machines,
     showCreate,
     setShowCreate,
+    openCreate,
     createLocation,
     setCreateLocation,
     createMachine,
@@ -212,7 +235,18 @@ export default function MaintenanceTicketsPage() {
     fetchMoreTickets,
     groupedTickets,
     ticketSummary,
+    externalReporterSummary,
   } = useMaintenanceTickets()
+
+  const toggleExternalBucket = useCallback(
+    (bucket: keyof typeof EXTERNAL_BUCKET_LABELS) => {
+      setFilters((prev) => ({
+        ...prev,
+        ticketBucket: prev.ticketBucket === bucket ? '__all__' : bucket,
+      }))
+    },
+    [setFilters]
+  )
 
   const normalizeLocationKey = (value: string) =>
     value
@@ -248,53 +282,72 @@ export default function MaintenanceTicketsPage() {
             <option value="completed">Data tancament</option>
           </select>
         </label>
-        <label className="space-y-2 text-sm text-slate-700">
-          <span className="font-medium">Estat</span>
-          <select
-            value={filters.status ?? '__all__'}
-            onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-          >
-            <option value="__all__">Tots</option>
-            <option value="nou">{STATUS_LABELS.nou}</option>
-            <option value="assignat">{STATUS_LABELS.assignat}</option>
-            <option value="en_curs">{STATUS_LABELS.en_curs}</option>
-            <option value="espera">{STATUS_LABELS.espera}</option>
-            <option value="fet">{STATUS_LABELS.fet}</option>
-            <option value="no_fet">{STATUS_LABELS.no_fet}</option>
-            <option value="resolut">{STATUS_LABELS.resolut}</option>
-            {canValidate ? <option value="validat">{STATUS_LABELS.validat}</option> : null}
-          </select>
-        </label>
-        <label className="space-y-2 text-sm text-slate-700">
-          <span className="font-medium">Importancia</span>
-          <select
-            value={filters.priority ?? '__all__'}
-            onChange={(e) => setFilters((prev) => ({ ...prev, priority: e.target.value }))}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-          >
-            <option value="__all__">Totes</option>
-            <option value="urgent">{PRIORITY_LABELS.urgent}</option>
-            <option value="alta">{PRIORITY_LABELS.alta}</option>
-            <option value="normal">{PRIORITY_LABELS.normal}</option>
-            <option value="baixa">{PRIORITY_LABELS.baixa}</option>
-          </select>
-        </label>
-        <label className="space-y-2 text-sm text-slate-700">
-          <span className="font-medium">Ubicació</span>
-          <select
-            value={filters.location ?? '__all__'}
-            onChange={(e) => setFilters((prev) => ({ ...prev, location: e.target.value }))}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-          >
-            <option value="__all__">Totes</option>
-            {catalogLocations.map((location) => (
-              <option key={location} value={location}>
-                {location}
-              </option>
-            ))}
-          </select>
-        </label>
+        {isExternalReporter ? (
+          <label className="space-y-2 text-sm text-slate-700">
+            <span className="font-medium">Estat</span>
+            <select
+              value={filters.ticketBucket ?? '__all__'}
+              onChange={(e) => setFilters((prev) => ({ ...prev, ticketBucket: e.target.value }))}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            >
+              <option value="__all__">Tots</option>
+              <option value="nou">{EXTERNAL_BUCKET_LABELS.nou}</option>
+              <option value="assignat">{EXTERNAL_BUCKET_LABELS.assignat}</option>
+              <option value="fet">{EXTERNAL_BUCKET_LABELS.fet}</option>
+              <option value="externalitzat">{EXTERNAL_BUCKET_LABELS.externalitzat}</option>
+            </select>
+          </label>
+        ) : (
+          <>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Estat</span>
+              <select
+                value={filters.status ?? '__all__'}
+                onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Tots</option>
+                <option value="nou">{STATUS_LABELS.nou}</option>
+                <option value="assignat">{STATUS_LABELS.assignat}</option>
+                <option value="en_curs">{STATUS_LABELS.en_curs}</option>
+                <option value="espera">{STATUS_LABELS.espera}</option>
+                <option value="fet">{STATUS_LABELS.fet}</option>
+                <option value="no_fet">{STATUS_LABELS.no_fet}</option>
+                <option value="resolut">{STATUS_LABELS.resolut}</option>
+                {canValidate ? <option value="validat">{STATUS_LABELS.validat}</option> : null}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Importancia</span>
+              <select
+                value={filters.priority ?? '__all__'}
+                onChange={(e) => setFilters((prev) => ({ ...prev, priority: e.target.value }))}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Totes</option>
+                <option value="urgent">{PRIORITY_LABELS.urgent}</option>
+                <option value="alta">{PRIORITY_LABELS.alta}</option>
+                <option value="normal">{PRIORITY_LABELS.normal}</option>
+                <option value="baixa">{PRIORITY_LABELS.baixa}</option>
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Ubicació</span>
+              <select
+                value={filters.location ?? '__all__'}
+                onChange={(e) => setFilters((prev) => ({ ...prev, location: e.target.value }))}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Totes</option>
+                {catalogLocations.map((location) => (
+                  <option key={location} value={location}>
+                    {location}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
         <div className="flex justify-end">
           <ResetFilterButton
             onClick={() => {
@@ -307,6 +360,7 @@ export default function MaintenanceTicketsPage() {
                 status: '__all__',
                 priority: '__all__',
                 location: '__all__',
+                ticketBucket: '__all__',
                 dateMode: 'all' as const,
               }
               setFilters(next)
@@ -318,7 +372,7 @@ export default function MaintenanceTicketsPage() {
     )
 
     return () => setContent(null)
-  }, [canValidate, catalogLocations, dateResetSignal, filters, setContent, setFilters])
+  }, [canValidate, catalogLocations, dateResetSignal, filters, isExternalReporter, setContent, setFilters])
 
   const displayStatusLabels: Record<TicketStatus, string> = canValidate
     ? STATUS_LABELS
@@ -413,24 +467,38 @@ export default function MaintenanceTicketsPage() {
 
   return (
       <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador', 'comercial', 'usuari']}>
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 pb-8">
+      <div className="flex w-full max-w-none flex-col gap-5 p-4 pb-8">
         <ModuleHeader
           title="Manteniment"
           subtitle="Tickets"
           mainHref="/menu/manteniment"
           actions={
-            hasAccess && (canManageAllTickets || isOwnTicketsOnly) ? (
-              <button
-                className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-                onClick={() => setShowCreate(true)}
-              >
-                + Nou ticket
-              </button>
+            canViewPlanner || (hasAccess && (canManageAllTickets || isOwnTicketsOnly)) ? (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {canViewPlanner ? (
+                  <Link
+                    href={MAINTENANCE_PLANNER_PATH}
+                    className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-white px-4 py-2 text-sm font-semibold text-teal-800 shadow-sm hover:bg-teal-50"
+                  >
+                    <CalendarCheck2 className="h-4 w-4" />
+                    Planificador
+                  </Link>
+                ) : null}
+                {hasAccess && (canManageAllTickets || isOwnTicketsOnly) ? (
+                  <button
+                    type="button"
+                    className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                    onClick={() => openCreate()}
+                  >
+                    + Nou ticket
+                  </button>
+                ) : null}
+              </div>
             ) : undefined
           }
         />
 
-        {isOwnTicketsOnly ? (
+        {!isExternalReporter && isOwnTicketsOnly ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
             {isCuinaCentralDepartment(department)
               ? 'Veus nomes els teus tickets. En crear-ne un de nou, es deriva al planificador de manteniment i aqui en pots seguir l evolucio.'
@@ -478,17 +546,22 @@ export default function MaintenanceTicketsPage() {
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            {filters.status && filters.status !== '__all__' ? (
+            {isExternalReporter && filters.ticketBucket && filters.ticketBucket !== '__all__' ? (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                {EXTERNAL_BUCKET_LABELS[filters.ticketBucket as keyof typeof EXTERNAL_BUCKET_LABELS]}
+              </span>
+            ) : null}
+            {!isExternalReporter && filters.status && filters.status !== '__all__' ? (
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                 {STATUS_LABELS[filters.status as TicketStatus]}
               </span>
             ) : null}
-            {filters.priority && filters.priority !== '__all__' ? (
+            {!isExternalReporter && filters.priority && filters.priority !== '__all__' ? (
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                 {PRIORITY_LABELS[filters.priority as TicketPriority]}
               </span>
             ) : null}
-            {filters.location && filters.location !== '__all__' ? (
+            {!isExternalReporter && filters.location && filters.location !== '__all__' ? (
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                 {filters.location}
               </span>
@@ -504,42 +577,53 @@ export default function MaintenanceTicketsPage() {
         {loading && <p className="text-sm text-gray-500">Carregant...</p>}
         {error && <p className="text-sm text-red-500">{error}</p>}
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.inbox}`}>
-            <div className={typography('eyebrow')}>
-              Nous i reoberts
+        {isExternalReporter ? (
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {(Object.keys(EXTERNAL_BUCKET_LABELS) as Array<keyof typeof EXTERNAL_BUCKET_LABELS>).map(
+              (bucket) => {
+                const active = filters.ticketBucket === bucket
+                return (
+                  <button
+                    key={bucket}
+                    type="button"
+                    onClick={() => toggleExternalBucket(bucket)}
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${
+                      EXTERNAL_KPI_STYLES[bucket]
+                    } ${active ? 'ring-2 ring-emerald-500 ring-offset-1' : 'hover:brightness-[0.98]'}`}
+                  >
+                    <div className={typography('eyebrow')}>{EXTERNAL_BUCKET_LABELS[bucket]}</div>
+                    <div className={`mt-2 ${typography('kpiValue')}`}>
+                      {externalReporterSummary[bucket]}
+                    </div>
+                  </button>
+                )
+              }
+            )}
+          </section>
+        ) : (
+          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.inbox}`}>
+              <div className={typography('eyebrow')}>Nous i reoberts</div>
+              <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.inbox}</div>
             </div>
-            <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.inbox}</div>
-          </div>
-          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.planned}`}>
-            <div className={typography('eyebrow')}>
-              Planificats
+            <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.planned}`}>
+              <div className={typography('eyebrow')}>Planificats</div>
+              <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.planned}</div>
             </div>
-            <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.planned}</div>
-          </div>
-          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.active}`}>
-            <div className={typography('eyebrow')}>
-              En curs / espera
+            <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.active}`}>
+              <div className={typography('eyebrow')}>En curs / espera</div>
+              <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.active}</div>
             </div>
-            <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.active}</div>
-          </div>
-          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.validation}`}>
-            <div className={typography('eyebrow')}>
-              Pendents validar
+            <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.validation}`}>
+              <div className={typography('eyebrow')}>Pendents validar</div>
+              <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.pendingValidation}</div>
             </div>
-            <div className={`mt-2 ${typography('kpiValue')}`}>
-              {ticketSummary.pendingValidation}
+            <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.external}`}>
+              <div className={typography('eyebrow')}>Externalitzats</div>
+              <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.externalized}</div>
             </div>
-          </div>
-          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.external}`}>
-            <div className={typography('eyebrow')}>
-              Externalitzats
-            </div>
-            <div className={`mt-2 ${typography('kpiValue')}`}>
-              {ticketSummary.externalized}
-            </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {!loading && groupedTickets.length === 0 && (
           <p className="text-sm text-gray-500">No hi ha tickets encara.</p>
@@ -547,6 +631,7 @@ export default function MaintenanceTicketsPage() {
 
         <TicketsList
           groupedTickets={groupedTickets}
+          externalReporterView={isExternalReporter}
           onResolve={(ticket) => {
             if (!canResolveDirectly(ticket)) return
             markTicketSeen(ticket.id, 'maquinaria')

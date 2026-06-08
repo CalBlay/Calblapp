@@ -1,5 +1,5 @@
 import { MODULES } from '@/lib/accessControl'
-import { INCIDENTS_MEETING_MINUTES_PERM } from '@/lib/incidentsPermissions'
+import { INCIDENTS_COMMAND_BOARD_PERM, INCIDENTS_MEETING_MINUTES_PERM } from '@/lib/incidentsPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import type { MatrixRow } from '@/lib/permissions/types'
 
@@ -142,9 +142,13 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
     id: 'incidentsActions',
     title: 'Incidències · Accions',
     subtitle:
-      'Requereix edició del tauler setmanal. Només visualització no n’és suficient (llevat d’allow explícit).',
+      'Cal marcar explícitament per usuari (opt-in). Requereix veure/editar incidències; treballadors producció: només quadre amb allow.',
     visibleWhen: { path: '/menu/incidents' },
     actions: [
+      {
+        key: INCIDENTS_COMMAND_BOARD_PERM,
+        label: 'Quadre de comandament',
+      },
       {
         key: INCIDENTS_MEETING_MINUTES_PERM,
         label: 'Acta reunió',

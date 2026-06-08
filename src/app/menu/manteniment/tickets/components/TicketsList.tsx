@@ -5,6 +5,7 @@ import { differenceInCalendarDays } from 'date-fns'
 import { formatDateOnly } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
 import { isTicketStaleAlert, STALE_TICKET_CARD_CLASS } from '@/lib/maintenanceTicketAlerts'
+import { getExternalReporterTicketBucket } from '@/lib/maintenanceTicketCreators'
 import { resolveOpsChannelByLocationName } from '@/lib/opsMessagingChannels'
 import type { Ticket, TicketPriority, TicketStatus } from '../types'
 
@@ -28,6 +29,7 @@ type Props = {
   priorityBadgeClasses: Record<TicketPriority, string>
   statusLabels: Record<TicketStatus, string>
   priorityLabels: Record<TicketPriority, string>
+  externalReporterView?: boolean
 }
 
 type PlanningHistoryEntry = NonNullable<Ticket['planningHistory']>[number]
@@ -62,6 +64,36 @@ const SECTION_STYLES: Record<string, { header: string; card: string; expanded: s
     header: 'text-slate-900',
     card: 'border-slate-200 bg-slate-50/60',
     expanded: 'border-slate-100 bg-slate-50/40',
+  },
+  assigned: {
+    header: 'text-blue-900',
+    card: 'border-blue-200/80 bg-blue-50/55',
+    expanded: 'border-blue-100 bg-blue-50/35',
+  },
+  resolved: {
+    header: 'text-emerald-900',
+    card: 'border-emerald-200/80 bg-emerald-50/55',
+    expanded: 'border-emerald-100 bg-emerald-50/35',
+  },
+  nou: {
+    header: 'text-amber-900',
+    card: 'border-amber-200/80 bg-amber-50/55',
+    expanded: 'border-amber-100 bg-amber-50/35',
+  },
+  assignat: {
+    header: 'text-blue-900',
+    card: 'border-blue-200/80 bg-blue-50/55',
+    expanded: 'border-blue-100 bg-blue-50/35',
+  },
+  fet: {
+    header: 'text-emerald-900',
+    card: 'border-emerald-200/80 bg-emerald-50/55',
+    expanded: 'border-emerald-100 bg-emerald-50/35',
+  },
+  externalitzat: {
+    header: 'text-violet-900',
+    card: 'border-violet-200/80 bg-violet-50/55',
+    expanded: 'border-violet-100 bg-violet-50/35',
   },
 }
 
@@ -155,6 +187,36 @@ const getPlannedSummary = (ticket: Ticket, formatDateTime: Props['formatDateTime
   return parts.join(' - ')
 }
 
+const getExternalReporterStatusSummary = (
+  ticket: Ticket,
+  formatDateTime: Props['formatDateTime']
+): string | null => {
+  const bucket = getExternalReporterTicketBucket(ticket)
+
+  if (bucket === 'externalitzat') {
+    const supplier = String(ticket.supplierName || '').trim()
+    return supplier ? `Externalitzat: ${supplier}` : 'Externalitzat'
+  }
+
+  if (bucket === 'fet') {
+    const resolvedAt = (ticket.statusHistory || [])
+      .filter((entry) => entry.status === 'resolut' || entry.status === 'validat')
+      .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]?.at
+    const label = ticket.status === 'validat' ? 'Validat' : 'Resolt'
+    return resolvedAt ? `${label}: ${formatDateTime(resolvedAt)}` : label
+  }
+
+  if (bucket !== 'assignat') return null
+
+  const operators = (ticket.assignedToNames || []).filter(Boolean).join(', ')
+  const planned = ticket.plannedStart ? formatDateTime(ticket.plannedStart) : ''
+  const segments: string[] = []
+  if (operators) segments.push(`Operari ${operators}`)
+  if (planned) segments.push(`Previst ${planned}`)
+  if (!segments.length) return 'Assignat'
+  return `Assignat: ${segments.join(' · ')}`
+}
+
 const getPlanningActionLabel = (action: PlanningHistoryEntry['action']) => {
   if (action === 'planificat') return 'Planificat'
   if (action === 'replanificat') return 'Replanificat'
@@ -174,6 +236,7 @@ export default function TicketsList({
   priorityBadgeClasses,
   statusLabels,
   priorityLabels,
+  externalReporterView = false,
 }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
@@ -243,6 +306,10 @@ export default function TicketsList({
                     String(ticket.workLocation || ticket.location || '').trim() || 'Sense ubicacio'
                   const machineLabel = String(ticket.machine || '').trim() || 'Sense maquinaria'
                   const plannedSummary = getPlannedSummary(ticket, formatDateTime)
+                  const externalStatusSummary = externalReporterView
+                    ? getExternalReporterStatusSummary(ticket, formatDateTime)
+                    : null
+                  const assignmentSummary = externalStatusSummary
                   const history = (ticket.statusHistory || [])
                     .slice()
                     .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))
@@ -279,30 +346,41 @@ export default function TicketsList({
                             >
                               {priorityLabels[ticket.priority]}
                             </span>
-                            {daysOpen !== null ? (
+                            {!externalReporterView && daysOpen !== null ? (
                               <span
                                 className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getDaysBadgeClass(daysOpen, isStale)}`}
                               >
                                 {daysOpen} dies
                               </span>
                             ) : null}
-                            {ticket.externalized ? (
+                            {!externalReporterView && ticket.externalized ? (
                               <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-800">
                                 Proveidor
                               </span>
                             ) : null}
                           </div>
 
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
-                          <span>Creat per: {creatorLabel}</span>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                          {!externalReporterView ? <span>Creat per: {creatorLabel}</span> : null}
                           <span>Ubicacio: {locationLabel}</span>
-                          {eventLabel ? <span>Esdeveniment: {eventLabel}</span> : null}
+                          {!externalReporterView && eventLabel ? (
+                            <span>Esdeveniment: {eventLabel}</span>
+                          ) : null}
                         </div>
                         {cardDescription ? (
-                          <p className="line-clamp-2 text-sm text-slate-600">{cardDescription}</p>
+                          <div className="mt-1 rounded-xl border border-white/80 bg-white/90 px-3.5 py-2.5 shadow-sm">
+                            <p className="line-clamp-3 text-base font-medium leading-relaxed text-slate-900 md:text-[17px]">
+                              {cardDescription}
+                            </p>
+                          </div>
                         ) : null}
 
-                          {plannedSummary ? (
+                          {externalReporterView && assignmentSummary ? (
+                            <div className="rounded-2xl border border-blue-100 bg-white/90 px-3 py-2 text-sm font-medium text-blue-950 shadow-sm">
+                              {assignmentSummary}
+                            </div>
+                          ) : null}
+                          {!externalReporterView && plannedSummary ? (
                             <div className="inline-flex rounded-full bg-white/80 px-3 py-1 text-sm text-slate-600 shadow-sm">
                               Planificat: {plannedSummary}
                             </div>
@@ -310,7 +388,7 @@ export default function TicketsList({
                         </div>
 
                         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                          {canResolveDirectly(ticket) ? (
+                          {!externalReporterView && canResolveDirectly(ticket) ? (
                             <button
                               type="button"
                               onClick={() => onResolve(ticket)}
@@ -319,7 +397,7 @@ export default function TicketsList({
                               Resoldre
                             </button>
                           ) : null}
-                          {canPlanifyDirectly(ticket) ? (
+                          {!externalReporterView && canPlanifyDirectly(ticket) ? (
                             <button
                               type="button"
                               onClick={() => onPlanify(ticket)}
@@ -328,7 +406,7 @@ export default function TicketsList({
                               Planificar
                             </button>
                           ) : null}
-                          {canDelete(ticket) ? (
+                          {!externalReporterView && canDelete(ticket) ? (
                             <button
                               type="button"
                               title="Eliminar ticket"
@@ -400,9 +478,9 @@ export default function TicketsList({
                                   </div>
                                 </div>
                               ) : null}
-                              <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
+                              <div className="rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
                                 <div className={typography('eyebrow')}>Descripcio</div>
-                                <div className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
+                                <div className="mt-2 whitespace-pre-wrap text-base font-medium leading-relaxed text-slate-900 md:text-lg">
                                   {String(ticket.description || '').trim() || '-'}
                                 </div>
                               </div>
@@ -436,6 +514,17 @@ export default function TicketsList({
                               </div>
                             ) : null}
 
+                            {externalReporterView ? (
+                              <div className="space-y-2">
+                                <div className={typography('eyebrow')}>Seguiment</div>
+                                <div className="rounded-xl border border-white/80 bg-white/90 px-3 py-3 text-sm text-slate-800 shadow-sm">
+                                  {externalStatusSummary ||
+                                    'Pendent de gestio. Rebràs una notificacio quan manteniment assigni el ticket.'}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {!externalReporterView ? (
                             <div className="space-y-2">
                               <div className={typography('eyebrow')}>Historial</div>
                               <div className="space-y-2">
@@ -523,6 +612,7 @@ export default function TicketsList({
                                 )}
                               </div>
                             </div>
+                            ) : null}
 
                           </div>
                         </div>

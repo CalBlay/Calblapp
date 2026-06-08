@@ -1,4 +1,6 @@
+import { useMemo } from 'react'
 import Image from 'next/image'
+import { matchesMaintenanceTicketLocation } from '@/lib/maintenanceTicketCreators'
 import type { MachineItem, TicketPriority } from '../types'
 
 type Props = {
@@ -66,6 +68,35 @@ export default function CreateTicketModal({
   imageError,
   formError,
 }: Props) {
+  const effectiveLocation = (_createLocation || locationQuery).trim()
+  const machineQueryNorm = machineQuery.trim().toLowerCase()
+
+  const locationMachines = useMemo(
+    () =>
+      effectiveLocation
+        ? machines.filter((machine) =>
+            matchesMaintenanceTicketLocation(machine.location, effectiveLocation)
+          )
+        : [],
+    [effectiveLocation, machines]
+  )
+
+  const filteredMachines = useMemo(
+    () =>
+      machineQueryNorm
+        ? locationMachines.filter((machine) =>
+            machine.label.toLowerCase().includes(machineQueryNorm)
+          )
+        : locationMachines,
+    [locationMachines, machineQueryNorm]
+  )
+
+  const clearMachine = () => {
+    setMachineQuery('')
+    setCreateMachine('')
+    setShowMachineList(false)
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:p-4"
@@ -129,6 +160,7 @@ export default function CreateTicketModal({
                   setLocationQuery(e.target.value)
                   setCreateLocation('')
                   setShowLocationList(true)
+                  clearMachine()
                 }}
               />
               {locationQuery && (
@@ -138,6 +170,7 @@ export default function CreateTicketModal({
                     setLocationQuery('')
                     setCreateLocation('')
                     setShowLocationList(false)
+                    clearMachine()
                   }}
                   className="absolute right-3 top-9 text-base text-gray-400 hover:text-gray-600"
                   aria-label="Esborrar"
@@ -157,6 +190,7 @@ export default function CreateTicketModal({
                           setCreateLocation(location)
                           setLocationQuery(location)
                           setShowLocationList(false)
+                          clearMachine()
                         }}
                         className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
                       >
@@ -175,52 +209,59 @@ export default function CreateTicketModal({
               </label>
               <input
                 className="h-12 w-full rounded-2xl border px-4 pr-10 text-base"
-                placeholder="Cerca o escriu maquinaria..."
+                placeholder={
+                  effectiveLocation
+                    ? 'Escriu o filtra maquinaria d aquesta ubicacio...'
+                    : 'Primer selecciona una ubicacio...'
+                }
                 value={machineQuery}
                 required
-                onFocus={() => setShowMachineList(true)}
+                disabled={!effectiveLocation}
+                onFocus={() => {
+                  if (effectiveLocation) setShowMachineList(true)
+                }}
                 onChange={(e) => {
                   setMachineQuery(e.target.value)
                   setCreateMachine('')
                   setShowMachineList(true)
                 }}
+                onBlur={() => {
+                  if (!_createMachine && machineQuery.trim()) {
+                    setCreateMachine(machineQuery.trim())
+                  }
+                }}
               />
               {machineQuery && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setMachineQuery('')
-                    setCreateMachine('')
-                    setShowMachineList(false)
-                  }}
+                  onClick={clearMachine}
                   className="absolute right-3 top-9 text-base text-gray-400 hover:text-gray-600"
                   aria-label="Esborrar"
                 >
                   x
                 </button>
               )}
-              {showMachineList && (
+              {showMachineList && effectiveLocation && (
                 <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow">
-                  {machines
-                    .filter((machine) => machine.label.toLowerCase().includes(machineQuery.toLowerCase()))
-                    .map((machine) => (
-                      <button
-                        key={machine.code + machine.name}
-                        type="button"
-                        onClick={() => {
-                          setCreateMachine(machine.label)
-                          setMachineQuery(machine.label)
-                          setShowMachineList(false)
-                        }}
-                        className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
-                      >
-                        {machine.label}
-                      </button>
-                    ))}
-                  {machines.filter((machine) => machine.label.toLowerCase().includes(machineQuery.toLowerCase()))
-                    .length === 0 && (
+                  {filteredMachines.map((machine) => (
+                    <button
+                      key={machine.code + machine.name}
+                      type="button"
+                      onClick={() => {
+                        setCreateMachine(machine.label)
+                        setMachineQuery(machine.label)
+                        setShowMachineList(false)
+                      }}
+                      className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
+                    >
+                      {machine.label}
+                    </button>
+                  ))}
+                  {filteredMachines.length === 0 && (
                     <div className="px-4 py-3 text-sm text-gray-500">
-                      Sense resultats. Pots escriure el nom de la maquinaria al camp.
+                      {locationMachines.length === 0
+                        ? 'No hi ha maquinaria registrada per aquesta ubicacio. Pots escriure el nom manualment.'
+                        : 'Sense resultats. Pots escriure el nom de la maquinaria al camp.'}
                     </div>
                   )}
                 </div>
@@ -228,6 +269,11 @@ export default function CreateTicketModal({
               {machines.length === 0 && (
                 <div className="mt-1 text-xs text-amber-600">No s&apos;ha pogut carregar la maquinaria.</div>
               )}
+              {effectiveLocation && locationMachines.length > 0 ? (
+                <div className="mt-1 text-xs text-slate-500">
+                  {locationMachines.length} maquina{locationMachines.length === 1 ? '' : 's'} a aquesta ubicacio
+                </div>
+              ) : null}
             </div>
           </div>
 

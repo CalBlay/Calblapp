@@ -7,7 +7,31 @@ import { useEffect } from 'react'
 import { subscribeToAblyEvent } from '@/lib/ablyClient'
 import { useRobaPersonalApiAccess } from '@/hooks/useRobaPersonalApiAccess'
 
-const fetcher = (url: string) => fetch(url).then(r => r.json())
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
+const robaListFetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status}`) as Error & { status?: number }
+    err.status = res.status
+    throw err
+  }
+  return res.json()
+}
+
+const robaListSwrOptions = {
+  onErrorRetry: (
+    error: Error & { status?: number },
+    _key: string,
+    _config: unknown,
+    revalidate: (opts: { retryCount: number }) => void,
+    { retryCount }: { retryCount: number }
+  ) => {
+    if (error.status === 403 || error.status === 401) return
+    if (retryCount >= 2) return
+    setTimeout(() => revalidate({ retryCount }), 3000)
+  },
+} as const
 
 type SessionUser = {
   id?: string
@@ -157,16 +181,18 @@ export function useRobaPersonalRequestNotificationCount() {
 
   const { data: requestsData, error: requestsError, mutate: mutateRequests } = useSWR(
     requestsUrl,
-    fetcher,
+    robaListFetcher,
     {
       refreshInterval: isAuth ? 15000 : 0,
+      ...robaListSwrOptions,
     }
   )
   const { data: deliveriesData, error: deliveriesError, mutate: mutateDeliveries } = useSWR(
     deliveriesUrl,
-    fetcher,
+    robaListFetcher,
     {
       refreshInterval: isAuth ? 15000 : 0,
+      ...robaListSwrOptions,
     }
   )
 

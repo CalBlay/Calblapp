@@ -1,20 +1,40 @@
 import { NextResponse } from 'next/server'
 import { canPostIncident } from '@/lib/incidentPolicy'
 import { requireAuth, type AuthFailure, type AuthSuccess } from '@/lib/server/apiAuth'
-import { canViewUiPath } from '@/lib/server/permissions'
-import { INCIDENTS_QUADRE_PATH, INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
+import { canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
+import {
+  INCIDENTS_COMMAND_BOARD_PERM,
+  INCIDENTS_QUADRE_PATH,
+  INCIDENTS_UI_PATH,
+} from '@/lib/incidentsPermissions'
 import { accessUserFromAuth } from '@/lib/server/spacesApiAuth'
 
 export { INCIDENTS_QUADRE_PATH, INCIDENTS_UI_PATH }
+
+/** Quadre de comandament: acció configurable (Settings → permisos). */
+export async function canViewIncidentsCommandBoard(
+  user: Parameters<typeof accessUserFromAuth>[0]
+): Promise<boolean> {
+  const accessUser = accessUserFromAuth(user)
+  const userId = String(accessUser.id || '').trim()
+  if (!userId) return false
+  return isUiPermissionGranted({
+    user: { ...accessUser, id: userId },
+    permission: INCIDENTS_COMMAND_BOARD_PERM,
+  })
+}
 
 /** Mateix criteri que el menú i `/api/permissions/ui` (rol + overrides). */
 export async function canViewIncidentsModule(
   user: Parameters<typeof accessUserFromAuth>[0]
 ): Promise<boolean> {
   const accessUser = accessUserFromAuth(user)
+  const userId = String(accessUser.id || '').trim()
+  if (!userId) return false
+  const userWithId = { ...accessUser, id: userId }
   const [canBoard, canQuadre] = await Promise.all([
-    canViewUiPath({ user: accessUser, path: INCIDENTS_UI_PATH }),
-    canViewUiPath({ user: accessUser, path: INCIDENTS_QUADRE_PATH }),
+    canViewUiPath({ user: userWithId, path: INCIDENTS_UI_PATH }),
+    canViewIncidentsCommandBoard(user),
   ])
   return canBoard || canQuadre
 }

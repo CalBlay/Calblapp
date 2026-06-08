@@ -14,6 +14,7 @@ import { canPostIncident } from '@/lib/incidentPolicy'
 import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { normalizeRole } from '@/lib/roles'
+import { isIncidentCategoryGroup2xx } from '@/lib/incidentTypology'
 
 interface IncidentDoc {
   id?: string;
@@ -375,6 +376,16 @@ export async function POST(req: Request) {
       meta: imageMeta || null,
     }
 
+    const categoryId = String(category?.id || '').trim()
+    const hasAttachment =
+      normalizedImages.length > 0 || Boolean(primaryImage.url || primaryImage.path)
+    if (isIncidentCategoryGroup2xx(categoryId) && !hasAttachment) {
+      return NextResponse.json(
+        { error: 'Les incidències del grup 2XX (Maquinària) requereixen adjuntar com a mínim una foto o fitxer.' },
+        { status: 400 }
+      )
+    }
+
     // 3️⃣ Crear document incidència
     const createdAtMs = Date.now();
     const docRef = await firestoreAdmin.collection("incidents").add({
@@ -421,7 +432,6 @@ export async function POST(req: Request) {
       });
     }
 
-    const categoryId = String(category?.id || "").trim();
     const categoryPrefix = categoryId.charAt(0);
     const baseUrl = new URL(req.url).origin
 

@@ -3,7 +3,8 @@ import { useSession } from 'next-auth/react'
 import type { AccessUser } from '@/lib/accessControl'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import {
-  isRobaFullAccessUser,
+  hasRobaOperationalApiAccess,
+  isRobaRrhhOperationalUser,
   ROBA_SUBMODULE_PATHS,
   ROBA_WORKFLOW_UI_PATHS,
 } from '@/lib/robaPersonalPermissions'
@@ -19,14 +20,14 @@ export function useRobaPersonalApiAccess() {
   const isAuth = status === 'authenticated'
   const userId = String(user?.id || '').trim()
 
-  const isFullUser = Boolean(user && isRobaFullAccessUser(user))
-  const isDeptLeadLimited = Boolean(user?.isDepartmentRobaLead) && !isFullUser
+  const isRrhhFull = Boolean(user && isRobaRrhhOperationalUser(user))
+  const isDeptLeadLimited = Boolean(user?.isDepartmentRobaLead) && !isRrhhFull
   const isWorkerSelf =
     Boolean(String(user?.robaLinkedPersonnelId || '').trim()) &&
-    !isFullUser &&
+    !isRrhhFull &&
     !isDeptLeadLimited
 
-  const hasRobaScope = isFullUser || isDeptLeadLimited || isWorkerSelf
+  const hasRobaScope = Boolean(user && hasRobaOperationalApiAccess(user))
 
   const canViewWorkflowUi = useMemo(
     () => ROBA_WORKFLOW_UI_PATHS.some((path) => canViewPath(path)),
@@ -48,7 +49,8 @@ export function useRobaPersonalApiAccess() {
     isAuth,
     userId,
     uiPermsReady,
-    isFullUser,
+    /** RRHH / admin (comptadors de preparació). */
+    isFullUser: isRrhhFull,
     isDeptLeadLimited,
     isWorkerSelf,
     hasRobaScope,

@@ -74,6 +74,26 @@ export function isRobaFullAccessUser(user: AccessUser): boolean {
   return normDept(user.department) === RRHH_DEPT
 }
 
+/**
+ * Accés operatiu real a les APIs `/api/roba-personal/*` (alineat amb `resolveRobaAccess` al servidor).
+ * Direcció sense RRHH / cap de roba / personnel vinculat no té accés encara que vegi el mòdul a la UI.
+ */
+export function hasRobaOperationalApiAccess(user: AccessUser): boolean {
+  const role = normalizeRole(user.role)
+  if (role === 'admin') return true
+  if (normDept(user.department) === RRHH_DEPT) return true
+  if (user.isDepartmentRobaLead) return true
+  if (String(user.robaLinkedPersonnelId || '').trim()) return true
+  return false
+}
+
+/** RRHH / admin per comptadors de preparació (`sent_to_rrhh`). */
+export function isRobaRrhhOperationalUser(user: AccessUser): boolean {
+  const role = normalizeRole(user.role)
+  if (role === 'admin') return true
+  return normDept(user.department) === RRHH_DEPT
+}
+
 /** Paths de pestanya visibles per defecte (abans d’overrides de matriu). */
 export function robaVisibleSubmodulePaths(user: AccessUser): Set<string> {
   const robaLinked = Boolean(String(user.robaLinkedPersonnelId || '').trim())

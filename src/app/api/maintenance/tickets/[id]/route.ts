@@ -3,6 +3,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { canManageMaintenanceTickets, isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
 import {
+  buildAssignedTicketBodyForCreator,
   buildTicketBody,
   notifyMaintenanceAssignees,
   notifyTicketCreator,
@@ -19,6 +20,10 @@ import {
   type JourneyStatus,
   type StatusHistoryEntry,
 } from '@/lib/maintenanceJourneyStatus'
+import {
+  syncMaintenanceTicketOutlookCalendar,
+  type MaintenanceTicketOutlookEventRef,
+} from '@/lib/maintenanceTicketOutlook'
 import admin from 'firebase-admin'
 
 export const runtime = 'nodejs'
@@ -99,6 +104,7 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   externalized?: boolean
   plannedStart?: number | string | null
   plannedEnd?: number | string | null
+  outlookCalendarEvents?: Record<string, MaintenanceTicketOutlookEventRef>
   statusHistory?: StatusHistoryEntry[]
   imageUrls?: string[] | null
 }
@@ -661,27 +667,100 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       const effectiveDescription =
         body.description !== undefined ? String(body.description).trim() : (current.description || '')
       const ticketCode = current.ticketCode || current.incidentNumber || null
+      const operatorNames =
+        body.assignedToNames !== undefined
+          ? body.assignedToNames
+          : Array.isArray(current.assignedToNames)
+            ? current.assignedToNames
+            : []
+      const plannedStart =
+        body.plannedStart !== undefined ? body.plannedStart : (current.plannedStart ?? null)
+      const assignPayload = {
+        type: 'maintenance_ticket_assigned' as const,
+        title: 'Ticket assignat',
+        body: buildTicketBody({
+          machine: effectiveMachine,
+          location: effectiveLocation,
+          description: effectiveDescription,
+        }),
+        ticketId: id,
+        ticketCode,
+        status: updates.status ? String(updates.status) : current.status || null,
+        priority: updates.priority ? String(updates.priority) : current.priority || null,
+        location: effectiveLocation,
+        machine: effectiveMachine,
+        source: current.source || null,
+      }
 
       await notifyMaintenanceAssignees({
         uids: body.assignedToIds,
-        payload: {
-          type: 'maintenance_ticket_assigned',
-          title: 'Ticket assignat',
-          body: buildTicketBody({
-            machine: effectiveMachine,
-            location: effectiveLocation,
-            description: effectiveDescription,
-          }),
-          ticketId: id,
-          ticketCode,
-          status: updates.status ? String(updates.status) : current.status || null,
-          priority: updates.priority ? String(updates.priority) : current.priority || null,
-          location: effectiveLocation,
-          machine: effectiveMachine,
-          source: current.source || null,
-        },
+        payload: assignPayload,
         excludeIds: [user.id],
       })
+
+      const creatorId = String(current.createdById || '').trim()
+      if (creatorId) {
+        await notifyTicketCreator({
+          uid: creatorId,
+          payload: {
+            ...assignPayload,
+            body: buildAssignedTicketBodyForCreator({
+              machine: effectiveMachine,
+              location: effectiveLocation,
+              description: effectiveDescription,
+              operatorNames,
+              plannedStart,
+            }),
+          },
+          excludeIds: [user.id, ...body.assignedToIds],
+        })
+      }
+    }
+
+    if (planningTouched && planningChanged) {
+      try {
+        const effectiveMachine =
+          body.machine !== undefined ? String(body.machine).trim() : (current.machine || '')
+        const effectiveLocation =
+          body.location !== undefined ? String(body.location).trim() : (current.location || '')
+        const effectiveDescription =
+          body.description !== undefined ? String(body.description).trim() : (current.description || '')
+        const syncedAssignedToIds =
+          body.assignedToIds !== undefined
+            ? body.assignedToIds
+            : Array.isArray(updated.assignedToIds)
+              ? (updated.assignedToIds as string[])
+              : Array.isArray(current.assignedToIds)
+                ? current.assignedToIds
+                : []
+        const syncedAssignedToNames =
+          body.assignedToNames !== undefined
+            ? body.assignedToNames
+            : Array.isArray(updated.assignedToNames)
+              ? (updated.assignedToNames as string[])
+              : Array.isArray(current.assignedToNames)
+                ? current.assignedToNames
+                : []
+
+        const outlookCalendarEvents = await syncMaintenanceTicketOutlookCalendar({
+          ticketId: id,
+          ticketCode: String(current.ticketCode || current.incidentNumber || '').trim() || id,
+          location: effectiveLocation,
+          machine: effectiveMachine,
+          description: effectiveDescription,
+          createdById: String(current.createdById || '').trim() || null,
+          assignedToIds: syncedAssignedToIds,
+          assignedToNames: syncedAssignedToNames,
+          plannedStart: nextPlannedStart,
+          plannedEnd: nextPlannedEnd,
+          existingEvents: current.outlookCalendarEvents,
+          clearPlanning: previousHadPlanning && !nextHasPlanning,
+        })
+
+        await ref.set({ outlookCalendarEvents }, { merge: true })
+      } catch (err) {
+        console.error('[maintenance/tickets] outlook calendar sync error', err)
+      }
     }
 
     return NextResponse.json({ success: true })

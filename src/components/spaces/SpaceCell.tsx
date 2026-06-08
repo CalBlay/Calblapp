@@ -57,7 +57,7 @@ export default function SpaceCell({ event }: SpaceCellProps) {
      Textos i tooltip
      ────────────────────────────── */
   const shortEventMobile =
-    eventName.length > 26 ? `${eventName.slice(0, 26).trim()}…` : eventName
+    eventName.length > 34 ? `${eventName.slice(0, 34).trim()}…` : eventName
   const shortEventDesktop =
     eventName.length > 48 ? `${eventName.slice(0, 48).trim()}…` : eventName
 
@@ -78,9 +78,9 @@ export default function SpaceCell({ event }: SpaceCellProps) {
       className={`
         rounded-md
         px-2 py-1 lg:px-2.5 lg:py-1.5
-        min-h-[38px] lg:min-h-[44px]
+        min-h-[44px] lg:min-h-[44px]
         flex flex-col justify-center
-        text-[11px] lg:text-xs
+        text-xs lg:text-xs
         ${baseColor}
         cursor-pointer
         shadow-sm
