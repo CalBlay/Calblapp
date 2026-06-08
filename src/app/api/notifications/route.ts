@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import type { Query } from 'firebase-admin/firestore'
+import { formatTornNotificationBody, formatTornNotificationLabel } from '@/lib/date-format'
+import { resolveEventDisplayName } from '@/lib/eventDisplayName'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -20,6 +22,61 @@ type NotificationFirestoreDoc = Record<string, unknown> & {
 }
 
 type NotificationListItem = { id: string } & NotificationFirestoreDoc
+
+function formatNotificationForClient(item: NotificationListItem): NotificationListItem {
+  const type = String(item.type || '').trim()
+  if (type !== 'torn' && type !== 'NEW_SHIFTS') return item
+  const eventDate =
+    typeof item.eventDate === 'string'
+      ? item.eventDate
+      : typeof item.eventDate === 'number'
+        ? String(item.eventDate)
+        : null
+  const eventName = String(item.eventName || '').trim()
+  return {
+    ...item,
+    body: eventName
+      ? formatTornNotificationLabel(eventName, eventDate)
+      : formatTornNotificationBody(String(item.body || ''), eventDate),
+  }
+}
+
+async function enrichTornNotificationNames(items: NotificationListItem[]): Promise<NotificationListItem[]> {
+  const eventIds = new Set<string>()
+  for (const item of items) {
+    const type = String(item.type || '').trim()
+    if (type !== 'torn' && type !== 'NEW_SHIFTS') continue
+    if (String(item.eventName || '').trim()) continue
+    const eventId = String(item.eventId || '').trim()
+    if (eventId) eventIds.add(eventId)
+  }
+  if (eventIds.size === 0) return items
+
+  const nameById = new Map<string, string>()
+  await Promise.all(
+    [...eventIds].map(async (eventId) => {
+      try {
+        const snap = await db.collection('stage_verd').doc(eventId).get()
+        if (!snap.exists) return
+        const name = resolveEventDisplayName(snap.data() as Record<string, unknown>)
+        if (name) nameById.set(eventId, name)
+      } catch {
+        /* ignore lookup errors */
+      }
+    })
+  )
+
+  if (nameById.size === 0) return items
+
+  return items.map((item) => {
+    const type = String(item.type || '').trim()
+    if (type !== 'torn' && type !== 'NEW_SHIFTS') return item
+    if (String(item.eventName || '').trim()) return item
+    const eventId = String(item.eventId || '').trim()
+    const eventName = eventId ? nameById.get(eventId) : ''
+    return eventName ? { ...item, eventName } : item
+  })
+}
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
@@ -72,6 +129,8 @@ export async function GET(req: Request) {
         return { id: d.id, ...data }
       })
     }
+    listDocs = await enrichTornNotificationNames(listDocs)
+    listDocs = listDocs.map(formatNotificationForClient)
     return NextResponse.json({ notifications: listDocs })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'

@@ -7,6 +7,7 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { registerAuditAnswersInIndex } from '@/lib/media/storageMediaIndex'
 import { resolveAuditDepartmentForUser } from '@/lib/auditDepartment'
+import { pickVisibleAuditTemplate } from '@/lib/auditVisibleTemplate'
 import {
   ExtraOutcome,
   buildEventExtrasDocId,
@@ -98,19 +99,16 @@ function normalizeDept(raw?: string): Department | null {
 }
 
 async function getVisibleTemplate(department: Department) {
-  const snap = await firestoreAdmin
-    .collection('audit_templates')
-    .where('department', '==', department)
-    .where('isVisible', '==', true)
-    .limit(1)
-    .get()
-  if (snap.empty) return null
-  const doc = snap.docs[0]
-  const data = doc.data() as Record<string, unknown>
+  const snap = await firestoreAdmin.collection('audit_templates').where('isVisible', '==', true).get()
+  const picked = pickVisibleAuditTemplate(
+    snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) })),
+    department
+  )
+  if (!picked) return null
   return {
-    id: doc.id,
-    name: String(data.name || 'Plantilla'),
-    blocks: Array.isArray(data.blocks) ? (data.blocks as TemplateBlock[]) : [],
+    id: picked.id,
+    name: picked.name,
+    blocks: Array.isArray(picked.blocks) ? (picked.blocks as TemplateBlock[]) : [],
   }
 }
 

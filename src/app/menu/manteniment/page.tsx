@@ -131,7 +131,7 @@ export default function MantenimentIndexPage() {
   useEffect(() => {
     if (!userId) return
 
-    const client = getAblyClient()
+    const client = getAblyClient(userId)
     const channel = client.channels.get(`user:${userId}:notifications`)
     const handler = () => {
       mutateNotifications().catch(() => {})

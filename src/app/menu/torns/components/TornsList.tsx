@@ -5,6 +5,7 @@ import React from 'react'
 import TornCard, { TornCardItem } from './TornCard'
 import TornCardWorker from './TornCardWorker'
 import { Users, Calendar } from 'lucide-react'
+import { formatTornsDayDate } from '@/lib/date-format'
 
 type Props = {
   items?: TornCardItem[]
@@ -26,11 +27,7 @@ type ExtendedTornCardItem = TornCardItem & {
   vestimentModel?: string
 }
 
-const formatDate = (iso: string) => {
-  if (!iso || iso.length < 10) return iso || ''
-  const [y, m, d] = iso.slice(0, 10).split('-')
-  return `${d}/${m}/${y.slice(2)}`
-}
+const formatDate = (iso: string) => formatTornsDayDate(iso, iso || '')
 
 const weekdayLong = (iso: string) => {
   const d = new Date(iso)

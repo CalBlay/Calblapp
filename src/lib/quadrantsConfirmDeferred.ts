@@ -7,6 +7,8 @@ import type { Timestamp as AdminTimestamp } from 'firebase-admin/firestore'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { formatTornNotificationLabel } from '@/lib/date-format'
+import { resolveEventDisplayName } from '@/lib/eventDisplayName'
 
 export const QUADRANT_TRAINING_COLLECTION = 'quadrantTrainingSamples'
 
@@ -339,10 +341,6 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
     /* ignore */
   }
 
-  const st = ctx.stageData
-  const eventNameGuess = safeString(st?.eventName ?? st?.Nom ?? '')
-
-  const [validUsers] = await Promise.all([
     resolveValidUsersFromQuadrant(ctx.firstPrev),
     (async () => {
       try {
@@ -361,9 +359,12 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
   ])
 
   try {
-    const eventName = eventNameGuess || 'Nou esdeveniment'
+    const doc = ctx.firstPrev || {}
+    const eventName =
+      resolveEventDisplayName(ctx.stageData, doc.eventName, doc.summary) ||
+      'Nou esdeveniment'
     const pushTitle = 'Tens un nou torn assignat'
-    const pushBody = `${eventName} – ${ctx.firstPrev?.startDate ?? ''} ${ctx.firstPrev?.startTime ?? ''}`
+    const pushBody = formatTornNotificationLabel(eventName, ctx.firstPrev?.startDate)
     if (validUsers.length === 0) return
 
     const notifBatch = db.batch()
@@ -382,6 +383,7 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
         type: 'torn',
         eventId: String(ctx.eventId),
         eventDate: ctx.firstPrev?.startDate || null,
+        eventName,
       })
     }
     await notifBatch.commit()

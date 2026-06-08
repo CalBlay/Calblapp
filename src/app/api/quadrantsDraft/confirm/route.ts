@@ -10,12 +10,16 @@ import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import { listAllCollectionIds } from '@/lib/firestoreCollections'
 import { findQuadrantOverlapConflicts } from '@/lib/quadrantOverlapGuard'
+import { formatTornNotificationLabel } from '@/lib/date-format'
+import { resolveEventDisplayName } from '@/lib/eventDisplayName'
 
 export const runtime = 'nodejs'
 
 /* ------------------ Tipus ------------------ */
 interface QuadrantDoc {
   status?: string
+  eventName?: string
+  summary?: string
   responsable?: { id?: string; name?: string }
   responsableName?: string
   responsableId?: string
@@ -46,11 +50,7 @@ type TokenLike = {
   email?: string
 }
 
-type EventStageData = {
-  eventName?: string
-  Nom?: string
-  name?: string
-}
+type EventStageData = Record<string, unknown>
 
 type AssignedUserSrc = {
   name?: string
@@ -164,8 +164,9 @@ async function createTornNotifications(params: {
   body: string
   eventId: string
   eventDate?: string
+  eventName?: string
 }) {
-  const { uids, title, body, eventId, eventDate } = params
+  const { uids, title, body, eventId, eventDate, eventName } = params
   if (!uids.length) return
 
   const batch = db.batch()
@@ -186,6 +187,7 @@ async function createTornNotifications(params: {
       type: 'torn',
       eventId,
       eventDate: eventDate || null,
+      eventName: eventName || null,
     })
   }
 
@@ -400,28 +402,27 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const eventName =
-      eventData?.eventName ||
-      eventData?.Nom ||
-      eventData?.name ||
-      'Nou esdeveniment'
     const mainDoc = (currentDocs[0]?.data() as QuadrantDoc | undefined) || {}
-    const when = mainDoc.startDate ? ` ${mainDoc.startDate}` : ''
+    const eventName =
+      resolveEventDisplayName(eventData, mainDoc.eventName, mainDoc.summary) ||
+      'Nou esdeveniment'
+    const notificationBody = formatTornNotificationLabel(eventName, mainDoc.startDate)
 
     if (isFirstConfirm) {
       const uids = await resolveUids(newUsers)
       await createTornNotifications({
         uids,
         title: 'Tens un nou torn assignat',
-        body: `${eventName}${when}`,
+        body: notificationBody,
         eventId: String(eventId),
         eventDate: mainDoc.startDate || undefined,
+        eventName,
       })
       await sendPushToUids({
         baseUrl: req.nextUrl.origin,
         uids,
         title: 'Tens un nou torn assignat',
-        body: `${eventName}${when}`,
+        body: notificationBody,
         url: `/menu/torns?open=${eventId}`,
       })
     } else if (changed.length > 0) {
@@ -429,15 +430,16 @@ export async function POST(req: NextRequest) {
       await createTornNotifications({
         uids,
         title: 'Tens canvis al teu torn',
-        body: `${eventName}${when}`,
+        body: notificationBody,
         eventId: String(eventId),
         eventDate: mainDoc.startDate || undefined,
+        eventName,
       })
       await sendPushToUids({
         baseUrl: req.nextUrl.origin,
         uids,
         title: 'Tens canvis al teu torn',
-        body: `${eventName}${when}`,
+        body: notificationBody,
         url: `/menu/torns?open=${eventId}`,
       })
     }

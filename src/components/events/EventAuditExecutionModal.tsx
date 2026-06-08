@@ -146,12 +146,14 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     enabled: open && Boolean(eventId),
   })
 
+  const isWeddingServicesAudit = department === 'serveis' && event.lnKey === 'casaments'
+
   const extrasUrl = useMemo(() => {
-    if (!open || !eventId) return null
+    if (!open || !eventId || !isWeddingServicesAudit) return null
     const qs = new URLSearchParams({ eventId })
     if (eventDay) qs.set('eventDay', eventDay)
     return `/api/events/extras?${qs.toString()}`
-  }, [open, eventId, eventDay])
+  }, [open, eventId, eventDay, isWeddingServicesAudit])
 
   const { data: extrasData, error: extrasError, mutate: mutateExtras } = useSWR<ExtrasPayload>(
     extrasUrl,
@@ -173,7 +175,6 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     })
     return Array.from(ids)
   }, [incidents, localIncidentIds])
-  const isWeddingServicesAudit = department === 'serveis' && event.lnKey === 'casaments'
   const extrasCount = Array.isArray(extrasData?.extras?.entries)
     ? extrasData.extras.entries.filter((entry) => String(entry?.text || '').trim()).length
     : Number(extrasData?.extras?.entriesCount || 0)
@@ -214,7 +215,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       setError(swrError instanceof Error ? swrError.message : 'Error carregant dades')
       return
     }
-    if (extrasError) {
+    if (isWeddingServicesAudit && extrasError) {
       setError(extrasError instanceof Error ? extrasError.message : 'Error carregant extres')
       return
     }
