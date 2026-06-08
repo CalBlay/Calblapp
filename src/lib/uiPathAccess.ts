@@ -2,6 +2,13 @@
  * UI path blocking uses the most specific matching catalog path.
  * A denied parent must not block a child path explicitly allowed via overrides.
  */
+const ALWAYS_ALLOWED_UI_PATHS = ['/menu/configuracio']
+
+function isAlwaysAllowedUiPath(pathname: string): boolean {
+  const path = String(pathname || '').trim()
+  return ALWAYS_ALLOWED_UI_PATHS.some((p) => path === p || path.startsWith(`${p}/`))
+}
+
 export function matchingUiPaths(pathname: string, uiMap: Record<string, boolean>): string[] {
   const path = String(pathname || '').trim()
   if (!path) return []
@@ -18,6 +25,7 @@ export function isUiPathBlocked(pathname: string, uiMap: Record<string, boolean>
 export function isUiPathAllowed(pathname: string, uiMap: Record<string, boolean>): boolean {
   const path = String(pathname || '').trim()
   if (!path) return false
+  if (isAlwaysAllowedUiPath(path)) return true
   const matches = matchingUiPaths(path, uiMap)
   if (matches.length === 0) return false
   matches.sort((a, b) => b.length - a.length)
