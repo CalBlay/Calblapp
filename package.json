@@ -6,6 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "npm run test:unit",
+    "test:unit": "node --test -r ./tests/register.cjs \"tests/**/*.test.cjs\"",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "seed:users": "node scripts/seedUsers.js",
