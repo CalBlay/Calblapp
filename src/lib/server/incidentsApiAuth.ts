@@ -4,6 +4,7 @@ import { requireAuth, type AuthFailure, type AuthSuccess } from '@/lib/server/ap
 import { canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
 import {
   INCIDENTS_COMMAND_BOARD_PERM,
+  INCIDENTS_MEETING_MINUTES_PERM,
   INCIDENTS_QUADRE_PATH,
   INCIDENTS_UI_PATH,
 } from '@/lib/incidentsPermissions'
@@ -53,6 +54,26 @@ export async function requireIncidentsModuleView(): Promise<AuthSuccess | AuthFa
 }
 
 /** Categories per al formulari de creació: tauler o qui pot crear incidències. */
+export async function requireIncidentsMeetingMinutes(): Promise<AuthSuccess | AuthFailure> {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth
+
+  const accessUser = accessUserFromAuth(auth.user)
+  const userId = String(accessUser.id || '').trim()
+  if (!userId) {
+    return { ok: false, res: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
+  }
+
+  const granted = await isUiPermissionGranted({
+    user: { ...accessUser, id: userId },
+    permission: INCIDENTS_MEETING_MINUTES_PERM,
+  })
+  if (!granted) {
+    return { ok: false, res: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
+  }
+  return auth
+}
+
 export async function requireIncidentCategoriesRead(): Promise<AuthSuccess | AuthFailure> {
   const auth = await requireAuth()
   if (!auth.ok) return auth

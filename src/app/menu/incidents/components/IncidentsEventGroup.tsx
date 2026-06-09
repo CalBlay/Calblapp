@@ -23,7 +23,6 @@ interface Props {
   event: GroupedIncidentEvent
   onUpdate: (id: string, d: Partial<Incident>) => Promise<unknown>
   onDelete: (inc: Incident) => void
-  onOpenOperations: (inc: Incident) => void
   onOpenImages: (inc: Incident) => void
   canDeleteIncident: (inc: Incident) => boolean
 }
@@ -32,10 +31,10 @@ export default function IncidentsEventGroup({
   event,
   onUpdate,
   onDelete,
-  onOpenOperations,
   onOpenImages,
   canDeleteIncident,
 }: Props) {
+  const [expandedOpsId, setExpandedOpsId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<IncidentEditValues>({})
   const [openFincaModal, setOpenFincaModal] = useState(false)
@@ -69,6 +68,10 @@ export default function IncidentsEventGroup({
     },
     [onUpdate]
   )
+
+  const toggleOps = useCallback((inc: Incident) => {
+    setExpandedOpsId((prev) => (prev === inc.id ? null : inc.id))
+  }, [])
 
   return (
     <div
@@ -113,7 +116,9 @@ export default function IncidentsEventGroup({
             beginEdit={beginEdit}
             applyPatch={applyPatch}
             onDelete={onDelete}
-            openOps={onOpenOperations}
+            opsExpanded={expandedOpsId === inc.id}
+            onToggleOps={toggleOps}
+            onIncidentPatch={onUpdate}
             openImages={onOpenImages}
             canDelete={canDeleteIncident(inc)}
             editValues={editValues}
@@ -150,7 +155,9 @@ export default function IncidentsEventGroup({
                 beginEdit={beginEdit}
                 applyPatch={applyPatch}
                 onDelete={onDelete}
-                openOps={onOpenOperations}
+                opsExpanded={expandedOpsId === inc.id}
+                onToggleOps={toggleOps}
+                onIncidentPatch={onUpdate}
                 openImages={onOpenImages}
                 canDelete={canDeleteIncident(inc)}
                 editValues={editValues}

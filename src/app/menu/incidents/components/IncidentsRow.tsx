@@ -2,7 +2,7 @@
 'use client'
 
 import React from 'react'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem
 } from '@/components/ui/select'
@@ -12,7 +12,8 @@ import { cn } from '@/lib/utils'
 import { Incident } from '@/hooks/useIncidents'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
-import { Camera, ListChecks, Trash2 } from 'lucide-react'
+import { Camera, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import IncidentOperationsPanel from './IncidentOperationsPanel'
 
 declare global {
   interface Window {
@@ -26,7 +27,9 @@ interface Props {
   /** Referències estables (per `React.memo`): la fila passa `inc` a la crida. */
   beginEdit: (row: Incident) => void
   applyPatch: (id: string, d: Partial<Incident>) => void | Promise<unknown>
-  openOps: (row: Incident) => void
+  opsExpanded: boolean
+  onToggleOps: (row: Incident) => void
+  onIncidentPatch: (id: string, d: Partial<Incident>) => void | Promise<unknown>
   openImages: (row: Incident) => void
   canDelete: boolean
   onDelete: (row: Incident) => void
@@ -47,7 +50,9 @@ function IncidentsRow({
   isEditing,
   beginEdit,
   applyPatch,
-  openOps,
+  opsExpanded,
+  onToggleOps,
+  onIncidentPatch,
   openImages,
   canDelete,
   onDelete,
@@ -74,6 +79,10 @@ function IncidentsRow({
 
   const cell = cn(typography('bodySm'), 'p-2')
   const cellTrunc = cn(cell, 'truncate')
+  const incidentDescRead = cn(
+    'max-h-36 min-h-[2.75rem] overflow-y-auto overscroll-contain rounded-lg border border-slate-100/90 bg-slate-50/60 px-3 py-2.5',
+    'text-base font-medium leading-relaxed text-slate-900 whitespace-pre-wrap'
+  )
 
   const workflow = normalizeIncidentStatus(inc.status)
   const statusLabel =
@@ -85,26 +94,31 @@ function IncidentsRow({
       ? 'Tancat'
       : 'Obert'
 
+  const colCount = 12
+
   return (
-    <tr
-      className="border-b last:border-0 hover:bg-slate-50"
-      onClick={() => !isEditing && beginEdit(inc)}
-    >
+    <>
+      <tr
+        className={cn(
+          'border-b hover:bg-slate-50',
+          !opsExpanded && 'last:border-0'
+        )}
+        onClick={() => !isEditing && beginEdit(inc)}
+      >
       <td className="p-1 align-middle">
-        <Button
+        <button
           type="button"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 shrink-0 text-slate-600"
-          title="Seguiment i accions"
-          aria-label="Seguiment i accions"
           onClick={(e) => {
             e.stopPropagation()
-            openOps(inc)
+            onToggleOps(inc)
           }}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50"
+          title={opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'}
+          aria-label={opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'}
+          aria-expanded={opsExpanded}
         >
-          <ListChecks className="h-4 w-4" />
-        </Button>
+          {opsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
       </td>
       {/* Nº */}
       <td className="p-1 align-middle">
@@ -189,17 +203,14 @@ function IncidentsRow({
       </td>
 
       {/* Incidència (editable) */}
-      <td className={cellTrunc}>
+      <td className="p-2 align-top">
         {isEditing ? (
-          <Input
+          <Textarea
             value={editValues.description}
+            rows={3}
+            className="max-h-36 min-h-[2.75rem] resize-y text-base font-medium leading-relaxed text-slate-900"
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => setEditValues((v) => ({ ...v, description: e.target.value }))}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                void applyPatch(inc.id, { description: e.currentTarget.value })
-              }
-            }}
             onBlur={(e) => {
               if (e.currentTarget.value !== inc.description) {
                 void applyPatch(inc.id, { description: e.currentTarget.value })
@@ -207,7 +218,13 @@ function IncidentsRow({
             }}
           />
         ) : (
-          inc.description
+          <div
+            className={incidentDescRead}
+            onClick={(e) => e.stopPropagation()}
+            title={inc.description || undefined}
+          >
+            {inc.description || '—'}
+          </div>
         )}
       </td>
 
@@ -282,6 +299,14 @@ function IncidentsRow({
         )}
       </td>
     </tr>
+      {opsExpanded ? (
+        <tr className="border-b last:border-0 bg-gradient-to-b from-amber-50/25 to-slate-50/40">
+          <td colSpan={colCount} className="border-t border-amber-100/80 px-4 py-4">
+            <IncidentOperationsPanel incident={inc} onIncidentPatch={onIncidentPatch} />
+          </td>
+        </tr>
+      ) : null}
+    </>
   )
 }
 

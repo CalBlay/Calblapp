@@ -40,8 +40,14 @@ import {
   normalizeIncidentStatus,
 } from '@/lib/incidentPolicy'
 import { normalizeDept } from '@/lib/accessControl'
+import { formatDateOnly } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
+
+const INCIDENT_DATE_MODE_LABELS: Record<'all' | 'event', string> = {
+  all: 'Sense filtre de data',
+  event: 'Data de l’esdeveniment',
+}
 
 const MARKETING_DEFAULT_CATEGORY_FILTER = '9XX'
 const MARKETING_DEPARTMENTS = new Set(['marqueting', 'marketing'])
@@ -97,13 +103,26 @@ export default function IncidentsPage() {
   const canSeeQuadre = uiPermsReady && hasAction(INCIDENTS_COMMAND_BOARD_PERM)
   const canMeetingMinutes = uiPermsReady && hasAction(INCIDENTS_MEETING_MINUTES_PERM)
   const [meetingMinutesOpen, setMeetingMinutesOpen] = useState(false)
+  const [meetingActaStatus, setMeetingActaStatus] = useState<'draft' | 'finalized' | null>(null)
   const initialRange = useMemo(() => thisWeekRange(), [])
+
+  useEffect(() => {
+    if (!canMeetingMinutes) return
+    void fetch('/api/incidents/meeting-minutes', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((json) => {
+        const status = json?.session?.status
+        setMeetingActaStatus(status === 'finalized' ? 'finalized' : status === 'draft' ? 'draft' : null)
+      })
+      .catch(() => setMeetingActaStatus(null))
+  }, [canMeetingMinutes, meetingMinutesOpen])
   const [dateResetSignal, setDateResetSignal] = useState(0)
   const [defaultFiltersReady, setDefaultFiltersReady] = useState(false)
   const [marketingDefaultSuppressed, setMarketingDefaultSuppressed] = useState(false)
   const [filters, setFilters] = useState({
     from: initialRange.from as string | undefined,
     to: initialRange.to as string | undefined,
+    dateMode: 'event' as 'all' | 'event',
     department: undefined as string | undefined,
     importance: 'all' as string,
     categoryLabel: 'all' as string,
@@ -196,7 +215,25 @@ export default function IncidentsPage() {
 
   const openFiltersPanel = () => {
     setContent(
-      <div className="p-4 space-y-4">
+      <div key={`incidents-filters-${filters.dateMode}-${dateResetSignal}`} className="p-4 space-y-4">
+        <div className="space-y-2">
+          <label className={typography('label')}>Tipus de data</label>
+          <Select
+            value={filters.dateMode}
+            onValueChange={(v) =>
+              setFilters((prev) => ({ ...prev, dateMode: v as typeof prev.dateMode }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="event">Data de l’esdeveniment</SelectItem>
+              <SelectItem value="all">Sense filtre de data</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="space-y-2">
           <label className={typography('label')}>Departament</label>
           <Select
@@ -303,6 +340,7 @@ export default function IncidentsPage() {
               setFilters({
                 from: range.from,
                 to: range.to,
+                dateMode: 'event',
                 department: undefined,
                 importance: 'all',
                 categoryLabel: 'all',
@@ -325,7 +363,10 @@ export default function IncidentsPage() {
     setOpen(true)
   }
 
-  const exportBase = `incidencies-${filters.from || 'start'}-${filters.to || 'end'}`
+  const exportBase =
+    filters.dateMode === 'all'
+      ? 'incidencies-totes'
+      : `incidencies-${filters.from || 'start'}-${filters.to || 'end'}`
 
   const exportRows = useMemo(
     () =>
@@ -477,7 +518,11 @@ export default function IncidentsPage() {
                 onClick={() => setMeetingMinutesOpen(true)}
               >
                 <FileText className="h-4 w-4 shrink-0" aria-hidden />
-                Acta reunió
+                {meetingActaStatus === 'draft'
+                  ? 'Apunts reunió'
+                  : meetingActaStatus === 'finalized'
+                  ? 'Tancar acta'
+                  : 'Acta reunió'}
               </Button>
             ) : null}
             <ExportMenu items={exportItems} />
@@ -489,13 +534,12 @@ export default function IncidentsPage() {
         <MeetingMinutesDialog
           open={meetingMinutesOpen}
           onOpenChange={setMeetingMinutesOpen}
-          incidents={visibleIncidents}
-          filters={{ ...filters, categoryLabel: effectiveCategoryLabel }}
+          defaultFilters={{ ...filters, categoryLabel: effectiveCategoryLabel }}
           generatedByLabel={actaAuthorLabel}
+          onSessionStatusChange={setMeetingActaStatus}
         />
       ) : null}
 
-      {/* Total incidències de la setmana */}
       <div className={`px-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${typography('bodyMd')}`}>
         <span>Total incidències: {totalIncidencies}</span>
         {isRefreshing ? (
@@ -505,6 +549,18 @@ export default function IncidentsPage() {
 
       {/* Barra compacta: només dates + botó filtres */}
       <div className="mb-2 flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:flex-nowrap">
+        <div className="flex min-w-[200px] flex-wrap items-center gap-2">
+          <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+            {INCIDENT_DATE_MODE_LABELS[filters.dateMode]}
+          </span>
+          {filters.dateMode === 'event' && filters.from && filters.to ? (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+              {filters.from === filters.to
+                ? formatDateOnly(filters.from, filters.from)
+                : `${formatDateOnly(filters.from, filters.from)} – ${formatDateOnly(filters.to, filters.to)}`}
+            </span>
+          ) : null}
+        </div>
 
         <SmartFilters
           modeDefault="week"
@@ -543,6 +599,7 @@ export default function IncidentsPage() {
         <div id="incidencies-print-root" className="w-full">
           <IncidentsTable
             incidents={visibleIncidents}
+            daySort={filters.dateMode === 'event' ? 'chronological' : 'proximity'}
             onUpdate={updateIncident}
             onDelete={handleDeleteIncident}
             canDeleteIncident={canDeleteRow}

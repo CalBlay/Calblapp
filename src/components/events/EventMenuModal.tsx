@@ -226,7 +226,21 @@ export default function EventMenuModal({
   // ✅ Nou botó: Espais (placeholder fins que ens diguis on ha d'anar)
   const [showEspais, setShowEspais] = useState(false)
 
-  const { data: personnelData, loading: personnelLoading } = useEventPersonnel(event?.id)
+  const {
+    data: personnelData,
+    loading: personnelLoading,
+    validating: personnelValidating,
+    error: personnelError,
+    mutate: refreshPersonnel,
+  } = useEventPersonnel(event?.id)
+
+  const personnelIsEmpty =
+    !personnelData?.responsables?.length &&
+    !personnelData?.conductors?.length &&
+    !personnelData?.treballadors?.length
+
+  const personnelModalLoading =
+    personnelLoading || (showPersonnel && personnelValidating && personnelIsEmpty && !personnelError)
   const responsablesPersons =
     personnelData?.responsables?.map((responsable) => ({
       id: responsable.id,
@@ -259,6 +273,11 @@ const treballadorsPersons =
   })) ?? []
 
   useEffect(() => {
+    if (!showPersonnel || !event?.id) return
+    void refreshPersonnel()
+  }, [showPersonnel, event?.id, refreshPersonnel])
+
+  useEffect(() => {
     const eventId = String(event?.id ?? '').trim()
     if (!eventId) return
 
@@ -267,6 +286,10 @@ const treballadorsPersons =
       incidentsQs.set('eventId', eventId)
       incidentsQs.set('limit', '80')
       void fetch(`/api/incidents?${incidentsQs}`, { cache: 'no-store' }).catch(() => {})
+
+      void fetch(`/api/events/personnel?eventId=${encodeURIComponent(eventId)}`, {
+        cache: 'no-store',
+      }).catch(() => {})
 
       const dept = normalizeAuditDepartment(user.department)
       if (dept) {
@@ -714,17 +737,20 @@ const recursos = useMemo(
 
 
       {/* ─────────── MODALS INTERNES EXISTENTS ─────────── */}
-     <EventPersonnelModal
-  open={showPersonnel}
-  onClose={() => setShowPersonnel(false)}
-  eventName={event.summary}
-  code={String(event.id)}
-  responsables={responsablesPersons}
-  conductors={conductorsPersons}
-  treballadors={treballadorsPersons}
-
-  loading={personnelLoading}
-/>
+      <EventPersonnelModal
+        open={showPersonnel}
+        onClose={() => setShowPersonnel(false)}
+        eventName={event.summary}
+        code={event.eventCode || event.code || String(event.id)}
+        responsables={responsablesPersons}
+        conductors={conductorsPersons}
+        treballadors={treballadorsPersons}
+        loading={personnelModalLoading}
+        error={personnelError}
+        onRetry={() => {
+          void refreshPersonnel()
+        }}
+      />
 
 
       <EventIncidentsModal

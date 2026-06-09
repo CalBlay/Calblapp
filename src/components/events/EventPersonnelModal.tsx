@@ -28,6 +28,8 @@ interface EventPersonnelModalProps {
   conductors?: Person[]
   treballadors?: Person[]
   loading?: boolean
+  error?: string | null
+  onRetry?: () => void
 }
 
 function roleIcon(role?: string) {
@@ -139,6 +141,8 @@ export default function EventPersonnelModal({
   conductors = [],
   treballadors = [],
   loading = false,
+  error = null,
+  onRetry,
 }: EventPersonnelModalProps) {
   if (!open) return null
 
@@ -199,7 +203,21 @@ export default function EventPersonnelModal({
         </DialogHeader>
 
         <div className="space-y-4">
-          {allWorkers.length === 0 ? (
+          {error ? (
+            <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <p>No s&apos;ha pogut carregar el personal assignat.</p>
+              <p className="text-xs text-red-600">{error}</p>
+              {onRetry ? (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-100"
+                >
+                  Torna-ho a provar
+                </button>
+              ) : null}
+            </div>
+          ) : allWorkers.length === 0 ? (
             <div className="rounded-lg border p-3 text-sm text-gray-500">
               Sense personal assignat en aquest esdeveniment.
             </div>

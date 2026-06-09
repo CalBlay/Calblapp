@@ -87,10 +87,14 @@ function normalizeIncidentRow(inc: Record<string, unknown>): Incident {
   } as Incident
 }
 
+export type IncidentsDateFilterMode = 'all' | 'event'
+
 export function useIncidents(_filters: {
   eventId?: string
   from?: string
   to?: string
+  /** `event`: aplica from/to; `all`: sense filtre de dates (com tickets). */
+  dateMode?: IncidentsDateFilterMode
   department?: string
   importance?: string
   categoryLabel?: string
@@ -122,6 +126,7 @@ export function useIncidents(_filters: {
       eventId: _filters.eventId,
       from: _filters.from,
       to: _filters.to,
+      dateMode: _filters.dateMode ?? 'event',
       department: _filters.department,
       importance: _filters.importance,
       categoryLabel: _filters.categoryLabel,
@@ -135,6 +140,7 @@ export function useIncidents(_filters: {
       _filters.eventId,
       _filters.from,
       _filters.to,
+      _filters.dateMode,
       _filters.department,
       _filters.importance,
       _filters.categoryLabel,
@@ -182,8 +188,10 @@ export function useIncidents(_filters: {
 
         if (filters.eventId) qs.set('eventId', filters.eventId)
 
-        if (filters.from) qs.set('from', filters.from)
-        if (filters.to) qs.set('to', filters.to)
+        if (filters.dateMode !== 'all') {
+          if (filters.from) qs.set('from', filters.from)
+          if (filters.to) qs.set('to', filters.to)
+        }
         if (filters.department) qs.set('department', filters.department)
         if (filters.importance && filters.importance !== 'all')
           qs.set('importance', filters.importance)

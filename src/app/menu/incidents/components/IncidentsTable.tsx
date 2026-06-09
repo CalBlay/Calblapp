@@ -3,16 +3,17 @@
 
 import React, { useState } from 'react'
 import IncidentsEventGroup from './IncidentsEventGroup'
-import IncidentOperationsDialog from './IncidentOperationsDialog'
 import IncidentImagesDialog from './IncidentImagesDialog'
 import { Incident } from '@/hooks/useIncidents'
 import { formatDateString } from '@/lib/formatDate'
-import { groupIncidentsByDayAndEvent } from '@/lib/incidentsMeetingMinutes'
+import { groupIncidentsByDayAndEvent, type IncidentDaySort } from '@/lib/incidentsMeetingMinutes'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
 
 interface Props {
   incidents: Incident[]
+  /** Amb rang de dates: primer dia del període a dalt; sense dates: proximitat a avui. */
+  daySort?: IncidentDaySort
   onUpdate: (id: string, data: Partial<Incident>) => Promise<unknown>
   onDelete: (incident: Incident) => void
   canDeleteIncident: (incident: Incident) => boolean
@@ -21,20 +22,19 @@ interface Props {
 const formatDayCountLabel = (count: number) =>
   count === 1 ? '1 incid.' : `${count} inc.`
 
-export default function IncidentsTable({ incidents, onUpdate, onDelete, canDeleteIncident }: Props) {
-  const [opsIncident, setOpsIncident] = useState<Incident | null>(null)
+export default function IncidentsTable({
+  incidents,
+  daySort = 'chronological',
+  onUpdate,
+  onDelete,
+  canDeleteIncident,
+}: Props) {
   const [imagesIncident, setImagesIncident] = useState<Incident | null>(null)
 
-  const dayEntries = groupIncidentsByDayAndEvent(incidents)
+  const dayEntries = groupIncidentsByDayAndEvent(incidents, daySort)
 
   return (
     <div className="w-full rounded-2xl border bg-white shadow-sm overflow-hidden">
-      <IncidentOperationsDialog
-        incident={opsIncident}
-        open={Boolean(opsIncident)}
-        onClose={() => setOpsIncident(null)}
-        onIncidentPatch={onUpdate}
-      />
       <IncidentImagesDialog
         incident={imagesIncident}
         open={Boolean(imagesIncident)}
@@ -66,7 +66,6 @@ export default function IncidentsTable({ incidents, onUpdate, onDelete, canDelet
               event={event}
               onUpdate={onUpdate}
               onDelete={onDelete}
-              onOpenOperations={setOpsIncident}
               onOpenImages={setImagesIncident}
               canDeleteIncident={canDeleteIncident}
             />
