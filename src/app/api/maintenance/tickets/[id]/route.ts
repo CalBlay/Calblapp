@@ -797,6 +797,21 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    const outlookCalendarEvents = data.outlookCalendarEvents || {}
+    if (Object.keys(outlookCalendarEvents).length > 0) {
+      const remainingCalendarEvents = await syncMaintenanceTicketOutlookCalendar({
+        ticketId: id,
+        existingEvents: outlookCalendarEvents,
+        clearPlanning: true,
+      })
+      if (Object.keys(remainingCalendarEvents).length > 0) {
+        return NextResponse.json(
+          { error: 'No s han pogut eliminar tots els esdeveniments Outlook del ticket' },
+          { status: 502 }
+        )
+      }
+    }
+
     await ref.delete()
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

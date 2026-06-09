@@ -4,6 +4,8 @@ const { test, beforeEach } = require('node:test')
 
 const deleteCalls = []
 const upsertCalls = []
+const failDeleteForEventIds = new Set()
+const failUpsertForEmails = new Set()
 let userDocs = {}
 
 function makeFirestore() {
@@ -29,9 +31,15 @@ const firebaseAdminStub = {
 const graphCalendarStub = {
   deleteOutlookCalendarEvent: async (email, eventId) => {
     deleteCalls.push({ email, eventId })
+    if (failDeleteForEventIds.has(eventId)) {
+      throw new Error(`delete failed for ${eventId}`)
+    }
   },
   upsertMaintenanceTicketCalendarEvent: async (input) => {
     upsertCalls.push({ ...input })
+    if (failUpsertForEmails.has(input.assigneeEmail)) {
+      throw new Error(`upsert failed for ${input.assigneeEmail}`)
+    }
     return {
       id: input.eventId || `new-${input.assigneeEmail}`,
       webLink: 'https://outlook.test/event',
@@ -78,6 +86,8 @@ const PLANNED_END = Date.parse('2024-01-15T12:00:00.000Z')
 beforeEach(() => {
   deleteCalls.length = 0
   upsertCalls.length = 0
+  failDeleteForEventIds.clear()
+  failUpsertForEmails.clear()
   userDocs = {}
 })
 
@@ -106,6 +116,29 @@ test('syncMaintenanceTicketOutlookCalendar clears existing events when clearPlan
 
   assert.deepEqual(result, {})
   assert.equal(deleteCalls.length, 2)
+  assert.deepEqual(deleteCalls, [
+    { email: 'one@test.com', eventId: 'evt-1' },
+    { email: 'two@test.com', eventId: 'evt-2' },
+  ])
+  assert.equal(upsertCalls.length, 0)
+})
+
+test('syncMaintenanceTicketOutlookCalendar preserves refs when clearPlanning delete fails', async () => {
+  const existingEvents = {
+    'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'assignee' },
+    'user-2': { eventId: 'evt-2', email: 'two@test.com', role: 'creator' },
+  }
+  failDeleteForEventIds.add('evt-2')
+
+  const result = await syncMaintenanceTicketOutlookCalendar({
+    ticketId: 'ticket-1',
+    existingEvents,
+    clearPlanning: true,
+  })
+
+  assert.deepEqual(result, {
+    'user-2': { eventId: 'evt-2', email: 'two@test.com', role: 'creator' },
+  })
   assert.deepEqual(deleteCalls, [
     { email: 'one@test.com', eventId: 'evt-1' },
     { email: 'two@test.com', eventId: 'evt-2' },
@@ -278,6 +311,56 @@ test('syncMaintenanceTicketOutlookCalendar deletes stale event refs for removed 
       email: 'one@test.com',
       role: 'assignee',
     },
+  })
+  assert.deepEqual(deleteCalls, [{ email: 'two@test.com', eventId: 'evt-2' }])
+})
+
+test('syncMaintenanceTicketOutlookCalendar keeps existing refs when target upsert fails', async () => {
+  userDocs = {
+    'user-1': { email: 'one@test.com', name: 'One' },
+    'user-2': { email: 'two@test.com', name: 'Two' },
+  }
+  failUpsertForEmails.add('one@test.com')
+
+  const result = await syncMaintenanceTicketOutlookCalendar({
+    ticketId: 'ticket-1',
+    assignedToIds: ['user-1', 'user-2'],
+    plannedStart: PLANNED_START,
+    plannedEnd: PLANNED_END,
+    existingEvents: {
+      'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'assignee' },
+      'user-2': { eventId: 'evt-2', email: 'two@test.com', role: 'assignee' },
+      'user-3': { eventId: 'evt-3', email: 'three@test.com', role: 'assignee' },
+    },
+  })
+
+  assert.deepEqual(result, {
+    'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'assignee' },
+    'user-2': { eventId: 'evt-2', email: 'two@test.com', role: 'assignee' },
+  })
+  assert.deepEqual(deleteCalls, [{ email: 'three@test.com', eventId: 'evt-3' }])
+})
+
+test('syncMaintenanceTicketOutlookCalendar preserves stale refs when cleanup delete fails', async () => {
+  userDocs = {
+    'user-1': { email: 'one@test.com', name: 'One' },
+  }
+  failDeleteForEventIds.add('evt-2')
+
+  const result = await syncMaintenanceTicketOutlookCalendar({
+    ticketId: 'ticket-1',
+    assignedToIds: ['user-1'],
+    plannedStart: PLANNED_START,
+    plannedEnd: PLANNED_END,
+    existingEvents: {
+      'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'assignee' },
+      'user-2': { eventId: 'evt-2', email: 'two@test.com', role: 'assignee' },
+    },
+  })
+
+  assert.deepEqual(result, {
+    'user-1': { eventId: 'evt-1', email: 'one@test.com', role: 'assignee' },
+    'user-2': { eventId: 'evt-2', email: 'two@test.com', role: 'assignee' },
   })
   assert.deepEqual(deleteCalls, [{ email: 'two@test.com', eventId: 'evt-2' }])
 })
