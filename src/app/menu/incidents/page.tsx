@@ -26,7 +26,6 @@ import {
   INCIDENTS_COMMAND_BOARD_PERM,
   INCIDENTS_MEETING_MINUTES_PERM,
   INCIDENTS_QUADRE_PATH,
-  INCIDENTS_UI_PATH,
 } from '@/lib/incidentsPermissions'
 import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
@@ -99,7 +98,7 @@ export default function IncidentsPage() {
   const isMarketingUser = MARKETING_DEPARTMENTS.has(normalizeDept(accessUser.department || ''))
   const actaAuthorLabel = sessionUser?.name?.trim() || sessionUser?.email?.trim()
   const canEditTipologies = canManageIncidentCategories(accessUser)
-  const { ready: uiPermsReady, canViewPath, canEditPath, hasAction } = useUiPermissions()
+  const { ready: uiPermsReady, hasAction } = useUiPermissions()
   const canSeeQuadre = uiPermsReady && hasAction(INCIDENTS_COMMAND_BOARD_PERM)
   const canMeetingMinutes = uiPermsReady && hasAction(INCIDENTS_MEETING_MINUTES_PERM)
   const [meetingMinutesOpen, setMeetingMinutesOpen] = useState(false)

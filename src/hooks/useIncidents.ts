@@ -244,6 +244,7 @@ export function useIncidents(_filters: {
     filters.eventId,
     filters.from,
     filters.to,
+    filters.dateMode,
     filters.department,
     filters.importance,
     filters.categoryLabel,

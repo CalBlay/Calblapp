@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { resolveCoreMeetingAttendees } from '@/lib/incidentMeetingAttendees'
 import { requireIncidentsMeetingMinutes } from '@/lib/server/incidentsApiAuth'
-import { loadAllAppUsers, loadAllAppUsersWithEmail } from '@/lib/server/incidentMeetingUsers'
+import { loadAllAppUsers } from '@/lib/server/incidentMeetingUsers'
 
 export async function GET() {
   try {

@@ -25,7 +25,7 @@ interface Props {
   applyPatch: (id: string, d: Partial<Incident>) => void | Promise<unknown>
   opsExpanded: boolean
   onToggleOps: (row: Incident) => void
-  onIncidentPatch: (id: string, d: Partial<Incident>) => void | Promise<unknown>
+  onIncidentPatch: (id: string, d: Partial<Incident>) => Promise<unknown>
   openImages: (row: Incident) => void
   canDelete: boolean
   onDelete: (row: Incident) => void

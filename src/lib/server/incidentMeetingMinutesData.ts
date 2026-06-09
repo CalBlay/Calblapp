@@ -67,7 +67,7 @@ export async function fetchIncidentsForMeetingMinutes(filters: MeetingMinutesFil
     }
   }
 
-  let incidents = raw.map((inc) => {
+  const incidents = raw.map((inc) => {
     const ev = eventsMap.get(String(inc.eventId || '')) || {}
     return {
       ...inc,
