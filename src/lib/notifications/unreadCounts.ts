@@ -1,4 +1,4 @@
-import { FieldValue } from 'firebase-admin/firestore'
+import { FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { countUnreadNotifications, countUnreadNotificationsByTypes } from '@/lib/notifications/firestoreCounts'
 import {
@@ -21,18 +21,6 @@ export type NotificationUnreadBuckets = {
   incidents: number
   version: number
   syncedAt: number
-}
-
-const EMPTY_BUCKETS: NotificationUnreadBuckets = {
-  user_request: 0,
-  user_request_result: 0,
-  torn: 0,
-  projects: 0,
-  logistics: 0,
-  maintenance: 0,
-  incidents: 0,
-  version: UNREAD_COUNTS_VERSION,
-  syncedAt: 0,
 }
 
 type BucketKey = keyof Omit<NotificationUnreadBuckets, 'version' | 'syncedAt'>
@@ -189,11 +177,10 @@ export async function getUserUnreadBuckets(userId: string): Promise<Notification
   return syncUserUnreadBuckets(userId)
 }
 
-function countNotificationTypes(
-  docs: Array<{ data: () => { type?: unknown; read?: unknown } }>
-): Map<string, number> {
+function countNotificationTypes(docs: DocumentSnapshot[]): Map<string, number> {
   const counts = new Map<string, number>()
   for (const doc of docs) {
+    if (!doc.exists) continue
     const data = doc.data() as { type?: string; read?: boolean }
     if (data.read === true) continue
     const type = String(data.type || '').trim()
@@ -205,7 +192,7 @@ function countNotificationTypes(
 
 export async function decrementUnreadFromNotificationDocs(
   userId: string,
-  docs: Array<{ data: () => { type?: unknown; read?: unknown } }>
+  docs: DocumentSnapshot[]
 ): Promise<void> {
   const typeCounts = countNotificationTypes(docs)
   if (typeCounts.size === 0) return
