@@ -1,6 +1,7 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { lookupUidByNameLoose } from '@/lib/eventExtras'
 import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 
 type NotifyEventExtrasParams = {
   commercialInternalName?: string | null
@@ -44,11 +45,9 @@ export async function notifyCommercialInternalForEventExtras(
 
   await db.collection('users').doc(uid).collection('notifications').add(payload)
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (apiKey) {
+  if (hasAblyApiKey()) {
     try {
-      const Ably = (await import('ably')).default
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await rest.channels.get(`user:${uid}:notifications`).publish('created', payload)
     } catch (error) {
       console.error('[eventExtrasNotifications] Ably publish error', error)

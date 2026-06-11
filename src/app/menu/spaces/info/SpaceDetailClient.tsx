@@ -2,7 +2,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
@@ -448,7 +448,7 @@ const handleDelete = async () => {
       {/* GRID PRINCIPAL */}
       <div className="grid gap-4 md:grid-cols-2">
         {/* ───────────────── General ───────────────── */}
-        <motion.div
+        <MotionDiv
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           className="rounded-2xl border bg-white p-4 shadow-sm"
@@ -548,10 +548,10 @@ const handleDelete = async () => {
               </div>
             </div>
           </div>
-        </motion.div>
+        </MotionDiv>
 
         {/* ───────────────── Comercial ───────────────── */}
-        <motion.div
+        <MotionDiv
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           className="rounded-2xl border bg-white p-4 shadow-sm"
@@ -627,10 +627,10 @@ const handleDelete = async () => {
               />
             </div>
           </div>
-        </motion.div>
+        </MotionDiv>
 
         {/* ───────────────── Producció ───────────────── */}
-        <motion.div
+        <MotionDiv
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           className="rounded-2xl border bg-white p-4 shadow-sm md:col-span-2"
@@ -796,10 +796,10 @@ const handleDelete = async () => {
           )}
 
 
-        </motion.div>
+        </MotionDiv>
 
         {/* ───────────────── Imatges ───────────────── */}
-        <motion.div
+        <MotionDiv
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           className="rounded-2xl border bg-white p-4 shadow-sm md:col-span-2"
@@ -867,7 +867,7 @@ const handleDelete = async () => {
 />
 
 
-        </motion.div>
+        </MotionDiv>
       </div>
     </section>
   )

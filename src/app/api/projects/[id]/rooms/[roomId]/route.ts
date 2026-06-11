@@ -11,7 +11,8 @@ import {
   createTaskDeadlineCalendarEvent,
   sendTaskAssignmentEmail,
 } from '@/services/graph/calendar'
-import Ably from 'ably'
+import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 import type { ProjectBlockLike, ProjectRoomLike } from '@/lib/projectRoomOps'
 
@@ -118,11 +119,11 @@ async function notifyTaskOwnerAssignment(params: {
     blockName,
     taskName,
   })
+  await incrementUserUnreadCount(userId, 'project_task_assignment', 1)
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (apiKey) {
+  if (hasAblyApiKey()) {
     try {
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await rest.channels.get(`user:${userId}:notifications`).publish('created', {
         type: 'project_task_assignment',
         projectId,

@@ -2,6 +2,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
 import type { SurveyNoResponseDefault } from '@/services/premises'
 import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { targetUserIdsFromResolved } from '@/lib/quadrantSurveysPending'
 
 const SURVEYS_COLLECTION = 'quadrantSurveys'
 const RESPONSES_COLLECTION = 'quadrantSurveyResponses'
@@ -48,6 +49,7 @@ export type QuadrantSurvey = {
   createdByName: string
   targetGroupIds: string[]
   targetWorkerIds: string[]
+  targetUserIds?: string[]
   targetGroupNames?: string[]
   targetWorkerNames?: string[]
   resolvedTargets: SurveyTargetWorker[]
@@ -415,8 +417,8 @@ async function createSurveyNotifications(
   const apiKey = process.env.ABLY_API_KEY
   if (apiKey) {
     try {
-      const Ably = (await import('ably')).default
-      const rest = new Ably.Rest({ key: apiKey })
+      const { getAblyRest } = await import('@/lib/server/ablyRest')
+      const rest = getAblyRest()
       await Promise.all(
         userIds.map((uid) =>
           rest.channels.get(`user:${uid}:notifications`).publish('created', {
@@ -486,6 +488,7 @@ export async function createQuadrantSurvey(input: {
     createdByName: input.createdByName,
     targetGroupIds: Array.isArray(input.targetGroupIds) ? input.targetGroupIds : [],
     targetWorkerIds: Array.isArray(input.targetWorkerIds) ? input.targetWorkerIds : [],
+    targetUserIds: targetUserIdsFromResolved(resolvedTargets),
     resolvedTargets,
     snapshot: input.snapshot,
     channelId,
@@ -854,23 +857,43 @@ export async function getSurveyPreferredCandidates(params: {
 }
 
 export async function listUserQuadrantSurveys(userId: string) {
+  const uid = String(userId || '').trim()
+  if (!uid) return []
   const now = Date.now()
-  const allSurveysSnap = await db.collection(SURVEYS_COLLECTION).get()
-  const allSurveys = allSurveysSnap.docs
-    .map((doc) => ({ id: doc.id, ...(doc.data() as FirestoreDoc) } as QuadrantSurvey))
-    .filter(
-      (survey) =>
-        Array.isArray(survey.resolvedTargets) &&
-        survey.resolvedTargets.some((target) => String(target?.userId || '') === userId) &&
-        Number(survey.deadlineAt || 0) > now
-    )
+
+  const indexedSnap = await db
+    .collection(SURVEYS_COLLECTION)
+    .where('targetUserIds', 'array-contains', uid)
+    .where('deadlineAt', '>', now)
+    .get()
+
+  let allSurveys = indexedSnap.docs.map(
+    (doc) => ({ id: doc.id, ...(doc.data() as FirestoreDoc) } as QuadrantSurvey)
+  )
+
+  if (allSurveys.length === 0) {
+    const legacySnap = await db.collection(SURVEYS_COLLECTION).get()
+    allSurveys = legacySnap.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() as FirestoreDoc) } as QuadrantSurvey))
+      .filter((survey) => {
+        if (Number(survey.deadlineAt || 0) <= now) return false
+        const targetIds = Array.isArray(survey.targetUserIds)
+          ? survey.targetUserIds.map((id) => String(id || '').trim())
+          : []
+        if (targetIds.includes(uid)) return true
+        return (
+          Array.isArray(survey.resolvedTargets) &&
+          survey.resolvedTargets.some((target) => String(target?.userId || '') === uid)
+        )
+      })
+  }
 
   if (allSurveys.length === 0) return []
 
   const responseSnaps = await Promise.all(
     allSurveys.map(async (survey) => {
       const target = survey.resolvedTargets.find(
-        (item) => String(item?.userId || '') === userId
+        (item) => String(item?.userId || '') === uid
       )
       if (!target?.personnelId) return null
       const snap = await db

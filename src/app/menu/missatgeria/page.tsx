@@ -83,7 +83,7 @@ export default function MissatgeriaPage() {
   const { data: channelsData, mutate: refreshChannels } = useSWR(
     '/api/messaging/channels?scope=mine',
     fetcher,
-    { refreshInterval: 10000 }
+    { refreshInterval: 0 }
   )
 
   const channels = useMemo<Channel[]>(
@@ -326,14 +326,18 @@ export default function MissatgeriaPage() {
   }, [selectedChannelId])
 
   useEffect(() => {
-    if (!messagesState.length) return
+    if (!messagesState.length || !selectedChannelId) return
     const ids = messagesState.map((m) => m.id).filter(Boolean)
-    fetch('/api/messaging/messages/read', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messageIds: ids }),
-    }).catch(() => {})
-  }, [messagesState])
+    if (ids.length === 0) return
+    const timer = window.setTimeout(() => {
+      fetch('/api/messaging/messages/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageIds: ids }),
+      }).catch(() => {})
+    }, 800)
+    return () => window.clearTimeout(timer)
+  }, [messagesState, selectedChannelId])
 
   useEffect(() => {
     if (!selectedChannelId) return

@@ -3,7 +3,7 @@
 
 import { format, eachDayOfInterval, startOfWeek, endOfWeek } from "date-fns"
 import { ca } from "date-fns/locale"
-import { motion } from "framer-motion"
+import { MotionDiv } from '@/lib/lazyMotion'
 import PissarraCard from "./PissarraCard"
 import PissarraCardLogistica from "./PissarraCardLogistica"
 import PissarraCardCuina from "./PissarraCardCuina"
@@ -75,7 +75,7 @@ export default function PissarraList({
             <div key={key} className="flex flex-col border-r last:border-r-0 border-gray-200 p-1 bg-gray-50">
               {events.length > 0 ? (
                 events.map((ev) => (
-                  <motion.div key={ev.id} layout>
+                  <MotionDiv key={ev.id} layout>
                     {variant === "logistica" ? (
                       <PissarraCardLogistica item={ev} />
                     ) : variant === "cuina" ? (
@@ -83,7 +83,7 @@ export default function PissarraList({
                     ) : (
                       <PissarraCard item={ev} canEdit={canEdit} onUpdate={onUpdate} />
                     )}
-                  </motion.div>
+                  </MotionDiv>
                 ))
               ) : (
                 <div className="text-center text-gray-400 text-xs py-6">-</div>

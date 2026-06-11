@@ -1,6 +1,12 @@
 // next.config.ts
 import type { NextConfig } from 'next'
+import bundleAnalyzer from '@next/bundle-analyzer'
 import webpack from 'webpack'
+
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+  openAnalyzer: false,
+})
 
 const nextConfig: NextConfig = {
   eslint: {
@@ -37,4 +43,4 @@ const nextConfig: NextConfig = {
   },
 }
 
-export default nextConfig
+export default withBundleAnalyzer(nextConfig)

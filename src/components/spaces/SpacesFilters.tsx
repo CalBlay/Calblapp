@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { isGrupsRestaurantsLn } from '@/lib/spacesLn'
 
@@ -133,7 +133,7 @@ export default function SpacesFilters({
   }
 
   return (
-    <motion.div
+    <MotionDiv
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       className="flex flex-col gap-3 w-full border-b pb-3 px-2"
@@ -183,7 +183,7 @@ export default function SpacesFilters({
       <div className="flex justify-end mt-2">
         <ResetFilterButton onClick={resetAll} />
       </div>
-    </motion.div>
+    </MotionDiv>
   )
 }
 

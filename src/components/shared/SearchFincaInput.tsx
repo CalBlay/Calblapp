@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { Input } from '@/components/ui/input'
 import { Search } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { LazyAnimatePresence, MotionDiv } from '@/lib/lazyMotion'
 import { getDialogComboboxPortalContainer } from '@/lib/dialogComboboxPortal'
 
 const MIN_QUERY_LENGTH = 2
@@ -143,8 +143,8 @@ export default function SearchFincaInput({
   }
 
   const dropdown = canShowDropdown ? (
-    <AnimatePresence>
-      <motion.div
+    <LazyAnimatePresence>
+      <MotionDiv
         key="finca-dropdown"
         initial={{ opacity: 0, y: -4 }}
         animate={{ opacity: 1, y: 0 }}
@@ -194,8 +194,8 @@ export default function SearchFincaInput({
             </div>
           ))
         )}
-      </motion.div>
-    </AnimatePresence>
+      </MotionDiv>
+    </LazyAnimatePresence>
   ) : null
 
   return (

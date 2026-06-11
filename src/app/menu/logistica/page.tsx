@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
+import { useLogisticsReservationNotificationCount } from '@/hooks/useAdminNotifications'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import {
   ClipboardCheck,
@@ -21,22 +22,9 @@ const fetcher = (url: string) => fetch(url).then((response) => response.json())
 export default function LogisticsHubPage() {
   const { data: session } = useSession()
   const user = session?.user
-  const { data: reservationNotificationData } = useSWR(
-    user?.id ? '/api/notifications?mode=list' : null,
-    fetcher,
-    { refreshInterval: user?.id ? 15000 : 0 }
-  )
+  const { count: reservationNotificationCount } = useLogisticsReservationNotificationCount()
   const { data: uiPermData } = useSWR(user?.id ? '/api/permissions/ui' : null, fetcher)
   const uiMap = (uiPermData?.map || {}) as Record<string, boolean>
-
-  const reservationNotificationCount = Array.isArray(reservationNotificationData?.notifications)
-    ? reservationNotificationData.notifications.filter(
-        (notification: { read?: boolean; type?: string }) =>
-          !notification.read &&
-          (notification.type === 'commercial_vehicle_request' ||
-            notification.type === 'commercial_vehicle_validation')
-      ).length
-    : 0
 
   const baseLogistica = getVisibleModules({
     role: user?.role,
@@ -70,7 +58,7 @@ export default function LogisticsHubPage() {
 
             return (
               <Link key={sub.path} href={sub.path}>
-                <motion.div
+                <MotionDiv
                   whileTap={{ scale: 0.97 }}
                   className={`
                     w-full 
@@ -95,7 +83,7 @@ export default function LogisticsHubPage() {
                     )}
                   </div>
                   {sub.label}
-                </motion.div>
+                </MotionDiv>
               </Link>
             )
           })}

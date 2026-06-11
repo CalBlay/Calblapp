@@ -7,7 +7,8 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
 import { canAccessProjects, sessionToAccessUser } from '@/lib/projectAccess'
 import { deriveProjectPhase } from '@/app/menu/projects/components/project-shared'
-import Ably from 'ably'
+import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 
 type SessionUser = {
@@ -122,11 +123,11 @@ async function notifyProjectOwner(params: {
     type: 'project_assignment',
     projectId,
   })
+  await incrementUserUnreadCount(userId, 'project_assignment', 1)
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (apiKey) {
+  if (hasAblyApiKey()) {
     try {
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await rest.channels.get(`user:${userId}:notifications`).publish('created', {
         type: 'project_assignment',
         projectId,

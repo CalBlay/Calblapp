@@ -13,3 +13,16 @@ export function getAblyRest(): Ably.Rest {
   }
   return restClient
 }
+
+export function hasAblyApiKey(): boolean {
+  return Boolean(process.env.ABLY_API_KEY)
+}
+
+export async function publishAblyEvent(
+  channelName: string,
+  eventName: string,
+  data: unknown
+): Promise<void> {
+  const rest = getAblyRest()
+  await rest.channels.get(channelName).publish(eventName, data)
+}

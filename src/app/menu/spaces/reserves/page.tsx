@@ -3,7 +3,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 import { useSpaces, type SpaceApiRow } from '@/hooks/spaces/useSpaces'
 import SpaceGrid from '@/components/spaces/SpaceGrid'
 import ModuleHeader from '@/components/layout/ModuleHeader'
@@ -303,7 +303,7 @@ const {
              â³ Loading
            â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {loading && (
-          <motion.div
+          <MotionDiv
             className="mt-10 flex flex-col gap-3 items-center"
             initial={{ opacity: 0.3 }}
             animate={{ opacity: 1 }}
@@ -311,7 +311,7 @@ const {
           >
             <div className="h-6 w-40 bg-gray-200 rounded" />
             <div className="h-4 w-60 bg-gray-100 rounded" />
-          </motion.div>
+          </MotionDiv>
         )}
 
         {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -2,17 +2,10 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { normalizeRole } from '@/lib/roles'
-import { countUnreadNotifications, countUnreadNotificationsByTypes } from '@/lib/notifications/firestoreCounts'
 import { countMessagingUnread } from '@/lib/notifications/messagingUnreadCount'
 import { computeRobaBadgeCount } from '@/lib/notifications/robaBadgeCount'
-import {
-  INCIDENT_NOTIFICATION_TYPES,
-  LOGISTICS_NOTIFICATION_TYPES,
-  MAINTENANCE_NOTIFICATION_TYPES,
-  PROJECT_NOTIFICATION_TYPES,
-  TORN_NOTIFICATION_TYPES,
-} from '@/lib/notifications/notificationTypes'
-import { listUserQuadrantSurveys } from '@/lib/quadrantSurveys'
+import { getUserUnreadBuckets } from '@/lib/notifications/unreadCounts'
+import { countPendingUserQuadrantSurveys } from '@/lib/quadrantSurveysPending'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -57,33 +50,20 @@ export async function GET() {
   const canAccessSurveys = canRespondSurveys || ['admin', 'direccio', 'cap'].includes(role)
 
   try {
-    const [
-      adminUserRequests,
-      userRequestResults,
-      torn,
-      projects,
-      logistics,
-      maintenance,
-      incidents,
-      messaging,
-      robaPersonal,
-      surveys,
-    ] = await Promise.all([
-      isAdmin ? countUnreadNotifications(userId, { type: 'user_request' }) : Promise.resolve(0),
-      countUnreadNotifications(userId, { type: 'user_request_result' }),
-      countUnreadNotificationsByTypes(userId, [...TORN_NOTIFICATION_TYPES]),
-      countUnreadNotificationsByTypes(userId, [...PROJECT_NOTIFICATION_TYPES]),
-      countUnreadNotificationsByTypes(userId, [...LOGISTICS_NOTIFICATION_TYPES]),
-      countUnreadNotificationsByTypes(userId, [...MAINTENANCE_NOTIFICATION_TYPES]),
-      countUnreadNotificationsByTypes(userId, [...INCIDENT_NOTIFICATION_TYPES]),
+    const [buckets, messaging, robaPersonal, surveys] = await Promise.all([
+      getUserUnreadBuckets(userId),
       countMessagingUnread(userId),
       computeRobaBadgeCount(),
-      canAccessSurveys
-        ? listUserQuadrantSurveys(userId).then((items) =>
-            items.filter((survey) => !(survey as { myResponse?: unknown }).myResponse).length
-          )
-        : Promise.resolve(0),
+      canAccessSurveys ? countPendingUserQuadrantSurveys(userId) : Promise.resolve(0),
     ])
+
+    const adminUserRequests = isAdmin ? buckets.user_request : 0
+    const userRequestResults = buckets.user_request_result
+    const torn = buckets.torn
+    const projects = buckets.projects
+    const logistics = buckets.logistics
+    const maintenance = buckets.maintenance
+    const incidents = buckets.incidents
 
     const payload: NotificationSummaryPayload = {
       adminUserRequests,

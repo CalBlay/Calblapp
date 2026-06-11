@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { ClipboardList, Search } from 'lucide-react'
 import { MODULES } from '@/lib/accessControl'
@@ -59,7 +59,7 @@ export default function AllergensHubPage() {
 
             return (
               <Link key={sub.path} href={sub.path}>
-                <motion.div
+                <MotionDiv
                   whileTap={{ scale: 0.97 }}
                   className={`
                     w-full
@@ -77,7 +77,7 @@ export default function AllergensHubPage() {
                 >
                   <Icon className="w-7 h-7" />
                   {sub.label}
-                </motion.div>
+                </MotionDiv>
               </Link>
             )
           })}

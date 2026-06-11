@@ -468,8 +468,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const apiKey = process.env.ABLY_API_KEY
     if (apiKey) {
       try {
-        const Ably = (await import('ably')).default
-        const rest = new Ably.Rest({ key: apiKey })
+        const { getAblyRest } = await import('@/lib/server/ablyRest')
+        const rest = getAblyRest()
 
         if (visibility === 'channel') {
           await rest.channels
@@ -544,8 +544,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
       if (ticketResult && apiKey) {
         try {
-          const Ably = (await import('ably')).default
-          const rest = new Ably.Rest({ key: apiKey })
+          const { getAblyRest } = await import('@/lib/server/ablyRest')
+          const rest = getAblyRest()
           await rest.channels
             .get(`chat:${id}`)
             .publish('message', ticketResult.summaryData)

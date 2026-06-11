@@ -50,12 +50,16 @@ export async function notifyMarketingManagersFor9xxIncident(params: {
     })
   }
   await batch.commit()
+  const { afterNotificationsCommitted } = await import('@/lib/notifications/writeUserNotification')
+  await afterNotificationsCommitted(
+    targets.map((uid) => ({ userId: uid, type: String(payload.type || '') }))
+  )
 
   const apiKey = process.env.ABLY_API_KEY
   if (apiKey) {
     try {
-      const Ably = (await import('ably')).default
-      const rest = new Ably.Rest({ key: apiKey })
+      const { getAblyRest } = await import('@/lib/server/ablyRest')
+      const rest = getAblyRest()
       await Promise.all(
         targets.map((uid) =>
           rest.channels.get(`user:${uid}:notifications`).publish('created', {

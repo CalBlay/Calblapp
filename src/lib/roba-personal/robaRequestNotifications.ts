@@ -1,6 +1,7 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
+import { getAblyRest } from '@/lib/server/ablyRest'
 import { sendOutlookTextMail } from '@/services/graph/calendar'
 import * as XLSX from 'xlsx'
 
@@ -396,8 +397,7 @@ export async function notifyRecursosHumansNewRobaRequest(params: {
   if (!apiKey) return
 
   try {
-    const Ably = (await import('ably')).default
-    const rest = new Ably.Rest({ key: apiKey })
+    const rest = getAblyRest()
     await Promise.all(
       uids.map((uid) =>
         rest.channels.get(`user:${uid}:notifications`).publish('created', {
@@ -463,8 +463,7 @@ export async function notifyRobaDepartmentLeadsNewRequest(params: {
   if (!apiKey) return
 
   try {
-    const Ably = (await import('ably')).default
-    const rest = new Ably.Rest({ key: apiKey })
+    const rest = getAblyRest()
     await Promise.all(
       uids.map((uid) =>
         rest.channels.get(`user:${uid}:notifications`).publish('created', {
@@ -537,8 +536,7 @@ export async function notifyRecursosHumansRobaRequestSentToRrhh(params: {
   const apiKey = process.env.ABLY_API_KEY
   if (apiKey) {
     try {
-      const Ably = (await import('ably')).default
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await Promise.all(
         uids.map((uid) =>
           rest.channels.get(`user:${uid}:notifications`).publish('created', {
@@ -658,8 +656,7 @@ export async function notifyRecursosHumansRobaRequestBatchSentToRrhh(params: {
   const apiKey = process.env.ABLY_API_KEY
   if (apiKey) {
     try {
-      const Ably = (await import('ably')).default
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await Promise.all(
         uids.map((uid) =>
           rest.channels.get(`user:${uid}:notifications`).publish('created', {
@@ -754,8 +751,7 @@ export async function notifyRecursosHumansRobaRequestCancelled(params: {
     const apiKey = process.env.ABLY_API_KEY
     if (apiKey) {
       try {
-        const Ably = (await import('ably')).default
-        const rest = new Ably.Rest({ key: apiKey })
+        const rest = getAblyRest()
         await Promise.all(
           uids.map((uid) =>
             rest.channels.get(`user:${uid}:notifications`).publish('created', {
@@ -833,8 +829,7 @@ export async function notifyRobaRequestMaterialReady(params: {
   if (!apiKey) return
 
   try {
-    const Ably = (await import('ably')).default
-    const rest = new Ably.Rest({ key: apiKey })
+    const rest = getAblyRest()
     await rest.channels.get(`user:${uid}:notifications`).publish('created', {
       type: 'roba_personal_ready',
       requestId: params.requestId,
@@ -895,8 +890,7 @@ export async function notifyRobaDepartmentLeadsPickupDate(params: {
   if (!apiKey) return
 
   try {
-    const Ably = (await import('ably')).default
-    const rest = new Ably.Rest({ key: apiKey })
+    const rest = getAblyRest()
     await Promise.all(
       uids.map((uid) =>
         rest.channels.get(`user:${uid}:notifications`).publish('created', {
@@ -948,8 +942,7 @@ export async function notifyRobaWorkerDeliveryAck(params: {
   if (!apiKey) return
 
   try {
-    const Ably = (await import('ably')).default
-    const rest = new Ably.Rest({ key: apiKey })
+    const rest = getAblyRest()
     await rest.channels.get(`user:${uid}:notifications`).publish('created', {
       type: 'roba_personal_delivery_ack',
       deliveryId: params.deliveryId,
@@ -999,8 +992,7 @@ export async function notifyRobaResponsibleDeliveryDispute(params: {
   if (!apiKey) return
 
   try {
-    const Ably = (await import('ably')).default
-    const rest = new Ably.Rest({ key: apiKey })
+    const rest = getAblyRest()
     await rest.channels.get(`user:${uid}:notifications`).publish('created', {
       type: 'roba_personal_delivery_dispute',
       deliveryId: params.deliveryId,
@@ -1046,8 +1038,7 @@ export async function notifyRobaWorkerDeliveryRevised(params: {
   if (!apiKey) return
 
   try {
-    const Ably = (await import('ably')).default
-    const rest = new Ably.Rest({ key: apiKey })
+    const rest = getAblyRest()
     await rest.channels.get(`user:${uid}:notifications`).publish('created', {
       type: 'roba_personal_delivery_revised',
       deliveryId: params.deliveryId,

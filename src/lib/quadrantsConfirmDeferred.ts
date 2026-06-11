@@ -392,6 +392,10 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
       })
     }
     await notifBatch.commit()
+    const { afterNotificationsCommitted } = await import('@/lib/notifications/writeUserNotification')
+    await afterNotificationsCommitted(
+      validUsers.map((u) => ({ userId: u.userId, type: 'torn' }))
+    )
 
     await Promise.all(
       validUsers.map((u) =>

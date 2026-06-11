@@ -6,7 +6,8 @@ import type { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
-import Ably from 'ably'
+import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 
 import { normalizeRole } from '@/lib/roles'
 import { saveUserAccessAssignment } from '@/lib/server/userAccessAssignment'
@@ -72,11 +73,11 @@ async function notifyRequester(params: {
       type: 'user_request_result',
       personId,
     })
+    await incrementUserUnreadCount(requesterId, 'user_request_result', 1)
 
-    const apiKey = process.env.ABLY_API_KEY
-    if (!apiKey) return
+    if (!hasAblyApiKey()) return
 
-    const rest = new Ably.Rest({ key: apiKey })
+    const rest = getAblyRest()
     const channel = rest.channels.get(`user:${requesterId}:notifications`)
     await channel.publish('created', {
       type: 'user_request_result',

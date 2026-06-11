@@ -192,13 +192,15 @@ async function createTornNotifications(params: {
   }
 
   await batch.commit()
+  const { afterNotificationsCommitted } = await import('@/lib/notifications/writeUserNotification')
+  await afterNotificationsCommitted(uids.map((uid) => ({ userId: uid, type: 'torn' })))
 
   const apiKey = process.env.ABLY_API_KEY
   if (!apiKey) return
 
   try {
-    const Ably = (await import('ably')).default
-    const rest = new Ably.Rest({ key: apiKey })
+    const { getAblyRest } = await import('@/lib/server/ablyRest')
+    const rest = getAblyRest()
     await Promise.all(
       uids.map(uid =>
         rest.channels

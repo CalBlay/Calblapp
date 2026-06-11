@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button'
 import { DialogFooter } from '@/components/ui/dialog'
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { LazyAnimatePresence, MotionDiv } from '@/lib/lazyMotion'
 import type { AutoPreviewResponse, QuadrantMode } from './quadrantModalTypes'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
@@ -58,18 +58,18 @@ export default function QuadrantModalFooter({
 
   return (
     <>
-      <AnimatePresence>
+      <LazyAnimatePresence>
         {error && (
-          <motion.div className="text-red-600 flex items-center gap-2 text-sm">
+          <MotionDiv className="text-red-600 flex items-center gap-2 text-sm">
             <AlertTriangle size={18} /> {error}
-          </motion.div>
+          </MotionDiv>
         )}
         {success && (
-          <motion.div className="text-green-600 flex items-center gap-2">
+          <MotionDiv className="text-green-600 flex items-center gap-2">
             <CheckCircle2 size={20} /> Borrador creat!
-          </motion.div>
+          </MotionDiv>
         )}
-      </AnimatePresence>
+      </LazyAnimatePresence>
 
       <div className="sticky bottom-0 border-t border-slate-200 bg-white/80 px-3 py-3 backdrop-blur sm:px-4">
         <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">

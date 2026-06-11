@@ -2,7 +2,7 @@
 'use client'
 
 import React from 'react'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 import { Card, CardContent } from '@/components/ui/card'
 import { MapPin, Clock, User, UtensilsCrossed } from 'lucide-react'
 import { Tooltip, TooltipTrigger } from '@/components/ui/tooltip'
@@ -52,7 +52,7 @@ export default function EventTile({ event, onClick }: {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <motion.div
+        <MotionDiv
           layout
           whileHover={{ scale: 1.02 }}
           onClick={() => onClick(event)}
@@ -122,7 +122,7 @@ export default function EventTile({ event, onClick }: {
               )}
             </CardContent>
           </Card>
-        </motion.div>
+        </MotionDiv>
       </TooltipTrigger>
     </Tooltip>
   )

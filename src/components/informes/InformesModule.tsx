@@ -1,15 +1,38 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useMemo, useState } from 'react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { BarChart3 } from 'lucide-react'
 import { INFORMES_DOMAINS } from '@/lib/informes/domains'
 import type { InformesDomainId } from '@/lib/informes/types'
 import { cn } from '@/lib/utils'
-import { RrhhInformesPanel } from './domains/RrhhInformesPanel'
-import { TransportsInformesPanel } from './domains/TransportsInformesPanel'
-import { MaintenanceInformesPanel } from './domains/MaintenanceInformesPanel'
 import { ModuleExportMenuActions } from '@/components/export/ModuleExportMenuContext'
+
+const panelLoadingFallback = () => (
+  <div className="rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+    Carregant informes...
+  </div>
+)
+
+const RrhhInformesPanel = dynamic(
+  () => import('./domains/RrhhInformesPanel').then((mod) => ({ default: mod.RrhhInformesPanel })),
+  { loading: panelLoadingFallback }
+)
+const TransportsInformesPanel = dynamic(
+  () =>
+    import('./domains/TransportsInformesPanel').then((mod) => ({
+      default: mod.TransportsInformesPanel,
+    })),
+  { loading: panelLoadingFallback }
+)
+const MaintenanceInformesPanel = dynamic(
+  () =>
+    import('./domains/MaintenanceInformesPanel').then((mod) => ({
+      default: mod.MaintenanceInformesPanel,
+    })),
+  { loading: panelLoadingFallback }
+)
 
 function ComingSoonPanel({ label }: { label: string }) {
   return (

@@ -22,10 +22,13 @@ async function countRequestsByStatus(status: string): Promise<number> {
 
 async function countWorkerRequests(pid: string, uid: string, status: string): Promise<number> {
   const [byWorker, byCreator] = await Promise.all([
-    db.collection(COL).where('requestedByWorkerId', '==', pid).where('status', '==', status).count().get(),
-    db.collection(COL).where('createdByUserId', '==', uid).where('status', '==', status).count().get(),
+    db.collection(COL).where('requestedByWorkerId', '==', pid).where('status', '==', status).limit(100).get(),
+    db.collection(COL).where('createdByUserId', '==', uid).where('status', '==', status).limit(100).get(),
   ])
-  return byWorker.data().count + byCreator.data().count
+  const ids = new Set<string>()
+  byWorker.docs.forEach((doc) => ids.add(doc.id))
+  byCreator.docs.forEach((doc) => ids.add(doc.id))
+  return ids.size
 }
 
 async function countWorkerDeliveriesAckPending(pid: string): Promise<number> {

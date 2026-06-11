@@ -15,7 +15,8 @@ import {
   sendBlockAssignmentEmail,
   sendTaskAssignmentEmail,
 } from '@/services/graph/calendar'
-import Ably from 'ably'
+import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 
 type SessionUser = {
@@ -186,11 +187,11 @@ async function notifyProjectOwner(params: {
     projectId,
     projectName,
   })
+  await incrementUserUnreadCount(userId, 'project_assignment', 1)
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (apiKey) {
+  if (hasAblyApiKey()) {
     try {
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await rest.channels.get(`user:${userId}:notifications`).publish('created', {
         type: 'project_assignment',
         projectId,
@@ -256,11 +257,11 @@ async function notifyBlockOwnerAssignment(params: {
     projectName,
     blockName,
   })
+  await incrementUserUnreadCount(userId, 'project_block_assignment', 1)
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (apiKey) {
+  if (hasAblyApiKey()) {
     try {
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await rest.channels.get(`user:${userId}:notifications`).publish('created', {
         type: 'project_block_assignment',
         projectId,
@@ -363,11 +364,11 @@ async function notifyTaskOwnerAssignment(params: {
     blockName,
     taskName,
   })
+  await incrementUserUnreadCount(userId, 'project_task_assignment', 1)
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (apiKey) {
+  if (hasAblyApiKey()) {
     try {
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await rest.channels.get(`user:${userId}:notifications`).publish('created', {
         type: 'project_task_assignment',
         projectId,

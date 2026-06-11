@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo } from 'react'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 import { CalendarDays, Map } from 'lucide-react'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import {
@@ -47,13 +47,13 @@ export default function SpacesHubClient() {
       <div className="flex flex-col gap-4 w-full max-w-xs">
         {cards.map(({ href, label, className, Icon }) => (
           <Link key={href} href={href}>
-            <motion.div
+            <MotionDiv
               whileTap={{ scale: 0.97 }}
               className={`w-full font-semibold rounded-xl p-4 text-center shadow-sm border flex flex-col items-center gap-1 ${className}`}
             >
               <Icon className="w-6 h-6" />
               {label}
-            </motion.div>
+            </MotionDiv>
           </Link>
         ))}
 

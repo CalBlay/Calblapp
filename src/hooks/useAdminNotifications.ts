@@ -1,7 +1,10 @@
 'use client'
 
+import { mutate } from 'swr'
 import { useNotificationSummaryContext } from '@/context/NotificationSummaryContext'
 import { useRobaPersonalApiAccess } from '@/hooks/useRobaPersonalApiAccess'
+
+const SUMMARY_KEY = '/api/notifications/summary'
 
 export async function markAdminUserRequestsRead() {
   await fetch('/api/notifications', {
@@ -9,6 +12,7 @@ export async function markAdminUserRequestsRead() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'markAllRead', type: 'user_request' }),
   })
+  await mutate(SUMMARY_KEY)
 }
 
 export function useAdminUserRequestCount() {

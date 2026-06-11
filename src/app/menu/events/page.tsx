@@ -123,7 +123,7 @@ export default function EventsPage() {
   const { data: channelsData } = useSWR<MessagingChannelsResponse>(
     isAuth ? '/api/messaging/channels?scope=mine' : null,
     fetcher,
-    { refreshInterval: isAuth ? 15000 : 0 }
+    { refreshInterval: isAuth ? 90000 : 0 }
   )
 
   const eventChatUnread = useMemo(() => {

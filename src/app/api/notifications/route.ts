@@ -5,6 +5,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import type { Query } from 'firebase-admin/firestore'
 import { formatTornNotificationBody, formatTornNotificationLabel } from '@/lib/date-format'
 import { resolveEventDisplayName } from '@/lib/eventDisplayName'
+import { decrementUnreadFromNotificationDocs } from '@/lib/notifications/unreadCounts'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -178,12 +179,17 @@ export async function PATCH(req: Request) {
       const batch = db.batch()
       snap.docs.forEach(d => batch.update(d.ref, { read: true }))
       await batch.commit()
+      await decrementUnreadFromNotificationDocs(userId, snap.docs)
       return NextResponse.json({ success: true })
     }
 
     if (action === 'markRead') {
       if (!notificationId) {
         return NextResponse.json({ error: 'notificationId required' }, { status: 400 })
+      }
+      const existing = await notificationsRef.doc(notificationId).get()
+      if (existing.exists) {
+        await decrementUnreadFromNotificationDocs(userId, [existing])
       }
       await notificationsRef.doc(notificationId).delete()
       return NextResponse.json({ success: true })
@@ -199,6 +205,7 @@ export async function PATCH(req: Request) {
         commercialTypes.has(String((doc.data() as NotificationFirestoreDoc).type || '').trim())
       )
       if (matches.length > 0) {
+        await decrementUnreadFromNotificationDocs(userId, matches)
         const batch = db.batch()
         matches.forEach((doc) => batch.delete(doc.ref))
         await batch.commit()

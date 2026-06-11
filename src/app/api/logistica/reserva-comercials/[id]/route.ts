@@ -106,6 +106,8 @@ async function createUserNotification(params: {
     createdAt: Date.now(),
     read: false,
   })
+  const { incrementUserUnreadCount } = await import('@/lib/notifications/unreadCounts')
+  await incrementUserUnreadCount(params.userId, params.type, 1)
 }
 
 async function findAvailableCommercialVehicle(target: CommercialReservation) {

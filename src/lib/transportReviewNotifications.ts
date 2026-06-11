@@ -181,8 +181,8 @@ async function publishRealtime(
   if (!apiKey || !uids.length) return
 
   try {
-    const Ably = (await import('ably')).default
-    const rest = new Ably.Rest({ key: apiKey })
+    const { getAblyRest } = await import('@/lib/server/ablyRest')
+    const rest = getAblyRest()
     await Promise.all(
       uids.map((uid) =>
         rest.channels.get(`user:${uid}:notifications`).publish('created', payload)

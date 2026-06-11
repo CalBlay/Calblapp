@@ -1,21 +1,53 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { normalizeRole } from '@/lib/roles'
 import { robaTabUiPath } from '@/lib/robaPersonalPermissions'
-import { ProductesPanel } from './ProductesPanel'
 import type { TabId } from './robaPersonalTypes'
 import { parseRobaTab } from './robaPersonalConstants'
 import { RobaPersonalRequestNotificationsBanner } from './RobaPersonalRequestNotificationsBanner'
-import { TreballadorsPanel } from './TreballadorsPanel'
-import { EstocPanel } from './EstocPanel'
-import { SollicitudsPanel } from './SollicitudsPanel'
-import { EntreguesPanel } from './EntreguesPanel'
-import { CompresPanel } from './CompresPanel'
-import { RrhhInformesPanel } from '@/components/informes/domains/RrhhInformesPanel'
+
+const tabLoadingFallback = () => (
+  <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
+    Carregant pestanya...
+  </div>
+)
+
+const ProductesPanel = dynamic(
+  () => import('./ProductesPanel').then((mod) => ({ default: mod.ProductesPanel })),
+  { loading: tabLoadingFallback }
+)
+const TreballadorsPanel = dynamic(
+  () => import('./TreballadorsPanel').then((mod) => ({ default: mod.TreballadorsPanel })),
+  { loading: tabLoadingFallback }
+)
+const EstocPanel = dynamic(
+  () => import('./EstocPanel').then((mod) => ({ default: mod.EstocPanel })),
+  { loading: tabLoadingFallback }
+)
+const SollicitudsPanel = dynamic(
+  () => import('./SollicitudsPanel').then((mod) => ({ default: mod.SollicitudsPanel })),
+  { loading: tabLoadingFallback }
+)
+const EntreguesPanel = dynamic(
+  () => import('./EntreguesPanel').then((mod) => ({ default: mod.EntreguesPanel })),
+  { loading: tabLoadingFallback }
+)
+const CompresPanel = dynamic(
+  () => import('./CompresPanel').then((mod) => ({ default: mod.CompresPanel })),
+  { loading: tabLoadingFallback }
+)
+const RrhhInformesPanel = dynamic(
+  () =>
+    import('@/components/informes/domains/RrhhInformesPanel').then((mod) => ({
+      default: mod.RrhhInformesPanel,
+    })),
+  { loading: tabLoadingFallback }
+)
 
 export default function RobaPersonalDashboard() {
   const searchParams = useSearchParams()
