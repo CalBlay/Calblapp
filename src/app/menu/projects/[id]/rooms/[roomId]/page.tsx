@@ -184,14 +184,20 @@ export default function ProjectRoomDetailPage() {
       .replace(/\p{Diacritic}/gu, '')
       .toLowerCase()
       .trim()
+  const isProjectOwner =
+    (sessionUserId && sessionUserId === String(project?.ownerUserId || '').trim()) ||
+    normalizeText(sessionUserName) === normalizeText(project?.owner || '')
+  const isProjectSponsor =
+    (sessionUserId && sessionUserId === String(project?.createdById || '').trim()) ||
+    normalizeText(sessionUserName) === normalizeText(project?.sponsor || '')
   const canCreateTaskFromChat =
     !!currentBlock &&
     !!currentRoom &&
     currentRoom.opsChannelSource === 'projects' &&
     (
       sessionRole === 'admin' ||
-      (sessionUserId && sessionUserId === String(project?.ownerUserId || '').trim()) ||
-      normalizeText(sessionUserName) === normalizeText(project?.owner || '') ||
+      isProjectOwner ||
+      isProjectSponsor ||
       normalizeText(sessionUserName) === normalizeText(currentBlock?.owner || '')
     )
   const inheritedInitialDocuments = useMemo(
@@ -292,7 +298,8 @@ export default function ProjectRoomDetailPage() {
       if (!user.name) return false
       if (
         normalizeText(user.name) === normalizeText(currentBlock.owner) ||
-        normalizeText(user.name) === normalizeText(project?.owner || '')
+        normalizeText(user.name) === normalizeText(project?.owner || '') ||
+        normalizeText(user.name) === normalizeText(project?.sponsor || '')
       ) {
         return true
       }
@@ -307,7 +314,7 @@ export default function ProjectRoomDetailPage() {
     })
 
     return Array.from(byName.values())
-  }, [currentBlock, project?.owner, users])
+  }, [currentBlock, project?.owner, project?.sponsor, users])
 
   const persistRoom = async (
     nextRoom: ResolvedRoom,

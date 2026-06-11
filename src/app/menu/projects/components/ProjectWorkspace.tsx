@@ -96,10 +96,10 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
     canEditSpecificBlock,
     canManageSpecificTask,
     canMoveSpecificTask,
+    canManageProject,
     canSaveTasks,
     canViewOverview,
     hasFullProjectVisibility,
-    isProjectOwner,
     visibleProjectForBlocks,
     visibleProjectForTasks,
     visibleTabs,
@@ -423,7 +423,7 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
               canCreateBlocks={Boolean(canCreateOrRemoveBlocks)}
               canEditBlock={canEditSpecificBlock}
               canAccessBlockRoom={canAccessSpecificBlockRoom}
-              canEditBlockOwner={Boolean(isProjectOwner)}
+              canEditBlockOwner={Boolean(canManageProject)}
               onOpenBlockMeeting={openBlockMeeting}
             />
           ) : null}

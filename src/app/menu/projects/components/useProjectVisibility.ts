@@ -34,11 +34,13 @@ export function useProjectVisibility({
   const isProjectSponsor =
     (sessionUserId && sessionUserId === String(project.createdById || '').trim()) ||
     (sessionUserName && sessionUserName === String(project.sponsor || '').trim())
+  const canManageProject =
+    sessionRole === 'admin' || isProjectOwner || isProjectSponsor
   const canDeleteProject = sessionRole === 'admin' || isProjectSponsor
   const hasFullProjectVisibility =
     sessionRole === 'admin' || sessionRole === 'direccio' || isProjectSponsor || isProjectOwner
   const canViewOverview = sessionRole === 'admin' || isProjectSponsor || isProjectOwner
-  const canCreateOrRemoveBlocks = sessionRole === 'admin' || isProjectOwner
+  const canCreateOrRemoveBlocks = canManageProject
 
   const visibleTabs = useMemo<WorkspaceTab[]>(
     () =>
@@ -102,8 +104,7 @@ export function useProjectVisibility({
   }, [hasFullProjectVisibility, project, sessionDepartment, sessionUserName])
 
   const canEditSpecificBlock = (block: ProjectData['blocks'][number]) =>
-    sessionRole === 'admin' ||
-    isProjectOwner ||
+    canManageProject ||
     ((sessionUserName && String(block.owner || '').trim() === sessionUserName) || false)
 
   const canAccessSpecificBlockRoom = (block: ProjectData['blocks'][number]) =>
@@ -114,8 +115,7 @@ export function useProjectVisibility({
     block: ProjectData['blocks'][number],
     _task: ProjectData['blocks'][number]['tasks'][number]
   ) =>
-    sessionRole === 'admin' ||
-    isProjectOwner ||
+    canManageProject ||
     ((sessionUserName && String(block.owner || '').trim() === sessionUserName) || false)
 
   const canAccessSpecificTaskOps = (
@@ -145,12 +145,14 @@ export function useProjectVisibility({
     canCreateOrRemoveBlocks,
     canDeleteProject,
     canEditSpecificBlock,
+    canManageProject,
     canManageSpecificTask,
     canMoveSpecificTask,
     canSaveTasks,
     canViewOverview,
     hasFullProjectVisibility,
     isProjectOwner,
+    isProjectSponsor,
     visibleProjectForBlocks,
     visibleProjectForTasks,
     visibleTabs,

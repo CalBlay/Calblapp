@@ -804,7 +804,7 @@ export default function ProjectBlocksTab({
                             </SelectContent>
                           </Select>
                           {!canEditBlockOwner ? (
-                            <p className="text-xs text-slate-500">Només el responsable del projecte pot canviar aquest camp.</p>
+                            <p className="text-xs text-slate-500">Només el responsable o el propietari del projecte pot canviar aquest camp.</p>
                           ) : null}
                         </div>
                       </div>
