@@ -6,14 +6,22 @@ export interface ZohoAttachment {
   Download_Url?: string
 }
 
-const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = ['FT', 'FG', 'FE', 'FM'] as const
+/** Camps Zoho (Deals) de tipus fitxer que alimenten zohoFile* al sync. */
+export const ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES = [
+  'Fulla_d_enc_rrec',
+  'Full_de_Tast',
+] as const
+
+const ZOHO_ATTACHMENT_ALLOWED_PREFIXES = ['FT', 'FG', 'FE', 'FM', 'FC'] as const
 
 export function shouldImportZohoAttachment(fileName?: string | null): boolean {
   const normalized = String(fileName || '').trim().toUpperCase()
   if (!normalized) return false
-  return ZOHO_ATTACHMENT_ALLOWED_PREFIXES.some((prefix) =>
-    normalized.startsWith(prefix)
-  )
+  return ZOHO_ATTACHMENT_ALLOWED_PREFIXES.some((prefix) => {
+    if (!normalized.startsWith(prefix)) return false
+    const next = normalized.charAt(prefix.length)
+    return next === ' ' || next === '_'
+  })
 }
 
 export function zohoAttachmentSlotKeys(baseKey: string) {
@@ -40,6 +48,24 @@ export function canPruneMissingZohoAttachmentSlots(
   currentKeys: ReadonlySet<string>
 ): boolean {
   return currentKeys.size > 0
+}
+
+export function mergeZohoFieldAttachments(
+  rawFieldValues: readonly unknown[]
+): ZohoAttachment[] {
+  const seen = new Set<string>()
+  const out: ZohoAttachment[] = []
+
+  for (const rawFieldValue of rawFieldValues) {
+    for (const attachment of extractZohoFieldAttachments(rawFieldValue)) {
+      const id = String(attachment.id || '').trim()
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      out.push(attachment)
+    }
+  }
+
+  return out
 }
 
 export function extractZohoFieldAttachments(

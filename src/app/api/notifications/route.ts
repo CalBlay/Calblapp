@@ -105,8 +105,8 @@ export async function GET(req: Request) {
     }
 
     if (mode === 'count') {
-      const snap = await baseRef.where('read', '==', false).get()
-      return NextResponse.json({ count: snap.size })
+      const snap = await baseRef.where('read', '==', false).count().get()
+      return NextResponse.json({ count: snap.data().count })
     }
 
     let listDocs: NotificationListItem[] = []

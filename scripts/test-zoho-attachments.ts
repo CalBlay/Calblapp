@@ -6,7 +6,9 @@ import {
   canPruneMissingZohoAttachmentSlots,
   extractZohoFieldAttachments,
   listExistingZohoAttachmentBaseKeys,
+  mergeZohoFieldAttachments,
   shouldImportZohoAttachment,
+  ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES,
   zohoAttachmentSlotKeys,
 } from '../src/services/zoho/attachments'
 
@@ -14,12 +16,16 @@ function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message)
 }
 
-assert(shouldImportZohoAttachment('FT123.pdf'), 'legacy FT prefix without space')
 assert(shouldImportZohoAttachment('FT 123.pdf'), 'FT prefix with space')
-assert(shouldImportZohoAttachment('fg-contracte.pdf'), 'case-insensitive FG prefix')
-assert(shouldImportZohoAttachment(' FE_fulla.pdf '), 'trimmed FE prefix')
-assert(shouldImportZohoAttachment('FM.encarrec.pdf'), 'FM prefix with punctuation')
-assert(!shouldImportZohoAttachment('contracte FT123.pdf'), 'prefix must be at start')
+assert(shouldImportZohoAttachment('FT_123.pdf'), 'FT prefix with underscore')
+assert(shouldImportZohoAttachment('fg_contracte.pdf'), 'case-insensitive FG prefix')
+assert(shouldImportZohoAttachment(' FE_fulla.pdf '), 'trimmed FE prefix with underscore')
+assert(shouldImportZohoAttachment('FM encarrec.pdf'), 'FM prefix with space')
+assert(shouldImportZohoAttachment('FC 07022024_AURA.pptx'), 'FC prefix with space')
+assert(shouldImportZohoAttachment('fc_07022024.pptx'), 'FC prefix with underscore')
+assert(!shouldImportZohoAttachment('FT123.pdf'), 'FT must be followed by space or underscore')
+assert(!shouldImportZohoAttachment('FM.encarrec.pdf'), 'FM must be followed by space or underscore')
+assert(!shouldImportZohoAttachment('contracte FT 123.pdf'), 'prefix must be at start')
 assert(!shouldImportZohoAttachment(''), 'empty name is ignored')
 
 const parsed = extractZohoFieldAttachments([
@@ -40,6 +46,18 @@ assert(parsed[0]?.File_Name === 'FT123.pdf', 'extracts File_Name')
 assert(parsed[0]?.Size === 42, 'normalizes numeric Size')
 assert(parsed[0]?.Download_Url === '/download/att-1', 'extracts download url')
 assert(parsed[1]?.id === 'att-2', 'extracts string attachment id')
+
+const merged = mergeZohoFieldAttachments([
+  [{ attachment_Id: 'att-1', File_Name: 'FT111.pdf' }],
+  [{ attachment_Id: 'att-2', File_Name: 'FG222.pdf' }],
+  [{ attachment_Id: 'att-1', File_Name: 'FT111.pdf' }],
+])
+assert(merged.length === 2, 'merges attachments from multiple Zoho file fields')
+assert(
+  ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES.join(',') ===
+    'Fulla_d_enc_rrec,Full_de_Tast',
+  'sync reads both Zoho file attachment fields'
+)
 
 const existing = {
   zohoFile1: 'https://storage.example/old',

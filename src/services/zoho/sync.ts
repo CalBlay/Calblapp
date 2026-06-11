@@ -16,10 +16,12 @@ import {
 } from '@/services/spaces/manualReserveZohoMatch'
 import {
   canPruneMissingZohoAttachmentSlots,
-  extractZohoFieldAttachments,
+  mergeZohoFieldAttachments,
   listExistingZohoAttachmentBaseKeys,
   shouldImportZohoAttachment,
+  ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES,
   zohoAttachmentSlotKeys,
+  type ZohoAttachment,
 } from '@/services/zoho/attachments'
 import { getZohoAccessToken, zohoFetch } from '@/services/zoho/auth'
 
@@ -58,6 +60,7 @@ interface ZohoDeal {
   Observacions?: string | null
   Description?: string | null
   Fulla_d_enc_rrec?: unknown
+  Full_de_Tast?: unknown
 }
 
 interface NormalizedDeal {
@@ -322,10 +325,28 @@ async function downloadZohoAttachment(
   }
 }
 
+async function resolveZohoDealAttachments(
+  moduleName: string,
+  dealId: string,
+  deal?: Pick<ZohoDeal, 'Fulla_d_enc_rrec' | 'Full_de_Tast'>
+): Promise<ZohoAttachment[]> {
+  const fieldValues: unknown[] = []
+
+  for (const field of ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES) {
+    let value = deal?.[field]
+    if (mergeZohoFieldAttachments([value]).length === 0) {
+      value = await getZohoFieldAttachmentValue(moduleName, dealId, field)
+    }
+    fieldValues.push(value)
+  }
+
+  return mergeZohoFieldAttachments(fieldValues)
+}
+
 async function buildZohoAttachmentFields(
   moduleName: string,
   dealId: string,
-  rawFieldValue: unknown,
+  deal?: Pick<ZohoDeal, 'Fulla_d_enc_rrec' | 'Full_de_Tast'>,
   existing?: FirebaseFirestore.DocumentData
 ): Promise<{
   fields: Record<string, unknown>
@@ -336,15 +357,7 @@ async function buildZohoAttachmentFields(
     deletedFromStorage: number
   }
 }> {
-  let attachments = extractZohoFieldAttachments(rawFieldValue)
-  if (attachments.length === 0) {
-    const freshFieldValue = await getZohoFieldAttachmentValue(
-      moduleName,
-      dealId,
-      'Fulla_d_enc_rrec'
-    )
-    attachments = extractZohoFieldAttachments(freshFieldValue)
-  }
+  const attachments = await resolveZohoDealAttachments(moduleName, dealId, deal)
   const out: Record<string, unknown> = {}
   const currentKeys = new Set<string>()
   const bucket = storageAdmin.bucket()
@@ -750,7 +763,7 @@ export async function syncZohoDealsToFirestore(): Promise<{
   let attachmentsReused = 0
   let attachmentsDeletedFromStorage = 0
   const baseFields =
-    'id,Deal_Name,Account_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec'
+    'id,Deal_Name,Account_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec,Full_de_Tast'
   const fields = ZOHO_EXTRA_RESPONSABLE_FIELD
     ? `${baseFields},${ZOHO_EXTRA_RESPONSABLE_FIELD}`
     : baseFields
@@ -1160,7 +1173,7 @@ StageGroup:
     const zohoAttachments = await buildZohoAttachmentFields(
       moduleName,
       deal.idZoho,
-      zohoById.get(deal.idZoho)?.Fulla_d_enc_rrec,
+      zohoById.get(deal.idZoho),
       existingDoc
     )
     attachmentsChecked += zohoAttachments.stats.checked
@@ -1209,7 +1222,7 @@ StageGroup:
     const zohoAttachments = await buildZohoAttachmentFields(
       moduleName,
       id,
-      zohoById.get(id)?.Fulla_d_enc_rrec,
+      zohoById.get(id),
       existingDoc
     )
     attachmentsChecked += zohoAttachments.stats.checked
