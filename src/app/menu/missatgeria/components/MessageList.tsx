@@ -42,7 +42,8 @@ export default function MessageList({
         .map((message) => {
           const isMine = Boolean(userId) && message.senderId === userId
           const readCount = (message as MessageWithReadCount).readCount ?? 0
-          const ticks = isMine && readCount > 0 ? 'âœ“âœ“' : isMine ? 'âœ“' : ''
+          const ticks =
+            isMine && readCount > 0 ? '\u2713\u2713' : isMine ? '\u2713' : ''
 
           return (
             <div key={message.id} className={`space-y-1 ${isMine ? 'flex flex-col items-end' : ''}`}>
@@ -53,10 +54,10 @@ export default function MessageList({
                   </span>
                 )}
                 <span>
-                  {isMine ? 'Tu' : message.senderName || 'Usuari'} Â· {timeLabel(message.createdAt)}
-                  {message.visibility === 'direct' ? ' Â· Directe' : ''}
+                  {isMine ? 'Tu' : message.senderName || 'Usuari'} · {timeLabel(message.createdAt)}
+                  {message.visibility === 'direct' ? ' · Directe' : ''}
                 </span>
-                {ticks && <span className="text-[10px] text-gray-400">{ticks}</span>}
+                {ticks ? <span className="text-[10px] text-gray-400">{ticks}</span> : null}
                 {isMine && (
                   <button
                     type="button"
@@ -79,14 +80,14 @@ export default function MessageList({
                   <div className={`space-y-2 ${isMine ? 'text-white' : ''}`}>
                     <div className="font-semibold">Sondeig de disponibilitat</div>
                     <div className="text-xs opacity-90">
-                      {message.surveyPayload?.eventName || 'Servei'} Â· {message.surveyPayload?.serviceDate || '-'}
+                      {message.surveyPayload?.eventName || 'Servei'} · {message.surveyPayload?.serviceDate || '-'}
                     </div>
                     <div className="text-xs opacity-90">
                       {message.surveyPayload?.startTime || '--:--'} - {message.surveyPayload?.endTime || '--:--'}
                     </div>
                     <div className="flex flex-wrap gap-2 pt-1">
                       {[
-                        ['yes', 'SÃ­'],
+                        ['yes', 'Sí'],
                         ['no', 'No'],
                         ['maybe', 'Potser'],
                       ].map(([value, label]) => {
@@ -148,7 +149,7 @@ export default function MessageList({
                       }?ticket=${message.ticketId}`}
                       className="underline hover:text-emerald-600"
                     >
-                      Veure ticket {message.ticketCode ? `Â· ${message.ticketCode}` : ''}
+                      Veure ticket {message.ticketCode ? `· ${message.ticketCode}` : ''}
                     </Link>
                   ) : ticketTypePickerId === message.id ? (
                     <div className="flex items-center gap-2">
@@ -158,9 +159,9 @@ export default function MessageList({
                         disabled={creatingTicketId === message.id}
                         className="underline hover:text-emerald-600"
                       >
-                        MaquinÃ ria
+                        Maquinària
                       </button>
-                      <span className="text-gray-300">Â·</span>
+                      <span className="text-gray-300">·</span>
                       <button
                         type="button"
                         onClick={() => onCreateTicket(message, 'deco')}
@@ -173,9 +174,9 @@ export default function MessageList({
                         type="button"
                         onClick={() => onPickTicketType(null)}
                         className="ml-2 text-gray-400 hover:text-gray-600"
-                        aria-label="Cancel"
+                        aria-label="Cancel·lar"
                       >
-                        âœ•
+                        {'\u00D7'}
                       </button>
                     </div>
                   ) : (
@@ -185,7 +186,7 @@ export default function MessageList({
                       disabled={creatingTicketId === message.id}
                       className="underline hover:text-emerald-600"
                     >
-                      {creatingTicketId === message.id ? 'Creant ticketâ€¦' : 'Crear ticket'}
+                      {creatingTicketId === message.id ? 'Creant ticket\u2026' : 'Crear ticket'}
                     </button>
                   )}
                 </div>

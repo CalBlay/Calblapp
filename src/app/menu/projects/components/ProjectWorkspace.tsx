@@ -440,10 +440,20 @@ export default function ProjectWorkspace({
 
   const {
     unreadByBlockId,
-    totalUnread: coordinationUnreadCount,
-    hasMessagesToRead: coordinationHasMessagesToRead,
+    generalDirectUnread: coordinationDirectUnread,
+    generalHasChannelMessagesToRead: coordinationHasChannelMessagesToRead,
     loading: coordinationActivityLoading,
+    refresh: refreshProjectActivity,
   } = useProjectActivity(projectId, trackProjectUnread, coordinationOpen)
+
+  useEffect(() => {
+    if (!coordinationOpen) return
+    void refreshProjectActivity()
+    const timer = window.setInterval(() => {
+      void refreshProjectActivity()
+    }, 15000)
+    return () => window.clearInterval(timer)
+  }, [coordinationOpen, refreshProjectActivity])
 
   const canCreateTasks = Boolean(canCreateOrRemoveBlocks || isBlockResponsible)
 
@@ -492,8 +502,8 @@ export default function ProjectWorkspace({
         canConvokeProjectMeeting={Boolean(canConvokeProjectMeeting)}
         onCreateMeeting={() => setKickoffMeetingOpen(true)}
         canAccessGeneralRoom={canAccessProjectGeneralRoom}
-        coordinationUnreadCount={coordinationUnreadCount}
-        coordinationHasMessagesToRead={coordinationHasMessagesToRead}
+        coordinationUnreadCount={coordinationOpen ? 0 : coordinationDirectUnread}
+        coordinationHasMessagesToRead={coordinationOpen ? false : coordinationHasChannelMessagesToRead}
         coordinationActivityLoading={coordinationActivityLoading}
         onOpenCoordination={() => setCoordinationOpen(true)}
         autosaveStatus={autosaveStatus}

@@ -11,7 +11,10 @@ export type ProjectActivityRoom = {
   blockId: string
   opsChannelId: string
   unreadCount: number
+  directUnreadCount?: number
+  channelUnreadCount?: number
   hasMessagesToRead?: boolean
+  hasChannelMessagesToRead?: boolean
   lastMessagePreview: string
   lastMessageAt: number
   lastSenderName: string
@@ -33,6 +36,8 @@ type ActivityResponse = {
   feed?: ProjectActivityFeedItem[]
   totalUnread?: number
   hasMessagesToRead?: boolean
+  generalDirectUnread?: number
+  generalHasChannelMessagesToRead?: boolean
   error?: string
 }
 
@@ -51,6 +56,8 @@ export function useProjectActivity(projectId: string, enabled = true, pollWhileO
   const feed = Array.isArray(data?.feed) ? data.feed : []
   const totalUnread = Number(data?.totalUnread || 0)
   const hasMessagesToRead = Boolean(data?.hasMessagesToRead)
+  const generalDirectUnread = Number(data?.generalDirectUnread || 0)
+  const generalHasChannelMessagesToRead = Boolean(data?.generalHasChannelMessagesToRead)
 
   const unreadByBlockId = rooms.reduce<Record<string, number>>((acc, room) => {
     if (room.roomKind === 'block' && room.blockId) {
@@ -61,14 +68,18 @@ export function useProjectActivity(projectId: string, enabled = true, pollWhileO
 
   const generalRoom = rooms.find((room) => room.roomKind === 'general') || null
   const generalUnread = generalRoom?.unreadCount || 0
+  const generalChannelUnread = generalRoom?.channelUnreadCount ?? Math.max(0, generalUnread - generalDirectUnread)
 
   return {
     rooms,
     feed,
     totalUnread,
     hasMessagesToRead,
+    generalDirectUnread,
+    generalHasChannelMessagesToRead,
     generalRoom,
     generalUnread,
+    generalChannelUnread,
     unreadByBlockId,
     loading: isLoading,
     error: error || data?.error || '',

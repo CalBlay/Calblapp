@@ -41,6 +41,8 @@ export async function PATCH(_req: Request, ctx: { params: Promise<{ id: string }
     await snap.docs[0].ref.set(
       {
         unreadCount: 0,
+        directUnreadCount: 0,
+        channelUnreadCount: 0,
         projectMissedActivityPending: false,
         projectMissedActivityLastReadAt: Date.now(),
       },

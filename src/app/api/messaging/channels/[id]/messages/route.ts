@@ -9,6 +9,7 @@ import {
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { buildUnreadIncrement } from '@/lib/messaging/channelUnread'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -429,9 +430,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       if (memberUserId === userId) continue
       if (member?.hidden || member?.notify === false) continue
       if (visibility === 'direct' && memberUserId !== targetUserId) continue
-      const memberUpdate: Record<string, unknown> = {
-        unreadCount: Number(member?.unreadCount || 0) + 1,
-      }
+      const unreadUpdate = buildUnreadIncrement(visibility, member)
+      const memberUpdate: Record<string, unknown> = { ...unreadUpdate }
 
       if (channelSource === 'projects' && visibility === 'channel') {
         const hasPendingWindow = Boolean(member?.projectMissedActivityPending)

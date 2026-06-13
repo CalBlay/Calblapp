@@ -9,6 +9,7 @@ import { buildGeneralRoomId, buildAutoGeneralRoom } from '@/lib/projectGeneralRo
 import { canAccessBlockRoom, canAccessGeneralRoom } from '@/lib/projectRoomAccess'
 import { sessionToRoomAccessUser } from '@/lib/projectAccess'
 import { buildProjectRoomChannelId } from '@/lib/projectRoomOps'
+import { resolveChannelUnreadCounts } from '@/lib/messaging/channelUnread'
 
 type SessionUser = {
   id: string
@@ -23,7 +24,10 @@ type RoomSummary = {
   blockId: string
   opsChannelId: string
   unreadCount: number
+  directUnreadCount: number
+  channelUnreadCount: number
   hasMessagesToRead: boolean
+  hasChannelMessagesToRead: boolean
   lastMessagePreview: string
   lastMessageAt: number
   lastSenderName: string
@@ -200,6 +204,7 @@ export async function GET(
       if (String(channelData.status || '').toLowerCase() === 'archived') return
 
       const unreadCount = Number(memberData?.unreadCount || 0)
+      const { directUnreadCount, channelUnreadCount } = resolveChannelUnreadCounts(memberData)
       const lastReadAt = Number(memberData?.projectMissedActivityLastReadAt || 0)
       const lastMessageAt = Number(channelData.lastMessageAt || 0)
       const lastMessagePreview = String(channelData.lastMessagePreview || '').trim()
@@ -207,9 +212,11 @@ export async function GET(
       const latestBody = lastMessagePreview
       const latestCreatedAt = lastMessageAt
 
-      const hasMessagesToRead =
-        unreadCount > 0 ||
+      const hasChannelMessagesToRead =
+        channelUnreadCount > 0 ||
         (lastMessageAt > 0 && (!isMember || lastMessageAt > lastReadAt))
+
+      const hasMessagesToRead = directUnreadCount > 0 || hasChannelMessagesToRead
 
       summaries.push({
         roomId,
@@ -218,7 +225,10 @@ export async function GET(
         blockId: String(room.blockId || ''),
         opsChannelId: channelId,
         unreadCount,
+        directUnreadCount,
+        channelUnreadCount,
         hasMessagesToRead,
+        hasChannelMessagesToRead,
         lastMessagePreview: latestBody,
         lastMessageAt: latestCreatedAt,
         lastSenderName,
@@ -242,12 +252,17 @@ export async function GET(
     const feed = feedCandidates.sort((left, right) => right.createdAt - left.createdAt).slice(0, 8)
     const totalUnread = summaries.reduce((sum, item) => sum + item.unreadCount, 0)
     const hasMessagesToRead = summaries.some((item) => item.hasMessagesToRead)
+    const generalRoom = summaries.find((item) => item.roomKind === 'general') || null
+    const generalDirectUnread = generalRoom?.directUnreadCount || 0
+    const generalHasChannelMessagesToRead = Boolean(generalRoom?.hasChannelMessagesToRead)
 
     return NextResponse.json({
       rooms: summaries,
       feed,
       totalUnread,
       hasMessagesToRead,
+      generalDirectUnread,
+      generalHasChannelMessagesToRead,
     })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'

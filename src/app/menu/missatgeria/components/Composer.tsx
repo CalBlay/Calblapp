@@ -3,6 +3,7 @@
 import React from 'react'
 import Image from 'next/image'
 import { Paperclip, Send } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Member, PendingImage } from '../types'
 
 type Props = {
@@ -28,6 +29,7 @@ type Props = {
   fileInputRef: React.RefObject<HTMLInputElement>
   onFileChange: (file: File | null) => void
   fileAccept?: string
+  embedded?: boolean
 }
 
 export default function Composer({
@@ -53,9 +55,17 @@ export default function Composer({
   fileInputRef,
   onFileChange,
   fileAccept,
+  embedded = false,
 }: Props) {
   return (
-    <div className="border-t p-3 space-y-2 bg-white dark:bg-slate-900 fixed bottom-0 left-0 right-0 lg:sticky lg:bottom-0 pb-[env(safe-area-inset-bottom)] dark:border-slate-800">
+    <div
+      className={cn(
+        'shrink-0 space-y-2 border-t bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-slate-900',
+        embedded
+          ? 'sticky bottom-0 z-10'
+          : 'fixed bottom-0 left-0 right-0 lg:sticky lg:bottom-0'
+      )}
+    >
       {Object.keys(typingUsers).length > 0 && (
         <div className="text-xs text-gray-500 dark:text-slate-400">
           S'està escrivint…
@@ -95,12 +105,12 @@ export default function Composer({
         </div>
       )}
       {imageError && <div className="text-xs text-red-600">{imageError}</div>}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-nowrap gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {['Rebut', 'Ho reviso', 'Fet'].map((quick) => (
           <button
             key={quick}
             type="button"
-            className="text-xs border rounded-full px-3 py-1 text-gray-600 hover:text-gray-800 dark:text-slate-300 dark:border-slate-700 dark:hover:text-white"
+            className="shrink-0 rounded-full border px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 dark:border-slate-700 dark:text-slate-300 dark:hover:text-white"
             onClick={() => onQuick(quick)}
             disabled={isReadOnly}
           >
@@ -124,15 +134,15 @@ export default function Composer({
         />
         <button
           type="button"
-          className="border rounded px-2 py-1 text-gray-600 hover:text-gray-800 hover:border-gray-400 dark:text-slate-300 dark:border-slate-700 dark:hover:text-white dark:hover:border-slate-500"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border text-gray-600 hover:border-gray-400 hover:text-gray-800 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-white"
           onClick={onPickFile}
           title="Adjuntar fitxer"
           disabled={imageUploading || isReadOnly}
         >
-          <Paperclip className="w-4 h-4" />
+          <Paperclip className="h-4 w-4" />
         </button>
         <input
-          className="flex-1 border rounded-lg px-3 py-2 text-sm bg-transparent text-gray-900 dark:text-slate-100 dark:border-slate-700"
+          className="min-h-11 min-w-0 flex-1 rounded-lg border bg-transparent px-3 py-2.5 text-base text-gray-900 dark:border-slate-700 dark:text-slate-100 sm:text-sm"
           placeholder="Escriu el missatge..."
           value={messageText}
           onChange={(e) => onTextChange(e.target.value)}
@@ -140,12 +150,12 @@ export default function Composer({
         />
         <button
           type="button"
-          className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-full"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
           onClick={onSend}
           disabled={imageUploading || isReadOnly || isSending}
           title="Enviar"
         >
-          <Send className="w-4 h-4" />
+          <Send className="h-4 w-4" />
         </button>
       </div>
 

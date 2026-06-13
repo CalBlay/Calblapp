@@ -8,12 +8,14 @@ import MessageList from '@/app/menu/missatgeria/components/MessageList'
 import Composer from '@/app/menu/missatgeria/components/Composer'
 import type { Member, Message, PendingImage } from '@/app/menu/missatgeria/types'
 import { compressRasterImageWithMeta, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
+import { cn } from '@/lib/utils'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 type Props = {
   channelId: string
   userId?: string
+  embedded?: boolean
   canCreateTaskFromHash?: boolean
   onCreateTaskFromHash?: (text: string) => Promise<{ title: string }>
   onOperationalDocumentCreated?: (document: {
@@ -34,6 +36,7 @@ type TypingRealtimeMessage = { data?: { userId?: string } }
 export default function ProjectRoomOpsChat({
   channelId,
   userId,
+  embedded = false,
   canCreateTaskFromHash = false,
   onCreateTaskFromHash,
   onOperationalDocumentCreated,
@@ -423,10 +426,13 @@ export default function ProjectRoomOpsChat({
   )
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <div
         ref={scrollRef}
-        className="flex-1 space-y-3 overflow-y-auto px-5 py-4"
+        className={cn(
+          'min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 sm:px-5 sm:py-4',
+          embedded ? 'pb-2' : 'pb-32 lg:pb-4'
+        )}
         onScroll={(event) => {
           if (event.currentTarget.scrollTop < 40) loadMore()
         }}
@@ -471,7 +477,8 @@ export default function ProjectRoomOpsChat({
         fileInputRef={fileInputRef}
         onFileChange={handleAttachmentPick}
         fileAccept="*/*"
+        embedded={embedded}
       />
-    </>
+    </div>
   )
 }

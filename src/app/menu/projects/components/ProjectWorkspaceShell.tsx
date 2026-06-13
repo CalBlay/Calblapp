@@ -97,10 +97,10 @@ export default function ProjectWorkspaceShell({
 
   const coordinationIndicatorLabel =
     coordinationUnreadCount > 0
-      ? `${coordinationUnreadCount} missatge${coordinationUnreadCount === 1 ? '' : 's'} per llegir`
+      ? `${coordinationUnreadCount} missatge${coordinationUnreadCount === 1 ? '' : 's'} per a tu`
       : coordinationHasMessagesToRead
-        ? 'Missatges per llegir'
-        : 'Sense missatges pendents'
+        ? 'Missatges nous al canal general'
+        : 'Canal general al dia'
 
   return (
     <div className="w-full border-b border-violet-200/80 bg-gradient-to-r from-violet-200/70 via-fuchsia-100/60 to-violet-50 shadow-[0_8px_24px_-16px_rgba(109,40,217,0.35)]">

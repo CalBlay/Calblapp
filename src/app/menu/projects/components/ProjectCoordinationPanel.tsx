@@ -50,6 +50,7 @@ type Props = {
 
 type RoomPayload = NonNullable<ProjectData['rooms'][number]>
 type AccessSection = 'blocks' | 'tasks' | 'workspaces' | 'participants'
+type MobilePanelView = 'chat' | 'access'
 
 function participantRoleLabel(name: string, project: ProjectData) {
   const trimmed = name.trim()
@@ -152,6 +153,173 @@ function AccessListItem({
   )
 }
 
+function AccessSidebar({
+  projectId,
+  project,
+  generalRoomId,
+  activeRoomId,
+  visibleBlocks,
+  visibleTasks,
+  focusedBlockId,
+  focusedTaskKey,
+  accessibleBlockRooms,
+  workspaceCount,
+  participants,
+  unreadByBlockId,
+  expandedSections,
+  onToggleSection,
+  onSelectRoom,
+  onSelectBlock,
+  onSelectTask,
+}: {
+  projectId: string
+  project: ProjectData
+  generalRoomId: string
+  activeRoomId: string
+  visibleBlocks: ProjectBlock[]
+  visibleTasks: Array<{ block: ProjectBlock; task: ProjectTask; taskKey: string }>
+  focusedBlockId?: string | null
+  focusedTaskKey?: string | null
+  accessibleBlockRooms: Array<{ room: RoomPayload; block: ProjectBlock }>
+  workspaceCount: number
+  participants: ReturnType<typeof deriveProjectParticipants>
+  unreadByBlockId: Record<string, number>
+  expandedSections: Record<AccessSection, boolean>
+  onToggleSection: (section: AccessSection) => void
+  onSelectRoom: (roomId: string) => void
+  onSelectBlock: (blockId: string) => void
+  onSelectTask: (blockId: string, taskId: string) => void
+}) {
+  return (
+    <>
+      <div className="border-b border-slate-200 px-4 py-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Accés directe</div>
+        <p className="mt-1 text-[11px] leading-snug text-slate-500">
+          Consulta blocs, tasques o espais sense tancar la conversa.
+        </p>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <CollapsibleSection
+          title="Blocs"
+          count={visibleBlocks.length}
+          icon={Blocks}
+          expanded={expandedSections.blocks}
+          onToggle={() => onToggleSection('blocks')}
+        >
+          {visibleBlocks.length === 0 ? (
+            <p className="px-1 text-xs text-slate-500">Sense blocs visibles.</p>
+          ) : (
+            visibleBlocks.map((block) => (
+              <AccessListItem
+                key={block.id}
+                title={block.name || 'Bloc sense nom'}
+                subtitle={statusLabel(block.status)}
+                icon={Blocks}
+                selected={focusedBlockId === block.id}
+                onClick={() => onSelectBlock(block.id)}
+              />
+            ))
+          )}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Tasques"
+          count={visibleTasks.length}
+          icon={TimerReset}
+          expanded={expandedSections.tasks}
+          onToggle={() => onToggleSection('tasks')}
+        >
+          {visibleTasks.length === 0 ? (
+            <p className="px-1 text-xs text-slate-500">Sense tasques visibles.</p>
+          ) : (
+            visibleTasks.map(({ block, task, taskKey }) => (
+              <AccessListItem
+                key={taskKey}
+                title={task.title || 'Tasca sense nom'}
+                subtitle={`${block.name || 'Bloc'} · ${statusLabel(task.status)}`}
+                icon={TimerReset}
+                selected={focusedTaskKey === taskKey}
+                onClick={() => onSelectTask(block.id, task.id)}
+              />
+            ))
+          )}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title={BLOCK_WORKSPACE_LABEL}
+          count={workspaceCount}
+          icon={Layers}
+          expanded={expandedSections.workspaces}
+          onToggle={() => onToggleSection('workspaces')}
+        >
+          <AccessListItem
+            title={GENERAL_ROOM_LABEL}
+            icon={MessageSquare}
+            selected={activeRoomId === generalRoomId}
+            onClick={() => onSelectRoom(generalRoomId)}
+          />
+          {accessibleBlockRooms.length === 0 ? (
+            <p className="px-1 text-xs text-slate-500">Sense sales de bloc accessibles.</p>
+          ) : (
+            accessibleBlockRooms.map(({ room: blockRoom, block }) => (
+              <AccessListItem
+                key={blockRoom.id}
+                title={block.name || blockRoom.name}
+                subtitle="Sala de bloc"
+                icon={Layers}
+                selected={activeRoomId === blockRoom.id}
+                badge={unreadByBlockId[block.id]}
+                onClick={() => onSelectRoom(blockRoom.id)}
+              />
+            ))
+          )}
+          {activeRoomId !== generalRoomId ? (
+            <Button asChild type="button" variant="ghost" size="sm" className="mt-1 h-7 w-full px-2 text-xs">
+              <Link href={buildProjectRoomHref(projectId, activeRoomId)} target="_blank">
+                <ExternalLink className="mr-1.5 h-3 w-3" />
+                Obrir sala completa
+              </Link>
+            </Button>
+          ) : null}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Participants"
+          count={participants.length}
+          icon={Users}
+          expanded={expandedSections.participants}
+          onToggle={() => onToggleSection('participants')}
+        >
+          <div className="space-y-2">
+            {participants.map((participant) => (
+              <div
+                key={participant.name}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
+                    {initials(participant.name)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-slate-900">{participant.name}</div>
+                    <div className="truncate text-xs text-slate-500">
+                      {participantRoleLabel(participant.name, project)}
+                    </div>
+                    {participant.department ? (
+                      <div className="truncate text-[11px] text-slate-400">{participant.department}</div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      </div>
+    </>
+  )
+}
+
 const DEFAULT_EXPANDED_SECTIONS: Record<AccessSection, boolean> = {
   blocks: false,
   tasks: false,
@@ -183,6 +351,7 @@ export default function ProjectCoordinationPanel({
   const [room, setRoom] = useState<RoomPayload | null>(null)
   const [expandedSections, setExpandedSections] =
     useState<Record<AccessSection, boolean>>(DEFAULT_EXPANDED_SECTIONS)
+  const [mobilePanelView, setMobilePanelView] = useState<MobilePanelView>('chat')
   const wasOpenRef = useRef(false)
 
   const participants = useMemo(
@@ -268,6 +437,7 @@ export default function ProjectCoordinationPanel({
     if (open && !wasOpenRef.current) {
       setActiveRoomId(generalRoomId)
       setExpandedSections(DEFAULT_EXPANDED_SECTIONS)
+      setMobilePanelView('chat')
     }
     wasOpenRef.current = open
   }, [generalRoomId, open])
@@ -280,16 +450,39 @@ export default function ProjectCoordinationPanel({
   const handleSelectRoom = (roomId: string) => {
     setActiveRoomId(roomId)
     setExpandedSections((current) => ({ ...current, workspaces: true }))
+    setMobilePanelView('chat')
   }
 
   const handleSelectBlock = (blockId: string) => {
     onNavigateToBlock(blockId)
     setExpandedSections((current) => ({ ...current, blocks: true }))
+    setMobilePanelView('chat')
   }
 
   const handleSelectTask = (blockId: string, taskId: string) => {
     onNavigateToTask(blockId, taskId)
     setExpandedSections((current) => ({ ...current, tasks: true }))
+    setMobilePanelView('chat')
+  }
+
+  const accessSidebarProps = {
+    projectId,
+    project,
+    generalRoomId,
+    activeRoomId,
+    visibleBlocks,
+    visibleTasks,
+    focusedBlockId,
+    focusedTaskKey,
+    accessibleBlockRooms,
+    workspaceCount,
+    participants,
+    unreadByBlockId,
+    expandedSections,
+    onToggleSection: toggleSection,
+    onSelectRoom: handleSelectRoom,
+    onSelectBlock: handleSelectBlock,
+    onSelectTask: handleSelectTask,
   }
 
   const activeRoomLabel =
@@ -305,26 +498,60 @@ export default function ProjectCoordinationPanel({
       <SheetContent
         side="right"
         overlayClassName="pointer-events-none bg-slate-900/10"
-        className="flex h-full w-full max-w-none flex-col gap-0 border-l border-violet-100 p-0 shadow-2xl sm:max-w-4xl lg:max-w-6xl [&>button]:hidden"
+        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-none flex-col gap-0 overflow-hidden border-l border-violet-100 p-0 shadow-2xl sm:max-w-4xl lg:max-w-6xl [&>button]:hidden"
       >
         <SheetTitle className="sr-only">{activeRoomLabel}</SheetTitle>
 
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-violet-700">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3 py-2.5 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            {mobilePanelView === 'access' ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 lg:hidden"
+                onClick={() => setMobilePanelView('chat')}
+                aria-label="Tornar al xat"
+              >
+                <ChevronDown className="h-4 w-4 rotate-90" />
+              </Button>
+            ) : null}
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700">
               <MessageSquare className="h-4 w-4" />
             </div>
-            <div>
-              <div className="text-sm font-semibold text-slate-900">{activeRoomLabel}</div>
-              <div className="text-xs text-slate-500">Canal Ops · {project.name}</div>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-slate-900">
+                {mobilePanelView === 'access' ? 'Accés directe' : activeRoomLabel}
+              </div>
+              <div className="truncate text-xs text-slate-500">
+                {mobilePanelView === 'access' ? project.name : `Canal Ops · ${project.name}`}
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            {mobilePanelView === 'chat' ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 px-2.5 text-xs lg:hidden"
+                onClick={() => setMobilePanelView('access')}
+              >
+                <Layers className="mr-1.5 h-3.5 w-3.5" />
+                Accés
+              </Button>
+            ) : null}
             {room?.opsChannelId ? (
-              <Button asChild type="button" variant="outline" size="sm" className="h-8 text-xs">
+              <Button
+                asChild
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 px-2 text-xs"
+              >
                 <Link href={buildMissatgeriaChannelHref(room.opsChannelId)} target="_blank">
-                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                  {MISSATGERIA_OPEN_LABEL}
+                  <ExternalLink className="h-3.5 w-3.5 sm:mr-1.5" />
+                  <span className="hidden sm:inline">{MISSATGERIA_OPEN_LABEL}</span>
                 </Link>
               </Button>
             ) : null}
@@ -332,7 +559,7 @@ export default function ProjectCoordinationPanel({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-9 w-9"
               onClick={() => onOpenChange(false)}
             >
               <X className="h-4 w-4" />
@@ -341,7 +568,12 @@ export default function ProjectCoordinationPanel({
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <section className="flex min-w-0 flex-1 flex-col border-r border-slate-200">
+          <section
+            className={cn(
+              'flex min-h-0 min-w-0 flex-1 flex-col border-slate-200 lg:border-r',
+              mobilePanelView === 'access' ? 'hidden lg:flex' : 'flex'
+            )}
+          >
             {loading ? (
               <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
                 Carregant conversa...
@@ -359,9 +591,11 @@ export default function ProjectCoordinationPanel({
                 </Button>
               </div>
             ) : room?.opsChannelId ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <ProjectRoomOpsChat channelId={room.opsChannelId} userId={sessionUserId} />
-              </div>
+              <ProjectRoomOpsChat
+                channelId={room.opsChannelId}
+                userId={sessionUserId}
+                embedded
+              />
             ) : (
               <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-slate-500">
                 Guarda el projecte per activar el canal de coordinació.
@@ -369,137 +603,13 @@ export default function ProjectCoordinationPanel({
             )}
           </section>
 
-          <aside className="flex w-80 shrink-0 flex-col border-l border-slate-200 bg-slate-50/60">
-            <div className="border-b border-slate-200 px-4 py-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Accés directe
-              </div>
-              <p className="mt-1 text-[11px] leading-snug text-slate-500">
-                Consulta blocs, tasques o espais sense tancar la conversa.
-              </p>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <CollapsibleSection
-                title="Blocs"
-                count={visibleBlocks.length}
-                icon={Blocks}
-                expanded={expandedSections.blocks}
-                onToggle={() => toggleSection('blocks')}
-              >
-                {visibleBlocks.length === 0 ? (
-                  <p className="px-1 text-xs text-slate-500">Sense blocs visibles.</p>
-                ) : (
-                  visibleBlocks.map((block) => (
-                    <AccessListItem
-                      key={block.id}
-                      title={block.name || 'Bloc sense nom'}
-                      subtitle={statusLabel(block.status)}
-                      icon={Blocks}
-                      selected={focusedBlockId === block.id}
-                      onClick={() => handleSelectBlock(block.id)}
-                    />
-                  ))
-                )}
-              </CollapsibleSection>
-
-              <CollapsibleSection
-                title="Tasques"
-                count={visibleTasks.length}
-                icon={TimerReset}
-                expanded={expandedSections.tasks}
-                onToggle={() => toggleSection('tasks')}
-              >
-                {visibleTasks.length === 0 ? (
-                  <p className="px-1 text-xs text-slate-500">Sense tasques visibles.</p>
-                ) : (
-                  visibleTasks.map(({ block, task, taskKey }) => (
-                    <AccessListItem
-                      key={taskKey}
-                      title={task.title || 'Tasca sense nom'}
-                      subtitle={`${block.name || 'Bloc'} · ${statusLabel(task.status)}`}
-                      icon={TimerReset}
-                      selected={focusedTaskKey === taskKey}
-                      onClick={() => handleSelectTask(block.id, task.id)}
-                    />
-                  ))
-                )}
-              </CollapsibleSection>
-
-              <CollapsibleSection
-                title={BLOCK_WORKSPACE_LABEL}
-                count={workspaceCount}
-                icon={Layers}
-                expanded={expandedSections.workspaces}
-                onToggle={() => toggleSection('workspaces')}
-              >
-                <AccessListItem
-                  title={GENERAL_ROOM_LABEL}
-                  icon={MessageSquare}
-                  selected={activeRoomId === generalRoomId}
-                  onClick={() => handleSelectRoom(generalRoomId)}
-                />
-                {accessibleBlockRooms.length === 0 ? (
-                  <p className="px-1 text-xs text-slate-500">Sense sales de bloc accessibles.</p>
-                ) : (
-                  accessibleBlockRooms.map(({ room: blockRoom, block }) => (
-                    <AccessListItem
-                      key={blockRoom.id}
-                      title={block.name || blockRoom.name}
-                      subtitle="Sala de bloc"
-                      icon={Layers}
-                      selected={activeRoomId === blockRoom.id}
-                      badge={unreadByBlockId[block.id]}
-                      onClick={() => handleSelectRoom(blockRoom.id)}
-                    />
-                  ))
-                )}
-                {activeRoomId !== generalRoomId ? (
-                  <Button asChild type="button" variant="ghost" size="sm" className="mt-1 h-7 w-full px-2 text-xs">
-                    <Link href={buildProjectRoomHref(projectId, activeRoomId)} target="_blank">
-                      <ExternalLink className="mr-1.5 h-3 w-3" />
-                      Obrir sala completa
-                    </Link>
-                  </Button>
-                ) : null}
-              </CollapsibleSection>
-
-              <CollapsibleSection
-                title="Participants"
-                count={participants.length}
-                icon={Users}
-                expanded={expandedSections.participants}
-                onToggle={() => toggleSection('participants')}
-              >
-                <div className="space-y-2">
-                  {participants.map((participant) => (
-                    <div
-                      key={participant.name}
-                      className="rounded-xl border border-slate-200 bg-white px-3 py-2.5"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
-                          {initials(participant.name)}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-slate-900">
-                            {participant.name}
-                          </div>
-                          <div className="truncate text-xs text-slate-500">
-                            {participantRoleLabel(participant.name, project)}
-                          </div>
-                          {participant.department ? (
-                            <div className="truncate text-[11px] text-slate-400">
-                              {participant.department}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CollapsibleSection>
-            </div>
+          <aside
+            className={cn(
+              'flex min-h-0 flex-col bg-slate-50/60 lg:w-80 lg:shrink-0 lg:border-l lg:border-slate-200',
+              mobilePanelView === 'access' ? 'w-full flex-1' : 'hidden lg:flex'
+            )}
+          >
+            <AccessSidebar {...accessSidebarProps} />
           </aside>
         </div>
       </SheetContent>
