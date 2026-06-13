@@ -54,6 +54,8 @@ export default function ProjectRoomOpsChat({
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesCache = useRef<Map<string, Message[]>>(new Map())
   const typingThrottleRef = useRef<number>(0)
+  const markedMessageIdsRef = useRef<Set<string>>(new Set())
+  const lastChannelReadRef = useRef<string>('')
 
   const { data: messagesData, mutate: refreshMessages } = useSWR(
     channelId ? `/api/messaging/channels/${channelId}/messages?limit=20` : null,
@@ -121,22 +123,39 @@ export default function ProjectRoomOpsChat({
 
   useEffect(() => {
     if (!channelId) return
+    markedMessageIdsRef.current = new Set()
+    lastChannelReadRef.current = ''
     const cached = messagesCache.current.get(channelId)
     if (cached?.length) setMessagesState(cached)
   }, [channelId])
 
   useEffect(() => {
-    if (!channelId || !messagesState.length) return
-    const ids = messagesState.map((m) => m.id).filter(Boolean)
-    fetch('/api/messaging/messages/read', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messageIds: ids }),
-    }).catch(() => {})
+    if (!channelId) return
+    if (lastChannelReadRef.current === channelId) return
+    lastChannelReadRef.current = channelId
     fetch(`/api/messaging/channels/${channelId}/read`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
     }).catch(() => {})
+  }, [channelId])
+
+  useEffect(() => {
+    if (!channelId || !messagesState.length) return
+    const newIds = messagesState
+      .map((message) => message.id)
+      .filter((id): id is string => Boolean(id) && !markedMessageIdsRef.current.has(id))
+    if (newIds.length === 0) return
+
+    const timer = window.setTimeout(() => {
+      newIds.forEach((id) => markedMessageIdsRef.current.add(id))
+      fetch('/api/messaging/messages/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageIds: newIds }),
+      }).catch(() => {})
+    }, 800)
+
+    return () => window.clearTimeout(timer)
   }, [channelId, messagesState])
 
   useEffect(() => {
@@ -148,7 +167,10 @@ export default function ProjectRoomOpsChat({
       const data = msg?.data
       if (!data || data.channelId !== channelId) return
       notifyOperationalDocument(data)
-      refreshMessages()
+      setMessagesState((current) => {
+        if (current.some((item) => item.id === data.id)) return current
+        return [data, ...current]
+      })
     }
 
     const handleTyping = (msg: TypingRealtimeMessage) => {

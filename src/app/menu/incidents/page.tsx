@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/select'
 
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import { CorporateFiltersShell } from '@/components/layout/corporate-filters'
+import { corporateFilterBadgeClass } from '@/lib/corporate-filters'
 import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { useIncidents } from '@/hooks/useIncidents'
 import IncidentsTable from './components/IncidentsTable'
@@ -546,14 +548,13 @@ export default function IncidentsPage() {
         ) : null}
       </div>
 
-      {/* Barra compacta: només dates + botó filtres */}
-      <div className="mb-2 flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:flex-nowrap">
+      <CorporateFiltersShell variant="toolbar" className="mb-2">
         <div className="flex min-w-[200px] flex-wrap items-center gap-2">
-          <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+          <span className={corporateFilterBadgeClass(true)}>
             {INCIDENT_DATE_MODE_LABELS[filters.dateMode]}
           </span>
           {filters.dateMode === 'event' && filters.from && filters.to ? (
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+            <span className={corporateFilterBadgeClass(false)}>
               {filters.from === filters.to
                 ? formatDateOnly(filters.from, filters.from)
                 : `${formatDateOnly(filters.from, filters.from)} – ${formatDateOnly(filters.to, filters.to)}`}
@@ -584,7 +585,7 @@ export default function IncidentsPage() {
         />
         <div className="min-w-[8px] flex-1" />
         <FilterButton onClick={openFiltersPanel} />
-      </div>
+      </CorporateFiltersShell>
 
       {/* Contingut */}
       {loading && (

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, type Dispatch, type SetStateAction } from 'react'
 import { toast } from '@/components/ui/use-toast'
-import { deriveProjectPhase, type ProjectData } from './project-shared'
+import { deriveProjectPhase, type KickoffAttendee, type ProjectData } from './project-shared'
 
 async function readKickoffResponse(res: Response) {
   const contentType = res.headers.get('content-type') || ''
@@ -126,6 +126,35 @@ export function useProjectKickoffActions({
     setManualKickoffEmail('')
   }, [manualKickoffEmail, setManualKickoffEmail, setProject])
 
+  const addKickoffAttendeeFromUser = useCallback(
+    (user: { id: string; name: string; email: string; department?: string }) => {
+      const key = `user:${user.id}`
+      setProject((current) => {
+        if (current.kickoff.attendees.some((item) => item.key === key)) return current
+        return {
+          ...current,
+          kickoff: {
+            ...current.kickoff,
+            excludedKeys: current.kickoff.excludedKeys.filter((item) => item !== key),
+            attendees: [
+              ...current.kickoff.attendees,
+              {
+                key,
+                userId: user.id,
+                name: user.name,
+                email: user.email,
+                department: user.department || 'Manual',
+                attended: true,
+              },
+            ],
+          },
+        }
+      })
+      onBlocksDirty?.()
+    },
+    [onBlocksDirty, setProject]
+  )
+
   const kickoffReady = useMemo(
     () =>
       Boolean(project.kickoff.date) &&
@@ -180,12 +209,14 @@ export function useProjectKickoffActions({
         description: payload.warning || undefined,
         variant: payload.warning ? 'destructive' : 'default',
       })
+      return true
     } catch (err: unknown) {
       toast({
         title: 'Error enviant la convocatòria',
         description: err instanceof Error ? err.message : 'Error inesperat',
         variant: 'destructive',
       })
+      return false
     } finally {
       setSendingKickoff(false)
     }
@@ -229,7 +260,58 @@ export function useProjectKickoffActions({
     }
   }, [ensureProjectRooms, project, saveProject, setProject, setSavingBlocks])
 
-  const finalizeKickoffMinutes = useCallback(async () => {
+  const saveKickoffMinutes = useCallback(
+    async (
+      payload: { minutes: string; attendees: KickoffAttendee[] },
+      options?: { silent?: boolean; title?: string }
+    ) => {
+      try {
+        setSavingBlocks(true)
+        const timestamp = new Date().toISOString()
+        const nextProject = ensureProjectRooms({
+          ...project,
+          kickoff: {
+            ...project.kickoff,
+            minutes: payload.minutes,
+            attendees: payload.attendees,
+            minutesAuthor:
+              String(sessionUserName || '').trim() || project.kickoff.minutesAuthor || '',
+            minutesUpdatedAt: timestamp,
+          },
+        })
+        setProject(nextProject)
+        await saveProject(options?.title || 'Acta desada', nextProject, {
+          sections: ['kickoff'],
+        })
+        onKickoffMinutesSaved?.(nextProject)
+        if (!options?.silent) {
+          toast({ title: 'Acta desada' })
+        }
+        return nextProject
+      } catch (err: unknown) {
+        toast({
+          title: 'Error desant',
+          description: err instanceof Error ? err.message : 'Error inesperat',
+          variant: 'destructive',
+        })
+        return null
+      } finally {
+        setSavingBlocks(false)
+      }
+    },
+    [
+      ensureProjectRooms,
+      onKickoffMinutesSaved,
+      project,
+      saveProject,
+      sessionUserName,
+      setProject,
+      setSavingBlocks,
+    ]
+  )
+
+  const finalizeKickoffMinutes = useCallback(
+    async (payload?: { minutes: string; attendees: KickoffAttendee[] }) => {
     try {
       setSavingBlocks(true)
       const timestamp = new Date().toISOString()
@@ -237,6 +319,8 @@ export function useProjectKickoffActions({
         ...project,
         kickoff: {
           ...project.kickoff,
+          minutes: payload?.minutes ?? project.kickoff.minutes,
+          attendees: payload?.attendees ?? project.kickoff.attendees,
           minutesStatus: 'closed',
           minutesAuthor: String(sessionUserName || '').trim(),
           minutesClosedAt: project.kickoff.minutesClosedAt || timestamp,
@@ -248,16 +332,20 @@ export function useProjectKickoffActions({
         sections: ['kickoff'],
       })
       onKickoffMinutesSaved?.(nextProject)
+      return nextProject
     } catch (err: unknown) {
       toast({
         title: 'Error finalitzant l acta',
         description: err instanceof Error ? err.message : 'Error inesperat',
         variant: 'destructive',
       })
+      return null
     } finally {
       setSavingBlocks(false)
     }
-  }, [ensureProjectRooms, onKickoffMinutesSaved, project, saveProject, sessionUserName, setProject, setSavingBlocks])
+  },
+    [ensureProjectRooms, onKickoffMinutesSaved, project, saveProject, sessionUserName, setProject, setSavingBlocks]
+  )
 
   const reopenKickoffMinutes = useCallback(async () => {
     try {
@@ -276,12 +364,14 @@ export function useProjectKickoffActions({
         sections: ['kickoff'],
       })
       onKickoffMinutesSaved?.(nextProject)
+      return nextProject
     } catch (err: unknown) {
       toast({
         title: 'Error reobrint l acta',
         description: err instanceof Error ? err.message : 'Error inesperat',
         variant: 'destructive',
       })
+      return null
     } finally {
       setSavingBlocks(false)
     }
@@ -292,9 +382,11 @@ export function useProjectKickoffActions({
     removeKickoffAttendee,
     setKickoffAttendeeAttendance,
     addManualKickoffEmail,
+    addKickoffAttendeeFromUser,
     kickoffReady,
     sendKickoff,
     reopenKickoff,
+    saveKickoffMinutes,
     finalizeKickoffMinutes,
     reopenKickoffMinutes,
   }

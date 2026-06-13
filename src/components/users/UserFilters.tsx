@@ -1,9 +1,13 @@
 'use client'
 
 import React, { useMemo } from 'react'
-import { Search } from 'lucide-react'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import {
+  CorporateFilterField,
+  CorporateFilterSearch,
+  CorporateFilterSelect,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
+import { corporateFilterBadgeClass } from '@/lib/corporate-filters'
 
 export interface UserFiltersState {
   search?: string
@@ -20,9 +24,6 @@ type Props = {
   totalCount?: number
   filteredCount?: number
 }
-
-const selectClassName =
-  'rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-h-11'
 
 export default function UserFilters({
   filters,
@@ -65,34 +66,27 @@ export default function UserFilters({
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-3">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <div className="space-y-1 md:col-span-2 xl:col-span-2">
-          <Label htmlFor="users-search" className="text-xs font-semibold text-gray-600">
-            Cerca intel·ligent
-          </Label>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <Input
-              id="users-search"
-              placeholder="Nom, email, telèfon, comercial, rol, departament..."
-              value={filters.search || ''}
-              onChange={(e) => setFilters({ search: e.target.value })}
-              autoComplete="off"
-              className="min-h-11 pl-9"
-            />
-          </div>
-        </div>
+    <CorporateFiltersShell
+      bodyClassName="flex-col items-stretch gap-4"
+    >
+      <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <CorporateFilterField label="Cerca intel·ligent" className="md:col-span-2 xl:col-span-2">
+          <CorporateFilterSearch
+            id="users-search"
+            placeholder="Nom, email, telèfon, comercial, rol, departament..."
+            value={filters.search || ''}
+            onChange={(e) => setFilters({ search: e.target.value })}
+            autoComplete="off"
+          />
+        </CorporateFilterField>
 
-        <div className="space-y-1">
-          <Label htmlFor="users-department" className="text-xs font-semibold text-gray-600">
-            Departament
-          </Label>
-          <select
+        <CorporateFilterField label="Departament">
+          <CorporateFilterSelect
             id="users-department"
+            className="w-full"
+            minWidthClassName="min-w-0"
             value={filters.department || '__all__'}
             onChange={(e) => setFilters({ department: e.target.value })}
-            className={`${selectClassName} w-full`}
           >
             <option value="__all__">Tots els departaments</option>
             {dynamicDepartments.map((dep) => (
@@ -100,18 +94,16 @@ export default function UserFilters({
                 {dep}
               </option>
             ))}
-          </select>
-        </div>
+          </CorporateFilterSelect>
+        </CorporateFilterField>
 
-        <div className="space-y-1">
-          <Label htmlFor="users-role" className="text-xs font-semibold text-gray-600">
-            Rol
-          </Label>
-          <select
+        <CorporateFilterField label="Rol">
+          <CorporateFilterSelect
             id="users-role"
+            className="w-full"
+            minWidthClassName="min-w-0"
             value={filters.role || '__all__'}
             onChange={(e) => setFilters({ role: e.target.value })}
-            className={`${selectClassName} w-full`}
           >
             <option value="__all__">Tots els rols</option>
             {dynamicRoles.map((role) => (
@@ -119,12 +111,12 @@ export default function UserFilters({
                 {role}
               </option>
             ))}
-          </select>
-        </div>
+          </CorporateFilterSelect>
+        </CorporateFilterField>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-gray-500">
+      <div className="flex w-full flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+        <p className="text-xs text-slate-500">
           Cerca sense accents; es poden usar diverses paraules.
           {typeof totalCount === 'number' && typeof filteredCount === 'number' ? (
             <>
@@ -134,15 +126,11 @@ export default function UserFilters({
           ) : null}
         </p>
         {hasActiveFilters ? (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 transition hover:bg-gray-50"
-          >
+          <button type="button" onClick={clearFilters} className={corporateFilterBadgeClass(false)}>
             Neteja filtres
           </button>
         ) : null}
       </div>
-    </div>
+    </CorporateFiltersShell>
   )
 }

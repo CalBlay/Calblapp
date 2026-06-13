@@ -5,13 +5,12 @@ import { useRouter } from 'next/navigation'
 import {
   CalendarDays,
   ChevronDown,
+  FileText,
   MessagesSquare,
   MoreHorizontal,
   Plus,
-  RotateCcw,
   Save,
   Trash2,
-  Users2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -35,6 +34,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { colorByDepartment } from '@/lib/colors'
 import { cn } from '@/lib/utils'
 import {
+  BLOCK_WORKSPACE_BADGE_LABEL,
+  BLOCK_WORKSPACE_OPEN_LABEL,
+} from './project-room-ui'
+import {
   BLOCK_STATUS_OPTIONS,
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
@@ -48,10 +51,15 @@ import {
   projectCardMetaClass,
   projectCardTitleClass,
   projectEmptyStateClass,
+  projectModuleShellClass,
+  projectSectionHeaderBarClass,
   projectSectionSubtitleClass,
   projectSectionTitleClass,
+  projectStatusAccentClass,
+  projectStatusToneClass,
 } from './project-ui'
 import ProjectTaskQuickComposer from './ProjectTaskQuickComposer'
+import ProjectTaskCoreFields from './ProjectTaskCoreFields'
 import { type ResponsibleOption } from './project-workspace-helpers'
 
 type BlockDraft = {
@@ -107,38 +115,22 @@ type Props = {
     value: ProjectBlock['tasks'][number][K]
   ) => void
   onRemoveTask: (blockId: string, taskId: string) => void
-  onKickoffMinutesChange: (value: string) => void
-  onFinalizeKickoffMinutes: () => void
-  onReopenKickoffMinutes: () => void
-  onKickoffAttendeeAttendanceChange: (key: string, attended: boolean) => void
-  onAddKickoffAttendee: (userId: string) => void
-  onRemoveKickoffAttendee: (key: string) => void
-  kickoffAttendeeOptions: ResponsibleOption[]
   departmentResponsibleOptions: (department?: string | string[]) => ResponsibleOption[]
   maxDeadline?: string
-  canViewKickoffSection?: boolean
+  canOpenMeetingMinutes?: boolean
+  onOpenMeetingMinutes?: () => void
   canCreateBlocks?: boolean
   canEditBlock?: (block: ProjectBlock) => boolean
+  canConvokeBlockMeeting?: (block: ProjectBlock) => boolean
   canAccessBlockRoom?: (block: ProjectBlock) => boolean
+  unreadByBlockId?: Record<string, number>
   canEditBlockOwner?: boolean
   onOpenBlockMeeting?: (blockId: string) => void
 }
 
-const blockStatusTone = (status: string) => {
-  if (status === 'done') return 'bg-emerald-100 text-emerald-700'
-  if (status === 'in_progress') return 'bg-blue-100 text-blue-700'
-  if (status === 'blocked') return 'bg-rose-100 text-rose-700'
-  if (status === 'overdue') return 'bg-amber-100 text-amber-800'
-  return 'bg-slate-100 text-slate-700'
-}
+const blockStatusTone = (status: string) => projectStatusToneClass(status)
 
-const blockStatusAccentClass = (status?: string) => {
-  if (status === 'done') return 'bg-emerald-500/85'
-  if (status === 'in_progress') return 'bg-sky-500/85'
-  if (status === 'blocked') return 'bg-rose-500/85'
-  if (status === 'overdue') return 'bg-amber-500/85'
-  return 'bg-slate-400/80'
-}
+const blockStatusAccentClass = (status?: string) => projectStatusAccentClass(status)
 
 export default function ProjectBlocksTab({
   projectId,
@@ -164,26 +156,19 @@ export default function ProjectBlocksTab({
   onAddTaskToBlock,
   onSetTaskField,
   onRemoveTask,
-  onKickoffMinutesChange,
-  onFinalizeKickoffMinutes,
-  onReopenKickoffMinutes,
-  onKickoffAttendeeAttendanceChange,
-  onAddKickoffAttendee,
-  onRemoveKickoffAttendee,
-  kickoffAttendeeOptions,
   departmentResponsibleOptions,
   maxDeadline,
-  canViewKickoffSection = false,
+  canOpenMeetingMinutes = false,
+  onOpenMeetingMinutes,
   canCreateBlocks = false,
   canEditBlock = () => false,
+  canConvokeBlockMeeting = () => false,
   canAccessBlockRoom = () => false,
+  unreadByBlockId = {},
   canEditBlockOwner = false,
   onOpenBlockMeeting,
 }: Props) {
   const router = useRouter()
-  const [showKickoffAttendeeEditor, setShowKickoffAttendeeEditor] = useState(false)
-  const [kickoffAttendeeDraft, setKickoffAttendeeDraft] = useState('none')
-  const [showKickoffAttendees, setShowKickoffAttendees] = useState(false)
   const [showDepartmentPickerByBlock, setShowDepartmentPickerByBlock] = useState<Record<string, boolean>>({})
   const [showBlockDraftDepartmentPicker, setShowBlockDraftDepartmentPicker] = useState(false)
   const [showTasksByBlock, setShowTasksByBlock] = useState<Record<string, boolean>>({})
@@ -206,26 +191,39 @@ export default function ProjectBlocksTab({
 
   const getAvailableDepartments = (block: ProjectBlock) => {
     const selected = getBlockDepartments(block)
-    const available = availableDepartments.filter((department) => !selected.includes(department))
-    const projectDepartments = available.filter((department) => project.departments.includes(department))
-    const otherDepartments = available.filter((department) => !project.departments.includes(department))
-    return [...projectDepartments, ...otherDepartments]
+    return availableDepartments.filter((department) => !selected.includes(department))
   }
 
-  const orderedBlockDraftDepartments = [
-    ...availableDepartments.filter((department) => project.departments.includes(department)),
-    ...availableDepartments.filter((department) => !project.departments.includes(department)),
-  ]
+  const orderedBlockDraftDepartments = availableDepartments
+
+  const meetingMinutesLabel =
+    project.kickoff.minutesStatus === 'closed'
+      ? 'Tancar acta'
+      : String(project.kickoff.minutes || '').trim()
+        ? 'Apunts reunió'
+        : 'Acta reunió'
 
   return (
-    <div className="grid gap-6 2xl:grid-cols-[1.15fr_0.85fr]">
-      <section className="rounded-[24px] bg-white/75 p-5">
-        <div className="flex items-center justify-between gap-4">
+    <div className="space-y-6">
+      <section className={projectModuleShellClass}>
+        <div className={cn('flex flex-wrap items-center justify-between gap-4', projectSectionHeaderBarClass)}>
           <div>
             <h2 className={projectSectionTitleClass}>Blocs</h2>
             <p className={projectSectionSubtitleClass}>Àmbits de treball del projecte.</p>
           </div>
           <div className="flex items-center gap-2">
+            {canOpenMeetingMinutes && onOpenMeetingMinutes ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={onOpenMeetingMinutes}
+              >
+                <FileText className="h-4 w-4 shrink-0" aria-hidden />
+                {meetingMinutesLabel}
+              </Button>
+            ) : null}
             <Button
               type="button"
               onClick={onSave}
@@ -253,8 +251,9 @@ export default function ProjectBlocksTab({
           </div>
         </div>
 
+        <div className="bg-gradient-to-b from-violet-50/30 to-white p-5 sm:p-6">
         {showBlockComposer && canCreateBlocks ? (
-          <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50/60 p-4">
+          <div className="mb-5 rounded-[24px] border border-slate-200 bg-slate-50/60 p-4">
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.9fr)]">
               <div className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_180px]">
@@ -423,35 +422,15 @@ export default function ProjectBlocksTab({
           </div>
         ) : null}
 
-        {project.context.trim() || project.strategy.trim() ? (
-          <div className="mt-4 grid gap-3 rounded-[20px] border border-slate-200 bg-slate-50/80 p-4 md:grid-cols-2">
-            <div className="min-w-0">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Definicio
-              </div>
-              <div className="mt-1 line-clamp-3 text-sm leading-6 text-slate-700">
-                {project.context.trim() || 'Sense definicio del projecte.'}
-              </div>
-            </div>
-            <div className="min-w-0">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Objectius
-              </div>
-              <div className="mt-1 line-clamp-3 text-sm leading-6 text-slate-700">
-                {project.strategy.trim() || 'Sense objectius estrategics.'}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="mt-4 space-y-4 pt-2">
-          {project.blocks.length === 0 ? (
-            <div className={`rounded-[24px] bg-slate-50/80 px-5 py-10 ${projectEmptyStateClass}`}>
+        {project.blocks.length === 0 ? (
+            <div className={`rounded-[24px] border border-dashed border-violet-200 bg-violet-50/40 px-5 py-10 text-center ${projectEmptyStateClass}`}>
               Encara no hi ha blocs. Crea el primer front de treball del projecte.
             </div>
           ) : (
-            project.blocks.map((block) => {
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
+            {project.blocks.map((block) => {
               const canEditCurrentBlock = canEditBlock(block)
+              const canConvokeCurrentBlockMeeting = canConvokeBlockMeeting(block)
               const canAccessCurrentBlockRoom = canAccessBlockRoom(block)
               const isViewingReadonly = viewingBlockId === block.id && !canEditCurrentBlock
               const isExpanded = editingBlockId === block.id || isViewingReadonly
@@ -472,26 +451,22 @@ export default function ProjectBlocksTab({
               if (meetingCount > 0) taskSublineParts.push(`${meetingCount} reunions`)
               const showBlockActionsMenu =
                 canAccessCurrentBlockRoom ||
-                (canEditCurrentBlock && Boolean(onOpenBlockMeeting)) ||
+                (canConvokeCurrentBlockMeeting && Boolean(onOpenBlockMeeting)) ||
                 canEditCurrentBlock
               return (
               <div
                 key={block.id}
-                className={`group relative space-y-4 rounded-[24px] border p-5 shadow-sm transition ${
-                  isExpanded && canEditCurrentBlock
-                    ? 'border-violet-200 bg-violet-50/70 ring-1 ring-violet-200'
-                    : 'border-slate-200 bg-slate-50/75'
-                } ${
-                  canAccessCurrentBlockRoom && !isExpanded ? 'hover:border-violet-300 hover:shadow-md' : ''
-                }`}
+                id={`project-block-${block.id}`}
+                className={cn(
+                  'group relative flex flex-col overflow-hidden rounded-[22px] border border-violet-100/80 bg-white shadow-md transition duration-200',
+                  isExpanded ? 'col-span-full border-violet-200 ring-1 ring-violet-200' : 'hover:-translate-y-1 hover:shadow-lg'
+                )}
               >
-                <span
-                  className={`absolute left-0 top-6 h-14 w-1 rounded-r-full ${blockStatusAccentClass(block.status)}`}
-                  aria-hidden="true"
-                />
+                <div className={`h-1.5 w-full shrink-0 ${blockStatusAccentClass(block.status)}`} />
+                <div className={cn('flex flex-1 flex-col p-5', isExpanded && 'space-y-4')}>
                 <div
-                  className={`flex items-start justify-between gap-3 rounded-[18px] ${
-                    isExpanded && canEditCurrentBlock ? 'bg-white/80 px-2 py-1' : ''
+                  className={`flex items-start justify-between gap-3 ${
+                    isExpanded && canEditCurrentBlock ? 'rounded-[18px] bg-violet-50/50 px-2 py-1' : ''
                   }`}
                 >
                   <div className="min-w-0 pl-2">
@@ -572,6 +547,31 @@ export default function ProjectBlocksTab({
                   </div>
 
                   <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+                    {canAccessCurrentBlockRoom && !isExpanded ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mr-1 hidden h-8 gap-1.5 border-violet-200 bg-violet-50/80 text-violet-800 hover:bg-violet-100 sm:inline-flex"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          router.push(blockRoomHref)
+                        }}
+                      >
+                        <MessagesSquare className="h-3.5 w-3.5" />
+                        {BLOCK_WORKSPACE_OPEN_LABEL}
+                      </Button>
+                    ) : null}
+                    {canAccessCurrentBlockRoom ? (
+                      <span className="mr-1 hidden rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 sm:inline">
+                        {BLOCK_WORKSPACE_BADGE_LABEL}
+                        {unreadByBlockId[block.id] ? (
+                          <span className="ml-1 rounded-full bg-violet-600 px-1.5 py-0.5 text-[9px] text-white">
+                            {unreadByBlockId[block.id]}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
                     <span
                       className={`mr-1 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium sm:px-2.5 sm:py-1 sm:text-xs ${blockStatusTone(block.status)}`}
                     >
@@ -641,10 +641,10 @@ export default function ProjectBlocksTab({
                               }}
                             >
                               <MessagesSquare className="h-4 w-4" />
-                              Obrir sala
+                              {BLOCK_WORKSPACE_OPEN_LABEL}
                             </DropdownMenuItem>
                           ) : null}
-                          {canEditCurrentBlock && onOpenBlockMeeting ? (
+                          {canConvokeCurrentBlockMeeting && onOpenBlockMeeting ? (
                             <DropdownMenuItem
                               onClick={(event) => {
                                 event.stopPropagation()
@@ -657,7 +657,7 @@ export default function ProjectBlocksTab({
                           ) : null}
                           {canEditCurrentBlock ? (
                             <>
-                              {canAccessCurrentBlockRoom || onOpenBlockMeeting ? (
+                              {canAccessCurrentBlockRoom || (canConvokeCurrentBlockMeeting && onOpenBlockMeeting) ? (
                                 <DropdownMenuSeparator />
                               ) : null}
                               <DropdownMenuItem
@@ -904,78 +904,25 @@ export default function ProjectBlocksTab({
                                       className="h-10 w-[20ch]"
                                     />
                                   </div>
-                                  <Select
-                                    value={task.department || 'none'}
-                                    onValueChange={(value) =>
-                                      onSetTaskField(
-                                        block.id,
-                                        task.id,
-                                        'department',
-                                        value === 'none' ? '' : value
-                                      )
+                                  <ProjectTaskCoreFields
+                                    block={block}
+                                    task={task}
+                                    maxDeadline={maxDeadline}
+                                    departmentResponsibleOptions={departmentResponsibleOptions}
+                                    priorityVariant="pill"
+                                    onDepartmentChange={(value) =>
+                                      onSetTaskField(block.id, task.id, 'department', value)
                                     }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Departament" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="none">Sense departament</SelectItem>
-                                      {getBlockDepartments(block).map((department) => (
-                                        <SelectItem key={`${task.id}-${department}`} value={department}>
-                                          {department}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  <Select
-                                    value={task.owner || 'none'}
-                                    onValueChange={(value) =>
-                                      onSetTaskField(
-                                        block.id,
-                                        task.id,
-                                        'owner',
-                                        value === 'none' ? '' : value
-                                      )
+                                    onOwnerChange={(value) =>
+                                      onSetTaskField(block.id, task.id, 'owner', value)
                                     }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Responsable" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="none">Sense responsable</SelectItem>
-                                      {departmentResponsibleOptions(task.department || getBlockDepartments(block)).map((option) => (
-                                        <SelectItem key={`${task.id}-owner-${option.id}-${option.name}`} value={option.name}>
-                                          {option.name}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  <Input
-                                    type="date"
-                                    value={task.deadline}
-                                    max={getPreLaunchDeadline(block.deadline) || maxDeadline || undefined}
-                                    onChange={(event) =>
-                                      onSetTaskField(block.id, task.id, 'deadline', event.target.value)
+                                    onDeadlineChange={(value) =>
+                                      onSetTaskField(block.id, task.id, 'deadline', value)
+                                    }
+                                    onPriorityChange={(value) =>
+                                      onSetTaskField(block.id, task.id, 'priority', value)
                                     }
                                   />
-                                  <div className="grid gap-3 sm:grid-cols-[110px_auto] lg:grid-cols-[110px_auto]">
-                                    <Select
-                                      value={task.priority || 'normal'}
-                                      onValueChange={(value) =>
-                                        onSetTaskField(block.id, task.id, 'priority', value)
-                                      }
-                                    >
-                                      <SelectTrigger className="rounded-full border-violet-200 bg-violet-50 px-3 font-medium text-violet-700 hover:bg-violet-100">
-                                        <SelectValue placeholder="Nivell" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {TASK_PRIORITY_OPTIONS.slice(0, 3).map((option) => (
-                                          <SelectItem key={`${task.id}-priority-${option.value}`} value={option.value}>
-                                            {option.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
                                     <Button
                                       type="button"
                                       variant="ghost"
@@ -985,7 +932,6 @@ export default function ProjectBlocksTab({
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
-                                  </div>
                                 </div>
                                   </div>
                                 ))}
@@ -1105,161 +1051,13 @@ export default function ProjectBlocksTab({
                   </div>
                 ) : null}
 
-              </div>
-            )})
-          )}
-        </div>
-      </section>
-
-      {canViewKickoffSection ? (
-      <section className="space-y-4 rounded-[24px] bg-slate-50/80 p-5">
-        <div>
-          <h2 className={projectSectionTitleClass}>Acta de la reunió d'arrencada</h2>
-          <p className={projectSectionSubtitleClass}>
-            Decisions, acords i punts clau treballats durant la reunió.
-          </p>
-        </div>
-
-        <div className="flex items-center justify-end gap-2">
-          {project.kickoff.minutesStatus === 'closed' ? (
-            <Button
-              type="button"
-              size="sm"
-              title="Reobrir acta"
-              aria-label="Reobrir acta"
-              onClick={onReopenKickoffMinutes}
-              disabled={savingBlocks}
-              className="bg-amber-500 text-white shadow hover:bg-amber-600"
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Reobrir acta
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              size="sm"
-              title="Finalitzar acta"
-              aria-label="Finalitzar acta"
-              onClick={onFinalizeKickoffMinutes}
-              disabled={savingBlocks}
-              className="bg-violet-600 text-white shadow hover:bg-violet-700"
-            >
-              <Save className="mr-2 h-4 w-4" />
-              Guardar acta
-            </Button>
-          )}
-        </div>
-
-        <Textarea
-          value={project.kickoff.minutes || ''}
-          onChange={(event) => onKickoffMinutesChange(event.target.value)}
-          disabled={project.kickoff.minutesStatus === 'closed'}
-          className="min-h-[360px] bg-white"
-          placeholder="Acta de la reunió d'arrencada"
-        />
-
-        <div className="space-y-3 rounded-[22px] bg-white/90 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-slate-900">Assistents convocats</div>
-            <button
-              type="button"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-              onClick={() => {
-                setShowKickoffAttendees((current) => !current)
-                setShowKickoffAttendeeEditor(false)
-              }}
-            >
-              <Users2 className="h-4 w-4" />
-            </button>
-          </div>
-
-          {showKickoffAttendees ? (
-            <>
-              <div className="flex items-center justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-3 text-violet-700 hover:bg-violet-50"
-                  onClick={() => {
-                    setShowKickoffAttendeeEditor((current) => !current)
-                    setKickoffAttendeeDraft('none')
-                  }}
-                >
-                  Editar
-                </Button>
-              </div>
-
-              {showKickoffAttendeeEditor ? (
-                <div className="flex gap-3">
-                  <Select value={kickoffAttendeeDraft} onValueChange={setKickoffAttendeeDraft}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Afegir assistent" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Selecciona usuari</SelectItem>
-                      {kickoffAttendeeOptions.map((option) => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.name} · {option.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    className="shrink-0 bg-blue-600 text-white hover:bg-blue-700"
-                    onClick={() => {
-                      if (kickoffAttendeeDraft === 'none') return
-                      onAddKickoffAttendee(kickoffAttendeeDraft)
-                      setKickoffAttendeeDraft('none')
-                      setShowKickoffAttendeeEditor(false)
-                    }}
-                  >
-                    Afegir
-                  </Button>
                 </div>
-              ) : null}
-
-              <div className="flex flex-wrap gap-2">
-                {project.kickoff.attendees.length > 0 ? (
-                  project.kickoff.attendees.map((attendee) => (
-                    <div
-                      key={attendee.key}
-                      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm ${
-                        attendee.attended === false
-                          ? 'bg-rose-50 text-rose-700'
-                          : 'bg-slate-100 text-slate-700'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onKickoffAttendeeAttendanceChange(attendee.key, attendee.attended === false)
-                        }
-                        className="font-medium"
-                      >
-                        {attendee.name}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onRemoveKickoffAttendee(attendee.key)}
-                        className="text-slate-400 hover:text-red-600"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <div className={`rounded-2xl bg-slate-50/80 px-3 py-3 ${projectEmptyStateClass}`}>
-                    Encara no hi ha assistents convocats.
-                  </div>
-                )}
               </div>
-            </>
-          ) : null}
+            )})}
+            </div>
+          )}
         </div>
       </section>
-      ) : null}
     </div>
   )
 }

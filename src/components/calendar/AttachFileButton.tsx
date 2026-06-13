@@ -59,6 +59,7 @@ export default function AttachFileButton({
           collection,
           field: nextKey,
           url: publicUrl,
+          name: item.name,
         }),
       })
       if (!res.ok) throw new Error('Error desant el fitxer')

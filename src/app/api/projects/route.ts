@@ -6,7 +6,18 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
 import { canAccessProjects, sessionToAccessUser } from '@/lib/projectAccess'
+import {
+  userHasGlobalProjectListAccess,
+} from '@/lib/projectParticipation'
 import { deriveProjectPhase } from '@/app/menu/projects/components/project-shared'
+import {
+  buildProjectListFilterMeta,
+  filterProjectsByQuery,
+  filterVisibleProjects,
+  paginateProjects,
+  parseProjectListQuery,
+  toProjectListRecord,
+} from '@/lib/projects/listQuery'
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { internalApiHeaders } from '@/lib/server/internalApiAuth'
@@ -154,18 +165,33 @@ async function notifyProjectOwner(params: {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
 
   try {
+    const query = parseProjectListQuery(new URL(req.url).searchParams)
     const snap = await db.collection('projects').orderBy('updatedAt', 'desc').get()
-    const projects = snap.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Record<string, unknown>),
-    }))
+    const projects = snap.docs.map((doc) => toProjectListRecord(doc.id, doc.data() as Record<string, unknown>))
+    const accessUser = {
+      id: auth.user.id,
+      name: auth.user.name,
+      role: auth.user.role,
+      department: auth.user.department,
+    }
+    const visibleProjects = filterVisibleProjects(projects, accessUser, query.scope || 'mine')
+    const filteredProjects = filterProjectsByQuery(visibleProjects, query)
+    const paged = paginateProjects(filteredProjects, query.page || 0, query.limit || 12)
+    const filterMeta = buildProjectListFilterMeta(visibleProjects)
 
-    return NextResponse.json({ projects })
+    return NextResponse.json({
+      projects: paged.projects,
+      total: paged.total,
+      page: paged.page,
+      limit: paged.limit,
+      canViewAllProjects: userHasGlobalProjectListAccess(accessUser),
+      filterMeta,
+    })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })

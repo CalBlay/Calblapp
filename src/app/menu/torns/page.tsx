@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import { CorporateFiltersShell } from '@/components/layout/corporate-filters'
 import { CalendarDays } from 'lucide-react'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilters'
@@ -35,7 +36,7 @@ import { useFilters } from '@/context/FiltersContext'
 import TornFilters from './components/TornFilters'
 import { format, startOfWeek, endOfWeek } from 'date-fns'
 import { useSearchParams, useRouter } from 'next/navigation'
-import TornNotificationsBanner from '@/components/torns/TornNotificationsBanner'
+import TornNotificationsBell from '@/components/torns/TornNotificationsBell'
 
 type ApiWorker = { id?: string; name?: string }
 type TornsRoleType = 'all' | 'treballador' | 'responsable' | 'conductor'
@@ -352,53 +353,47 @@ export default function TornsPage() {
         icon={<CalendarDays className="w-7 h-7 text-blue-600 shrink-0" />}
         title="Torns Assignats"
         subtitle="Consulta i gestiona els torns assignats"
+        actions={<TornNotificationsBell />}
       />
 
-      <TornNotificationsBanner />
+      <div className="mb-4 w-full min-w-0 py-2 sm:mb-6 sm:px-1 sm:py-3">
+        <CorporateFiltersShell variant="toolbar" bodyClassName="flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex w-full min-w-0 items-center gap-3">
+            <SmartFilters
+              modeDefault="week"
+              role={role}
+              departmentOptions={deptOptions}
+              workerOptions={workerOptions}
+              fixedDepartment={!isAdminOrDireccio ? sessionDept : null}
+              lockedWorkerName={isWorker ? userName : undefined}
+              showDepartment={false}
+              showStatus={false}
+              showLocation={false}
+              showWorker={false}
+              showImportance={false}
+              onChange={(f) => setFilters(f)}
+              compact
+            />
+          </div>
 
-      {/* SMART FILTERS — apil·lat al mòbil, fila a escriptori */}
-      <div className="w-full min-w-0 py-2 sm:px-1 sm:py-3 mb-4 sm:mb-6">
-<div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-  
-  {/* Bloc esquerra: SmartFilters */}
-  <div className="flex items-center gap-3 w-full min-w-0">
-    <SmartFilters
-      modeDefault="week"
-      role={role}
-      departmentOptions={deptOptions}
-      workerOptions={workerOptions}
-      fixedDepartment={!isAdminOrDireccio ? sessionDept : null}
-      lockedWorkerName={isWorker ? userName : undefined}
-      showDepartment={false}
-      showStatus={false}
-      showLocation={false}
-      showWorker={false}
-      showImportance={false}
-      onChange={(f) => setFilters(f)}
-    />
-  </div>
-
-  {/* Bloc dreta: Botó filtres avançats */}
-  <FilterButton
-  className="shrink-0 self-end sm:self-center"
-  onClick={() => {
-    setContent(
-      <TornFilters
-        setFilters={setFilters}
-        deptOptions={deptOptions}
-        workerOptions={workerOptions}
-        role={role}
-        sessionDept={sessionDept}
-        userName={userName}
-        isAdminOrDireccio={isAdminOrDireccio}
-        isWorker={isWorker}
-      />
-    )
-  }}
-/>
-
-</div>
-
+          <FilterButton
+            className="shrink-0 self-end sm:self-center"
+            onClick={() => {
+              setContent(
+                <TornFilters
+                  setFilters={setFilters}
+                  deptOptions={deptOptions}
+                  workerOptions={workerOptions}
+                  role={role}
+                  sessionDept={sessionDept}
+                  userName={userName}
+                  isAdminOrDireccio={isAdminOrDireccio}
+                  isWorker={isWorker}
+                />
+              )
+            }}
+          />
+        </CorporateFiltersShell>
       </div>
 
 

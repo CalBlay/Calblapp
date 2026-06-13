@@ -2,10 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { normalizeRole } from '@/lib/roles'
-import { countMessagingUnread } from '@/lib/notifications/messagingUnreadCount'
-import { computeRobaBadgeCount } from '@/lib/notifications/robaBadgeCount'
-import { getUserUnreadBuckets } from '@/lib/notifications/unreadCounts'
-import { countPendingUserQuadrantSurveys } from '@/lib/quadrantSurveysPending'
+import { loadNotificationSummaryParts } from '@/lib/notifications/summaryParts'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -50,14 +47,10 @@ export async function GET() {
   const canAccessSurveys = canRespondSurveys || ['admin', 'direccio', 'cap'].includes(role)
 
   try {
-    const [buckets, messaging, robaPersonal, surveys] = await Promise.all([
-      getUserUnreadBuckets(userId),
-      countMessagingUnread(userId),
-      computeRobaBadgeCount(),
-      canAccessSurveys ? countPendingUserQuadrantSurveys(userId) : Promise.resolve(0),
-    ])
+    const { buckets, messaging, robaPersonal, surveys, pendingUserRequests } =
+      await loadNotificationSummaryParts({ userId, isAdmin, canAccessSurveys })
 
-    const adminUserRequests = isAdmin ? buckets.user_request : 0
+    const adminUserRequests = isAdmin ? pendingUserRequests : 0
     const userRequestResults = buckets.user_request_result
     const torn = buckets.torn
     const projects = buckets.projects
@@ -82,6 +75,7 @@ export async function GET() {
 
     return NextResponse.json(payload)
   } catch (err: unknown) {
+    console.error('[notifications/summary] unexpected error:', err)
     const message = err instanceof Error ? err.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })
   }

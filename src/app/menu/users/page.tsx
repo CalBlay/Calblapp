@@ -13,7 +13,10 @@ import { Trash2, UserCog } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import UserFilters, { UserFiltersState } from '@/components/users/UserFilters'
 import FloatingAddButton from '@/components/ui/floating-add-button'
-import { markAdminUserRequestsRead } from '@/hooks/useAdminNotifications'
+import {
+  markAdminUserRequestsRead,
+  refreshNotificationSummary,
+} from '@/hooks/useAdminNotifications'
 import {
   DEFAULT_USER_DEPARTMENT,
   DEPARTMENTS,
@@ -143,6 +146,7 @@ function UsersPage() {
         return
       }
       await loadPendingRequests()
+      await refreshNotificationSummary()
     } catch (err) {
       console.error('Error rebutjant sol·licitud:', err)
     }
@@ -266,9 +270,7 @@ function UsersPage() {
         )}
       </div>
 
-      {/* Filtres + CTA */}
-      <div className="rounded-xl bg-white shadow-sm border p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <UserFilters
             filters={filters}
             setFilters={(f) => setFilters((prev) => ({ ...prev, ...f }))}
@@ -300,7 +302,6 @@ function UsersPage() {
               }
             />
           </div>
-        </div>
       </div>
 
       {/* Taula */}
@@ -355,6 +356,7 @@ function UsersPage() {
           onAfterAction={() => {
             fetchUsers()
             loadPendingRequests()
+            refreshNotificationSummary().catch(() => {})
           }}
           onClose={() => setModalUser(null)}
         />

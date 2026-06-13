@@ -5,6 +5,7 @@ import { Shirt } from 'lucide-react'
 import { withRobaPersonalAccess } from '@/hooks/withAdmin'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import RobaPersonalDashboard from './RobaPersonalDashboard'
+import { RobaPersonalRequestNotificationsBell } from './RobaPersonalRequestNotificationsBell'
 import {
   ModuleExportMenuActions,
   ModuleExportMenuProvider,
@@ -18,7 +19,12 @@ function RobaPersonalPage() {
           title="Roba personal / Gestió de productes"
           icon={<Shirt className="h-8 w-8 text-indigo-600" />}
           mainHref="/menu/roba-personal"
-          actions={<ModuleExportMenuActions />}
+          actions={
+            <>
+              <RobaPersonalRequestNotificationsBell />
+              <ModuleExportMenuActions />
+            </>
+          }
         />
         <RobaPersonalDashboard />
       </div>

@@ -164,6 +164,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       excludedKeys,
       attendees,
       organizerEmail,
+      organizerUserId: auth.user.id,
       invitedAt: Date.now(),
       graphEventId: event.id,
       graphWebLink: event.webLink,

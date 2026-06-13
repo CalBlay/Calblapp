@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
 import { AlertTriangle, LayoutDashboard, ListChecks } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import { CorporateFiltersShell } from '@/components/layout/corporate-filters'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import FilterButton from '@/components/ui/filter-button'
 import IncidentsLnFilterBadges from '../components/IncidentsLnFilterBadges'
@@ -525,8 +526,7 @@ export default function IncidentsQuadrePage() {
         }
       />
 
-      {/* Barra compacta: dates (SmartFilters) + botó filtres — mateix patró que Incidències / Modificacions */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm mb-2 flex flex-wrap items-center gap-3 sm:flex-nowrap">
+      <CorporateFiltersShell variant="toolbar" className="mb-2">
         <SmartFilters
           modeDefault="week"
           modeOptions={['week', 'month', 'year', 'range']}
@@ -544,9 +544,9 @@ export default function IncidentsQuadrePage() {
           resetSignal={dateResetSignal}
         />
         <IncidentsLnFilterBadges value={lnFilter} onChange={setLnFilter} />
-        <div className="flex-1 min-w-[8px]" />
+        <div className="min-w-[8px] flex-1" />
         <FilterButton onClick={openFiltersPanel} />
-      </div>
+      </CorporateFiltersShell>
 
       <div className={`px-1 flex flex-col gap-1 ${typography('bodySm')}`}>
         <p>

@@ -19,6 +19,13 @@ import {
 import { toast } from '@/components/ui/use-toast'
 import { normalizeRole } from '@/lib/roles'
 import { RoleGuard } from '@/lib/withRoleGuard'
+import { PROJECT_MODULE_ROLES } from '../../../components/project-access'
+import {
+  BLOCK_WORKSPACE_LABEL,
+  GENERAL_ROOM_LABEL,
+  buildMissatgeriaChannelHref,
+  MISSATGERIA_OPEN_LABEL,
+} from '../../../components/project-room-ui'
 import { colorByDepartment } from '@/lib/colors'
 import { initials } from '@/app/menu/missatgeria/utils'
 import ProjectTaskQuickComposer from '../../../components/ProjectTaskQuickComposer'
@@ -106,9 +113,12 @@ export default function ProjectRoomDetailPage() {
       try {
         if (!params?.id) throw new Error('Projecte no trobat')
 
-        const roomRes = await fetch(`/api/projects/${params.id}/rooms/${params.roomId}`, {
-          cache: 'no-store',
-        })
+        const [roomRes, usersRes] = await Promise.all([
+          fetch(`/api/projects/${params.id}/rooms/${params.roomId}`, {
+            cache: 'no-store',
+          }),
+          fetch('/api/users?view=project-options', { cache: 'no-store' }),
+        ])
 
         if (!roomRes.ok) {
           const payload = (await roomRes.json().catch(() => ({}))) as { error?: string }
@@ -116,11 +126,23 @@ export default function ProjectRoomDetailPage() {
         }
 
         const payload = (await roomRes.json()) as RoomDetailResponse
+        const usersPayload = usersRes.ok
+          ? ((await usersRes.json().catch(() => [])) as UserOption[])
+          : []
 
         if (cancelled) return
 
         setProject(payload.project)
-        setUsers(payload.users.filter((user) => user.name))
+        setUsers(
+          (Array.isArray(usersPayload) ? usersPayload : [])
+            .map((user) => ({
+              id: String(user.id || ''),
+              name: String(user.name || '').trim(),
+              department: String(user.department || '').trim(),
+              role: String(user.role || '').trim(),
+            }))
+            .filter((user) => user.name)
+        )
       } catch (err: unknown) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Error carregant la sala')
       }
@@ -671,11 +693,11 @@ export default function ProjectRoomDetailPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={['admin']}>
+    <RoleGuard allowedRoles={[...PROJECT_MODULE_ROLES]}>
       <div className="flex min-h-[calc(100vh-72px)] w-full max-w-none flex-col gap-3 overflow-hidden p-3">
         <ModuleHeader
-          title="Sales"
-          subtitle={currentRoom?.name || 'Sala'}
+          title={BLOCK_WORKSPACE_LABEL}
+          subtitle={currentRoom?.name || 'Sala del bloc'}
           mainHref={`/menu/projects/${params?.id}?tab=blocks`}
         />
 
@@ -792,12 +814,18 @@ export default function ProjectRoomDetailPage() {
                 <div className="text-lg font-semibold text-slate-900">{currentRoom.name}</div>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-medium ${
-                    currentRoom.kind === 'block'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-violet-100 text-violet-700'
+                    currentRoom.kind === 'general'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : currentRoom.kind === 'block'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-violet-100 text-violet-700'
                   }`}
                 >
-                  {currentRoom.kind === 'block' ? 'Sala automatica' : 'Sala manual'}
+                  {currentRoom.kind === 'block'
+                      ? 'Sala del bloc'
+                      : currentRoom.kind === 'general'
+                        ? GENERAL_ROOM_LABEL
+                        : 'Sala manual'}
                 </span>
               </div>
 
@@ -818,7 +846,9 @@ export default function ProjectRoomDetailPage() {
                 >
                   <div className="text-[11px] uppercase tracking-wide text-slate-400">Bloc vinculat</div>
                   <div className="mt-1 truncate text-sm font-medium text-slate-900 hover:text-violet-700">
-                    {currentBlock?.name || 'Sense bloc'}
+                    {currentRoom.kind === 'general'
+                      ? 'Coordinació transversal'
+                      : currentBlock?.name || 'Sense bloc'}
                   </div>
                 </Link>
 
@@ -874,7 +904,16 @@ export default function ProjectRoomDetailPage() {
                       <MessageSquare className="h-4 w-4 text-slate-500" />
                       <div className="text-sm font-semibold text-slate-900">Conversa</div>
                     </div>
-                    <button
+                    <div className="flex items-center gap-1">
+                      {currentRoom.opsChannelId ? (
+                        <Link
+                          href={buildMissatgeriaChannelHref(currentRoom.opsChannelId)}
+                          className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-700 transition hover:bg-violet-50"
+                        >
+                          {MISSATGERIA_OPEN_LABEL}
+                        </Link>
+                      ) : null}
+                      <button
                       type="button"
                       className={`rounded-full p-2 transition ${
                         participantsOpen
@@ -886,6 +925,7 @@ export default function ProjectRoomDetailPage() {
                     >
                       <Users2 className="h-4 w-4" />
                     </button>
+                    </div>
                   </div>
                 </div>
 

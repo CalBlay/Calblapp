@@ -131,7 +131,7 @@ export type ProjectDocument = {
 export type ProjectRoom = {
   id: string
   name: string
-  kind: 'block' | 'manual'
+  kind: 'block' | 'manual' | 'general'
   blockId?: string
   opsChannelId?: string
   opsChannelName?: string
@@ -189,6 +189,7 @@ export type ProjectMeetingRecord = {
   notes: string
   attendees: ProjectMeetingAttendee[]
   organizerEmail?: string
+  organizerUserId?: string
   attachments?: Array<Exclude<ProjectDocument, null>>
   invitedAt?: number
   graphEventId?: string
@@ -214,6 +215,7 @@ export type KickoffData = {
   status?: string
   graphWebLink?: string
   organizerEmail?: string
+  organizerUserId?: string
   invitedAt?: number
   graphEventId?: string
   graphJoinUrl?: string

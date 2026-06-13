@@ -16,6 +16,10 @@ import Composer from './components/Composer'
 import type { Channel, Member, Message, PendingImage } from './types'
 import { eventDateLabel, initials } from './utils'
 import { compressRasterImageWithMeta, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
+import {
+  BLOCK_WORKSPACE_OPEN_LABEL,
+  buildProjectRoomHref,
+} from '@/app/menu/projects/components/project-room-ui'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -750,8 +754,21 @@ export default function MissatgeriaPage() {
                     </div>
                   )}
                   {selectedChannel?.source === 'projects' && (
-                    <div className="text-[11px] text-gray-500 dark:text-slate-400 truncate">
-                      {[selectedChannel.projectName, selectedChannel.location].filter(Boolean).join(' · ')}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500 dark:text-slate-400">
+                      <span className="truncate">
+                        {[selectedChannel.projectName, selectedChannel.location].filter(Boolean).join(' · ')}
+                      </span>
+                      {selectedChannel.projectId && selectedChannel.roomId ? (
+                        <Link
+                          href={buildProjectRoomHref(
+                            String(selectedChannel.projectId),
+                            String(selectedChannel.roomId)
+                          )}
+                          className="shrink-0 font-medium text-violet-700 hover:text-violet-900 dark:text-violet-300 dark:hover:text-violet-100"
+                        >
+                          {BLOCK_WORKSPACE_OPEN_LABEL}
+                        </Link>
+                      ) : null}
                     </div>
                   )}
                 </div>

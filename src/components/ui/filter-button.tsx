@@ -1,7 +1,7 @@
-//file: src/components/ui/filter-button.tsx
 'use client'
 
 import { useFilters } from '@/context/FiltersContext'
+import { corporateFilterIconButtonClass } from '@/lib/corporate-filters'
 import { cn } from '@/lib/utils'
 
 export default function FilterButton({
@@ -16,20 +16,17 @@ export default function FilterButton({
   return (
     <button
       type="button"
-      className={cn(
-        'min-h-11 min-w-11 sm:h-10 sm:w-10 flex items-center justify-center rounded-xl border border-gray-300 bg-white hover:bg-gray-100 active:bg-gray-200 touch-manipulation',
-        className
-      )}
+      className={cn(corporateFilterIconButtonClass, 'touch-manipulation', className)}
       onClick={() => {
         if (onClick) onClick()
         setOpen(true)
       }}
       title="Filtres"
+      aria-label="Filtres"
     >
-      {/* Icona hamburguer IDENTICA a Torns */}
       <svg
         xmlns="http://www.w3.org/2000/svg"
-        className="h-5 w-5 text-gray-700"
+        className="h-5 w-5"
         fill="none"
         stroke="currentColor"
         strokeWidth={2}

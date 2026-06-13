@@ -6,8 +6,17 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
 import { canAccessProjects, sessionToAccessUser } from '@/lib/projectAccess'
+import {
+  userHasGlobalProjectListAccess,
+  userParticipatesInProject,
+} from '@/lib/projectParticipation'
 import { deriveProjectPhase } from '@/app/menu/projects/components/project-shared'
-import { archiveProjectRoomOpsChannel } from '@/lib/projectRoomOps'
+import {
+  archiveProjectRoomOpsChannel,
+  syncProjectRoomsWithChangedParticipants,
+  type ProjectBlockLike,
+  type ProjectRoomLike,
+} from '@/lib/projectRoomOps'
 import type { KickoffData, ProjectBlock } from '@/app/menu/projects/components/project-shared'
 import {
   createBlockDeadlineCalendarEvent,
@@ -440,7 +449,21 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ id: snap.id, ...(snap.data() as Record<string, unknown>) })
+    const data = snap.data() as Record<string, unknown>
+    const accessUser = {
+      id: auth.user.id,
+      name: auth.user.name,
+      role: auth.user.role,
+      department: auth.user.department,
+    }
+    if (
+      !userHasGlobalProjectListAccess(accessUser) &&
+      !userParticipatesInProject(accessUser, data)
+    ) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    return NextResponse.json({ id: snap.id, ...data })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -512,14 +535,8 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
     })
 
     const userNotificationsRefs = (
-      await Promise.all(
-        (
-          await db.collection('users').get()
-        ).docs.map((userDoc) =>
-          userDoc.ref.collection('notifications').where('projectId', '==', id).get()
-        )
-      )
-    ).flatMap((snap) => snap.docs.map((doc) => doc.ref))
+      await db.collectionGroup('notifications').where('projectId', '==', id).get()
+    ).docs.map((doc) => doc.ref)
 
     await deleteDocsInChunks([
       ...messageReadRefs,
@@ -693,10 +710,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       : currentBlocks
     const nextRoomIds = new Set(nextRooms.map((room) => String(room.id || '')).filter(Boolean))
     const currentRoomIds = new Set(currentRooms.map((room) => String(room.id || '')).filter(Boolean))
-    const removedManualRooms = currentRooms.filter((room) => {
+    const removedRooms = currentRooms.filter((room) => {
       const roomId = String(room.id || '')
       if (!roomId || nextRoomIds.has(roomId)) return false
-      return String(room.kind || '') === 'manual'
+      const kind = String(room.kind || '')
+      return kind === 'manual' || kind === 'block'
     })
     const addedRooms = nextRooms.filter((room) => {
       const roomId = String(room.id || '')
@@ -799,8 +817,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       })
 
       await Promise.allSettled([
-        ...(removedManualRooms.length > 0
-          ? removedManualRooms.map((room) =>
+        ...(removedRooms.length > 0
+          ? removedRooms.map((room) =>
               archiveProjectRoomOpsChannel({
                 projectId: id,
                 roomId: String(room.id || ''),
@@ -835,6 +853,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           : []),
         ...blockAssignmentNotifications,
         ...taskAssignmentNotifications,
+        syncProjectRoomsWithChangedParticipants({
+          projectId: id,
+          project: {
+            id,
+            name: projectName,
+            owner: String(payload.owner || currentData.owner || ''),
+            rooms: nextRooms as ProjectRoomLike[],
+            blocks: nextBlocks as ProjectBlockLike[],
+          },
+          currentRooms: currentRooms as ProjectRoomLike[],
+          nextRooms: nextRooms as ProjectRoomLike[],
+        }),
       ])
     })
 

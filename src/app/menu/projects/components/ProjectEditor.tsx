@@ -11,25 +11,21 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/use-toast'
-import { normalizeRole } from '@/lib/roles'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
 import ProjectKickoffTab from './ProjectKickoffTab'
 import ProjectOverviewTab from './ProjectOverviewTab'
 import {
-  deriveKickoffAttendees,
   ensureProjectRooms,
-  sameStringSet,
-  serializeRoomsState,
-  syncBlockBudgets,
 } from './project-workspace-state'
 import {
   EMPTY_KICKOFF,
   deriveProjectPhase,
-  getBlockDepartments,
   type ProjectData,
 } from './project-shared'
 import { useProjectBlocksTasksActions } from './useProjectBlocksTasksActions'
 import { useProjectKickoffActions } from './useProjectKickoffActions'
+import { useProjectAutoSync } from './useProjectAutoSync'
+import { useProjectUsersCatalog } from './useProjectUsersCatalog'
 import {
   createBlockDraft,
   createTaskDraft,
@@ -70,8 +66,7 @@ export default function ProjectEditor() {
   const { data: session } = useSession()
   const [project, setProject] = useState<ProjectData>(emptyProject)
   const [draftId, setDraftId] = useState('')
-  const [responsibles, setResponsibles] = useState<ResponsibleOption[]>([])
-  const [usersCatalog, setUsersCatalog] = useState<ResponsibleOption[]>([])
+  const { usersCatalog, responsibles } = useProjectUsersCatalog()
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [blockDraft, setBlockDraft] = useState(createBlockDraft())
   const [taskDraft, setTaskDraft] = useState(createTaskDraft())
@@ -104,53 +99,6 @@ export default function ProjectEditor() {
     )
   }, [session?.user?.name])
 
-  useEffect(() => {
-    let cancelled = false
-
-    ;(async () => {
-      try {
-        const res = await fetch('/api/users?view=project-options', { cache: 'no-store' })
-        if (!res.ok) throw new Error('No s han pogut carregar els usuaris')
-        const users = (await res.json()) as Array<{
-          id: string
-          name?: string
-          role?: string
-          email?: string
-          department?: string
-        }>
-
-        const catalog = users
-          .map((user) => ({
-            id: user.id,
-            name: String(user.name || '').trim(),
-            role: normalizeRole(user.role || ''),
-            email: String(user.email || '').trim(),
-            department: String(user.department || '').trim(),
-          }))
-          .filter((user) => user.name)
-          .sort((a, b) => a.name.localeCompare(b.name))
-
-        const nextResponsibles = catalog.filter((user) => {
-          return user.role === 'admin' || user.role === 'direccio' || user.role === 'cap'
-        })
-
-        if (!cancelled) {
-          setUsersCatalog(catalog)
-          setResponsibles(nextResponsibles)
-        }
-      } catch {
-        if (!cancelled) {
-          setUsersCatalog([])
-          setResponsibles([])
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const ownerOptions = useMemo(() => {
     if (project.owner && !responsibles.some((item) => item.name === project.owner)) {
       return [
@@ -166,6 +114,13 @@ export default function ProjectEditor() {
     [usersCatalog]
   )
 
+  useProjectAutoSync({
+    project,
+    setProject,
+    usersCatalog,
+    userByName,
+  })
+
   const availableDepartments = useMemo(
     () =>
       DEPARTMENTS.filter((department) => {
@@ -174,111 +129,6 @@ export default function ProjectEditor() {
       }),
     []
   )
-
-  useEffect(() => {
-    setProject((current) => {
-      const nextDepartments = [
-        ...new Set(current.blocks.flatMap((block) => getBlockDepartments(block)).filter(Boolean)),
-      ]
-
-      let nextProject =
-        sameStringSet(current.departments, nextDepartments)
-          ? current
-          : {
-              ...current,
-              departments: nextDepartments,
-            }
-
-      if (!Array.isArray(nextProject.sprints)) {
-        nextProject = {
-          ...nextProject,
-          sprints: [],
-        }
-      }
-
-      const roomsCandidate = ensureProjectRooms(nextProject, userByName)
-      if (serializeRoomsState(roomsCandidate.rooms) !== serializeRoomsState(nextProject.rooms)) {
-        nextProject = roomsCandidate
-      }
-
-      const kickoffAttendees = deriveKickoffAttendees(nextProject, usersCatalog, userByName)
-      const sameKickoffAttendees =
-        kickoffAttendees.length === nextProject.kickoff.attendees.length &&
-        kickoffAttendees.every((item, index) => {
-          const currentItem = nextProject.kickoff.attendees[index]
-          return (
-            currentItem?.key === item.key &&
-            currentItem?.userId === item.userId &&
-            currentItem?.email === item.email &&
-            currentItem?.name === item.name &&
-            currentItem?.attended === item.attended &&
-            currentItem?.department === item.department
-          )
-        })
-
-      if (!sameKickoffAttendees) {
-        nextProject = {
-          ...nextProject,
-          kickoff: {
-            ...nextProject.kickoff,
-            attendees: kickoffAttendees,
-          },
-        }
-      }
-
-      const budgetCandidate = syncBlockBudgets(nextProject)
-      const sameBudgets =
-        budgetCandidate.blocks.length === nextProject.blocks.length &&
-        budgetCandidate.blocks.every((block, index) => block.budget === nextProject.blocks[index]?.budget)
-
-      if (!sameBudgets) {
-        nextProject = budgetCandidate
-      }
-
-      const sprintIds = new Set((nextProject.sprints || []).map((sprint) => String(sprint.id || '').trim()))
-      const blocksWithValidSprint = nextProject.blocks.map((block) => ({
-        ...block,
-        tasks: block.tasks.map((task) => {
-          const sprintId = String(task.sprintId || '').trim()
-          if (!sprintId || sprintIds.has(sprintId)) return task
-          return { ...task, sprintId: '' }
-        }),
-      }))
-      const sameTaskSprintRefs =
-        blocksWithValidSprint.length === nextProject.blocks.length &&
-        blocksWithValidSprint.every((block, blockIndex) =>
-          block.tasks.every((task, taskIndex) => task.sprintId === nextProject.blocks[blockIndex]?.tasks[taskIndex]?.sprintId)
-        )
-
-      if (!sameTaskSprintRefs) {
-        nextProject = {
-          ...nextProject,
-          blocks: blocksWithValidSprint,
-        }
-      }
-
-      const nextPhase = deriveProjectPhase(nextProject)
-      if (nextProject.phase !== nextPhase || (nextProject.status && nextProject.status !== 'draft')) {
-        nextProject = {
-          ...nextProject,
-          phase: nextPhase,
-          status: nextProject.status === 'draft' ? 'draft' : '',
-        }
-      }
-
-      return nextProject === current ? current : nextProject
-    })
-  }, [
-    project.blocks,
-    project.owner,
-    project.sponsor,
-    project.kickoff.date,
-    project.kickoff.startTime,
-    project.kickoff.status,
-    project.kickoff.attendees.length,
-    usersCatalog,
-    userByName,
-  ])
 
   const { setKickoffField, removeKickoffAttendee, addManualKickoffEmail } = useProjectKickoffActions({
     projectId: '__new__',

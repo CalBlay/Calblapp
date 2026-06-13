@@ -20,6 +20,11 @@ function dedupeDepartmentLabels(labels: readonly string[]): string[] {
   return [...map.values()]
 }
 
+/** Ordenació alfabètica en català (departaments, etiquetes…). */
+export function sortDepartmentLabels(labels: readonly string[]): string[] {
+  return [...labels].sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }))
+}
+
 const DEPARTMENTS_RAW = [
   'Empresa',
   'Compres',
@@ -48,7 +53,9 @@ const DEPARTMENTS_RAW = [
 
 export type DepartmentId = (typeof DEPARTMENTS_RAW)[number]
 
-export const DEPARTMENTS = dedupeDepartmentLabels(DEPARTMENTS_RAW) as readonly DepartmentId[]
+export const DEPARTMENTS = sortDepartmentLabels(
+  dedupeDepartmentLabels(DEPARTMENTS_RAW)
+) as readonly DepartmentId[]
 
 /** Departament per defecte en formularis nous. */
 export const DEFAULT_USER_DEPARTMENT = 'Empresa' as DepartmentId

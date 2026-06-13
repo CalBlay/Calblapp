@@ -4,9 +4,24 @@ import Ably from 'ably'
 
 let client: Ably.Realtime | null = null
 let boundUserId: string | null = null
+let connectionGuardHandler: ((stateChange: Ably.ConnectionStateChange) => void) | null = null
+
+function detachConnectionGuards(realtime: Ably.Realtime) {
+  if (!connectionGuardHandler) return
+
+  try {
+    realtime.connection.off(connectionGuardHandler)
+  } catch (error) {
+    console.warn('[ably] detach connection guard failed', error)
+  }
+
+  connectionGuardHandler = null
+}
 
 function attachConnectionGuards(realtime: Ably.Realtime) {
-  realtime.connection.on((stateChange) => {
+  detachConnectionGuards(realtime)
+
+  connectionGuardHandler = (stateChange) => {
     const reason = stateChange.reason
     const message = String(reason?.message || '').toLowerCase()
     const denied =
@@ -17,23 +32,34 @@ function attachConnectionGuards(realtime: Ably.Realtime) {
       console.warn('[ably] capability denied, resetting client', reason)
       resetAblyClient()
     }
-  })
+  }
+
+  realtime.connection.on(connectionGuardHandler)
+}
+
+function isBenignAblyCloseError(error: unknown) {
+  const message = (error instanceof Error ? error.message : String(error || '')).toLowerCase()
+  return message.includes('connection closed') || message.includes('connection is closed')
 }
 
 export function resetAblyClient() {
-  if (!client) {
-    boundUserId = null
-    return
-  }
-
-  try {
-    client.close()
-  } catch (error) {
-    console.warn('[ably] close failed', error)
-  }
-
+  const current = client
   client = null
   boundUserId = null
+
+  if (!current) return
+
+  detachConnectionGuards(current)
+
+  try {
+    const state = current.connection.state
+    if (state === 'closed' || state === 'closing') return
+    current.close()
+  } catch (error) {
+    if (!isBenignAblyCloseError(error)) {
+      console.warn('[ably] close failed', error)
+    }
+  }
 }
 
 export function getAblyClient(userId?: string | null) {

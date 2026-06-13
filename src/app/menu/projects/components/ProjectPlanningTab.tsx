@@ -1,7 +1,16 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarClock, CheckCircle2, Milestone, Target } from 'lucide-react'
+import { CalendarClock, CheckCircle2, ExternalLink, FileText, Milestone, Target, Users } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -13,15 +22,41 @@ import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
 import { colorByDepartment } from '@/lib/colors'
+import { cn } from '@/lib/utils'
 import { formatProjectDate, getBlockDepartments, type ProjectData } from './project-shared'
-import { projectEmptyStateClass } from './project-ui'
+import {
+  canOpenMeetingActaForScope,
+  canOpenMeetingActaInBlocks,
+  canOpenMeetingActaInTasks,
+  type MeetingActaUser,
+} from './project-meeting-acta'
+import { projectEmptyStateClass, projectModuleShellClass } from './project-ui'
+
+type PlanningMeetingMeta = {
+  scope: 'kickoff' | 'block' | 'task'
+  blockId?: string
+  taskId?: string
+  meetingId?: string
+  date?: string
+  startTime?: string
+  durationMinutes?: number
+  calendarUrl?: string
+  joinUrl?: string
+}
 
 type Props = {
   projectId: string
   project: ProjectData
+  canConvokeMeetings?: boolean
+  meetingActaUser?: MeetingActaUser
+  onOpenMeetingMinutes?: () => void
+  onOpenBlockMeeting?: (blockId: string) => void
+  onOpenTaskMeeting?: (blockId: string, taskId: string) => void
+  onNavigateToBlock?: (blockId: string) => void
+  onNavigateToTask?: (blockId: string, taskId: string) => void
 }
 
-type LaneKind = 'milestone' | 'block' | 'task'
+type LaneKind = 'milestone' | 'meeting' | 'block' | 'task'
 type TimeScale = 'day' | 'week'
 
 type PlanningItem = {
@@ -35,6 +70,7 @@ type PlanningItem = {
   start: Date
   end: Date
   href: string
+  meeting?: PlanningMeetingMeta
 }
 
 type TimelineColumn = {
@@ -99,23 +135,47 @@ const monthBandLabel = (value: Date) =>
   })
 
 const laneIcon = (kind: LaneKind) => {
-  if (kind === 'milestone') return <Milestone className="h-4 w-4 text-violet-600" />
-  if (kind === 'block') return <CalendarClock className="h-4 w-4 text-sky-600" />
-  return <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+  if (kind === 'milestone') return <Milestone className="h-4 w-4 text-violet-700" />
+  if (kind === 'meeting') return <Users className="h-4 w-4 text-orange-700" />
+  if (kind === 'block') return <CalendarClock className="h-4 w-4 text-indigo-700" />
+  return <CheckCircle2 className="h-4 w-4 text-emerald-700" />
 }
 
+/** Color de la fila segons tipus d'element (no estat). */
 const badgeTone = (kind: LaneKind) => {
-  if (kind === 'milestone') return 'bg-violet-100 text-violet-700 ring-violet-200'
-  if (kind === 'block') return 'bg-sky-100 text-sky-700 ring-sky-200'
-  return 'bg-emerald-100 text-emerald-700 ring-emerald-200'
+  if (kind === 'milestone') return 'bg-violet-200 text-violet-950 ring-1 ring-violet-400'
+  if (kind === 'meeting') return 'bg-orange-200 text-orange-950 ring-1 ring-orange-400'
+  if (kind === 'block') return 'bg-indigo-200 text-indigo-950 ring-1 ring-indigo-400'
+  return 'bg-emerald-200 text-emerald-950 ring-1 ring-emerald-400'
 }
 
-const statusTone = (status?: string) => {
-  if (status === 'done') return 'bg-emerald-100 text-emerald-700 ring-emerald-200'
-  if (status === 'blocked') return 'bg-rose-100 text-rose-700 ring-rose-200'
-  if (status === 'in_progress') return 'bg-sky-100 text-sky-700 ring-sky-200'
-  if (status === 'overdue') return 'bg-amber-100 text-amber-800 ring-amber-200'
-  return 'bg-slate-100 text-slate-700 ring-slate-200'
+/** Tipus efectiu per pintar barres: reunions puntuals inclouen fites amb `meeting`. */
+const barLaneKind = (item: Pick<PlanningItem, 'kind' | 'meeting'>): LaneKind =>
+  item.meeting ? 'meeting' : item.kind
+
+/** Color de barres i pills del timeline segons tipus (+ estat dins la mateixa família). */
+const laneBarTone = (kind: LaneKind, status?: string) => {
+  if (kind === 'milestone') {
+    if (status === 'done') return 'bg-violet-300 text-violet-950 ring-violet-400'
+    return 'bg-violet-200 text-violet-900 ring-violet-300'
+  }
+  if (kind === 'meeting') {
+    if (status === 'done' || status === 'completed') return 'bg-orange-300 text-orange-950 ring-orange-400'
+    if (status === 'cancelled') return 'bg-slate-200 text-slate-700 ring-slate-300'
+    return 'bg-orange-200 text-orange-900 ring-orange-300'
+  }
+  if (kind === 'block') {
+    if (status === 'done') return 'bg-indigo-300 text-indigo-950 ring-indigo-400'
+    if (status === 'blocked') return 'bg-rose-200 text-rose-900 ring-rose-300'
+    if (status === 'in_progress') return 'bg-indigo-200 text-indigo-900 ring-indigo-300'
+    if (status === 'overdue') return 'bg-amber-200 text-amber-900 ring-amber-300'
+    return 'bg-indigo-100 text-indigo-800 ring-indigo-200'
+  }
+  if (status === 'done') return 'bg-emerald-300 text-emerald-950 ring-emerald-400'
+  if (status === 'blocked') return 'bg-rose-200 text-rose-900 ring-rose-300'
+  if (status === 'in_progress') return 'bg-teal-200 text-teal-900 ring-teal-300'
+  if (status === 'overdue') return 'bg-amber-200 text-amber-900 ring-amber-300'
+  return 'bg-emerald-100 text-emerald-800 ring-emerald-200'
 }
 
 const countdownTone = (daysLeft: number) => {
@@ -143,8 +203,25 @@ const findColumnIndex = (columns: TimelineColumn[], value: Date) => {
   return index === -1 ? Math.max(0, columns.length - 1) : index
 }
 
-export default function ProjectPlanningTab({ projectId, project }: Props) {
+const formatMeetingTime = (date?: string, startTime?: string) => {
+  const dateLabel = date ? formatProjectDate(date) : 'Sense data'
+  const timeLabel = String(startTime || '').trim()
+  return timeLabel ? `${dateLabel} · ${timeLabel}` : dateLabel
+}
+
+export default function ProjectPlanningTab({
+  projectId,
+  project,
+  canConvokeMeetings = false,
+  meetingActaUser,
+  onOpenMeetingMinutes,
+  onOpenBlockMeeting,
+  onOpenTaskMeeting,
+  onNavigateToBlock,
+  onNavigateToTask,
+}: Props) {
   const [entityFilter, setEntityFilter] = useState<'all' | LaneKind>('all')
+  const [selectedMeetingItem, setSelectedMeetingItem] = useState<PlanningItem | null>(null)
   const [departmentFilter, setDepartmentFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const { setOpen, setContent } = useFilters()
@@ -200,7 +277,15 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
             status: project.kickoff.status || 'in_progress',
             start: kickoffDate,
             end: kickoffDate,
-            href: `/menu/projects/${projectId}?tab=kickoff`,
+            href: `/menu/projects/${projectId}?tab=blocks`,
+            meeting: {
+              scope: 'kickoff',
+              date: project.kickoff.date,
+              startTime: project.kickoff.startTime,
+              durationMinutes: project.kickoff.durationMinutes,
+              calendarUrl: project.kickoff.graphWebLink || undefined,
+              joinUrl: project.kickoff.graphJoinUrl || undefined,
+            },
           }
         : null,
       projectLaunchDate
@@ -254,7 +339,74 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
       })
     })
 
-    return [...milestones, ...blocks, ...tasks]
+    const meetings = project.blocks.flatMap((block) => {
+      const blockMeetings = (block.meetings || []).map((meeting) => {
+        const meetingStart = parseDate(meeting.date)
+        if (!meetingStart) return null
+        const durationMinutes = Number(meeting.durationMinutes || 60)
+        const meetingEnd = addDays(meetingStart, 0)
+        meetingEnd.setHours(
+          meetingStart.getHours() + Math.floor(durationMinutes / 60),
+          meetingStart.getMinutes() + (durationMinutes % 60)
+        )
+        return {
+          id: `meeting-block-${meeting.id}`,
+          kind: 'meeting' as const,
+          title: `Reunió bloc · ${meeting.title || block.name || 'Bloc'}`,
+          subtitle: block.name || 'Bloc',
+          department: getBlockDepartments(block)[0] || '',
+          owner: block.owner || '',
+          status: meeting.status || 'scheduled',
+          start: meetingStart,
+          end: meetingStart,
+          href: `/menu/projects/${projectId}?tab=blocks`,
+          meeting: {
+            scope: 'block',
+            blockId: block.id,
+            meetingId: meeting.id,
+            date: meeting.date,
+            startTime: meeting.startTime,
+            durationMinutes: meeting.durationMinutes,
+            calendarUrl: meeting.graphWebLink || undefined,
+            joinUrl: meeting.graphJoinUrl || undefined,
+          },
+        }
+      })
+
+      const taskMeetings = (block.tasks || []).flatMap((task) =>
+        (task.meetings || []).map((meeting) => {
+          const meetingStart = parseDate(meeting.date)
+          if (!meetingStart) return null
+          return {
+            id: `meeting-task-${meeting.id}`,
+            kind: 'meeting' as const,
+            title: `Reunió tasca · ${meeting.title || task.title || 'Tasca'}`,
+            subtitle: `${task.title || 'Tasca'} · ${block.name || 'Bloc'}`,
+            department: task.department || getBlockDepartments(block)[0] || '',
+            owner: task.owner || block.owner || '',
+            status: meeting.status || 'scheduled',
+            start: meetingStart,
+            end: meetingStart,
+            href: `/menu/projects/${projectId}?tab=tasks`,
+            meeting: {
+              scope: 'task',
+              blockId: block.id,
+              taskId: task.id,
+              meetingId: meeting.id,
+              date: meeting.date,
+              startTime: meeting.startTime,
+              durationMinutes: meeting.durationMinutes,
+              calendarUrl: meeting.graphWebLink || undefined,
+              joinUrl: meeting.graphJoinUrl || undefined,
+            },
+          }
+        })
+      )
+
+      return [...blockMeetings, ...taskMeetings].filter(Boolean)
+    }) as PlanningItem[]
+
+    return [...milestones, ...meetings, ...blocks, ...tasks]
   }, [project, projectCreatedAt, projectId])
 
   const departments = useMemo(
@@ -316,11 +468,11 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
           startColumn,
           endColumn: Math.max(startColumn, endColumn),
           daysLeft: diffDays(new Date(), item.end),
-          isInstant: item.kind === 'milestone',
+          isInstant: item.kind === 'milestone' || item.kind === 'meeting',
         }
       })
       .sort((left, right) => {
-        const order = { milestone: 0, block: 1, task: 2 }
+        const order = { milestone: 0, meeting: 1, block: 2, task: 3 }
         if (order[left.kind] !== order[right.kind]) return order[left.kind] - order[right.kind]
         if (left.start.getTime() !== right.start.getTime()) return left.start.getTime() - right.start.getTime()
         return left.title.localeCompare(right.title)
@@ -332,7 +484,8 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
   const planningSummary = useMemo(() => {
     const blockCount = items.filter((item) => item.kind === 'block').length
     const milestoneCount = items.filter((item) => item.kind === 'milestone').length
-    return { blockCount, milestoneCount }
+    const meetingCount = items.filter((item) => item.kind === 'meeting').length
+    return { blockCount, milestoneCount, meetingCount }
   }, [items])
 
   const resetFilters = () => {
@@ -353,6 +506,7 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
             <SelectContent>
               <SelectItem value="all">Tot</SelectItem>
               <SelectItem value="milestone">Fites</SelectItem>
+              <SelectItem value="meeting">Reunions</SelectItem>
               <SelectItem value="block">Blocs</SelectItem>
               <SelectItem value="task">Tasques</SelectItem>
             </SelectContent>
@@ -405,9 +559,78 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
   const timelineGridColumns = `${LABEL_COLUMN_WIDTH}px repeat(${timeColumns.length}, minmax(${timelineColumnWidth}px, 1fr))`
   const firstColumnClass = 'sticky left-0 z-20 border-r border-slate-200 bg-white'
 
+  const selectedMeeting = selectedMeetingItem?.meeting
+  const canOpenPlanningActa =
+    Boolean(meetingActaUser) &&
+    (canOpenMeetingActaInBlocks(meetingActaUser!, project) ||
+      canOpenMeetingActaInTasks(meetingActaUser!, project))
+  const canOpenSelectedMeetingActa =
+    Boolean(meetingActaUser && selectedMeeting) &&
+    canOpenMeetingActaForScope(meetingActaUser!, project, selectedMeeting!.scope, {
+      blockId: selectedMeeting?.blockId,
+      taskId: selectedMeeting?.taskId,
+      meetingId: selectedMeeting?.meetingId,
+    })
+  const meetingMinutesLabel =
+    project.kickoff.minutesStatus === 'closed'
+      ? 'Tancar acta'
+      : String(project.kickoff.minutes || '').trim()
+        ? 'Apunts reunió'
+        : 'Acta reunió'
+
+  const openSelectedMeetingContext = () => {
+    if (!selectedMeeting) return
+    if (selectedMeeting.scope === 'task' && selectedMeeting.blockId && selectedMeeting.taskId) {
+      onNavigateToTask?.(selectedMeeting.blockId, selectedMeeting.taskId)
+    } else if (selectedMeeting.scope === 'block' && selectedMeeting.blockId) {
+      onNavigateToBlock?.(selectedMeeting.blockId)
+    } else {
+      onNavigateToBlock?.(project.blocks[0]?.id || '')
+    }
+    setSelectedMeetingItem(null)
+  }
+
+  const convokeFromSelectedMeeting = () => {
+    if (!selectedMeeting) return
+    if (selectedMeeting.scope === 'task' && selectedMeeting.blockId && selectedMeeting.taskId) {
+      onOpenTaskMeeting?.(selectedMeeting.blockId, selectedMeeting.taskId)
+    } else if (selectedMeeting.blockId) {
+      onOpenBlockMeeting?.(selectedMeeting.blockId)
+    }
+    setSelectedMeetingItem(null)
+  }
+
+  const renderInstantPill = (item: TimelineRenderItem) => {
+    const isOpenable = Boolean(item.meeting)
+    const lane = barLaneKind(item)
+    const pillClass = `inline-flex max-w-full items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ring-1 ${laneBarTone(lane, item.status)} ${isOpenable ? 'cursor-pointer transition hover:shadow-md hover:ring-2' : ''}`
+
+    const content = (
+      <>
+        <span className="truncate">{item.title}</span>
+        <span className="rounded-full bg-white/70 px-2 py-0.5">{shortDate(item.start)}</span>
+      </>
+    )
+
+    if (!isOpenable) {
+      return <div className={pillClass}>{content}</div>
+    }
+
+    return (
+      <button
+        type="button"
+        className={pillClass}
+        onClick={() => setSelectedMeetingItem(item)}
+        title="Obrir reunió"
+      >
+        {content}
+      </button>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <section className="rounded-[28px] bg-white/80 p-5 ring-1 ring-slate-200">
+      <section className={cn(projectModuleShellClass, 'p-5')}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="hidden items-center gap-2 rounded-full bg-violet-50 px-3 py-2 text-sm font-medium text-violet-700 ring-1 ring-violet-200 lg:inline-flex">
@@ -426,14 +649,30 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="hidden items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600 xl:inline-flex">
-              <CalendarClock className="h-4 w-4 text-sky-600" />
+            <div className="hidden items-center gap-2 rounded-full bg-indigo-100 px-3 py-2 text-xs font-semibold text-indigo-900 ring-1 ring-indigo-200 xl:inline-flex">
+              <CalendarClock className="h-4 w-4 text-indigo-700" />
               {planningSummary.blockCount} blocs
             </div>
-            <div className="hidden items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600 xl:inline-flex">
-              <Milestone className="h-4 w-4 text-emerald-600" />
+            <div className="hidden items-center gap-2 rounded-full bg-violet-100 px-3 py-2 text-xs font-semibold text-violet-900 ring-1 ring-violet-200 xl:inline-flex">
+              <Milestone className="h-4 w-4 text-violet-700" />
               {planningSummary.milestoneCount} fites
             </div>
+            <div className="hidden items-center gap-2 rounded-full bg-orange-100 px-3 py-2 text-xs font-semibold text-orange-900 ring-1 ring-orange-200 xl:inline-flex">
+              <Users className="h-4 w-4 text-orange-700" />
+              {planningSummary.meetingCount} reunions
+            </div>
+            {canOpenPlanningActa && onOpenMeetingMinutes ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={onOpenMeetingMinutes}
+              >
+                <FileText className="h-4 w-4 shrink-0" aria-hidden />
+                {meetingMinutesLabel}
+              </Button>
+            ) : null}
             <FilterButton onClick={openFiltersPanel} />
             <ResetFilterButton onClick={resetFilters} />
           </div>
@@ -490,7 +729,13 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${badgeTone(item.kind)}`}>
-                            {item.kind === 'milestone' ? 'Fita' : item.kind === 'block' ? 'Bloc' : 'Tasca'}
+                            {item.kind === 'milestone'
+                              ? 'Fita'
+                              : item.kind === 'meeting'
+                                ? 'Reunió'
+                                : item.kind === 'block'
+                                  ? 'Bloc'
+                                  : 'Tasca'}
                           </span>
                           {item.department ? (
                             <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${colorByDepartment(item.department)}`}>
@@ -525,17 +770,14 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
                             className="pointer-events-auto flex items-center"
                             style={{ gridColumn: `${item.startColumn} / span 1` }}
                           >
-                            <div className={`inline-flex max-w-full items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ring-1 ${statusTone(item.status)}`}>
-                              <span className="truncate">{item.title}</span>
-                              <span className="rounded-full bg-white/70 px-2 py-0.5">{shortDate(item.start)}</span>
-                            </div>
+                            {renderInstantPill(item)}
                           </div>
                         ) : (
                           <div
                             className="pointer-events-auto flex items-center"
                             style={{ gridColumn: `${item.startColumn} / ${item.endColumn + 1}` }}
                           >
-                            <div className={`w-full rounded-[18px] px-4 py-3 ring-1 ${statusTone(item.status)}`}>
+                            <div className={`w-full rounded-[18px] px-4 py-3 ring-1 ${laneBarTone(item.kind, item.status)}`}>
                               <div className="flex min-w-0 flex-wrap items-center gap-2">
                                 <div className="truncate text-sm font-semibold">{item.title}</div>
                                 {item.owner ? (
@@ -565,6 +807,77 @@ export default function ProjectPlanningTab({ projectId, project }: Props) {
           </div>
         )}
       </section>
+
+      <Dialog open={Boolean(selectedMeetingItem)} onOpenChange={(open) => !open && setSelectedMeetingItem(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{selectedMeetingItem?.title || 'Reunió'}</DialogTitle>
+            <DialogDescription>
+              {selectedMeetingItem?.subtitle || 'Detalls de la convocatòria'}
+              {selectedMeeting ? (
+                <span className="mt-1 block text-slate-600">
+                  {formatMeetingTime(selectedMeeting.date, selectedMeeting.startTime)}
+                  {selectedMeeting.durationMinutes
+                    ? ` · ${selectedMeeting.durationMinutes} min`
+                    : ''}
+                </span>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-2">
+            {selectedMeeting?.calendarUrl ? (
+              <Button type="button" variant="outline" className="justify-start gap-2" asChild>
+                <a href={selectedMeeting.calendarUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Obrir al calendari
+                </a>
+              </Button>
+            ) : null}
+            {selectedMeeting?.joinUrl ? (
+              <Button type="button" className="justify-start gap-2 bg-violet-600 text-white hover:bg-violet-700" asChild>
+                <a href={selectedMeeting.joinUrl} target="_blank" rel="noreferrer">
+                  <Users className="h-4 w-4" />
+                  Unir-se a la reunió
+                </a>
+              </Button>
+            ) : null}
+            {selectedMeeting?.scope === 'kickoff' || selectedMeeting?.scope === 'block' || selectedMeeting?.scope === 'task' ? (
+              <Button type="button" variant="outline" className="justify-start gap-2" onClick={openSelectedMeetingContext}>
+                <CalendarClock className="h-4 w-4" />
+                {selectedMeeting?.scope === 'task'
+                  ? 'Anar a la tasca'
+                  : selectedMeeting?.scope === 'kickoff'
+                    ? 'Anar als blocs'
+                    : 'Anar al bloc'}
+              </Button>
+            ) : null}
+            {canOpenSelectedMeetingActa && onOpenMeetingMinutes ? (
+              <Button type="button" variant="outline" className="justify-start gap-2" onClick={() => {
+                setSelectedMeetingItem(null)
+                onOpenMeetingMinutes()
+              }}>
+                <FileText className="h-4 w-4" />
+                Obrir acta
+              </Button>
+            ) : null}
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button type="button" variant="ghost" onClick={() => setSelectedMeetingItem(null)}>
+              Tancar
+            </Button>
+            {canConvokeMeetings &&
+            selectedMeeting &&
+            selectedMeeting.scope !== 'kickoff' &&
+            (onOpenBlockMeeting || onOpenTaskMeeting) ? (
+              <Button type="button" onClick={convokeFromSelectedMeeting}>
+                Convocar reunió
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

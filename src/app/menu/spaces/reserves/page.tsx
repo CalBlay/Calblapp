@@ -9,6 +9,12 @@ import SpaceGrid from '@/components/spaces/SpaceGrid'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 
 import FilterButton from '@/components/ui/filter-button'
+import {
+  CorporateFilterField,
+  CorporateFilterSelect,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
+import { corporateFilterChipClass } from '@/lib/corporate-filters'
 import { useFilters } from '@/context/FiltersContext'
 import SpacesFilters, { type SpacesFilterState } from '@/components/spaces/SpacesFilters'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
@@ -213,91 +219,81 @@ const {
 
       <section className="relative w-full min-h-0 bg-white pb-24 sm:pb-8">
 
-        {/* Controls de setmana + Filtres */}
-        <div className="mb-2 mt-3 flex flex-col gap-3 px-2 sm:px-4 lg:mt-4 lg:flex-row lg:items-center lg:justify-between">
-
-          {/* Controls esquerra */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:gap-4">
-            <div className="flex items-center justify-between gap-2 sm:justify-start sm:gap-3">
-              <button
-                type="button"
-                onClick={() => shiftWeek('prev')}
-                aria-label="Setmana anterior"
-                className="flex h-11 min-w-11 items-center justify-center rounded-lg bg-gray-100 px-3 text-base font-semibold hover:bg-gray-200"
-              >
-                {'<'}
-              </button>
-
-              <span className="flex-1 text-center text-sm font-semibold text-gray-700 sm:flex-none sm:text-base lg:text-lg">
-                Setmana: {weekLabel}
-              </span>
-
-              <button
-                type="button"
-                onClick={() => shiftWeek('next')}
-                aria-label="Setmana següent"
-                className="flex h-11 min-w-11 items-center justify-center rounded-lg bg-gray-100 px-3 text-base font-semibold hover:bg-gray-200"
-              >
-                {'>'}
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2">
-              <label className="flex min-h-11 flex-col justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 sm:min-h-0 sm:flex-row sm:items-center sm:gap-2 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Mes</span>
-                <select
-                  value={filters.month}
-                  onChange={(e) => updateMonth(Number(e.target.value))}
-                  className="h-10 w-full rounded-md border bg-white px-2 text-sm sm:h-auto sm:w-auto sm:py-1 sm:text-xs"
-                >
-                  {monthOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="flex min-h-11 flex-col justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 sm:min-h-0 sm:flex-row sm:items-center sm:gap-2 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Any</span>
-                <select
-                  value={filters.year}
-                  onChange={(e) => updateYear(Number(e.target.value))}
-                  className="h-10 w-full rounded-md border bg-white px-2 text-sm sm:h-auto sm:w-auto sm:py-1 sm:text-xs"
-                >
-                  {yearOptions.map((year) => (
-                    <option key={year} value={year}>
-                      {year}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+        <CorporateFiltersShell
+          variant="toolbar"
+          className="mx-2 mb-2 mt-3 sm:mx-4 lg:mt-4"
+          bodyClassName="flex-col gap-3 lg:flex-row lg:items-end"
+        >
+          <div className="flex items-center justify-between gap-2 sm:justify-start sm:gap-3">
+            <button
+              type="button"
+              onClick={() => shiftWeek('prev')}
+              aria-label="Setmana anterior"
+              className={corporateFilterChipClass}
+            >
+              {'<'}
+            </button>
+            <span className="flex-1 text-center text-sm font-semibold text-slate-800 sm:flex-none sm:text-base">
+              Setmana: {weekLabel}
+            </span>
+            <button
+              type="button"
+              onClick={() => shiftWeek('next')}
+              aria-label="Setmana següent"
+              className={corporateFilterChipClass}
+            >
+              {'>'}
+            </button>
           </div>
 
-          {/* Botó filtres */}
-          <div className="flex justify-end">
+          <CorporateFilterField label="Mes" className="shrink-0">
+            <CorporateFilterSelect
+              value={String(filters.month)}
+              onChange={(e) => updateMonth(Number(e.target.value))}
+            >
+              {monthOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </CorporateFilterSelect>
+          </CorporateFilterField>
+
+          <CorporateFilterField label="Any" className="shrink-0">
+            <CorporateFilterSelect
+              value={String(filters.year)}
+              onChange={(e) => updateYear(Number(e.target.value))}
+            >
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </CorporateFilterSelect>
+          </CorporateFilterField>
+
+          <div className="flex justify-end lg:ml-auto">
             <FilterButton
-            onClick={() => {
-              setFiltersContent(
-                <SpacesFilters
-                  value={filters}
-                  fincas={fincas}
-                  comercials={comercials}
-                  lns={lns} 
-                  onChange={(patch) =>
-                    setFilters(prev => ({
-                      ...prev,
-                      ...patch
-                    }))
-                  }
-                />
-              )
-              openFilters(true)
-            }}
+              onClick={() => {
+                setFiltersContent(
+                  <SpacesFilters
+                    value={filters}
+                    fincas={fincas}
+                    comercials={comercials}
+                    lns={lns}
+                    onChange={(patch) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        ...patch,
+                      }))
+                    }
+                  />
+                )
+                openFilters(true)
+              }}
             />
           </div>
-        </div>
+        </CorporateFiltersShell>
 
         {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
              â³ Loading

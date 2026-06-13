@@ -11,6 +11,11 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import FilterButton from '@/components/ui/filter-button'
+import {
+  CorporateActiveFilterChip,
+  CorporateFiltersActiveRow,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
 import { normalizeRole } from '@/lib/roles'
@@ -506,8 +511,11 @@ export default function MaintenanceTicketsPage() {
           </div>
         ) : null}
 
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex flex-wrap items-center gap-3 xl:flex-nowrap">
+        <CorporateFiltersShell
+          variant="toolbar"
+          bodyClassName="flex-col items-stretch gap-0 xl:flex-row xl:flex-wrap xl:items-center"
+        >
+          <div className="flex w-full flex-wrap items-center gap-3 xl:flex-nowrap">
             <div className="shrink-0">
               <SmartFilters
                 modeDefault="week"
@@ -518,6 +526,7 @@ export default function MaintenanceTicketsPage() {
                 showWorker={false}
                 showLocation={false}
                 showStatus={false}
+                compact
                 onChange={(next: SmartFiltersChange) =>
                   setFilters((prev) => ({
                     ...prev,
@@ -529,50 +538,48 @@ export default function MaintenanceTicketsPage() {
                 initialEnd={filters.end}
               />
             </div>
-            <div className="flex min-w-[260px] flex-1 items-center gap-2">
-              <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+            <div className="flex min-w-[260px] flex-1 flex-wrap items-center gap-2">
+              <CorporateActiveFilterChip variant="active">
                 {DATE_MODE_LABELS[filters.dateMode ?? 'all']}
-              </span>
+              </CorporateActiveFilterChip>
               {(filters.dateMode ?? 'all') !== 'all' && filters.start && filters.end ? (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                <CorporateActiveFilterChip>
                   {filters.start === filters.end
                     ? formatDateOnly(filters.start, filters.start)
                     : `${formatDateOnly(filters.start, filters.start)} - ${formatDateOnly(filters.end, filters.end)}`}
-                </span>
+                </CorporateActiveFilterChip>
               ) : null}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
               <FilterButton />
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <CorporateFiltersActiveRow>
             {isExternalReporter && filters.ticketBucket && filters.ticketBucket !== '__all__' ? (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+              <CorporateActiveFilterChip>
                 {EXTERNAL_BUCKET_LABELS[filters.ticketBucket as keyof typeof EXTERNAL_BUCKET_LABELS]}
-              </span>
+              </CorporateActiveFilterChip>
             ) : null}
             {!isExternalReporter && filters.status && filters.status !== '__all__' ? (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+              <CorporateActiveFilterChip>
                 {STATUS_LABELS[filters.status as TicketStatus]}
-              </span>
+              </CorporateActiveFilterChip>
             ) : null}
             {!isExternalReporter && filters.priority && filters.priority !== '__all__' ? (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+              <CorporateActiveFilterChip>
                 {PRIORITY_LABELS[filters.priority as TicketPriority]}
-              </span>
+              </CorporateActiveFilterChip>
             ) : null}
             {!isExternalReporter && filters.location && filters.location !== '__all__' ? (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                {filters.location}
-              </span>
+              <CorporateActiveFilterChip>{filters.location}</CorporateActiveFilterChip>
             ) : null}
             {(filters.dateMode ?? 'all') !== 'all' ? (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+              <CorporateActiveFilterChip>
                 {DATE_MODE_LABELS[filters.dateMode ?? 'all']}
-              </span>
+              </CorporateActiveFilterChip>
             ) : null}
-          </div>
-        </div>
+          </CorporateFiltersActiveRow>
+        </CorporateFiltersShell>
 
         {loading && <p className="text-sm text-gray-500">Carregant...</p>}
         {error && <p className="text-sm text-red-500">{error}</p>}

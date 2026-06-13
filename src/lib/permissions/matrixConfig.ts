@@ -86,6 +86,8 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       { key: PERM.action('/menu/calendar', 'manual:update'), label: 'Editar esdeveniment manual' },
       { key: PERM.action('/menu/calendar', 'manual:delete'), label: 'Eliminar esdeveniment manual' },
       { key: PERM.action('/menu/calendar', 'attach:sharepoint'), label: 'Adjuntar documents (SharePoint)' },
+      { key: PERM.action('/menu/calendar', 'email:send-documents'), label: 'Enviar documents per correu' },
+      { key: PERM.action('/menu/calendar', 'mail-groups:manage'), label: 'Gestionar grups d’enviament' },
       { key: PERM.action('/menu/calendar', 'sync:zoho'), label: 'Sync Zoho' },
       { key: PERM.action('/menu/calendar', 'sync:ada'), label: 'Sync Ada' },
     ],

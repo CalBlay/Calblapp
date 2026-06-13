@@ -5,8 +5,14 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
-import { canAccessProjects, sessionToAccessUser } from '@/lib/projectAccess'
-import { syncProjectRoomOpsChannel } from '@/lib/projectRoomOps'
+import { canAccessBlockRoom, canAccessGeneralRoom } from '@/lib/projectRoomAccess'
+import { buildAutoGeneralRoom, buildGeneralRoomId } from '@/lib/projectGeneralRoom'
+import { sessionToRoomAccessUser } from '@/lib/projectAccess'
+import {
+  syncProjectRoomOpsChannel,
+  type ProjectBlockLike,
+  type ProjectRoomLike,
+} from '@/lib/projectRoomOps'
 import {
   createTaskDeadlineCalendarEvent,
   sendTaskAssignmentEmail,
@@ -14,7 +20,7 @@ import {
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { internalApiHeaders } from '@/lib/server/internalApiAuth'
-import type { ProjectBlockLike, ProjectRoomLike } from '@/lib/projectRoomOps'
+import type { DocumentReference } from 'firebase-admin/firestore'
 
 type SessionUser = {
   id: string
@@ -220,18 +226,133 @@ const buildAutoRoomFromBlock = (data: Record<string, unknown>, roomId: string) =
   }
 }
 
-async function requireAdmin() {
+type SessionResult = { error: NextResponse } | { user: SessionUser }
+
+async function requireSession(): Promise<SessionResult> {
   const session = await getServerSession(authOptions)
   if (!session?.user) {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 
-  const user = session.user as SessionUser
-  if (!canAccessProjects(sessionToAccessUser(user))) {
+  return { user: session.user as SessionUser }
+}
+
+function resolveRoomContext(data: Record<string, unknown>, roomId: string, projectId: string) {
+  const rooms = Array.isArray(data.rooms) ? [...(data.rooms as ProjectRoomLike[])] : []
+  let room = rooms.find((item) => String(item.id || '') === roomId) || null
+
+  if (!room) {
+    room =
+      buildAutoGeneralRoom({ ...data, id: projectId }, projectId, roomId) ||
+      buildAutoRoomFromBlock(data, roomId)
+  }
+
+  if (!room) {
+    return { room: null, block: null, rooms }
+  }
+
+  if (roomId === buildGeneralRoomId(projectId)) {
+    room = { ...room, kind: 'general', blockId: '' }
+  }
+
+  const blockId = String(room.blockId || '')
+  const blocks = Array.isArray(data.blocks) ? (data.blocks as Record<string, unknown>[]) : []
+  const block = blocks.find((item) => String(item.id || '') === blockId) || null
+
+  return { room, block, rooms }
+}
+
+function canAccessProjectRoom(
+  user: SessionUser,
+  data: Record<string, unknown>,
+  room: ProjectRoomLike,
+  block: Record<string, unknown> | null,
+  projectId: string,
+  roomId: string
+) {
+  const project = {
+    owner: String(data.owner || ''),
+    ownerUserId: String(data.ownerUserId || ''),
+    sponsor: String(data.sponsor || ''),
+    createdById: String(data.createdById || ''),
+  }
+
+  const blockForAccess = block
+    ? {
+        owner: String(block.owner || ''),
+        tasks: (Array.isArray(block.tasks) ? block.tasks : []).map((task) => ({
+          owner: String((task as Record<string, unknown>).owner || ''),
+        })),
+      }
+    : null
+
+  const roomForAccess = {
+    participants: Array.isArray(room.participants)
+      ? (room.participants as unknown[]).map(String)
+      : [],
+    kind: String(room.kind || ''),
+  }
+
+  const accessUser = sessionToRoomAccessUser(user)
+
+  if (roomId === buildGeneralRoomId(projectId) || String(room.kind || '') === 'general') {
+    const blocks = Array.isArray(data.blocks) ? (data.blocks as Record<string, unknown>[]) : []
+    return canAccessGeneralRoom(
+      accessUser,
+      project,
+      blocks.map((item) => ({ owner: String(item.owner || '') })),
+      roomForAccess
+    )
+  }
+
+  return canAccessBlockRoom(accessUser, project, blockForAccess, roomForAccess)
+}
+
+type RoomAccessSuccess = {
+  user: SessionUser
+  data: Record<string, unknown>
+  room: ProjectRoomLike
+  block: Record<string, unknown> | null
+  rooms: ProjectRoomLike[]
+  projectRef: DocumentReference
+}
+
+type RoomAccessResult = { error: NextResponse } | RoomAccessSuccess
+
+function isRoomAccessError(value: RoomAccessResult): value is { error: NextResponse } {
+  return 'error' in value
+}
+
+async function requireRoomAccess(projectId: string, roomId: string): Promise<RoomAccessResult> {
+  const session = await requireSession()
+  if ('error' in session) {
+    return { error: session.error }
+  }
+
+  const { user } = session
+  const projectRef = db.collection('projects').doc(projectId)
+  const snap = await projectRef.get()
+  if (!snap.exists) {
+    return { error: NextResponse.json({ error: 'Projecte no trobat' }, { status: 404 }) }
+  }
+
+  const data = snap.data() as Record<string, unknown>
+  const { room, block, rooms } = resolveRoomContext(data, roomId, projectId)
+
+  if (!room) {
+    return { error: NextResponse.json({ error: 'Sala no trobada' }, { status: 404 }) }
+  }
+
+  if (!canAccessProjectRoom(user, data, room, block, projectId, roomId)) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
 
-  return { user }
+  const workingRooms = [...rooms]
+  if (!workingRooms.some((item) => String(item.id || '') === roomId)) {
+    workingRooms.push(room)
+  }
+
+  return { user, data, room, block, rooms: workingRooms, projectRef }
 }
 
 async function uploadDocument(file: File, projectId: string, roomId: string) {
@@ -267,62 +388,12 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string; roomId: string }> }
 ) {
-  const auth = await requireAdmin()
-  if ('error' in auth) return auth.error
-
   try {
     const { id, roomId } = await params
-    const projectRef = db.collection('projects').doc(id)
-    const snap = await projectRef.get()
-    if (!snap.exists) {
-      return NextResponse.json({ error: 'Projecte no trobat' }, { status: 404 })
-    }
+    const auth = await requireRoomAccess(id, roomId)
+    if (isRoomAccessError(auth)) return auth.error
 
-    const data = snap.data() as Record<string, unknown>
-    const rooms = Array.isArray(data.rooms) ? [...(data.rooms as ProjectRoomLike[])] : []
-    let room = rooms.find((item) => String(item.id || '') === roomId) || null
-
-    if (!room) {
-      room = buildAutoRoomFromBlock(data, roomId)
-      if (!room) {
-        return NextResponse.json({ error: 'Sala no trobada' }, { status: 404 })
-      }
-      rooms.push(room)
-    }
-
-    const blockId = String(room.blockId || '')
-    const blocks = Array.isArray(data.blocks) ? (data.blocks as Record<string, unknown>[]) : []
-    const linkedBlock = blocks.find((item) => String(item.id || '') === blockId) || null
-    const roomDepartments = Array.isArray(room.departments) ? room.departments.map(String).filter(Boolean) : []
-    const allowedDepartments = new Set(roomDepartments.map(normalizeText))
-    const knownNames = new Set([
-      String(data.owner || ''),
-      String(room.name || ''),
-      String(room.blockId || ''),
-      String(linkedBlock?.owner || ''),
-      ...((Array.isArray(room.participants) ? room.participants : []) as unknown[]).map(String),
-      ...((Array.isArray(linkedBlock?.tasks) ? linkedBlock?.tasks : []) as Record<string, unknown>[]).map((task) =>
-        String(task.owner || '')
-      ),
-    ].filter(Boolean))
-
-    const usersSnap = await db.collection('users').get()
-    const users = usersSnap.docs
-      .map((doc) => {
-        const user = doc.data() as Record<string, unknown>
-        return {
-          id: doc.id,
-          name: String(user.name || '').trim(),
-          department: String(user.department || '').trim(),
-          role: String(user.role || '').trim(),
-        }
-      })
-      .filter((user) => {
-        if (!user.name) return false
-        if (knownNames.has(user.name)) return true
-        if (allowedDepartments.size === 0) return true
-        return allowedDepartments.has(normalizeText(user.department))
-      })
+    const { data, room, block: linkedBlock } = auth
 
     return NextResponse.json({
       project: {
@@ -348,7 +419,7 @@ export async function GET(
             ? data.kickoff
             : EMPTY_KICKOFF,
       },
-      users,
+      users: [],
     })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
@@ -360,34 +431,19 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string; roomId: string }> }
 ) {
-  const auth = await requireAdmin()
-  if ('error' in auth) return auth.error
-
   try {
     const { id, roomId } = await params
+    const auth = await requireRoomAccess(id, roomId)
+    if (isRoomAccessError(auth)) return auth.error
+
     const baseUrl = new URL(req.url).origin
     const payload = (await req.json()) as {
       room?: Record<string, unknown>
       tasks?: Array<Record<string, unknown>>
     }
 
-    const projectRef = db.collection('projects').doc(id)
-    const snap = await projectRef.get()
-    if (!snap.exists) {
-      return NextResponse.json({ error: 'Projecte no trobat' }, { status: 404 })
-    }
-
-    const data = snap.data() as Record<string, unknown>
-    const rooms = Array.isArray(data.rooms) ? [...(data.rooms as Record<string, unknown>[])] : []
-    let roomIndex = rooms.findIndex((room) => String(room.id || '') === roomId)
-    if (roomIndex === -1) {
-      const autoRoom = buildAutoRoomFromBlock(data, roomId)
-      if (!autoRoom) {
-        return NextResponse.json({ error: 'Sala no trobada' }, { status: 404 })
-      }
-      rooms.push(autoRoom)
-      roomIndex = rooms.length - 1
-    }
+    const { data, rooms, projectRef } = auth
+    const roomIndex = rooms.findIndex((room) => String(room.id || '') === roomId)
 
     if (payload.room) {
       rooms[roomIndex] = {
@@ -490,11 +546,11 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string; roomId: string }> }
 ) {
-  const auth = await requireAdmin()
-  if ('error' in auth) return auth.error
-
   try {
     const { id, roomId } = await params
+    const auth = await requireRoomAccess(id, roomId)
+    if (isRoomAccessError(auth)) return auth.error
+
     const form = await req.formData()
     const file = form.get('file')
 
@@ -502,23 +558,8 @@ export async function POST(
       return NextResponse.json({ error: 'Arxiu invalid' }, { status: 400 })
     }
 
-    const projectRef = db.collection('projects').doc(id)
-    const snap = await projectRef.get()
-    if (!snap.exists) {
-      return NextResponse.json({ error: 'Projecte no trobat' }, { status: 404 })
-    }
-
-    const data = snap.data() as Record<string, unknown>
-    const rooms = Array.isArray(data.rooms) ? [...(data.rooms as ProjectRoomLike[])] : []
-    let roomIndex = rooms.findIndex((room) => String(room.id || '') === roomId)
-    if (roomIndex === -1) {
-      const autoRoom = buildAutoRoomFromBlock(data, roomId)
-      if (!autoRoom) {
-        return NextResponse.json({ error: 'Sala no trobada' }, { status: 404 })
-      }
-      rooms.push(autoRoom)
-      roomIndex = rooms.length - 1
-    }
+    const { data, rooms, projectRef } = auth
+    const roomIndex = rooms.findIndex((room) => String(room.id || '') === roomId)
 
     const stored = await uploadDocument(file, id, roomId)
     const currentDocs = Array.isArray(rooms[roomIndex].documents)
@@ -562,31 +603,12 @@ export async function PUT(
   _req: Request,
   { params }: { params: Promise<{ id: string; roomId: string }> }
 ) {
-  const auth = await requireAdmin()
-  if ('error' in auth) return auth.error
-
   try {
     const { id, roomId } = await params
-    const projectRef = db.collection('projects').doc(id)
-    const snap = await projectRef.get()
-    if (!snap.exists) {
-      return NextResponse.json({ error: 'Projecte no trobat' }, { status: 404 })
-    }
+    const auth = await requireRoomAccess(id, roomId)
+    if (isRoomAccessError(auth)) return auth.error
 
-    const data = snap.data() as Record<string, unknown>
-    const rooms = Array.isArray(data.rooms) ? [...(data.rooms as ProjectRoomLike[])] : []
-    let exists = rooms.some((room) => String(room.id || '') === roomId)
-    if (!exists) {
-      const autoRoom = buildAutoRoomFromBlock(data, roomId)
-      if (!autoRoom) {
-        return NextResponse.json({ error: 'Sala no trobada' }, { status: 404 })
-      }
-      rooms.push(autoRoom)
-      exists = true
-    }
-    if (!exists) {
-      return NextResponse.json({ error: 'Sala no trobada' }, { status: 404 })
-    }
+    const { data, rooms, projectRef } = auth
 
     const synced = await syncProjectRoomOpsChannel({
       project: {

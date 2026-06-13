@@ -1,4 +1,9 @@
 import {
+  buildGeneralRoomId,
+  deriveGeneralRoomParticipants,
+  GENERAL_ROOM_LABEL,
+} from '@/lib/projectGeneralRoom'
+import {
   deriveBlockStatus,
   formatProjectCost,
   getBlockDepartments,
@@ -80,6 +85,83 @@ export const serializeBlocksState = (source: ProjectData) =>
     })),
   })
 
+/** Snapshot for dirty detection — excludes auto-derived kickoff attendees. */
+export const serializeBlocksDirtyState = (source: ProjectData) =>
+  JSON.stringify({
+    blocks: source.blocks.map((block) => ({
+      id: block.id,
+      name: block.name,
+      summary: block.summary,
+      department: block.department,
+      departments: [...getBlockDepartments(block)].sort(),
+      owner: block.owner,
+      deadline: block.deadline,
+      budget: block.budget || '',
+      dependsOn: block.dependsOn,
+      status: block.status,
+      tasks: (block.tasks || []).map((task) => ({
+        id: task.id,
+        title: task.title,
+        description: task.description || '',
+        department: task.department || '',
+        owner: task.owner,
+        deadline: task.deadline,
+        dependsOn: task.dependsOn,
+        cost: task.cost || '',
+        priority: task.priority,
+        status: task.status,
+        sprintId: task.sprintId || '',
+        storyPoints: task.storyPoints || '',
+        documents: (task.documents || []).map((item) => ({
+          id: item?.id || '',
+          category: item?.category || 'other',
+          label: item?.label || item?.name || '',
+          name: item?.name || '',
+          path: item?.path || '',
+          url: item?.url || '',
+          size: item?.size || 0,
+          type: item?.type || '',
+        })),
+      })),
+    })),
+    sprints: (source.sprints || []).map((sprint) => ({
+      id: sprint.id,
+      name: sprint.name,
+      goal: sprint.goal,
+      startDate: sprint.startDate,
+      endDate: sprint.endDate,
+      status: sprint.status,
+    })),
+    kickoffMinutes: source.kickoff.minutes || '',
+    kickoffMinutesStatus: source.kickoff.minutesStatus || 'open',
+    kickoffMinutesAuthor: source.kickoff.minutesAuthor || '',
+    kickoffMinutesClosedAt: source.kickoff.minutesClosedAt || '',
+    kickoffMinutesUpdatedAt: source.kickoff.minutesUpdatedAt || '',
+  })
+
+export const serializeAutoSyncFingerprint = (source: ProjectData) =>
+  JSON.stringify({
+    owner: source.owner,
+    sponsor: source.sponsor,
+    kickoffDate: source.kickoff.date,
+    kickoffStartTime: source.kickoff.startTime,
+    kickoffStatus: source.kickoff.status || '',
+    kickoffAttendeesCount: source.kickoff.attendees.length,
+    departments: [...source.departments].sort(),
+    sprints: (source.sprints || []).map((sprint) => sprint.id).sort(),
+    blocks: source.blocks.map((block) => ({
+      id: block.id,
+      departments: [...getBlockDepartments(block)].sort(),
+      owner: block.owner,
+      tasks: block.tasks.map((task) => ({
+        id: task.id,
+        owner: task.owner,
+        cost: task.cost || '',
+        sprintId: task.sprintId || '',
+      })),
+    })),
+  })
+
 export const serializeRoomsState = (rooms: ProjectRoom[]) =>
   JSON.stringify(
     rooms.map((room) => ({
@@ -133,6 +215,31 @@ export const ensureProjectRooms = (
   currentProject: ProjectData,
   userByName: Map<string, ResponsibleOption>
 ) => {
+  const existingGeneralRoom = currentProject.rooms.find((room) => room.kind === 'general')
+  const generalParticipantNames = deriveGeneralRoomParticipants({
+    owner: currentProject.owner,
+    sponsor: currentProject.sponsor,
+    blocks: currentProject.blocks,
+    extraParticipants: existingGeneralRoom?.participants || [],
+  })
+
+  const generalRoom: ProjectRoom = {
+    id: existingGeneralRoom?.id || buildGeneralRoomId(currentProject.id),
+    name: GENERAL_ROOM_LABEL,
+    kind: 'general',
+    blockId: '',
+    opsChannelId: existingGeneralRoom?.opsChannelId || '',
+    opsChannelName: existingGeneralRoom?.opsChannelName || GENERAL_ROOM_LABEL,
+    opsChannelSource: 'projects',
+    opsSyncedAt: existingGeneralRoom?.opsSyncedAt || 0,
+    departments: [...currentProject.departments],
+    participants: generalParticipantNames,
+    participantDetails: buildParticipantDetails(generalParticipantNames, userByName),
+    notes: existingGeneralRoom?.notes || '',
+    documents: existingGeneralRoom?.documents || [],
+    messages: existingGeneralRoom?.messages || [],
+  }
+
   const autoRooms = currentProject.blocks.map((block) => {
     const existingRoom = currentProject.rooms.find(
       (room) => room.kind === 'block' && room.blockId === block.id
@@ -166,8 +273,29 @@ export const ensureProjectRooms = (
 
   return {
     ...currentProject,
-    rooms: autoRooms,
+    rooms: [generalRoom, ...autoRooms],
   }
+}
+
+export const deriveProjectParticipants = (
+  project: ProjectData,
+  userByName: Map<string, ResponsibleOption>
+) => {
+  const names = new Set<string>()
+  if (project.owner) names.add(project.owner)
+  if (project.sponsor) names.add(project.sponsor)
+  for (const block of project.blocks) {
+    if (block.owner) names.add(block.owner)
+    for (const task of block.tasks) {
+      if (task.owner) names.add(task.owner)
+    }
+  }
+  for (const room of project.rooms) {
+    for (const participant of room.participants || []) {
+      if (participant) names.add(participant)
+    }
+  }
+  return buildParticipantDetails([...names], userByName)
 }
 
 export const deriveKickoffAttendees = (

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { MotionDiv } from '@/lib/lazyMotion'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { isGrupsRestaurantsLn } from '@/lib/spacesLn'
+import { corporateFilterLabelClass } from '@/lib/corporate-filters'
 
 export type SpacesStageFilter = 'confirmat' | 'pressupost' | 'calentet'
 
@@ -213,7 +214,7 @@ function FilterGroup({
 
   return (
     <div>
-      <label className="text-[11px] text-gray-500">{label}</label>
+      <label className={corporateFilterLabelClass}>{label}</label>
       <div className="mt-1 rounded-md border bg-white p-2 space-y-2 max-h-40 overflow-y-auto">
         <label className="flex items-center gap-2 text-sm">
           <input

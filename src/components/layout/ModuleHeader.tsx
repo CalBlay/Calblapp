@@ -37,6 +37,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     documentacio: 'from-teal-100 to-cyan-50',
     'roba-personal': 'from-sky-100 to-indigo-50',
     reports: 'from-cyan-100 to-indigo-50',
+    projects: 'from-violet-100 to-fuchsia-50',
   }
 
   const color = colorMap[moduleKey] ?? 'from-gray-50 to-gray-100'

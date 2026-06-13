@@ -33,6 +33,8 @@ import {
   SelectItem,
   SelectValue
 } from '@/components/ui/select'
+import { corporateFilterChipClass, corporateFilterFieldClass } from '@/lib/corporate-filters'
+import { cn } from '@/lib/utils'
 
 /* ==================== Tipus ==================== */
 type Mode = 'week' | 'month' | 'year' | 'day' | 'range'
@@ -468,13 +470,13 @@ if (key !== lastPayloadRef.current) {
     </Button>
 
     {mode === 'week' && (
-      <span className="text-[13px] font-medium whitespace-nowrap px-0.5">
+      <span className="whitespace-nowrap px-0.5 text-sm font-semibold text-slate-800">
         {weekLabel.replace(/ 20\d{2}/g, '')}
       </span>
     )}
 
     {mode === 'month' && (
-      <span className="text-[13px] font-medium whitespace-nowrap px-0.5">
+      <span className="whitespace-nowrap px-0.5 text-sm font-semibold text-slate-800">
         {monthLabel}
       </span>
     )}
@@ -500,7 +502,7 @@ if (key !== lastPayloadRef.current) {
       <Button
         variant="outline"
         size="sm"
-        className="h-9 text-sm whitespace-nowrap"
+        className={cn(corporateFilterChipClass, 'whitespace-nowrap')}
         onClick={() => setOpenDay(true)}
       >
         {format(parseISO(dayStr), 'd MMM yyyy', { locale: es })}
@@ -551,7 +553,7 @@ if (key !== lastPayloadRef.current) {
       <Button
         variant="outline"
         size="sm"
-        className="h-9 text-sm whitespace-nowrap"
+        className={cn(corporateFilterChipClass, 'whitespace-nowrap')}
         onClick={() => setOpenRange(true)}
       >
         {rangeStartStr && rangeEndStr
@@ -615,7 +617,7 @@ if (key !== lastPayloadRef.current) {
     <Button
       variant="outline"
       size="sm"
-      className="h-9 px-4 rounded-lg border bg-white text-gray-900 flex items-center gap-1"
+      className={cn(corporateFilterChipClass, 'flex items-center gap-1 px-4')}
     >
       {mode === 'week' ? 'Setmana' : mode === 'month' ? 'Mes' : mode === 'year' ? 'Any' : mode === 'day' ? 'Dia' : 'Rang'}
       <span className="text-gray-500 text-xs">▼</span>
@@ -665,7 +667,7 @@ if (key !== lastPayloadRef.current) {
 <div className={showAdvanced ? "flex flex-wrap gap-2" : "hidden sm:flex sm:flex-wrap sm:gap-2"}>
   {allowWorker && (
     <Select value={roleType} onValueChange={(v) => setRoleType(v as RoleType)}>
-      <SelectTrigger className="w-[180px] border bg-white text-gray-900">
+      <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[180px]')}>
         <SelectValue placeholder="Rol">
           {renderLabels.roleType || 'Rol'}
         </SelectValue>
@@ -681,7 +683,7 @@ if (key !== lastPayloadRef.current) {
 
         {showStatus && (
           <Select value={status} onValueChange={(v) => setStatus(v as 'all' | 'confirmed' | 'draft')}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[150px]')}>
               <SelectValue placeholder="Estat" />
             </SelectTrigger>
             <SelectContent>
@@ -694,7 +696,7 @@ if (key !== lastPayloadRef.current) {
 
         {allowDepartment && departmentOptions.length > 0 && (
           <Select value={dept || 'tots'} onValueChange={(v) => setDept(v === 'tots' ? '' : v)}>
-            <SelectTrigger className="w-[180px] border bg-white text-gray-900">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[180px]')}>
               <SelectValue placeholder="Departament">{renderLabels.department || 'Departament'}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -710,7 +712,7 @@ if (key !== lastPayloadRef.current) {
 
         {showCommercial && commercialOptions && commercialOptions.length > 0 && (
           <Select value={commercial || '__all__'} onValueChange={(v) => setCommercial(v === '__all__' ? '' : v)}>
-            <SelectTrigger className="w-[180px] border bg-white text-gray-900">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[180px]')}>
               <SelectValue placeholder="Comercial" />
             </SelectTrigger>
             <SelectContent>
@@ -738,7 +740,7 @@ if (key !== lastPayloadRef.current) {
               setWorkerName(sel?.name || v)
             }}
           >
-            <SelectTrigger className="w-[180px] border bg-white text-gray-900">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[180px]')}>
               <SelectValue placeholder="Treballador">
                 {workerId || workerName
                   ? filteredWorkerOptions.find((w) => w.id === workerId || w.name === workerName)?.name
@@ -758,7 +760,7 @@ if (key !== lastPayloadRef.current) {
 
         {showLocation && locationOptions.length > 0 && (
           <Select value={location || ''} onValueChange={(v) => setLocation(v)}>
-            <SelectTrigger className="w-[180px] border bg-white text-gray-900">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[180px]')}>
               <SelectValue placeholder="Ubicació">{renderLabels.location || 'Ubicació'}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -773,7 +775,7 @@ if (key !== lastPayloadRef.current) {
 
         {showImportance && (
           <Select value={importance} onValueChange={(v) => setImportance(v)}>
-            <SelectTrigger className="w-[150px] border bg-white text-gray-900">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[150px]')}>
               <SelectValue
                 placeholder={
                   <span className="flex items-center gap-1">

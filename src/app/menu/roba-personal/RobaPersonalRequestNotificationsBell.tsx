@@ -1,11 +1,16 @@
 'use client'
 
-import React, { useEffect, useMemo } from 'react'
-import { CheckCircle2 } from 'lucide-react'
+import { useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
 import { subscribeToAblyEvent } from '@/lib/ablyClient'
 import { Badge } from '@/components/ui/badge'
+import ModuleNotificationsBell, {
+  useCloseModuleNotificationsBell,
+} from '@/components/layout/ModuleNotificationsBell'
+import NotificationListItem from '@/components/layout/NotificationListItem'
+import { markNotificationRead } from '@/lib/notifications/markRead'
 import type { DeliveryRow, RequestRow, RobaPersonalRequestNotification } from './robaPersonalTypes'
 import { useRobaPersonalApiAccess } from '@/hooks/useRobaPersonalApiAccess'
 
@@ -60,24 +65,124 @@ function notificationSummary(n: RobaPersonalRequestNotification): string {
   return [ref, worker, dept].filter(Boolean).join(' · ')
 }
 
-export function RobaPersonalRequestNotificationsBanner({
-  onOpenPreparation,
-  onMaterialReady,
-  onDeliveryAck,
-  onDeliveryRevised,
-  onDeliveryDispute,
-  onWorkerPendingRequest,
+function RobaNotificationItems({
+  visibleNotifications,
+  syntheticWorkerNotice,
+  onDismiss,
 }: {
-  onOpenPreparation: (requestId: string) => void
-  onMaterialReady: (requestId: string) => void
-  /** Quan el responsable ha registrat l’entrega i el treballador ha de confirmar. */
-  onDeliveryAck?: (deliveryId: string) => void
-  /** Després de corregir línies d’entrega (mateixa navegació que ack). */
-  onDeliveryRevised?: (deliveryId: string) => void
-  /** Treballador ha reportat incidència (responsable). */
-  onDeliveryDispute?: (deliveryId: string) => void
-  onWorkerPendingRequest?: (requestId: string) => void
+  visibleNotifications: RobaPersonalRequestNotification[]
+  syntheticWorkerNotice: {
+    headline: string
+    summary: string
+    requestId?: string
+    deliveryId?: string
+  } | null
+  onDismiss: (notificationId: string) => Promise<void>
 }) {
+  const router = useRouter()
+  const closeBell = useCloseModuleNotificationsBell()
+  const { isDeptLeadLimited } = useRobaPersonalApiAccess()
+
+  const openNotification = (n: RobaPersonalRequestNotification) => {
+    closeBell?.()
+    const dtype = String(n.type || '')
+    if (dtype === 'roba_personal_delivery_ack') {
+      const did = String(n.deliveryId || '').trim()
+      if (!did) return
+      router.replace(
+        `/menu/roba-personal?tab=entregues&deliveryId=${encodeURIComponent(did)}`,
+        { scroll: false }
+      )
+      return
+    }
+    if (dtype === 'roba_personal_delivery_revised') {
+      const did = String(n.deliveryId || '').trim()
+      if (!did) return
+      router.replace(
+        `/menu/roba-personal?tab=entregues&deliveryId=${encodeURIComponent(did)}`,
+        { scroll: false }
+      )
+      return
+    }
+    if (dtype === 'roba_personal_delivery_dispute') {
+      const did = String(n.deliveryId || '').trim()
+      if (!did) return
+      router.replace(
+        `/menu/roba-personal?tab=recollides&deliveryId=${encodeURIComponent(did)}`,
+        { scroll: false }
+      )
+      return
+    }
+    const rid = String(n.requestId || '').trim()
+    if (!rid) return
+    if (dtype === 'roba_personal_ready') {
+      router.replace(
+        `/menu/roba-personal?tab=recollides&requestId=${encodeURIComponent(rid)}`,
+        { scroll: false }
+      )
+      return
+    }
+    if (dtype === 'roba_personal_request' && isDeptLeadLimited) {
+      router.replace(
+        `/menu/roba-personal?tab=recollides&requestId=${encodeURIComponent(rid)}`,
+        { scroll: false }
+      )
+      return
+    }
+    router.replace(
+      `/menu/roba-personal?tab=sollicituds&requestId=${encodeURIComponent(rid)}`,
+      { scroll: false }
+    )
+  }
+
+  const openSyntheticWorkerNotice = () => {
+    if (!syntheticWorkerNotice) return
+    closeBell?.()
+    if (syntheticWorkerNotice.requestId) {
+      router.replace(
+        `/menu/roba-personal?tab=entregues&requestId=${encodeURIComponent(syntheticWorkerNotice.requestId)}`,
+        { scroll: false }
+      )
+      return
+    }
+    if (syntheticWorkerNotice.deliveryId) {
+      router.replace(
+        `/menu/roba-personal?tab=entregues&deliveryId=${encodeURIComponent(syntheticWorkerNotice.deliveryId)}`,
+        { scroll: false }
+      )
+    }
+  }
+
+  return (
+    <>
+      {visibleNotifications.slice(0, 12).map((n) => (
+        <NotificationListItem
+          key={n.id}
+          prefix={
+            <Badge variant={notificationKindVariant(String(n.type || ''))}>
+              {notificationKindLabel(String(n.type || ''))}
+            </Badge>
+          }
+          primary={notificationHeadline(n)}
+          detail={notificationSummary(n) || 'Sense detall'}
+          onOpen={() => openNotification(n)}
+          onDismiss={() => onDismiss(n.id)}
+        />
+      ))}
+      {visibleNotifications.length === 0 && syntheticWorkerNotice ? (
+        <NotificationListItem
+          prefix={<Badge variant="success">Entrega</Badge>}
+          primary={syntheticWorkerNotice.headline}
+          detail={syntheticWorkerNotice.summary || 'Revisar i signar'}
+          onOpen={openSyntheticWorkerNotice}
+          dismissible={false}
+        />
+      ) : null}
+    </>
+  )
+}
+
+export function RobaPersonalRequestNotificationsBell() {
   const { data: session } = useSession()
   const userId = String((session?.user as { id?: string })?.id || '').trim()
   const {
@@ -134,7 +239,10 @@ export function RobaPersonalRequestNotificationsBanner({
           const did = String(n.deliveryId || '').trim()
           return Array.isArray(deliveriesData)
             ? deliveriesData.some(
-                (d) => String(d.id || '').trim() === did && d.workerReceiptAckExpected === true && !d.workerReceiptAckAt
+                (d) =>
+                  String(d.id || '').trim() === did &&
+                  d.workerReceiptAckExpected === true &&
+                  !d.workerReceiptAckAt
               )
             : false
         }
@@ -143,7 +251,10 @@ export function RobaPersonalRequestNotificationsBanner({
           return Array.isArray(requestsData)
             ? requestsData.some((r) => {
                 const status = String(r.status || '').trim()
-                return String(r.id || '').trim() === rid && (status === 'ready_for_worker_delivery' || status === 'picked_up')
+                return (
+                  String(r.id || '').trim() === rid &&
+                  (status === 'ready_for_worker_delivery' || status === 'picked_up')
+                )
               })
             : false
         }
@@ -176,12 +287,18 @@ export function RobaPersonalRequestNotificationsBanner({
     }
 
     if (isFullUser) {
-      const requestsPending = requests.filter((r) => r.status === 'sent_to_rrhh').length
-      return requestsPending
+      return requests.filter((r) => r.status === 'sent_to_rrhh').length
     }
 
-    return 0
-  }, [deliveriesData, isDeptLeadLimited, isFullUser, isWorkerSelf, requestsData])
+    return visibleNotifications.length
+  }, [
+    deliveriesData,
+    isDeptLeadLimited,
+    isFullUser,
+    isWorkerSelf,
+    requestsData,
+    visibleNotifications.length,
+  ])
 
   const syntheticWorkerNotice = useMemo(() => {
     if (!isWorkerSelf || visibleNotifications.length > 0) return null
@@ -196,6 +313,7 @@ export function RobaPersonalRequestNotificationsBanner({
         summary: [String(pendingRequest.reference || '').trim(), 'revisar i signar']
           .filter(Boolean)
           .join(' · '),
+        requestId: pendingRequest.id,
       }
     }
     const pendingDelivery = deliveries.find(
@@ -207,146 +325,27 @@ export function RobaPersonalRequestNotificationsBanner({
         summary: [String(pendingDelivery.reference || '').trim(), 'revisar i signar']
           .filter(Boolean)
           .join(' · '),
+        deliveryId: pendingDelivery.id,
       }
     }
     return null
   }, [deliveriesData, isWorkerSelf, requestsData, visibleNotifications.length])
 
-  const openSyntheticWorkerNotice = () => {
-    if (!isWorkerSelf) return
-    const requests = Array.isArray(requestsData) ? requestsData : []
-    const deliveries = Array.isArray(deliveriesData) ? deliveriesData : []
-    const pendingRequest = requests.find(
-      (r) => r.status === 'ready_for_worker_delivery' || r.status === 'picked_up'
-    )
-    if (pendingRequest?.id && onWorkerPendingRequest) {
-      onWorkerPendingRequest(pendingRequest.id)
-      return
-    }
-    const pendingDelivery = deliveries.find(
-      (d) => d.workerReceiptAckExpected === true && !d.workerReceiptAckAt
-    )
-    if (pendingDelivery?.id && onDeliveryAck) {
-      onDeliveryAck(pendingDelivery.id)
-    }
-  }
-
-  const markRead = async (notificationId: string) => {
-    await fetch('/api/notifications', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'markRead', notificationId }),
-    })
+  const dismiss = async (notificationId: string) => {
+    await markNotificationRead(notificationId)
     await mutate()
   }
 
-  const openNotification = async (n: RobaPersonalRequestNotification) => {
-    const dtype = String(n.type || '')
-    if (dtype === 'roba_personal_delivery_ack') {
-      const did = String(n.deliveryId || '').trim()
-      if (!did || !onDeliveryAck) return
-      await markRead(n.id)
-      onDeliveryAck(did)
-      return
-    }
-    if (dtype === 'roba_personal_delivery_revised') {
-      const did = String(n.deliveryId || '').trim()
-      const fn = onDeliveryRevised ?? onDeliveryAck
-      if (!did || !fn) return
-      await markRead(n.id)
-      fn(did)
-      return
-    }
-    if (dtype === 'roba_personal_delivery_dispute') {
-      const did = String(n.deliveryId || '').trim()
-      const fn = onDeliveryDispute ?? onDeliveryAck
-      if (!did || !fn) return
-      await markRead(n.id)
-      fn(did)
-      return
-    }
-    const rid = String(n.requestId || '').trim()
-    if (!rid) return
-    await markRead(n.id)
-    if (dtype === 'roba_personal_ready') {
-      onMaterialReady(rid)
-    } else if (dtype === 'roba_personal_request' && isDeptLeadLimited) {
-      onMaterialReady(rid)
-    } else {
-      onOpenPreparation(rid)
-    }
-  }
-
-  if (!userId || (visibleNotifications.length === 0 && taskCount === 0)) return null
+  const bellCount = Math.max(taskCount, visibleNotifications.length, syntheticWorkerNotice ? 1 : 0)
+  if (!userId || bellCount === 0) return null
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3 shadow-sm dark:bg-slate-950/20 dark:border-slate-800">
-      <div className="mb-2 flex items-center gap-2">
-        <div className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700">
-          Avisos de roba
-        </div>
-        <Badge variant="secondary" className="text-[10px]">
-          {taskCount} pendents
-        </Badge>
-      </div>
-      {visibleNotifications.length > 0 ? (
-      <div className="space-y-2">
-        {visibleNotifications.slice(0, 8).map((n) => (
-          <div
-            key={n.id}
-            className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={notificationKindVariant(String(n.type || ''))}>
-                  {notificationKindLabel(String(n.type || ''))}
-                </Badge>
-                <button
-                  type="button"
-                  className="min-w-0 text-left font-medium text-foreground hover:text-indigo-700"
-                  onClick={() => void openNotification(n)}
-                >
-                  <span className="block truncate">{notificationHeadline(n)}</span>
-                </button>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {notificationSummary(n) || 'Sense detall'}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-indigo-600 transition hover:bg-indigo-100 dark:hover:bg-indigo-950/50"
-              aria-label="Marcar com a llegit"
-              onClick={() => void markRead(n.id)}
-            >
-              <CheckCircle2 className="h-4 w-4" />
-            </button>
-          </div>
-        ))}
-      </div>
-      ) : syntheticWorkerNotice ? (
-        <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="success">Entrega</Badge>
-              <button
-                type="button"
-                className="min-w-0 text-left font-medium text-foreground hover:text-indigo-700"
-                onClick={openSyntheticWorkerNotice}
-              >
-                {syntheticWorkerNotice.headline}
-              </button>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {syntheticWorkerNotice.summary || 'Revisar i signar'}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          No hi ha avisos per llegir. Queden tasques pendents al flux.
-        </p>
-      )}
-    </section>
+    <ModuleNotificationsBell title="Avisos de roba" count={bellCount}>
+      <RobaNotificationItems
+        visibleNotifications={visibleNotifications}
+        syntheticWorkerNotice={syntheticWorkerNotice}
+        onDismiss={dismiss}
+      />
+    </ModuleNotificationsBell>
   )
 }

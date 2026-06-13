@@ -1,16 +1,22 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import FloatingAddButton from '@/components/ui/floating-add-button'
 import { normalizeRole } from '@/lib/roles'
+import { cn } from '@/lib/utils'
 import {
   getPreLaunchDeadline,
   type ProjectData,
 } from './project-shared'
-import ProjectMeetingDialog from './ProjectMeetingDialog'
-import ProjectOverviewTab from './ProjectOverviewTab'
+import UnsavedChangesDialog from './UnsavedChangesDialog'
+import ProjectConfirmDialog from './ProjectConfirmDialog'
+import {
+  canOpenMeetingActaInBlocks,
+  canOpenMeetingActaInTasks,
+} from './project-meeting-acta'
 import ProjectWorkspaceShell from './ProjectWorkspaceShell'
 import { ensureProjectRooms } from './project-workspace-state'
 import { useProjectBlocksTasksActions } from './useProjectBlocksTasksActions'
@@ -23,16 +29,21 @@ import { useProjectSaveActions } from './useProjectSaveActions'
 import { useProjectTabWorkflow } from './useProjectTabWorkflow'
 import { useProjectUsersCatalog } from './useProjectUsersCatalog'
 import { useProjectVisibility } from './useProjectVisibility'
+import { useProjectDirtyState } from './useProjectDirtyState'
+import { useProjectWorkspaceAutosave } from './useProjectWorkspaceAutosave'
+import { useProjectActivity } from './useProjectActivity'
 import {
   createBlockDraft,
   createTaskDraft,
   normalizeDepartment,
+  type ResponsibleOption,
   type WorkspaceTab,
 } from './project-workspace-helpers'
 
 type Props = {
   projectId: string
   initialProject: ProjectData
+  initialUsersCatalog?: ResponsibleOption[]
   initialTab?: WorkspaceTab
 }
 
@@ -62,18 +73,62 @@ const ProjectTrackingTab = dynamic(() => import('./ProjectTrackingTab'), {
   loading: tabLoadingFallback,
 })
 
-export default function ProjectWorkspace({ projectId, initialProject, initialTab = 'overview' }: Props) {
+const ProjectOverviewTab = dynamic(() => import('./ProjectOverviewTab'), {
+  loading: tabLoadingFallback,
+})
+
+const ProjectCoordinationPanel = dynamic(() => import('./ProjectCoordinationPanel'), {
+  loading: () => null,
+  ssr: false,
+})
+
+const ProjectMeetingDialog = dynamic(() => import('./ProjectMeetingDialog'), {
+  ssr: false,
+})
+
+const ProjectMeetingMinutesDialog = dynamic(() => import('./ProjectMeetingMinutesDialog'), {
+  ssr: false,
+})
+
+const ProjectKickoffMeetingDialog = dynamic(() => import('./ProjectKickoffMeetingDialog'), {
+  ssr: false,
+})
+
+export default function ProjectWorkspace({
+  projectId,
+  initialProject,
+  initialUsersCatalog,
+  initialTab,
+}: Props) {
+  const router = useRouter()
   const { data: session, status: sessionStatus } = useSession()
   const sessionUserId = String(session?.user?.id || '').trim()
   const sessionUserName = String(session?.user?.name || '').trim()
+  const sessionUserEmail = String(session?.user?.email || '').trim()
   const sessionRole = normalizeRole(String(session?.user?.role || '').trim())
   const sessionDepartment = normalizeDepartment(String(session?.user?.department || '').trim())
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab)
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab ?? 'overview')
   const [project, setProject] = useState<ProjectData>(initialProject)
+  const meetingActaUser = useMemo(
+    () => ({
+      id: sessionUserId,
+      name: sessionUserName,
+      email: sessionUserEmail,
+    }),
+    [sessionUserEmail, sessionUserId, sessionUserName]
+  )
+  const canOpenActaInBlocks = useMemo(
+    () => canOpenMeetingActaInBlocks(meetingActaUser, project),
+    [meetingActaUser, project]
+  )
+  const canOpenActaInTasks = useMemo(
+    () => canOpenMeetingActaInTasks(meetingActaUser, project),
+    [meetingActaUser, project]
+  )
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [pendingDocumentFile, setPendingDocumentFile] = useState<File | null>(null)
   const [documentDraft, setDocumentDraft] = useState({ category: 'general', label: '' })
-  const { usersCatalog, responsibles } = useProjectUsersCatalog()
+  const { usersCatalog, responsibles } = useProjectUsersCatalog(initialUsersCatalog)
   const [savingOverview, setSavingOverview] = useState(false)
   const [savingBlocks, setSavingBlocks] = useState(false)
   const [sendingKickoff, setSendingKickoff] = useState(false)
@@ -85,10 +140,13 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
   const [editingTaskKey, setEditingTaskKey] = useState<string | null>(null)
   const [quickTaskBlockId, setQuickTaskBlockId] = useState<string | null>(null)
-  const [dirtyOverviewState, setDirtyOverviewState] = useState(false)
-  const [dirtyBlocksState, setDirtyBlocksState] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deletingProject, setDeletingProject] = useState(false)
+  const [meetingMinutesOpen, setMeetingMinutesOpen] = useState(false)
+  const [kickoffMeetingOpen, setKickoffMeetingOpen] = useState(false)
+  const [coordinationOpen, setCoordinationOpen] = useState(false)
   const {
+    canAccessProjectGeneralRoom,
     canAccessSpecificBlockRoom,
     canAccessSpecificTaskOps,
     canCreateOrRemoveBlocks,
@@ -99,7 +157,14 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
     canManageProject,
     canSaveTasks,
     canViewOverview,
+    canConvokeBlockMeeting,
+    canConvokeMeetings,
+    canConvokeProjectMeeting,
+    canConvokeTaskMeeting,
     hasFullProjectVisibility,
+    isBlockResponsible,
+    participation,
+    preferredWorkspaceTab,
     visibleProjectForBlocks,
     visibleProjectForTasks,
     visibleTabs,
@@ -112,24 +177,95 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
     sessionDepartment,
   })
 
+  const { dirtyOverview, dirtyBlocks, markOverviewSaved, markBlocksSaved, resetSnapshots } =
+    useProjectDirtyState({
+      project,
+      pendingFile,
+    })
+
   useEffect(() => {
     setProject(initialProject)
-    setDirtyOverviewState(false)
-    setDirtyBlocksState(false)
-  }, [initialProject])
+    resetSnapshots(initialProject)
+  }, [initialProject, resetSnapshots])
+
+  const applyTabChange = useCallback(
+    (tab: WorkspaceTab) => {
+      setActiveTab(tab)
+      router.replace(`/menu/projects/${projectId}?tab=${tab}`, { scroll: false })
+    },
+    [projectId, router]
+  )
+
+  const scrollToProjectTarget = useCallback((elementId: string) => {
+    window.requestAnimationFrame(() => {
+      document.getElementById(elementId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  }, [])
+
+  const handleNavigateToBlock = useCallback(
+    (blockId: string) => {
+      applyTabChange('blocks')
+      setEditingBlockId(blockId)
+      setEditingTaskKey(null)
+      scrollToProjectTarget(`project-block-${blockId}`)
+    },
+    [applyTabChange, scrollToProjectTarget]
+  )
+
+  const handleNavigateToTask = useCallback(
+    (blockId: string, taskId: string) => {
+      applyTabChange('tasks')
+      setEditingTaskKey(`${blockId}:${taskId}`)
+      setEditingBlockId(null)
+      scrollToProjectTarget(`project-task-${blockId}:${taskId}`)
+    },
+    [applyTabChange, scrollToProjectTarget]
+  )
+
+  const allTasks = useMemo(
+    () =>
+      visibleProjectForTasks.blocks.flatMap((block) =>
+        block.tasks.map((task) => ({
+          block,
+          task,
+          taskKey: `${block.id}:${task.id}`,
+        }))
+      ),
+    [visibleProjectForTasks.blocks]
+  )
+
+  const appliedInitialNavigation = useRef(false)
+
+  useEffect(() => {
+    appliedInitialNavigation.current = false
+  }, [projectId])
 
   useEffect(() => {
     if (sessionStatus === 'loading') return
+    if (!visibleTabs.includes(activeTab)) {
+      const nextTab = visibleTabs.includes(preferredWorkspaceTab)
+        ? preferredWorkspaceTab
+        : visibleTabs[0] || 'tasks'
+      applyTabChange(nextTab)
+    }
+  }, [activeTab, applyTabChange, preferredWorkspaceTab, sessionStatus, visibleTabs])
 
-    if (activeTab === 'overview' && !canViewOverview) {
-      setActiveTab('blocks')
+  useEffect(() => {
+    if (sessionStatus === 'loading') return
+    if (appliedInitialNavigation.current) return
+    appliedInitialNavigation.current = true
+
+    if (initialTab !== undefined && visibleTabs.includes(initialTab)) {
+      applyTabChange(initialTab)
       return
     }
 
-    if (activeTab === 'rooms') {
-      setActiveTab('blocks')
+    if (visibleTabs.includes(preferredWorkspaceTab)) {
+      applyTabChange(preferredWorkspaceTab)
+    } else if (visibleTabs[0]) {
+      applyTabChange(visibleTabs[0])
     }
-  }, [activeTab, canViewOverview, sessionStatus])
+  }, [applyTabChange, initialTab, preferredWorkspaceTab, projectId, sessionStatus, visibleTabs])
 
   const maxDeadline = useMemo(() => getPreLaunchDeadline(project.launchDate), [project.launchDate])
   const {
@@ -144,9 +280,7 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
     usersCatalog,
     responsibles,
   })
-  const dirtyOverview = dirtyOverviewState || Boolean(pendingFile)
-  const dirtyBlocks = dirtyBlocksState
-  const { saveProject, syncRoomsWithOps } = useProjectPersistence({
+  const { saveProject } = useProjectPersistence({
     projectId,
     pendingFile,
     setPendingFile,
@@ -155,11 +289,12 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
   const {
     setKickoffField,
     removeKickoffAttendee,
-    setKickoffAttendeeAttendance,
     addManualKickoffEmail,
+    addKickoffAttendeeFromUser,
     kickoffReady,
     sendKickoff,
     reopenKickoff,
+    saveKickoffMinutes,
     finalizeKickoffMinutes,
     reopenKickoffMinutes,
   } = useProjectKickoffActions({
@@ -175,9 +310,9 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
     sessionUserName: String(session?.user?.name || ''),
     onKickoffMinutesSaved: (nextProject) => {
       setProject(nextProject)
-      setDirtyBlocksState(false)
+      markBlocksSaved(nextProject)
     },
-    onBlocksDirty: () => setDirtyBlocksState(true),
+    onBlocksDirty: () => undefined,
   })
   const {
     createBlock,
@@ -210,9 +345,9 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
     ensureProjectRooms: (currentProject) => ensureProjectRooms(currentProject, userByName),
     onBlocksStateSaved: (nextProject) => {
       setProject(nextProject)
-      setDirtyBlocksState(false)
+      markBlocksSaved(nextProject)
     },
-    onBlocksDirty: () => setDirtyBlocksState(true),
+    onBlocksDirty: () => undefined,
   })
 
   const {
@@ -229,6 +364,17 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
     userByName,
     departmentResponsibleOptions,
     taskResponsibleOptions,
+    onMeetingCreated: ({ scope, blockId, taskId }) => {
+      if (scope === 'task' && taskId) {
+        applyTabChange('tasks')
+        setEditingTaskKey(`${blockId}:${taskId}`)
+        setEditingBlockId(null)
+        return
+      }
+      applyTabChange('blocks')
+      setEditingBlockId(blockId)
+      setEditingTaskKey(null)
+    },
   })
 
   useProjectAutoSync({
@@ -254,23 +400,50 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
     saveProject,
     sessionUserName: String(session?.user?.name || '').trim(),
     setDeletingProject,
-    setDirtyBlocksState,
-    setDirtyOverviewState,
     setDocumentDraft,
     setPendingDocumentFile,
     setProject,
     setSavingBlocks,
     setSavingOverview,
-    syncRoomsWithOps,
     userByName,
+    markOverviewSaved,
+    markBlocksSaved,
   })
+
+  const { autosaveStatus } = useProjectWorkspaceAutosave({
+    dirtyOverview,
+    dirtyBlocks,
+    savingOverview,
+    savingBlocks,
+    saveOverview,
+    saveBlocks,
+  })
+
+  const trackProjectUnread =
+    canAccessProjectGeneralRoom ||
+    visibleProjectForBlocks.blocks.some((block) => canAccessSpecificBlockRoom(block))
+
+  const {
+    unreadByBlockId,
+    totalUnread: coordinationUnreadCount,
+    hasMessagesToRead: coordinationHasMessagesToRead,
+    loading: coordinationActivityLoading,
+  } = useProjectActivity(projectId, trackProjectUnread, coordinationOpen)
+
+  const canCreateTasks = Boolean(canCreateOrRemoveBlocks || isBlockResponsible)
 
   const {
     createSprint,
     handleTabChange,
+    unsavedPrompt,
+    resolvingUnsaved,
+    cancelUnsavedPrompt,
+    discardUnsavedPrompt,
+    saveUnsavedPrompt,
   } = useProjectTabWorkflow({
     activeTab,
     addTaskToBlock,
+    applyTabChange,
     blockDraft,
     createBlock,
     dirtyBlocks,
@@ -282,71 +455,146 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
     saveBlocks,
     saveDocuments,
     saveOverview,
-    setActiveTab,
-    setDirtyBlocksState,
     setProject,
     showBlockComposer,
     showTaskComposer,
     taskDraft,
+    canCreateSprints: canCreateTasks,
   })
 
   return (
-    <div className="space-y-6">
+    <div className="cmd-app flex w-full max-w-none flex-col">
       <ProjectWorkspaceShell
         project={project}
         activeTab={activeTab}
         visibleTabs={visibleTabs}
+        participationLabel={participation.label}
+        participationBadgeClass={participation.primary}
         onTabChange={handleTabChange}
         canDelete={Boolean(canDeleteProject)}
         deleting={deletingProject}
-        onDelete={handleDeleteProject}
+        onDelete={() => setDeleteConfirmOpen(true)}
+        canConvokeProjectMeeting={Boolean(canConvokeProjectMeeting)}
+        onCreateMeeting={() => setKickoffMeetingOpen(true)}
+        canAccessGeneralRoom={canAccessProjectGeneralRoom}
+        coordinationUnreadCount={coordinationUnreadCount}
+        coordinationHasMessagesToRead={coordinationHasMessagesToRead}
+        coordinationActivityLoading={coordinationActivityLoading}
+        onOpenCoordination={() => setCoordinationOpen(true)}
+        autosaveStatus={autosaveStatus}
       />
 
-      <section className="rounded-[28px] border border-violet-200 bg-white shadow-sm">
-        <div className="p-6">
-          {activeTab === 'overview' && canViewOverview ? (
-            <ProjectOverviewTab
-              project={project}
-              availableDepartments={availableDepartments}
-              ownerOptions={ownerOptions}
-              pendingFile={pendingFile}
-              blockDraft={blockDraft}
-              dirtyOverview={dirtyOverview}
-              savingOverview={savingOverview}
-              showBlockComposer={showBlockComposer}
-              onSave={saveOverview}
-              onProjectChange={(updater) => {
-                setDirtyOverviewState(true)
-                setProject(updater)
-              }}
-              onPendingFileChange={setPendingFile}
-              onSetBlockDraftName={(value) =>
-                setBlockDraft((current) => ({ ...current, name: value }))
-              }
-              onToggleBlockComposer={() =>
-                setShowBlockComposer((current) => {
-                  if (current) setBlockDraft(createBlockDraft())
-                  return !current
-                })
-              }
-              onCreateBlock={createBlock}
-              onSetBlockName={(blockId, value) => setBlockField(blockId, 'name', value)}
-              onAddDepartmentToBlock={addDepartmentToBlock}
-              onRemoveDepartmentFromBlock={removeDepartmentFromBlock}
-              onRemoveBlock={removeBlock}
-              onRemoveDocument={removeDocument}
-              manualKickoffEmail={manualKickoffEmail}
-              kickoffReady={kickoffReady}
-              sendingKickoff={sendingKickoff}
-              onKickoffFieldChange={setKickoffField}
-              onManualKickoffEmailChange={setManualKickoffEmail}
-              onAddManualKickoffEmail={addManualKickoffEmail}
-              onSendKickoff={sendKickoff}
-              onReopenKickoff={reopenKickoff}
-              onRemoveKickoffAttendee={removeKickoffAttendee}
-            />
-          ) : null}
+      {coordinationOpen ? (
+        <ProjectCoordinationPanel
+          projectId={projectId}
+          project={project}
+          open={coordinationOpen}
+          onOpenChange={setCoordinationOpen}
+          sessionUserId={sessionUserId}
+          userByName={userByName}
+          canAccessBlockRoom={canAccessSpecificBlockRoom}
+          onNavigateToBlock={handleNavigateToBlock}
+          onNavigateToTask={handleNavigateToTask}
+          visibleBlocks={visibleProjectForBlocks.blocks}
+          visibleTasks={allTasks}
+          focusedBlockId={editingBlockId}
+          focusedTaskKey={editingTaskKey}
+          unreadByBlockId={unreadByBlockId}
+          onRoomSynced={(syncedRoom) => {
+            setProject((current) => ({
+              ...current,
+              rooms: current.rooms.map((room) =>
+                room.id === syncedRoom.id ? { ...room, ...syncedRoom } : room
+              ),
+            }))
+          }}
+        />
+      ) : null}
 
+      <div
+        className={cn(
+          'flex w-full min-w-0 flex-col px-3 pb-4 sm:px-4 lg:px-5',
+          activeTab === 'tasks' ? 'gap-2 pt-2' : 'gap-3 pt-4'
+        )}
+      >
+        {activeTab === 'tasks' ? (
+          <ProjectTasksTab
+            projectId={projectId}
+            projectBlocks={visibleProjectForTasks.blocks}
+            projectSprints={project.sprints || []}
+            projectRooms={visibleProjectForTasks.rooms}
+            allTasks={allTasks}
+            taskDraft={taskDraft}
+            showTaskComposer={showTaskComposer}
+            editingTaskKey={editingTaskKey}
+            savingBlocks={savingBlocks}
+            dirtyBlocks={dirtyBlocks}
+            onSave={saveBlocks}
+            onResetTaskDraft={resetTaskDraft}
+            onSetTaskDraftField={setTaskDraftField}
+            onAddTaskToBlock={addTaskToBlock}
+            onSetEditingTaskKey={setEditingTaskKey}
+            onRemoveTask={removeTask}
+            onSetTaskField={setTaskField}
+            onAttachTaskDocument={attachTaskDocument}
+            onRemoveTaskDocument={removeTaskDocument}
+            taskResponsibleOptions={taskResponsibleOptions}
+            maxDeadline={maxDeadline}
+            canCreateTasks={canCreateTasks}
+            canSaveTasks={canSaveTasks}
+            canManageTask={canManageSpecificTask}
+            canAccessTaskOps={canAccessSpecificTaskOps}
+            canMoveTask={canMoveSpecificTask}
+            onCreateSprint={createSprint}
+            canConvokeTaskMeeting={canConvokeTaskMeeting}
+            canOpenMeetingMinutes={canOpenActaInTasks}
+            onOpenMeetingMinutes={() => setMeetingMinutesOpen(true)}
+            kickoffMinutesStatus={project.kickoff.minutesStatus}
+            kickoffMinutesDraft={project.kickoff.minutes || ''}
+            onOpenTaskMeeting={openTaskMeeting}
+          />
+        ) : activeTab === 'overview' && canViewOverview ? (
+          <ProjectOverviewTab
+            project={project}
+            availableDepartments={availableDepartments}
+            ownerOptions={ownerOptions}
+            pendingFile={pendingFile}
+            blockDraft={blockDraft}
+            dirtyOverview={dirtyOverview}
+            savingOverview={savingOverview}
+            showBlockComposer={showBlockComposer}
+            onSave={saveOverview}
+            onProjectChange={setProject}
+            onPendingFileChange={setPendingFile}
+            onSetBlockDraftName={(value) =>
+              setBlockDraft((current) => ({ ...current, name: value }))
+            }
+            onToggleBlockComposer={() =>
+              setShowBlockComposer((current) => {
+                if (current) setBlockDraft(createBlockDraft())
+                return !current
+              })
+            }
+            onCreateBlock={createBlock}
+            onSetBlockName={(blockId, value) => setBlockField(blockId, 'name', value)}
+            onAddDepartmentToBlock={addDepartmentToBlock}
+            onRemoveDepartmentFromBlock={removeDepartmentFromBlock}
+            onRemoveBlock={removeBlock}
+            onRemoveDocument={removeDocument}
+            showKickoffSection
+            manualKickoffEmail={manualKickoffEmail}
+            kickoffReady={kickoffReady}
+            sendingKickoff={sendingKickoff}
+            onKickoffFieldChange={setKickoffField}
+            onManualKickoffEmailChange={setManualKickoffEmail}
+            onAddManualKickoffEmail={addManualKickoffEmail}
+            onSendKickoff={sendKickoff}
+            onReopenKickoff={reopenKickoff}
+            onRemoveKickoffAttendee={removeKickoffAttendee}
+          />
+        ) : (
+          <section className="rounded-2xl border border-violet-100 bg-white shadow-sm">
+            <div className="p-4 sm:p-5">
           {activeTab === 'blocks' ? (
             <ProjectBlocksTab
               projectId={projectId}
@@ -372,103 +620,39 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
               onAddTaskToBlock={addTaskToBlock}
               onSetTaskField={setTaskField}
               onRemoveTask={removeTask}
-              onKickoffMinutesChange={(value) => {
-                setDirtyBlocksState(true)
-                setProject((current) => ({
-                  ...current,
-                  kickoff: {
-                    ...current.kickoff,
-                    minutes: value,
-                  },
-                }))
-              }}
-              onFinalizeKickoffMinutes={finalizeKickoffMinutes}
-              onReopenKickoffMinutes={reopenKickoffMinutes}
-              onKickoffAttendeeAttendanceChange={setKickoffAttendeeAttendance}
-              onAddKickoffAttendee={(userId) => {
-                const user = usersCatalog.find((item) => item.id === userId && item.email)
-                if (!user) return
-                setDirtyBlocksState(true)
-                setProject((current) => {
-                  if (current.kickoff.attendees.some((item) => item.key === `user:${user.id}`)) {
-                    return current
-                  }
-                  return {
-                    ...current,
-                    kickoff: {
-                      ...current.kickoff,
-                      excludedKeys: current.kickoff.excludedKeys.filter(
-                        (item) => item !== `user:${user.id}`
-                      ),
-                      attendees: [
-                        ...current.kickoff.attendees,
-                        {
-                          key: `user:${user.id}`,
-                          userId: user.id,
-                          name: user.name,
-                          email: user.email,
-                          department: user.department || 'Manual',
-                          attended: true,
-                        },
-                      ],
-                    },
-                  }
-                })
-              }}
-              onRemoveKickoffAttendee={removeKickoffAttendee}
-              kickoffAttendeeOptions={kickoffAttendeeOptions}
               departmentResponsibleOptions={departmentResponsibleOptions}
               maxDeadline={maxDeadline}
-              canViewKickoffSection={Boolean(hasFullProjectVisibility)}
+              canOpenMeetingMinutes={canOpenActaInBlocks}
+              onOpenMeetingMinutes={() => setMeetingMinutesOpen(true)}
               canCreateBlocks={Boolean(canCreateOrRemoveBlocks)}
               canEditBlock={canEditSpecificBlock}
+              canConvokeBlockMeeting={canConvokeBlockMeeting}
               canAccessBlockRoom={canAccessSpecificBlockRoom}
+              unreadByBlockId={unreadByBlockId}
               canEditBlockOwner={Boolean(canManageProject)}
               onOpenBlockMeeting={openBlockMeeting}
             />
           ) : null}
 
-          {activeTab === 'tasks' ? (
-            <ProjectTasksTab
+              {activeTab === 'planning' ? (
+            <ProjectPlanningTab
               projectId={projectId}
-              projectBlocks={visibleProjectForTasks.blocks}
-              projectSprints={project.sprints || []}
-              projectRooms={visibleProjectForTasks.rooms}
-              allTasks={visibleProjectForTasks.blocks.flatMap((block) =>
-                block.tasks.map((task) => ({
-                  block,
-                  task,
-                  taskKey: `${block.id}:${task.id}`,
-                }))
-              )}
-              taskDraft={taskDraft}
-              showTaskComposer={showTaskComposer}
-              editingTaskKey={editingTaskKey}
-              savingBlocks={savingBlocks}
-              dirtyBlocks={dirtyBlocks}
-              onSave={saveBlocks}
-              onResetTaskDraft={resetTaskDraft}
-              onSetTaskDraftField={setTaskDraftField}
-              onAddTaskToBlock={addTaskToBlock}
-              onSetEditingTaskKey={setEditingTaskKey}
-              onRemoveTask={removeTask}
-              onSetTaskField={setTaskField}
-              onAttachTaskDocument={attachTaskDocument}
-              onRemoveTaskDocument={removeTaskDocument}
-              taskResponsibleOptions={taskResponsibleOptions}
-              maxDeadline={maxDeadline}
-              canCreateTasks={Boolean(canCreateOrRemoveBlocks)}
-              canSaveTasks={canSaveTasks}
-              canManageTask={canManageSpecificTask}
-              canAccessTaskOps={canAccessSpecificTaskOps}
-              canMoveTask={canMoveSpecificTask}
-              onCreateSprint={createSprint}
+              project={project}
+              canConvokeMeetings={Boolean(canConvokeMeetings)}
+              meetingActaUser={meetingActaUser}
+              onOpenMeetingMinutes={() => setMeetingMinutesOpen(true)}
+              onOpenBlockMeeting={openBlockMeeting}
               onOpenTaskMeeting={openTaskMeeting}
+              onNavigateToBlock={(blockId) => {
+                applyTabChange('blocks')
+                setEditingBlockId(blockId)
+                setEditingTaskKey(null)
+              }}
+              onNavigateToTask={(blockId, taskId) => {
+                applyTabChange('tasks')
+                setEditingTaskKey(`${blockId}:${taskId}`)
+              }}
             />
-          ) : null}
-
-          {activeTab === 'planning' ? (
-            <ProjectPlanningTab projectId={projectId} project={project} />
           ) : null}
 
           {activeTab === 'documents' ? (
@@ -485,35 +669,117 @@ export default function ProjectWorkspace({ projectId, initialProject, initialTab
             />
           ) : null}
 
-          {activeTab === 'tracking' ? <ProjectTrackingTab project={project} /> : null}
-        </div>
-      </section>
+              {activeTab === 'tracking' ? (
+                <ProjectTrackingTab
+                  project={project}
+                  onResolveAlert={(target) => {
+                    if (target.tab === 'blocks') {
+                      applyTabChange('blocks')
+                      setEditingBlockId(target.blockId)
+                      setEditingTaskKey(null)
+                      return
+                    }
+                    applyTabChange('tasks')
+                    setEditingTaskKey(
+                      target.taskId ? `${target.blockId}:${target.taskId}` : null
+                    )
+                  }}
+                  onOpenBlock={(blockId) => {
+                    applyTabChange('blocks')
+                    setEditingBlockId(blockId)
+                    setEditingTaskKey(null)
+                  }}
+                />
+              ) : null}
+            </div>
+          </section>
+        )}
+      </div>
 
       {activeTab === 'blocks' && canCreateOrRemoveBlocks && !showBlockComposer ? (
         <FloatingAddButton onClick={() => setShowBlockComposer(true)} />
       ) : null}
 
-      {activeTab === 'tasks' ? (
+      {activeTab === 'tasks' && (canCreateOrRemoveBlocks || isBlockResponsible) ? (
         <FloatingAddButton
           onClick={() => {
+            const defaultBlockId = visibleProjectForBlocks.blocks[0]?.id || 'none'
             if (showTaskComposer) {
               setTaskDraft(createTaskDraft())
               setShowTaskComposer(false)
             } else {
-              setTaskDraft(createTaskDraft())
+              setTaskDraft({
+                ...createTaskDraft(),
+                blockId: defaultBlockId,
+              })
               setShowTaskComposer(true)
             }
           }}
         />
       ) : null}
-      <ProjectMeetingDialog
-        open={Boolean(meetingTarget)}
-        sending={sendingMeeting}
-        target={meetingTarget}
-        onOpenChange={(open) => {
-          if (!open) setMeetingTarget(null)
+      {kickoffMeetingOpen ? (
+        <ProjectKickoffMeetingDialog
+          open={kickoffMeetingOpen}
+          project={project}
+          kickoffAttendeeOptions={kickoffAttendeeOptions}
+          manualKickoffEmail={manualKickoffEmail}
+          kickoffReady={kickoffReady}
+          sendingKickoff={sendingKickoff}
+          onOpenChange={setKickoffMeetingOpen}
+          onKickoffFieldChange={setKickoffField}
+          onManualKickoffEmailChange={setManualKickoffEmail}
+          onAddManualKickoffEmail={addManualKickoffEmail}
+          onAddKickoffAttendeeFromUser={addKickoffAttendeeFromUser}
+          onSendKickoff={sendKickoff}
+          onReopenKickoff={reopenKickoff}
+          onRemoveKickoffAttendee={removeKickoffAttendee}
+        />
+      ) : null}
+      {meetingTarget ? (
+        <ProjectMeetingDialog
+          open={Boolean(meetingTarget)}
+          sending={sendingMeeting}
+          target={meetingTarget}
+          onOpenChange={(open) => {
+            if (!open) setMeetingTarget(null)
+          }}
+          onSubmit={sendProjectMeeting}
+        />
+      ) : null}
+      {meetingMinutesOpen && (canOpenActaInBlocks || canOpenActaInTasks) ? (
+        <ProjectMeetingMinutesDialog
+          open={meetingMinutesOpen}
+          projectId={projectId}
+          project={project}
+          generatedByLabel={sessionUserName || String(session?.user?.email || '').trim()}
+          kickoffAttendeeOptions={kickoffAttendeeOptions}
+          saving={savingBlocks}
+          onOpenChange={setMeetingMinutesOpen}
+          onSaveDraft={(payload, options) => saveKickoffMinutes(payload, options)}
+          onFinalize={(payload) => finalizeKickoffMinutes(payload)}
+          onReopen={reopenKickoffMinutes}
+        />
+      ) : null}
+      <UnsavedChangesDialog
+        open={Boolean(unsavedPrompt)}
+        saving={resolvingUnsaved}
+        onSave={() => void saveUnsavedPrompt()}
+        onDiscard={discardUnsavedPrompt}
+        onCancel={cancelUnsavedPrompt}
+      />
+      <ProjectConfirmDialog
+        open={deleteConfirmOpen}
+        title="Eliminar projecte"
+        description="Vols eliminar aquest projecte? Aquesta acció no es pot desfer."
+        confirmLabel="Eliminar"
+        destructive
+        loading={deletingProject}
+        onConfirm={() => {
+          void handleDeleteProject().finally(() => setDeleteConfirmOpen(false))
         }}
-        onSubmit={sendProjectMeeting}
+        onCancel={() => {
+          if (!deletingProject) setDeleteConfirmOpen(false)
+        }}
       />
     </div>
   )

@@ -12,6 +12,10 @@ export async function markAdminUserRequestsRead() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'markAllRead', type: 'user_request' }),
   })
+  await refreshNotificationSummary()
+}
+
+export async function refreshNotificationSummary() {
   await mutate(SUMMARY_KEY)
 }
 

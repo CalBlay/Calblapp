@@ -191,6 +191,7 @@ async function createTicketFromMessage(args: {
     {
       lastMessagePreview: summaryBody.slice(0, 180),
       lastMessageAt: now,
+      lastSenderName: userName || '',
     },
     { merge: true }
   )
@@ -414,6 +415,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       {
         lastMessagePreview: preview,
         lastMessageAt: now,
+        lastSenderName: senderName,
       },
       { merge: true }
     )

@@ -8,6 +8,13 @@ import { useFilters } from '@/context/FiltersContext'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import FilterButton from '@/components/ui/filter-button'
+import {
+  CorporateActiveFilterChip,
+  CorporateFilterSearch,
+  CorporateFiltersActiveRow,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
+import { corporateFilterBadgeClass } from '@/lib/corporate-filters'
 import { maintenanceStatusBadge } from '@/lib/colors'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import type { MachineItem, Ticket, TicketStatus, UserItem } from '@/app/menu/manteniment/tickets/types'
@@ -418,31 +425,92 @@ export default function MaintenanceSeguimentPage() {
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
       <div className="mx-auto w-full max-w-7xl space-y-5 px-4 pb-8">
         <ModuleHeader title="Manteniment" subtitle="Seguiment" mainHref="/menu/manteniment" />
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex flex-wrap items-center gap-3 xl:flex-nowrap">
-            <div className="shrink-0"><SmartFilters modeDefault="week" modeOptions={['week', 'month', 'year', 'day', 'range']} resetSignal={dateResetSignal} role="Treballador" showDepartment={false} showWorker={false} showLocation={false} showStatus={false} onChange={(f: SmartFiltersChange) => f.start && f.end ? setDateRange({ start: f.start, end: f.end }) : null} initialStart={dateRange.start} initialEnd={dateRange.end} /></div>
-            <div className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{DATE_MODE_LABELS[dateMode]}</div>
-            <div className="min-w-[260px] flex-1">
-              <div className="relative">
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={tab === 'tickets' ? 'Codi, maquina, ubicacio o descripcio...' : 'Preventiu, ubicacio o operari...'} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 pr-10 text-sm text-slate-900 placeholder:text-slate-400" />
-                {search.trim() ? <button type="button" onClick={() => setSearch('')} className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button> : null}
-              </div>
+        <CorporateFiltersShell
+          variant="toolbar"
+          bodyClassName="flex-col items-stretch gap-0 xl:flex-row xl:flex-wrap xl:items-center"
+        >
+          <div className="flex w-full flex-wrap items-center gap-3 xl:flex-nowrap">
+            <div className="shrink-0">
+              <SmartFilters
+                modeDefault="week"
+                modeOptions={['week', 'month', 'year', 'day', 'range']}
+                resetSignal={dateResetSignal}
+                role="Treballador"
+                showDepartment={false}
+                showWorker={false}
+                showLocation={false}
+                showStatus={false}
+                compact
+                onChange={(f: SmartFiltersChange) =>
+                  f.start && f.end ? setDateRange({ start: f.start, end: f.end }) : null
+                }
+                initialStart={dateRange.start}
+                initialEnd={dateRange.end}
+              />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {(['tickets', 'preventius'] as TabKey[]).map((item) => <button key={item} type="button" onClick={() => { setTab(item); setExpandedId(null) }} className={`min-h-[40px] rounded-full px-4 text-xs font-medium ${tab === item ? 'bg-slate-900 text-white' : 'border border-slate-200 text-slate-600'}`}>{item === 'tickets' ? 'Tickets' : 'Preventius'}</button>)}
+            <CorporateActiveFilterChip variant="active">{DATE_MODE_LABELS[dateMode]}</CorporateActiveFilterChip>
+            <div className="relative min-w-[260px] flex-1">
+              <CorporateFilterSearch
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={
+                  tab === 'tickets'
+                    ? 'Codi, maquina, ubicacio o descripcio...'
+                    : 'Preventiu, ubicacio o operari...'
+                }
+                className="pr-10"
+              />
+              {search.trim() ? (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
+              {(['tickets', 'preventius'] as TabKey[]).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => {
+                    setTab(item)
+                    setExpandedId(null)
+                  }}
+                  className={corporateFilterBadgeClass(tab === item)}
+                >
+                  {item === 'tickets' ? 'Tickets' : 'Preventius'}
+                </button>
+              ))}
               <FilterButton onClick={() => undefined} />
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {statusFilter !== 'all' ? <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{STATUS_LABELS[statusFilter as MaintenanceStatus]}</span> : null}
-            {workerFilter !== 'all' ? <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{workerFilter}</span> : null}
-            {locationFilter !== 'all' ? <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{locationFilter}</span> : null}
-            {tab === 'tickets' && externalFilter !== 'all' ? <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">{externalFilter === 'external' ? 'Derivats a proveidor' : 'Interns'}</span> : null}
-            {pendingValidationOnly ? <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">Pendents de validar</span> : null}
-            {stalledOnly ? <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-700">Oberts 3+ dies</span> : null}
-            {search.trim() ? <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">Cerca activa</span> : null}
-          </div>
-        </div>
+          <CorporateFiltersActiveRow>
+            {statusFilter !== 'all' ? (
+              <CorporateActiveFilterChip>{STATUS_LABELS[statusFilter as MaintenanceStatus]}</CorporateActiveFilterChip>
+            ) : null}
+            {workerFilter !== 'all' ? (
+              <CorporateActiveFilterChip>{workerFilter}</CorporateActiveFilterChip>
+            ) : null}
+            {locationFilter !== 'all' ? (
+              <CorporateActiveFilterChip>{locationFilter}</CorporateActiveFilterChip>
+            ) : null}
+            {tab === 'tickets' && externalFilter !== 'all' ? (
+              <CorporateActiveFilterChip>
+                {externalFilter === 'external' ? 'Derivats a proveidor' : 'Interns'}
+              </CorporateActiveFilterChip>
+            ) : null}
+            {pendingValidationOnly ? (
+              <CorporateActiveFilterChip variant="amber">Pendents de validar</CorporateActiveFilterChip>
+            ) : null}
+            {stalledOnly ? (
+              <CorporateActiveFilterChip variant="rose">Oberts 3+ dies</CorporateActiveFilterChip>
+            ) : null}
+            {search.trim() ? <CorporateActiveFilterChip>Cerca activa</CorporateActiveFilterChip> : null}
+          </CorporateFiltersActiveRow>
+        </CorporateFiltersShell>
         <div className="grid w-full gap-3 xl:grid-cols-6">
           <div className="flex min-h-[126px] flex-col justify-between rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Pendents de validar</div>

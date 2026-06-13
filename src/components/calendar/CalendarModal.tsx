@@ -14,12 +14,15 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import type { Deal } from '@/hooks/useCalendarData'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Mail } from 'lucide-react'
 import SearchFincaInput from '@/components/shared/SearchFincaInput'
 import SearchServeiInput from '@/components/shared/SearchServeiInput'
 import AttachFileButton from '@/components/calendar/AttachFileButton'
+import CalendarSendDocumentsDialog from '@/components/calendar/CalendarSendDocumentsDialog'
+import { displayCalendarFileName } from '@/lib/calendar/calendarFiles'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
+import { CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
 
 interface Props {
   deal: Deal
@@ -193,6 +196,7 @@ export default function CalendarModal({
   const [files, setFiles] = useState<
     Array<{ key: string; url: string; name?: string; source?: string }>
   >([])
+  const [sendDocumentsOpen, setSendDocumentsOpen] = useState(false)
   const [multiDay, setMultiDay] = useState(false)
 
   // Només editable si és Confirmat o manual (respectant readonly si ve informat)
@@ -273,8 +277,30 @@ export default function CalendarModal({
   const canEditComercialIntern =
     !readonly && (isZohoVerd || isManual) && (isAdmin || isCapProduccio)
   const canManageDocuments = !readonly && canAttach && (canEdit || isOwnCommercialEvent)
+  const canSendEmail = useMemo(() => {
+    if (!permsReady) return canManageDocuments
+    return uiActions[CALENDAR_PERM.sendDocuments] === true
+  }, [permsReady, uiActions, canManageDocuments])
+  const canManageMailGroups = useMemo(() => {
+    if (!permsReady) return false
+    return uiActions[CALENDAR_PERM.manageMailGroups] === true
+  }, [permsReady, uiActions])
+  const canSendDocuments = canSendEmail && files.length > 0
   const canSave = (canEdit || canEditCode || canEditComercialIntern) && canUpdate
   const canDeleteEvent = canEdit && canDeleteManual && !isProductionOperationalWorker
+
+  const emailRecipientCandidates = useMemo(() => {
+    const items = [
+      { key: 'comercial', role: 'Comercial', name: String(editData.Comercial || '').trim() },
+      {
+        key: 'comercial-intern',
+        role: 'Comercial intern',
+        name: String(editData.ComercialIntern || '').trim(),
+      },
+      { key: 'responsable', role: 'Responsable', name: String(editData.Responsable || '').trim() },
+    ]
+    return items.filter((item) => item.name)
+  }, [editData.Comercial, editData.ComercialIntern, editData.Responsable])
 
   const allowedDepartments = useMemo(() => {
     const bucket = normalizeDeptForLnBucket(editData.LN)
@@ -923,8 +949,10 @@ export default function CalendarModal({
                   docId={deal.id}
                   existingKeys={files.map((f) => f.key)}
                   onAdded={(att) => {
-                    // afegeix utilitzant la clau retornada pel boto
-                    setFiles((prev) => [...prev, { key: att.key, url: att.url }])
+                    setFiles((prev) => [
+                      ...prev,
+                      { key: att.key, url: att.url, name: att.name },
+                    ])
                   }}
                 />
               </div>
@@ -939,7 +967,7 @@ export default function CalendarModal({
               </p>
             ) : (
               <ul className="space-y-1">
-                {files.map(({ key, url }) => (
+                {files.map(({ key, url, name }) => (
                   <li
                     key={`${key}-${url}`}
                     className="flex items-center justify-between text-sm bg-white px-2 py-1 rounded-md shadow-sm hover:bg-gray-100"
@@ -951,8 +979,7 @@ export default function CalendarModal({
                       className="text-blue-600 hover:underline flex-1 break-all flex items-center gap-1"
                     >
                       <ExternalLink className="w-4 h-4 shrink-0" />
-                      {files.find((f) => f.key === key)?.name ||
-                        decodeURIComponent(url.split('/').pop() || url)}
+                      {displayCalendarFileName({ key, url, name })}
                     </a>
 
                     {canManageDocuments &&
@@ -971,6 +998,18 @@ export default function CalendarModal({
               </ul>
             )}
           </div>
+
+          {canSendDocuments && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setSendDocumentsOpen(true)}
+            >
+              <Mail className="mr-2 h-4 w-4" />
+              Enviar documents per correu
+            </Button>
+          )}
         </div>
   )
 
@@ -1006,8 +1045,25 @@ export default function CalendarModal({
         </div>
   )
 
+  const sendDocumentsDialog = (
+    <CalendarSendDocumentsDialog
+      open={sendDocumentsOpen}
+      onOpenChange={setSendDocumentsOpen}
+      eventId={deal.id}
+      collection={COLLECTION}
+      eventTitle={editData.NomEvent}
+      eventCode={editData.code}
+      files={files}
+      recipientCandidates={emailRecipientCandidates}
+      eventLN={editData.LN}
+      canManageMailGroups={canManageMailGroups}
+    />
+  )
+
   if (embedded) {
     return (
+      <>
+        {sendDocumentsDialog}
       <div className="flex h-full min-h-0 w-full flex-col bg-white">
         <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3">
           <div className="min-w-0">
@@ -1034,6 +1090,7 @@ export default function CalendarModal({
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">{body}</div>
         <div className="shrink-0 border-t px-4 py-3">{footer}</div>
       </div>
+      </>
     )
   }
 
@@ -1042,7 +1099,10 @@ export default function CalendarModal({
   }
 
   return (
-    <Dialog modal={false} open={open} onOpenChange={setOpen}>
+    <>
+      {sendDocumentsDialog}
+
+      <Dialog modal={false} open={open} onOpenChange={setOpen}>
       {trigger ? (
         <DialogTrigger asChild>
           {bindTriggerClick(trigger, handleTriggerClick)}
@@ -1078,6 +1138,7 @@ export default function CalendarModal({
         <DialogFooter>{footer}</DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   )
 }
 

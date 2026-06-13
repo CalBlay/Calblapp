@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import Link from 'next/link'
 import {
   RefreshCw,
   CalendarDays,
@@ -8,6 +9,7 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
+  Users,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -30,6 +32,8 @@ import FloatingAddButton from '@/components/ui/floating-add-button'
 import { useFilters } from '@/context/FiltersContext'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { CALENDAR_MAIL_GROUPS_PATH, CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
 
 import {
   addMonths,
@@ -274,6 +278,9 @@ export default function CalendarPage() {
 
   /* Sessió */
   const { data: session } = useSession()
+  const { uiActions, ready: permsReady } = useUiPermissions()
+  const canManageMailGroups =
+    permsReady && uiActions[CALENDAR_PERM.manageMailGroups] === true
   const normalize = (value: string) =>
     value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
@@ -730,6 +737,14 @@ export default function CalendarPage() {
             }
           />
           <ExportMenu items={exportItems} ariaLabel="Exportar calendari" />
+          {canManageMailGroups ? (
+            <Button asChild variant="outline" size="sm" className="flex items-center gap-1">
+              <Link href={CALENDAR_MAIL_GROUPS_PATH}>
+                <Users size={14} />
+                <span className="hidden sm:inline">Grups d’enviament</span>
+              </Link>
+            </Button>
+          ) : null}
           {!isMobile && canManageCodes && (
             <>
               <Button

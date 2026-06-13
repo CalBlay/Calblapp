@@ -7,6 +7,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { canAccessProjects, sessionToAccessUser } from '@/lib/projectAccess'
 import { syncProjectRoomOpsChannel, type ProjectBlockLike, type ProjectRoomLike } from '@/lib/projectRoomOps'
+import { buildAutoGeneralRoom } from '@/lib/projectGeneralRoom'
 
 type SessionUser = {
   id: string
@@ -94,7 +95,8 @@ export async function POST(
     let workingRooms = initialRooms
     for (const roomId of roomsToSync) {
       if (!workingRooms.some((room) => String(room.id || '') === roomId)) {
-        const autoRoom = buildAutoRoomFromBlock({ ...data, rooms: workingRooms }, roomId)
+        const autoGeneralRoom = buildAutoGeneralRoom({ ...data, id }, id, roomId)
+        const autoRoom = autoGeneralRoom || buildAutoRoomFromBlock({ ...data, rooms: workingRooms }, roomId)
         if (autoRoom) {
           workingRooms = [...workingRooms, autoRoom]
         }

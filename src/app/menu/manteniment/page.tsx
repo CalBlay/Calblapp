@@ -1,15 +1,10 @@
 ﻿'use client'
 
-import { useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import useSWR from 'swr'
-import { endOfWeek, format, startOfWeek } from 'date-fns'
 import {
   Wrench,
   Eye,
   CalendarCheck2,
-  CheckCircle2,
   ClipboardList,
   Database,
 } from 'lucide-react'
@@ -21,8 +16,8 @@ import {
   isMaintenanceCapDepartment,
 } from '@/lib/accessControl'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import MaintenanceNotificationsBell from './components/MaintenanceNotificationsBell'
 import { useMaintenanceAssignedCount } from '@/hooks/useMaintenanceAssignedCount'
-import { getAblyClient } from '@/lib/ablyClient'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 
 const normalizeDept = (raw?: string) =>
@@ -33,84 +28,17 @@ const normalizeDept = (raw?: string) =>
     .toLowerCase()
     .trim()
 
-type MaintenanceNotification = {
-  id: string
-  title?: string
-  body?: string
-  type?: string
-  read?: boolean
-  ticketId?: string
-  plannedId?: string
-  recordId?: string
-  ticketCode?: string | null
-  location?: string | null
-  machine?: string | null
-}
-
 type SessionUser = {
   id?: string
   role?: string
   department?: string
 }
 
-type TicketStatusHistoryItem = {
-  status?: string | null
-  at?: number | null
-}
-
-type MaintenanceTicketResponse = {
-  statusHistory?: TicketStatusHistoryItem[]
-  plannedStart?: number | string | null
-  assignedAt?: number | string | null
-  createdAt?: number | string | null
-}
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
-
-const MAINTENANCE_NOTIFICATION_TYPES = new Set([
-  'maintenance_ticket_new',
-  'maintenance_ticket_assigned',
-  'maintenance_ticket_validated',
-  'maintenance_ticket_stale',
-  'maintenance_ticket_external_stale',
-])
-
-const buildWeekQuery = (value?: number | string | null) => {
-  const date =
-    typeof value === 'number'
-      ? new Date(value)
-      : typeof value === 'string'
-      ? new Date(value)
-      : null
-  if (!date || Number.isNaN(date.getTime())) return ''
-  const start = startOfWeek(date, { weekStartsOn: 1 })
-  const end = endOfWeek(date, { weekStartsOn: 1 })
-  return `start=${format(start, 'yyyy-MM-dd')}&end=${format(end, 'yyyy-MM-dd')}`
-}
-
-const normalizeNotificationText = (value?: string | null) =>
-  String(value || '')
-    .replace(/Â·/g, '\u00B7')
-    .replace(/â€™/g, "'")
-    .replace(/â€œ/g, '"')
-    .replace(/â€\u009d/g, '"')
-    .replace(/Ã /g, 'à')
-    .replace(/Ã¨/g, 'è')
-    .replace(/Ã©/g, 'é')
-    .replace(/Ã­/g, 'í')
-    .replace(/Ã²/g, 'ò')
-    .replace(/Ã³/g, 'ó')
-    .replace(/Ãº/g, 'ú')
-    .replace(/Ã§/g, 'ç')
-    .trim()
-
 export default function MantenimentIndexPage() {
   const { data: session } = useSession()
-  const router = useRouter()
   const sessionUser = session?.user as SessionUser | undefined
   const userRole = normalizeRole(sessionUser?.role || '')
   const userDepartment = normalizeDept(sessionUser?.department || '')
-  const userId = String(sessionUser?.id || '').trim()
   const isMaintenanceWorker = userRole === 'treballador' && userDepartment === 'manteniment'
   const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(userDepartment)
   const isLogisticsTicketsManager = isLogisticsMaintenanceTicketsManager({
@@ -123,181 +51,15 @@ export default function MantenimentIndexPage() {
   const { canViewPath } = useUiPermissions()
   const canViewTickets = canViewPath('/menu/manteniment/tickets')
   const { count: assignedTicketsCount } = useMaintenanceAssignedCount()
-  const { data: notificationsData, mutate: mutateNotifications } = useSWR(
-    userId ? '/api/notifications?mode=list' : null,
-    fetcher
-  )
-
-  useEffect(() => {
-    if (!userId) return
-
-    const client = getAblyClient(userId)
-    const channel = client.channels.get(`user:${userId}:notifications`)
-    const handler = () => {
-      mutateNotifications().catch(() => {})
-    }
-
-    channel.subscribe('created', handler)
-
-    return () => {
-      channel.unsubscribe('created', handler)
-    }
-  }, [userId, mutateNotifications])
-
-  const maintenanceNotifications = useMemo(
-    () =>
-      (Array.isArray(notificationsData?.notifications) ? notificationsData.notifications : []).filter(
-        (notification: MaintenanceNotification) =>
-          !notification.read && MAINTENANCE_NOTIFICATION_TYPES.has(String(notification.type || ''))
-      ),
-    [notificationsData]
-  )
-
-  const markNotificationAsRead = async (notificationId: string) => {
-    const id = String(notificationId || '').trim()
-    if (!id) return
-
-    await fetch('/api/notifications', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'markRead', notificationId: id }),
-    })
-    await mutateNotifications()
-  }
-
-  const extractNotificationLabel = (notification: MaintenanceNotification) => {
-    const code = String(notification.ticketCode || '').trim()
-    const machine = normalizeNotificationText(notification.machine)
-    const location = normalizeNotificationText(notification.location)
-    const body = normalizeNotificationText(notification.body)
-    const title = normalizeNotificationText(notification.title)
-    const primaryBase = machine || location || body || title || 'Ticket'
-    const primary = code ? `${code} \u00B7 ${primaryBase}` : primaryBase
-    const secondary = location || body || machine || ''
-
-    if (notification.type === 'maintenance_ticket_assigned') {
-      return { prefix: 'Assignat', primary, secondary }
-    }
-    if (notification.type === 'maintenance_ticket_validated') {
-      return { prefix: 'Validat', primary, secondary }
-    }
-    if (notification.type === 'maintenance_ticket_stale') {
-      return { prefix: 'Retard', primary, secondary }
-    }
-    if (notification.type === 'maintenance_ticket_external_stale') {
-      return { prefix: 'Proveidor', primary, secondary }
-    }
-    return { prefix: 'Nou ticket', primary, secondary }
-  }
-
-  const openMaintenanceNotification = async (notification: MaintenanceNotification) => {
-    await markNotificationAsRead(notification.id)
-
-    if (notification.plannedId) {
-      const params = new URLSearchParams()
-      if (notification.recordId) params.set('recordId', notification.recordId)
-      router.push(
-        `/menu/manteniment/preventius/fulls/${encodeURIComponent(notification.plannedId)}${
-          params.toString() ? `?${params.toString()}` : ''
-        }`
-      )
-      return
-    }
-
-    const ticketId = String(notification.ticketId || '').trim()
-    if (!ticketId) {
-      router.push('/menu/manteniment/tickets')
-      return
-    }
-
-    const query = new URLSearchParams({ ticketId })
-    try {
-      const res = await fetch(`/api/maintenance/tickets/${encodeURIComponent(ticketId)}`, {
-        cache: 'no-store',
-      })
-      if (res.ok) {
-        const json = await res.json()
-        const ticket = (json?.ticket || null) as MaintenanceTicketResponse | null
-        const validationAt = Array.isArray(ticket?.statusHistory)
-          ? [...ticket.statusHistory]
-              .filter((item) => item?.status === 'validat' || item?.status === 'resolut')
-              .sort((a, b) => Number(b?.at || 0) - Number(a?.at || 0))[0]?.at
-          : null
-        const baseDate =
-          notification.type === 'maintenance_ticket_validated'
-            ? validationAt || ticket?.plannedStart || ticket?.assignedAt || ticket?.createdAt
-            : ticket?.plannedStart || ticket?.assignedAt || ticket?.createdAt
-        const weekQuery = buildWeekQuery(baseDate)
-        if (weekQuery) {
-          const weekParams = new URLSearchParams(weekQuery)
-          weekParams.forEach((value, key) => query.set(key, value))
-        }
-      }
-    } catch {
-      // keep fallback route below
-    }
-
-    if (notification.type === 'maintenance_ticket_assigned') {
-      router.push(`/menu/manteniment/preventius/fulls?${query.toString()}`)
-      return
-    }
-
-    router.push(`/menu/manteniment/tickets?${query.toString()}`)
-  }
 
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
       <div className="w-full max-w-6xl mx-auto p-4 space-y-5">
-        <ModuleHeader title="Manteniment" subtitle="Gestió i assignació" />
-
-        {maintenanceNotifications.length > 0 ? (
-          <section className="rounded-[14px] border border-emerald-200/80 bg-white px-2.5 py-2 shadow-sm">
-            <div className="mb-1.5 flex items-center gap-2">
-              <div className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                Avisos de manteniment
-              </div>
-              <div className="text-xs text-slate-500">{maintenanceNotifications.length} pendents</div>
-            </div>
-            <div className="space-y-1">
-              {maintenanceNotifications.slice(0, 6).map((notification: MaintenanceNotification) => {
-                const label = extractNotificationLabel(notification)
-                return (
-                  <div
-                    key={notification.id}
-                    className="flex min-h-9 items-center gap-2 rounded-md border border-slate-200/80 bg-slate-50/70 px-2.5 py-1.5 text-sm"
-                  >
-                    <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 ring-1 ring-slate-200">
-                      {label.prefix}
-                    </span>
-                    <div className="min-w-0 flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-slate-700">
-                      <button
-                        type="button"
-                        className="truncate font-medium text-slate-900 hover:text-emerald-700 hover:underline"
-                        onClick={() => void openMaintenanceNotification(notification)}
-                      >
-                        {label.primary}
-                      </button>
-                      {label.secondary ? <span className="text-slate-400">{'\u00B7'}</span> : null}
-                      {label.secondary ? (
-                        <span className="truncate text-slate-500">{label.secondary}</span>
-                      ) : (
-                        <span className="text-slate-400">{normalizeNotificationText(notification.title)}</span>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-emerald-600 transition hover:bg-emerald-50 hover:text-emerald-700"
-                      aria-label="Marcar com a llegit"
-                      onClick={() => void markNotificationAsRead(notification.id)}
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        ) : null}
+        <ModuleHeader
+          title="Manteniment"
+          subtitle="Gestió i assignació"
+          actions={<MaintenanceNotificationsBell />}
+        />
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {(isAdmin || isMaintenanceCap || isLogisticsTicketsManager || canViewTickets) && (

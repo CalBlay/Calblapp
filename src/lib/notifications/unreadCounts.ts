@@ -1,14 +1,6 @@
 import { FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { countUnreadNotifications, countUnreadNotificationsByTypes } from '@/lib/notifications/firestoreCounts'
-import {
-  INCIDENT_NOTIFICATION_TYPES,
-  LOGISTICS_NOTIFICATION_TYPES,
-  MAINTENANCE_NOTIFICATION_TYPES,
-  PROJECT_NOTIFICATION_TYPES,
-  TORN_NOTIFICATION_TYPES,
-} from '@/lib/notifications/notificationTypes'
-
+import { fetchUnreadNotificationDocs } from '@/lib/notifications/firestoreCounts'
 export const UNREAD_COUNTS_VERSION = 1
 
 export type NotificationUnreadBuckets = {
@@ -137,44 +129,51 @@ export async function readUserUnreadBuckets(userId: string): Promise<Notificatio
 }
 
 export async function syncUserUnreadBuckets(userId: string): Promise<NotificationUnreadBuckets> {
-  const [
-    user_request,
-    user_request_result,
-    torn,
-    projects,
-    logistics,
-    maintenance,
-    incidents,
-  ] = await Promise.all([
-    countUnreadNotifications(userId, { type: 'user_request' }),
-    countUnreadNotifications(userId, { type: 'user_request_result' }),
-    countUnreadNotificationsByTypes(userId, [...TORN_NOTIFICATION_TYPES]),
-    countUnreadNotificationsByTypes(userId, [...PROJECT_NOTIFICATION_TYPES]),
-    countUnreadNotificationsByTypes(userId, [...LOGISTICS_NOTIFICATION_TYPES]),
-    countUnreadNotificationsByTypes(userId, [...MAINTENANCE_NOTIFICATION_TYPES]),
-    countUnreadNotificationsByTypes(userId, [...INCIDENT_NOTIFICATION_TYPES]),
-  ])
+  const docs = await fetchUnreadNotificationDocs(userId)
+  const typeCounts = countNotificationTypes(docs)
 
   const buckets: NotificationUnreadBuckets = {
-    user_request,
-    user_request_result,
-    torn,
-    projects,
-    logistics,
-    maintenance,
-    incidents,
+    user_request: 0,
+    user_request_result: 0,
+    torn: 0,
+    projects: 0,
+    logistics: 0,
+    maintenance: 0,
+    incidents: 0,
     version: UNREAD_COUNTS_VERSION,
     syncedAt: Date.now(),
+  }
+
+  for (const [type, count] of typeCounts) {
+    const bucket = bucketForNotificationType(type)
+    if (bucket) buckets[bucket] += count
   }
 
   await userRef(userId).set({ notificationUnread: buckets }, { merge: true })
   return buckets
 }
 
+const EMPTY_BUCKETS = (): NotificationUnreadBuckets => ({
+  user_request: 0,
+  user_request_result: 0,
+  torn: 0,
+  projects: 0,
+  logistics: 0,
+  maintenance: 0,
+  incidents: 0,
+  version: UNREAD_COUNTS_VERSION,
+  syncedAt: Date.now(),
+})
+
 export async function getUserUnreadBuckets(userId: string): Promise<NotificationUnreadBuckets> {
-  const cached = await readUserUnreadBuckets(userId)
-  if (cached) return cached
-  return syncUserUnreadBuckets(userId)
+  try {
+    const cached = await readUserUnreadBuckets(userId)
+    if (cached) return cached
+    return await syncUserUnreadBuckets(userId)
+  } catch (err) {
+    console.error('[unreadCounts] getUserUnreadBuckets failed for', userId, err)
+    return EMPTY_BUCKETS()
+  }
 }
 
 function countNotificationTypes(docs: DocumentSnapshot[]): Map<string, number> {

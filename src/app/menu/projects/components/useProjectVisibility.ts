@@ -1,9 +1,13 @@
 'use client'
 
 import { useMemo } from 'react'
+import { resolveUserProjectParticipation } from '@/lib/projectParticipation'
+import { canAccessBlockRoom, canAccessGeneralRoom } from '@/lib/projectRoomAccess'
 import {
   getBlockDepartments,
+  type ProjectBlock,
   type ProjectData,
+  type ProjectTask,
 } from './project-shared'
 import {
   normalizeDepartment,
@@ -41,75 +45,189 @@ export function useProjectVisibility({
     sessionRole === 'admin' || sessionRole === 'direccio' || isProjectSponsor || isProjectOwner
   const canViewOverview = sessionRole === 'admin' || isProjectSponsor || isProjectOwner
   const canCreateOrRemoveBlocks = canManageProject
+  const isBlockResponsible = useMemo(
+    () =>
+      Boolean(
+        sessionUserName &&
+          project.blocks.some((block) => String(block.owner || '').trim() === sessionUserName)
+      ),
+    [project.blocks, sessionUserName]
+  )
+  const isTaskResponsible = useMemo(
+    () =>
+      Boolean(
+        sessionUserName &&
+          project.blocks.some((block) =>
+            block.tasks.some((task) => String(task.owner || '').trim() === sessionUserName)
+          )
+      ),
+    [project.blocks, sessionUserName]
+  )
+  const isBlockResponsibleOnly = isBlockResponsible && !hasFullProjectVisibility
+  const blockResponsibleTabs = useMemo<WorkspaceTab[]>(
+    () => ['tasks', 'blocks', 'planning', 'documents'],
+    []
+  )
+  const limitedParticipantTabs = useMemo<WorkspaceTab[]>(() => {
+    if (isTaskResponsible) return ['tasks', 'planning', 'documents']
+    return ['planning']
+  }, [isTaskResponsible])
+  const participation = useMemo(
+    () =>
+      resolveUserProjectParticipation(
+        {
+          id: sessionUserId,
+          name: sessionUserName,
+          role: sessionRole,
+          department: sessionDepartment,
+        },
+        project,
+        { includeGlobalAccessLabel: true }
+      ),
+    [project, sessionDepartment, sessionRole, sessionUserId, sessionUserName]
+  )
+  const preferredWorkspaceTab = useMemo<WorkspaceTab>(() => {
+    if (isProjectOwner || isProjectSponsor) return 'tasks'
+    if (isBlockResponsibleOnly) return 'tasks'
+    if (isTaskResponsible) return 'tasks'
+    if (hasFullProjectVisibility) return canViewOverview ? 'overview' : 'blocks'
+    return 'planning'
+  }, [
+    canViewOverview,
+    hasFullProjectVisibility,
+    isBlockResponsibleOnly,
+    isProjectOwner,
+    isProjectSponsor,
+    isTaskResponsible,
+  ])
 
   const visibleTabs = useMemo<WorkspaceTab[]>(
-    () =>
-      sessionStatus === 'loading'
-        ? workspaceTabs.map((tab) => tab.id)
-        : workspaceTabs
-            .map((tab) => tab.id)
-            .filter((tabId) => {
-              if (tabId === 'rooms') return false
-              if (tabId === 'overview') return canViewOverview
-              return true
-            }),
-    [canViewOverview, sessionStatus]
+    () => {
+      if (sessionStatus === 'loading') {
+        return workspaceTabs.map((tab) => tab.id)
+      }
+
+      if (hasFullProjectVisibility) {
+        return workspaceTabs
+          .map((tab) => tab.id)
+          .filter((tabId) => {
+            if (tabId === 'overview') return canViewOverview
+            return true
+          })
+      }
+
+      if (isBlockResponsibleOnly) {
+        return blockResponsibleTabs
+      }
+
+      return limitedParticipantTabs
+    },
+    [
+      blockResponsibleTabs,
+      canViewOverview,
+      hasFullProjectVisibility,
+      isBlockResponsibleOnly,
+      limitedParticipantTabs,
+      sessionStatus,
+    ]
   )
 
   const visibleProjectForBlocks = useMemo<ProjectData>(() => {
     if (hasFullProjectVisibility) return project
 
-    const filteredBlocks = project.blocks.filter((block) => {
-      const blockDepartments = getBlockDepartments(block).map((department) =>
-        normalizeDepartment(department)
-      )
-      const isResponsible =
-        (sessionUserName && String(block.owner || '').trim() === sessionUserName) ||
-        block.tasks.some((task) => String(task.owner || '').trim() === sessionUserName)
-      const isDepartmentCap =
-        sessionRole === 'cap' &&
-        Boolean(sessionDepartment) &&
-        blockDepartments.includes(sessionDepartment)
-
-      return isResponsible || isDepartmentCap
-    })
+    if (isBlockResponsible) {
+      return {
+        ...project,
+        blocks: project.blocks.filter(
+          (block) => sessionUserName && String(block.owner || '').trim() === sessionUserName
+        ),
+      }
+    }
 
     return {
       ...project,
-      blocks: filteredBlocks,
+      blocks: [],
     }
-  }, [hasFullProjectVisibility, project, sessionDepartment, sessionRole, sessionUserName])
+  }, [hasFullProjectVisibility, isBlockResponsible, project, sessionUserName])
 
   const visibleProjectForTasks = useMemo<ProjectData>(() => {
     if (hasFullProjectVisibility) return project
 
-    const filteredBlocks = project.blocks.filter((block) => {
-      const blockDepartments = getBlockDepartments(block).map((department) =>
-        normalizeDepartment(department)
-      )
-      const isBlockResponsible = sessionUserName && String(block.owner || '').trim() === sessionUserName
-      const isTaskResponsible = block.tasks.some(
-        (task) => String(task.owner || '').trim() === sessionUserName
-      )
-      const isDepartmentParticipant =
-        Boolean(sessionDepartment) && blockDepartments.includes(sessionDepartment)
+    if (isBlockResponsible) {
+      const filteredBlocks = project.blocks.filter((block) => {
+        const blockDepartments = getBlockDepartments(block).map((department) =>
+          normalizeDepartment(department)
+        )
+        const isCurrentBlockResponsible =
+          sessionUserName && String(block.owner || '').trim() === sessionUserName
+        const isCurrentTaskResponsible = block.tasks.some(
+          (task) => String(task.owner || '').trim() === sessionUserName
+        )
+        const isDepartmentCap =
+          sessionRole === 'cap' &&
+          Boolean(sessionDepartment) &&
+          blockDepartments.includes(sessionDepartment)
 
-      return isBlockResponsible || isTaskResponsible || isDepartmentParticipant
-    })
+        return isCurrentBlockResponsible || isCurrentTaskResponsible || isDepartmentCap
+      })
+
+      return {
+        ...project,
+        blocks: filteredBlocks,
+      }
+    }
+
+    if (isTaskResponsible) {
+      return {
+        ...project,
+        blocks: project.blocks
+          .map((block) => ({
+            ...block,
+            tasks: block.tasks.filter(
+              (task) => String(task.owner || '').trim() === sessionUserName
+            ),
+          }))
+          .filter((block) => block.tasks.length > 0),
+      }
+    }
 
     return {
       ...project,
-      blocks: filteredBlocks,
+      blocks: [],
     }
-  }, [hasFullProjectVisibility, project, sessionDepartment, sessionUserName])
+  }, [
+    hasFullProjectVisibility,
+    isBlockResponsible,
+    isTaskResponsible,
+    project,
+    sessionDepartment,
+    sessionRole,
+    sessionUserName,
+  ])
 
   const canEditSpecificBlock = (block: ProjectData['blocks'][number]) =>
     canManageProject ||
     ((sessionUserName && String(block.owner || '').trim() === sessionUserName) || false)
 
-  const canAccessSpecificBlockRoom = (block: ProjectData['blocks'][number]) =>
-    canEditSpecificBlock(block) ||
-    block.tasks.some((task) => Boolean(sessionUserName && String(task.owner || '').trim() === sessionUserName))
+  const canAccessSpecificBlockRoom = (block: ProjectData['blocks'][number]) => {
+    const room = project.rooms.find((item) => item.kind === 'block' && item.blockId === block.id)
+    return canAccessBlockRoom(
+      { id: sessionUserId, name: sessionUserName, role: sessionRole },
+      project,
+      block,
+      room
+    )
+  }
+
+  const canAccessProjectGeneralRoom = useMemo(() => {
+    const generalRoom = project.rooms.find((item) => item.kind === 'general')
+    return canAccessGeneralRoom(
+      { id: sessionUserId, name: sessionUserName, role: sessionRole },
+      project,
+      project.blocks,
+      generalRoom
+    )
+  }, [project, sessionRole, sessionUserId, sessionUserName])
 
   const canManageSpecificTask = (
     block: ProjectData['blocks'][number],
@@ -130,6 +248,7 @@ export function useProjectVisibility({
 
   const canSaveTasks =
     canCreateOrRemoveBlocks ||
+    isBlockResponsible ||
     visibleProjectForTasks.blocks.some((block) =>
       block.tasks.some(
         (task) =>
@@ -139,9 +258,39 @@ export function useProjectVisibility({
       )
     )
 
+  const canConvokeProjectMeeting = canManageProject
+
+  const canConvokeBlockMeeting = (block: ProjectBlock) =>
+    canManageProject ||
+    Boolean(sessionUserName && String(block.owner || '').trim() === sessionUserName)
+
+  const canConvokeTaskMeeting = (block: ProjectBlock, task: ProjectTask) =>
+    canConvokeBlockMeeting(block) ||
+    Boolean(sessionUserName && String(task.owner || '').trim() === sessionUserName)
+
+  const canConvokeMeetings =
+    canManageProject ||
+    isBlockResponsible ||
+    isTaskResponsible
+
+  const canConvokeAnyBlockMeeting = visibleProjectForBlocks.blocks.some((block) =>
+    canConvokeBlockMeeting(block)
+  )
+
+  const canConvokeAnyTaskMeeting = visibleProjectForTasks.blocks.some((block) =>
+    block.tasks.some((task) => canConvokeTaskMeeting(block, task))
+  )
+
   return {
+    canAccessProjectGeneralRoom,
     canAccessSpecificBlockRoom,
     canAccessSpecificTaskOps,
+    canConvokeAnyBlockMeeting,
+    canConvokeAnyTaskMeeting,
+    canConvokeBlockMeeting,
+    canConvokeMeetings,
+    canConvokeProjectMeeting,
+    canConvokeTaskMeeting,
     canCreateOrRemoveBlocks,
     canDeleteProject,
     canEditSpecificBlock,
@@ -150,9 +299,15 @@ export function useProjectVisibility({
     canMoveSpecificTask,
     canSaveTasks,
     canViewOverview,
+    hasExpandedWorkspaceTabs: hasFullProjectVisibility || isBlockResponsibleOnly,
     hasFullProjectVisibility,
+    isBlockResponsibleOnly,
+    isBlockResponsible,
+    isTaskResponsible,
     isProjectOwner,
     isProjectSponsor,
+    participation,
+    preferredWorkspaceTab,
     visibleProjectForBlocks,
     visibleProjectForTasks,
     visibleTabs,
