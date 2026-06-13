@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ProjectData } from './project-shared'
 import {
   blocksSnapshotsDiffer,
@@ -19,31 +19,45 @@ type Params = {
 export function useProjectDirtyState({ project, pendingFile }: Params) {
   const savedOverviewRef = useRef<OverviewDirtySnapshot>(captureOverviewDirtySnapshot(project))
   const savedBlocksRef = useRef<BlocksDirtySnapshot>(captureBlocksDirtySnapshot(project))
+  const [savedRevision, setSavedRevision] = useState(0)
+
+  const bumpSavedRevision = useCallback(() => {
+    setSavedRevision((current) => current + 1)
+  }, [])
 
   const resetSnapshots = useCallback((source: ProjectData) => {
     savedOverviewRef.current = captureOverviewDirtySnapshot(source)
     savedBlocksRef.current = captureBlocksDirtySnapshot(source)
-  }, [])
+    bumpSavedRevision()
+  }, [bumpSavedRevision])
 
   const dirtyOverview = useMemo(
     () =>
       overviewSnapshotsDiffer(captureOverviewDirtySnapshot(project), savedOverviewRef.current) ||
       Boolean(pendingFile),
-    [pendingFile, project]
+    [pendingFile, project, savedRevision]
   )
 
   const dirtyBlocks = useMemo(
     () => blocksSnapshotsDiffer(captureBlocksDirtySnapshot(project), savedBlocksRef.current),
-    [project]
+    [project, savedRevision]
   )
 
-  const markOverviewSaved = useCallback((source: ProjectData) => {
-    savedOverviewRef.current = captureOverviewDirtySnapshot(source)
-  }, [])
+  const markOverviewSaved = useCallback(
+    (source: ProjectData) => {
+      savedOverviewRef.current = captureOverviewDirtySnapshot(source)
+      bumpSavedRevision()
+    },
+    [bumpSavedRevision]
+  )
 
-  const markBlocksSaved = useCallback((source: ProjectData) => {
-    savedBlocksRef.current = captureBlocksDirtySnapshot(source)
-  }, [])
+  const markBlocksSaved = useCallback(
+    (source: ProjectData) => {
+      savedBlocksRef.current = captureBlocksDirtySnapshot(source)
+      bumpSavedRevision()
+    },
+    [bumpSavedRevision]
+  )
 
   return {
     dirtyOverview,

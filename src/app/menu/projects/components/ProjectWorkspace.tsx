@@ -384,6 +384,21 @@ export default function ProjectWorkspace({
     userByName,
   })
 
+  const projectSnapshotRef = useRef(project)
+  projectSnapshotRef.current = project
+  const wasSavingBlocksRef = useRef(false)
+
+  useEffect(() => {
+    if (wasSavingBlocksRef.current && !savingBlocks) {
+      const timeoutId = window.setTimeout(() => {
+        markBlocksSaved(projectSnapshotRef.current)
+      }, 0)
+      wasSavingBlocksRef.current = savingBlocks
+      return () => window.clearTimeout(timeoutId)
+    }
+    wasSavingBlocksRef.current = savingBlocks
+  }, [markBlocksSaved, savingBlocks])
+
   const {
     handleDeleteProject,
     removeDocument,

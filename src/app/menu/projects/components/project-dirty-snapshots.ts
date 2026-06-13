@@ -1,4 +1,4 @@
-import { getBlockDepartments, type ProjectData } from './project-shared'
+import { deriveBlockStatus, getBlockDepartments, type ProjectData } from './project-shared'
 
 export type OverviewDirtySnapshot = {
   name: string
@@ -190,8 +190,8 @@ export const captureBlocksDirtySnapshot = (source: ProjectData): BlocksDirtySnap
     owner: block.owner,
     deadline: block.deadline,
     budget: block.budget || '',
-    dependsOn: block.dependsOn,
-    status: block.status,
+    dependsOn: block.dependsOn || '',
+    status: block.status || deriveBlockStatus(block),
     tasks: (block.tasks || []).map((task) => ({
       id: task.id,
       title: task.title,
@@ -199,10 +199,10 @@ export const captureBlocksDirtySnapshot = (source: ProjectData): BlocksDirtySnap
       department: task.department || '',
       owner: task.owner,
       deadline: task.deadline,
-      dependsOn: task.dependsOn,
+      dependsOn: task.dependsOn || '',
       cost: task.cost || '',
-      priority: task.priority,
-      status: task.status,
+      priority: task.priority || 'normal',
+      status: task.status || 'pending',
       sprintId: task.sprintId || '',
       storyPoints: task.storyPoints || '',
       documents: (task.documents || []).map((item) => ({
@@ -223,7 +223,7 @@ export const captureBlocksDirtySnapshot = (source: ProjectData): BlocksDirtySnap
     goal: sprint.goal,
     startDate: sprint.startDate,
     endDate: sprint.endDate,
-    status: sprint.status,
+    status: sprint.status || 'planned',
   })),
   kickoffMinutes: source.kickoff.minutes || '',
   kickoffMinutesStatus: source.kickoff.minutesStatus || 'open',

@@ -152,6 +152,13 @@ function AccessListItem({
   )
 }
 
+const DEFAULT_EXPANDED_SECTIONS: Record<AccessSection, boolean> = {
+  blocks: false,
+  tasks: false,
+  workspaces: false,
+  participants: true,
+}
+
 export default function ProjectCoordinationPanel({
   projectId,
   project,
@@ -174,12 +181,8 @@ export default function ProjectCoordinationPanel({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [room, setRoom] = useState<RoomPayload | null>(null)
-  const [expandedSections, setExpandedSections] = useState<Record<AccessSection, boolean>>({
-    blocks: true,
-    tasks: false,
-    workspaces: true,
-    participants: false,
-  })
+  const [expandedSections, setExpandedSections] =
+    useState<Record<AccessSection, boolean>>(DEFAULT_EXPANDED_SECTIONS)
   const wasOpenRef = useRef(false)
 
   const participants = useMemo(
@@ -264,6 +267,7 @@ export default function ProjectCoordinationPanel({
   useEffect(() => {
     if (open && !wasOpenRef.current) {
       setActiveRoomId(generalRoomId)
+      setExpandedSections(DEFAULT_EXPANDED_SECTIONS)
     }
     wasOpenRef.current = open
   }, [generalRoomId, open])
