@@ -153,6 +153,46 @@ function AccessListItem({
   )
 }
 
+function ParticipantsSidebar({
+  project,
+  participants,
+}: {
+  project: ProjectData
+  participants: ReturnType<typeof deriveProjectParticipants>
+}) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
+      <div className="space-y-2">
+        {participants.length === 0 ? (
+          <p className="px-1 text-xs text-slate-500">Sense participants.</p>
+        ) : (
+          participants.map((participant) => (
+            <div
+              key={participant.name}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
+                  {initials(participant.name)}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-slate-900">{participant.name}</div>
+                  <div className="truncate text-xs text-slate-500">
+                    {participantRoleLabel(participant.name, project)}
+                  </div>
+                  {participant.department ? (
+                    <div className="truncate text-[11px] text-slate-400">{participant.department}</div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 function AccessSidebar({
   projectId,
   project,
@@ -171,6 +211,7 @@ function AccessSidebar({
   onSelectRoom,
   onSelectBlock,
   onSelectTask,
+  includeParticipants = true,
 }: {
   projectId: string
   project: ProjectData
@@ -189,6 +230,7 @@ function AccessSidebar({
   onSelectRoom: (roomId: string) => void
   onSelectBlock: (blockId: string) => void
   onSelectTask: (blockId: string, taskId: string) => void
+  includeParticipants?: boolean
 }) {
   return (
     <>
@@ -284,37 +326,39 @@ function AccessSidebar({
           ) : null}
         </CollapsibleSection>
 
-        <CollapsibleSection
-          title="Participants"
-          count={participants.length}
-          icon={Users}
-          expanded={expandedSections.participants}
-          onToggle={() => onToggleSection('participants')}
-        >
-          <div className="space-y-2">
-            {participants.map((participant) => (
-              <div
-                key={participant.name}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
-                    {initials(participant.name)}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-slate-900">{participant.name}</div>
-                    <div className="truncate text-xs text-slate-500">
-                      {participantRoleLabel(participant.name, project)}
+        {includeParticipants ? (
+          <CollapsibleSection
+            title="Participants"
+            count={participants.length}
+            icon={Users}
+            expanded={expandedSections.participants}
+            onToggle={() => onToggleSection('participants')}
+          >
+            <div className="space-y-2">
+              {participants.map((participant) => (
+                <div
+                  key={participant.name}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
+                      {initials(participant.name)}
                     </div>
-                    {participant.department ? (
-                      <div className="truncate text-[11px] text-slate-400">{participant.department}</div>
-                    ) : null}
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-slate-900">{participant.name}</div>
+                      <div className="truncate text-xs text-slate-500">
+                        {participantRoleLabel(participant.name, project)}
+                      </div>
+                      {participant.department ? (
+                        <div className="truncate text-[11px] text-slate-400">{participant.department}</div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </CollapsibleSection>
+              ))}
+            </div>
+          </CollapsibleSection>
+        ) : null}
       </div>
     </>
   )
@@ -352,6 +396,7 @@ export default function ProjectCoordinationPanel({
   const [expandedSections, setExpandedSections] =
     useState<Record<AccessSection, boolean>>(DEFAULT_EXPANDED_SECTIONS)
   const [mobilePanelView, setMobilePanelView] = useState<MobilePanelView>('chat')
+  const [mobileParticipantsOpen, setMobileParticipantsOpen] = useState(false)
   const wasOpenRef = useRef(false)
 
   const participants = useMemo(
@@ -438,6 +483,7 @@ export default function ProjectCoordinationPanel({
       setActiveRoomId(generalRoomId)
       setExpandedSections(DEFAULT_EXPANDED_SECTIONS)
       setMobilePanelView('chat')
+      setMobileParticipantsOpen(false)
     }
     wasOpenRef.current = open
   }, [generalRoomId, open])
@@ -451,18 +497,31 @@ export default function ProjectCoordinationPanel({
     setActiveRoomId(roomId)
     setExpandedSections((current) => ({ ...current, workspaces: true }))
     setMobilePanelView('chat')
+    setMobileParticipantsOpen(false)
   }
 
   const handleSelectBlock = (blockId: string) => {
     onNavigateToBlock(blockId)
     setExpandedSections((current) => ({ ...current, blocks: true }))
     setMobilePanelView('chat')
+    setMobileParticipantsOpen(false)
   }
 
   const handleSelectTask = (blockId: string, taskId: string) => {
     onNavigateToTask(blockId, taskId)
     setExpandedSections((current) => ({ ...current, tasks: true }))
     setMobilePanelView('chat')
+    setMobileParticipantsOpen(false)
+  }
+
+  const openMobileAccess = () => {
+    setMobileParticipantsOpen(false)
+    setMobilePanelView('access')
+  }
+
+  const toggleMobileParticipants = () => {
+    setMobilePanelView('chat')
+    setMobileParticipantsOpen((current) => !current)
   }
 
   const accessSidebarProps = {
@@ -530,16 +589,33 @@ export default function ProjectCoordinationPanel({
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             {mobilePanelView === 'chat' ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9 px-2.5 text-xs lg:hidden"
-                onClick={() => setMobilePanelView('access')}
-              >
-                <Layers className="mr-1.5 h-3.5 w-3.5" />
-                Accés
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 text-slate-600 hover:text-violet-800 lg:hidden"
+                  onClick={openMobileAccess}
+                  title="Blocs, tasques i espais de treball"
+                  aria-label="Accés al projecte"
+                >
+                  <Layers className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    'h-9 w-9 text-slate-600 hover:text-violet-800 lg:hidden',
+                    mobileParticipantsOpen && 'bg-violet-100 text-violet-800'
+                  )}
+                  onClick={toggleMobileParticipants}
+                  title="Participants del projecte"
+                  aria-label="Participants del projecte"
+                >
+                  <Users className="h-4 w-4" />
+                </Button>
+              </>
             ) : null}
             {room?.opsChannelId ? (
               <Button
@@ -566,6 +642,20 @@ export default function ProjectCoordinationPanel({
             </Button>
           </div>
         </div>
+
+        {mobileParticipantsOpen && mobilePanelView === 'chat' ? (
+          <div className="shrink-0 border-b border-slate-200 bg-slate-50/80 lg:hidden">
+            <div className="flex items-center justify-between px-4 py-2">
+              <div className="text-sm font-semibold text-slate-900">Participants</div>
+              <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                {participants.length}
+              </span>
+            </div>
+            <div className="max-h-[40vh] overflow-y-auto overscroll-contain">
+              <ParticipantsSidebar project={project} participants={participants} />
+            </div>
+          </div>
+        ) : null}
 
         <div className="flex min-h-0 flex-1">
           <section
@@ -609,7 +699,10 @@ export default function ProjectCoordinationPanel({
               mobilePanelView === 'access' ? 'w-full flex-1' : 'hidden lg:flex'
             )}
           >
-            <AccessSidebar {...accessSidebarProps} />
+            <AccessSidebar
+              {...accessSidebarProps}
+              includeParticipants={mobilePanelView === 'chat'}
+            />
           </aside>
         </div>
       </SheetContent>
