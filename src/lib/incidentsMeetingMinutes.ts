@@ -4,6 +4,7 @@ import { sortIncidentDayKeysByProximityToToday } from '@/lib/incidentListSort'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 
 export type GroupedIncidentEvent = {
+  eventId?: string
   eventTitle?: string
   eventCode?: string
   ln?: string
@@ -35,6 +36,7 @@ export function groupIncidentsByDayAndEvent(
 
     if (!acc[day][key]) {
       acc[day][key] = {
+        eventId: inc.eventId || key,
         eventTitle: inc.eventTitle,
         eventCode: inc.eventCode,
         ln: inc.ln,

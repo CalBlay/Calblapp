@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import IncidentsRow from './IncidentsRow'
 import IncidentsMobileCard from './IncidentsMobileCard'
 import IncidentsEventHeader from './IncidentsEventHeader'
 import type { GroupedIncidentEvent } from '@/lib/incidentsMeetingMinutes'
 import { Incident } from '@/hooks/useIncidents'
+import { getIncidentEventGroupMeta, getEventBlockVisualStyle } from '@/lib/incidentEventGroupMeta'
 import FincaModal from '@/components/spaces/FincaModal'
 import UserEventInfoModal from '@/components/incidents/UserEventInfoModal'
 import { typography } from '@/lib/typography'
@@ -41,6 +42,13 @@ export default function IncidentsEventGroup({
   const [openEventModal, setOpenEventModal] = useState(false)
   const [selectedEventCode, setSelectedEventCode] = useState<string | null>(null)
 
+  const groupMeta = useMemo(() => getIncidentEventGroupMeta(event.rows), [event.rows])
+  const [expanded, setExpanded] = useState(false)
+  const blockVisual = useMemo(
+    () => getEventBlockVisualStyle(groupMeta, expanded),
+    [groupMeta, expanded]
+  )
+
   useEffect(() => {
     const w = window as WindowWithEventModal
     w.openEventModal = (code: string) => {
@@ -74,16 +82,26 @@ export default function IncidentsEventGroup({
   }, [])
 
   return (
-    <div
-      className="border-b last:border-0 px-3 py-3 sm:px-4"
+    <article
+      className={cn(
+        'flex min-w-0 flex-col overflow-hidden rounded-xl border border-l-4 transition-all duration-200',
+        blockVisual.accent,
+        blockVisual.shell,
+        expanded && 'col-span-full',
+        !expanded && 'h-full'
+      )}
       style={
-        {
-          contentVisibility: 'auto',
-          containIntrinsicSize: 'auto 360px',
-        } as React.CSSProperties
+        expanded
+          ? undefined
+          : ({
+              contentVisibility: 'auto',
+              containIntrinsicSize: 'auto 200px',
+            } as React.CSSProperties)
       }
     >
       <IncidentsEventHeader
+        className={!expanded ? 'h-full' : undefined}
+        headerClassName={blockVisual.header}
         title={event.eventTitle ?? ''}
         code={event.eventCode ?? ''}
         ln={event.ln ?? ''}
@@ -92,6 +110,11 @@ export default function IncidentsEventGroup({
         service={event.serviceType ?? ''}
         pax={Number(event.pax ?? 0)}
         count={event.rows.length}
+        openCount={groupMeta.openCount}
+        urgentCount={groupMeta.urgentCount}
+        allResolved={groupMeta.allResolved}
+        expanded={expanded}
+        onToggle={() => setExpanded((prev) => !prev)}
         onLocationClick={() => setOpenFincaModal(true)}
       />
 
@@ -107,48 +130,11 @@ export default function IncidentsEventGroup({
         eventCode={selectedEventCode}
       />
 
-      <div className="mt-3 space-y-3 md:hidden">
-        {event.rows.map((inc: Incident) => (
-          <IncidentsMobileCard
-            key={inc.id}
-            inc={inc}
-            isEditing={editingId === inc.id}
-            beginEdit={beginEdit}
-            applyPatch={applyPatch}
-            onDelete={onDelete}
-            opsExpanded={expandedOpsId === inc.id}
-            onToggleOps={toggleOps}
-            onIncidentPatch={onUpdate}
-            openImages={onOpenImages}
-            canDelete={canDeleteIncident(inc)}
-            editValues={editValues}
-            setEditValues={setEditValues}
-          />
-        ))}
-      </div>
-
-      <div className="mt-3 hidden overflow-x-auto md:block">
-        <table className={cn('w-full min-w-[1140px] table-fixed', typography('bodySm'))}>
-          <thead>
-            <tr className="bg-slate-50 text-slate-600">
-              <th className={cn('w-12 p-2 text-left font-semibold', typography('bodySm'))}>Seg.</th>
-              <th className={cn('w-20 p-2 text-left font-semibold', typography('bodySm'))}>Fotos</th>
-              <th className={cn('w-20 p-2 text-left font-semibold', typography('bodySm'))}>Nº</th>
-              <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Autor</th>
-              <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Dept</th>
-              <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Importància</th>
-              <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Estat</th>
-              <th className={cn('w-auto p-2 text-left font-semibold', typography('bodySm'))}>Incidència</th>
-              <th className={cn('w-36 p-2 text-left font-semibold', typography('bodySm'))}>Categoria</th>
-              <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Origen</th>
-              <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Prioritat</th>
-              <th className={cn('w-14 p-2 text-left font-semibold', typography('bodySm'))}>Del.</th>
-            </tr>
-          </thead>
-
-          <tbody>
+      {expanded ? (
+        <div className={cn('min-w-0', blockVisual.body)}>
+          <div className="space-y-3 p-3 md:hidden sm:p-4">
             {event.rows.map((inc: Incident) => (
-              <IncidentsRow
+              <IncidentsMobileCard
                 key={inc.id}
                 inc={inc}
                 isEditing={editingId === inc.id}
@@ -164,9 +150,50 @@ export default function IncidentsEventGroup({
                 setEditValues={setEditValues}
               />
             ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
+            <table className={cn('w-full min-w-[1140px] table-fixed', typography('bodySm'))}>
+              <thead>
+                <tr className="border-b border-slate-200 bg-white text-slate-600">
+                  <th className={cn('w-12 p-2 text-left font-semibold', typography('bodySm'))}>Seg.</th>
+                  <th className={cn('w-20 p-2 text-left font-semibold', typography('bodySm'))}>Fotos</th>
+                  <th className={cn('w-20 p-2 text-left font-semibold', typography('bodySm'))}>Nº</th>
+                  <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Autor</th>
+                  <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Dept</th>
+                  <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Importància</th>
+                  <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Estat</th>
+                  <th className={cn('w-auto p-2 text-left font-semibold', typography('bodySm'))}>Incidència</th>
+                  <th className={cn('w-36 p-2 text-left font-semibold', typography('bodySm'))}>Categoria</th>
+                  <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Origen</th>
+                  <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Prioritat</th>
+                  <th className={cn('w-14 p-2 text-left font-semibold', typography('bodySm'))}>Del.</th>
+                </tr>
+              </thead>
+
+              <tbody className="bg-white">
+                {event.rows.map((inc: Incident) => (
+                  <IncidentsRow
+                    key={inc.id}
+                    inc={inc}
+                    isEditing={editingId === inc.id}
+                    beginEdit={beginEdit}
+                    applyPatch={applyPatch}
+                    onDelete={onDelete}
+                    opsExpanded={expandedOpsId === inc.id}
+                    onToggleOps={toggleOps}
+                    onIncidentPatch={onUpdate}
+                    openImages={onOpenImages}
+                    canDelete={canDeleteIncident(inc)}
+                    editValues={editValues}
+                    setEditValues={setEditValues}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+    </article>
   )
 }

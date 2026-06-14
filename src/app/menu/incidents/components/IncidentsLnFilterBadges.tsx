@@ -10,17 +10,19 @@ type Props = {
 }
 
 export default function IncidentsLnFilterBadges({ value, onChange }: Props) {
+  const selected = value || 'all'
+
   return (
     <CorporateFilterBadgeGroup
       label="LN"
-      value={value || 'all'}
+      value={selected}
       onChange={onChange}
       allLabel="Totes"
       allValue="all"
       options={INCIDENTS_LN_OPTIONS.map((opt) => ({
         value: opt.key,
         label: opt.label,
-        className: colorByLN(opt.key),
+        className: selected === opt.key ? colorByLN(opt.key) : undefined,
       }))}
     />
   )

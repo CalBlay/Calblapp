@@ -260,7 +260,7 @@ export default function IncidentsMobileCard({
       </div>
 
       {opsExpanded ? (
-        <div className="border-t border-amber-100/80 bg-gradient-to-b from-amber-50/25 to-slate-50/40 px-3 py-4">
+        <div className="border-t border-slate-200 bg-slate-50/50 px-3 py-2">
           <IncidentOperationsPanel incident={inc} onIncidentPatch={onIncidentPatch} />
         </div>
       ) : null}

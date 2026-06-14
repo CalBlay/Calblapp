@@ -41,7 +41,6 @@ import {
   normalizeIncidentStatus,
 } from '@/lib/incidentPolicy'
 import { normalizeDept } from '@/lib/accessControl'
-import { formatDateOnly } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
 
@@ -261,9 +260,10 @@ export default function IncidentsPage() {
           <label className={typography('label')}>Importància</label>
           <Select
             value={filters.importance || 'all'}
-            onValueChange={(v) =>
+            onValueChange={(v) => {
+              setHighPriorityOnly(false)
               setFilters((prev) => ({ ...prev, importance: v === 'all' ? 'all' : v }))
-            }
+            }}
           >
             <SelectTrigger>
               <SelectValue placeholder="Totes" />
@@ -553,13 +553,6 @@ export default function IncidentsPage() {
           <span className={corporateFilterBadgeClass(true)}>
             {INCIDENT_DATE_MODE_LABELS[filters.dateMode]}
           </span>
-          {filters.dateMode === 'event' && filters.from && filters.to ? (
-            <span className={corporateFilterBadgeClass(false)}>
-              {filters.from === filters.to
-                ? formatDateOnly(filters.from, filters.from)
-                : `${formatDateOnly(filters.from, filters.from)} – ${formatDateOnly(filters.to, filters.to)}`}
-            </span>
-          ) : null}
         </div>
 
         <SmartFilters

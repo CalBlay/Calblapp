@@ -301,7 +301,7 @@ function IncidentsRow({
     </tr>
       {opsExpanded ? (
         <tr className="border-b last:border-0 bg-gradient-to-b from-amber-50/25 to-slate-50/40">
-          <td colSpan={colCount} className="border-t border-amber-100/80 px-4 py-4">
+          <td colSpan={colCount} className="border-t border-slate-200 bg-slate-50/50 px-3 py-2">
             <IncidentOperationsPanel incident={inc} onIncidentPatch={onIncidentPatch} />
           </td>
         </tr>

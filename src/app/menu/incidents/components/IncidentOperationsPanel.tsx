@@ -48,13 +48,7 @@ const CAP_NONE = '__cap_none__'
 const DEPT_NONE = '__dept_none__'
 
 const ctrl =
-  'rounded-lg border border-slate-200/90 bg-white text-slate-800 shadow-sm transition-[box-shadow,border-color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/35 focus-visible:border-amber-300/60 hover:border-slate-300/90 disabled:opacity-50 disabled:pointer-events-none'
-
-const panel =
-  'rounded-2xl border border-slate-200/60 bg-gradient-to-b from-white to-slate-50/40 shadow-[0_4px_32px_-12px_rgba(15,23,42,0.12)]'
-
-const panelInner =
-  'rounded-xl border border-slate-100/90 bg-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]'
+  'h-8 rounded-md border border-slate-200 bg-white text-slate-800 text-sm shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/35 focus-visible:border-amber-300/60 hover:border-slate-300 disabled:opacity-50'
 
 function useCapsForDepartment(department: string | undefined | null) {
   const [caps, setCaps] = useState<{ id: string; name: string }[]>([])
@@ -105,7 +99,7 @@ function IncidentWorkflowStatusSelect({
     <Select value={value} onValueChange={onValueChange}>
       <SelectTrigger
         id="incident-status"
-        className={cn(ctrl, 'h-9 w-[9.75rem] px-2.5 text-sm font-medium')}
+        className={cn(ctrl, 'w-[8.5rem] px-2 font-medium')}
       >
         <SelectValue />
       </SelectTrigger>
@@ -130,7 +124,7 @@ function ActionRowStatusSelect({
   return (
     <Select value={value} onValueChange={(v) => onValueChange(v as IncidentActionStatus)}>
       <SelectTrigger
-        className={cn(ctrl, 'h-8 w-[6.85rem] px-2 text-xs font-medium shrink-0')}
+        className={cn(ctrl, 'h-8 w-[6.5rem] px-2 text-xs font-medium shrink-0')}
         title="Estat acció"
       >
         <SelectValue />
@@ -371,105 +365,136 @@ export default function IncidentOperationsPanel({ incident, onIncidentPatch }: P
     }
   }
 
-  return (
-    <div
-      className={cn('space-y-4', typography('bodySm'))}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="space-y-1">
-        <p className={cn(typography('eyebrow'), 'text-amber-900/80')}>Seguiment i accions</p>
-        <p className={cn(typography('bodyXs'), 'text-slate-500')}>
-          {incident.incidentNumber ? (
-            <span className="font-medium text-slate-700">{incident.incidentNumber}</span>
-          ) : null}
-          {incident.incidentNumber && incident.eventTitle ? (
-            <span className="text-slate-400"> · </span>
-          ) : null}
-          {incident.eventTitle || ''}
-        </p>
-      </div>
+  const openActionsCount = useMemo(
+    () => actions.filter((a) => a.status === 'open' || a.status === 'in_progress').length,
+    [actions]
+  )
 
+  return (
+    <div className={cn('space-y-2', typography('bodySm'))} onClick={(e) => e.stopPropagation()}>
       {error ? (
         <div
-          className="flex items-start gap-2 rounded-xl border border-red-200/80 bg-red-50/90 px-3 py-2.5 text-sm text-red-800"
+          className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-800"
           role="alert"
         >
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" aria-hidden />
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>{error}</span>
         </div>
       ) : null}
 
-      <section className={cn(panel, 'p-3.5 sm:p-4')}>
-        <p className={cn(typography('eyebrow'), 'mb-3 text-amber-900/70')}>
-          Estat i nota de resolució
-        </p>
-        <div className="flex flex-wrap items-stretch gap-3">
-          <div className="flex flex-col gap-1.5 shrink-0">
-            <label className={typography('label')} htmlFor={`incident-status-${incident.id}`}>
-              Estat
-            </label>
-            <IncidentWorkflowStatusSelect value={status} onValueChange={setStatus} />
-          </div>
-          <div className="flex min-h-[3.25rem] flex-1 flex-col gap-1.5 min-w-[min(100%,18rem)]">
-            <label className={typography('label')} htmlFor={`incident-nota-${incident.id}`}>
-              Nota (reunió, acords…)
-            </label>
-            <textarea
-              id={`incident-nota-${incident.id}`}
-              rows={1}
-              className={cn(
-                ctrl,
-                'min-h-[2.25rem] flex-1 resize-y px-3 py-2 text-sm leading-snug placeholder:text-slate-400'
-              )}
-              value={resolutionNote}
-              onChange={(e) => setResolutionNote(e.target.value)}
-              placeholder="Opcional — reunió, acords, següent pas…"
-            />
-          </div>
-          <div className="flex flex-col justify-end shrink-0">
-            <Button
-              type="button"
-              size="sm"
-              className="h-9 min-w-[5.5rem] bg-amber-600 font-medium text-white shadow-sm hover:bg-amber-700"
-              disabled={savingIncident}
-              onClick={() => void saveIncidentFields()}
-            >
-              {savingIncident ? 'Desant…' : 'Desar'}
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <section className={cn(panel, 'p-3.5 sm:p-4')}>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <p className={cn(typography('eyebrow'), 'text-slate-600')}>Accions derivades</p>
-          {loadingActions ? (
-            <span className="text-xs font-medium text-slate-400">Carregant…</span>
+      <div className="rounded-lg border border-slate-200 bg-white p-2.5 sm:p-3">
+        {/* Fila 1: estat + nota + desar */}
+        <div className="flex flex-wrap items-center gap-2">
+          <IncidentWorkflowStatusSelect value={status} onValueChange={setStatus} />
+          <textarea
+            id={`incident-nota-${incident.id}`}
+            rows={1}
+            className={cn(
+              ctrl,
+              'min-h-8 flex-1 resize-y px-2.5 py-1.5 leading-snug placeholder:text-slate-400 min-w-[10rem]'
+            )}
+            value={resolutionNote}
+            onChange={(e) => setResolutionNote(e.target.value)}
+            placeholder="Nota reunió, acords…"
+          />
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 shrink-0 bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700"
+            disabled={savingIncident}
+            onClick={() => void saveIncidentFields()}
+          >
+            {savingIncident ? '…' : 'Desar'}
+          </Button>
+          {actions.length > 0 ? (
+            <span className="inline-flex shrink-0 items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-bold text-violet-800">
+              {actions.length} {actions.length === 1 ? 'acció' : 'accions'}
+              {openActionsCount > 0 ? ` · ${openActionsCount} pendent${openActionsCount === 1 ? '' : 's'}` : ''}
+            </span>
           ) : null}
         </div>
 
-        {!loadingActions && actions.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-200/80 bg-slate-50/50 px-3 py-6 text-center text-sm text-slate-500">
-            Cap acció encara. Afegeix la primera a sota.
-          </p>
+        {/* Fila 2: nova acció */}
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
+          <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+            + Acció
+          </span>
+          <Input
+            aria-label="Títol nova acció"
+            placeholder="Títol *"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            className={cn(ctrl, 'min-w-[7rem] flex-1 max-w-[11rem] px-2')}
+          />
+          <Input
+            placeholder="Descripció"
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.target.value)}
+            className={cn(ctrl, 'min-w-[6rem] flex-1 max-w-[14rem] px-2')}
+          />
+          <Select value={newDept} onValueChange={setNewDept}>
+            <SelectTrigger className={cn(ctrl, 'w-[6.5rem] px-2 text-xs')} title="Departament">
+              <SelectValue placeholder="Dept" />
+            </SelectTrigger>
+            <SelectContent className="rounded-lg border-slate-200 shadow-lg">
+              {INCIDENT_ORIGIN_DEPARTMENTS.map((d) => (
+                <SelectItem key={d} value={d}>
+                  {d}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={newAssignee || CAP_NONE}
+            onValueChange={(v) => setNewAssignee(v === CAP_NONE ? '' : v)}
+            disabled={!newDept.trim() || newFormCapsLoading}
+          >
+            <SelectTrigger className={cn(ctrl, 'w-[8rem] px-2 text-xs')} title="Cap">
+              <SelectValue placeholder={newFormCapsLoading ? '…' : 'Cap'} />
+            </SelectTrigger>
+            <SelectContent className="rounded-lg border-slate-200 shadow-lg">
+              {newAssigneeItems.map((x) => (
+                <SelectItem key={x.value} value={x.value}>
+                  {x.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            type="date"
+            value={newDue}
+            onChange={(e) => setNewDue(e.target.value)}
+            className={cn(ctrl, 'w-[8.5rem] shrink-0 px-2')}
+            title="Termini"
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 shrink-0 border-amber-300 px-2.5 text-xs font-semibold text-amber-900 hover:bg-amber-50"
+            disabled={creating || !newTitle.trim()}
+            onClick={() => void createAction()}
+          >
+            {creating ? '…' : 'Afegir'}
+          </Button>
+        </div>
+
+        {/* Accions existents: només si n'hi ha */}
+        {loadingActions ? (
+          <p className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-400">Carregant accions…</p>
         ) : null}
 
-        {actions.length > 0 ? (
-          <ul className={cn(panelInner, 'divide-y divide-slate-100/90 overflow-hidden')}>
+        {!loadingActions && actions.length > 0 ? (
+          <ul className="mt-2 space-y-1 border-t border-slate-100 pt-2">
             {actions.map((a) => (
               <li
                 key={a.id}
-                className="flex flex-wrap items-center gap-x-2.5 gap-y-2 px-3 py-2.5 transition-colors hover:bg-amber-50/20"
+                className="flex flex-wrap items-center gap-1.5 rounded-md border border-slate-100 bg-slate-50/60 px-2 py-1.5"
               >
-                <div className="min-w-0 flex-1 basis-[12rem] max-w-xl">
-                  <span className="block truncate text-sm font-semibold text-slate-900">
-                    {a.title}
-                  </span>
+                <div className="min-w-0 flex-1 basis-[8rem]">
+                  <span className="block truncate text-xs font-semibold text-slate-900">{a.title}</span>
                   {a.description ? (
-                    <span
-                      className={cn(typography('bodyXs'), 'mt-0.5 block truncate text-slate-500')}
-                      title={a.description}
-                    >
+                    <span className="block truncate text-[11px] text-slate-500" title={a.description}>
                       {a.description}
                     </span>
                   ) : null}
@@ -479,95 +504,16 @@ export default function IncidentOperationsPanel({ incident, onIncidentPatch }: P
                   onValueChange={(v) => void patchAction(a.id, { status: v })}
                 />
                 {a.dueAt ? (
-                  <span
-                    className="inline-flex shrink-0 items-center rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-xs font-medium tabular-nums text-slate-600"
-                    title="Termini"
-                  >
+                  <span className="shrink-0 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-slate-600">
                     {a.dueAt.slice(0, 10)}
                   </span>
-                ) : (
-                  <span className="w-[5.75rem] shrink-0" aria-hidden />
-                )}
+                ) : null}
                 <ActionRowDeptAssignInline action={a} patchAction={patchAction} />
               </li>
             ))}
           </ul>
         ) : null}
-
-        <div className="mt-4 rounded-xl border border-dashed border-amber-200/60 bg-gradient-to-br from-amber-50/35 via-white to-slate-50/40 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] sm:p-3.5">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900/80">
-              Nova acció
-            </span>
-            <span className="text-xs text-slate-400">Omple títol i, si vols, resta de camps</span>
-          </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <Input
-              aria-label="Títol nova acció"
-              placeholder="Títol *"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              className={cn(ctrl, 'h-9 flex-1 min-w-[10rem] max-w-[15rem] px-3 text-sm')}
-            />
-            <Input
-              placeholder="Descripció"
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              className={cn(ctrl, 'h-9 flex-1 min-w-[9rem] max-w-[20rem] px-3 text-sm')}
-            />
-            <Select value={newDept} onValueChange={setNewDept}>
-              <SelectTrigger
-                className={cn(ctrl, 'h-9 w-[7.75rem] px-2.5 text-xs font-medium')}
-                title="Departament"
-              >
-                <SelectValue placeholder="Dept" />
-              </SelectTrigger>
-              <SelectContent className="rounded-xl border-slate-200 shadow-lg">
-                {INCIDENT_ORIGIN_DEPARTMENTS.map((d) => (
-                  <SelectItem key={d} value={d}>
-                    {d}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={newAssignee || CAP_NONE}
-              onValueChange={(v) => setNewAssignee(v === CAP_NONE ? '' : v)}
-              disabled={!newDept.trim() || newFormCapsLoading}
-            >
-              <SelectTrigger
-                className={cn(ctrl, 'h-9 w-[10rem] px-2.5 text-xs font-medium')}
-                title="Cap"
-              >
-                <SelectValue placeholder={newFormCapsLoading ? '…' : 'Cap'} />
-              </SelectTrigger>
-              <SelectContent className="rounded-xl border-slate-200 shadow-lg">
-                {newAssigneeItems.map((x) => (
-                  <SelectItem key={x.value} value={x.value}>
-                    {x.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              type="date"
-              value={newDue}
-              onChange={(e) => setNewDue(e.target.value)}
-              className={cn(ctrl, 'h-9 w-[10rem] shrink-0 px-2 text-sm')}
-              title="Termini de l'acció (opcional; no és la data de l'esdeveniment)"
-            />
-            <Button
-              type="button"
-              size="sm"
-              className="h-9 shrink-0 border border-amber-300/60 bg-white font-medium text-amber-900 shadow-sm hover:bg-amber-50"
-              disabled={creating || !newTitle.trim()}
-              onClick={() => void createAction()}
-            >
-              {creating ? '…' : 'Afegir'}
-            </Button>
-          </div>
-        </div>
-      </section>
+      </div>
     </div>
   )
 }
