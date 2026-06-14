@@ -1,15 +1,23 @@
 'use client'
 
-import React from 'react'
+import React, { useMemo, useState } from 'react'
 import type { Draft } from '@/app/menu/quadrants/drafts/page'
-import DraftsTable from './DraftsTable'
+import type { UnifiedEvent } from '@/app/menu/quadrants/types'
+import { QuadrantEditor } from '@/app/menu/quadrants/[id]/components/QuadrantModal'
+import {
+  draftToQuadrantEvent,
+  unifiedPhaseToQuadrantEvent,
+} from '@/lib/unifiedPhaseToQuadrantEvent'
+import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
 
 interface Props {
   quadrant: Draft
+  phase?: UnifiedEvent
   autoExpand?: boolean
   pendingPhases?: Array<{ key: string; label: string }>
   onCreatePhase?: (phaseKey: string) => void
   onRefreshDrafts?: () => Promise<unknown>
+  onSaved?: () => void | Promise<void>
 }
 
 type DraftWithMeta = Draft & {
@@ -20,43 +28,38 @@ type DraftWithMeta = Draft & {
 
 export default function QuadrantCard({
   quadrant,
+  phase,
   autoExpand = false,
-  pendingPhases = [],
-  onCreatePhase,
+  pendingPhases: _pendingPhases = [],
+  onCreatePhase: _onCreatePhase,
   onRefreshDrafts,
+  onSaved,
 }: Props) {
-  // Mantingut per compatibilitat amb props existents.
   void autoExpand
+  void onRefreshDrafts
+  void _pendingPhases
+  void _onCreatePhase
+  const [creatingPhaseKey, setCreatingPhaseKey] = useState<string | null>(null)
   const draftWithMeta = quadrant as DraftWithMeta
-  const draftRenderKey = `${quadrant.id}-${quadrant.updatedAt || 'nou'}-${quadrant.status || 'draft'}`
+
+  const editorEvent = useMemo(() => {
+    if (creatingPhaseKey && phase) {
+      return unifiedPhaseToQuadrantEvent({
+        ...phase,
+        phaseKey: creatingPhaseKey,
+        phaseType: creatingPhaseKey,
+      })
+    }
+    if (phase) return unifiedPhaseToQuadrantEvent(phase)
+    return draftToQuadrantEvent(quadrant)
+  }, [creatingPhaseKey, phase, quadrant])
+
+  const editorKey = creatingPhaseKey
+    ? `${editorEvent.id}-${creatingPhaseKey}-${editorEvent.start?.slice(0, 10) || 'nodate'}`
+    : `${editorEvent.id}-${editorEvent.phaseKey || 'event'}-${editorEvent.start?.slice(0, 10) || 'nodate'}`
 
   return (
-    <div className="space-y-3">
-      {(draftWithMeta.phaseType || draftWithMeta.phaseLabel || '')
-        .toString()
-        .toLowerCase()
-        .trim() === 'event' &&
-        pendingPhases.length > 0 && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold">Fases pendents:</span>
-              {pendingPhases.map((p) => (
-                <button
-                  key={p.key}
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 hover:bg-amber-200"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onCreatePhase?.(p.key)
-                  }}
-                >
-                  {p.label.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
+    <div>
       {Array.isArray(draftWithMeta.attentionNotes) &&
         draftWithMeta.attentionNotes.length > 0 && (
           <div
@@ -72,7 +75,18 @@ export default function QuadrantCard({
           </div>
         )}
 
-      <DraftsTable key={draftRenderKey} draft={quadrant} onRefreshDrafts={onRefreshDrafts} />
+      <QuadrantEditor
+        key={editorKey}
+        event={editorEvent}
+        active
+        layout="inline"
+        existingDraft={creatingPhaseKey ? null : (quadrant as EditorDraftInput)}
+        onSaved={async () => {
+          setCreatingPhaseKey(null)
+          await onSaved?.()
+        }}
+        onCancel={() => setCreatingPhaseKey(null)}
+      />
     </div>
   )
 }

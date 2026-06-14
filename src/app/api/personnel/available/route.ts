@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { readLegacyExternalWorkersFromDoc } from '@/lib/legacyExternalWorkers'
 import { canDriverHandleVehicleType } from '@/lib/driverCapabilities'
+import { isResponsiblePerson } from '@/lib/personnelRoles'
 import { normalizeTransportType } from '@/lib/transportTypes'
 import { evaluateRangeEligibility } from '@/services/eligibility'
 import {
@@ -88,13 +89,10 @@ type QuadrantOccupancyDoc = QuadrantDoc & {
   confirmedAt?: unknown
 }
 
-const RESPONSABLE_ROLES = new Set([
-  'responsable',
-  'cap departament',
-  'capdepartament',
-  'supervisor',
-])
 const TREBALLADOR_ROLES = new Set(['equip', 'treballador', 'operari'])
+
+const personIsResponsible = (data: { role?: string; isResponsible?: boolean }) =>
+  isResponsiblePerson(data)
 
 const unaccent = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '')
 const norm = (v?: string | null) => unaccent(String(v ?? '').trim().toLowerCase())
@@ -485,7 +483,7 @@ export async function GET(request: NextRequest) {
         camioGran: data.driver?.camioGran === true || data.camioGran === true,
       }
 
-      if (RESPONSABLE_ROLES.has(roleNorm) || data.isResponsible === true) {
+      if (personIsResponsible(data)) {
         responsables.push(entry)
         workers.push(entry)
       }

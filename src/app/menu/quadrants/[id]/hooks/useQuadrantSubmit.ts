@@ -34,6 +34,7 @@ import {
   type IdName,
 } from '../lib/quadrantPayloadShared'
 import { buildCuinaPayload } from '../lib/buildCuinaPayload'
+import type { CuinaStaffTotals } from '../lib/cuinaGroupRoleLines'
 import { buildServeisPayload } from '../lib/buildServeisPayload'
 import { buildLogisticaPayload } from '../lib/buildLogisticaPayload'
 
@@ -77,7 +78,7 @@ export type UseQuadrantSubmitParams = {
 
   // Cuina
   cuinaGroups: CuinaGroup[]
-  cuinaTotals: { workers: number; drivers: number; responsables: number }
+  cuinaTotals: CuinaStaffTotals
   cuinaVehiclesPayload: CuinaVehicle[]
   isManualResponsibleConductor: boolean
   cuinaEtt: CuinaEttState
@@ -99,6 +100,8 @@ export type UseQuadrantSubmitParams = {
   // Callbacks
   onSaved?: () => Promise<void>
   onOpenChange: (open: boolean) => void
+  /** Inline editor: stay open after save instead of closing like the modal. */
+  keepOpenAfterSave?: boolean
 }
 
 type UseQuadrantSubmitResult = {
@@ -160,6 +163,7 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
         ettEntry,
         onSaved,
         onOpenChange,
+        keepOpenAfterSave = false,
       } = params
 
       if (!canAutoGen) return
@@ -170,7 +174,8 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
 
       const { id: manualResponsibleId, name: manualResponsibleName } = resolveManualResponsible(
         manualResp,
-        availableResponsables
+        availableResponsables,
+        availableConductors
       )
 
       // Bucle de submit + confirm reusable per qualsevol branca.
@@ -207,7 +212,6 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
                 ? 'Quadrants confirmats per tots els dies!'
                 : 'Quadrant confirmat correctament!'
             )
-            window.dispatchEvent(new CustomEvent('quadrant:updated'))
             window.dispatchEvent(
               new CustomEvent('quadrant:created', { detail: { status: 'confirmed' } })
             )
@@ -223,7 +227,6 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
                   ? 'Quadrants confirmats per tots els dies!'
                   : 'Quadrant confirmat correctament!'
               )
-              window.dispatchEvent(new CustomEvent('quadrant:updated'))
               window.dispatchEvent(
                 new CustomEvent('quadrant:created', { detail: { status: 'confirmed' } })
               )
@@ -233,7 +236,6 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
                   confirmResult.error || 'error desconegut'
                 }`
               )
-              window.dispatchEvent(new CustomEvent('quadrant:updated'))
               window.dispatchEvent(
                 new CustomEvent('quadrant:created', { detail: { status: 'draft' } })
               )
@@ -245,7 +247,6 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
               ? 'Borradors creats per tots els dies de l’esdeveniment!'
               : 'Borrador creat correctament!'
           )
-          window.dispatchEvent(new CustomEvent('quadrant:updated'))
           window.dispatchEvent(
             new CustomEvent('quadrant:created', { detail: { status: 'draft' } })
           )
@@ -366,7 +367,9 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
         shouldClose = true
         setSuccess(true)
         setLoading(false)
-        onOpenChange(false)
+        if (!keepOpenAfterSave) {
+          onOpenChange(false)
+        }
       } catch (err: unknown) {
         const e = err as Error
         setError(e.message)

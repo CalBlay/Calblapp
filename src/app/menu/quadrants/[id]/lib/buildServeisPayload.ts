@@ -76,8 +76,10 @@ export function buildServeisPayload(input: BuildServeisPayloadInput): BuiltPaylo
   payload.groups = groupsPayload
   payload.totalWorkers = serviceTotals.workers
   payload.numDrivers = serviceTotals.drivers
-  payload.jamoneroCount = serviceJamoneroAssignments.length
-  payload.serviceJamoneroAssignments = serviceJamoneroAssignments.map((assignment) => ({
+  payload.jamoneroCount = serviceTotals.jamoneros
+  payload.serviceJamoneroAssignments = serviceJamoneroAssignments
+    .filter((assignment) => assignment.mode === 'manual' && assignment.personnelId)
+    .map((assignment) => ({
     id: assignment.id,
     mode: assignment.mode,
     personnelId:

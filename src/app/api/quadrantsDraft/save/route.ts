@@ -71,12 +71,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { department, eventId, rows, groups, vestimentModel } = (await req.json()) as {
+    const { department, eventId, rows, groups, vestimentModel, ...docMetaFields } = (await req.json()) as {
       department: string
       eventId: string
       rows: RowInput[]
       groups?: GroupInput[]
       vestimentModel?: string | null
+      phaseType?: string | null
+      phaseLabel?: string | null
+      phaseDate?: string | null
+      code?: string | null
+      eventName?: string | null
+      location?: string | null
+      meetingPoint?: string | null
+      startDate?: string | null
+      endDate?: string | null
+      startTime?: string | null
+      endTime?: string | null
     }
 
     if (!department || !eventId || !Array.isArray(rows)) {
@@ -123,6 +134,7 @@ export async function POST(req: NextRequest) {
       rows,
       groups,
       vestimentModel,
+      docMeta: docMetaFields,
     })
 
     revalidateQuadrantsListCache()

@@ -10,6 +10,7 @@ export interface PersonnelOption {
   reason?: string
   isDriver?: boolean
   isJamonero?: boolean
+  isResponsible?: boolean
   camioPetit?: boolean
   camioGran?: boolean
 }
@@ -71,20 +72,66 @@ const cleanList = (
       reason: person.reason,
       isDriver: person.isDriver === true,
       isJamonero: person.isJamonero === true,
+      isResponsible: person.isResponsible === true,
       camioPetit: person.camioPetit === true,
       camioGran: person.camioGran === true,
     }))
+
+const DEFAULT_START_TIME = '00:00'
+const DEFAULT_END_TIME = '23:59'
+
+const normalizeTimeParam = (value?: string, fallback = DEFAULT_START_TIME) => {
+  const trimmed = String(value || '').trim()
+  return /^\d{2}:\d{2}$/.test(trimmed) ? trimmed : fallback
+}
+
+const addDaysIso = (isoDay: string, days: number) => {
+  const base = new Date(`${isoDay}T12:00:00`)
+  if (Number.isNaN(base.getTime())) return isoDay
+  base.setDate(base.getDate() + days)
+  return base.toISOString().slice(0, 10)
+}
+
+/** Dates/horaris efectius per consultar `/api/personnel/available`. */
+export function resolvePersonnelAvailabilityParams(input: {
+  startDate?: string
+  endDate?: string
+  startTime?: string
+  endTime?: string
+  fallbackStartDate?: string
+  fallbackEndDate?: string
+  fallbackStartTime?: string
+  fallbackEndTime?: string
+}) {
+  const startDate = String(input.startDate || input.fallbackStartDate || '').trim()
+  let endDate = String(input.endDate || input.fallbackEndDate || startDate || '').trim()
+  const startTime = normalizeTimeParam(
+    input.startTime || input.fallbackStartTime,
+    DEFAULT_START_TIME
+  )
+  const endTime = normalizeTimeParam(
+    input.endTime || input.fallbackEndTime,
+    DEFAULT_END_TIME
+  )
+
+  if (startDate && endDate && endTime < startTime && endDate <= startDate) {
+    endDate = addDaysIso(startDate, 1)
+  }
+
+  return { startDate, endDate, startTime, endTime }
+}
 
 async function fetchPersonnel(
   opts: Required<Pick<UseAvailablePersonnelOptions, 'departament' | 'startDate' | 'endDate' | 'startTime' | 'endTime'>> &
     Pick<UseAvailablePersonnelOptions, 'excludeEventId' | 'vehicleType' | 'includeConflicts'>
 ) {
+  const resolved = resolvePersonnelAvailabilityParams(opts)
   const params = new URLSearchParams({
     department: opts.departament,
-    startDate: opts.startDate,
-    endDate: opts.endDate,
-    startTime: opts.startTime,
-    endTime: opts.endTime,
+    startDate: resolved.startDate,
+    endDate: resolved.endDate,
+    startTime: resolved.startTime,
+    endTime: resolved.endTime,
   })
   if (opts.excludeEventId) params.set('excludeEventId', opts.excludeEventId)
   const vt = String(opts.vehicleType || '').trim()
@@ -147,19 +194,34 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
     includeConflicts,
   } = opts
   const enabled = opts.enabled ?? true
-  const key = useMemo(
+  const key = useMemo(() => {
+    const resolved = resolvePersonnelAvailabilityParams({
+      startDate,
+      endDate,
+      startTime,
+      endTime,
+    })
+    return [
+      departament || '',
+      resolved.startDate,
+      resolved.endDate,
+      resolved.startTime,
+      resolved.endTime,
+      excludeEventId || '',
+      vehicleType || '',
+      includeConflicts ? 'with-conflicts' : 'available-only',
+    ].join('|')
+  }, [departament, startDate, endDate, startTime, endTime, excludeEventId, vehicleType, includeConflicts])
+
+  const resolvedParams = useMemo(
     () =>
-      [
-        departament || '',
-        startDate || '',
-        endDate || '',
-        startTime || '',
-        endTime || '',
-        excludeEventId || '',
-        vehicleType || '',
-        includeConflicts ? 'with-conflicts' : 'available-only',
-      ].join('|'),
-    [departament, startDate, endDate, startTime, endTime, excludeEventId, vehicleType, includeConflicts]
+      resolvePersonnelAvailabilityParams({
+        startDate,
+        endDate,
+        startTime,
+        endTime,
+      }),
+    [startDate, endDate, startTime, endTime]
   )
   const initialPayload = useMemo(
     () => (enabled ? getCachedPayload(key) : null),
@@ -183,13 +245,7 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
 
   const canFetch =
     enabled &&
-    Boolean(
-      opts.departament &&
-      opts.startDate &&
-      opts.endDate &&
-      opts.startTime &&
-      opts.endTime
-    )
+    Boolean(departament && resolvedParams.startDate && resolvedParams.endDate)
 
   const refetchPersonnel = useCallback(async () => {
     if (!canFetch) {
@@ -210,10 +266,10 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
       setError(null)
       const data = await loadPersonnel(key, {
         departament: departament!,
-        startDate: startDate!,
-        endDate: endDate!,
-        startTime: startTime!,
-        endTime: endTime!,
+        startDate: resolvedParams.startDate,
+        endDate: resolvedParams.endDate,
+        startTime: resolvedParams.startTime,
+        endTime: resolvedParams.endTime,
         excludeEventId,
         vehicleType,
         includeConflicts,
@@ -229,10 +285,10 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
     canFetch,
     key,
     departament,
-    startDate,
-    endDate,
-    startTime,
-    endTime,
+    resolvedParams.startDate,
+    resolvedParams.endDate,
+    resolvedParams.startTime,
+    resolvedParams.endTime,
     excludeEventId,
     vehicleType,
     includeConflicts,

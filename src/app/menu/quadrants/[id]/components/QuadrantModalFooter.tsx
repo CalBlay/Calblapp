@@ -5,8 +5,10 @@ import { DialogFooter } from '@/components/ui/dialog'
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { LazyAnimatePresence, MotionDiv } from '@/lib/lazyMotion'
 import type { AutoPreviewResponse, QuadrantMode } from './quadrantModalTypes'
-import { useUiPermissions } from '@/hooks/useUiPermissions'
-import { PERM } from '@/lib/permissionKeys'
+import {
+  quadrantEditorDisabledReason,
+  useQuadrantEditorPermissions,
+} from '../hooks/useQuadrantEditorPermissions'
 
 type Props = {
   loading: boolean
@@ -33,10 +35,7 @@ export default function QuadrantModalFooter({
   onCancel,
   onSave,
 }: Props) {
-  const { ready, canViewPath, hasAction } = useUiPermissions()
-  const canView = canViewPath('/menu/quadrants')
-  const canSave = canView && hasAction(PERM.action('/menu/quadrants', 'save'))
-  const canConfirm = canView && hasAction(PERM.action('/menu/quadrants', 'confirm'))
+  const { ready, canSave, canConfirm } = useQuadrantEditorPermissions()
 
   const autoHasEnoughData = mode === 'auto' && Boolean(autoPreview?.learningStatus?.hasEnoughData)
   const autoInsufficient =
@@ -55,6 +54,29 @@ export default function QuadrantModalFooter({
     !ready ||
     !canSave ||
     !canConfirm
+  const confirmDisabledReason = confirmDisabled
+    ? quadrantEditorDisabledReason({
+        canAutoGen,
+        ready,
+        canSave,
+        canConfirm,
+        busy: loading,
+        autoPreviewLoading,
+        autoInsufficient,
+        kind: 'confirm',
+      })
+    : null
+  const saveDisabledReason = primaryDisabled
+    ? quadrantEditorDisabledReason({
+        canAutoGen,
+        ready,
+        canSave,
+        busy: loading,
+        autoPreviewLoading,
+        autoInsufficient,
+        kind: 'save',
+      })
+    : null
 
   return (
     <>
@@ -83,7 +105,7 @@ export default function QuadrantModalFooter({
               className="gap-2 border-emerald-200 text-emerald-800 hover:bg-emerald-50 sm:min-w-[200px]"
               onClick={() => onSave(true)}
               disabled={confirmDisabled}
-              title="Desa el borrador i el confirma alhora, sense editar-lo a la taula de borradors."
+              title={confirmDisabledReason || 'Desa el borrador i el confirma alhora, sense editar-lo a la taula de borradors.'}
             >
               {loading ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
               {loading ? 'Processant…' : 'Confirmar quadrant'}
@@ -94,6 +116,7 @@ export default function QuadrantModalFooter({
             type="button"
             onClick={() => onSave(false)}
             disabled={primaryDisabled}
+            title={saveDisabledReason || undefined}
           >
             {loading ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
             {loading

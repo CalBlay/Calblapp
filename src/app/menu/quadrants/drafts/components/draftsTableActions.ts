@@ -34,6 +34,20 @@ export async function saveDraftTable({
   try {
     const cleaned = rows.filter((r) => r.name?.trim() !== '' || r.id?.trim() !== '')
 
+    const draftMeta = draft as DraftInput & {
+      phaseType?: string
+      phaseLabel?: string
+      phaseDate?: string
+      code?: string
+      eventName?: string
+      location?: string | Record<string, unknown>
+      meetingPoint?: string
+      startDate?: string
+      endDate?: string
+      startTime?: string
+      endTime?: string
+    }
+
     const res = await fetch('/api/quadrantsDraft/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -43,6 +57,17 @@ export async function saveDraftTable({
         rows: cleaned,
         groups,
         vestimentModel: vestimentModel ?? null,
+        phaseType: draftMeta.phaseType ?? null,
+        phaseLabel: draftMeta.phaseLabel ?? null,
+        phaseDate: draftMeta.phaseDate ?? null,
+        code: draftMeta.code ?? null,
+        eventName: draftMeta.eventName ?? null,
+        location: draftMeta.location ?? null,
+        meetingPoint: draftMeta.meetingPoint ?? null,
+        startDate: draftMeta.startDate ?? null,
+        endDate: draftMeta.endDate ?? null,
+        startTime: draftMeta.startTime ?? null,
+        endTime: draftMeta.endTime ?? null,
       }),
     })
 
@@ -81,9 +106,10 @@ export async function saveDraftTable({
 type ConfirmParams = {
   draft: DraftInput
   onConfirmed: () => void
+  silent?: boolean
 }
 
-export async function confirmDraftTable({ draft, onConfirmed }: ConfirmParams) {
+export async function confirmDraftTable({ draft, onConfirmed, silent = false }: ConfirmParams) {
   try {
     const res = await fetch('/api/quadrantsDraft/confirm', {
       method: 'POST',
@@ -97,16 +123,18 @@ export async function confirmDraftTable({ draft, onConfirmed }: ConfirmParams) {
     const data = await res.json()
     if (data.ok) {
       onConfirmed()
-      alert('Quadrant confirmat correctament i notificacions enviades')
+      if (!silent) {
+        alert('Quadrant confirmat correctament i notificacions enviades')
+      }
       window.dispatchEvent(new Event('quadrant:created'))
       return true
     }
 
-    alert("No s'ha pogut confirmar")
+    if (!silent) alert("No s'ha pogut confirmar")
     return false
   } catch (err) {
     console.error('Error confirmant quadrant', err)
-    alert('Error confirmant quadrant')
+    if (!silent) alert('Error confirmant quadrant')
     return false
   }
 }

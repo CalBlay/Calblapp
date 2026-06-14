@@ -10,6 +10,11 @@ import {
   createTimetableCollector,
   type IdName,
 } from './quadrantPayloadShared'
+import { ensureCuinaRoleLines, isCuinaCenterExternalExtraLine, type CuinaStaffTotals } from './cuinaGroupRoleLines'
+import {
+  getExternalWorkerTypeFromName,
+  normalizeExternalWorkerName,
+} from '@/lib/quadrantExternalWorkers'
 
 type CuinaVehicle = {
   id: string
@@ -19,11 +24,34 @@ type CuinaVehicle = {
   arrivalTime: string
 }
 
+const resolveGroupDriverId = (
+  group: CuinaGroup,
+  manualResponsibleId: string | null
+): string => {
+  const conductorLine = (group.roleLines || []).find((line) => line.role === 'conductor')
+  const fromRoleLine = String(conductorLine?.personId || '').trim()
+  if (fromRoleLine) return fromRoleLine
+
+  const driverAssignments = Array.isArray(group.driverAssignments) ? group.driverAssignments : []
+  const primaryAssignment = driverAssignments[0]
+  const selectedRespId = group.wantsResponsible
+    ? group.responsibleId || manualResponsibleId || ''
+    : ''
+
+  if (primaryAssignment?.driverMode === '__responsable__') {
+    return selectedRespId || manualResponsibleId || ''
+  }
+  if (primaryAssignment?.driverMode && primaryAssignment.driverMode !== '__auto__') {
+    return primaryAssignment.driverMode
+  }
+  return ''
+}
+
 export type BuildCuinaPayloadInput = {
   basePayload: Record<string, unknown>
   mode: QuadrantMode
   cuinaGroups: CuinaGroup[]
-  cuinaTotals: { workers: number; drivers: number; responsables: number }
+  cuinaTotals: CuinaStaffTotals
   cuinaVehiclesPayload: CuinaVehicle[]
   cuinaEtt: CuinaEttState
   isManualResponsibleConductor: boolean
@@ -80,34 +108,38 @@ export function buildCuinaPayload(input: BuildCuinaPayloadInput): BuiltPayload {
       : ''
     const selected = availableResponsables.find((r) => r.id === selectedRespId)
     const primaryAssignment = driverAssignments[0] || null
-    const selectedDriverId =
-      primaryAssignment?.driverMode === '__responsable__'
-        ? selectedRespId || manualResponsibleId || ''
-        : primaryAssignment?.driverMode && primaryAssignment.driverMode !== '__auto__'
-        ? primaryAssignment.driverMode
-        : ''
+    const selectedDriverId = resolveGroupDriverId(group, manualResponsibleId)
     const selectedDriver =
       selectedDriverId && selectedDriverId !== '__auto__'
         ? availableConductors.find((conductor) => conductor.id === selectedDriverId) || null
         : null
+    const roleLines = ensureCuinaRoleLines(group)
+    const workerLines = roleLines.filter((line) => line.role === 'treballador')
+    const filledWorkerLines = workerLines.filter((line) =>
+      Boolean(String(line.personId || line.personName || '').trim())
+    )
+    const manualWorkers =
+      mode === 'manual' && filledWorkerLines.length > 0
+        ? filledWorkerLines
+            .filter((line) => !isCuinaCenterExternalExtraLine(line))
+            .map((line) => ({
+            id: String(line.personId || '').trim(),
+            name: line.personName,
+            serviceDate: line.serviceDate || group.serviceDate || startDate,
+            meetingPoint: line.meetingPoint || group.meetingPoint || meetingPoint,
+            startTime: line.startTime || group.startTime,
+            endTime: line.endTime || group.endTime,
+            arrivalTime: line.arrivalTime || group.arrivalTime || null,
+          }))
+        : null
+    const manualWorkersOrNull =
+      manualWorkers && manualWorkers.length > 0 ? manualWorkers : null
     const resolvedWorkerIds = Array.isArray(group.workerIds)
       ? group.workerIds.filter(Boolean)
       : []
     const resolvedWorkerDetails = group.workerDetails || {}
-    const manualWorkers =
-      mode === 'manual' && resolvedWorkerIds.length > 0
-        ? resolvedWorkerIds.map((id) => {
-            const d = resolvedWorkerDetails[id] || { id }
-            return {
-              id,
-              name: d.name,
-              serviceDate: d.serviceDate || startDate,
-              meetingPoint: d.meetingPoint || group.meetingPoint || meetingPoint,
-              startTime: d.startTime || group.startTime,
-              endTime: d.endTime || group.endTime,
-            }
-          })
-        : null
+    void resolvedWorkerIds
+    void resolvedWorkerDetails
     const responsibleActsAsDriver =
       primaryAssignment?.driverMode === '__responsable__' &&
       Number(group.drivers || 0) > 0 &&
@@ -127,16 +159,46 @@ export function buildCuinaPayload(input: BuildCuinaPayloadInput): BuiltPayload {
         selectedDriver?.name ||
         (singleGroup && responsibleActsAsDriver ? manualResponsibleName || null : null),
       driverId: selectedDriverId && selectedDriverId !== '__auto__' ? selectedDriverId : null,
-      ...(manualWorkers ? { manualWorkers } : {}),
+      ...(manualWorkersOrNull ? { manualWorkers: manualWorkersOrNull } : {}),
     }
   })
 
   payload.groups = groupsPayload
-  payload.totalWorkers = cuinaTotals.workers
+  const ettPanelWorkers = Number(cuinaEtt.data.workers || 0)
+  payload.totalWorkers = cuinaTotals.headcount + ettPanelWorkers
   payload.numDrivers = cuinaTotals.drivers
   payload.cuinaGroupCount = cuinaGroups.length
   payload.vehicles = cuinaVehiclesPayload
   groupsPayload.forEach((group) => addTimetable(group))
+
+  const centerExternalExtras = cuinaGroups.flatMap((group) =>
+    ensureCuinaRoleLines(group)
+      .filter((line) => line.role === 'treballador')
+      .filter(
+        (line) =>
+          line.isCenterExternalExtra === true ||
+          line.externalType === 'centerExternalExtra' ||
+          getExternalWorkerTypeFromName(line.personName) === 'centerExternalExtra'
+      )
+      .map((line) => ({
+        name: normalizeExternalWorkerName({
+          rawName: line.personName,
+          type: 'centerExternalExtra',
+        }),
+        isExternal: true,
+        meetingPoint: line.meetingPoint || group.meetingPoint || meetingPoint,
+        startDate: line.serviceDate || group.serviceDate || startDate,
+        endDate: line.serviceDate || group.serviceDate || endDate,
+        startTime: line.startTime || group.startTime || startTime,
+        endTime: line.endTime || group.endTime || endTime,
+      }))
+  )
+  if (centerExternalExtras.length > 0) {
+    appendExternalWorkers(payload, centerExternalExtras)
+    centerExternalExtras.forEach((entry) =>
+      addTimetable({ startTime: entry.startTime, endTime: entry.endTime })
+    )
+  }
 
   // ETT lateral (panell ETT del cuinat)
   const ettWorkers = Number(cuinaEtt.data.workers || 0)

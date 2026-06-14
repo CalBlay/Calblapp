@@ -260,10 +260,9 @@ export default function IncidentsPage() {
           <label className={typography('label')}>Importància</label>
           <Select
             value={filters.importance || 'all'}
-            onValueChange={(v) => {
-              setHighPriorityOnly(false)
+            onValueChange={(v) =>
               setFilters((prev) => ({ ...prev, importance: v === 'all' ? 'all' : v }))
-            }}
+            }
           >
             <SelectTrigger>
               <SelectValue placeholder="Totes" />

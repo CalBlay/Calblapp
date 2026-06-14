@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAvailablePersonnel } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
+import { resolvePersonnelAvailabilityParams } from '@/hooks/logistics/useAvailablePersonnel'
 import { useLogisticsPhasesState } from '@/app/menu/quadrants/[id]/hooks/useLogisticsPhasesState'
 import { useServicePhasesState } from '@/app/menu/quadrants/[id]/hooks/useServicePhasesState'
+import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import {
   logisticPhaseOptions,
@@ -18,6 +20,14 @@ import {
   LogisticPhaseKey,
   ServicePhaseKey,
 } from '../phaseConfig'
+
+import {
+  extractDraftResponsible,
+  mergeResponsibleCandidatePools,
+  resolveManualResponsible,
+} from '../lib/quadrantPayloadShared'
+import { ensureLogisticRoleLines } from '../lib/logisticPhaseRoleLines'
+import { isResponsiblePerson } from '@/lib/personnelRoles'
 
 const extractDate = (iso = '') => iso.split('T')[0] || ''
 const normalizeTime = (value?: string) => {
@@ -48,6 +58,8 @@ export type ResponsableAvailabilityOption = {
   name: string
   status: 'available' | 'conflict' | 'notfound'
   reason?: string
+  role?: string
+  isResponsible?: boolean
 }
 
 export type ServiceGroupPayload = {
@@ -135,6 +147,7 @@ export interface QuadrantFormState {
   updatePhaseResponsible: (key: LogisticPhaseKey, value: string) => void
   phaseVehicleAssignments: Record<LogisticPhaseKey, VehicleAssignment[]>
   updatePhaseVehicleAssignment: (key: LogisticPhaseKey, index: number, patch: Partial<VehicleAssignment>) => void
+  replacePhaseVehicleAssignments: (key: LogisticPhaseKey, assignments: VehicleAssignment[]) => void
   availableVehicles: AvailableVehicle[]
   servicePhaseGroups: ServeiGroup[]
   servicePhaseSettings: Record<ServicePhaseKey, ServicePhaseSetting>
@@ -180,11 +193,13 @@ export function useQuadrantFormState({
   department,
   modalOpen,
   mode,
+  existingDraft,
 }: {
   event: QuadrantEvent
   department: string
   modalOpen: boolean
   mode: 'auto' | 'semi' | 'manual'
+  existingDraft?: EditorDraftInput | null
 }): QuadrantFormState {
   const [startDate, setStartDate] = useState(extractDate(event.start))
   const [endDate, setEndDate] = useState(extractDate(event.start))
@@ -202,13 +217,14 @@ export function useQuadrantFormState({
       endDate,
       startTime,
       endTime,
+      arrivalTime: arrivalTime || '',
       workers: Number(totalWorkers) || 0,
       drivers: Number(numDrivers) || 0,
       meetingPoint: meetingPoint || location || event.eventLocation || '',
       workerIds: [] as string[],
       workerDetails: {} as NonNullable<LogisticPhaseForm['workerDetails']>,
     }),
-    [startDate, endDate, startTime, endTime, totalWorkers, numDrivers, meetingPoint, location, event.eventLocation]
+    [startDate, endDate, startTime, endTime, arrivalTime, totalWorkers, numDrivers, meetingPoint, location, event.eventLocation]
   )
   const [ettOpen, setEttOpen] = useState(false)
   const [ettData, setEttData] = useState<ServicePhaseEttData>({
@@ -222,25 +238,69 @@ export function useQuadrantFormState({
   const totalWorkersNumber = Number(totalWorkers) || 0
   const numDriversNumber = Number(numDrivers) || 0
 
+  const personnelAvailability = useMemo(
+    () =>
+      resolvePersonnelAvailabilityParams({
+        startDate,
+        endDate,
+        startTime,
+        endTime,
+        fallbackStartDate: extractDate(event.start),
+        fallbackEndDate:
+          extractDate(event.end) ||
+          extractDate(event.originalEnd || '') ||
+          extractDate(event.start),
+        fallbackStartTime: event.startTime,
+        fallbackEndTime: event.endTime,
+      }),
+    [
+      startDate,
+      endDate,
+      startTime,
+      endTime,
+      event.start,
+      event.end,
+      event.originalEnd,
+      event.startTime,
+      event.endTime,
+    ]
+  )
+
   const { responsables, conductors, treballadors } = useAvailablePersonnel({
     departament: department,
-    startDate,
-    endDate,
-    startTime,
-    endTime,
+    startDate: personnelAvailability.startDate,
+    endDate: personnelAvailability.endDate,
+    startTime: personnelAvailability.startTime,
+    endTime: personnelAvailability.endTime,
+    excludeEventId:
+      String(existingDraft?.id || '').trim() ||
+      String(event.id || '').trim().split('__')[0] ||
+      undefined,
+    enabled: modalOpen,
   })
 
   const availableResponsables = useMemo<ResponsableAvailabilityOption[]>(
     () =>
       responsables
-        .filter((r) => Boolean(r.id?.trim()))
+        .filter((r) => Boolean(r.id?.trim()) && isResponsiblePerson(r))
         .map((r) => ({
           id: r.id,
           name: r.name,
           status: r.status,
           reason: r.reason,
+          role: r.role,
+          isResponsible: r.isResponsible === true,
         })),
     [responsables]
+  )
+  const responsablePoolIdsKey = useMemo(
+    () =>
+      availableResponsables
+        .map((r) => r.id)
+        .filter(Boolean)
+        .sort()
+        .join('|'),
+    [availableResponsables]
   )
   const availableConductors = useMemo<AvailableConductor[]>(
     () => conductors.filter((c) => Boolean(c.id?.trim())),
@@ -266,6 +326,17 @@ export function useQuadrantFormState({
     [treballadors]
   )
 
+  const servicePersonnelPools = useMemo(() => {
+    const merged = [
+      ...availableResponsables.map((p) => ({ id: p.id, name: p.name })),
+      ...availableConductors.map((p) => ({ id: p.id, name: p.name })),
+      ...availableTreballadors.map((p) => ({ id: p.id, name: p.name })),
+    ]
+    return merged.filter(
+      (person, index, arr) => arr.findIndex((candidate) => candidate.id === person.id) === index
+    )
+  }, [availableConductors, availableResponsables, availableTreballadors])
+
   const logistics = useLogisticsPhasesState({
     event,
     department,
@@ -273,12 +344,15 @@ export function useQuadrantFormState({
     endDate,
     startTime,
     endTime,
+    arrivalTime,
     meetingPoint,
     location,
     totalWorkers: totalWorkersNumber,
     numDrivers: numDriversNumber,
     availableConductors,
     quadrantMode: mode,
+    modalOpen,
+    existingDraft,
   })
 
   const services = useServicePhasesState({
@@ -290,6 +364,8 @@ export function useQuadrantFormState({
     endTime,
     totalWorkers: totalWorkersNumber,
     modalOpen,
+    existingDraft,
+    personnelPools: servicePersonnelPools,
   })
 
   const {
@@ -303,6 +379,7 @@ export function useQuadrantFormState({
     updatePhaseResponsible,
     phaseVehicleAssignments,
     updatePhaseVehicleAssignment,
+    replacePhaseVehicleAssignments,
     availableVehicles,
     buildVehiclesPayload,
     buildVehiclesPayloadForPhase,
@@ -332,16 +409,13 @@ export function useQuadrantFormState({
   useEffect(() => {
     if (department.trim().toLowerCase() !== 'serveis') return
 
-    const validResponsibleIds = new Set(
-      availableResponsables
-        .filter((resp) => resp.status === 'available')
-        .map((resp) => String(resp.id || '').trim())
-        .filter(Boolean)
+    const candidatePools = mergeResponsibleCandidatePools(
+      availableResponsables.filter((resp) => resp.status === 'available'),
+      availableConductors
     )
-
-    if (manualResp && manualResp !== '__auto__' && !validResponsibleIds.has(manualResp)) {
-      setManualResp('')
-    }
+    const validResponsibleIds = new Set(
+      candidatePools.map((resp) => String(resp.id || '').trim()).filter(Boolean)
+    )
 
     servicePhaseGroups.forEach((group) => {
       const currentId = String(group.responsibleId || '').trim()
@@ -349,7 +423,7 @@ export function useQuadrantFormState({
       if (validResponsibleIds.has(currentId)) return
       updateServiceGroup(group.id, { responsibleId: '' })
     })
-  }, [department, availableResponsables, manualResp, servicePhaseGroups, updateServiceGroup])
+  }, [department, availableConductors, availableResponsables, servicePhaseGroups, updateServiceGroup])
 
   const ettEntry = useMemo(() => {
     const workers = Number(ettData.workers || 0)
@@ -394,29 +468,44 @@ export function useQuadrantFormState({
   const buildLogisticaPhases = useCallback(
     () => {
       const baseMeetingPoint = meetingPoint || location || event.eventLocation || ''
+      const { id: topResponsibleId } = resolveManualResponsible(
+        manualResp,
+        availableResponsables.filter((resp) => resp.status === 'available'),
+        availableConductors
+      )
       return selectedLogisticPhaseKeys.map((phaseKey) => {
         const form = phaseForms[phaseKey] ?? defaultPhaseForm
         const phaseSetting = phaseSettings[phaseKey] ?? { selected: true, needsResponsible: true }
         const phaseTimetables = buildTimetablesForPhase(form)
         const label = logisticPhaseOptions.find((phase) => phase.key === phaseKey)?.label || phaseKey
         const phaseVehicles = buildVehiclesPayloadForPhase(phaseKey)
-        const workerSlots = Array.isArray(form.workerIds) ? form.workerIds : []
-        const details = form.workerDetails || {}
+        const workerLines = ensureLogisticRoleLines(form).filter((line) => line.role === 'treballador')
         const manualWorkers =
-          mode === 'manual' && workerSlots.length > 0
-            ? workerSlots.map((workerId) => {
-                const id = String(workerId || '')
-                const d = id ? details[id] || { id } : { id: '' }
-                return {
-                  id,
-                  name: d.name,
-                  serviceDate: d.serviceDate || form.startDate,
-                  meetingPoint: d.meetingPoint || form.meetingPoint || baseMeetingPoint,
-                  startTime: d.startTime || form.startTime,
-                  endTime: d.endTime || form.endTime,
-                }
-              })
+          mode === 'manual' && workerLines.length > 0
+            ? workerLines
+                .filter((line) => String(line.personId || line.personName || '').trim())
+                .map((line) => {
+                  const id = String(line.personId || '').trim()
+                  const d = id ? form.workerDetails?.[id] : undefined
+                  return {
+                    id,
+                    name: line.personName || d?.name,
+                    serviceDate: line.serviceDate || d?.serviceDate || form.startDate,
+                    meetingPoint:
+                      line.meetingPoint || d?.meetingPoint || form.meetingPoint || baseMeetingPoint,
+                    startTime: line.startTime || d?.startTime || form.startTime,
+                    endTime: line.endTime || d?.endTime || form.endTime,
+                    arrivalTime: line.arrivalTime || d?.arrivalTime || form.arrivalTime,
+                  }
+                })
             : undefined
+
+        const phaseResponsibleId =
+          phaseSetting.needsResponsible && phaseKey === 'event' && manualResp && manualResp !== '__auto__'
+            ? topResponsibleId || getManualResponsible(phaseKey)
+            : phaseSetting.needsResponsible
+            ? getManualResponsible(phaseKey)
+            : null
 
         return {
           label,
@@ -428,11 +517,11 @@ export function useQuadrantFormState({
           totalWorkers: form.workers,
           numDrivers: form.drivers,
           wantsResp: phaseSetting.needsResponsible,
-          responsableId: phaseSetting.needsResponsible ? getManualResponsible(phaseKey) : null,
+          responsableId: phaseResponsibleId,
           meetingPoint: form.meetingPoint || baseMeetingPoint,
           vehicles: phaseVehicles,
           timetables: phaseTimetables,
-          ...(manualWorkers ? { manualWorkers } : {}),
+          ...(manualWorkers?.length ? { manualWorkers } : {}),
         }
       })
     },
@@ -442,6 +531,9 @@ export function useQuadrantFormState({
       event.eventLocation,
       location,
       meetingPoint,
+      manualResp,
+      availableResponsables,
+      availableConductors,
       phaseForms,
       phaseSettings,
       selectedLogisticPhaseKeys,
@@ -454,8 +546,52 @@ export function useQuadrantFormState({
   useEffect(() => {
     if (!modalOpen) return
 
+    if (existingDraft) {
+      setStartDate(existingDraft.startDate || extractDate(event.start))
+      setEndDate(
+        existingDraft.endDate ||
+          extractDate(event.end) ||
+          extractDate(event.originalEnd || '') ||
+          extractDate(event.start)
+      )
+      setStartTime(existingDraft.startTime || event.startTime || '')
+      setEndTime(existingDraft.endTime || event.endTime || '')
+      setArrivalTime(existingDraft.arrivalTime || event.arrivalTime || '')
+      setLocation(
+        typeof existingDraft.location === 'string'
+          ? existingDraft.location
+          : event.location || event.eventLocation || ''
+      )
+      setMeetingPoint(
+        String(existingDraft.meetingPoint || event.meetingPoint || '').trim()
+      )
+      const { id: responsableId, name: responsableName } = extractDraftResponsible(existingDraft)
+      setManualResp(responsableId || responsableName)
+      setTotalWorkers(
+        String(existingDraft.totalWorkers ?? event.totalWorkers ?? '').trim()
+      )
+      setNumDrivers(String(existingDraft.numDrivers ?? event.numDrivers ?? '').trim())
+      setEttOpen(false)
+      setEttData({
+        serviceDate: existingDraft.startDate || extractDate(event.start),
+        meetingPoint:
+          String(existingDraft.meetingPoint || event.meetingPoint || '').trim() ||
+          event.location ||
+          event.eventLocation ||
+          '',
+        startTime: existingDraft.startTime || event.startTime || '',
+        endTime: existingDraft.endTime || event.endTime || '',
+        workers: '',
+      })
+      return
+    }
+
     setStartDate(extractDate(event.start))
-    setEndDate(extractDate(event.start))
+    setEndDate(
+      extractDate(event.end) ||
+        extractDate(event.originalEnd || '') ||
+        extractDate(event.start)
+    )
     setStartTime(event.startTime || '')
     setEndTime(event.endTime || '')
     setArrivalTime(event.arrivalTime || '')
@@ -474,6 +610,8 @@ export function useQuadrantFormState({
     })
   }, [
     modalOpen,
+    existingDraft?.id,
+    existingDraft?.updatedAt,
     event.id,
     event.start,
     event.startTime,
@@ -484,6 +622,28 @@ export function useQuadrantFormState({
     event.meetingPoint,
     event.totalWorkers,
     event.numDrivers,
+  ])
+
+  /** Quan carrega el personal, resol nom → id (també si la persona és conductor). */
+  useEffect(() => {
+    if (!modalOpen || !manualResp || manualResp === '__auto__') return
+
+    const candidatePools = mergeResponsibleCandidatePools(
+      availableResponsables.filter((resp) => resp.status === 'available'),
+      availableConductors
+    )
+    if (candidatePools.some((resp) => resp.id === manualResp)) return
+
+    const resolved = resolveManualResponsible(manualResp, availableResponsables, availableConductors)
+    if (resolved.id && resolved.id !== manualResp) {
+      setManualResp(resolved.id)
+    }
+  }, [
+    modalOpen,
+    manualResp,
+    responsablePoolIdsKey,
+    availableResponsables,
+    availableConductors,
   ])
 
   return {
@@ -517,6 +677,7 @@ export function useQuadrantFormState({
     updatePhaseResponsible,
     phaseVehicleAssignments,
     updatePhaseVehicleAssignment,
+    replacePhaseVehicleAssignments,
     availableVehicles,
     servicePhaseGroups,
     servicePhaseSettings,

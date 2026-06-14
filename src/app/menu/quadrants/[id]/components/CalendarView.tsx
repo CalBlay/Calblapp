@@ -1,12 +1,13 @@
 'use client'
 
-import React, { useMemo, useEffect } from 'react'
+import React, { useMemo } from 'react'
 import { Users, Calendar } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
 import EventTile from './EventTile'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import { useQuadrants } from '@/app/menu/quadrants/hooks/useQuadrants'
+import { useQuadrantMutationListeners } from '@/app/menu/quadrants/hooks/useQuadrantMutationListeners'
 
 interface CalendarViewProps {
   date: string
@@ -35,18 +36,7 @@ export default function CalendarView({
     end
   )
 
-  useEffect(() => {
-    const handler = () => {
-      reload()
-    }
-
-    window.addEventListener('quadrant:created', handler)
-    window.addEventListener('quadrant:updated', handler)
-    return () => {
-      window.removeEventListener('quadrant:created', handler)
-      window.removeEventListener('quadrant:updated', handler)
-    }
-  }, [reload])
+  useQuadrantMutationListeners(reload)
 
   // 🟦 Assigna quadrantStatus a cada event
   const enrichedEvents = useMemo(() => {

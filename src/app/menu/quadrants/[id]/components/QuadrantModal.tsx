@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { useSession } from 'next-auth/react'
+import { toast } from 'sonner'
 import { useQuadrantFormState } from '../hooks/useQuadrantFormState'
 import { useQuadrantAutoPreview } from '../hooks/useQuadrantAutoPreview'
 import { useQuadrantSurveys } from '../hooks/useQuadrantSurveys'
@@ -15,15 +16,15 @@ import LogisticsPhasePanel from './LogisticsPhasePanel'
 import ServicePhasePanel from './ServicePhasePanel'
 import { normalizeRole } from '@/lib/roles'
 import SurveyLaunchPanel from './SurveyLaunchPanel'
-import CuinaSection from './CuinaSection'
+import CuinaPhasePanel from './CuinaPhasePanel'
 import AutoLearningBanner from './AutoLearningBanner'
 import QuadrantModalHeader from './QuadrantModalHeader'
+import { QUADRANT_AUTO_GENERATION_ENABLED } from '@/lib/quadrantFeatureFlags'
 import QuadrantModeSelector from './QuadrantModeSelector'
-import QuadrantTopBarCuina from './QuadrantTopBarCuina'
-import QuadrantTopBarServeis from './QuadrantTopBarServeis'
-import QuadrantTopBarLogistica from './QuadrantTopBarLogistica'
 import MultiDayDateSelector from './MultiDayDateSelector'
 import QuadrantModalFooter from './QuadrantModalFooter'
+import type { QuadrantEvent } from '@/types/QuadrantEvent'
+import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
 import type {
   GenerationScope,
   QuadrantModalProps,
@@ -31,12 +32,33 @@ import type {
   SessionUserInfo,
 } from './quadrantModalTypes'
 import { extractDate, getDateRange, splitTitle } from './quadrantModalUtils'
+import { deleteQuadrantDraft } from './quadrantModalApi'
+import { cn } from '@/lib/utils'
 
-export default function QuadrantModal({ open, onOpenChange, event, onSaved }: QuadrantModalProps) {
+export type QuadrantEditorProps = {
+  event: QuadrantEvent
+  active?: boolean
+  layout?: 'modal' | 'inline'
+  hideHeader?: boolean
+  existingDraft?: EditorDraftInput | null
+  onSaved?: () => Promise<void>
+  onCancel?: () => void
+}
+
+export function QuadrantEditor({
+  event,
+  active = true,
+  layout = 'inline',
+  hideHeader,
+  existingDraft,
+  onSaved,
+  onCancel,
+}: QuadrantEditorProps) {
   const { data: session } = useSession()
   const sessionUser = session?.user as SessionUserInfo | undefined
   const userRole = normalizeRole(String(sessionUser?.role || ''))
   const department = (
+    event.department ||
     sessionUser?.department ||
     sessionUser?.dept ||
     'serveis'
@@ -48,7 +70,7 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
   const isLogistica = department === 'logistica'
   /** Serveis, Cuina, Logística: mateix comportament de modes, training i guardar+confirmar. */
   const isQuadrantCoreDept = isServeis || isCuina || isLogistica
-  const [mode, setMode] = useState<QuadrantMode>('semi')
+  const [mode, setMode] = useState<QuadrantMode>('manual')
 
   const {
     startDate,
@@ -81,6 +103,7 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
     updatePhaseResponsible,
     phaseVehicleAssignments,
     updatePhaseVehicleAssignment,
+    replacePhaseVehicleAssignments,
     availableVehicles,
     servicePhaseGroups,
     servicePhaseSettings,
@@ -110,7 +133,7 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
     availableConductors,
     availableJamoneros,
     availableTreballadors,
-  } = useQuadrantFormState({ event, department, modalOpen: open, mode })
+  } = useQuadrantFormState({ event, department, modalOpen: active, mode, existingDraft })
 
   const rawTitle = event.summary || event.title || ''
   const { name: eventName, code: parsedCode } = splitTitle(rawTitle)
@@ -121,7 +144,7 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
   const [showJamoneroDetails, setShowJamoneroDetails] = useState(true)
 
   const { autoPreview, autoPreviewLoading, autoPreviewError } = useQuadrantAutoPreview({
-    open,
+    open: active,
     mode,
     isQuadrantCoreDept,
     event,
@@ -156,7 +179,7 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
     ensureSurveyPeopleLoaded,
     handleLaunchSurvey,
   } = useQuadrantSurveys({
-    open,
+    open: active,
     event,
     eventName,
     department,
@@ -168,8 +191,8 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
     numDrivers,
   })
 
-  const { serveisVestimentModels, vestimentModelChoice, setVestimentModelChoice } =
-    useServeisVestiment({ open, isServeis, event })
+  const { serveisVestimentModels, vestimentModelChoice, setVestimentModelChoice, driverCrews } =
+    useServeisVestiment({ open: active, isServeis, event })
 
   const _eventRangeStart = extractDate(event.originalStart || event.start)
   const _eventRangeEnd = extractDate(event.originalEnd || event.end || event.start)
@@ -182,18 +205,26 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
   const {
     cuinaGroups,
     cuinaEtt,
-    setCuinaEtt,
     cuinaTotals,
     isManualResponsibleConductor,
     cuinaVehiclesPayload,
+    availableVehicles: cuinaAvailableVehicles,
+    availableVehicleCount: cuinaAvailableVehicleCount,
+    isVehicleIdAssigned: isCuinaVehicleIdAssigned,
+    toggleCuinaEtt,
+    updateCuinaEtt,
     addCuinaGroup,
     updateCuinaGroup,
     removeCuinaGroup,
   } = useCuinaState({
-    open,
+    open: active,
     isCuina,
+    department,
     mode,
     event,
+    existingDraft,
+    startDate,
+    endDate,
     totalWorkers,
     numDrivers,
     meetingPoint,
@@ -209,10 +240,10 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
   })
 
   useEffect(() => {
-    if (!open) return
+    if (!active) return
     setGenerationScope('day')
     setSelectedMultiDates(multiDayDates)
-  }, [open, event.id, multiDayDates])
+  }, [active, event.id, multiDayDates])
 
   useEffect(() => {
     if (!isMultiDayEvent) {
@@ -233,7 +264,87 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
     }
   }, [manualResp, mode, setManualResp])
 
-  const canAutoGen = Boolean(startDate && endDate && startTime && endTime)
+  const canAutoGen = useMemo(() => {
+    const firstCuinaGroup = isCuina ? cuinaGroups[0] : null
+    const sd =
+      startDate ||
+      firstCuinaGroup?.serviceDate ||
+      extractDate(event.start)
+    const ed =
+      endDate ||
+      firstCuinaGroup?.serviceDate ||
+      extractDate(event.end || event.originalEnd || event.start)
+    const st =
+      startTime ||
+      firstCuinaGroup?.startTime ||
+      event.startTime ||
+      ''
+    const et =
+      endTime ||
+      firstCuinaGroup?.endTime ||
+      event.endTime ||
+      ''
+    return Boolean(sd && ed && st && et)
+  }, [
+    isCuina,
+    cuinaGroups,
+    startDate,
+    endDate,
+    startTime,
+    endTime,
+    event.start,
+    event.end,
+    event.originalEnd,
+    event.startTime,
+    event.endTime,
+  ])
+
+  const handleClose = () => onCancel?.()
+
+  const [deleting, setDeleting] = useState(false)
+
+  const hasPersistedDraft = Boolean(
+    String((existingDraft as { id?: string } | null)?.id || '').trim() ||
+      String(event.quadrantStatus || '').trim() === 'draft'
+  )
+
+  const handleDelete = useCallback(async () => {
+    if (hasPersistedDraft) {
+      if (!confirm('Segur que vols eliminar aquest borrador?')) return
+      setDeleting(true)
+      try {
+        const eventId = String(event.id || existingDraft?.id || '')
+          .trim()
+          .split('__')[0]
+        const isLogistica = department.toLowerCase() === 'logistica'
+        await deleteQuadrantDraft({
+          department,
+          eventId,
+          ...(isLogistica
+            ? {
+                phaseKey: String(
+                  event.phaseKey || event.phaseType || existingDraft?.phaseType || 'event'
+                ),
+              }
+            : {}),
+        })
+        toast.success('Borrador eliminat')
+        window.dispatchEvent(new CustomEvent('quadrant:created', { detail: { status: 'deleted' } }))
+        await onSaved?.()
+        handleClose()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Error eliminant el borrador'
+        toast.error(message)
+      } finally {
+        setDeleting(false)
+      }
+      return
+    }
+
+    if (!confirm('Vols tancar l\'editor sense desar?')) return
+    await onSaved?.()
+    handleClose()
+  }, [department, event.id, event.phaseKey, event.phaseType, event.quadrantStatus, existingDraft?.id, existingDraft?.phaseType, hasPersistedDraft, onSaved])
 
   const { loading, error, success, save: handleAutoGenAndSave } = useQuadrantSubmit({
     event,
@@ -273,62 +384,101 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
     buildLogisticaPhases,
     ettEntry,
     onSaved,
-    onOpenChange,
+    keepOpenAfterSave: false,
+    onOpenChange: (open) => {
+      if (!open) handleClose()
+    },
   })
 
+  const editorActions = {
+    loading,
+    deleting,
+    hasPersistedDraft,
+    canAutoGen,
+    mode,
+    isQuadrantCoreDept,
+    autoPreview,
+    autoPreviewLoading,
+    onDelete: handleDelete,
+    onSave: handleAutoGenAndSave,
+  }
+
+  if (!active) return null
+
+  const shouldHideHeader = hideHeader ?? layout === 'inline'
+  const surveyInServeisToolbar = isServeis && layout === 'inline'
+
+  const surveyPanel = (
+    <SurveyLaunchPanel
+      compactTrigger
+      canLaunchSurvey={canLaunchSurvey}
+      visibleDate={visibleDate}
+      latestAllowedDeadlineDate={latestAllowedSurveyDeadlineDate}
+      latestAllowedDeadlineTime={latestAllowedSurveyDeadlineTime}
+      surveys={surveys}
+      surveyGroupsLoading={surveyGroupsLoading}
+      surveyPeopleLoading={surveyPeopleLoading}
+      surveyGroups={surveyGroups}
+      surveyPeople={surveyPeople}
+      selectedSurveyGroupIds={selectedSurveyGroupIds}
+      setSelectedSurveyGroupIds={setSelectedSurveyGroupIds}
+      selectedSurveyWorkerIds={selectedSurveyWorkerIds}
+      setSelectedSurveyWorkerIds={setSelectedSurveyWorkerIds}
+      surveyDeadlineDate={surveyDeadlineDate}
+      setSurveyDeadlineDate={setSurveyDeadlineDate}
+      surveyDeadlineTime={surveyDeadlineTime}
+      setSurveyDeadlineTime={setSurveyDeadlineTime}
+      handleLaunchSurvey={handleLaunchSurvey}
+      ensureSurveyPeopleLoaded={ensureSurveyPeopleLoaded}
+      surveySubmitting={surveySubmitting}
+    />
+  )
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="w-[97vw] !max-w-[1700px] max-h-[92vh] overflow-hidden rounded-2xl p-0"
-        onClick={(e) => e.stopPropagation()}
+    <div
+      className={cn(
+        'flex flex-col',
+        layout === 'modal' ? 'max-h-[92vh]' : 'min-w-0'
+      )}
+    >
+      {!shouldHideHeader ? (
+        <QuadrantModalHeader
+          layout={layout}
+          eventName={eventName}
+          service={event.service}
+          pax={event.numPax}
+          eventStartTime={event.startTime}
+          startTime={startTime}
+          location={location}
+        />
+      ) : null}
+
+      <div
+        className={cn(
+          'overflow-y-auto',
+          layout === 'modal'
+            ? 'flex-1 px-3 py-3 sm:px-4'
+            : 'max-h-[min(70vh,760px)] px-1 py-1'
+        )}
       >
-        <div className="flex max-h-[92vh] flex-col">
-          <QuadrantModalHeader
-            eventName={eventName}
-            service={event.service}
-            pax={event.numPax}
-            eventStartTime={event.startTime}
-            startTime={startTime}
-            location={location}
-          />
+            <div className={layout === 'inline' ? 'space-y-2' : 'space-y-3'}>
+              {QUADRANT_AUTO_GENERATION_ENABLED ? (
+                <>
+                  <QuadrantModeSelector mode={mode} onModeChange={setMode} />
 
-          <div className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
-            <div className="space-y-3">
-              <QuadrantModeSelector mode={mode} onModeChange={setMode} />
+                  {mode === 'auto' && isQuadrantCoreDept && (
+                    <AutoLearningBanner
+                      loading={autoPreviewLoading}
+                      error={autoPreviewError}
+                      preview={autoPreview}
+                      onSwitchToSemi={() => setMode('semi')}
+                      onSwitchToManual={() => setMode('manual')}
+                    />
+                  )}
+                </>
+              ) : null}
 
-              {mode === 'auto' && isQuadrantCoreDept && (
-                <AutoLearningBanner
-                  loading={autoPreviewLoading}
-                  error={autoPreviewError}
-                  preview={autoPreview}
-                  onSwitchToSemi={() => setMode('semi')}
-                  onSwitchToManual={() => setMode('manual')}
-                />
-              )}
-
-          <SurveyLaunchPanel
-            canLaunchSurvey={canLaunchSurvey}
-            visibleDate={visibleDate}
-            latestAllowedDeadlineDate={latestAllowedSurveyDeadlineDate}
-            latestAllowedDeadlineTime={latestAllowedSurveyDeadlineTime}
-            surveys={surveys}
-            surveyGroupsLoading={surveyGroupsLoading}
-            surveyPeopleLoading={surveyPeopleLoading}
-            surveyGroups={surveyGroups}
-            surveyPeople={surveyPeople}
-            selectedSurveyGroupIds={selectedSurveyGroupIds}
-            setSelectedSurveyGroupIds={setSelectedSurveyGroupIds}
-            selectedSurveyWorkerIds={selectedSurveyWorkerIds}
-            setSelectedSurveyWorkerIds={setSelectedSurveyWorkerIds}
-            surveyDeadlineDate={surveyDeadlineDate}
-            setSurveyDeadlineDate={setSurveyDeadlineDate}
-            surveyDeadlineTime={surveyDeadlineTime}
-            setSurveyDeadlineTime={setSurveyDeadlineTime}
-            handleLaunchSurvey={handleLaunchSurvey}
-            ensureSurveyPeopleLoaded={ensureSurveyPeopleLoaded}
-            surveySubmitting={surveySubmitting}
-          />
+          {!surveyInServeisToolbar ? surveyPanel : null}
 
           {!isLogistica && !isCuina && (
             <div className={`grid gap-4 ${isServeis ? 'lg:grid-cols-3' : 'grid-cols-2'}`}>
@@ -359,67 +509,66 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
             </div>
           )}
 
-          {!isLogistica && !isServeis && isCuina && (
-            <QuadrantTopBarCuina
-              startTime={startTime}
-              setStartTime={setStartTime}
-              endTime={endTime}
-              setEndTime={setEndTime}
-              manualResp={manualResp}
-              setManualResp={setManualResp}
-              availableResponsables={availableResponsables}
-              cuinaTotals={cuinaTotals}
-              isMultiDayEvent={isMultiDayEvent}
-              generationScope={generationScope}
-              setGenerationScope={setGenerationScope}
-            />
-          )}
-
-          {isServeis && (
-            <QuadrantTopBarServeis
+          {isCuina && (
+            <CuinaPhasePanel
+              cuinaTopBar={{
+                mode,
+                manualResp,
+                setManualResp,
+                availableResponsables,
+                availableConductors,
+                startTime,
+                setStartTime,
+                endTime,
+                setEndTime,
+                isMultiDayEvent,
+                generationScope,
+                setGenerationScope,
+                cuinaTotals,
+                editorActions,
+              }}
+              groups={cuinaGroups}
+              eventStartDate={startDate}
               mode={mode}
-              startTime={startTime}
-              setStartTime={setStartTime}
-              endTime={endTime}
-              setEndTime={setEndTime}
-              manualResp={manualResp}
-              setManualResp={setManualResp}
+              compact={layout === 'inline'}
               availableResponsables={availableResponsables}
-              availableJamoneros={availableJamoneros}
-              serviceJamoneroAssignments={serviceJamoneroAssignments}
-              setServiceJamoneroCount={setServiceJamoneroCount}
-              updateServiceJamoneroAssignment={updateServiceJamoneroAssignment}
-              showJamoneroDetails={showJamoneroDetails}
-              setShowJamoneroDetails={setShowJamoneroDetails}
-              vestimentModelChoice={vestimentModelChoice}
-              setVestimentModelChoice={setVestimentModelChoice}
-              serveisVestimentModels={serveisVestimentModels}
-              serviceTotals={serviceTotals}
-              isMultiDayEvent={isMultiDayEvent}
-              generationScope={generationScope}
-              setGenerationScope={setGenerationScope}
-            />
-          )}
-
-          {isLogistica && (
-            <QuadrantTopBarLogistica
-              startTime={startTime}
-              setStartTime={setStartTime}
-              endTime={endTime}
-              setEndTime={setEndTime}
-              isMultiDayEvent={isMultiDayEvent}
-              generationScope={generationScope}
-              setGenerationScope={setGenerationScope}
+              availableConductors={availableConductors}
+              availableTreballadors={availableTreballadors}
+              availableVehicles={cuinaAvailableVehicles}
+              availableVehicleCount={cuinaAvailableVehicleCount}
+              isVehicleIdAssigned={isCuinaVehicleIdAssigned}
+              addGroup={addCuinaGroup}
+              removeGroup={removeCuinaGroup}
+              updateGroup={updateCuinaGroup}
+              cuinaEtt={cuinaEtt}
+              toggleEtt={toggleCuinaEtt}
+              updateEtt={updateCuinaEtt}
             />
           )}
 
           {isServeis && (
             <ServicePhasePanel
+              serveisTopBar={{
+                mode,
+                manualResp,
+                setManualResp,
+                availableResponsables,
+                availableConductors,
+                isMultiDayEvent,
+                generationScope,
+                setGenerationScope,
+                vestimentModelChoice,
+                setVestimentModelChoice,
+                serveisVestimentModels,
+                surveySlot: surveyInServeisToolbar ? surveyPanel : undefined,
+                editorActions,
+              }}
               groups={servicePhaseGroups}
               totals={serviceTotals}
               meetingPoint={meetingPoint}
               eventStartDate={startDate}
               mode={mode}
+              compact={layout === 'inline'}
               settings={servicePhaseSettings}
               visibility={servicePhaseVisibility}
               ettState={servicePhaseEtt}
@@ -428,6 +577,7 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
               availableConductors={availableConductors}
               availableJamoneros={availableJamoneros}
               availableTreballadors={availableTreballadors}
+              driverCrews={driverCrews}
               jamoneroAssignments={serviceJamoneroAssignments}
               setJamoneroCount={setServiceJamoneroCount}
               updateJamoneroAssignment={updateServiceJamoneroAssignment}
@@ -445,21 +595,36 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
 
           {isLogistica && (
             <LogisticsPhasePanel
+              logisticaTopBar={{
+                mode,
+                manualResp,
+                setManualResp,
+                availableResponsables,
+                availableConductors,
+                startTime,
+                setStartTime,
+                endTime,
+                setEndTime,
+                isMultiDayEvent,
+                generationScope,
+                setGenerationScope,
+                editorActions,
+              }}
               phaseForms={phaseForms}
               phaseSettings={phaseSettings}
               phaseVisibility={phaseVisibility}
-              phaseResponsibles={phaseResponsibles}
               phaseVehicleAssignments={phaseVehicleAssignments}
               availableVehicles={availableVehicles}
               availableConductors={availableConductors}
               availableResponsables={availableResponsables}
               mode={mode}
+              compact={layout === 'inline'}
               availableTreballadors={availableTreballadors}
               togglePhaseVisibility={togglePhaseVisibility}
               updatePhaseForm={updatePhaseForm}
               updatePhaseSetting={updatePhaseSetting}
-              updatePhaseResponsible={updatePhaseResponsible}
               updatePhaseVehicleAssignment={updatePhaseVehicleAssignment}
+              replacePhaseVehicleAssignments={replacePhaseVehicleAssignments}
               ettOpen={ettOpen}
               ettData={ettData}
               toggleEtt={() => setEttOpen(!ettOpen)}
@@ -474,39 +639,52 @@ export default function QuadrantModal({ open, onOpenChange, event, onSaved }: Qu
             setSelectedDates={setSelectedMultiDates}
           />
 
-          {isCuina && (
-            <CuinaSection
-              mode={mode}
-              cuinaGroups={cuinaGroups}
-              removeCuinaGroup={removeCuinaGroup}
-              updateCuinaGroup={updateCuinaGroup}
-              manualResp={manualResp}
-              serviceDate={startDate}
-              availableTreballadors={availableTreballadors}
-              availableResponsables={availableResponsables}
-              availableConductors={availableConductors}
-              addCuinaGroup={addCuinaGroup}
-              cuinaEtt={cuinaEtt}
-              setCuinaEtt={setCuinaEtt}
-            />
-          )}
-
             </div>
           </div>
 
-          <QuadrantModalFooter
-            loading={loading}
-            error={error}
-            success={success}
-            canAutoGen={canAutoGen}
-            mode={mode}
-            isQuadrantCoreDept={isQuadrantCoreDept}
-            autoPreview={autoPreview}
-            autoPreviewLoading={autoPreviewLoading}
-            onCancel={() => onOpenChange(false)}
-            onSave={handleAutoGenAndSave}
-          />
-        </div>
+      {layout === 'inline' ? (
+        <>
+          {error ? (
+            <div className="border-t border-slate-200 px-3 py-2 text-sm text-red-600">{error}</div>
+          ) : null}
+          {success ? (
+            <div className="border-t border-slate-200 px-3 py-2 text-sm text-green-600">
+              Borrador creat!
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <QuadrantModalFooter
+          loading={loading}
+          error={error}
+          success={success}
+          canAutoGen={canAutoGen}
+          mode={mode}
+          isQuadrantCoreDept={isQuadrantCoreDept}
+          autoPreview={autoPreview}
+          autoPreviewLoading={autoPreviewLoading}
+          onCancel={handleClose}
+          onSave={handleAutoGenAndSave}
+        />
+      )}
+    </div>
+  )
+}
+
+export default function QuadrantModal({ open, onOpenChange, event, onSaved }: QuadrantModalProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="w-[97vw] !max-w-[1700px] max-h-[92vh] overflow-hidden rounded-2xl p-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <QuadrantEditor
+          event={event}
+          active={open}
+          layout="modal"
+          onSaved={onSaved}
+          onCancel={() => onOpenChange(false)}
+        />
       </DialogContent>
     </Dialog>
   )

@@ -9,6 +9,7 @@ import { ChevronDown, ChevronRight, Truck } from 'lucide-react'
 // Subcomponents
 import DraftRow from './DraftRow'
 import DraftActions from './DraftActions'
+import DraftManualToolbar from './DraftManualToolbar'
 import DraftsTableDesktop from './DraftsTableDesktop'
 import DraftsTableMobile from './DraftsTableMobile'
 import RowEditor from './RowEditor'
@@ -33,6 +34,7 @@ import {
   type DisplayItem,
 } from './draftsTableDisplayUtils'
 import { syncRowsWithDraftAndRoster } from './draftsRowSync'
+import { cn } from '@/lib/utils'
 
 type Vehicle = {
   id: string
@@ -43,9 +45,11 @@ type Vehicle = {
 
 export default function DraftsTable({
   draft,
+  compact = false,
   onRefreshDrafts,
 }: {
   draft: DraftInput
+  compact?: boolean
   onRefreshDrafts?: () => Promise<unknown>
 }) {
   const normalizeDraftLocation = (value: DraftInput['location']) => {
@@ -84,10 +88,16 @@ export default function DraftsTable({
   const [vestimentModelChoice, setVestimentModelChoice] = useState<string>(
     String(draft.vestimentModel || '').trim()
   )
+  const [globalStartTime, setGlobalStartTime] = useState(draft.startTime || '')
+  const [globalEndTime, setGlobalEndTime] = useState(draft.endTime || '')
+  const [globalMeetingPoint, setGlobalMeetingPoint] = useState(
+    defaultMeetingPoint || String(draft.meetingPoint || '').trim()
+  )
   const rowsAndGroupsDirty = JSON.stringify({ rows, groups: groupDefs }) !== initialRef.current
   const vestimentDirty = vestimentModelChoice !== initialVestimentModelRef.current
   const dirty = rowsAndGroupsDirty || vestimentDirty
   const prevDraftHydrationKeyRef = useRef('')
+  const didSeedInitialRowRef = useRef(false)
   const [expandedMerged, setExpandedMerged] = useState<Set<string>>(new Set())
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
@@ -119,13 +129,22 @@ export default function DraftsTable({
   const [confirming] = useState(false) // ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“Ãƒâ€¹Ã¢â‚¬Â  eliminat setConfirming no usat
   const isLocked = confirmed || confirming
 
-  // --- Personal disponible
+  // --- Personal disponible (horari general + conflictes visibles)
+  const availabilityStartTime = globalStartTime || draft.startTime || ''
+  const availabilityEndTime = globalEndTime || draft.endTime || ''
   const available = useAvailablePersonnel({
     departament: department,
     startDate: draft.startDate,
     endDate: draft.endDate,
-    startTime: draft.startTime,
-    endTime: draft.endTime,
+    startTime: availabilityStartTime,
+    endTime: availabilityEndTime,
+    includeConflicts: true,
+    enabled: Boolean(
+      draft.startDate &&
+        draft.endDate &&
+        availabilityStartTime &&
+        availabilityEndTime
+    ),
     excludeEventId: draft.id,
     excludeIds: rows
       .filter((_, idx) => idx !== editIdx)
@@ -234,6 +253,23 @@ export default function DraftsTable({
     initialVestimentModelRef.current = nextVestiment
     setVestimentModelChoice(nextVestiment)
   }, [draft.id, draft.updatedAt, draft.vestimentModel])
+
+  useEffect(() => {
+    setGlobalStartTime(draft.startTime || '')
+    setGlobalEndTime(draft.endTime || '')
+    setGlobalMeetingPoint(defaultMeetingPoint || String(draft.meetingPoint || '').trim())
+  }, [
+    draft.id,
+    draft.updatedAt,
+    draft.startTime,
+    draft.endTime,
+    draft.meetingPoint,
+    defaultMeetingPoint,
+  ])
+
+  useEffect(() => {
+    didSeedInitialRowRef.current = false
+  }, [draft.id])
 
   useEffect(() => {
     if (!isServeisDept) {
@@ -749,23 +785,28 @@ export default function DraftsTable({
     const groupMeeting = group?.meetingPoint || defaultGroupMeetingPoint
     const groupDate = getGroupServiceDate(group)
 
-    setRowsState([
-      ...rows,
-      {
-        id: '',
-        name: '',
-        role,
-        startDate: groupDate,
-        endDate: draft.endDate || groupDate,
-        startTime: groupStart,
-        endTime: groupEnd,
-        meetingPoint: groupMeeting,
-        arrivalTime: groupArrival,
-        plate: '',
-        vehicleType: '',
-        groupId,
-      },
-    ])
+    setRowsState((prev) => {
+      const next = [
+        ...prev,
+        {
+          id: '',
+          name: '',
+          role,
+          startDate: groupDate,
+          endDate: draft.endDate || groupDate,
+          startTime: groupStart,
+          endTime: groupEnd,
+          meetingPoint: groupMeeting,
+          arrivalTime: groupArrival,
+          plate: '',
+          vehicleType: '',
+          groupId,
+        },
+      ]
+      rowsRef.current = next
+      setEditIdx(next.length - 1)
+      return next
+    })
   }
 
   const addEttRow = (groupId?: string) => {
@@ -880,12 +921,60 @@ export default function DraftsTable({
     })
   }
 
+  const applyGlobalToAllRows = () => {
+    setRowsState((prev) => {
+      const next = prev.map((row) => ({
+        ...row,
+        startTime: globalStartTime || row.startTime,
+        endTime: globalEndTime || row.endTime,
+        meetingPoint: globalMeetingPoint || row.meetingPoint,
+      }))
+      rowsRef.current = next
+      return next
+    })
+    if (hasStructuredGroups) {
+      setGroupDefsState((prev) =>
+        prev.map((group) => ({
+          ...group,
+          startTime: globalStartTime || group.startTime,
+          endTime: globalEndTime || group.endTime,
+          meetingPoint: globalMeetingPoint || group.meetingPoint,
+        }))
+      )
+    }
+  }
+
+  useEffect(() => {
+    if (isLocked || didSeedInitialRowRef.current || rows.length > 0) return
+    didSeedInitialRowRef.current = true
+    addRowToGroup('responsable', defaultGroupId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed inicial una vegada per borrador buit
+  }, [isLocked, rows.length, draft.id, defaultGroupId])
+
   return (
   <div
-    className={`w-full rounded-xl border border-slate-200 bg-white/95 ${
-      hasInlineEditor ? '' : 'lg:max-w-[64%] lg:mx-auto'
-    }`}
+    className={cn(
+      'w-full rounded-xl border border-slate-200 bg-white/95',
+      !compact && !hasInlineEditor && 'lg:max-w-[64%] lg:mx-auto'
+    )}
   >
+    <DraftManualToolbar
+      startTime={globalStartTime}
+      endTime={globalEndTime}
+      meetingPoint={globalMeetingPoint}
+      vestimentModel={vestimentModelChoice}
+      vestimentOptions={serveisVestimentModels}
+      showVestiment={isServeisDept}
+      loadingAvailability={available.loading}
+      isLocked={isLocked}
+      onStartTimeChange={setGlobalStartTime}
+      onEndTimeChange={setGlobalEndTime}
+      onMeetingPointChange={setGlobalMeetingPoint}
+      onVestimentChange={setVestimentModelChoice}
+      onApplyToAll={applyGlobalToAllRows}
+      onAddRow={(role) => addRowToGroup(role, defaultGroupId)}
+    />
+
     <div className="flex flex-wrap items-end justify-end gap-3 border-b border-slate-200 bg-slate-50/80 px-3 py-3 sm:px-4">
       <DraftActions
         confirmed={confirmed}

@@ -143,6 +143,20 @@ export async function computeQuadrantsGet(
         responsables: Array.isArray(d.responsables) ? d.responsables : [],
         conductors: Array.isArray(d.conductors) ? d.conductors : [],
         treballadors,
+        responsableId: String(d.responsableId || '').trim() || null,
+        responsable: d.responsable
+          ? {
+              id: String((d.responsable as { id?: string }).id || d.responsableId || '').trim(),
+              name: String((d.responsable as { name?: string }).name || ''),
+              meetingPoint: String((d.responsable as { meetingPoint?: string }).meetingPoint || ''),
+            }
+          : d.responsableId || d.responsableName
+          ? {
+              id: String(d.responsableId || '').trim(),
+              name: String(d.responsableName || ''),
+              meetingPoint: String(d.meetingPoint || ''),
+            }
+          : null,
         responsableName:
           Array.isArray(d.responsables) && d.responsables.length > 0
             ? (d.responsables as Array<{ name?: string }>).map((r) => r.name).join(', ')
@@ -167,6 +181,7 @@ export async function computeQuadrantsGet(
         groups: Array.isArray(d.groups)
           ? d.groups.map(
               (g: {
+                id?: string | null
                 serviceDate?: string
                 dateLabel?: string
                 meetingPoint?: string
@@ -174,13 +189,17 @@ export async function computeQuadrantsGet(
                 arrivalTime?: string | null
                 endTime?: string
                 workers?: unknown
+                jamoneros?: unknown
                 drivers?: unknown
                 needsDriver?: boolean
+                wantsResponsible?: boolean
                 driverId?: string | null
                 driverName?: string | null
                 responsibleId?: string | null
                 responsibleName?: string | null
-              }) => ({
+                manualWorkers?: unknown
+              }, idx: number) => ({
+              id: g.id || `group-${idx + 1}`,
               serviceDate: g.serviceDate || '',
               dateLabel: g.dateLabel || '',
               meetingPoint: g.meetingPoint || '',
@@ -188,12 +207,15 @@ export async function computeQuadrantsGet(
               arrivalTime: g.arrivalTime ?? null,
               endTime: g.endTime || '',
               workers: Number(g.workers || 0),
+              jamoneros: Number(g.jamoneros || 0),
               drivers: Number(g.drivers || 0),
               needsDriver: !!g.needsDriver,
+              wantsResponsible: g.wantsResponsible === true,
               driverId: g.driverId || null,
               driverName: g.driverName || null,
               responsibleId: g.responsibleId || null,
               responsibleName: g.responsibleName || null,
+              ...(Array.isArray(g.manualWorkers) ? { manualWorkers: g.manualWorkers } : {}),
             }))
           : undefined,
         status: typeof d.status === 'string' ? d.status.toLowerCase() : '',

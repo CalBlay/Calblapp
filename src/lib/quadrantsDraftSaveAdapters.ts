@@ -18,6 +18,7 @@ type SaveDraftContext = {
   rows: EditorRow[]
   groups?: EditorGroup[]
   vestimentModel?: string | null
+  docMeta?: Record<string, unknown>
 }
 
 type SaveDraftResult = {
@@ -38,6 +39,29 @@ type Line = {
   arrivalTime: string
   vehicleType: string
   plate: string
+}
+
+const buildDocMetaPatch = (docMeta?: Record<string, unknown>) => {
+  if (!docMeta || typeof docMeta !== 'object') return {}
+  const patch: Record<string, unknown> = {}
+  const copyString = (key: string) => {
+    const value = docMeta[key]
+    if (typeof value === 'string' && value.trim()) patch[key] = value.trim()
+  }
+  copyString('phaseType')
+  copyString('phaseLabel')
+  copyString('phaseDate')
+  copyString('code')
+  copyString('eventName')
+  copyString('meetingPoint')
+  copyString('startDate')
+  copyString('endDate')
+  copyString('startTime')
+  copyString('endTime')
+  if (typeof docMeta.location === 'string' && docMeta.location.trim()) {
+    patch.location = docMeta.location.trim()
+  }
+  return patch
 }
 
 const toLine = (p: EditorRow): Line => ({
@@ -145,6 +169,7 @@ const persistServeisDraft = async ({
   rows,
   groups,
   vestimentModel,
+  docMeta,
 }: SaveDraftContext) => {
   const departmentKey = normalizeDepartmentKey(department)
   const normalizedRows = normalizeRowsForDepartmentSave({ rows })
@@ -246,6 +271,7 @@ const persistServeisDraft = async ({
       db.collection(coll).doc(docId),
       {
         ...previous,
+        ...buildDocMetaPatch(docMeta),
         department: departmentKey,
         eventId: canonicalEventId,
         startDate: groupDate || previous?.startDate || '',
@@ -318,6 +344,7 @@ const persistGenericGroupedDraft = async ({
   canonicalEventId,
   rows,
   groups,
+  docMeta,
 }: SaveDraftContext) => {
   const ref = db.collection(coll).doc(sourceDocId || canonicalEventId)
   const snap = await ref.get()
@@ -338,6 +365,7 @@ const persistGenericGroupedDraft = async ({
   const nextUpdateData: Record<string, unknown> = {
     ...updateData,
     createdAt,
+    ...buildDocMetaPatch(docMeta),
   }
 
   if (normalizedRows.some((row) => row.groupId)) {
@@ -385,6 +413,7 @@ const persistCuinaDraft = async ({
   canonicalEventId,
   rows,
   groups,
+  docMeta,
 }: SaveDraftContext) => {
   const ref = db.collection(coll).doc(sourceDocId || canonicalEventId)
   const snap = await ref.get()
@@ -405,6 +434,7 @@ const persistCuinaDraft = async ({
   const nextUpdateData: Record<string, unknown> = {
     ...updateData,
     createdAt,
+    ...buildDocMetaPatch(docMeta),
   }
 
   const groupedRows = new Map<string, EditorRow[]>()

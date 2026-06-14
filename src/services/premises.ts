@@ -95,15 +95,21 @@ export async function loadDepartmentPersonnel(
 
   const byId = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
 
-  try {
-    const lowerSnap = await db.collection('personnel').where('departmentLower', '==', dept).get()
-    lowerSnap.docs.forEach((doc) => byId.set(doc.id, doc))
-  } catch {}
+  const [lowerSnap, exactSnap] = await Promise.all([
+    db
+      .collection('personnel')
+      .where('departmentLower', '==', dept)
+      .get()
+      .catch(() => null),
+    db
+      .collection('personnel')
+      .where('department', '==', department)
+      .get()
+      .catch(() => null),
+  ])
 
-  try {
-    const exactSnap = await db.collection('personnel').where('department', '==', department).get()
-    exactSnap.docs.forEach((doc) => byId.set(doc.id, doc))
-  } catch {}
+  lowerSnap?.docs.forEach((doc) => byId.set(doc.id, doc))
+  exactSnap?.docs.forEach((doc) => byId.set(doc.id, doc))
 
   type PersonnelDoc = {
     department?: string

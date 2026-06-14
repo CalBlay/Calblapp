@@ -77,6 +77,7 @@ export type EditorDraftInput = {
   >
   timetables?: Array<{ startTime: string; endTime: string }>
   vestimentModel?: string | null
+  phaseType?: string
 }
 
 export type DraftEditorModel = {
@@ -307,7 +308,8 @@ const buildGroupedRows = ({
       respName = ''
     }
 
-    const hasResponsible = Boolean(respName || respId)
+    const groupWantsResponsible = group.wantsResponsible !== false
+    const hasResponsible = groupWantsResponsible && Boolean(respName || respId)
     const respRowIndex = hasResponsible ? rows.length : -1
     const preferredDriverRow = isServeisDept ? takePreferredServiceDriver(group) : null
     const mainDriverRow =

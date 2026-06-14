@@ -361,8 +361,8 @@ async function fetchDeptDrafts(
         ...legacyExternalWorkers,
       ],
       groups: Array.isArray(d.groups)
-        ? d.groups.map((g) => ({
-            id: g.id || null,
+        ? d.groups.map((g, idx) => ({
+            id: g.id || `group-${idx + 1}`,
             serviceDate: g.serviceDate || null,
             dateLabel: g.dateLabel || null,
             meetingPoint: g.meetingPoint || '',
@@ -370,9 +370,17 @@ async function fetchDeptDrafts(
             arrivalTime: g.arrivalTime ?? null,
             endTime: g.endTime || '',
             workers: Number(g.workers || 0),
+            jamoneros: Number((g as { jamoneros?: unknown }).jamoneros || 0),
             drivers: Number(g.drivers || 0),
+            needsDriver: !!(g as { needsDriver?: boolean }).needsDriver,
+            wantsResponsible: (g as { wantsResponsible?: boolean }).wantsResponsible === true,
+            driverId: (g as { driverId?: string | null }).driverId || null,
+            driverName: (g as { driverName?: string | null }).driverName || null,
             responsibleId: g.responsibleId || null,
             responsibleName: g.responsibleName || null,
+            ...(Array.isArray((g as { manualWorkers?: unknown }).manualWorkers)
+              ? { manualWorkers: (g as { manualWorkers?: unknown }).manualWorkers }
+              : {}),
           }))
         : undefined,
       responsable: d.responsable

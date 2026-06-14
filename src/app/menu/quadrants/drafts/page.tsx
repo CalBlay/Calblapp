@@ -488,7 +488,7 @@ export default function DraftsPage() {
                         
                         </TableRow>
 
-                        {/* Fila expandida: edició completa del quadrant (DraftsTable via QuadrantCard) */}
+                        {/* Fila expandida: edició manual (ManualAssignSheet via QuadrantCard) */}
                         {isExpanded && (
                           <TableRow>
                             <TableCell colSpan={6}>
