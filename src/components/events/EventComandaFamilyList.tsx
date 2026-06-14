@@ -63,7 +63,6 @@ export default function EventComandaFamilyList({
                 previewLimitPerFamily != null
                   ? Math.max(0, lines.length - previewLimitPerFamily)
                   : 0
-              const familyQty = lines.reduce((sum, line) => sum + line.qtyInitial, 0)
 
               return (
                 <Fragment key={family}>

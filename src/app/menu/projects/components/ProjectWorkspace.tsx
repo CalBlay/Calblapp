@@ -161,7 +161,6 @@ export default function ProjectWorkspace({
     canConvokeMeetings,
     canConvokeProjectMeeting,
     canConvokeTaskMeeting,
-    hasFullProjectVisibility,
     isBlockResponsible,
     participation,
     preferredWorkspaceTab,

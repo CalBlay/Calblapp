@@ -82,18 +82,12 @@ export function getAblyClient(userId?: string | null) {
 }
 
 function userIdFromChannel(channelName: string): string | null {
-  const match = /^user:([^:]+):notifications$/.exec(String(channelName || '').trim())
+  const match = /^user:([^:]+):(notifications|inbox|direct)$/.exec(String(channelName || '').trim())
   return match?.[1] ? match[1] : null
 }
 
-export function subscribeToAblyEvent(params: {
-  channelName: string
-  eventName: string
-  handler: (...args: unknown[]) => void
-}) {
-  const channelUserId = userIdFromChannel(params.channelName)
-  const realtime = getAblyClient(channelUserId)
-  const name = params.channelName
+function resolveAblyChannel(realtime: Ably.Realtime, channelName: string): Ably.RealtimeChannel {
+  const name = String(channelName || '').trim()
   let channel = realtime.channels.get(name)
 
   if (channel.state === 'failed') {
@@ -105,9 +99,92 @@ export function subscribeToAblyEvent(params: {
     channel = realtime.channels.get(name)
   }
 
+  return channel
+}
+
+type AblyMessageHandler = Ably.messageCallback<Ably.Message>
+
+export function bindAblyChannelSubscriptions(params: {
+  channelName: string
+  userId?: string | null
+  subscriptions: Array<{ eventName: string; handler: AblyMessageHandler }>
+}): () => void {
+  const channelName = String(params.channelName || '').trim()
+  if (!channelName || params.subscriptions.length === 0) return () => {}
+
+  const channelUserId = userIdFromChannel(channelName) || params.userId || null
+  const realtime = getAblyClient(channelUserId)
+  const channel = resolveAblyChannel(realtime, channelName)
+
   const onChannelFailed = (stateChange: Ably.ChannelStateChange) => {
     const error = stateChange.reason
-    console.warn(`[ably] channel failed ${name}`, error)
+    console.warn(`[ably] channel failed ${channelName}`, error)
+    if (String(error?.message || '').toLowerCase().includes('capability')) {
+      resetAblyClient()
+    }
+  }
+
+  channel.on('failed', onChannelFailed)
+
+  const active: Array<{ eventName: string; handler: AblyMessageHandler }> = []
+  for (const subscription of params.subscriptions) {
+    try {
+      channel.subscribe(subscription.eventName, subscription.handler)
+      active.push(subscription)
+    } catch (error) {
+      console.warn(
+        `[ably] subscribe failed for ${channelName}:${subscription.eventName}`,
+        error
+      )
+    }
+  }
+
+  return () => {
+    channel.off('failed', onChannelFailed)
+    for (const subscription of active) {
+      try {
+        channel.unsubscribe(subscription.eventName, subscription.handler)
+      } catch (error) {
+        console.warn(
+          `[ably] unsubscribe failed for ${channelName}:${subscription.eventName}`,
+          error
+        )
+      }
+    }
+  }
+}
+
+export function publishAblyEvent(params: {
+  channelName: string
+  eventName: string
+  data: unknown
+  userId?: string | null
+}) {
+  const channelName = String(params.channelName || '').trim()
+  if (!channelName) return
+
+  try {
+    const channelUserId = userIdFromChannel(channelName) || params.userId || null
+    const realtime = getAblyClient(channelUserId)
+    const channel = resolveAblyChannel(realtime, channelName)
+    channel.publish(params.eventName, params.data)
+  } catch (error) {
+    console.warn(`[ably] publish failed for ${channelName}:${params.eventName}`, error)
+  }
+}
+
+export function subscribeToAblyEvent(params: {
+  channelName: string
+  eventName: string
+  handler: (...args: unknown[]) => void
+}) {
+  const channelUserId = userIdFromChannel(params.channelName)
+  const realtime = getAblyClient(channelUserId)
+  const channel = resolveAblyChannel(realtime, params.channelName)
+
+  const onChannelFailed = (stateChange: Ably.ChannelStateChange) => {
+    const error = stateChange.reason
+    console.warn(`[ably] channel failed ${params.channelName}`, error)
     if (String(error?.message || '').toLowerCase().includes('capability')) {
       resetAblyClient()
     }
@@ -118,7 +195,7 @@ export function subscribeToAblyEvent(params: {
   try {
     channel.subscribe(params.eventName, params.handler)
   } catch (error) {
-    console.warn(`[ably] subscribe failed for ${name}:${params.eventName}`, error)
+    console.warn(`[ably] subscribe failed for ${params.channelName}:${params.eventName}`, error)
     channel.off('failed', onChannelFailed)
     return () => {}
   }
@@ -128,7 +205,7 @@ export function subscribeToAblyEvent(params: {
       channel.off('failed', onChannelFailed)
       channel.unsubscribe(params.eventName, params.handler)
     } catch (error) {
-      console.warn(`[ably] unsubscribe failed for ${name}:${params.eventName}`, error)
+      console.warn(`[ably] unsubscribe failed for ${params.channelName}:${params.eventName}`, error)
     }
   }
 }

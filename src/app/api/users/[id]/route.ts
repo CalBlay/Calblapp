@@ -7,7 +7,11 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 import { preparePasswordForStorage } from '@/lib/server/passwords'
-import { pickSelfProfileUpdate, serializeUserResponse } from '@/lib/server/userApiSerialization'
+import {
+  pickSelfProfileUpdate,
+  serializeAdminUserResponse,
+  serializeUserResponse,
+} from '@/lib/server/userApiSerialization'
 
 // ──────────────────────────────────────────────────────────────
 // Helpers
@@ -111,12 +115,16 @@ export async function GET(
     }
 
     const data = snap.data() as Record<string, unknown>
-    return NextResponse.json(
-      serializeUserResponse(snap.id, data, {
-        role: canonicalRoleLabel(String(data.role || ''), Boolean(data.isAdmin)),
-        department: canonicalDepartmentLabel(String(data.department || '')),
-      })
-    )
+    const extras = {
+      role: canonicalRoleLabel(String(data.role || ''), Boolean(data.isAdmin)),
+      department: canonicalDepartmentLabel(String(data.department || '')),
+    }
+
+    if (isSelf) {
+      return NextResponse.json(serializeUserResponse(snap.id, data, extras))
+    }
+
+    return NextResponse.json(serializeAdminUserResponse(snap.id, data, extras))
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     return NextResponse.json({ error: message }, { status: 500 })
@@ -269,7 +277,7 @@ export async function PUT(
     const final = await db.collection('users').doc(id).get()
     const finalData = (final.data() || {}) as Record<string, unknown>
     return NextResponse.json(
-      serializeUserResponse(id, finalData, {
+      serializeAdminUserResponse(id, finalData, {
         role: canonicalRoleLabel(String(finalData.role || ''), Boolean(finalData.isAdmin)),
         department: canonicalDepartmentLabel(String(finalData.department || '')),
       })

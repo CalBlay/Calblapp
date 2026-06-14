@@ -1,0 +1,22 @@
+/** Tema unificat del xat Ops (taronja) — base per a tots els mòduls. */
+export const chatTheme = {
+  sheetBorder: 'border-amber-100',
+  avatar: 'bg-amber-100 text-amber-800',
+  avatarMuted: 'bg-slate-200 text-slate-600',
+  actionActive: 'bg-amber-100 text-amber-700',
+  actionHover: 'hover:text-amber-800',
+  ringActive: 'ring-amber-200',
+  bubbleOutgoing: 'bg-amber-600 text-white',
+  bubbleOutgoingAccent: 'border-amber-600 bg-amber-600 text-white',
+  bubbleLink: 'text-amber-700 dark:text-amber-300',
+  bubbleLinkHover: 'hover:text-amber-600',
+  sendButton: 'bg-amber-600 text-white hover:bg-amber-700',
+  sidebarChipActive: 'bg-amber-600 text-white border-amber-600',
+  sidebarRowActive: 'bg-amber-50 dark:bg-amber-900/20',
+  sidebarItemActive: 'bg-white text-slate-900 shadow-sm ring-1 ring-amber-200',
+  sidebarItemActiveMuted: 'bg-slate-100 text-slate-500 shadow-sm ring-1 ring-slate-200',
+  sidebarItemIdle: 'text-slate-700 hover:bg-white/80',
+  sidebarItemIdleMuted: 'text-slate-400 hover:bg-white/60',
+  responsibleBadge: 'text-amber-800',
+  navLinkHover: 'hover:text-amber-700',
+} as const

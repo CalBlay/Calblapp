@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { normalizeRole } from '@/lib/roles'
 import { loadNotificationSummaryParts } from '@/lib/notifications/summaryParts'
 
@@ -22,6 +22,7 @@ export type NotificationSummaryPayload = {
   logistics: number
   maintenance: number
   incidents: number
+  events: number
   surveys: number
   robaPersonal: number
   messaging: number
@@ -57,6 +58,7 @@ export async function GET() {
     const logistics = buckets.logistics
     const maintenance = buckets.maintenance
     const incidents = buckets.incidents
+    const events = buckets.events
 
     const payload: NotificationSummaryPayload = {
       adminUserRequests,
@@ -66,6 +68,7 @@ export async function GET() {
       logistics,
       maintenance,
       incidents,
+      events,
       surveys,
       robaPersonal,
       messaging,

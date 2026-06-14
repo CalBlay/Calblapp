@@ -200,9 +200,13 @@ export function UserPermissionsEditor({
         const viewAllowed = effectiveAllowed(overrides, PERM.view(p), base.view)
         const editAllowed = effectiveAllowed(overrides, PERM.edit(p), base.edit)
 
-        if (!shouldShowActionGroup(viewAllowed, editAllowed)) return null
+        if (!shouldShowActionGroup(viewAllowed, editAllowed, group.requireViewOnly)) return null
 
-        const defaultExpanded = actionGroupDefaultExpanded(viewAllowed, editAllowed)
+        const defaultExpanded = actionGroupDefaultExpanded(
+          viewAllowed,
+          editAllowed,
+          group.requireViewOnly
+        )
         const expanded = actionGroupExpandedManual[group.id] ?? defaultExpanded
 
         return (

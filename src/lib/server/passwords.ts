@@ -13,7 +13,7 @@ export async function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(trimmed, BCRYPT_ROUNDS)
 }
 
-/** Comprova contrasenya (bcrypt o text pla legacy) i retorna hash nou si cal migrar. */
+/** Comprova contrasenya (bcrypt legacy o text pla al camp `password` de Firestore). */
 export async function verifyPasswordWithMigration(
   plain: string,
   stored: string
@@ -27,13 +27,13 @@ export async function verifyPasswordWithMigration(
     return { ok }
   }
 
-  if (input !== doc) return { ok: false }
-  return { ok: true, rehash: await hashPassword(input) }
+  return { ok: input === doc }
 }
 
+/** Desa la contrasenya en text pla al camp `password` (visibilitat admin). */
 export async function preparePasswordForStorage(plain?: string): Promise<string | undefined> {
   const trimmed = (plain || '').trim()
   if (!trimmed) return undefined
   if (isPasswordHashed(trimmed)) return trimmed
-  return hashPassword(trimmed)
+  return trimmed
 }

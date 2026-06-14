@@ -18,6 +18,7 @@ const EMPTY_SUMMARY: NotificationSummaryPayload = {
   logistics: 0,
   maintenance: 0,
   incidents: 0,
+  events: 0,
   surveys: 0,
   robaPersonal: 0,
   messaging: 0,

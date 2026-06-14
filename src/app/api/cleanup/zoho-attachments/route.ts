@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { cleanupZohoAttachmentsForStageVerd } from '@/services/zoho/cleanup'
 import { requireCronAuth } from '@/lib/server/internalApiAuth'
 

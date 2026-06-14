@@ -38,6 +38,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     'roba-personal': 'from-sky-100 to-indigo-50',
     reports: 'from-cyan-100 to-indigo-50',
     projects: 'from-violet-100 to-fuchsia-50',
+    settings: 'from-slate-100 to-gray-50',
   }
 
   const color = colorMap[moduleKey] ?? 'from-gray-50 to-gray-100'
@@ -58,6 +59,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     documentacio: 'Documentació',
     'roba-personal': 'Roba personal',
     reports: 'Informes',
+    settings: 'Settings',
   }
 
   const mainLabel = title || moduleLabels[moduleKey] || moduleKey
@@ -86,6 +88,9 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     historial: 'Historial',
     quadre: 'Quadre de comandament',
     tipologies: 'Tipologies',
+    permisos: 'Permisos',
+    magatzems: 'Magatzems',
+    articles: 'Articles comanda',
   }
 
   const subKey = subLabels[subsubmodule] ? subsubmodule : submodule

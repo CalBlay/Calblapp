@@ -227,7 +227,9 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
           pathname.startsWith('/menu/documentacio') ||
           pathname.startsWith('/menu/roba-personal') ||
           pathname.startsWith('/menu/spaces') ||
-          pathname.startsWith('/menu/calendar')
+          pathname.startsWith('/menu/calendar') ||
+          pathname.startsWith('/menu/settings/articles') ||
+          pathname.startsWith('/menu/settings/magatzems')
             ? 'h-auto w-full max-w-none overflow-visible px-2 pb-6 sm:px-4 lg:px-6 xl:px-8'
             : 'mx-auto h-auto max-w-7xl overflow-visible px-2 pb-6 sm:px-4'
         }

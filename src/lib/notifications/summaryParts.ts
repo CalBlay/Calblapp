@@ -3,6 +3,7 @@ import { countPendingAdminUserRequests } from '@/lib/notifications/pendingUserRe
 import { computeRobaBadgeCount } from '@/lib/notifications/robaBadgeCount'
 import { getUserUnreadBuckets, type NotificationUnreadBuckets } from '@/lib/notifications/unreadCounts'
 import { countPendingUserQuadrantSurveys } from '@/lib/quadrantSurveysPending'
+import { reconcileEventComandaNotificationCount } from '@/lib/eventComanda/notificationCount.server'
 
 async function safe<T>(label: string, fallback: T, fn: () => Promise<T>): Promise<T> {
   try {
@@ -26,7 +27,8 @@ export async function loadNotificationSummaryParts(params: {
 }> {
   const { userId, isAdmin, canAccessSurveys } = params
 
-  const [buckets, messaging, robaPersonal, surveys, pendingUserRequests] = await Promise.all([
+  const [buckets, messaging, robaPersonal, surveys, pendingUserRequests, eventComandaCount] =
+    await Promise.all([
     safe('unreadBuckets', {
       user_request: 0,
       user_request_result: 0,
@@ -35,7 +37,8 @@ export async function loadNotificationSummaryParts(params: {
       logistics: 0,
       maintenance: 0,
       incidents: 0,
-      version: 1,
+      events: 0,
+      version: 2,
       syncedAt: Date.now(),
     }, () => getUserUnreadBuckets(userId)),
     safe('messaging', 0, () => countMessagingUnread(userId)),
@@ -46,7 +49,14 @@ export async function loadNotificationSummaryParts(params: {
     safe('pendingUserRequests', 0, () =>
       isAdmin ? countPendingAdminUserRequests() : Promise.resolve(0)
     ),
+    safe('eventComanda', 0, () => reconcileEventComandaNotificationCount(userId)),
   ])
 
-  return { buckets, messaging, robaPersonal, surveys, pendingUserRequests }
+  return {
+    buckets: { ...buckets, events: eventComandaCount },
+    messaging,
+    robaPersonal,
+    surveys,
+    pendingUserRequests,
+  }
 }

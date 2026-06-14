@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { normalizeRole } from '@/lib/roles'
 import { type capabilityOp } from 'ably'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
@@ -28,6 +28,7 @@ export async function POST() {
   const capability: Record<string, capabilityOp[]> = {
     [`user:${clientId}:notifications`]: ['subscribe', 'history'],
     [`user:${clientId}:inbox`]: ['subscribe', 'history'],
+    [`user:${clientId}:direct`]: ['subscribe', 'history'],
     'chat:*': ['subscribe', 'publish', 'presence'],
   }
   if (role === 'admin') {

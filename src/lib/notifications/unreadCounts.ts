@@ -1,7 +1,7 @@
 import { FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { fetchUnreadNotificationDocs } from '@/lib/notifications/firestoreCounts'
-export const UNREAD_COUNTS_VERSION = 1
+export const UNREAD_COUNTS_VERSION = 2
 
 export type NotificationUnreadBuckets = {
   user_request: number
@@ -11,6 +11,7 @@ export type NotificationUnreadBuckets = {
   logistics: number
   maintenance: number
   incidents: number
+  events: number
   version: number
   syncedAt: number
 }
@@ -30,12 +31,11 @@ export function bucketForNotificationType(type: string): BucketKey | null {
   ) {
     return 'projects'
   }
-  if (
-    normalized === 'commercial_vehicle_request' ||
-    normalized === 'commercial_vehicle_validation'
-  ) {
+  if (normalized === 'commercial_vehicle_request' || normalized === 'commercial_vehicle_validation') {
     return 'logistics'
   }
+  if (normalized === 'event_comanda_warehouse') return 'events'
+  if (normalized === 'event_comanda_batch_sent') return 'events'
   if (
     normalized === 'maintenance_ticket_new' ||
     normalized === 'maintenance_ticket_assigned' ||
@@ -123,6 +123,7 @@ export async function readUserUnreadBuckets(userId: string): Promise<Notificatio
     logistics: Math.max(0, Number(raw.logistics || 0)),
     maintenance: Math.max(0, Number(raw.maintenance || 0)),
     incidents: Math.max(0, Number(raw.incidents || 0)),
+    events: Math.max(0, Number(raw.events || 0)),
     version: UNREAD_COUNTS_VERSION,
     syncedAt: Number(raw.syncedAt || 0),
   }
@@ -140,6 +141,7 @@ export async function syncUserUnreadBuckets(userId: string): Promise<Notificatio
     logistics: 0,
     maintenance: 0,
     incidents: 0,
+    events: 0,
     version: UNREAD_COUNTS_VERSION,
     syncedAt: Date.now(),
   }
@@ -161,6 +163,7 @@ const EMPTY_BUCKETS = (): NotificationUnreadBuckets => ({
   logistics: 0,
   maintenance: 0,
   incidents: 0,
+  events: 0,
   version: UNREAD_COUNTS_VERSION,
   syncedAt: Date.now(),
 })

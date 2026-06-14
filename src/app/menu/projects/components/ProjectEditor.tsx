@@ -30,7 +30,6 @@ import {
   createBlockDraft,
   createTaskDraft,
   normalizeDepartment,
-  type ResponsibleOption,
 } from './project-workspace-helpers'
 
 const todayKey = () => new Date().toISOString().slice(0, 10)

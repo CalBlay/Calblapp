@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
-import { getAblyClient } from '@/lib/ablyClient'
+import { bindAblyChannelSubscriptions, publishAblyEvent } from '@/lib/ablyClient'
 import { toast } from '@/components/ui/use-toast'
 import MessageList from '@/app/menu/missatgeria/components/MessageList'
 import Composer from '@/app/menu/missatgeria/components/Composer'
@@ -16,6 +16,8 @@ type Props = {
   channelId: string
   userId?: string
   embedded?: boolean
+  /** Xat tancat: només lectura de missatges, sense composer ni esborrat. */
+  consultOnly?: boolean
   canCreateTaskFromHash?: boolean
   onCreateTaskFromHash?: (text: string) => Promise<{ title: string }>
   onOperationalDocumentCreated?: (document: {
@@ -30,13 +32,11 @@ type Props = {
   }) => void
 }
 
-type RealtimeMessage = { data?: Message }
-type TypingRealtimeMessage = { data?: { userId?: string } }
-
 export default function ProjectRoomOpsChat({
   channelId,
   userId,
   embedded = false,
+  consultOnly = false,
   canCreateTaskFromHash = false,
   onCreateTaskFromHash,
   onOperationalDocumentCreated,
@@ -82,7 +82,9 @@ export default function ProjectRoomOpsChat({
     () => (Array.isArray(messagesData?.messages) ? messagesData.messages : []),
     [messagesData?.messages]
   )
-  const isReadOnly = String(channelData?.channel?.status || '').toLowerCase() === 'archived'
+  const isReadOnly =
+    consultOnly ||
+    String(channelData?.channel?.status || '').toLowerCase() === 'archived'
 
   const notifyOperationalDocument = useMemo(
     () => (message: Partial<Message> | null | undefined) => {
@@ -163,11 +165,9 @@ export default function ProjectRoomOpsChat({
 
   useEffect(() => {
     if (!channelId) return
-    const client = getAblyClient()
-    const channel = client.channels.get(`chat:${channelId}`)
 
-    const handleMessage = (msg: RealtimeMessage) => {
-      const data = msg?.data
+    const handleMessage = (msg: { data?: unknown }) => {
+      const data = msg?.data as Message | undefined
       if (!data || data.channelId !== channelId) return
       notifyOperationalDocument(data)
       setMessagesState((current) => {
@@ -176,20 +176,21 @@ export default function ProjectRoomOpsChat({
       })
     }
 
-    const handleTyping = (msg: TypingRealtimeMessage) => {
-      const data = msg?.data
+    const handleTyping = (msg: { data?: unknown }) => {
+      const data = msg?.data as { userId?: string } | undefined
       if (!data?.userId || data.userId === userId) return
       setTypingUsers((prev) => ({ ...prev, [data.userId!]: Date.now() }))
     }
 
-    channel.subscribe('message', handleMessage)
-    channel.subscribe('typing', handleTyping)
-
-    return () => {
-      channel.unsubscribe('message', handleMessage)
-      channel.unsubscribe('typing', handleTyping)
-    }
-  }, [channelId, notifyOperationalDocument, refreshMessages, userId])
+    return bindAblyChannelSubscriptions({
+      channelName: `chat:${channelId}`,
+      userId,
+      subscriptions: [
+        { eventName: 'message', handler: handleMessage },
+        { eventName: 'typing', handler: handleTyping },
+      ],
+    })
+  }, [channelId, notifyOperationalDocument, userId])
 
   useEffect(() => {
     const now = Date.now()
@@ -351,9 +352,12 @@ export default function ProjectRoomOpsChat({
     const now = Date.now()
     if (now - typingThrottleRef.current < 1500) return
     typingThrottleRef.current = now
-    const client = getAblyClient()
-    const channel = client.channels.get(`chat:${channelId}`)
-    channel.publish('typing', { userId })
+    publishAblyEvent({
+      channelName: `chat:${channelId}`,
+      eventName: 'typing',
+      data: { userId },
+      userId,
+    })
   }
 
   const updateMentionState = (value: string) => {
@@ -443,6 +447,7 @@ export default function ProjectRoomOpsChat({
           canCreateTicket={false}
           creatingTicketId={null}
           ticketTypePickerId={null}
+          readOnly={isReadOnly}
           onDelete={deleteMessage}
           onCreateTicket={() => {}}
           onPickTicketType={() => {}}
@@ -450,7 +455,12 @@ export default function ProjectRoomOpsChat({
         />
       </div>
 
-      <Composer
+      {isReadOnly && embedded ? (
+        <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs text-slate-500">
+          Xat tancat — només consulta
+        </div>
+      ) : (
+        <Composer
         typingUsers={typingUsers}
         pendingImage={pendingImage}
         pendingFileName={pendingFile?.name || null}
@@ -479,6 +489,7 @@ export default function ProjectRoomOpsChat({
         fileAccept="*/*"
         embedded={embedded}
       />
+      )}
     </div>
   )
 }

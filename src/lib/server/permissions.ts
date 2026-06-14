@@ -38,6 +38,14 @@ import {
   INCIDENTS_UI_PATH,
   incidentsActionBaseAccess,
 } from '@/lib/incidentsPermissions'
+import {
+  EVENTS_COMANDA_ACTION,
+  EVENTS_COMANDA_CREATE_PERM,
+  EVENTS_COMANDA_PREPARE_PERM,
+  EVENTS_UI_PATH,
+  EVENTS_WAREHOUSE_COMANDA_ONLY_PERM,
+  eventsWarehouseComandaActionBaseAccess,
+} from '@/lib/eventComandaPermissions'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 
@@ -264,6 +272,35 @@ export async function isUiPermissionGranted(params: {
       )
       if (eff !== 'allow') return false
       return incidentsActionBaseAccess(params.user, base, INCIDENTS_ACTION.COMMAND_BOARD)
+    }
+  }
+
+  if (parsed?.path === EVENTS_UI_PATH) {
+    if (parsed.action === EVENTS_COMANDA_ACTION.CREATE) {
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        EVENTS_COMANDA_CREATE_PERM
+      )
+      if (eff !== 'allow') return false
+      const canViewEvents = await canViewUiPath({ user: params.user, path: EVENTS_UI_PATH })
+      return eventsWarehouseComandaActionBaseAccess({ canViewEvents })
+    }
+
+    if (
+      parsed.action === EVENTS_COMANDA_ACTION.PREPARE ||
+      parsed.action === EVENTS_COMANDA_ACTION.WAREHOUSE_ONLY
+    ) {
+      const prepareEff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        EVENTS_COMANDA_PREPARE_PERM
+      )
+      const legacyEff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        EVENTS_WAREHOUSE_COMANDA_ONLY_PERM
+      )
+      if (prepareEff !== 'allow' && legacyEff !== 'allow') return false
+      const canViewEvents = await canViewUiPath({ user: params.user, path: EVENTS_UI_PATH })
+      return eventsWarehouseComandaActionBaseAccess({ canViewEvents })
     }
   }
 

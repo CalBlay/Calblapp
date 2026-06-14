@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { storageAdmin } from '@/lib/firebaseAdmin'
 import { processUploadedImageFile } from '@/lib/media/uploadImagePipeline'
 import { MAX_UPLOAD_IMAGE_BYTES } from '@/lib/media/uploadLimits'

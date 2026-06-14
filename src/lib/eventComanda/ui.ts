@@ -1,7 +1,8 @@
 import { corporateFilterBadgeClass } from '@/lib/corporate-filters'
+import { EVENT_COMANDA_BATCH_STATUS_BADGES } from '@/lib/eventComanda/batchStatus'
 import { eventComandaQtyUnit } from '@/lib/eventComanda/parseErpExcel'
 import { cn } from '@/lib/utils'
-import type { EventComandaStatus } from './types'
+import type { EventComandaBatchStatus, EventComandaStatus } from './types'
 
 /** Badges d'estat alineats amb la paleta corporativa (`colors.ts`, manteniment, filtres). */
 export const EVENT_COMANDA_STATUS_BADGES: Record<EventComandaStatus, string> = {
@@ -11,7 +12,6 @@ export const EVENT_COMANDA_STATUS_BADGES: Record<EventComandaStatus, string> = {
   order_sent: 'border-sky-200 bg-sky-50 text-sky-900',
   order_in_progress: 'border-indigo-200 bg-indigo-50 text-indigo-900',
   order_closed: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-  replenishment_pending: 'border-rose-200 bg-rose-50 text-rose-900',
 }
 
 export const EVENT_COMANDA_ICON_CLASS: Record<EventComandaStatus, string> = {
@@ -21,7 +21,6 @@ export const EVENT_COMANDA_ICON_CLASS: Record<EventComandaStatus, string> = {
   order_sent: 'text-sky-600',
   order_in_progress: 'text-indigo-600',
   order_closed: 'text-emerald-600',
-  replenishment_pending: 'text-rose-600',
 }
 
 export function eventComandaStatusBadgeClass(status: EventComandaStatus) {
@@ -30,6 +29,10 @@ export function eventComandaStatusBadgeClass(status: EventComandaStatus) {
 
 export function eventComandaIconClass(status?: EventComandaStatus | null) {
   return EVENT_COMANDA_ICON_CLASS[status || 'no_template']
+}
+
+export function eventComandaBatchStatusBadgeClass(status: EventComandaBatchStatus) {
+  return corporateFilterBadgeClass(true, EVENT_COMANDA_BATCH_STATUS_BADGES[status])
 }
 
 export const eventComandaPageShellClass =

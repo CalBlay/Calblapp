@@ -35,6 +35,7 @@ import useSWR from 'swr'
 import {
   useAdminUserRequestCount,
   useLogisticsReservationNotificationCount,
+  useEventComandaNotificationCount,
   useProjectAssignmentCount,
   useRobaPersonalRequestNotificationCount,
   useUserRequestResultCount,
@@ -302,6 +303,7 @@ function MenuContent({ user }: { user: SessionUser }) {
   const { count: surveyNotificationCount } = useSurveyNotificationCount()
   const { count: robaPersonalRequestCount } = useRobaPersonalRequestNotificationCount()
   const { count: logisticsReservationNotificationCount } = useLogisticsReservationNotificationCount()
+  const { count: eventComandaNotificationCount } = useEventComandaNotificationCount()
   const maintenanceBadge = maintenanceNotificationCount
 
   const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -407,6 +409,11 @@ function MenuContent({ user }: { user: SessionUser }) {
                 {mod.path === '/menu/roba-personal' && robaPersonalRequestCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                     {robaPersonalRequestCount}
+                  </span>
+                )}
+                {mod.path === '/menu/events' && eventComandaNotificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {eventComandaNotificationCount}
                   </span>
                 )}
                 {mod.path === '/menu/logistica' && logisticsReservationNotificationCount > 0 && (

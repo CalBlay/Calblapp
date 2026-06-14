@@ -65,7 +65,6 @@ export function useUsers() {
 
     const payload: SaveUserInput = {
       name:       data.name,
-      password:   data.password,
       role:       data.role,
       isAdmin:    data.isAdmin,
       department: data.department,
@@ -82,6 +81,9 @@ export function useUsers() {
       isDepartmentRobaLead: data.isDepartmentRobaLead,
       isTransportLead: data.isTransportLead,
       accessAssignment: data.accessAssignment,
+    }
+    if (data.password?.trim()) {
+      payload.password = data.password.trim()
     }
 
     let res: Response

@@ -367,6 +367,10 @@ export async function parseErpExcelFile(file: File): Promise<ParseErpExcelResult
     }
   }
   const sheet = workbook.Sheets[sheetName]
-  const rows = sheetToDisplayRows(sheet, XLSX.utils)
+  const rows = sheetToDisplayRows(sheet, {
+    decode_range: XLSX.utils.decode_range,
+    encode_cell: XLSX.utils.encode_cell,
+    format_cell: XLSX.utils.format_cell,
+  })
   return parseErpExcelRows(rows)
 }

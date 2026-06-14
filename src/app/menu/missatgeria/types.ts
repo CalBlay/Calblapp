@@ -13,6 +13,9 @@ export type Channel = {
   eventTitle?: string | null
   eventStart?: string | null
   eventEnd?: string | null
+  eventId?: string | null
+  warehouseId?: string | null
+  batchId?: string | null
   visibleUntil?: number | null
   status?: string | null
   responsibleUserId?: string | null

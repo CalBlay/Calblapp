@@ -1,6 +1,4 @@
-'use client'
-
-import React from 'react'
+import { chatTheme } from '@/components/messaging/chatTheme'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Trash2 } from 'lucide-react'
@@ -17,6 +15,7 @@ type Props = {
   canCreateTicket: boolean
   creatingTicketId: string | null
   ticketTypePickerId: string | null
+  readOnly?: boolean
   onDelete: (id: string) => void
   onCreateTicket: (message: Message, type: 'maquinaria' | 'deco') => void
   onPickTicketType: (messageId: string | null) => void
@@ -29,6 +28,7 @@ export default function MessageList({
   canCreateTicket,
   creatingTicketId,
   ticketTypePickerId,
+  readOnly = false,
   onDelete,
   onCreateTicket,
   onPickTicketType,
@@ -58,7 +58,7 @@ export default function MessageList({
                   {message.visibility === 'direct' ? ' · Directe' : ''}
                 </span>
                 {ticks ? <span className="text-[10px] text-gray-400">{ticks}</span> : null}
-                {isMine && (
+                {isMine && !readOnly && (
                   <button
                     type="button"
                     className="text-gray-400 hover:text-red-600"
@@ -72,7 +72,7 @@ export default function MessageList({
               <div
                 className={`text-sm rounded-lg p-2 space-y-2 max-w-[85%] ${
                   isMine
-                    ? 'bg-emerald-600 text-white'
+                    ? chatTheme.bubbleOutgoing
                     : 'bg-gray-100 text-gray-900 dark:bg-slate-800 dark:text-slate-100'
                 }`}
               >
@@ -100,8 +100,8 @@ export default function MessageList({
                             className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
                               active
                                 ? isMine
-                                  ? 'border-white bg-white text-emerald-700'
-                                  : 'border-emerald-600 bg-emerald-600 text-white'
+                                  ? 'border-white bg-white text-amber-700'
+                                  : chatTheme.bubbleOutgoingAccent
                                 : isMine
                                 ? 'border-white/40 text-white hover:bg-white/10'
                                 : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
@@ -133,7 +133,7 @@ export default function MessageList({
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`inline-block underline ${
-                      isMine ? 'text-white' : 'text-emerald-700 dark:text-emerald-300'
+                      isMine ? 'text-white' : chatTheme.bubbleLink
                     }`}
                   >
                     {message.fileName || 'Descarregar fitxer'}
@@ -147,7 +147,7 @@ export default function MessageList({
                       href={`/menu/manteniment/${
                         message.ticketType === 'deco' ? 'tickets-deco' : 'tickets'
                       }?ticket=${message.ticketId}`}
-                      className="underline hover:text-emerald-600"
+                      className={`underline ${chatTheme.bubbleLinkHover}`}
                     >
                       Veure ticket {message.ticketCode ? `· ${message.ticketCode}` : ''}
                     </Link>
@@ -157,7 +157,7 @@ export default function MessageList({
                         type="button"
                         onClick={() => onCreateTicket(message, 'maquinaria')}
                         disabled={creatingTicketId === message.id}
-                        className="underline hover:text-emerald-600"
+                        className={`underline ${chatTheme.bubbleLinkHover}`}
                       >
                         Maquinària
                       </button>
@@ -166,7 +166,7 @@ export default function MessageList({
                         type="button"
                         onClick={() => onCreateTicket(message, 'deco')}
                         disabled={creatingTicketId === message.id}
-                        className="underline hover:text-emerald-600"
+                        className={`underline ${chatTheme.bubbleLinkHover}`}
                       >
                         Deco
                       </button>
@@ -184,7 +184,7 @@ export default function MessageList({
                       type="button"
                       onClick={() => onPickTicketType(message.id)}
                       disabled={creatingTicketId === message.id}
-                      className="underline hover:text-emerald-600"
+                      className={`underline ${chatTheme.bubbleLinkHover}`}
                     >
                       {creatingTicketId === message.id ? 'Creant ticket\u2026' : 'Crear ticket'}
                     </button>

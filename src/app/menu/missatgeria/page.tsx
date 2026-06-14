@@ -3,23 +3,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
-import { BellOff, BellRing, Users } from 'lucide-react'
 import Link from 'next/link'
 import { RoleGuard } from '@/lib/withRoleGuard'
-import { getAblyClient } from '@/lib/ablyClient'
+import { bindAblyChannelSubscriptions, publishAblyEvent } from '@/lib/ablyClient'
 import { useSearchParams } from 'next/navigation'
 import { normalizeRole } from '@/lib/roles'
-import ChannelsSidebar from './components/ChannelsSidebar'
-import MembersPanel from './components/MembersPanel'
+import OpsChannelsSidebar from '@/components/messaging/OpsChannelsSidebar'
+import { channelsToSidebarItems } from '@/lib/messaging/channelSidebarItems'
+import { canManageChannelParticipants, canShowChannelInvite } from '@/lib/messaging/channelChatPermissions'
+import ChannelChatHeader from '@/components/messaging/ChannelChatHeader'
+import ChannelParticipantsPanel, {
+  type ChannelParticipantMember,
+} from '@/components/messaging/ChannelParticipantsPanel'
+import type { InviteUserOption } from '@/lib/messaging/userSearch'
 import MessageList from './components/MessageList'
 import Composer from './components/Composer'
 import type { Channel, Member, Message, PendingImage } from './types'
-import { eventDateLabel, initials } from './utils'
+import { eventDateLabel } from './utils'
 import { compressRasterImageWithMeta, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
-import {
-  BLOCK_WORKSPACE_OPEN_LABEL,
-  buildProjectRoomHref,
-} from '@/app/menu/projects/components/project-room-ui'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -36,10 +37,6 @@ export default function MissatgeriaPage() {
   const userRole = normalizeRole(sessionUser.role || '')
   const searchParams = useSearchParams()
   const eventMode = searchParams?.get('event') === '1'
-  const returnTo = useMemo(() => {
-    const raw = searchParams?.get('returnTo')
-    return raw ? decodeURIComponent(raw) : null
-  }, [searchParams])
 
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null)
   const [messageText, setMessageText] = useState('')
@@ -47,7 +44,6 @@ export default function MissatgeriaPage() {
   const [messagesState, setMessagesState] = useState<Message[]>([])
   const [loadingMore, setLoadingMore] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<'finques' | 'restaurants' | 'events' | 'projects'>('finques')
-  const [channelQuery, setChannelQuery] = useState('')
   const [imageUploading, setImageUploading] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null)
@@ -65,6 +61,8 @@ export default function MissatgeriaPage() {
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list')
   const [membersOpen, setMembersOpen] = useState(false)
   const [savingResponsible, setSavingResponsible] = useState(false)
+  const [addingMember, setAddingMember] = useState(false)
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null)
   const [creatingTicketId, setCreatingTicketId] = useState<string | null>(null)
   const [ticketTypePickerId, setTicketTypePickerId] = useState<string | null>(null)
   const [eventChannel, setEventChannel] = useState<Channel | null>(null)
@@ -102,7 +100,6 @@ export default function MissatgeriaPage() {
     lastEventIdRef.current = rawEventId
 
     setCategoryFilter('events')
-    setChannelQuery('')
     setMobileView('chat')
 
     let active = true
@@ -190,28 +187,30 @@ export default function MissatgeriaPage() {
     } else {
       out = out.filter((c) => c.source === categoryFilter)
     }
-    const q = channelQuery.trim().toLowerCase()
-    if (q) {
-      out = out.filter((c) => {
-        const hay = [
-          c.name,
-          c.source,
-          c.location,
-          c.projectName,
-          c.roomName,
-          c.eventCode,
-          c.eventTitle,
-          c.eventStart,
-          c.eventEnd,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-        return hay.includes(q)
-      })
-    }
     return out
-  }, [allChannels, categoryFilter, channelQuery, eventMode, selectedChannelId, isActiveEventChannelForList])
+  }, [allChannels, categoryFilter, eventMode, selectedChannelId, isActiveEventChannelForList])
+
+  const sidebarItems = useMemo(
+    () => channelsToSidebarItems(filteredChannels),
+    [filteredChannels]
+  )
+
+  const sidebarFilters = useMemo(
+    () =>
+      eventMode
+        ? undefined
+        : [
+            { key: 'finques', label: 'Finques' },
+            { key: 'restaurants', label: 'Restaurants' },
+            { key: 'projects', label: 'Projectes' },
+            {
+              key: 'events',
+              label: 'Events',
+              badge: activeEventUnread > 0 ? activeEventUnread : undefined,
+            },
+          ],
+    [activeEventUnread, eventMode]
+  )
 
   useEffect(() => {
     const queryChannel = searchParams?.get('channel')
@@ -251,16 +250,6 @@ export default function MissatgeriaPage() {
     fetcher
   )
 
-  const members = useMemo<Member[]>(
-    () => (Array.isArray(membersData?.members) ? membersData.members : []),
-    [membersData?.members]
-  )
-
-  const selfMember = useMemo(
-    () => members.find((m) => m.userId === userId) || null,
-    [members, userId]
-  )
-
   const selectedChannel = useMemo(
     () => allChannels.find((c) => c.id === selectedChannelId) || null,
     [allChannels, selectedChannelId]
@@ -269,7 +258,7 @@ export default function MissatgeriaPage() {
   const isReadOnlyChannel = useMemo(() => {
     if (!selectedChannel) return false
     const status = String(selectedChannel.status || '').toLowerCase()
-    if (selectedChannel.source === 'projects') {
+    if (selectedChannel.source === 'projects' || selectedChannel.source === 'event_comanda') {
       return status === 'archived'
     }
     if (selectedChannel.source !== 'events') return false
@@ -282,7 +271,65 @@ export default function MissatgeriaPage() {
     return false
   }, [selectedChannel])
 
-  const canEditResponsible = userRole === 'admin' || userRole === 'direccio'
+  const members = useMemo<ChannelParticipantMember[]>(
+    () =>
+      Array.isArray(membersData?.members)
+        ? membersData.members.map((member: ChannelParticipantMember) => ({
+            userId: String(member.userId || ''),
+            userName: String(member.userName || ''),
+            department: member.department,
+            role: member.role,
+            isResponsible: Boolean(member.isResponsible),
+            canRemove: Boolean(member.canRemove),
+          }))
+        : [],
+    [membersData?.members]
+  )
+
+  const selfMember = useMemo(
+    () => {
+      const raw = Array.isArray(membersData?.members) ? membersData.members : []
+      return raw.find((member: Member) => member.userId === userId) || null
+    },
+    [membersData?.members, userId]
+  )
+
+  const membersLoaded = membersData !== undefined
+
+  const invitePermission = {
+    channelId: selectedChannelId,
+    apiCanManage: membersData?.canManageMembers,
+    membersLoaded,
+    actorUserId: userId,
+    actorRole: userRole,
+    responsibleUserId: selectedChannel?.responsibleUserId ?? membersData?.responsibleUserId ?? null,
+  }
+  const canInviteMembers = canShowChannelInvite(invitePermission)
+  const canManageParticipants = canManageChannelParticipants(invitePermission)
+
+  const canEditResponsible = Boolean(membersData?.canEditResponsible)
+  const canToggleVisibility = userRole === 'admin' || userRole === 'direccio'
+  const channelMuted = Boolean(membersData?.viewer?.muted ?? selectedChannel?.muted)
+  const selfHidden = Boolean(membersData?.viewer?.hidden ?? selfMember?.hidden)
+
+  const { data: inviteUsersData } = useSWR<InviteUserOption[]>(
+    canInviteMembers ? '/api/users?view=project-options' : null,
+    fetcher
+  )
+
+  const inviteUsers = useMemo<InviteUserOption[]>(() => {
+    const users = Array.isArray(inviteUsersData) ? inviteUsersData : []
+    const memberIds = new Set(members.map((member) => member.userId))
+    return users
+      .filter((user) => user.id && user.name && !memberIds.has(user.id))
+      .map((user) => ({
+        id: user.id,
+        name: user.name,
+        department: user.department,
+        role: user.role,
+      }))
+  }, [inviteUsersData, members])
+
   const canCreateTicket =
     !!selectedChannel &&
     selectedChannel.source === 'finques' &&
@@ -353,42 +400,58 @@ export default function MissatgeriaPage() {
 
   useEffect(() => {
     if (!userId) return
-    const client = getAblyClient()
-    const inboxChannel = client.channels.get(`user:${userId}:inbox`)
-    const handler = () => refreshChannels()
-    inboxChannel.subscribe('updated', handler)
-
-    return () => {
-      inboxChannel.unsubscribe('updated', handler)
-    }
+    return bindAblyChannelSubscriptions({
+      channelName: `user:${userId}:inbox`,
+      userId,
+      subscriptions: [
+        {
+          eventName: 'updated',
+          handler: () => refreshChannels(),
+        },
+      ],
+    })
   }, [userId, refreshChannels])
 
   useEffect(() => {
     if (!selectedChannelId) return
-    const client = getAblyClient()
-    const channel = client.channels.get(`chat:${selectedChannelId}`)
-    const direct = userId ? client.channels.get(`user:${userId}:direct`) : null
 
-    const handleMessage = (msg: { data?: Message }) => {
+    const handleMessage = (msg: { data?: unknown }) => {
       const data = msg?.data as Message | undefined
       if (!data) return
       if (data.channelId !== selectedChannelId) return
       syncMessagesLocal((current) => [data, ...current.filter((item) => item.id !== data.id)])
     }
 
-    channel.subscribe('message', handleMessage)
-    channel.subscribe('typing', (msg) => {
+    const handleTyping = (msg: { data?: unknown }) => {
       const data = msg?.data as { userId?: string; userName?: string } | undefined
       if (!data?.userId || data.userId === userId) return
       const typingUserId = String(data.userId)
       setTypingUsers((prev) => ({ ...prev, [typingUserId]: Date.now() }))
-    })
-    direct?.subscribe('message', handleMessage)
+    }
+
+    const cleanups = [
+      bindAblyChannelSubscriptions({
+        channelName: `chat:${selectedChannelId}`,
+        userId,
+        subscriptions: [
+          { eventName: 'message', handler: handleMessage },
+          { eventName: 'typing', handler: handleTyping },
+        ],
+      }),
+    ]
+
+    if (userId) {
+      cleanups.push(
+        bindAblyChannelSubscriptions({
+          channelName: `user:${userId}:direct`,
+          userId,
+          subscriptions: [{ eventName: 'message', handler: handleMessage }],
+        })
+      )
+    }
 
     return () => {
-      channel.unsubscribe('message', handleMessage)
-      channel.unsubscribe('typing')
-      direct?.unsubscribe('message', handleMessage)
+      cleanups.forEach((cleanup) => cleanup())
     }
   }, [selectedChannelId, userId, syncMessagesLocal])
 
@@ -543,9 +606,12 @@ export default function MissatgeriaPage() {
     const now = Date.now()
     if (now - typingThrottleRef.current < 1500) return
     typingThrottleRef.current = now
-    const client = getAblyClient()
-    const channel = client.channels.get(`chat:${selectedChannelId}`)
-    channel.publish('typing', { userId, userName: sessionUser.name || '' })
+    publishAblyEvent({
+      channelName: `chat:${selectedChannelId}`,
+      eventName: 'typing',
+      data: { userId, userName: sessionUser.name || '' },
+      userId,
+    })
   }
 
   useEffect(() => {
@@ -659,40 +725,162 @@ export default function MissatgeriaPage() {
         body: JSON.stringify({ userId: targetUserId }),
       })
       await refreshChannels()
+      await refreshMembers()
     } finally {
       setSavingResponsible(false)
     }
   }
 
+  const addParticipant = async (user: InviteUserOption) => {
+    if (!selectedChannel?.id || !user.id) return
+
+    setAddingMember(true)
+    try {
+      const res =
+        selectedChannel.source === 'event_comanda' &&
+        selectedChannel.eventId &&
+        selectedChannel.warehouseId
+          ? await fetch(
+              `/api/events/${encodeURIComponent(String(selectedChannel.eventId))}/comanda/chat/members`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userId: user.id,
+                  warehouseId: selectedChannel.warehouseId,
+                  batchId: selectedChannel.batchId,
+                }),
+              }
+            )
+          : await fetch(
+              `/api/messaging/channels/${encodeURIComponent(selectedChannel.id)}/members`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id }),
+              }
+            )
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json?.error || `HTTP ${res.status}`)
+      }
+      await Promise.all([refreshMembers(), refreshChannels()])
+    } catch (err: unknown) {
+      console.error('[missatgeria] add participant failed', err)
+    } finally {
+      setAddingMember(false)
+    }
+  }
+
+  const removeParticipant = async (targetUserId: string) => {
+    if (!selectedChannel?.id) return
+
+    setRemovingUserId(targetUserId)
+    try {
+      const res =
+        selectedChannel.source === 'event_comanda' &&
+        selectedChannel.eventId &&
+        selectedChannel.warehouseId
+          ? await fetch(
+              `/api/events/${encodeURIComponent(String(selectedChannel.eventId))}/comanda/chat/members?userId=${encodeURIComponent(targetUserId)}&warehouseId=${encodeURIComponent(String(selectedChannel.warehouseId))}&batchId=${encodeURIComponent(String(selectedChannel.batchId || ''))}`,
+              { method: 'DELETE' }
+            )
+          : await fetch(
+              `/api/messaging/channels/${encodeURIComponent(selectedChannel.id)}/members?userId=${encodeURIComponent(targetUserId)}`,
+              { method: 'DELETE' }
+            )
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json?.error || `HTTP ${res.status}`)
+      }
+      await Promise.all([refreshMembers(), refreshChannels()])
+    } catch (err: unknown) {
+      console.error('[missatgeria] remove participant failed', err)
+    } finally {
+      setRemovingUserId(null)
+    }
+  }
+
+  const inviteExcludeIds = useMemo(
+    () => new Set(members.map((member) => member.userId)),
+    [members]
+  )
+
+  const selectedChannelTitle =
+    selectedChannel?.eventTitle ||
+    selectedChannel?.roomName ||
+    selectedChannel?.location ||
+    selectedChannel?.name ||
+    'Selecciona un canal'
+
+  const selectedChannelSubtitle = useMemo(() => {
+    if (!selectedChannel) return undefined
+    if (selectedChannel.source === 'events' || selectedChannel.source === 'event_comanda') {
+      return [
+        selectedChannel.eventCode,
+        selectedChannel.source === 'event_comanda' ? 'Comanda' : null,
+        eventDateLabel(selectedChannel.eventStart),
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    }
+    if (selectedChannel.source === 'projects') {
+      return [selectedChannel.projectName, selectedChannel.location].filter(Boolean).join(' · ')
+    }
+    return selectedChannel.location || undefined
+  }, [selectedChannel])
+
+  const mentionMembers = useMemo<Member[]>(
+    () =>
+      members.map((member) => ({
+        userId: member.userId,
+        userName: member.userName,
+      })),
+    [members]
+  )
+
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
       <div className="p-0 lg:p-4">
-        {mobileView === 'list' && (
-          <div className="px-3 py-2 flex items-center justify-between">
+        {mobileView === 'list' ? (
+          <div className="px-3 py-2 lg:hidden">
             <Link
               href="/menu"
-              className="text-base font-semibold text-gray-900 hover:text-emerald-700 dark:text-slate-100"
+              className="text-sm font-medium text-slate-600 hover:text-amber-700"
             >
-              Ops · Canal intern
+              ← Menú
             </Link>
           </div>
-        )}
+        ) : null}
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div className={`lg:col-span-1 ${mobileView === 'chat' ? 'hidden lg:block' : 'block'}`}>
-            <ChannelsSidebar
-              eventMode={eventMode}
-              categoryFilter={categoryFilter}
-              setCategoryFilter={setCategoryFilter}
-              channelQuery={channelQuery}
-              setChannelQuery={setChannelQuery}
-              filteredChannels={filteredChannels}
-              selectedChannelId={selectedChannelId}
-              onOpenChannel={openChannel}
-              activeEventUnread={activeEventUnread}
-              showArchivedEvents={showArchivedEvents}
-              setShowArchivedEvents={setShowArchivedEvents}
-              userRole={userRole}
+            <OpsChannelsSidebar
+              eyebrow="Ops"
+              description="Canal intern"
+              items={sidebarItems}
+              selectedId={selectedChannelId}
+              onSelect={openChannel}
+              filters={sidebarFilters}
+              activeFilter={categoryFilter}
+              onFilterChange={(key) =>
+                setCategoryFilter(key as 'finques' | 'restaurants' | 'events' | 'projects')
+              }
+              footer={
+                !eventMode && categoryFilter === 'events' && userRole === 'admin' ? (
+                  <label className="flex items-center gap-2 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={showArchivedEvents}
+                      onChange={(event) => setShowArchivedEvents(event.target.checked)}
+                    />
+                    Veure tots els xats
+                  </label>
+                ) : null
+              }
+              listClassName="max-h-[70vh] lg:max-h-none"
             />
           </div>
 
@@ -701,124 +889,60 @@ export default function MissatgeriaPage() {
               mobileView === 'list' ? 'hidden lg:flex' : 'flex'
             } lg:border lg:rounded-xl lg:shadow-sm min-h-[100dvh] lg:min-h-0`}
           >
-            <div className="px-3 py-2 lg:py-3 lg:border-b flex items-center justify-between dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="lg:hidden text-2xl text-gray-700 hover:text-gray-900 dark:text-slate-200 dark:hover:text-white -ml-1 px-2"
-                  onClick={() => setMobileView('list')}
-                  aria-label="Tornar"
-                >
-                  ←
-                </button>
-                <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-700 dark:bg-slate-700 dark:text-slate-100 flex items-center justify-center text-xs font-semibold">
-                  {initials(
-                    selectedChannel?.eventTitle ||
-                      selectedChannel?.location ||
-                      selectedChannel?.name
-                  )}
-                </div>
-                <div className="min-w-0">
-                  {returnTo && selectedChannel ? (
-                    <button
-                      type="button"
-                      className="text-sm font-semibold text-gray-800 dark:text-slate-100 truncate hover:text-emerald-700 dark:hover:text-emerald-300 text-left"
-                      onClick={() => {
-                        if (typeof window !== 'undefined') {
-                          window.location.href = returnTo
-                          return
-                        }
-                      }}
-                      title="Tornar a l'esdeveniment"
-                    >
-                      {selectedChannel?.eventTitle ||
-                        selectedChannel?.roomName ||
-                        selectedChannel?.location ||
-                        selectedChannel?.name ||
-                        'Selecciona un canal'}
-                    </button>
-                  ) : (
-                    <div className="text-sm font-semibold text-gray-800 dark:text-slate-100 truncate">
-                      {selectedChannel?.eventTitle ||
-                        selectedChannel?.roomName ||
-                        selectedChannel?.location ||
-                        selectedChannel?.name ||
-                        'Selecciona un canal'}
-                    </div>
-                  )}
-                  {selectedChannel?.source === 'events' && (
-                    <div className="text-[11px] text-gray-500 dark:text-slate-400 truncate">
-                      {[selectedChannel.eventCode, eventDateLabel(selectedChannel.eventStart)]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </div>
-                  )}
-                  {selectedChannel?.source === 'projects' && (
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500 dark:text-slate-400">
-                      <span className="truncate">
-                        {[selectedChannel.projectName, selectedChannel.location].filter(Boolean).join(' · ')}
-                      </span>
-                      {selectedChannel.projectId && selectedChannel.roomId ? (
-                        <Link
-                          href={buildProjectRoomHref(
-                            String(selectedChannel.projectId),
-                            String(selectedChannel.roomId)
-                          )}
-                          className="shrink-0 font-medium text-violet-700 hover:text-violet-900 dark:text-violet-300 dark:hover:text-violet-100"
-                        >
-                          {BLOCK_WORKSPACE_OPEN_LABEL}
-                        </Link>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-              </div>
-              {selectedChannel && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="text-gray-600 hover:text-gray-800 dark:text-slate-300 dark:hover:text-white"
-                    onClick={() => setMembersOpen((prev) => !prev)}
-                    title="Membres del canal"
-                  >
-                    <Users className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    className="text-gray-600 hover:text-gray-800 dark:text-slate-300 dark:hover:text-white"
-                    onClick={async () => {
-                      const next = !selectedChannel.muted
+            <div className="flex items-center lg:border-b dark:border-slate-800">
+              <button
+                type="button"
+                className="lg:hidden shrink-0 px-3 py-2 text-2xl text-gray-700 hover:text-gray-900 dark:text-slate-200 dark:hover:text-white"
+                onClick={() => setMobileView('list')}
+                aria-label="Tornar"
+              >
+                ←
+              </button>
+              {selectedChannel ? (
+                <div className="min-w-0 flex-1">
+                  <ChannelChatHeader
+                    channelTitle={selectedChannelTitle}
+                    channelSubtitle={selectedChannelSubtitle}
+                    avatarLabel={selectedChannelTitle}
+                    channelMuted={channelMuted}
+                    onToggleMute={async () => {
+                      const next = !channelMuted
                       await fetch(`/api/messaging/channels/${selectedChannel.id}/mute`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ muted: next }),
                       })
-                      refreshChannels()
+                      await Promise.all([refreshChannels(), refreshMembers()])
                     }}
-                    title={selectedChannel.muted ? 'Activar canal' : 'Silenciar canal'}
-                  >
-                    {selectedChannel.muted ? (
-                      <BellRing className="w-4 h-4" />
-                    ) : (
-                      <BellOff className="w-4 h-4" />
-                    )}
-                  </button>
+                    participantsOpen={membersOpen}
+                    onToggleParticipants={() => setMembersOpen((prev) => !prev)}
+                    canInvite={canInviteMembers}
+                    inviteDisabled={canInviteMembers && !membersLoaded}
+                    inviteUsers={inviteUsers}
+                    inviteExcludeIds={inviteExcludeIds}
+                    onInvite={(user) => void addParticipant(user)}
+                    inviteAdding={addingMember}
+                  />
                 </div>
+              ) : (
+                <div className="px-4 py-3 text-sm text-slate-500">Selecciona un canal</div>
               )}
             </div>
 
             {membersOpen && selectedChannel && (
-              <MembersPanel
+              <ChannelParticipantsPanel
                 members={members}
-                selectedChannel={selectedChannel}
+                canManage={canManageParticipants}
+                onRemove={(targetUserId) => void removeParticipant(targetUserId)}
+                removingUserId={removingUserId}
                 canEditResponsible={canEditResponsible}
-                updateResponsible={updateResponsible}
+                onSetResponsible={(targetUserId) => void updateResponsible(targetUserId)}
                 savingResponsible={savingResponsible}
-                userRole={userRole}
-                selfMember={selfMember}
+                canToggleVisibility={canToggleVisibility}
+                selfHidden={selfHidden}
                 onToggleVisibility={async () => {
                   if (!selectedChannel) return
-                  const nextHidden = !(selfMember?.hidden)
+                  const nextHidden = !selfHidden
                   await fetch(`/api/messaging/channels/${selectedChannel.id}/visibility`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
@@ -873,7 +997,7 @@ export default function MissatgeriaPage() {
               mentionTarget={mentionTarget}
               mentionOpen={mentionOpen}
               mentionQuery={mentionQuery}
-              members={members}
+              members={mentionMembers}
               onSelectMention={selectMention}
               isReadOnly={isReadOnlyChannel}
               fileInputRef={fileInputRef}

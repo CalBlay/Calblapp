@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Shield } from 'lucide-react'
+import ModuleHeader from '@/components/layout/ModuleHeader'
 import { normalizeRole, type Role } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -263,41 +264,40 @@ export default function PermisosUserPage() {
   if (role !== 'admin') return null
 
   return (
-    <section className="w-full max-w-5xl mx-auto p-4 space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold">Permisos · Usuari</h1>
-          <div className="space-y-0.5">
-            {isLoading ? (
-              <p className="text-sm text-muted-foreground">Carregant nom…</p>
+    <div className="w-full max-w-5xl mx-auto flex flex-col gap-4 px-4 pb-8">
+      <ModuleHeader
+        icon={<Shield className="h-6 w-6 text-slate-700" />}
+        mainHref="/menu/settings"
+        actions={
+          <>
+            <Button variant="outline" onClick={discardChanges} disabled={saving || isLoading}>
+              Desfer canvis
+            </Button>
+            <Button onClick={save} disabled={saving || isLoading}>
+              {saving ? 'Desant…' : 'Desar'}
+            </Button>
+          </>
+        }
+      />
+
+      <div className="space-y-1">
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Carregant nom…</p>
+        ) : (
+          <p className="text-lg font-medium">
+            {data?.name?.trim() ? (
+              <>
+                <span className="text-muted-foreground font-normal">Nom: </span>
+                {data.name.trim()}
+              </>
             ) : (
-              <p className="text-lg font-medium">
-                {data?.name?.trim() ? (
-                  <>
-                    <span className="text-muted-foreground font-normal">Nom: </span>
-                    {data.name.trim()}
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">Nom no disponible</span>
-                )}
-              </p>
+              <span className="text-muted-foreground">Nom no disponible</span>
             )}
-            <p className="text-xs text-muted-foreground font-mono truncate" title={userId}>
-              {userId}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.push('/menu/settings/permisos')}>
-            Tornar
-          </Button>
-          <Button variant="outline" onClick={discardChanges} disabled={saving || isLoading}>
-            Desfer canvis
-          </Button>
-          <Button onClick={save} disabled={saving || isLoading}>
-            {saving ? 'Desant…' : 'Desar'}
-          </Button>
-        </div>
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground font-mono truncate" title={userId}>
+          {userId}
+        </p>
       </div>
 
       {error && (
@@ -447,9 +447,13 @@ export default function PermisosUserPage() {
         const viewAllowed = effectiveAllowed(PERM.view(p), base.view)
         const editAllowed = effectiveAllowed(PERM.edit(p), base.edit)
 
-        if (!shouldShowActionGroup(viewAllowed, editAllowed)) return null
+        if (!shouldShowActionGroup(viewAllowed, editAllowed, group.requireViewOnly)) return null
 
-        const defaultExpanded = actionGroupDefaultExpanded(viewAllowed, editAllowed)
+        const defaultExpanded = actionGroupDefaultExpanded(
+          viewAllowed,
+          editAllowed,
+          group.requireViewOnly
+        )
         const expanded = actionGroupExpandedManual[group.id] ?? defaultExpanded
 
         return (
@@ -483,7 +487,7 @@ export default function PermisosUserPage() {
           </PermissionActionGroupCard>
         )
       })}
-    </section>
+    </div>
   )
 }
 

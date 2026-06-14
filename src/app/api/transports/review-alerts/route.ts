@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { processTransportReviewNotifications } from '@/lib/transportReviewNotifications'
 import { requireCronAuth } from '@/lib/server/internalApiAuth'
 

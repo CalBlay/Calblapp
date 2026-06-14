@@ -76,3 +76,12 @@ export function useLogisticsReservationNotificationCount() {
     error,
   }
 }
+
+export function useEventComandaNotificationCount() {
+  const { summary, loading, error } = useNotificationSummaryContext()
+  return {
+    count: summary.events,
+    loading,
+    error,
+  }
+}

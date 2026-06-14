@@ -1,4 +1,5 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { normalizeDept } from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
 
 type EventInfo = {
@@ -17,6 +18,12 @@ const unaccent = (s?: string | null) =>
   (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const norm = (s?: string | null) => unaccent(String(s || '')).toLowerCase().trim()
 const dayKey = (iso?: string | null) => (iso || '').slice(0, 10)
+
+const normalizeEventId = (value?: string | null) =>
+  String(value || '')
+    .trim()
+    .split('__')[0]
+    .trim()
 
 const normalizeCode = (raw?: string | null) =>
   String(raw || '').trim().toUpperCase()
@@ -206,7 +213,12 @@ function isConfirmedQuadrant(data: Record<string, unknown>): boolean {
   )
 }
 
-async function collectQuadrantAssigned(eventId: string, eventCode: string, dateKeyValue: string) {
+async function collectQuadrantAssigned(
+  eventId: string,
+  eventCode: string,
+  eventName: string,
+  dateKeyValue: string
+) {
   const quadrantCollections = [
     'quadrantsServeis',
     'quadrantsLogistica',
@@ -215,28 +227,47 @@ async function collectQuadrantAssigned(eventId: string, eventCode: string, dateK
     'quadrantsComercial',
   ]
 
+  const normCode = (value?: string | null) =>
+    (value ? unaccent(String(value)).toLowerCase().trim().replace(/\s+/g, '') : '')
+  const eventNameNorm = norm(eventName)
   const users: AssignedUser[] = []
+  const seenDocs = new Set<string>()
+
+  const matchesEvent = (data: Record<string, unknown>) => {
+    if (normalizeEventId(String(data.eventId || '')) === normalizeEventId(eventId)) {
+      return true
+    }
+    if (eventCode && data.code && normCode(String(data.code)) === normCode(eventCode)) {
+      return true
+    }
+    if (data.eventName && norm(String(data.eventName)) === eventNameNorm) return true
+    return false
+  }
+
+  const pushDocs = (snap: FirebaseFirestore.QuerySnapshot | null) => {
+    if (!snap || snap.empty) return
+    snap.forEach((doc) => {
+      if (seenDocs.has(doc.id)) return
+      const data = doc.data() as Record<string, unknown>
+      if (!matchesEvent(data)) return
+      if (!isConfirmedQuadrant(data)) return
+      seenDocs.add(doc.id)
+      users.push(...extractAssignedUsers(data))
+    })
+  }
 
   for (const coll of quadrantCollections) {
     const ref = db.collection(coll)
     const byId = await ref.where('eventId', '==', eventId).get().catch(() => null)
-    const byCode = eventCode
-      ? await ref.where('code', '==', eventCode).get().catch(() => null)
-      : null
-    const byDate = dateKeyValue
-      ? await ref.where('startDate', '==', dateKeyValue).get().catch(() => null)
-      : null
-
-    const pushDocs = (snap: FirebaseFirestore.QuerySnapshot | null) => {
-      if (!snap || snap.empty) return
-      snap.forEach((doc) => {
-        const data = doc.data() as Record<string, unknown>
-        if (!isConfirmedQuadrant(data)) return
-        users.push(...extractAssignedUsers(data))
-      })
-    }
-
     pushDocs(byId)
+    if (byId && !byId.empty) continue
+
+    const [byCode, byDate] = await Promise.all([
+      eventCode ? ref.where('code', '==', eventCode).get().catch(() => null) : Promise.resolve(null),
+      dateKeyValue
+        ? ref.where('startDate', '==', dateKeyValue).get().catch(() => null)
+        : Promise.resolve(null),
+    ])
     pushDocs(byCode)
     pushDocs(byDate)
   }
@@ -244,54 +275,17 @@ async function collectQuadrantAssigned(eventId: string, eventCode: string, dateK
   return users
 }
 
-async function collectProductionUids() {
-  try {
-    const snap = await db.collection('users').where('departmentLower', '==', 'produccio').get()
-    if (!snap.empty) return snap.docs.map((d) => d.id)
-  } catch {
-    // Falta índex o camp legacy: fallback lectura completa
-  }
+async function collectProductionCapUids() {
   const snap = await db.collection('users').get()
   const out: string[] = []
   snap.forEach((doc) => {
     const data = doc.data() as Record<string, unknown>
-    const dept = norm(String(data.department || data.departmentLower || ''))
-    if (dept === 'produccio') out.push(doc.id)
+    const dept = normalizeDept(String(data.department || data.departmentLower || ''))
+    const role = normalizeRole(String(data.role || data.rol || data.nivell || ''))
+    if (dept !== 'produccio' || role !== 'cap') return
+    out.push(doc.id)
   })
   return out
-}
-
-async function collectAdminUids() {
-  const ids = new Set<string>()
-  const merge = (snap: FirebaseFirestore.QuerySnapshot) => {
-    snap.forEach((d) => ids.add(d.id))
-  }
-  try {
-    merge(await db.collection('users').where('isAdmin', '==', true).get())
-  } catch {
-    /* ignore */
-  }
-  try {
-    merge(
-      await db
-        .collection('users')
-        .where('role', 'in', ['admin', 'direccio', 'Admin', 'Direcció', 'direcció', 'Direccio'])
-        .get()
-    )
-  } catch {
-    /* ignore */
-  }
-  if (ids.size > 0) return [...ids]
-
-  const snap = await db.collection('users').get()
-  snap.forEach((doc) => {
-    const data = doc.data() as Record<string, unknown>
-    const role = normalizeRole(
-      String(data?.role || data?.rol || data?.nivell || data?.nivel || data?.level || '')
-    )
-    if (role === 'admin' || role === 'direccio') ids.add(doc.id)
-  })
-  return [...ids]
 }
 
 async function fetchUserDisplayNames(uids: string[]) {
@@ -312,28 +306,6 @@ async function fetchUserDisplayNames(uids: string[]) {
   return map
 }
 
-async function filterEnabledEventUids(uids: string[], adminUids: string[]) {
-  if (uids.length === 0) return []
-  const adminSet = new Set(adminUids)
-  const refs = uids.map((uid) => db.collection('users').doc(uid))
-  const snaps = await db.getAll(...refs)
-  const out: string[] = []
-  snaps.forEach((doc) => {
-    if (!doc.exists) return
-    const data = doc.data() as Record<string, unknown>
-    if (adminSet.has(doc.id)) {
-      out.push(doc.id)
-      return
-    }
-    const configurable = data?.opsEventsConfigurable
-    if (configurable === false) return
-    const enabled = data?.opsEventsEnabled
-    if (enabled === false) return
-    out.push(doc.id)
-  })
-  return out
-}
-
 export async function ensureEventChatChannel(eventId: string) {
   const info = await fetchEventInfo(eventId)
   if (!info) return null
@@ -344,6 +316,7 @@ export async function ensureEventChatChannel(eventId: string) {
   const channelSnap = await channelRef.get()
 
   const endDateKey = dayKey(info.endDate || info.startDate)
+  const startDateKey = dayKey(info.startDate || info.endDate)
   const endDate = endDateKey ? new Date(`${endDateKey}T00:00:00.000Z`) : null
   const visibleUntil = endDate ? endDate.getTime() + 24 * 60 * 60 * 1000 : null
   const status =
@@ -382,73 +355,183 @@ export async function ensureEventChatChannel(eventId: string) {
 
   await channelRef.set({ ...baseData, ...newOnlyData }, { merge: true })
 
-  const assigned = await collectQuadrantAssigned(info.id, normalizeCode(info.code), endDateKey)
+  const assigned = await collectQuadrantAssigned(
+    info.id,
+    normalizeCode(info.code),
+    info.name,
+    startDateKey
+  )
   const assignedUids = await resolveUids(assigned)
 
-  const productionUids = await collectProductionUids()
-  const adminUids = await collectAdminUids()
-  const eventEligible = await filterEnabledEventUids(
-    Array.from(new Set([...assignedUids, ...productionUids])),
-    adminUids
-  )
-  const allUids = new Set<string>([...eventEligible, ...adminUids])
-  if (commercialUid) allUids.add(commercialUid)
+  const productionCapUids = await collectProductionCapUids()
+  const channelData = channelSnap.exists ? (channelSnap.data() as Record<string, unknown>) : {}
+  const extraMemberIds = Array.isArray(channelData.chatExtraMemberIds)
+    ? channelData.chatExtraMemberIds
+        .map((id) => String(id || '').trim())
+        .filter(Boolean)
+    : []
 
-  if (allUids.size === 0) {
-    return { channelId }
-  }
+  const defaultMemberUids = new Set<string>([
+    ...assignedUids,
+    ...productionCapUids,
+    ...extraMemberIds,
+  ])
+  if (commercialUid) defaultMemberUids.add(commercialUid)
 
   const existingSnap = await db
     .collection('channelMembers')
     .where('channelId', '==', channelId)
     .get()
-  const existing = new Set(
-    existingSnap.docs.map((d) => String((d.data() as { userId?: string })?.userId || '')).filter(Boolean)
-  )
-  const existingDocs = new Map(
-    existingSnap.docs
-      .map((d) => [String((d.data() as { userId?: string })?.userId || ''), d] as const)
-      .filter(([uid]) => uid)
-  )
 
-  const userNameMap = await fetchUserDisplayNames([...allUids])
+  const userNameMap = await fetchUserDisplayNames([...defaultMemberUids])
 
   const batch = db.batch()
   const now = Date.now()
-  for (const uid of allUids) {
-    const isAdminMember = adminUids.includes(uid)
-    if (!existing.has(uid)) {
-      const ref = db.collection('channelMembers').doc(`${channelId}_${uid}`)
-      batch.set(ref, {
+
+  for (const uid of defaultMemberUids) {
+    const ref = db.collection('channelMembers').doc(`${channelId}_${uid}`)
+    const existingDoc = existingSnap.docs.find(
+      (doc) => String((doc.data() as { userId?: string })?.userId || '') === uid
+    )
+    const currentData = existingDoc?.data() as Record<string, unknown> | undefined
+    batch.set(
+      ref,
+      {
         channelId,
         userId: uid,
-        userName: userNameMap.get(uid) || '',
+        userName: userNameMap.get(uid) || String(currentData?.userName || ''),
         role: 'member',
-        joinedAt: now,
-        unreadCount: 0,
-        hidden: isAdminMember,
-        notify: !isAdminMember,
-        muted: isAdminMember,
-      })
-      continue
-    }
+        joinedAt: Number(currentData?.joinedAt || now),
+        unreadCount: Number(currentData?.unreadCount || 0),
+        hidden: false,
+        notify: true,
+        muted: Boolean(currentData?.muted),
+      },
+      { merge: true }
+    )
+  }
 
-    if (isAdminMember) {
-      const doc = existingDocs.get(uid)
-      if (doc) {
-        batch.set(
-          doc.ref,
-          {
-            hidden: true,
-            notify: false,
-            muted: true,
-          },
-          { merge: true }
-        )
-      }
+  for (const doc of existingSnap.docs) {
+    const uid = String((doc.data() as { userId?: string })?.userId || '')
+    if (uid && !defaultMemberUids.has(uid)) {
+      batch.delete(doc.ref)
     }
   }
+
   await batch.commit()
 
-  return { channelId }
+  return { channelId, memberIds: [...defaultMemberUids] }
+}
+
+export async function canManageEventProductionChatMembers(params: {
+  channel: {
+    responsibleUserId?: string | null
+    eventId?: string | null
+  }
+  userId: string
+  role: string
+}) {
+  const role = normalizeRole(params.role)
+  if (role === 'admin' || role === 'direccio') return true
+
+  const responsibleId = String(params.channel.responsibleUserId || '').trim()
+  if (responsibleId && responsibleId === params.userId) return true
+
+  if (role !== 'cap') return false
+
+  const userSnap = await db.collection('users').doc(params.userId).get()
+  if (!userSnap.exists) return false
+  const data = userSnap.data() as Record<string, unknown>
+  return normalizeDept(String(data.department || data.departmentLower || '')) === 'produccio'
+}
+
+export async function addEventProductionChatExtraMember(params: {
+  channelId: string
+  targetUserId: string
+  actorUserId: string
+  actorRole: string
+}) {
+  const channelId = String(params.channelId || '').trim()
+  const targetUserId = String(params.targetUserId || '').trim()
+  if (!channelId || !targetUserId) throw new Error('Dades no vàlides.')
+
+  const channelSnap = await db.collection('channels').doc(channelId).get()
+  if (!channelSnap.exists) throw new Error('Canal no trobat.')
+  const channel = channelSnap.data() as Record<string, unknown>
+  if (String(channel.source || '') !== 'events') {
+    throw new Error('Canal no compatible.')
+  }
+
+  const canManage = await canManageEventProductionChatMembers({
+    channel: {
+      responsibleUserId: String(channel.responsibleUserId || ''),
+      eventId: String(channel.eventId || ''),
+    },
+    userId: params.actorUserId,
+    role: params.actorRole,
+  })
+  if (!canManage) throw new Error('Sense permís per afegir participants.')
+
+  const extraMemberIds = new Set(
+    (Array.isArray(channel.chatExtraMemberIds) ? channel.chatExtraMemberIds : [])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean)
+  )
+  extraMemberIds.add(targetUserId)
+
+  await db.collection('channels').doc(channelId).set(
+    { chatExtraMemberIds: [...extraMemberIds], updatedAt: Date.now() },
+    { merge: true }
+  )
+
+  const eventId = String(channel.eventId || '').trim()
+  if (!eventId) throw new Error('Esdeveniment no vàlid.')
+  return ensureEventChatChannel(eventId)
+}
+
+export async function removeEventProductionChatExtraMember(params: {
+  channelId: string
+  targetUserId: string
+  actorUserId: string
+  actorRole: string
+}) {
+  const channelId = String(params.channelId || '').trim()
+  const targetUserId = String(params.targetUserId || '').trim()
+  if (!channelId || !targetUserId) throw new Error('Dades no vàlides.')
+
+  const channelSnap = await db.collection('channels').doc(channelId).get()
+  if (!channelSnap.exists) throw new Error('Canal no trobat.')
+  const channel = channelSnap.data() as Record<string, unknown>
+  if (String(channel.source || '') !== 'events') {
+    throw new Error('Canal no compatible.')
+  }
+
+  const extraMemberIds = new Set(
+    (Array.isArray(channel.chatExtraMemberIds) ? channel.chatExtraMemberIds : [])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean)
+  )
+  if (!extraMemberIds.has(targetUserId)) {
+    throw new Error('Només es poden treure participants afegits manualment.')
+  }
+
+  const canManage = await canManageEventProductionChatMembers({
+    channel: {
+      responsibleUserId: String(channel.responsibleUserId || ''),
+      eventId: String(channel.eventId || ''),
+    },
+    userId: params.actorUserId,
+    role: params.actorRole,
+  })
+  if (!canManage) throw new Error('Sense permís per treure participants.')
+
+  extraMemberIds.delete(targetUserId)
+  await db.collection('channels').doc(channelId).set(
+    { chatExtraMemberIds: [...extraMemberIds], updatedAt: Date.now() },
+    { merge: true }
+  )
+
+  const eventId = String(channel.eventId || '').trim()
+  if (!eventId) throw new Error('Esdeveniment no vàlid.')
+  return ensureEventChatChannel(eventId)
 }

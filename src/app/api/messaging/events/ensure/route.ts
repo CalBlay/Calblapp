@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
 import { normalizeRole } from '@/lib/roles'
@@ -30,11 +30,6 @@ export async function POST(req: Request) {
   const user = session.user as SessionUser
   const userId = user.id
   const role = normalizeRole(user.role || '')
-  const dept = String(user.department || '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
   const memberSnap = await db
     .collection('channelMembers')
     .where('channelId', '==', result.channelId)
@@ -43,11 +38,9 @@ export async function POST(req: Request) {
     .get()
 
   if (memberSnap.empty) {
-    const canForce =
-      role === 'admin' ||
-      role === 'direccio' ||
-      dept === 'produccio'
-    if (canForce) {
+    const memberIds = Array.isArray(result.memberIds) ? result.memberIds : []
+    const canForce = role === 'admin' || role === 'direccio'
+    if (memberIds.includes(userId) || canForce) {
       await db
         .collection('channelMembers')
         .doc(`${result.channelId}_${userId}`)

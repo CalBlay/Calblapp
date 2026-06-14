@@ -4,8 +4,10 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { FileText, MessageSquare, Paperclip, Plus, Save, Trash2, Users2 } from 'lucide-react'
+import { FileText, Paperclip, Plus, Save } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import ChannelChatHeader from '@/components/messaging/ChannelChatHeader'
+import ChannelParticipantsPanel from '@/components/messaging/ChannelParticipantsPanel'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -23,11 +25,8 @@ import { PROJECT_MODULE_ROLES } from '../../../components/project-access'
 import {
   BLOCK_WORKSPACE_LABEL,
   GENERAL_ROOM_LABEL,
-  buildMissatgeriaChannelHref,
-  MISSATGERIA_OPEN_LABEL,
 } from '../../../components/project-room-ui'
 import { colorByDepartment } from '@/lib/colors'
-import { initials } from '@/app/menu/missatgeria/utils'
 import ProjectTaskQuickComposer from '../../../components/ProjectTaskQuickComposer'
 import ProjectRoomOpsChat from '../../../components/ProjectRoomOpsChat'
 import {
@@ -41,6 +40,8 @@ import {
   type ProjectData,
 } from '../../../components/project-shared'
 import { priorityBadgeClass, taskStatusBadgeClass } from '../../../components/project-workspace-helpers'
+
+import type { InviteUserOption } from '@/lib/messaging/userSearch'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
 
 type ProjectResponse = ProjectData
@@ -84,7 +85,6 @@ export default function ProjectRoomDetailPage() {
   const [project, setProject] = useState<ProjectResponse | null>(null)
   const [users, setUsers] = useState<UserOption[]>([])
   const [error, setError] = useState('')
-  const [participantDraft, setParticipantDraft] = useState('')
   const [taskDraft, setTaskDraft] = useState({
     description: '',
     department: '',
@@ -309,6 +309,44 @@ export default function ProjectRoomDetailPage() {
     })
   }, [currentRoom, users])
 
+  const inviteUsers = useMemo<InviteUserOption[]>(
+    () =>
+      participantOptions.map((user) => ({
+        id: user.id,
+        name: user.name,
+        department: user.department,
+        role: user.role,
+      })),
+    [participantOptions]
+  )
+
+  const participantMembers = useMemo(
+    () =>
+      (currentRoom?.participantDetails || []).map((participant) => ({
+        userId: participant.name,
+        userName: participant.name,
+        department: participant.department,
+        role: participant.role,
+        isResponsible:
+          roomResponsibleName.length > 0 &&
+          participant.name.trim().toLowerCase() === roomResponsibleName.toLowerCase(),
+        canRemove: true,
+      })),
+    [currentRoom?.participantDetails, roomResponsibleName]
+  )
+
+  const inviteExcludeIds = useMemo(() => {
+    const participantNames = new Set(
+      (currentRoom?.participants || []).map((name) => name.trim().toLowerCase())
+    )
+    return new Set(
+      users
+        .filter((user) => participantNames.has(user.name.trim().toLowerCase()))
+        .map((user) => user.id)
+        .filter(Boolean)
+    )
+  }, [currentRoom?.participants, users])
+
   const roomTaskResponsibleOptions = useMemo(() => {
     if (!currentBlock) return []
 
@@ -424,18 +462,17 @@ export default function ProjectRoomDetailPage() {
     })
   }
 
-  const addParticipant = async () => {
-    if (!currentRoom || !participantDraft) return
-    const user = users.find((item) => item.name === participantDraft)
+  const addParticipantFromInvite = async (user: InviteUserOption) => {
+    if (!currentRoom || !user.name) return
     const nextRoom = {
       ...currentRoom,
-      participants: [...new Set([...(currentRoom.participants || []), participantDraft])],
+      participants: [...new Set([...(currentRoom.participants || []), user.name])],
       participantDetails: [
         ...(currentRoom.participantDetails || []),
         {
-          name: participantDraft,
-          department: user?.department || '',
-          role: user?.role || '',
+          name: user.name,
+          department: user.department || '',
+          role: user.role || '',
         },
       ].filter(
         (participant, index, array) =>
@@ -443,7 +480,6 @@ export default function ProjectRoomDetailPage() {
       ),
     }
     updateRoomLocal(() => nextRoom)
-    setParticipantDraft('')
     await persistRoom(nextRoom)
     toast({ title: 'Participant afegit' })
   }
@@ -898,122 +934,25 @@ export default function ProjectRoomDetailPage() {
 
             <div className="grid gap-4 xl:flex-1 xl:min-h-0 xl:grid-cols-[1.15fr_0.62fr_0.78fr]">
               <section className="flex min-h-[560px] flex-col rounded-[24px] border border-slate-200 bg-white xl:min-h-0">
-                <div className="border-b border-slate-200 px-5 py-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <MessageSquare className="h-4 w-4 text-slate-500" />
-                      <div className="text-sm font-semibold text-slate-900">Conversa</div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {currentRoom.opsChannelId ? (
-                        <Link
-                          href={buildMissatgeriaChannelHref(currentRoom.opsChannelId)}
-                          className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-700 transition hover:bg-violet-50"
-                        >
-                          {MISSATGERIA_OPEN_LABEL}
-                        </Link>
-                      ) : null}
-                      <button
-                      type="button"
-                      className={`rounded-full p-2 transition ${
-                        participantsOpen
-                          ? 'bg-violet-100 text-violet-700'
-                          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-                      }`}
-                      onClick={() => setParticipantsOpen((current) => !current)}
-                      title="Participants"
-                    >
-                      <Users2 className="h-4 w-4" />
-                    </button>
-                    </div>
-                  </div>
-                </div>
+                <ChannelChatHeader
+                  channelTitle="Conversa"
+                  channelSubtitle={project?.name || undefined}
+                  avatarLabel={currentRoom?.name || 'Conversa'}
+                  participantsOpen={participantsOpen}
+                  onToggleParticipants={() => setParticipantsOpen((current) => !current)}
+                  canInvite
+                  inviteUsers={inviteUsers}
+                  inviteExcludeIds={inviteExcludeIds}
+                  onInvite={(user) => void addParticipantFromInvite(user)}
+                  inviteAdding={saving}
+                />
 
                 {participantsOpen ? (
-                  <div className="border-b border-slate-200 bg-white px-5 py-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-900">Participants</div>
-                        <div className="mt-1 text-xs text-slate-500">
-                          Responsable:{' '}
-                          <span className="font-semibold text-slate-700">
-                            {roomResponsibleName || 'No assignat'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Select value={participantDraft || undefined} onValueChange={setParticipantDraft}>
-                          <SelectTrigger className="min-w-[240px]">
-                            <SelectValue placeholder="Afegir participant" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {participantOptions.map((user) => (
-                              <SelectItem key={user.id} value={user.name}>
-                                {user.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          type="button"
-                          size="icon"
-                          className="rounded-full"
-                          onClick={addParticipant}
-                          disabled={saving || !participantDraft}
-                          title="Afegir participant"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {currentRoom.participantDetails && currentRoom.participantDetails.length > 0 ? (
-                      <div className="mt-4 space-y-2">
-                        {currentRoom.participantDetails.map((participant) => {
-                          const isResponsible =
-                            roomResponsibleName.length > 0 &&
-                            participant.name.trim().toLowerCase() === roomResponsibleName.toLowerCase()
-                          return (
-                            <div
-                              key={`${currentRoom.id}-${participant.name}`}
-                              className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
-                                  {initials(participant.name)}
-                                </div>
-                                <div>
-                                  <div className="text-sm text-slate-900">{participant.name}</div>
-                                  <div className="text-xs text-slate-500">
-                                    {[participant.department, participant.role].filter(Boolean).join(' · ')}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                {isResponsible ? (
-                                  <span className="text-xs font-semibold text-emerald-700">
-                                    Responsable
-                                  </span>
-                                ) : null}
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 rounded-full text-red-600 hover:bg-red-50 hover:text-red-700"
-                                  onClick={() => removeParticipant(participant.name)}
-                                  title="Treure participant"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <div className="mt-4 text-xs text-slate-500">Sense membres.</div>
-                    )}
-                  </div>
+                  <ChannelParticipantsPanel
+                    members={participantMembers}
+                    canManage
+                    onRemove={(userId) => void removeParticipant(userId)}
+                  />
                 ) : null}
 
                 {currentRoom.opsChannelId ? (

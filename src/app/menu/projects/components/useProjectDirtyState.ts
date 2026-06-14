@@ -31,17 +31,18 @@ export function useProjectDirtyState({ project, pendingFile }: Params) {
     bumpSavedRevision()
   }, [bumpSavedRevision])
 
-  const dirtyOverview = useMemo(
-    () =>
+  const dirtyOverview = useMemo(() => {
+    void savedRevision
+    return (
       overviewSnapshotsDiffer(captureOverviewDirtySnapshot(project), savedOverviewRef.current) ||
-      Boolean(pendingFile),
-    [pendingFile, project, savedRevision]
-  )
+      Boolean(pendingFile)
+    )
+  }, [pendingFile, project, savedRevision])
 
-  const dirtyBlocks = useMemo(
-    () => blocksSnapshotsDiffer(captureBlocksDirtySnapshot(project), savedBlocksRef.current),
-    [project, savedRevision]
-  )
+  const dirtyBlocks = useMemo(() => {
+    void savedRevision
+    return blocksSnapshotsDiffer(captureBlocksDirtySnapshot(project), savedBlocksRef.current)
+  }, [project, savedRevision])
 
   const markOverviewSaved = useCallback(
     (source: ProjectData) => {

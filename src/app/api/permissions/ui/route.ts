@@ -33,6 +33,14 @@ import {
   incidentsActionBaseAccess,
 } from '@/lib/incidentsPermissions'
 import {
+  EVENTS_COMANDA_ACTION,
+  EVENTS_COMANDA_CREATE_PERM,
+  EVENTS_COMANDA_PREPARE_PERM,
+  EVENTS_UI_PATH,
+  EVENTS_WAREHOUSE_COMANDA_ONLY_PERM,
+  eventsWarehouseComandaActionBaseAccess,
+} from '@/lib/eventComandaPermissions'
+import {
   CALENDAR_EDIT_IMPLIED_ACTIONS,
   PERM,
   actionPermKey,
@@ -78,6 +86,9 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/events', action: 'docs:attach:kitchen' },
   { path: '/menu/events', action: 'modifications:register' },
   { path: '/menu/events', action: 'event:close' },
+  { path: '/menu/events', action: 'comanda:create' },
+  { path: '/menu/events', action: 'comanda:prepare' },
+  { path: '/menu/events', action: 'warehouse:comanda-only' },
   { path: INCIDENTS_UI_PATH, action: 'command-board' },
   { path: INCIDENTS_UI_PATH, action: 'meeting-minutes' },
   { path: '/menu/quadrants', action: 'save' },
@@ -329,7 +340,25 @@ export async function GET() {
     actions[INCIDENTS_COMMAND_BOARD_PERM] = true
   }
 
-  // Menú / URL del submòdul alineats amb l’acció (override del view base del catàleg)
+  if (
+    effectFor(assignment, EVENTS_COMANDA_CREATE_PERM) === 'allow' &&
+    eventsWarehouseComandaActionBaseAccess({ canViewEvents: map[EVENTS_UI_PATH] === true })
+  ) {
+    actions[EVENTS_COMANDA_CREATE_PERM] = true
+  }
+
+  if (
+    (effectFor(assignment, EVENTS_COMANDA_PREPARE_PERM) === 'allow' ||
+      effectFor(assignment, EVENTS_WAREHOUSE_COMANDA_ONLY_PERM) === 'allow') &&
+    eventsWarehouseComandaActionBaseAccess({ canViewEvents: map[EVENTS_UI_PATH] === true })
+  ) {
+    actions[EVENTS_COMANDA_PREPARE_PERM] = true
+    if (effectFor(assignment, EVENTS_WAREHOUSE_COMANDA_ONLY_PERM) === 'allow') {
+      actions[EVENTS_WAREHOUSE_COMANDA_ONLY_PERM] = true
+    }
+  }
+
+  // si és admin, sempre true a tot el catàleg
   if (map[INCIDENTS_UI_PATH] === true || map[INCIDENTS_QUADRE_PATH] === true) {
     if (actions[INCIDENTS_COMMAND_BOARD_PERM] === true) {
       map[INCIDENTS_QUADRE_PATH] = true

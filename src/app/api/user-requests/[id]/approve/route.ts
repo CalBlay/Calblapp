@@ -4,7 +4,7 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
@@ -12,7 +12,6 @@ import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { normalizeRole } from '@/lib/roles'
 import { saveUserAccessAssignment } from '@/lib/server/userAccessAssignment'
 import { internalApiHeaders } from '@/lib/server/internalApiAuth'
-import { hashPassword } from '@/lib/server/passwords'
 import { stripPassword } from '@/lib/server/userApiSerialization'
 import type { UserAccessAssignmentInput } from '@/lib/permissions/types'
 
@@ -220,7 +219,6 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
 
     const passwordPlain =
       (passwordFromBody || '').toString().trim() || Math.random().toString(36).slice(-8)
-    const passwordHashed = await hashPassword(passwordPlain)
 
     const commercialName = (body.commercialName || '').toString().trim()
     const departmentLower = normLower(department || p?.departmentLower)
@@ -229,7 +227,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const userPayload: Record<string, unknown> = {
       name: desiredUsername,
       nameFold: normLower(desiredUsername),
-      password: passwordHashed,
+      password: passwordPlain,
       role,
       isAdmin,
       department,

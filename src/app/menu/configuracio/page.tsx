@@ -453,6 +453,7 @@ export default function ConfiguracioPage() {
           </Button>
         </div>
       </MotionDiv>
+
 {/* Integracions placeholder */}
       <MotionDiv
         initial={{ opacity: 0, y: 15 }}

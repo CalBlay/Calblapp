@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { History } from 'lucide-react'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import {
@@ -10,6 +11,7 @@ import {
 } from '@/components/layout/corporate-filters'
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import { colorByLN } from '@/lib/colors'
+import { corporateFilterChipClass } from '@/lib/corporate-filters'
 import { cn } from '@/lib/utils'
 
 type LnKey = 'empresa' | 'casaments' | 'foodlovers' | 'agenda' | 'altres'
@@ -23,6 +25,9 @@ type Props = {
   responsables: string[]
   commercials: string[]
   locations: string[]
+  minimal?: boolean
+  historyMode?: boolean
+  onHistoryModeChange?: (value: boolean) => void
 }
 
 const ALL = '__all__'
@@ -45,13 +50,18 @@ export default function EventsFiltersBar({
   responsables,
   commercials,
   locations,
+  minimal = false,
+  historyMode = false,
+  onHistoryModeChange,
 }: Props) {
   const handleSmartFiltersChange = (change: SmartFiltersChange) => {
-    setFilters({
-      ...(change.start ? { start: change.start } : {}),
-      ...(change.end ? { end: change.end } : {}),
-      ...(change.mode ? { mode: change.mode } : {}),
-    })
+    const next: Partial<FiltersState> = {}
+    if (change.start) next.start = change.start
+    if (change.end) next.end = change.end
+    if (change.mode === 'week' || change.mode === 'day' || change.mode === 'range') {
+      next.mode = change.mode
+    }
+    setFilters(next)
   }
 
   const lnBadgeOptions = useMemo(
@@ -92,7 +102,27 @@ export default function EventsFiltersBar({
           />
         </div>
 
-        {lnBadgeOptions.length > 0 ? (
+        {minimal && onHistoryModeChange ? (
+          <>
+            <FilterDivider />
+            <button
+              type="button"
+              className={cn(
+                corporateFilterChipClass,
+                'inline-flex h-9 items-center gap-2 px-3 text-xs font-semibold sm:text-sm',
+                historyMode && 'border-sky-300 bg-sky-50 text-sky-900 ring-1 ring-sky-200'
+              )}
+              onClick={() => onHistoryModeChange(!historyMode)}
+              aria-pressed={historyMode}
+              title={historyMode ? 'Tornar a comandes actives' : 'Veure historial de comandes enviades'}
+            >
+              <History className="h-4 w-4 shrink-0" />
+              Historial
+            </button>
+          </>
+        ) : null}
+
+        {!minimal && lnBadgeOptions.length > 0 ? (
           <>
             <FilterDivider />
             <div className="min-w-0 shrink overflow-x-auto">
@@ -109,7 +139,7 @@ export default function EventsFiltersBar({
           </>
         ) : null}
 
-        {responsables.length > 0 ? (
+        {!minimal && responsables.length > 0 ? (
           <>
             <FilterDivider />
             <CorporateFilterSelect
@@ -130,7 +160,7 @@ export default function EventsFiltersBar({
           </>
         ) : null}
 
-        {commercials.length > 0 ? (
+        {!minimal && commercials.length > 0 ? (
           <CorporateFilterSelect
             aria-label="Comercial"
             title="Comercial"
@@ -148,7 +178,7 @@ export default function EventsFiltersBar({
           </CorporateFilterSelect>
         ) : null}
 
-        {locations.length > 0 ? (
+        {!minimal && locations.length > 0 ? (
           <CorporateFilterSelect
             aria-label="Ubicació"
             title="Ubicació"

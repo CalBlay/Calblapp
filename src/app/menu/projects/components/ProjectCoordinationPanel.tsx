@@ -16,6 +16,7 @@ import { initials } from '@/app/menu/missatgeria/utils'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { buildGeneralRoomId } from '@/lib/projectGeneralRoom'
+import { chatTheme } from '@/components/messaging/chatTheme'
 import { cn } from '@/lib/utils'
 import ProjectRoomOpsChat from './ProjectRoomOpsChat'
 import {
@@ -93,7 +94,7 @@ function CollapsibleSection({
         className="flex w-full items-center gap-2 px-4 py-3 text-left transition hover:bg-white/80"
         aria-expanded={expanded}
       >
-        <Icon className="h-3.5 w-3.5 shrink-0 text-violet-700" />
+        <Icon className="h-3.5 w-3.5 shrink-0 text-amber-700" />
         <span className="min-w-0 flex-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
           {title}
         </span>
@@ -131,12 +132,12 @@ function AccessListItem({
       className={cn(
         'flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition',
         selected
-          ? 'border-violet-300 bg-violet-50'
-          : 'border-slate-200 bg-white hover:border-violet-200 hover:bg-violet-50/50'
+          ? 'border-amber-300 bg-amber-50'
+          : 'border-slate-200 bg-white hover:border-amber-200 hover:bg-amber-50/50'
       )}
     >
       <span className="flex min-w-0 items-start gap-2">
-        <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" />
+        <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
         <span className="min-w-0">
           <span className="block truncate font-medium text-slate-800">{title}</span>
           {subtitle ? (
@@ -145,7 +146,7 @@ function AccessListItem({
         </span>
       </span>
       {badge ? (
-        <span className="shrink-0 rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+        <span className="shrink-0 rounded-full bg-amber-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
           {badge}
         </span>
       ) : null}
@@ -172,7 +173,12 @@ function ParticipantsSidebar({
               className="rounded-xl border border-slate-200 bg-white px-3 py-2.5"
             >
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
+                <div
+                  className={cn(
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+                    chatTheme.avatar
+                  )}
+                >
                   {initials(participant.name)}
                 </div>
                 <div className="min-w-0">
@@ -557,7 +563,10 @@ export default function ProjectCoordinationPanel({
       <SheetContent
         side="right"
         overlayClassName="pointer-events-none bg-slate-900/10"
-        className="flex h-[100dvh] max-h-[100dvh] w-full max-w-none flex-col gap-0 overflow-hidden border-l border-violet-100 p-0 shadow-2xl sm:max-w-4xl lg:max-w-6xl [&>button]:hidden"
+        className={cn(
+          'flex h-[100dvh] max-h-[100dvh] w-full max-w-none flex-col gap-0 overflow-hidden border-l p-0 shadow-2xl sm:max-w-4xl lg:max-w-6xl [&>button]:hidden',
+          chatTheme.sheetBorder
+        )}
       >
         <SheetTitle className="sr-only">{activeRoomLabel}</SheetTitle>
 
@@ -575,8 +584,13 @@ export default function ProjectCoordinationPanel({
                 <ChevronDown className="h-4 w-4 rotate-90" />
               </Button>
             ) : null}
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700">
-              <MessageSquare className="h-4 w-4" />
+            <div
+              className={cn(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+                chatTheme.avatar
+              )}
+            >
+              {initials(activeRoomLabel)}
             </div>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-slate-900">
@@ -594,7 +608,7 @@ export default function ProjectCoordinationPanel({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-slate-600 hover:text-violet-800 lg:hidden"
+                  className={cn('h-9 w-9 text-slate-600 lg:hidden', chatTheme.actionHover)}
                   onClick={openMobileAccess}
                   title="Blocs, tasques i espais de treball"
                   aria-label="Accés al projecte"
@@ -606,8 +620,9 @@ export default function ProjectCoordinationPanel({
                   variant="ghost"
                   size="icon"
                   className={cn(
-                    'h-9 w-9 text-slate-600 hover:text-violet-800 lg:hidden',
-                    mobileParticipantsOpen && 'bg-violet-100 text-violet-800'
+                    'h-9 w-9 text-slate-600 lg:hidden',
+                    chatTheme.actionHover,
+                    mobileParticipantsOpen && chatTheme.actionActive
                   )}
                   onClick={toggleMobileParticipants}
                   title="Participants del projecte"

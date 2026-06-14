@@ -214,7 +214,6 @@ export default function ProjectTrackingTab({ project, onResolveAlert, onOpenBloc
   const completedTasks = allTasks.filter((task) => task.status === 'done').length
   const blockedBlocks = project.blocks.filter((block) => block.status === 'blocked')
   const overdueBlocks = project.blocks.filter((block) => block.status === 'overdue')
-  const blockedTasks = allTasks.filter((task) => task.status === 'blocked')
   const overdueTasks = allTasks.filter(
     (task) => task.deadline && task.deadline < todayKey() && task.status !== 'done'
   )

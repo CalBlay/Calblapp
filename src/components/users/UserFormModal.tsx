@@ -354,6 +354,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     setCanRespondSurveys(Boolean(user.canRespondSurveys))
     setIsDepartmentRobaLead(Boolean(user.isDepartmentRobaLead))
     setIsTransportLead(Boolean(user.isTransportLead))
+    setPassword('')
     if (user.role?.toLowerCase() === 'treballador') {
       setAvailable(user.available ?? true)
       setIsDriver(user.driver?.isDriver ?? false)
@@ -475,7 +476,11 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         isDepartmentRobaLead,
         isTransportLead,
       }
-      if (password.trim()) payload.password = password.trim()
+      if (password.trim()) {
+        payload.password = password.trim()
+      } else {
+        delete payload.password
+      }
       await onSubmit(payload)
       return
     }
@@ -669,8 +674,18 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required={!user?.id}
-                placeholder={user?.id ? 'Deixa buit per no canviar-la' : ''}
+                placeholder={
+                  user?.id
+                    ? 'Deixa buit per mantenir la contrasenya actual'
+                    : ''
+                }
               />
+              {user?.id ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  Deixa buit per mantenir la contrasenya actual. Si n&apos;escrius una de nova,
+                  es mostrarà a la taula d&apos;usuaris.
+                </p>
+              ) : null}
             </div>
 
             <div>

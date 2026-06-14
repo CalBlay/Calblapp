@@ -1,4 +1,8 @@
 import { MODULES } from '@/lib/accessControl'
+import {
+  EVENTS_COMANDA_CREATE_PERM,
+  EVENTS_COMANDA_PREPARE_PERM,
+} from '@/lib/eventComandaPermissions'
 import { INCIDENTS_COMMAND_BOARD_PERM, INCIDENTS_MEETING_MINUTES_PERM } from '@/lib/incidentsPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import type { MatrixRow } from '@/lib/permissions/types'
@@ -44,6 +48,8 @@ export type PermissionActionGroup = {
   title: string
   subtitle?: string
   visibleWhen: { path: string }
+  /** Si és cert, el grup es mostra només amb permís de veure (sense editar). */
+  requireViewOnly?: boolean
   actions: Array<{ key: string; label: string }>
 }
 
@@ -102,6 +108,24 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       { key: PERM.action('/menu/events', 'docs:attach:kitchen'), label: 'Adjuntar documents de cuina' },
       { key: PERM.action('/menu/events', 'modifications:register'), label: 'Registrar modificacions' },
       { key: PERM.action('/menu/events', 'event:close'), label: 'Tancar esdeveniment' },
+    ],
+  },
+  {
+    id: 'eventsComanda',
+    title: 'Esdeveniments · Comanda',
+    subtitle:
+      'Crear comandes (plantilla i enviament) i/o preparar material al magatzem assignat. Es poden combinar tots dos permisos.',
+    visibleWhen: { path: '/menu/events' },
+    requireViewOnly: true,
+    actions: [
+      {
+        key: EVENTS_COMANDA_CREATE_PERM,
+        label: 'Crear i enviar comandes',
+      },
+      {
+        key: EVENTS_COMANDA_PREPARE_PERM,
+        label: 'Preparar comandes (magatzem assignat)',
+      },
     ],
   },
   {
@@ -184,8 +208,14 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
   },
 ]
 
-export const shouldShowActionGroup = (viewAllowed: boolean, editAllowed: boolean): boolean =>
-  viewAllowed && editAllowed
+export const shouldShowActionGroup = (
+  viewAllowed: boolean,
+  editAllowed: boolean,
+  requireViewOnly?: boolean
+): boolean => (requireViewOnly ? viewAllowed : viewAllowed && editAllowed)
 
-export const actionGroupDefaultExpanded = (viewAllowed: boolean, editAllowed: boolean): boolean =>
-  shouldShowActionGroup(viewAllowed, editAllowed)
+export const actionGroupDefaultExpanded = (
+  viewAllowed: boolean,
+  editAllowed: boolean,
+  requireViewOnly?: boolean
+): boolean => shouldShowActionGroup(viewAllowed, editAllowed, requireViewOnly)

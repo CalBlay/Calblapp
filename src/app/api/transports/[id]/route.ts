@@ -1,7 +1,7 @@
 // filename: src/app/api/transports/[id]/route.ts
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { processTransportReviewNotifications } from '@/lib/transportReviewNotifications'
 

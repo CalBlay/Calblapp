@@ -250,12 +250,22 @@ export const MODULES: ModuleDef[] = [
   {
     label: 'Settings',
     path: '/menu/settings',
-    roles: ['admin'],
+    roles: ['admin', 'direccio'],
     submodules: [
       {
         label: 'Permisos',
         path: '/menu/settings/permisos',
         roles: ['admin'],
+      },
+      {
+        label: 'Magatzems',
+        path: '/menu/settings/magatzems',
+        roles: ['admin', 'direccio'],
+      },
+      {
+        label: 'Articles comanda',
+        path: '/menu/settings/articles',
+        roles: ['admin', 'direccio'],
       },
     ],
   },

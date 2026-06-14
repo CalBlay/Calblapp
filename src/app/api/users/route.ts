@@ -7,7 +7,7 @@ import { normalizeRole } from '@/lib/roles'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 import { saveUserAccessAssignment } from '@/lib/server/userAccessAssignment'
 import { preparePasswordForStorage } from '@/lib/server/passwords'
-import { serializeUserResponse } from '@/lib/server/userApiSerialization'
+import { serializeAdminUserResponse } from '@/lib/server/userApiSerialization'
 import type { UserAccessAssignmentInput } from '@/lib/permissions/types'
 
 // ──────────────────────────────────────────────────────────────
@@ -131,7 +131,7 @@ export async function GET(req: Request) {
         }
       }
 
-      return serializeUserResponse(d.id, data, { role, department })
+      return serializeAdminUserResponse(d.id, data, { role, department })
     })
     return NextResponse.json(users)
   } catch (error: unknown) {
@@ -304,7 +304,7 @@ export async function POST(req: Request) {
     }
 
     // 🔹 Retornar resultat (mai exposar password)
-    return NextResponse.json(serializeUserResponse(userId, userPayload as unknown as Record<string, unknown>), {
+    return NextResponse.json(serializeAdminUserResponse(userId, userPayload as unknown as Record<string, unknown>), {
       status: 201,
     })
   } catch (error: unknown) {

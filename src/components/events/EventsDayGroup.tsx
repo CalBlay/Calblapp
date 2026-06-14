@@ -5,6 +5,7 @@ import EventCard from './EventCard'
 import { Users, Calendar } from 'lucide-react'
 import { addDays, format, isAfter, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
+import type { WarehouseComandaEventBatchChip } from '@/lib/eventComanda/types'
 
 export interface EventData {
   id: string
@@ -30,6 +31,7 @@ export interface EventData {
     department: string
     createdAt: string
   } | null
+  warehouseBatches?: WarehouseComandaEventBatchChip[]
 }
 
 interface Props {
@@ -39,9 +41,18 @@ interface Props {
   onEventChat?: (ev: EventData) => void
   onEventComanda?: (ev: EventData) => void
   isAdmin?: boolean
+  comandaOnly?: boolean
 }
 
-export default function EventsDayGroup({ date, events, onEventClick, onEventChat, onEventComanda, isAdmin }: Props) {
+export default function EventsDayGroup({
+  date,
+  events,
+  onEventClick,
+  onEventChat,
+  onEventComanda,
+  isAdmin,
+  comandaOnly = false,
+}: Props) {
   const totalPax = events.reduce((sum, e) => sum + (Number(e.pax) || 0), 0)
   const totalEvents = events.length
   const sortedEvents = [...events].sort((a, b) => {
@@ -76,23 +87,29 @@ export default function EventsDayGroup({ date, events, onEventClick, onEventChat
             key={event.occurrenceKey || `${event.id}-${event.day || event.start.slice(0, 10)}`}
             event={event}
             variant="grid"
-            onOpenMenu={() => onEventClick?.(event, 'menu')}
-            onOpenAvisos={() => onEventClick?.(event, 'avisos')}
+            comandaOnly={comandaOnly}
+            onOpenMenu={comandaOnly ? undefined : () => onEventClick?.(event, 'menu')}
+            onOpenAvisos={comandaOnly ? undefined : () => onEventClick?.(event, 'avisos')}
             onOpenChat={() => onEventChat?.(event)}
             onOpenComanda={() => onEventComanda?.(event)}
-            showChat={(() => {
-              const code = String(event.eventCode || '').trim()
-              const commercial = String(event.commercial || '').trim()
-              if (!code || !commercial) return false
-              if (isAdmin) return true
-              if (!event.canChat) return false
-              const endRaw = String(event.end || event.start || '').trim()
-              if (!endRaw) return true
-              const endDate = parseISO(endRaw)
-              if (Number.isNaN(endDate.getTime())) return true
-              const visibleUntil = addDays(endDate, 1)
-              return !isAfter(new Date(), visibleUntil)
-            })()}
+            showChat={
+              comandaOnly
+                ? true
+                : (() => {
+                    const code = String(event.eventCode || '').trim()
+                    const commercial = String(event.commercial || '').trim()
+                    const hasComandaBatches = (event.warehouseBatches || []).length > 0
+                    if (hasComandaBatches || event.canChat) return true
+                    if (!code || !commercial) return false
+                    if (isAdmin) return true
+                    const endRaw = String(event.end || event.start || '').trim()
+                    if (!endRaw) return true
+                    const endDate = parseISO(endRaw)
+                    if (Number.isNaN(endDate.getTime())) return true
+                    const visibleUntil = addDays(endDate, 1)
+                    return !isAfter(new Date(), visibleUntil)
+                  })()
+            }
           />
         ))}
       </div>

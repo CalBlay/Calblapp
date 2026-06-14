@@ -2,7 +2,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 
 import { fetchGoogleEventById, GoogleEvent } from '@/services/googleCalendar'

@@ -3,6 +3,7 @@
 import React from 'react'
 import Image from 'next/image'
 import { Paperclip, Send } from 'lucide-react'
+import { chatTheme } from '@/components/messaging/chatTheme'
 import { cn } from '@/lib/utils'
 import { Member, PendingImage } from '../types'
 
@@ -119,7 +120,7 @@ export default function Composer({
         ))}
       </div>
       {mentionTarget && (
-        <div className="text-xs text-emerald-700">
+        <div className="text-xs text-amber-700">
           Directe a: <strong>{mentionTarget.userName}</strong>
         </div>
       )}
@@ -150,7 +151,10 @@ export default function Composer({
         />
         <button
           type="button"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+          className={cn(
+            'flex h-11 w-11 shrink-0 items-center justify-center rounded-full disabled:opacity-60',
+            chatTheme.sendButton
+          )}
           onClick={onSend}
           disabled={imageUploading || isReadOnly || isSending}
           title="Enviar"
