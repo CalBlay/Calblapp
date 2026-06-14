@@ -34,7 +34,8 @@ const EventAuditExecutionModal = dynamic(
     ),
   }
 )
-import FiltersBar, { FiltersState } from '@/components/layout/FiltersBar'
+import EventsFiltersBar from '@/components/events/EventsFiltersBar'
+import type { FiltersState } from '@/components/layout/FiltersBar'
 
 const normalize = (s?: string | null) =>
   (s || '')
@@ -110,6 +111,7 @@ export default function EventsPage() {
   }, [])
 
   const [filters, setFilters] = useState<FiltersState>(initial)
+  const [filterResetSignal, setFilterResetSignal] = useState(0)
   const [commercialFilterInitialized, setCommercialFilterInitialized] = useState(false)
 
   const fromISO = `${filters.start}T00:00:00.000Z`
@@ -390,42 +392,76 @@ export default function EventsPage() {
     )
   }, [events, responsablesDetailed])
 
+  const lnOptionsForFilter = useMemo(
+    () =>
+      Array.from(
+        new Set(events.map((e) => e.lnKey).filter((value): value is LnKey => Boolean(value)))
+      ).sort(),
+    [events]
+  )
+
+  const commercialsForFilter = useMemo(
+    () =>
+      Array.from(
+        new Set(events.map((e) => e.commercial).filter((value): value is string => Boolean(value)))
+      ).sort((a, b) => a.localeCompare(b, 'ca')),
+    [events]
+  )
+
+  const locationsForFilter = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          events
+            .map((e) => e.locationShort || e.location)
+            .filter((value): value is string => Boolean(value))
+        )
+      ).sort((a, b) => a.localeCompare(b, 'ca')),
+    [events]
+  )
+
+  const handleFiltersReset = useCallback(() => {
+    const s = startOfWeek(new Date(), { weekStartsOn: 1 })
+    const e = endOfWeek(new Date(), { weekStartsOn: 1 })
+    setFilters({
+      start: format(s, 'yyyy-MM-dd'),
+      end: format(e, 'yyyy-MM-dd'),
+      mode: 'week',
+      ln: undefined,
+      responsable: undefined,
+      commercial: undefined,
+      location: undefined,
+    })
+    setFilterResetSignal((value) => value + 1)
+    setCommercialFilterInitialized(false)
+  }, [])
+
   return (
-    <div className={`space-y-5 px-4 pb-8 ${suppressMenuInteraction ? 'pointer-events-none select-none' : ''}`}>
+    <div
+      className={`flex w-full max-w-none flex-col gap-4 px-3 pb-6 sm:px-4 lg:gap-3 lg:px-2 lg:pb-8 xl:px-0 ${suppressMenuInteraction ? 'pointer-events-none select-none' : ''}`}
+    >
       <ModuleHeader
         icon={<CalendarDays className="h-6 w-6 text-indigo-600" />}
         title="Esdeveniments"
         subtitle="Consulta i gestiona els esdeveniments"
+        actions={
+          !loading && !error && filteredEvents.length > 0 ? (
+            <span className="rounded-full bg-indigo-600 px-3 py-1 text-sm font-bold text-white">
+              {filteredEvents.length} visibles
+            </span>
+          ) : undefined
+        }
       />
 
-      <FiltersBar
+      <EventsFiltersBar
         filters={filters}
-        setFilters={f => setFilters(prev => ({ ...prev, ...f }))}
-        visibleFilters={[]}
-        hiddenFilters={['ln', 'responsable', 'location']}
-        showResponsableFilter
-        lnOptions={Array.from(
-          new Set(
-            filteredEvents
-              .map(e => e.lnKey)
-              .filter((value): value is LnKey => Boolean(value))
-          )
-        ).sort()}
+        setFilters={(next) => setFilters((prev) => ({ ...prev, ...next }))}
+        onReset={handleFiltersReset}
+        resetSignal={filterResetSignal}
+        lnOptions={lnOptionsForFilter}
         responsables={responsablesForFilter}
-        commercials={Array.from(
-          new Set(
-            events
-              .map(e => e.commercial)
-              .filter((value): value is string => Boolean(value))
-          )
-        ).sort((a, b) => a.localeCompare(b))}
-        locations={Array.from(
-          new Set(
-            filteredEvents
-              .map(e => e.locationShort || e.location)
-              .filter((value): value is string => Boolean(value))
-          )
-        ).sort()}
+        commercials={commercialsForFilter}
+        locations={locationsForFilter}
       />
 
       <div>
@@ -437,20 +473,22 @@ export default function EventsPage() {
         )}
 
         {!loading && !error && filteredEvents.length > 0 && (
-          <div className="space-y-4">
-            {Object.entries(grouped)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([day, evs]) => (
-                <EventsDayGroup
-                  key={day}
-                  date={day}
-                  events={evs}
-                  onEventClick={handleEventClick}
-                  onEventChat={handleEventChat}
-                  isAdmin={isAdmin}
-                />
-              ))}
-          </div>
+          <section className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:rounded-xl">
+            <div className="space-y-4 p-3 sm:space-y-5 sm:p-4 lg:space-y-3 lg:p-3 xl:p-4">
+              {Object.entries(grouped)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([day, evs]) => (
+                  <EventsDayGroup
+                    key={day}
+                    date={day}
+                    events={evs}
+                    onEventClick={handleEventClick}
+                    onEventChat={handleEventChat}
+                    isAdmin={isAdmin}
+                  />
+                ))}
+            </div>
+          </section>
         )}
       </div>
 
