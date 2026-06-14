@@ -4,6 +4,14 @@ import type { DefaultJWT } from "next-auth/jwt"
 
 // Extensió del tipus Session
 declare module "next-auth" {
+  interface AuthOptions {
+    trustHost?: boolean
+  }
+
+  interface NextAuthOptions {
+    trustHost?: boolean
+  }
+
   interface Session extends DefaultSession {
     user?: {
       id?: string

@@ -653,8 +653,8 @@ export function visibleComandaBatchesForViewer(params: {
 
   if (!params.preparerOnly) return params.batches || []
 
-  const active = filterBatchesForPreparerView(params.batches, viewer)
-  const history = filterBatchesForPreparerHistoryView(params.batches, viewer)
+  const active = filterBatchesForPreparerView(params.batches, viewer) ?? []
+  const history = filterBatchesForPreparerHistoryView(params.batches, viewer) ?? []
   const seen = new Set<string>()
   return [...active, ...history].filter((batch) => {
     const key = eventComandaBatchIdentity(batch)

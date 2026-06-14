@@ -3,6 +3,7 @@ import { getEventComandaOrder } from '@/lib/eventComanda/order.server'
 import { listWarehouseIdsForUser } from '@/lib/eventComanda/warehouseMembers.server'
 import { hasEventsComandaPreparerOnlyAccess } from '@/lib/eventComanda/permissionsAccess.server'
 import { warehouseDocId } from '@/lib/eventComanda/warehouses.server'
+import type { AccessUser } from '@/lib/accessControl'
 import {
   buildEventComandaRoomId,
   eventComandaBatchIdentity,
@@ -30,16 +31,7 @@ export type EventOpsRoom = {
   chatActive?: boolean
 }
 
-type AccessUser = {
-  id: string
-  role?: string | null
-  department?: string | null
-  canRespondSurveys?: boolean
-  isDepartmentRobaLead?: boolean
-  robaLinkedPersonnelId?: string | null
-  opsProjectsConfigurable?: boolean
-  isTransportLead?: boolean
-}
+type EventOpsAccessUser = AccessUser & { id: string }
 
 async function fetchEventMeta(eventId: string) {
   const snap = await db.collection('stage_verd').doc(eventId).get()
@@ -102,7 +94,7 @@ async function canListProductionRoom(params: {
 
 export async function listEventOpsRooms(params: {
   eventId: string
-  user: AccessUser
+  user: EventOpsAccessUser
 }): Promise<EventOpsRoom[]> {
   const eventId = String(params.eventId || '').trim()
   if (!eventId) return []
@@ -184,7 +176,7 @@ export async function listEventOpsRooms(params: {
 
 export async function userHasEventOpsAccess(params: {
   eventId: string
-  user: AccessUser
+  user: EventOpsAccessUser
 }) {
   const rooms = await listEventOpsRooms(params)
   return rooms.length > 0

@@ -1,33 +1,9 @@
 import { NextResponse } from 'next/server'
 import { listEventOpsRooms } from '@/lib/messaging/eventOps.server'
+import { eventComandaAccessUserFromSession } from '@/lib/eventComanda/eventComandaApiAuth'
 import { requireAuth } from '@/lib/server/apiAuth'
 
 export const dynamic = 'force-dynamic'
-
-function accessUserFromSession(user: {
-  id: string
-  role?: string | null
-  department?: string | null
-  canRespondSurveys?: boolean
-  isDepartmentRobaLead?: boolean
-  robaLinkedPersonnelId?: string | null
-  opsProjectsConfigurable?: boolean
-  isTransportLead?: boolean
-}) {
-  return {
-    id: user.id,
-    role: user.role,
-    department: user.department,
-    canRespondSurveys: Boolean(user.canRespondSurveys),
-    isDepartmentRobaLead: Boolean(user.isDepartmentRobaLead),
-    robaLinkedPersonnelId: user.robaLinkedPersonnelId ?? null,
-    opsProjectsConfigurable:
-      typeof user.opsProjectsConfigurable === 'boolean'
-        ? user.opsProjectsConfigurable
-        : undefined,
-    isTransportLead: Boolean(user.isTransportLead),
-  }
-}
 
 export async function GET(
   _req: Request,
@@ -44,7 +20,7 @@ export async function GET(
 
   const rooms = await listEventOpsRooms({
     eventId,
-    user: accessUserFromSession(auth.user),
+    user: eventComandaAccessUserFromSession(auth.user),
   })
 
   return NextResponse.json({ rooms })
