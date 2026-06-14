@@ -98,7 +98,7 @@ export type UseQuadrantSubmitParams = {
   ettEntry: EttEntry | null
 
   // Callbacks
-  onSaved?: () => Promise<void>
+  onSaved?: () => void | Promise<void>
   onOpenChange: (open: boolean) => void
   /** Inline editor: stay open after save instead of closing like the modal. */
   keepOpenAfterSave?: boolean
@@ -253,7 +253,7 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
         }
 
         try {
-          void onSaved?.().catch(() => {
+          void Promise.resolve(onSaved?.()).catch(() => {
             /* la llista s’actualitza en segon pla */
           })
         } catch {

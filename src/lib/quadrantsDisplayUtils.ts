@@ -35,6 +35,11 @@ type DraftPersonnelSource = {
   responsableName?: string | { name?: string } | null
   conductors?: Array<{ name?: string | null }> | null
   treballadors?: Array<{ name?: string | null }> | null
+  groups?: Array<{
+    wantsResponsible?: boolean
+    responsibleId?: string | null
+    responsibleName?: string | null
+  }> | null
 }
 
 export type QuadrantPersonRole = 'responsable' | 'conductor' | 'treballador'

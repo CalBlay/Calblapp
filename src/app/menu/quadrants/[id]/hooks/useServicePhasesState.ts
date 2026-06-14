@@ -138,13 +138,7 @@ export function useServicePhasesState({
         .filter(Boolean)
         .sort()
         .join('|'),
-    [
-      personnelPools
-        .map((p) => String(p.id || '').trim())
-        .filter(Boolean)
-        .sort()
-        .join('|'),
-    ]
+    [personnelPools]
   )
   const defaultMeetingPoint = meetingPoint || location || event.eventLocation || ''
   const defaultServiceDate = extractDate(event.start)
@@ -241,8 +235,7 @@ export function useServicePhasesState({
     endTime,
     totalWorkers,
     modalOpen,
-    existingDraft?.id,
-    existingDraft?.updatedAt,
+    existingDraft,
     normalizeLoadedGroups,
   ])
 
@@ -265,7 +258,7 @@ export function useServicePhasesState({
       })
       return changed ? next : prev
     })
-  }, [department, existingDraft?.id, modalOpen, personnelPoolIdsKey])
+  }, [department, existingDraft, modalOpen, personnelPoolIdsKey, personnelPools])
 
   const addServiceGroup = (phaseKey: ServicePhaseKey) => {
     setServicePhaseGroups((prev) => [...prev, createServiceGroup(phaseKey)])

@@ -242,8 +242,8 @@ export async function buildServeisPhaseRequests(
         ? {
             id: `auto-jamonero-${autoJamoneroPerson.id}`,
             mode: 'manual' as const,
-            personnelId: autoJamoneroPerson.id,
-            personnelName: autoJamoneroPerson.name,
+            personnelId: autoJamoneroPerson.id ?? null,
+            personnelName: autoJamoneroPerson.name ?? null,
           }
         : null
 
@@ -283,7 +283,8 @@ export async function buildServeisPhaseRequests(
             drivers: 1,
             needsDriver: true,
             wantsResponsible: true,
-            responsibleId: body.manualResponsibleId,
+            responsibleId:
+              typeof body.manualResponsibleId === 'string' ? body.manualResponsibleId : null,
             driverId:
               responsiblePerson?.isDriver
                 ? responsiblePerson.id

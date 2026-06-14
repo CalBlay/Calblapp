@@ -30,8 +30,8 @@ export default function EventComandaPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const eventId = String(params?.id || '').trim()
-  const historyMode = searchParams.get('history') === '1'
-  const returnTo = searchParams.get('returnTo') || '/menu/events'
+  const historyMode = searchParams?.get('history') === '1'
+  const returnTo = searchParams?.get('returnTo') || '/menu/events'
   const { data: session } = useSession()
   const { hasAction, ready: permsReady, canEditPath } = useUiPermissions()
   const role = String(session?.user?.role || '').toLowerCase()

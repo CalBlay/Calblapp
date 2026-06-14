@@ -84,7 +84,11 @@ export async function singleFlowSave(params: SingleFlowSaveParams) {
     const finalSurveyPreferred = await getSurveyPreferred(
       String(assignBody.phaseDate || assignBody.startDate || '').slice(0, 10)
     )
-    finalAssignBody = await enrichWithSurveyPreferences(assignBody, deptNorm, finalSurveyPreferred)
+    finalAssignBody = (await enrichWithSurveyPreferences(
+      assignBody,
+      deptNorm,
+      finalSurveyPreferred
+    )) as QuadrantSaveRequestBody
     const departmentPeople = await getDepartmentPeople()
     const premisesData = await getPremisesData()
     const ledger = await getLedgerForDate(

@@ -19,6 +19,7 @@ import { PERM } from '@/lib/permissionKeys'
 import { confirmDraftTable } from '@/app/menu/quadrants/drafts/components/draftsTableActions'
 import type { GroupedQuadrantEvent } from '@/lib/quadrantsGrouping'
 import type { UnifiedEvent } from '@/app/menu/quadrants/types'
+import type { DraftInput } from '@/app/menu/quadrants/drafts/components/types'
 import type { Draft } from '@/app/menu/quadrants/drafts/page'
 import QuadrantsEventHeader from './QuadrantsEventHeader'
 import QuadrantsPhaseRow from './QuadrantsPhaseRow'
@@ -100,7 +101,7 @@ export default function QuadrantsEventGroup({
       let confirmed = 0
       for (const phase of draftPhases) {
         const ok = await confirmDraftTable({
-          draft: phase.draft as Draft,
+          draft: phase.draft as DraftInput,
           onConfirmed: () => {},
           silent: true,
         })

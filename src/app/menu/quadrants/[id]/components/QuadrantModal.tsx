@@ -41,7 +41,7 @@ export type QuadrantEditorProps = {
   layout?: 'modal' | 'inline'
   hideHeader?: boolean
   existingDraft?: EditorDraftInput | null
-  onSaved?: () => Promise<void>
+  onSaved?: () => void | Promise<void>
   onCancel?: () => void
 }
 

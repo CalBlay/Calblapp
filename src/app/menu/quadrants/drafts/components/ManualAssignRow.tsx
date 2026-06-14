@@ -16,7 +16,6 @@ import {
   getManualAssignDeptConfig,
   inferEndDateFromTimes,
   roleSelectValueFromRow,
-  patchRowRole,
   type RoleSelectValue,
 } from '@/lib/manualAssignModel'
 

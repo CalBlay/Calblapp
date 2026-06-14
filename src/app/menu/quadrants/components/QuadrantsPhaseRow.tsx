@@ -5,9 +5,6 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-reac
 import { cn } from '@/lib/utils'
 import { typography } from '@/lib/typography'
 import {
-  buildPendingExpandKey,
-} from '@/lib/buildPendingQuadrantDraft'
-import {
   buildQuadrantPhaseBadge,
   peopleFromPhase,
   quadrantStatusLabel,
@@ -41,7 +38,7 @@ export default function QuadrantsPhaseRow({
   rowDate,
   hasSurvey,
   isExpanded,
-  pendingPhases,
+  pendingPhases: _pendingPhases,
   department: _department,
   onPhaseClick,
   onRefreshDrafts: _onRefreshDrafts,

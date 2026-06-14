@@ -28,7 +28,8 @@ export interface QuadrantSave {
   totalWorkers: number
   numPax?: number | null
   responsableName: string | null
-  responsable: { name: string; meetingPoint: string } | null
+  responsableId?: string | null
+  responsable: { id?: string; name: string; meetingPoint: string } | null
   conductors: Array<{ name: string; meetingPoint: string; plate: string; vehicleType: string }>
   treballadors: Array<{
     name: string
@@ -46,12 +47,20 @@ export interface QuadrantSave {
   updatedAt: string
   legacyBrigades?: Array<Record<string, unknown>>
   groups?: Array<{
+    id?: string | null
+    serviceDate?: string | null
+    dateLabel?: string | null
     meetingPoint: string
     startTime: string
     arrivalTime?: string | null
     endTime: string
     workers: number
+    jamoneros?: number
     drivers: number
+    needsDriver?: boolean
+    wantsResponsible?: boolean
+    driverId?: string | null
+    driverName?: string | null
     responsibleId?: string | null
     responsibleName?: string | null
   }>
@@ -151,6 +160,7 @@ export type QuadrantSaveRequestBody = {
   phaseType?: string | null
   phaseLabel?: string | null
   phaseDate?: string | null
+  manualResponsibleId?: string | null
   manualResponsibleName?: string
   externalWorkers?: ExternalWorkerInput[]
   timetables?: Array<{ startTime?: unknown; endTime?: unknown }>

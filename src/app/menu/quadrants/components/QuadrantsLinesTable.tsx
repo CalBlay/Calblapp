@@ -109,7 +109,7 @@ export default function QuadrantsLinesTable({
                   const hasSurvey = surveyKeySet.has(surveyKey)
                   const existingPhases = eventId ? phasesByEventId[eventId] : undefined
                   const pendingPhaseStartLbl = eventStartDisplayLabel(ev)
-                  const pendingPhases = eventId
+                  const _pendingPhases = eventId
                     ? phaseOptions
                         .filter((p) => !(existingPhases && existingPhases.has(p.key)))
                         .map((p) => ({
@@ -127,7 +127,7 @@ export default function QuadrantsLinesTable({
                   const pendingKey = buildPendingExpandKey(ev)
                   const isPending = ev.quadrantStatus === 'pending'
                   const isExpanded =
-                    (Boolean(draft?.id) && expandedId === draft.id) ||
+                    (draft?.id != null && expandedId === draft.id) ||
                     (isPending && expandedId === pendingKey)
                   const draftAttention =
                     draft && Array.isArray(draft.attentionNotes) ? draft.attentionNotes : []

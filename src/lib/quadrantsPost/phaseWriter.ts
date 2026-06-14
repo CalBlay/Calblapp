@@ -205,19 +205,20 @@ export function createWritePhaseDoc(deps: WritePhaseDocDeps) {
     const phaseManualLogistica = mode === 'manual' && deptNorm === 'logistica'
     const phaseSkipHeavyPipeline = phaseManualServeis || phaseManualLogistica
 
+    const phaseBodyRecord = phaseBody as Record<string, unknown>
     let phaseAssignBody: Record<string, unknown>
     if (phaseSkipHeavyPipeline) {
       phaseAssignBody = {
         ...phaseBody,
-        preferredStaffNames: Array.isArray(phaseBody.preferredStaffNames)
-          ? (phaseBody.preferredStaffNames as string[])
+        preferredStaffNames: Array.isArray(phaseBodyRecord.preferredStaffNames)
+          ? (phaseBodyRecord.preferredStaffNames as string[])
           : [],
-        preferredDriverNames: Array.isArray(phaseBody.preferredDriverNames)
-          ? (phaseBody.preferredDriverNames as string[])
+        preferredDriverNames: Array.isArray(phaseBodyRecord.preferredDriverNames)
+          ? (phaseBodyRecord.preferredDriverNames as string[])
           : [],
         preferredResponsibleName:
-          typeof phaseBody.preferredResponsibleName === 'string'
-            ? phaseBody.preferredResponsibleName
+          typeof phaseBodyRecord.preferredResponsibleName === 'string'
+            ? phaseBodyRecord.preferredResponsibleName
             : null,
       }
     } else {

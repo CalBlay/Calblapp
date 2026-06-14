@@ -133,11 +133,11 @@ export default function EventsPage() {
   const [filterResetSignal, setFilterResetSignal] = useState(0)
   const [commercialFilterInitialized, setCommercialFilterInitialized] = useState(false)
   const [preparerHistoryMode, setPreparerHistoryMode] = useState(
-    () => searchParams.get('history') === '1'
+    () => searchParams?.get('history') === '1'
   )
 
   useEffect(() => {
-    setPreparerHistoryMode(searchParams.get('history') === '1')
+    setPreparerHistoryMode(searchParams?.get('history') === '1')
   }, [searchParams])
 
   const fromISO = `${filters.start}T00:00:00.000Z`
@@ -523,7 +523,7 @@ export default function EventsPage() {
   const handleHistoryModeChange = useCallback(
     (next: boolean) => {
       setPreparerHistoryMode(next)
-      const params = new URLSearchParams(searchParams.toString())
+      const params = new URLSearchParams(searchParams?.toString() ?? '')
       if (next) {
         params.set('history', '1')
       } else {
@@ -550,7 +550,7 @@ export default function EventsPage() {
     setFilterResetSignal((value) => value + 1)
     setCommercialFilterInitialized(false)
     setPreparerHistoryMode(false)
-    const params = new URLSearchParams(searchParams.toString())
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
     params.delete('history')
     const query = params.toString()
     router.replace(query ? `/menu/events?${query}` : '/menu/events', { scroll: false })

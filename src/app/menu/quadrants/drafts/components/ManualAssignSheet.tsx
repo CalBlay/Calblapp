@@ -56,10 +56,9 @@ export default function ManualAssignSheet({ draft, onRefreshDrafts }: Props) {
     (draft as DraftInput & { phaseType?: string }).phaseType || 'event'
   )
   const config = getManualAssignDeptConfig(department, phaseType)
-  const hydrationKey = `${draft.id}|${String(draft.updatedAt || '')}|${draft.status || ''}`
   const initial = useMemo(
     () => initManualAssignState({ ...draft, department }),
-    [hydrationKey, draft, department]
+    [draft, department]
   )
 
   const [rows, setRows] = useState<Row[]>(initial.rows)
@@ -107,7 +106,7 @@ export default function ManualAssignSheet({ draft, onRefreshDrafts }: Props) {
       globalMeetingPoint: next.globalMeetingPoint,
       vestimentModel: next.vestimentModel,
     })
-  }, [hydrationKey, draft, department])
+  }, [draft, department])
 
   useEffect(() => {
     if (!config.isServeis) {

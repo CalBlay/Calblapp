@@ -610,10 +610,11 @@ export function useQuadrantFormState({
     })
   }, [
     modalOpen,
-    existingDraft?.id,
-    existingDraft?.updatedAt,
+    existingDraft,
     event.id,
     event.start,
+    event.end,
+    event.originalEnd,
     event.startTime,
     event.endTime,
     event.arrivalTime,

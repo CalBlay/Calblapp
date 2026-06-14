@@ -88,6 +88,7 @@ export default function DraftsTable({
   const [vestimentModelChoice, setVestimentModelChoice] = useState<string>(
     String(draft.vestimentModel || '').trim()
   )
+  const [globalStartDate, setGlobalStartDate] = useState(draft.startDate || '')
   const [globalStartTime, setGlobalStartTime] = useState(draft.startTime || '')
   const [globalEndTime, setGlobalEndTime] = useState(draft.endTime || '')
   const [globalMeetingPoint, setGlobalMeetingPoint] = useState(
@@ -255,12 +256,14 @@ export default function DraftsTable({
   }, [draft.id, draft.updatedAt, draft.vestimentModel])
 
   useEffect(() => {
+    setGlobalStartDate(draft.startDate || '')
     setGlobalStartTime(draft.startTime || '')
     setGlobalEndTime(draft.endTime || '')
     setGlobalMeetingPoint(defaultMeetingPoint || String(draft.meetingPoint || '').trim())
   }, [
     draft.id,
     draft.updatedAt,
+    draft.startDate,
     draft.startTime,
     draft.endTime,
     draft.meetingPoint,
@@ -725,7 +728,7 @@ export default function DraftsTable({
   }
 
   const defaultGroup = hasStructuredGroups ? groupDefs[0] : undefined
-  const defaultGroupId = hasStructuredGroups ? groupDefs[0]?.id : undefined
+  const defaultGroupId = hasStructuredGroups ? (groupDefs[0]?.id ?? undefined) : undefined
   const defaultGroupStartTime = defaultGroup?.startTime || draft.startTime
   const defaultGroupEndTime = defaultGroup?.endTime || draft.endTime
   const defaultGroupArrivalTime = defaultGroup?.arrivalTime || draft.arrivalTime
@@ -925,6 +928,7 @@ export default function DraftsTable({
     setRowsState((prev) => {
       const next = prev.map((row) => ({
         ...row,
+        startDate: globalStartDate || row.startDate,
         startTime: globalStartTime || row.startTime,
         endTime: globalEndTime || row.endTime,
         meetingPoint: globalMeetingPoint || row.meetingPoint,
@@ -936,6 +940,7 @@ export default function DraftsTable({
       setGroupDefsState((prev) =>
         prev.map((group) => ({
           ...group,
+          serviceDate: globalStartDate || group.serviceDate,
           startTime: globalStartTime || group.startTime,
           endTime: globalEndTime || group.endTime,
           meetingPoint: globalMeetingPoint || group.meetingPoint,
@@ -959,6 +964,7 @@ export default function DraftsTable({
     )}
   >
     <DraftManualToolbar
+      startDate={globalStartDate}
       startTime={globalStartTime}
       endTime={globalEndTime}
       meetingPoint={globalMeetingPoint}
@@ -967,6 +973,7 @@ export default function DraftsTable({
       showVestiment={isServeisDept}
       loadingAvailability={available.loading}
       isLocked={isLocked}
+      onStartDateChange={setGlobalStartDate}
       onStartTimeChange={setGlobalStartTime}
       onEndTimeChange={setGlobalEndTime}
       onMeetingPointChange={setGlobalMeetingPoint}

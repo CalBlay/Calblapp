@@ -1,6 +1,5 @@
 import { addDays, format, parseISO } from 'date-fns'
 import { mapDraftToEditorModel } from '@/lib/quadrantsDraftAdapters'
-import type { EditorGroup, EditorRow } from '@/lib/quadrantsDraftEditor'
 import {
   normalizeDepartmentKey,
   type EditorDraftInput,

@@ -147,7 +147,7 @@ export function buildQuadrantSave(
       meetingPoint: bodyForSave.meetingPoint || '',
     }
     if (manualRespId) {
-      ;(toSave as Record<string, unknown>).responsableId = manualRespId
+      toSave.responsableId = manualRespId
     }
   }
 
