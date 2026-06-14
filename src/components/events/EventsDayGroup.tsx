@@ -37,10 +37,11 @@ interface Props {
   events: EventData[]
   onEventClick?: (ev: EventData, mode?: 'menu' | 'avisos') => void
   onEventChat?: (ev: EventData) => void
+  onEventComanda?: (ev: EventData) => void
   isAdmin?: boolean
 }
 
-export default function EventsDayGroup({ date, events, onEventClick, onEventChat, isAdmin }: Props) {
+export default function EventsDayGroup({ date, events, onEventClick, onEventChat, onEventComanda, isAdmin }: Props) {
   const totalPax = events.reduce((sum, e) => sum + (Number(e.pax) || 0), 0)
   const totalEvents = events.length
   const sortedEvents = [...events].sort((a, b) => {
@@ -78,6 +79,7 @@ export default function EventsDayGroup({ date, events, onEventClick, onEventChat
             onOpenMenu={() => onEventClick?.(event, 'menu')}
             onOpenAvisos={() => onEventClick?.(event, 'avisos')}
             onOpenChat={() => onEventChat?.(event)}
+            onOpenComanda={() => onEventComanda?.(event)}
             showChat={(() => {
               const code = String(event.eventCode || '').trim()
               const commercial = String(event.commercial || '').trim()

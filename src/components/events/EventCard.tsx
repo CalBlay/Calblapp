@@ -3,8 +3,11 @@
 
 import React from 'react'
 import { Card } from '@/components/ui/card'
-import { MapPin, Users, Tag, Info, Clock, MessageCircle, UserRound } from 'lucide-react'
+import { MapPin, Users, Tag, Info, Clock, MessageCircle, UserRound, ClipboardList } from 'lucide-react'
+import type { EventComandaStatus } from '@/lib/eventComanda/types'
+import { eventComandaIconClass } from '@/lib/eventComanda/ui'
 import { colorByLN } from '@/lib/colors'
+import { cn } from '@/lib/utils'
 
 interface LastAviso {
   content: string
@@ -41,6 +44,8 @@ interface Props {
   onOpenMenu: () => void
   onOpenAvisos: () => void
   onOpenChat?: () => void
+  onOpenComanda?: () => void
+  comandaStatus?: EventComandaStatus | null
   showChat?: boolean
   variant?: 'list' | 'grid'
 }
@@ -58,6 +63,8 @@ export default function EventCard({
   onOpenMenu,
   onOpenAvisos,
   onOpenChat,
+  onOpenComanda,
+  comandaStatus,
   showChat,
   variant = 'grid',
 }: Props) {
@@ -78,6 +85,24 @@ export default function EventCard({
 
   const actionButtons = (
     <>
+      {onOpenComanda && (
+        <button
+          type="button"
+          aria-label="Obrir comanda de l'esdeveniment"
+          className="relative"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenComanda()
+          }}
+        >
+          <ClipboardList
+            className={cn('h-4 w-4 lg:h-[18px] lg:w-[18px]', eventComandaIconClass(comandaStatus))}
+          />
+          {comandaStatus === 'replenishment_pending' ? (
+            <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white" />
+          ) : null}
+        </button>
+      )}
       {showChat && onOpenChat && (
         <button
           type="button"

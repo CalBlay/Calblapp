@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import { formatDateOnly } from '@/lib/date-format'
 import { startOfWeek, endOfWeek, format } from 'date-fns'
 import { CalendarDays } from 'lucide-react'
 
@@ -275,6 +276,25 @@ export default function EventsPage() {
     }
   }
 
+  const handleEventComanda = (ev: EnhancedEvent) => {
+    const title = ev.summary || ev.name || 'Esdeveniment'
+    const meta = [
+      formatDateOnly(ev.start?.slice(0, 10)),
+      ev.horaInici,
+      ev.locationShort || ev.location,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(`event-comanda-title:${ev.id}`, title)
+      sessionStorage.setItem(`event-comanda-meta:${ev.id}`, meta)
+    }
+
+    const returnTo = encodeURIComponent(`/menu/events?start=${filters.start}&end=${filters.end}`)
+    router.push(`/menu/events/${encodeURIComponent(String(ev.id))}/comanda?returnTo=${returnTo}`)
+  }
+
   const userForModal = {
     id: (session?.user as SessionUser)?.id,
     role: (session?.user as SessionUser)?.role,
@@ -484,6 +504,7 @@ export default function EventsPage() {
                     events={evs}
                     onEventClick={handleEventClick}
                     onEventChat={handleEventChat}
+                    onEventComanda={handleEventComanda}
                     isAdmin={isAdmin}
                   />
                 ))}
