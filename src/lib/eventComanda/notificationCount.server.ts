@@ -141,7 +141,7 @@ async function reconcilePreparerWarehouseNotificationCount(userId: string): Prom
       batch.delete(doc.ref)
     }
     await batch.commit()
-    await decrementUnreadFromNotificationDocs(uid, toDelete)
+    await decrementUnreadFromNotificationDocs(userId, toDelete)
   }
 
   return actionable

@@ -7,9 +7,9 @@ import {
   archiveEventComandaBatchChatChannel,
   canAccessEventComandaChat,
   canManageEventComandaChatMembers,
+  ensureEventComandaBatchChatChannel,
   eventComandaBatchIdentity,
   findBatchForComandaChat,
-  syncEventComandaBatchChatChannel,
 } from '@/lib/messaging/comandaChat.server'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { normalizeRole } from '@/lib/roles'
@@ -64,7 +64,12 @@ export async function POST(
     const chatActive = isComandaWarehouseChatActive(batch.status)
 
     const result = chatActive
-      ? await syncEventComandaBatchChatChannel(eventId, warehouseId, batchKey)
+      ? await ensureEventComandaBatchChatChannel({
+          eventId,
+          order: access.order,
+          warehouseId,
+          batchId: batchKey,
+        })
       : await archiveEventComandaBatchChatChannel(eventId, warehouseId, batchKey)
 
     if (!result?.channelId) {

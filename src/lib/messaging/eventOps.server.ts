@@ -9,11 +9,9 @@ import {
   resolveEventComandaBatchChannelId,
 } from '@/lib/messaging/eventComandaChatIds'
 import {
-  canManageEventComandaChatMembers,
   visibleComandaBatchesForViewer,
 } from '@/lib/messaging/comandaChat.server'
 import { normalizeRole } from '@/lib/roles'
-import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
 import { isComandaWarehouseChatActive } from '@/lib/eventComanda/batchStatus'
 
 export type EventOpsRoom = {
@@ -117,7 +115,6 @@ export async function listEventOpsRooms(params: {
   const rooms: EventOpsRoom[] = []
 
   if (await canListProductionRoom({ eventId, userId, role, eventMeta })) {
-    await ensureEventChatChannel(eventId)
     const channelId = `event_${eventId}`
     rooms.push({
       roomId: 'production',
@@ -139,47 +136,47 @@ export async function listEventOpsRooms(params: {
     })
 
     const seenBatches = new Set<string>()
-    for (const batch of visibleBatches) {
-      const warehouseKey = warehouseDocId(batch.warehouseId)
+    const uniqueBatches = visibleBatches.filter((batch) => {
       const batchKey = eventComandaBatchIdentity(batch)
-      if (!warehouseKey || !batchKey || seenBatches.has(batchKey)) continue
+      if (!batchKey || seenBatches.has(batchKey)) return false
       seenBatches.add(batchKey)
+      return Boolean(warehouseDocId(batch.warehouseId))
+    })
 
-      const channelId = resolveEventComandaBatchChannelId(eventId, batch)
-      const warehouseLabel =
-        batch.warehouseName?.trim() && batch.warehouseCode?.trim()
-          ? `${batch.warehouseName} · ${batch.warehouseCode}`
-          : batch.warehouseName?.trim() || batch.warehouseCode?.trim() || 'Magatzem'
-      const batchStatus = String(batch.status || 'pending')
-      const chatActive = isComandaWarehouseChatActive(batchStatus)
-      const label =
-        batch.kind === 'revision'
-          ? `Comanda add. · ${warehouseLabel}`
-          : `Comanda · ${warehouseLabel}`
+    const comandaRooms = await Promise.all(
+      uniqueBatches.map(async (batch) => {
+        const warehouseKey = warehouseDocId(batch.warehouseId)
+        const batchKey = eventComandaBatchIdentity(batch)
+        const channelId = resolveEventComandaBatchChannelId(eventId, batch)
+        const warehouseLabel =
+          batch.warehouseName?.trim() && batch.warehouseCode?.trim()
+            ? `${batch.warehouseName} · ${batch.warehouseCode}`
+            : batch.warehouseName?.trim() || batch.warehouseCode?.trim() || 'Magatzem'
+        const batchStatus = String(batch.status || 'pending')
+        const chatActive = isComandaWarehouseChatActive(batchStatus)
+        const label =
+          batch.kind === 'revision'
+            ? `Comanda add. · ${warehouseLabel}`
+            : `Comanda · ${warehouseLabel}`
 
-      rooms.push({
-        roomId: buildEventComandaRoomId(warehouseKey, batchKey),
-        type: 'comanda',
-        label,
-        channelId,
-        unreadCount: await getUnreadCount(channelId, userId),
-        warehouseId: warehouseKey,
-        batchId: batchKey,
-        warehouseCode: batch.warehouseCode,
-        warehouseName: batch.warehouseName,
-        requesterUserName: order.sentByUserName || null,
-        batchStatus,
-        chatActive,
-        canManageMembers: chatActive
-          ? await canManageEventComandaChatMembers({
-              order,
-              userId,
-              role,
-              channelId,
-            })
-          : false,
+        return {
+          roomId: buildEventComandaRoomId(warehouseKey, batchKey),
+          type: 'comanda' as const,
+          label,
+          channelId,
+          unreadCount: await getUnreadCount(channelId, userId),
+          warehouseId: warehouseKey,
+          batchId: batchKey,
+          warehouseCode: batch.warehouseCode,
+          warehouseName: batch.warehouseName,
+          requesterUserName: order.sentByUserName || null,
+          batchStatus,
+          chatActive,
+        }
       })
-    }
+    )
+
+    rooms.push(...comandaRooms)
   }
 
   return rooms

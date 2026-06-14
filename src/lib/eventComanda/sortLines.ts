@@ -83,10 +83,13 @@ export function nextComandaLineSortStack(
   }
 
   if (primary) {
-    return [{ key: nextKey, direction: 'asc' }, primary].slice(0, 2)
+    return [
+      { key: nextKey, direction: 'asc' as ComandaLineSortDirection },
+      primary,
+    ].slice(0, 2)
   }
 
-  return [{ key: nextKey, direction: 'asc' }]
+  return [{ key: nextKey, direction: 'asc' as ComandaLineSortDirection }]
 }
 
 /** Compatibilitat amb ordenació d'un sol camp. */

@@ -256,7 +256,12 @@ export async function updateEventComandaBatch(params: {
     }
   }
 
-  return payload
+  return {
+    ...order,
+    batches,
+    status,
+    ...warehouseIndex,
+  }
 }
 
 function resolveLineWarehouse(

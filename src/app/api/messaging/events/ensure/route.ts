@@ -22,22 +22,45 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing eventId' }, { status: 400 })
   }
 
+  const user = session.user as SessionUser
+  const userId = user.id
+  const role = normalizeRole(user.role || '')
+  const channelId = `event_${eventId}`
+
+  const [channelSnap, memberSnap] = await Promise.all([
+    db.collection('channels').doc(channelId).get(),
+    db
+      .collection('channelMembers')
+      .where('channelId', '==', channelId)
+      .where('userId', '==', userId)
+      .limit(1)
+      .get(),
+  ])
+
+  if (
+    channelSnap.exists &&
+    (channelSnap.data() as { status?: string } | undefined)?.status !== 'archived' &&
+    !memberSnap.empty
+  ) {
+    return NextResponse.json({ channelId })
+  }
+
   const result = await ensureEventChatChannel(eventId)
   if (!result?.channelId) {
     return NextResponse.json({ error: 'Event not eligible' }, { status: 400 })
   }
 
-  const user = session.user as SessionUser
-  const userId = user.id
-  const role = normalizeRole(user.role || '')
-  const memberSnap = await db
-    .collection('channelMembers')
-    .where('channelId', '==', result.channelId)
-    .where('userId', '==', userId)
-    .limit(1)
-    .get()
+  const ensuredMemberSnap =
+    result.channelId === channelId && !memberSnap.empty
+      ? memberSnap
+      : await db
+          .collection('channelMembers')
+          .where('channelId', '==', result.channelId)
+          .where('userId', '==', userId)
+          .limit(1)
+          .get()
 
-  if (memberSnap.empty) {
+  if (ensuredMemberSnap.empty) {
     const memberIds = Array.isArray(result.memberIds) ? result.memberIds : []
     const canForce = role === 'admin' || role === 'direccio'
     if (memberIds.includes(userId) || canForce) {

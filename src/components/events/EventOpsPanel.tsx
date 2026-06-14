@@ -41,6 +41,8 @@ type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialRoomId?: string | null
+  /** Canal conegut (p. ex. des de comanda) per obrir missatges sense esperar ensure. */
+  initialChannelId?: string | null
 }
 
 export default function EventOpsPanel({
@@ -49,6 +51,7 @@ export default function EventOpsPanel({
   open,
   onOpenChange,
   initialRoomId = null,
+  initialChannelId = null,
 }: Props) {
   const { data: session } = useSession()
   const userId = session?.user?.id
@@ -193,10 +196,15 @@ export default function EventOpsPanel({
     setParticipantsOpen(false)
   }, [activeRoomId])
 
-  const ensureRoom = useCallback(async (room: EventOpsRoom) => {
-    setEnsuring(true)
+  const ensureRoom = useCallback(async (room: EventOpsRoom, options?: { blocking?: boolean }) => {
+    const knownChannelId = room.channelId?.trim() || ''
+    const blocking = options?.blocking ?? !knownChannelId
+
+    if (blocking) {
+      setEnsuring(true)
+      if (!knownChannelId) setChannelId(null)
+    }
     setEnsureError(null)
-    setChannelId(null)
 
     try {
       if (room.type === 'production') {
@@ -234,16 +242,38 @@ export default function EventOpsPanel({
       }
       setChannelId(json.channelId)
     } catch (error) {
-      setEnsureError(error instanceof Error ? error.message : 'No s\'ha pogut obrir el xat.')
+      if (!knownChannelId) {
+        setEnsureError(error instanceof Error ? error.message : 'No s\'ha pogut obrir el xat.')
+      }
     } finally {
-      setEnsuring(false)
+      if (blocking) setEnsuring(false)
     }
   }, [eventId])
 
   useEffect(() => {
+    if (!open) {
+      setChannelId(null)
+      setEnsureError(null)
+      setEnsuring(false)
+      return
+    }
+    if (initialChannelId) {
+      setChannelId(initialChannelId)
+    }
+  }, [initialChannelId, open])
+
+  useEffect(() => {
     if (!open || !activeRoom) return
-    void ensureRoom(activeRoom)
-  }, [activeRoom, ensureRoom, open])
+
+    const knownChannelId = activeRoom.channelId?.trim() || initialChannelId?.trim() || ''
+    if (knownChannelId) {
+      setChannelId(knownChannelId)
+      void ensureRoom(activeRoom, { blocking: false })
+      return
+    }
+
+    void ensureRoom(activeRoom, { blocking: true })
+  }, [activeRoom, ensureRoom, initialChannelId, open])
 
   const { data: membersData, mutate: refreshMembers } = useSWR(
     channelId ? `/api/messaging/channels/${channelId}/members` : null,
@@ -598,12 +628,12 @@ export default function EventOpsPanel({
             ) : null}
 
             <div className={cn('flex min-h-0 flex-1 flex-col', chatClosed ? 'bg-slate-50' : 'bg-white')}>
-              {isLoading || ensuring ? (
+              {!channelId && (isLoading || ensuring) ? (
                 <div className="flex flex-1 items-center justify-center gap-2 text-sm text-slate-500">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Obrint conversa…
                 </div>
-              ) : ensureError ? (
+              ) : ensureError && !channelId ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
                   <p className="text-sm text-red-600">{ensureError}</p>
                   {activeRoom ? (
@@ -611,15 +641,11 @@ export default function EventOpsPanel({
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => void ensureRoom(activeRoom)}
+                      onClick={() => void ensureRoom(activeRoom, { blocking: true })}
                     >
                       Torna-ho a provar
                     </Button>
                   ) : null}
-                </div>
-              ) : !activeRoom ? (
-                <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-slate-500">
-                  No tens cap sala Ops disponible.
                 </div>
               ) : channelId ? (
                 <ProjectRoomOpsChat
@@ -628,6 +654,10 @@ export default function EventOpsPanel({
                   embedded
                   consultOnly={chatClosed}
                 />
+              ) : !activeRoom ? (
+                <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-slate-500">
+                  No tens cap sala Ops disponible.
+                </div>
               ) : (
                 <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-slate-500">
                   Selecciona una sala per començar.

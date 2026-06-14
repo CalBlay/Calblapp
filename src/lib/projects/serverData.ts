@@ -13,16 +13,19 @@ import type { ProjectData } from '@/app/menu/projects/components/project-shared'
 import type { ResponsibleOption } from '@/app/menu/projects/components/project-workspace-helpers'
 
 type SessionUser = {
-  id: string
+  id?: string
   name?: string | null
   role?: string | null
   department?: string | null
+  opsProjectsConfigurable?: boolean
 }
 
 export async function loadProjectDetail(
   projectId: string,
   sessionUser: SessionUser
 ): Promise<ProjectData | null> {
+  const userId = String(sessionUser.id || '').trim()
+  if (!userId) return null
   if (!canAccessProjects(sessionToAccessUser(sessionUser))) return null
 
   const snap = await db.collection('projects').doc(projectId).get()
@@ -30,7 +33,7 @@ export async function loadProjectDetail(
 
   const data = snap.data() as Record<string, unknown>
   const accessUser = {
-    id: sessionUser.id,
+    id: userId,
     name: String(sessionUser.name || '').trim(),
     role: String(sessionUser.role || '').trim(),
     department: sessionUser.department,

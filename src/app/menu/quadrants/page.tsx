@@ -672,7 +672,7 @@ export default function QuadrantsPage() {
                     const draftAttention = draft && Array.isArray(draft.attentionNotes)
                       ? draft.attentionNotes
                       : []
-                    const draftViolations =
+                    const draftViolations: string[] =
                       draft && Array.isArray(draft.violations)
                         ? draft.violations
                         : []

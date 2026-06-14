@@ -88,6 +88,7 @@ export default function EventComandaPage() {
 
   const [opsOpen, setOpsOpen] = useState(false)
   const [opsRoomId, setOpsRoomId] = useState<string | null>(null)
+  const [opsChannelId, setOpsChannelId] = useState<string | null>(null)
 
   if (!eventId) {
     return <p className="p-4 text-sm text-red-600">Esdeveniment no vàlid.</p>
@@ -121,8 +122,9 @@ export default function EventComandaPage() {
         canCreateComanda={canCreateComanda}
         canPrepareComanda={canPrepareComanda}
         currentUserId={session?.user?.id}
-        onOpenWarehouseChat={(_warehouseId, roomId) => {
+        onOpenWarehouseChat={(_warehouseId, roomId, channelId) => {
           setOpsRoomId(roomId)
+          setOpsChannelId(channelId || null)
           setOpsOpen(true)
         }}
       />
@@ -133,7 +135,14 @@ export default function EventComandaPage() {
         eventTitle={eventTitle}
         open={opsOpen}
         initialRoomId={opsRoomId}
-        onOpenChange={setOpsOpen}
+        initialChannelId={opsChannelId}
+        onOpenChange={(nextOpen) => {
+          setOpsOpen(nextOpen)
+          if (!nextOpen) {
+            setOpsChannelId(null)
+            setOpsRoomId(null)
+          }
+        }}
       />
     </>
   )

@@ -35,7 +35,10 @@ import EventComandaBatchStatusBadges from '@/components/events/EventComandaBatch
 import EventComandaSortableTh from '@/components/events/EventComandaSortableTh'
 import EventComandaFamilyList from '@/components/events/EventComandaFamilyList'
 import { warehouseDocId } from '@/lib/eventComanda/warehouseIds'
-import { buildEventComandaRoomIdFromBatch } from '@/lib/messaging/eventComandaChatIds'
+import {
+  buildEventComandaRoomIdFromBatch,
+  resolveEventComandaBatchChannelId,
+} from '@/lib/messaging/eventComandaChatIds'
 import EventComandaImportPanel, {
   type EventComandaImportPanelHandle,
 } from '@/components/events/EventComandaImportPanel'
@@ -137,7 +140,7 @@ type Props = {
   canCreateComanda?: boolean
   canPrepareComanda?: boolean
   currentUserId?: string | null
-  onOpenWarehouseChat?: (warehouseId: string, roomId: string) => void
+  onOpenWarehouseChat?: (warehouseId: string, roomId: string, channelId: string) => void
 }
 
 export default function EventComandaWorkspace({
@@ -621,7 +624,7 @@ function WarehouseStep({
   onEditBatch?: (batch: EventComandaOrderBatch) => void
   currentUserId?: string | null
   onRefresh: () => void
-  onOpenWarehouseChat?: (warehouseId: string, roomId: string) => void
+  onOpenWarehouseChat?: (warehouseId: string, roomId: string, channelId: string) => void
 }) {
   const batches = useMemo(() => summary.orderBatches || [], [summary.orderBatches])
   const filteredBatches = useMemo(() => {
@@ -745,7 +748,7 @@ function WarehouseBatchPanel({
   orderUpdatedByUserId?: string | null
   onEditBatch?: (batch: EventComandaOrderBatch) => void
   onSaved: () => void
-  onOpenWarehouseChat?: (warehouseId: string, roomId: string) => void
+  onOpenWarehouseChat?: (warehouseId: string, roomId: string, channelId: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [qtyByCode, setQtyByCode] = useState<Record<string, string>>(() =>
@@ -1134,7 +1137,7 @@ function WarehouseBatchPanel({
               onClick={() => {
                 if (!chatClickable) return
                 const warehouseKey = warehouseDocId(batch.warehouseId)
-                onOpenWarehouseChat(warehouseKey, buildEventComandaRoomIdFromBatch(batch))
+                onOpenWarehouseChat(warehouseKey, buildEventComandaRoomIdFromBatch(batch), resolveEventComandaBatchChannelId(eventId, batch))
               }}
             >
               <MessageCircle className="h-4 w-4" />
@@ -1342,7 +1345,11 @@ function WarehouseBatchPanel({
                     </div>
                     {changeKind === 'modified' && hadQtyChange ? (
                       <p className="mt-0.5 text-xs text-amber-700">
-                        Abans: {formatEventComandaQty(line.qtyRequestedBefore, line.qtyUnit)}
+                        Abans:{' '}
+                        {formatEventComandaQty(
+                          Number(line.qtyRequestedBefore),
+                          line.qtyUnit
+                        )}
                       </p>
                     ) : null}
                   </td>

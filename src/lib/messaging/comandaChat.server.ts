@@ -123,8 +123,8 @@ export async function canAccessEventComandaChat(params: {
   const visibleActive = filterBatchesForPreparerView(order.batches, viewer)
   const visibleHistory = filterBatchesForPreparerHistoryView(order.batches, viewer)
   const visibleBatches = params.preparerOnly
-    ? [...visibleActive, ...visibleHistory]
-    : order.batches
+    ? [...(visibleActive ?? []), ...(visibleHistory ?? [])]
+    : order.batches ?? []
 
   if (!visibleBatches.length) return { ok: false, order }
 
@@ -143,7 +143,8 @@ export async function canAccessEventComandaChat(params: {
 }
 
 export async function canManageEventComandaChatMembers(params: {
-  order: EventComandaOrderDoc
+  order?: EventComandaOrderDoc | null
+  requesterUserId?: string | null
   userId: string
   role: string
   channelId: string
@@ -151,7 +152,9 @@ export async function canManageEventComandaChatMembers(params: {
   const role = normalizeRole(params.role)
   if (role === 'admin' || role === 'direccio') return true
 
-  const requesterId = String(params.order.sentByUserId || '').trim()
+  const requesterId = String(
+    params.requesterUserId || params.order?.sentByUserId || ''
+  ).trim()
   if (requesterId && requesterId === params.userId) return true
 
   if (role !== 'cap') return false
@@ -198,8 +201,9 @@ async function persistBatchChannelId(params: {
   eventId: string
   batchId: string
   channelId: string
+  order?: EventComandaOrderDoc | null
 }) {
-  const order = await getEventComandaOrder(params.eventId)
+  const order = params.order ?? (await getEventComandaOrder(params.eventId))
   if (!order) return
 
   const batchKey = String(params.batchId || '').trim()
@@ -282,6 +286,7 @@ export async function syncEventComandaBatchChatChannel(
       orderSentAt: order.sentAt,
       requesterUserId: order.sentByUserId || null,
       requesterUserName: order.sentByUserName || null,
+      chatExtraMemberIds: batch.chatExtraMemberIds || [],
       status: 'active',
       updatedAt: now,
       ...newOnlyData,
@@ -337,6 +342,7 @@ export async function syncEventComandaBatchChatChannel(
     eventId: trimmedEventId,
     batchId: eventComandaBatchIdentity(batch),
     channelId,
+    order,
   })
 
   return {
@@ -362,11 +368,68 @@ export async function syncEventComandaWarehouseChatChannel(
   )
 }
 
+/** Obre el xat de comanda; només sincronitza si el canal encara no existeix. */
+export async function ensureEventComandaBatchChatChannel(params: {
+  eventId: string
+  order: EventComandaOrderDoc
+  warehouseId: string
+  batchId: string
+}) {
+  const trimmedEventId = String(params.eventId || '').trim()
+  const warehouseKey = warehouseDocId(params.warehouseId)
+  const batchKey = String(params.batchId || '').trim()
+  if (!trimmedEventId || !warehouseKey || !batchKey) {
+    throw new Error('Lot de magatzem no vàlid.')
+  }
+
+  const batch = findBatchForComandaChat(params.order, warehouseKey, batchKey)
+  if (!batch) throw new Error('Lot de magatzem no trobat.')
+
+  const chatActive = isComandaWarehouseChatActive(batch.status)
+  const channelId = resolveEventComandaBatchChannelId(trimmedEventId, batch)
+
+  if (!chatActive) {
+    const archived = await archiveEventComandaBatchChatChannel(
+      trimmedEventId,
+      warehouseKey,
+      batchKey
+    )
+    return (
+      archived || {
+        channelId,
+        warehouseId: warehouseKey,
+        batchId: eventComandaBatchIdentity(batch),
+      }
+    )
+  }
+
+  const channelSnap = await db.collection('channels').doc(channelId).get()
+  const channelData = channelSnap.exists
+    ? (channelSnap.data() as Record<string, unknown>)
+    : null
+  if (
+    channelSnap.exists &&
+    channelData?.source === 'event_comanda' &&
+    channelData?.status !== 'archived'
+  ) {
+    return {
+      channelId,
+      memberCount: 0,
+      warehouseId: warehouseKey,
+      batchId: eventComandaBatchIdentity(batch),
+    }
+  }
+
+  return syncEventComandaBatchChatChannel(trimmedEventId, warehouseKey, batchKey)
+}
+
 export async function syncEventComandaChatChannels(eventId: string) {
   const order = await getEventComandaOrder(eventId)
   if (!order?.sentAt) return []
 
-  const results = []
+  type SyncResult = Awaited<ReturnType<typeof syncEventComandaBatchChatChannel>>
+  type ArchiveResult = NonNullable<Awaited<ReturnType<typeof archiveEventComandaBatchChatChannel>>>
+  const results: Array<SyncResult | ArchiveResult> = []
   for (const batch of order.batches || []) {
     const warehouseKey = warehouseDocId(batch.warehouseId)
     const batchKey = eventComandaBatchIdentity(batch)

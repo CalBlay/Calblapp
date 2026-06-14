@@ -191,28 +191,47 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     if (channelSource === 'event_comanda' && channel.eventId && channel.warehouseId) {
-      const order = await getEventComandaOrder(String(channel.eventId))
-      if (order?.sentAt) {
-        requesterUserId = String(order.sentByUserId || requesterUserId).trim()
-        const warehouseKey = warehouseDocId(String(channel.warehouseId))
-        const channelBatchId = String(channel.batchId || '').trim()
-        for (const batch of order.batches || []) {
-          if (warehouseDocId(batch.warehouseId) !== warehouseKey) continue
-          if (channelBatchId) {
-            const batchKey = String(batch.batchId || batch.warehouseId).trim()
-            if (batchKey !== channelBatchId) continue
-          }
-          for (const extraId of batch.chatExtraMemberIds || []) {
-            const normalized = String(extraId || '').trim()
-            if (normalized) extraMemberIds.add(normalized)
-          }
+      requesterUserId = String(channel.requesterUserId || requesterUserId).trim()
+      const storedExtras = Array.isArray(channel.chatExtraMemberIds)
+        ? channel.chatExtraMemberIds
+        : null
+
+      if (storedExtras) {
+        for (const extraId of storedExtras) {
+          const normalized = String(extraId || '').trim()
+          if (normalized) extraMemberIds.add(normalized)
         }
         canManageComandaMembers = await canManageEventComandaChatMembers({
-          order,
+          requesterUserId,
           userId,
           role,
           channelId: id,
         })
+      } else {
+        const order = await getEventComandaOrder(String(channel.eventId))
+        if (order?.sentAt) {
+          requesterUserId = String(order.sentByUserId || requesterUserId).trim()
+          const warehouseKey = warehouseDocId(String(channel.warehouseId))
+          const channelBatchId = String(channel.batchId || '').trim()
+          for (const batch of order.batches || []) {
+            if (warehouseDocId(batch.warehouseId) !== warehouseKey) continue
+            if (channelBatchId) {
+              const batchKey = String(batch.batchId || batch.warehouseId).trim()
+              if (batchKey !== channelBatchId) continue
+            }
+            for (const extraId of batch.chatExtraMemberIds || []) {
+              const normalized = String(extraId || '').trim()
+              if (normalized) extraMemberIds.add(normalized)
+            }
+          }
+          canManageComandaMembers = await canManageEventComandaChatMembers({
+            order,
+            requesterUserId,
+            userId,
+            role,
+            channelId: id,
+          })
+        }
       }
     }
 

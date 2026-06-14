@@ -199,6 +199,7 @@ export default function EventsPage() {
     eventId: string
     eventTitle: string
     initialRoomId?: string | null
+    initialChannelId?: string | null
   } | null>(null)
 
   let filteredEvents = events
@@ -346,6 +347,7 @@ export default function EventsPage() {
       eventId: String(ev.id),
       eventTitle: title,
       initialRoomId: null,
+      initialChannelId: `event_${String(ev.id)}`,
     })
   }
 
@@ -689,6 +691,7 @@ export default function EventsPage() {
           eventTitle={opsPanel.eventTitle}
           open
           initialRoomId={opsPanel.initialRoomId}
+          initialChannelId={opsPanel.initialChannelId}
           onOpenChange={(open) => {
             if (!open) setOpsPanel(null)
           }}
