@@ -99,8 +99,8 @@ export function QuadrantEditor({
     togglePhaseVisibility,
     phaseSettings,
     updatePhaseSetting,
-    phaseResponsibles,
-    updatePhaseResponsible,
+    phaseResponsibles: _phaseResponsibles,
+    updatePhaseResponsible: _updatePhaseResponsible,
     phaseVehicleAssignments,
     updatePhaseVehicleAssignment,
     replacePhaseVehicleAssignments,
@@ -141,7 +141,6 @@ export function QuadrantEditor({
 
   const [generationScope, setGenerationScope] = useState<GenerationScope>('day')
   const [selectedMultiDates, setSelectedMultiDates] = useState<string[]>([])
-  const [showJamoneroDetails, setShowJamoneroDetails] = useState(true)
 
   const { autoPreview, autoPreviewLoading, autoPreviewError } = useQuadrantAutoPreview({
     open: active,
@@ -299,13 +298,13 @@ export function QuadrantEditor({
     event.endTime,
   ])
 
-  const handleClose = () => onCancel?.()
+  const handleClose = useCallback(() => onCancel?.(), [onCancel])
 
   const [deleting, setDeleting] = useState(false)
 
   const hasPersistedDraft = Boolean(
     String((existingDraft as { id?: string } | null)?.id || '').trim() ||
-      String(event.quadrantStatus || '').trim() === 'draft'
+      event.state === 'draft'
   )
 
   const handleDelete = useCallback(async () => {
@@ -344,7 +343,17 @@ export function QuadrantEditor({
     if (!confirm('Vols tancar l\'editor sense desar?')) return
     await onSaved?.()
     handleClose()
-  }, [department, event.id, event.phaseKey, event.phaseType, event.quadrantStatus, existingDraft?.id, existingDraft?.phaseType, hasPersistedDraft, onSaved])
+  }, [
+    department,
+    event.id,
+    event.phaseKey,
+    event.phaseType,
+    existingDraft?.id,
+    existingDraft?.phaseType,
+    handleClose,
+    hasPersistedDraft,
+    onSaved,
+  ])
 
   const { loading, error, success, save: handleAutoGenAndSave } = useQuadrantSubmit({
     event,

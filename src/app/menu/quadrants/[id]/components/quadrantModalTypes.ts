@@ -28,6 +28,11 @@ export type CuinaGroup = {
   needsDriver: boolean
   wantsResponsible: boolean
   responsibleId: string
+  /** Nom del responsable (hidratació des de borrador / payload). */
+  responsibleName?: string
+  /** Conductor del grup quan ve del borrador. */
+  driverId?: string
+  driverName?: string
   driverMode: string
   vehicleType: string
   driverAssignments?: CuinaDriverAssignment[]

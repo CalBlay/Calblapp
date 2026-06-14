@@ -1,6 +1,5 @@
 'use client'
 
-import { useCallback, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { CheckCircle2, Loader2, Save, Trash2 } from 'lucide-react'
 import type { AutoPreviewResponse, QuadrantMode } from './quadrantModalTypes'
@@ -37,11 +36,12 @@ export default function QuadrantEditorIconActions({
   const { ready, canSave, canConfirm, canDeleteDraft } = useQuadrantEditorPermissions()
 
   const autoHasEnoughData = mode === 'auto' && Boolean(autoPreview?.learningStatus?.hasEnoughData)
-  const autoInsufficient =
+  const autoInsufficient = Boolean(
     mode === 'auto' &&
-    isQuadrantCoreDept &&
-    autoPreview?.learningStatus &&
-    !autoPreview.learningStatus.hasEnoughData
+      isQuadrantCoreDept &&
+      autoPreview?.learningStatus &&
+      !autoPreview.learningStatus.hasEnoughData
+  )
   const showManualLikeButtons = mode === 'manual' || autoHasEnoughData
   const busy = loading || deleting
   const saveDisabled =

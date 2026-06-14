@@ -54,7 +54,7 @@ export default function CuinaPhasePanel({
   availableTreballadors = [],
   availableVehicles,
   availableVehicleCount,
-  isVehicleIdAssigned,
+  isVehicleIdAssigned: _isVehicleIdAssigned,
   addGroup,
   removeGroup,
   updateGroup,
@@ -376,7 +376,13 @@ export default function CuinaPhasePanel({
                 >
                   Event
                 </span>
-                <PhaseUnifiedMarker selected visible compact={compact} />
+                <PhaseUnifiedMarker
+                  selected
+                  visible
+                  compact={compact}
+                  onToggleSelection={() => undefined}
+                  onToggleVisibility={() => undefined}
+                />
               </div>
             </div>
 

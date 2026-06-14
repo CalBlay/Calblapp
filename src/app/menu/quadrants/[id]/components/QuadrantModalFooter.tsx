@@ -38,11 +38,12 @@ export default function QuadrantModalFooter({
   const { ready, canSave, canConfirm } = useQuadrantEditorPermissions()
 
   const autoHasEnoughData = mode === 'auto' && Boolean(autoPreview?.learningStatus?.hasEnoughData)
-  const autoInsufficient =
+  const autoInsufficient = Boolean(
     mode === 'auto' &&
-    isQuadrantCoreDept &&
-    autoPreview?.learningStatus &&
-    !autoPreview.learningStatus.hasEnoughData
+      isQuadrantCoreDept &&
+      autoPreview?.learningStatus &&
+      !autoPreview.learningStatus.hasEnoughData
+  )
   const showManualLikeButtons = mode === 'manual' || autoHasEnoughData
   const primaryDisabled =
     !canAutoGen || loading || autoPreviewLoading || autoInsufficient === true || !ready || !canSave

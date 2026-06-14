@@ -110,7 +110,9 @@ export default function ServicePhasePanel({
 
   const treballadorOptions = availableTreballadors.map((person) => ({
     ...person,
-    isJamonero: availableJamoneros.some((j) => j.id === person.id) || person.isJamonero,
+    isJamonero:
+      availableJamoneros.some((j) => j.id === person.id) ||
+      ('isJamonero' in person && person.isJamonero === true),
   }))
 
   return (

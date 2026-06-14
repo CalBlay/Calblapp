@@ -286,6 +286,7 @@ export function useLogisticsPhasesState({
     event.start,
     existingDraft?.id,
     existingDraft?.updatedAt,
+    existingDraft,
     isLogistica,
     modalOpen,
     numDrivers,

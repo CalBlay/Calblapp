@@ -73,7 +73,7 @@ export function useCuinaState({
   open,
   isCuina,
   department,
-  mode,
+  mode: _mode,
   event,
   existingDraft,
   startDate,
