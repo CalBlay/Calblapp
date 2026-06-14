@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { hasEventsComandaPreparerOnlyAccess } from '@/lib/eventComanda/permissionsAccess.server'
+import { eventComandaAccessUserFromSession } from '@/lib/eventComanda/eventComandaApiAuth'
 import { isComandaWarehouseChatActive } from '@/lib/eventComanda/batchStatus'
 import { listWarehouseIdsForUser } from '@/lib/eventComanda/warehouseMembers.server'
 import {
@@ -15,31 +16,6 @@ import { normalizeRole } from '@/lib/roles'
 import { warehouseDocId } from '@/lib/eventComanda/warehouses.server'
 
 export const dynamic = 'force-dynamic'
-
-function accessUserFromSession(user: {
-  id: string
-  role?: string | null
-  department?: string | null
-  canRespondSurveys?: boolean
-  isDepartmentRobaLead?: boolean
-  robaLinkedPersonnelId?: string | null
-  opsProjectsConfigurable?: boolean
-  isTransportLead?: boolean
-}) {
-  return {
-    id: user.id,
-    role: user.role,
-    department: user.department,
-    canRespondSurveys: Boolean(user.canRespondSurveys),
-    isDepartmentRobaLead: Boolean(user.isDepartmentRobaLead),
-    robaLinkedPersonnelId: user.robaLinkedPersonnelId ?? null,
-    opsProjectsConfigurable:
-      typeof user.opsProjectsConfigurable === 'boolean'
-        ? user.opsProjectsConfigurable
-        : undefined,
-    isTransportLead: Boolean(user.isTransportLead),
-  }
-}
 
 export async function POST(
   req: Request,
@@ -61,7 +37,7 @@ export async function POST(
     return NextResponse.json({ error: 'Magatzem no vàlid.' }, { status: 400 })
   }
 
-  const accessUser = accessUserFromSession(auth.user)
+  const accessUser = eventComandaAccessUserFromSession(auth.user)
   const preparerOnly = await hasEventsComandaPreparerOnlyAccess(accessUser)
   const assignedWarehouseIds = await listWarehouseIdsForUser(auth.user.id)
 

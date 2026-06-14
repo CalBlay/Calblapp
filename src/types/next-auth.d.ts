@@ -16,6 +16,7 @@ declare module "next-auth" {
       deptLower?: string
       commercialName?: string
       isTransportLead?: boolean
+      opsProjectsConfigurable?: boolean
     } & DefaultSession["user"]
   }
 }
@@ -29,6 +30,7 @@ declare module "next-auth/jwt" {
     deptLower?: string
     commercialName?: string
     isTransportLead?: boolean
+    opsProjectsConfigurable?: boolean
   }
 }
 

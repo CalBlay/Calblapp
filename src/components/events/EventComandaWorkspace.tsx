@@ -74,7 +74,6 @@ import {
   eventComandaModuleShellClass,
   eventComandaPageShellClass,
   eventComandaPanelClass,
-  eventComandaPrimaryButtonClass,
   eventComandaSidebarClass,
   eventComandaStatusBadgeClass,
   eventComandaTableClass,
@@ -624,7 +623,7 @@ function WarehouseStep({
   onRefresh: () => void
   onOpenWarehouseChat?: (warehouseId: string, roomId: string) => void
 }) {
-  const batches = summary.orderBatches || []
+  const batches = useMemo(() => summary.orderBatches || [], [summary.orderBatches])
   const filteredBatches = useMemo(() => {
     return batches.filter((batch) => {
       if (normalizeEventComandaBatchStatus(batch.status) === 'cancelled') {

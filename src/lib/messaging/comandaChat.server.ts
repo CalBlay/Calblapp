@@ -16,9 +16,7 @@ import type { EventComandaOrderBatch } from '@/lib/eventComanda/types'
 import { normalizeRole } from '@/lib/roles'
 import {
   buildEventComandaChannelId,
-  buildEventComandaRoomId,
   eventComandaBatchIdentity,
-  parseEventComandaRoomId,
   resolveEventComandaBatchChannelId,
 } from '@/lib/messaging/eventComandaChatIds'
 

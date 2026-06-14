@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { upsertArticlesFromLines } from '@/lib/eventComanda/articles.server'
 import { hasEventComandaCreateAccess, hasEventsComandaPreparerOnlyAccess } from '@/lib/eventComanda/permissionsAccess.server'
+import { eventComandaAccessUserFromSession } from '@/lib/eventComanda/eventComandaApiAuth'
 import { mergeDuplicateErpLines, articleCodePrefix, eventComandaQtyUnit, sortFamilies, type ParsedErpLine } from '@/lib/eventComanda/parseErpExcel'
 import {
   getEventComandaTemplate,
@@ -25,31 +26,6 @@ import { requireAuth } from '@/lib/server/apiAuth'
 import { normalizeRole } from '@/lib/roles'
 
 export const dynamic = 'force-dynamic'
-
-function accessUserFromSession(user: {
-  id: string
-  role?: string | null
-  department?: string | null
-  canRespondSurveys?: boolean
-  isDepartmentRobaLead?: boolean
-  robaLinkedPersonnelId?: string | null
-  opsProjectsConfigurable?: boolean
-  isTransportLead?: boolean
-}) {
-  return {
-    id: user.id,
-    role: user.role,
-    department: user.department,
-    canRespondSurveys: Boolean(user.canRespondSurveys),
-    isDepartmentRobaLead: Boolean(user.isDepartmentRobaLead),
-    robaLinkedPersonnelId: user.robaLinkedPersonnelId ?? null,
-    opsProjectsConfigurable:
-      typeof user.opsProjectsConfigurable === 'boolean'
-        ? user.opsProjectsConfigurable
-        : undefined,
-    isTransportLead: Boolean(user.isTransportLead),
-  }
-}
 
 function buildSummary(
   eventId: string,
@@ -151,7 +127,9 @@ export async function GET(
   const template = await getEventComandaTemplate(eventId)
   const order = await getEventComandaOrder(eventId)
   const assignedWarehouseIds = await listWarehouseIdsForUser(auth.user.id)
-  const preparerOnly = await hasEventsComandaPreparerOnlyAccess(accessUserFromSession(auth.user))
+  const preparerOnly = await hasEventsComandaPreparerOnlyAccess(
+    eventComandaAccessUserFromSession(auth.user)
+  )
 
   if (preparerOnly) {
     const viewer = {
@@ -205,7 +183,7 @@ export async function POST(
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
 
-  const accessUser = accessUserFromSession(auth.user)
+  const accessUser = eventComandaAccessUserFromSession(auth.user)
   const preparerOnly = await hasEventsComandaPreparerOnlyAccess(accessUser)
   if (preparerOnly) {
     return NextResponse.json({ error: 'Sense permís per importar plantilles.' }, { status: 403 })
@@ -310,7 +288,7 @@ export async function PATCH(
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
 
-  const accessUser = accessUserFromSession(auth.user)
+  const accessUser = eventComandaAccessUserFromSession(auth.user)
   const preparerOnly = await hasEventsComandaPreparerOnlyAccess(accessUser)
   if (preparerOnly) {
     return NextResponse.json({ error: 'Sense permís per enviar comandes.' }, { status: 403 })

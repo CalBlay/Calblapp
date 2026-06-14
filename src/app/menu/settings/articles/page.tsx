@@ -129,7 +129,7 @@ export default function EventComandaArticlesConfigPage() {
     () => (warehousesData?.warehouses ?? []).filter((w) => w.isActive),
     [warehousesData?.warehouses]
   )
-  const units = unitsData?.units ?? []
+  const units = useMemo(() => unitsData?.units ?? [], [unitsData?.units])
   const activeUnits = useMemo(() => units.filter((unit) => unit.isActive), [units])
   const rules = rulesData?.rules ?? []
   const articles = catalogArticles

@@ -33,7 +33,6 @@ import {
   incidentsActionBaseAccess,
 } from '@/lib/incidentsPermissions'
 import {
-  EVENTS_COMANDA_ACTION,
   EVENTS_COMANDA_CREATE_PERM,
   EVENTS_COMANDA_PREPARE_PERM,
   EVENTS_UI_PATH,

@@ -51,8 +51,6 @@ export type WarehouseComandaEventCard = {
 const ORDERS_COL = EVENT_COMANDA_COLLECTIONS.orders
 const STAGE_COL = 'stage_verd'
 
-const dayKey = (iso?: string) => (iso || '').slice(0, 10)
-
 function firstDocString(d: Record<string, unknown>, keys: string[]): string | null {
   for (const k of keys) {
     const v = d[k]

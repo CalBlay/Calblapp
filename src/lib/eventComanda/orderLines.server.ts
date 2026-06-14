@@ -1,5 +1,4 @@
 import type {
-  EventComandaBatchStatus,
   EventComandaOrderBatch,
   EventComandaOrderBatchLine,
 } from '@/lib/eventComanda/types'

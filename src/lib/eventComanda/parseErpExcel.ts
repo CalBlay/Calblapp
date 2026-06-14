@@ -89,7 +89,7 @@ const normalizeQtyUnit = (unit?: string) => {
 }
 
 const sanitizeQtyUnit = (unit?: string) => {
-  let normalized = normalizeQtyUnit(unit).replace(/\.+$/, '').replace(/\s+/g, '')
+  const normalized = normalizeQtyUnit(unit).replace(/\.+$/, '').replace(/\s+/g, '')
   if (!normalized || normalized === 'O') return DEFAULT_QTY_UNIT
   // Fragments coneguts; ONU es manté (unitat ERP habitual en aquest export).
   if (normalized === 'NU' || normalized === 'UNI' || normalized === 'UNNU') {

@@ -57,7 +57,7 @@ export async function PATCH(
     warehouseId?: string
     batchId?: string
     status?: string
-    lines?: Array<{ articleCode?: string; qtyPrepared?: number | null }>
+    lines?: Array<{ articleCode?: string; qtyPrepared?: number | string | null }>
   }
 
   const warehouseId = warehouseDocId(body.warehouseId || '')
