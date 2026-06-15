@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import Image from 'next/image'
 import useSWR from 'swr'
 import {
   AlertTriangle,
@@ -696,13 +695,11 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                               rel="noreferrer"
                                               className="block overflow-hidden rounded-md border border-slate-200"
                                             >
-                                              <Image
+                                              <img
                                                 src={photo.url}
                                                 alt={`Foto ${pIdx + 1}`}
-                                                width={256}
-                                                height={64}
                                                 className="h-16 w-full object-cover"
-                                                unoptimized
+                                                loading="lazy"
                                               />
                                             </a>
                                           ))}
