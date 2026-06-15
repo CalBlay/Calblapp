@@ -15,7 +15,7 @@ type Props = {
   uploading?: boolean
   linking?: boolean
   onFilesSelected: (files: FileList | null) => void | Promise<void>
-  onDriveLinkSubmit?: (url: string) => void | Promise<void>
+  onPhotosLinkSubmit?: (url: string) => void | Promise<void>
   onClearPreview?: () => void
 }
 
@@ -36,10 +36,10 @@ export default function MobileVideoPicker({
   uploading = false,
   linking = false,
   onFilesSelected,
-  onDriveLinkSubmit,
+  onPhotosLinkSubmit,
   onClearPreview,
 }: Props) {
-  const [driveLink, setDriveLink] = useState('')
+  const [photosLink, setPhotosLink] = useState('')
   const busy = compressing || uploading || linking
   const atLimit = count >= maxVideos
   const blocked = atLimit || disabled || busy
@@ -48,11 +48,11 @@ export default function MobileVideoPicker({
     void onFilesSelected(files)
   }
 
-  const submitDrive = () => {
-    const value = driveLink.trim()
-    if (!value || !onDriveLinkSubmit) return
-    void onDriveLinkSubmit(value)
-    setDriveLink('')
+  const submitPhotos = () => {
+    const value = photosLink.trim()
+    if (!value || !onPhotosLinkSubmit) return
+    void onPhotosLinkSubmit(value)
+    setPhotosLink('')
   }
 
   return (
@@ -98,18 +98,18 @@ export default function MobileVideoPicker({
             </label>
           </div>
 
-          {onDriveLinkSubmit ? (
+          {onPhotosLinkSubmit ? (
             <div className="flex gap-2">
               <div className="flex shrink-0 items-center gap-1 text-xs font-semibold text-slate-700">
                 <Link2 className="h-4 w-4 text-blue-600" aria-hidden />
-                <span className="whitespace-nowrap">3. Google Drive</span>
+                <span className="whitespace-nowrap">3. Google Fotos</span>
               </div>
               <input
                 type="url"
                 inputMode="url"
-                value={driveLink}
-                onChange={(e) => setDriveLink(e.target.value)}
-                placeholder="Enllaç Google Drive"
+                value={photosLink}
+                onChange={(e) => setPhotosLink(e.target.value)}
+                placeholder="Enllaç Google Fotos"
                 disabled={blocked}
                 className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
               />
@@ -118,8 +118,8 @@ export default function MobileVideoPicker({
                 variant="secondary"
                 size="sm"
                 className="shrink-0 px-3"
-                disabled={blocked || !driveLink.trim()}
-                onClick={submitDrive}
+                disabled={blocked || !photosLink.trim()}
+                onClick={submitPhotos}
               >
                 {linking ? '…' : 'OK'}
               </Button>

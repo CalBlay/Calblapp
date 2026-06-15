@@ -9,7 +9,7 @@ import {
   MAX_VIDEO_INPUT_BYTES,
 } from '@/lib/media/ticketAttachments'
 import { MAX_EVENT_VISIT_VIDEOS } from '@/lib/eventVisitVideo'
-import { normalizeGoogleDriveVideoRef } from '@/lib/googleDriveVideoLink'
+import { normalizeGooglePhotosVideoRef } from '@/lib/googlePhotosVideoLink'
 
 type Params = {
   eventId: string
@@ -99,15 +99,15 @@ export function useEventVisitVideoUpload({ eventId, eventCode, onUploaded }: Par
     [clearPreview, eventCode, eventId, onUploaded]
   )
 
-  const attachDriveLink = useCallback(
-    async (driveUrl: string) => {
-      const trimmed = String(driveUrl || '').trim()
+  const attachPhotosLink = useCallback(
+    async (photosUrl: string) => {
+      const trimmed = String(photosUrl || '').trim()
       if (!trimmed) return
 
       setError(null)
 
-      if (!normalizeGoogleDriveVideoRef(trimmed)) {
-        setError('Enganxa un enllaç vàlid de Google Drive (fitxer de vídeo).')
+      if (!normalizeGooglePhotosVideoRef(trimmed)) {
+        setError('Enganxa un enllaç vàlid de Google Fotos.')
         return
       }
 
@@ -117,7 +117,7 @@ export function useEventVisitVideoUpload({ eventId, eventCode, onUploaded }: Par
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            driveUrl: trimmed,
+            photosUrl: trimmed,
             eventCode: eventCode || undefined,
           }),
         })
@@ -143,7 +143,7 @@ export function useEventVisitVideoUpload({ eventId, eventCode, onUploaded }: Par
     previewUrl,
     clearPreview,
     handleVideoSelected,
-    attachDriveLink,
+    attachPhotosLink,
     maxVideos: MAX_EVENT_VISIT_VIDEOS,
   }
 }

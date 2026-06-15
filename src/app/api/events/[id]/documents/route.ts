@@ -11,6 +11,11 @@ import {
   visitVideoAccessUserFromSession,
 } from '@/lib/eventVisitVideoPermissions'
 import {
+  GOOGLE_PHOTOS_VIDEO_MIME,
+  googlePhotosVideoViewUrl,
+  isGooglePhotosVideoRef,
+} from '@/lib/googlePhotosVideoLink'
+import {
   GOOGLE_DRIVE_VIDEO_MIME,
   googleDriveVideoViewUrl,
   isGoogleDriveVideoRef,
@@ -237,7 +242,19 @@ export async function GET(
         }
       }
 
-      // Google Drive (vídeo de visita comercial)
+      // Google Fotos (vídeo de visita comercial)
+      if (isGooglePhotosVideoRef(path)) {
+        docs.push({
+          ...doc,
+          source: 'firestore-link',
+          url: googlePhotosVideoViewUrl(path) || path,
+          mimeType: storedMimeType || GOOGLE_PHOTOS_VIDEO_MIME,
+          icon: 'video',
+        })
+        continue
+      }
+
+      // Google Drive (legacy)
       if (isGoogleDriveVideoRef(path)) {
         docs.push({
           ...doc,

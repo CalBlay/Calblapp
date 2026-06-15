@@ -20,6 +20,15 @@ import {
   extractGoogleDriveFileId,
   GOOGLE_DRIVE_VIDEO_MIME,
 } from '@/lib/googleDriveVideoLink'
+import {
+  GOOGLE_PHOTOS_VIDEO_MIME,
+  isGooglePhotosVideoRef,
+} from '@/lib/googlePhotosVideoLink'
+
+function isPhotosVideoDoc(doc: EventDoc): boolean {
+  if (doc.mimeType === GOOGLE_PHOTOS_VIDEO_MIME) return true
+  return isGooglePhotosVideoRef(doc.url)
+}
 
 function isDriveVideoDoc(doc: EventDoc): boolean {
   if (doc.mimeType === GOOGLE_DRIVE_VIDEO_MIME) return true
@@ -45,7 +54,7 @@ function VisitVideoItem({
             {doc.title}
           </p>
           <p className="text-xs text-slate-500">
-            {isDriveVideoDoc(doc) ? 'Google Drive' : 'Vídeo'}
+            {isPhotosVideoDoc(doc) ? 'Google Fotos' : isDriveVideoDoc(doc) ? 'Google Drive' : 'Vídeo'}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -72,7 +81,7 @@ function VisitVideoItem({
           ) : null}
         </div>
       </div>
-      {isDriveVideoDoc(doc) ? (
+      {isPhotosVideoDoc(doc) || isDriveVideoDoc(doc) ? (
         <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-4 text-center">
           <a
             href={doc.url}
@@ -80,7 +89,7 @@ function VisitVideoItem({
             rel="noopener noreferrer"
             className="text-sm font-semibold text-blue-700 hover:underline"
           >
-            Obrir a Drive
+            {isPhotosVideoDoc(doc) ? 'Obrir a Fotos' : 'Obrir a Drive'}
           </a>
         </div>
       ) : (
@@ -134,7 +143,7 @@ export default function EventVisitVideoModal({
     previewUrl,
     clearPreview,
     handleVideoSelected,
-    attachDriveLink,
+    attachPhotosLink,
     maxVideos,
   } = useEventVisitVideoUpload({
     eventId,
@@ -218,7 +227,7 @@ export default function EventVisitVideoModal({
               linking={linking}
               disabled={!canUpload}
               onFilesSelected={handleVideoSelected}
-              onDriveLinkSubmit={attachDriveLink}
+              onPhotosLinkSubmit={attachPhotosLink}
               onClearPreview={clearPreview}
             />
           ) : null}

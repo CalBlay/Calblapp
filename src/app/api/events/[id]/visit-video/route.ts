@@ -22,10 +22,15 @@ import {
 import { cleanText } from '@/lib/media/collectMediaRefs'
 import { registerMediaRef, deleteMediaIndexByPath } from '@/lib/media/storageMediaIndex'
 import {
-  GOOGLE_DRIVE_VIDEO_MIME,
-  isGoogleDriveVideoRef,
-  normalizeGoogleDriveVideoRef,
-} from '@/lib/googleDriveVideoLink'
+  GOOGLE_PHOTOS_VIDEO_MIME,
+  isGooglePhotosVideoRef,
+  normalizeGooglePhotosVideoRef,
+} from '@/lib/googlePhotosVideoLink'
+import { isGoogleDriveVideoRef } from '@/lib/googleDriveVideoLink'
+
+function isExternalVisitVideoLink(path: string): boolean {
+  return isGooglePhotosVideoRef(path) || isGoogleDriveVideoRef(path)
+}
 
 export const runtime = 'nodejs'
 
@@ -100,16 +105,16 @@ export async function POST(
 
     if (contentType.includes('application/json')) {
       const body = (await req.json().catch(() => ({}))) as {
-        driveUrl?: string
+        photosUrl?: string
         eventCode?: string
         name?: string
       }
       const eventCode = String(body.eventCode || '').trim()
-      const driveUrl = String(body.driveUrl || '').trim()
-      const normalized = normalizeGoogleDriveVideoRef(driveUrl)
+      const photosUrl = String(body.photosUrl || '').trim()
+      const normalized = normalizeGooglePhotosVideoRef(photosUrl)
       if (!normalized) {
         return NextResponse.json(
-          { error: 'Enllaç de Google Drive no vàlid. Enganxa l’enllaç del fitxer de vídeo.' },
+          { error: 'Enllaç de Google Fotos no vàlid.' },
           { status: 400 }
         )
       }
@@ -120,13 +125,13 @@ export async function POST(
 
       const now = new Date().toISOString()
       const displayName =
-        cleanText(body.name) || `Google Drive · ${now.slice(0, 10)}`
+        cleanText(body.name) || `Google Fotos · ${now.slice(0, 10)}`
 
       await snap!.ref.set(
         {
           [field!]: normalized.ref,
           [`${field}Name`]: displayName,
-          [`${field}MimeType`]: GOOGLE_DRIVE_VIDEO_MIME,
+          [`${field}MimeType`]: GOOGLE_PHOTOS_VIDEO_MIME,
           [`${field}At`]: now,
           [`${field}By`]: userId,
           updatedAt: now,
@@ -140,8 +145,8 @@ export async function POST(
         ref: normalized.ref,
         url: normalized.viewUrl,
         name: displayName,
-        mimeType: GOOGLE_DRIVE_VIDEO_MIME,
-        source: 'google-drive',
+        mimeType: GOOGLE_PHOTOS_VIDEO_MIME,
+        source: 'google-photos',
       })
     }
 
@@ -284,7 +289,7 @@ export async function DELETE(
     }
 
     try {
-      if (!isGoogleDriveVideoRef(path)) {
+      if (!isExternalVisitVideoLink(path)) {
         await storageAdmin.bucket().file(path).delete()
       }
     } catch {
@@ -303,7 +308,7 @@ export async function DELETE(
       { merge: true }
     )
 
-    if (!isGoogleDriveVideoRef(path)) {
+    if (!isExternalVisitVideoLink(path)) {
       await deleteMediaIndexByPath(path)
     }
 
