@@ -21,7 +21,7 @@ import type { MachineItem, Ticket, TicketStatus, UserItem } from '@/app/menu/man
 import PlannerTicketModal from '@/app/menu/manteniment/preventius/planificador/components/PlannerTicketModal'
 
 type TabKey = 'tickets' | 'preventius'
-type DateMode = 'all' | 'planned' | 'created' | 'updated' | 'completed'
+type DateMode = 'all' | 'planned'
 type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat'
 type WorkHistoryEntry = {
   status?: string | null
@@ -88,11 +88,8 @@ const STATUS_LABELS: Record<MaintenanceStatus, string> = {
   validat: 'Validat',
 }
 const DATE_MODE_LABELS: Record<DateMode, string> = {
-  all: 'Sense filtre de data',
-  planned: 'Data planificada',
-  created: 'Data creacio',
-  updated: 'Ultim canvi',
-  completed: 'Data tancament',
+  all: 'No aplicar filtre de dates',
+  planned: 'Filtre de dates actiu',
 }
 const PRIORITY_BADGES: Record<string, string> = {
   urgent: 'bg-red-100 text-red-700',
@@ -268,7 +265,7 @@ export default function MaintenanceSeguimentPage() {
   const [users, setUsers] = useState<UserItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [dateMode, setDateMode] = useState<DateMode>('all')
+  const [dateMode, setDateMode] = useState<DateMode>('planned')
   const [externalFilter, setExternalFilter] = useState<'all' | 'internal' | 'external'>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [workerFilter, setWorkerFilter] = useState<string>('all')
@@ -360,14 +357,14 @@ export default function MaintenanceSeguimentPage() {
   useEffect(() => {
     setContent(
       <div className="space-y-4 p-4">
-        <label className="space-y-2 text-sm text-slate-700"><span className="font-medium">Filtrar per data</span><select value={dateMode} onChange={(e) => setDateMode(e.target.value as DateMode)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"><option value="all">Sense filtre de data</option><option value="planned">Data planificada</option><option value="created">Data creacio</option><option value="updated">Ultim canvi</option><option value="completed">Data tancament</option></select></label>
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"><input type="checkbox" checked={dateMode !== 'all'} onChange={(e) => setDateMode(e.target.checked ? 'planned' : 'all')} />Aplicar filtre de dates</label>
         <label className="space-y-2 text-sm text-slate-700"><span className="font-medium">Estat</span><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"><option value="all">Tots</option>{STATUSES.map((status) => <option key={status} value={status}>{STATUS_LABELS[status]}</option>)}</select></label>
         {tab === 'tickets' ? <label className="space-y-2 text-sm text-slate-700"><span className="font-medium">Flux</span><select value={externalFilter} onChange={(e) => setExternalFilter(e.target.value as 'all' | 'internal' | 'external')} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"><option value="all">Tots</option><option value="internal">Interns</option><option value="external">Derivats a proveidor</option></select></label> : null}
         <label className="space-y-2 text-sm text-slate-700"><span className="font-medium">Operari</span><select value={workerFilter} onChange={(e) => setWorkerFilter(e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"><option value="all">Tots</option>{users.map((user) => <option key={user.id} value={user.name}>{user.name}</option>)}</select></label>
         <label className="space-y-2 text-sm text-slate-700"><span className="font-medium">Ubicació</span><select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"><option value="all">Totes</option>{locations.map((location) => <option key={location} value={location}>{location}</option>)}</select></label>
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"><input type="checkbox" checked={pendingValidationOnly} onChange={(e) => setPendingValidationOnly(e.target.checked)} />Només pendents de validar</label>
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"><input type="checkbox" checked={stalledOnly} onChange={(e) => setStalledOnly(e.target.checked)} />Només oberts 3+ dies</label>
-        <div className="flex justify-end"><ResetFilterButton onClick={() => { setDateMode('all'); setStatusFilter('all'); setExternalFilter('all'); setWorkerFilter('all'); setLocationFilter('all'); setPendingValidationOnly(false); setStalledOnly(false); setSearch(''); setDateRange(getCurrentWeekRange()); setDateResetSignal((current) => current + 1) }} /></div>
+        <div className="flex justify-end"><ResetFilterButton onClick={() => { setDateMode('planned'); setStatusFilter('all'); setExternalFilter('all'); setWorkerFilter('all'); setLocationFilter('all'); setPendingValidationOnly(false); setStalledOnly(false); setSearch(''); setDateRange(getCurrentWeekRange()); setDateResetSignal((current) => current + 1) }} /></div>
       </div>
     )
   }, [dateMode, externalFilter, locationFilter, locations, pendingValidationOnly, setContent, stalledOnly, statusFilter, tab, users, workerFilter])
@@ -391,7 +388,7 @@ export default function MaintenanceSeguimentPage() {
     if (pendingValidationOnly && normalizeStatus(ticket.status) !== 'fet') return false
     if (stalledOnly && (getDaysOpen(ticket.createdAt) || 0) < 3) return false
     if (search.trim() && ![ticket.ticketCode, ticket.incidentNumber, ticket.description, ticket.machine, ticket.location, ...(ticket.assignedToNames || []), ticket.supplierName].join(' ').toLowerCase().includes(search.trim().toLowerCase())) return false
-    const reference = dateMode === 'planned' ? ticket.plannedStart : dateMode === 'created' ? ticket.createdAt : dateMode === 'updated' ? (ticket.statusHistory || []).slice().sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]?.at || ticket.assignedAt || ticket.createdAt : dateMode === 'completed' ? (ticket.statusHistory || []).filter((item) => normalizeStatus(item.status) === 'validat').sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]?.at : ticket.createdAt
+    const reference = ticket.plannedStart
     return applyDateFilter(reference || null)
   }).sort((a, b) => (parseDate((b.statusHistory || []).slice().sort((x, y) => Number(y.at || 0) - Number(x.at || 0))[0]?.at || b.createdAt)?.getTime() || 0) - (parseDate((a.statusHistory || []).slice().sort((x, y) => Number(y.at || 0) - Number(x.at || 0))[0]?.at || a.createdAt)?.getTime() || 0)), [applyDateFilter, dateMode, externalFilter, locationFilter, pendingValidationOnly, search, stalledOnly, statusFilter, tickets, workerFilter])
 
@@ -402,7 +399,7 @@ export default function MaintenanceSeguimentPage() {
     if (pendingValidationOnly && item.status !== 'fet') return false
     if (stalledOnly && (getDaysOpen(item.createdAt) || 0) < 3) return false
     if (search.trim() && ![item.title, item.location, ...item.workerNames].join(' ').toLowerCase().includes(search.trim().toLowerCase())) return false
-    const reference = dateMode === 'planned' ? parseDateFromParts(item.plannedDate, item.plannedStart)?.getTime() : dateMode === 'created' ? item.createdAt : dateMode === 'updated' ? item.updatedAt : dateMode === 'completed' ? item.completedAt : item.createdAt
+    const reference = parseDateFromParts(item.plannedDate, item.plannedStart)?.getTime()
     return applyDateFilter(reference || null)
   }).sort((a, b) => (parseDate(b.updatedAt || b.createdAt)?.getTime() || 0) - (parseDate(a.updatedAt || a.createdAt)?.getTime() || 0)), [applyDateFilter, dateMode, locationFilter, pendingValidationOnly, preventius, search, stalledOnly, statusFilter, workerFilter])
 
@@ -449,6 +446,11 @@ export default function MaintenanceSeguimentPage() {
               />
             </div>
             <CorporateActiveFilterChip variant="active">{DATE_MODE_LABELS[dateMode]}</CorporateActiveFilterChip>
+            {dateMode !== 'all' ? (
+              <CorporateActiveFilterChip>
+                {dateRange.start === dateRange.end ? dateRange.start : `${dateRange.start} - ${dateRange.end}`}
+              </CorporateActiveFilterChip>
+            ) : null}
             <div className="relative min-w-[260px] flex-1">
               <CorporateFilterSearch
                 value={search}
@@ -501,6 +503,9 @@ export default function MaintenanceSeguimentPage() {
               <CorporateActiveFilterChip>
                 {externalFilter === 'external' ? 'Derivats a proveidor' : 'Interns'}
               </CorporateActiveFilterChip>
+            ) : null}
+            {dateMode !== 'all' ? (
+              <CorporateActiveFilterChip>{DATE_MODE_LABELS[dateMode]}</CorporateActiveFilterChip>
             ) : null}
             {pendingValidationOnly ? (
               <CorporateActiveFilterChip variant="amber">Pendents de validar</CorporateActiveFilterChip>

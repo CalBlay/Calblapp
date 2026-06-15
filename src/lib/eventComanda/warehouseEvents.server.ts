@@ -10,6 +10,7 @@ import {
   listWarehouseIdsForUser,
 } from '@/lib/eventComanda/warehouseMembers.server'
 import { warehouseDocId } from '@/lib/eventComanda/warehouses.server'
+import { parseIsoDateKey } from '@/lib/eventComanda/deliverySlots'
 
 import type {
   EventComandaBatchStatus,
@@ -18,6 +19,7 @@ import type {
 
 type OrderDoc = {
   sentAt?: number
+  deliveryDate?: string | null
   preparerVisibleWarehouseIds?: string[]
   preparerHistoryWarehouseIds?: string[]
   batches?: Array<{
@@ -36,6 +38,7 @@ export type WarehouseComandaEventCard = {
   start: string
   end: string | null
   day: string
+  occurrenceKey?: string
   location: string
   locationShort: string
   horaInici?: string
@@ -69,11 +72,17 @@ function computeLocationShort(full = '') {
 }
 
 function eventOverlapsRange(dataInici: string, dataFi: string | null, startDay: string, endDay: string) {
-  const start = dataInici.slice(0, 10)
-  const end = (dataFi || dataInici).slice(0, 10)
+  const start = parseIsoDateKey(dataInici)
+  const end = parseIsoDateKey(dataFi || dataInici)
   if (!start) return false
-  const normalizedEnd = end < start ? start : end
+  const normalizedEnd = !end || end < start ? start : end
   return start <= endDay && normalizedEnd >= startDay
+}
+
+function dayFallsWithinRange(day: string | null | undefined, startDay: string, endDay: string) {
+  const normalized = parseIsoDateKey(day)
+  if (!normalized) return false
+  return normalized >= startDay && normalized <= endDay
 }
 
 function orderHasWarehouseBatch(
@@ -233,10 +242,36 @@ async function listWarehouseComandaEventsInRange(params: {
       const dataInici =
         (data && firstDocString(data, ['DataInici', 'dataInici', 'start'])) || ''
       const dataFi = data ? firstDocString(data, ['DataFi', 'dataFi', 'end']) : null
+      const deliveryDay = parseIsoDateKey(orderData?.deliveryDate || '')
 
-      if (data && dataInici && eventOverlapsRange(dataInici, dataFi, startDay, endDay)) {
-        const card = mapStageDocToCard(snap.id, data, dataInici.slice(0, 10) || startDay)
-        if (card) cards.push({ ...card, warehouseBatches })
+      if (data && deliveryDay && dayFallsWithinRange(deliveryDay, startDay, endDay)) {
+        const baseCard = mapStageDocToCard(snap.id, data)
+        if (baseCard) {
+          cards.push({
+            ...baseCard,
+            day: deliveryDay,
+            occurrenceKey: `${baseCard.id}-${deliveryDay}`,
+            warehouseBatches,
+          })
+        }
+        continue
+      }
+
+      if (
+        !deliveryDay &&
+        data &&
+        dataInici &&
+        eventOverlapsRange(dataInici, dataFi, startDay, endDay)
+      ) {
+        const baseCard = mapStageDocToCard(snap.id, data)
+        if (baseCard) {
+          cards.push({
+            ...baseCard,
+            day: baseCard.day,
+            occurrenceKey: `${baseCard.id}-${baseCard.day}`,
+            warehouseBatches,
+          })
+        }
         continue
       }
 
@@ -266,13 +301,16 @@ async function listWarehouseComandaEventsInRange(params: {
 
 function mapStageDocToCard(
   docId: string,
-  data: Record<string, unknown>,
-  occurrenceDay: string
+  data: Record<string, unknown>
 ): WarehouseComandaEventCard | null {
   const dataInici = firstDocString(data, ['DataInici', 'dataInici', 'start']) || ''
   const dataFi = firstDocString(data, ['DataFi', 'dataFi', 'end'])
-  const startISO = dataInici ? `${dataInici.slice(0, 10)}T00:00:00.000Z` : null
-  const endISO = dataFi ? `${dataFi.slice(0, 10)}T00:00:00.000Z` : startISO
+  const startDay = parseIsoDateKey(dataInici)
+  if (!startDay) return null
+  const endDay = parseIsoDateKey(dataFi || dataInici) || startDay
+  const normalizedEndDay = endDay < startDay ? startDay : endDay
+  const startISO = startDay ? `${startDay}T00:00:00.000Z` : null
+  const endISO = normalizedEndDay ? `${normalizedEndDay}T00:00:00.000Z` : startISO
 
   const rawSummary = String(data.NomEvent ?? data.summary ?? '(Sense títol)')
   const summary = rawSummary.split('/')[0].trim()
@@ -304,9 +342,9 @@ function mapStageDocToCard(
     id: docId,
     summary,
     name: summary,
-    start: startISO || `${occurrenceDay}T00:00:00.000Z`,
+    start: startISO || `${startDay}T00:00:00.000Z`,
     end: endISO,
-    day: occurrenceDay,
+    day: startDay,
     location,
     locationShort: computeLocationShort(location),
     horaInici: horaInici || undefined,

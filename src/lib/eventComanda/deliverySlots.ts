@@ -42,6 +42,14 @@ export function parseIsoDateKey(value: string | undefined | null): string | null
   const raw = String(value || '').trim()
   if (!raw) return null
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  const isoPrefix = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s]/)
+  if (isoPrefix) return isoPrefix[1]
+
+  const dayFirst = raw.match(/^(\d{2})[/-](\d{2})[/-](\d{4})$/)
+  if (dayFirst) {
+    const [, day, month, year] = dayFirst
+    return `${year}-${month}-${day}`
+  }
 
   const parsed = new Date(raw)
   if (Number.isNaN(parsed.getTime())) return null
