@@ -237,7 +237,7 @@ export default function EventMenuModal({
     validating: personnelValidating,
     error: personnelError,
     mutate: refreshPersonnel,
-  } = useEventPersonnel(event?.id)
+  } = useEventPersonnel(event?.id, showPersonnel)
 
   const personnelIsEmpty =
     !personnelData?.responsables?.length &&
@@ -282,37 +282,6 @@ const treballadorsPersons =
     void refreshPersonnel()
   }, [showPersonnel, event?.id, refreshPersonnel])
 
-  useEffect(() => {
-    const eventId = String(event?.id ?? '').trim()
-    if (!eventId) return
-
-    const warm = () => {
-      const incidentsQs = new URLSearchParams()
-      incidentsQs.set('eventId', eventId)
-      incidentsQs.set('limit', '80')
-      void fetch(`/api/incidents?${incidentsQs}`, { cache: 'no-store' }).catch(() => {})
-
-      void fetch(`/api/events/personnel?eventId=${encodeURIComponent(eventId)}`, {
-        cache: 'no-store',
-      }).catch(() => {})
-
-      const dept = normalizeAuditDepartment(user.department)
-      if (dept) {
-        const auditQs = new URLSearchParams({ eventId, department: dept })
-        const eventDay = String(event?.start || '').slice(0, 10)
-        if (eventDay) auditQs.set('eventDay', eventDay)
-        void fetch(`/api/auditoria/executions?${auditQs}`, { cache: 'no-store' }).catch(() => {})
-      }
-    }
-
-    if (typeof requestIdleCallback !== 'undefined') {
-      const id = requestIdleCallback(warm, { timeout: 1200 })
-      return () => cancelIdleCallback(id)
-    }
-    const t = window.setTimeout(warm, 120)
-    return () => clearTimeout(t)
-  }, [event?.id, event?.start, user.department])
-
   const roleN = norm(user?.role)
   const deptN = norm(user?.department)
   const lnKey: LnKey = event?.lnKey ?? deduceLnKeyFromSummary(event?.summary ?? '')
@@ -339,6 +308,28 @@ const treballadorsPersons =
     roleN === 'comercial' ||
     isCapDept ||
       isWorkerResponsible
+
+  useEffect(() => {
+    const eventId = String(event?.id ?? '').trim()
+    if (!eventId || !canCreateIncident) return
+
+    const dept = normalizeAuditDepartment(user.department)
+    if (!dept) return
+
+    const warmAudit = () => {
+      const auditQs = new URLSearchParams({ eventId, department: dept })
+      const eventDay = String(event?.start || '').slice(0, 10)
+      if (eventDay) auditQs.set('eventDay', eventDay)
+      void fetch(`/api/auditoria/executions?${auditQs}`, { cache: 'no-store' }).catch(() => {})
+    }
+
+    if (typeof requestIdleCallback !== 'undefined') {
+      const id = requestIdleCallback(warmAudit, { timeout: 2000 })
+      return () => cancelIdleCallback(id)
+    }
+    const t = window.setTimeout(warmAudit, 300)
+    return () => clearTimeout(t)
+  }, [canCreateIncident, event?.id, event?.start, user.department])
 
   const DEPT_TO_LN: Record<string, LnKey> = {
     empresa: 'empresa',
@@ -393,14 +384,16 @@ const treballadorsPersons =
   const canCreateModificationPerm = canCreateModification && canUiRegisterModifications
   const canCloseEventPerm = canCloseEvent && canUiCloseEvent
 
-  useEffect(() => {
-    if (!event?.id || !permsReady || !canDocs) return
-    prefetchEventDocuments(
-      String(event.id),
-      event.eventCode || event.code || undefined,
-      'all'
-    )
-  }, [event?.id, event?.eventCode, event?.code, permsReady, canDocs])
+  const openDocuments = useCallback(() => {
+    if (event?.id) {
+      prefetchEventDocuments(
+        String(event.id),
+        event.eventCode || event.code || undefined,
+        'all'
+      )
+    }
+    setPendingDocsOpen(true)
+  }, [event?.id, event?.eventCode, event?.code])
 
   const navigateTo = useCallback(
     (path: string) => {
@@ -549,7 +542,7 @@ const recursos = useMemo(
           icon: FileText,
           tone: 'info' as const,
           onClick: () => {
-            setPendingDocsOpen(true)
+            openDocuments()
           },
         }
       : null,
@@ -574,7 +567,7 @@ const recursos = useMemo(
           }
         : null,
     ].filter(Boolean) as MenuActionItem[],
-  [event, canSeeKitchenDocs, canDocs, canOpenVisitVideo, canAttachVisitVideo]
+  [event, canSeeKitchenDocs, canDocs, canOpenVisitVideo, canAttachVisitVideo, openDocuments]
 )
 
   const economic = useMemo(

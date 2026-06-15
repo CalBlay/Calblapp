@@ -45,14 +45,27 @@ export function useModifications(filters: {
   categoryId?: string
   categoryLabel?: string
   commercial?: string
+  /** Si és `false`, no es fa cap fetch (p. ex. modal tancat). */
+  enabled?: boolean
 }) {
+  const enabled = filters.enabled !== false
   const [modifications, setModifications] = useState<Modification[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<null | string>(null)
 
-  const fetchKey = useMemo(() => JSON.stringify(filters), [filters])
+  const fetchKey = useMemo(() => {
+    const { enabled: _enabled, ...rest } = filters
+    return JSON.stringify(rest)
+  }, [filters])
 
   const fetchModifications = useCallback(async () => {
+    if (!enabled) {
+      setModifications([])
+      setLoading(false)
+      setError(null)
+      return
+    }
+
     try {
       setLoading(true)
       setError(null)
@@ -98,7 +111,7 @@ export function useModifications(filters: {
     } finally {
       setLoading(false)
     }
-  }, [fetchKey, filters])
+  }, [enabled, fetchKey, filters])
 
   useEffect(() => {
     fetchModifications()

@@ -42,18 +42,18 @@ export function canonicalEventId(value?: string | number | null) {
     .trim()
 }
 
-export function useEventPersonnel(eventId?: string | number) {
+export function useEventPersonnel(eventId?: string | number, enabled = true) {
   const canonicalId = useMemo(() => canonicalEventId(eventId), [eventId])
 
   const url = useMemo(() => {
-    if (!canonicalId) return null
+    if (!canonicalId || !enabled) return null
     return `/api/events/personnel?eventId=${encodeURIComponent(canonicalId)}`
-  }, [canonicalId])
+  }, [canonicalId, enabled])
 
   const { data, error, isLoading, isValidating, mutate } = useSWR<EventPersonnel>(url, fetcher, {
-    revalidateOnFocus: true,
+    revalidateOnFocus: false,
     revalidateOnReconnect: true,
-    dedupingInterval: 5_000,
+    dedupingInterval: 30_000,
   })
 
   const loading = Boolean(url) && !data && !error && (isLoading || isValidating)

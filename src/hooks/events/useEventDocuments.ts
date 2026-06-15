@@ -83,10 +83,11 @@ export default function useEventDocuments(
   eventId?: string,
   eventCode?: string,
   fieldPrefix: string = 'file',
-  refreshToken: number = 0
+  refreshToken: number = 0,
+  enabled: boolean = true
 ) {
   const swrKey =
-    eventId || eventCode
+    enabled && (eventId || eventCode)
       ? buildEventDocumentsUrl(eventId ?? '__code__', eventCode, fieldPrefix)
       : null
 

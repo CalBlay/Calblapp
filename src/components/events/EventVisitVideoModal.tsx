@@ -130,7 +130,8 @@ export default function EventVisitVideoModal({
     eventId,
     eventCode || undefined,
     VISIT_VIDEO_FIELD_PREFIX,
-    refresh
+    refresh,
+    open
   )
 
   const bumpRefresh = () => setRefresh((value) => value + 1)
