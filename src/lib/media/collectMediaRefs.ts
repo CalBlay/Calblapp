@@ -2,9 +2,17 @@
  * Recull referències a fitxers de Storage des de Firestore (per índex media / reindexació).
  */
 import { createHash } from 'crypto'
+import { getDownloadURL } from 'firebase-admin/storage'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
+import { listVisitVideoFieldKeys } from '@/lib/eventVisitVideo'
 
-export type MediaSource = 'incidents' | 'maintenance' | 'messaging' | 'audits' | 'spaces'
+export type MediaSource =
+  | 'incidents'
+  | 'maintenance'
+  | 'messaging'
+  | 'audits'
+  | 'spaces'
+  | 'events'
 
 export type MediaRef = {
   source: MediaSource
@@ -24,6 +32,8 @@ export type MediaRef = {
   auditRunId?: string | null
   /** Esdeveniment vinculat a incidències (prefix path incidents/{id}/). */
   incidentEventId?: string | null
+  /** Esdeveniment vinculat a vídeos de visita comercial (stage_verd). */
+  eventEventId?: string | null
 }
 
 export type AggregatedMediaItem = {
@@ -41,6 +51,7 @@ export type AggregatedMediaItem = {
   auditItemId?: string | null
   auditRunId?: string | null
   incidentEventId?: string | null
+  eventEventId?: string | null
   /** Id del document Firestore a media_storage_index (paginació). */
   indexDocId?: string
 }
@@ -97,6 +108,21 @@ function photoTypeFromDoc(photo: Record<string, unknown>): string | null {
 function incidentEventIdFromPath(path: string): string | null {
   const m = /^incidents\/([^/]+)\//.exec(cleanText(path))
   return m ? m[1] : null
+}
+
+function eventCodeFromStageData(data: Record<string, unknown>): string {
+  return (
+    cleanText(data.code) ||
+    cleanText(data.Code) ||
+    cleanText(data.C_digo) ||
+    cleanText(data.codi) ||
+    cleanText(data.Codi)
+  )
+}
+
+function eventTitleFromStageData(data: Record<string, unknown>): string {
+  const raw = cleanText(data.NomEvent)
+  return raw ? raw.split('/')[0].trim() : ''
 }
 
 export function mergeContextField(
@@ -293,15 +319,67 @@ export async function collectSpaceRefs(): Promise<MediaRef[]> {
   return refs
 }
 
+export async function collectEventVisitVideoRefs(): Promise<MediaRef[]> {
+  const snap = await db.collection('stage_verd').get()
+  const bucket = storageAdmin.bucket()
+  const refs: MediaRef[] = []
+
+  snap.docs.forEach((doc) => {
+    const data = doc.data() as Record<string, unknown>
+    const eventCode = eventCodeFromStageData(data)
+    const eventTitle = eventTitleFromStageData(data)
+    const keys = listVisitVideoFieldKeys(data)
+
+    keys.forEach((key) => {
+      const path = cleanText(data[key])
+      if (!path || path.startsWith('http') || path.startsWith('/api/')) return
+      const displayName = cleanText(data[`${key}Name`]) || 'Vídeo visita comercial'
+      refs.push({
+        source: 'events',
+        docId: doc.id,
+        refSuffix: key,
+        createdAt: toMillis(data[`${key}At`]),
+        url: null,
+        path,
+        size: null,
+        type: cleanText(data[`${key}MimeType`]) || null,
+        title:
+          [eventCode, eventTitle, displayName].filter(Boolean).join(' · ') ||
+          `Visita ${doc.id}`,
+        eventEventId: doc.id,
+      })
+    })
+  })
+
+  await Promise.all(
+    refs.map(async (ref) => {
+      if (!ref.path) return
+      try {
+        const file = bucket.file(ref.path)
+        const [meta] = await file.getMetadata()
+        const s = Number(meta.size)
+        if (Number.isFinite(s) && s > 0) ref.size = s
+        if (!ref.type && meta.contentType) ref.type = meta.contentType
+        ref.url = await getDownloadURL(file)
+      } catch {
+        // ignore missing files
+      }
+    })
+  )
+
+  return refs
+}
+
 export async function collectAllMediaRefs(): Promise<MediaRef[]> {
-  const [incidents, maintenance, messaging, audits, spaces] = await Promise.all([
+  const [incidents, maintenance, messaging, audits, spaces, events] = await Promise.all([
     collectIncidentRefs(),
     collectMaintenanceRefs(),
     collectMessagingRefs(),
     collectAuditRefs(),
     collectSpaceRefs(),
+    collectEventVisitVideoRefs(),
   ])
-  return [...incidents, ...maintenance, ...messaging, ...audits, ...spaces]
+  return [...incidents, ...maintenance, ...messaging, ...audits, ...spaces, ...events]
 }
 
 export function aggregateMedia(refs: MediaRef[]): AggregatedMediaItem[] {
@@ -325,6 +403,7 @@ export function aggregateMedia(refs: MediaRef[]): AggregatedMediaItem[] {
         auditItemId: ref.auditItemId ?? null,
         auditRunId: ref.auditRunId ?? null,
         incidentEventId: ref.incidentEventId ?? null,
+        eventEventId: ref.eventEventId ?? null,
       })
       return
     }
@@ -341,6 +420,7 @@ export function aggregateMedia(refs: MediaRef[]): AggregatedMediaItem[] {
     current.auditItemId = mergeContextField(current.auditItemId, ref.auditItemId)
     current.auditRunId = mergeContextField(current.auditRunId, ref.auditRunId)
     current.incidentEventId = mergeContextField(current.incidentEventId, ref.incidentEventId)
+    current.eventEventId = mergeContextField(current.eventEventId, ref.eventEventId)
   })
 
   return Array.from(byPath.values()).sort((a, b) => b.createdAt - a.createdAt)

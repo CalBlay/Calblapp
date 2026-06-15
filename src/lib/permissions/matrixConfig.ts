@@ -41,6 +41,7 @@ const MEDIA_SOURCES: Array<{ id: string; label: string }> = [
   { id: 'messaging', label: 'Missatgeria' },
   { id: 'audits', label: 'Auditories' },
   { id: 'spaces', label: 'Espais' },
+  { id: 'events', label: 'Esdeveniments (visites)' },
 ]
 
 export type PermissionActionGroup = {

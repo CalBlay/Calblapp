@@ -28,6 +28,7 @@ type IndexDoc = {
   auditItemId: string | null
   auditRunId: string | null
   incidentEventId: string | null
+  eventEventId: string | null
 }
 
 function indexDocToAggregated(d: QueryDocumentSnapshot): AggregatedMediaItem {
@@ -48,6 +49,7 @@ function indexDocToAggregated(d: QueryDocumentSnapshot): AggregatedMediaItem {
     auditItemId: x.auditItemId ?? null,
     auditRunId: x.auditRunId ?? null,
     incidentEventId: x.incidentEventId ?? null,
+    eventEventId: x.eventEventId ?? null,
   }
 }
 
@@ -72,6 +74,7 @@ export async function registerMediaRef(params: {
   auditItemId?: string | null
   auditRunId?: string | null
   incidentEventId?: string | null
+  eventEventId?: string | null
 }): Promise<void> {
   const path = String(params.path || '').trim()
   if (!path) return
@@ -114,6 +117,7 @@ export async function registerMediaRef(params: {
       auditItemId: mergeContextField(prev?.auditItemId, params.auditItemId),
       auditRunId: mergeContextField(prev?.auditRunId, params.auditRunId),
       incidentEventId: mergeContextField(prev?.incidentEventId, params.incidentEventId),
+      eventEventId: mergeContextField(prev?.eventEventId, params.eventEventId),
     }
     tx.set(refDoc, next)
   })
@@ -158,6 +162,7 @@ export async function rebuildMediaIndexFromFirestore(): Promise<{ entries: numbe
       auditItemId: string | null
       auditRunId: string | null
       incidentEventId: string | null
+      eventEventId: string | null
     }
   >()
 
@@ -179,6 +184,7 @@ export async function rebuildMediaIndexFromFirestore(): Promise<{ entries: numbe
         auditItemId: null,
         auditRunId: null,
         incidentEventId: null,
+        eventEventId: null,
       }
       byPath.set(r.path, row)
     }
@@ -194,6 +200,7 @@ export async function rebuildMediaIndexFromFirestore(): Promise<{ entries: numbe
     row.auditItemId = mergeContextField(row.auditItemId, r.auditItemId)
     row.auditRunId = mergeContextField(row.auditRunId, r.auditRunId)
     row.incidentEventId = mergeContextField(row.incidentEventId, r.incidentEventId)
+    row.eventEventId = mergeContextField(row.eventEventId, r.eventEventId)
   }
 
   const now = Date.now()
@@ -219,6 +226,7 @@ export async function rebuildMediaIndexFromFirestore(): Promise<{ entries: numbe
         auditItemId: row.auditItemId,
         auditRunId: row.auditRunId,
         incidentEventId: row.incidentEventId,
+        eventEventId: row.eventEventId,
       }
       batch.set(docRef, payload)
     }
@@ -257,6 +265,7 @@ export async function loadMediaIndexPage(params: {
   source?: MediaSource | null
   auditEventId?: string | null
   incidentEventId?: string | null
+  eventEventId?: string | null
 }): Promise<{ items: AggregatedMediaItem[]; nextCursor: string | null }> {
   const coll = db.collection(COLLECTION)
   const limit = Math.min(
@@ -265,6 +274,7 @@ export async function loadMediaIndexPage(params: {
   )
   const auditEv = cleanText(params.auditEventId)
   const incidentEv = cleanText(params.incidentEventId)
+  const eventEv = cleanText(params.eventEventId)
   const source = params.source
 
   let q: Query = coll
@@ -272,6 +282,8 @@ export async function loadMediaIndexPage(params: {
     q = q.where('auditEventId', '==', auditEv)
   } else if (incidentEv) {
     q = q.where('incidentEventId', '==', incidentEv)
+  } else if (eventEv) {
+    q = q.where('eventEventId', '==', eventEv)
   } else if (source) {
     q = q.where('sourceKinds', 'array-contains', source)
   }

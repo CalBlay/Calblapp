@@ -143,80 +143,89 @@ export default function CreateTicketModal({
       }}
     >
       <div
-        className="w-full max-w-2xl rounded-t-3xl bg-white shadow-2xl md:rounded-3xl"
+        className="flex max-h-[min(92dvh,100svh)] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl md:max-h-[90vh] md:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 rounded-t-3xl border-b border-slate-100 bg-white px-5 pb-4 pt-3 md:px-6">
+        <div className="shrink-0 border-b border-slate-100 bg-white px-5 pb-4 pt-3 md:px-6">
           <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-slate-200 md:hidden" />
           <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 space-y-3">
+            <div className="min-w-0 flex-1">
               <h2 className="text-xl font-semibold text-slate-900">Nou ticket</h2>
-              <p className="text-sm text-slate-500">
+              <p className="mt-1 text-sm leading-snug text-slate-500">
                 Tots els camps son obligatoris. Cal adjuntar entre 1 i {maxFiles} fotos o videos.
               </p>
-              <div className="flex flex-wrap gap-2">
-                {(['urgent', 'alta', 'normal', 'baixa'] as TicketPriority[]).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setCreatePriority(key)}
-                    className={`min-h-[44px] rounded-full border px-4 text-sm font-semibold ${
-                      createPriority === key
-                        ? 'border-emerald-600 bg-emerald-600 text-white'
-                        : 'border-gray-200 bg-gray-100 text-gray-800'
-                    }`}
-                  >
-                    {priorityLabels[key]}
-                  </button>
-                ))}
-              </div>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-slate-200 text-lg text-gray-500"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 text-lg text-gray-500"
+              aria-label="Tancar"
             >
               x
             </button>
           </div>
         </div>
 
-        <div className="max-h-[75vh] space-y-5 overflow-y-auto px-5 py-5 md:px-6">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-4 md:px-6">
+          <div>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Prioritat *
+            </label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(['urgent', 'alta', 'normal', 'baixa'] as TicketPriority[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCreatePriority(key)}
+                  className={`min-h-[44px] rounded-2xl border px-3 text-sm font-semibold ${
+                    createPriority === key
+                      ? 'border-emerald-600 bg-emerald-600 text-white'
+                      : 'border-gray-200 bg-gray-50 text-gray-800'
+                  }`}
+                >
+                  {priorityLabels[key]}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="relative">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Ubicacio *
               </label>
-              <input
-                className="h-12 w-full rounded-2xl border px-4 pr-10 text-base"
-                placeholder="Cerca ubicacio..."
-                value={locationQuery}
-                required
-                onFocus={() => setShowLocationList(true)}
-                onChange={(e) => {
-                  setLocationQuery(e.target.value)
-                  setCreateLocation('')
-                  setShowLocationList(true)
-                  clearMachine()
-                }}
-              />
-              {locationQuery && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLocationQuery('')
+              <div className="relative">
+                <input
+                  className="h-12 w-full rounded-2xl border px-4 pr-10 text-base"
+                  placeholder="Cerca ubicacio..."
+                  value={locationQuery}
+                  required
+                  onFocus={() => setShowLocationList(true)}
+                  onChange={(e) => {
+                    setLocationQuery(e.target.value)
                     setCreateLocation('')
-                    setShowLocationList(false)
+                    setShowLocationList(true)
                     clearMachine()
                   }}
-                  className="absolute right-3 top-9 text-base text-gray-400 hover:text-gray-600"
-                  aria-label="Esborrar"
-                >
-                  x
-                </button>
-              )}
-              {showLocationList && (
-                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow">
+                />
+                {locationQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLocationQuery('')
+                      setCreateLocation('')
+                      setShowLocationList(false)
+                      clearMachine()
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-base text-gray-400 hover:text-gray-600"
+                    aria-label="Esborrar"
+                  >
+                    x
+                  </button>
+                ) : null}
+              </div>
+              {showLocationList ? (
+                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow-lg">
                   {locations
                     .filter((location) => location.toLowerCase().includes(locationQuery.toLowerCase()))
                     .map((location) => (
@@ -235,51 +244,55 @@ export default function CreateTicketModal({
                       </button>
                     ))}
                   {locations.filter((location) => location.toLowerCase().includes(locationQuery.toLowerCase()))
-                    .length === 0 && <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>}
+                    .length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>
+                  ) : null}
                 </div>
-              )}
+              ) : null}
             </div>
 
             <div className="relative">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Maquinaria *
               </label>
-              <input
-                className="h-12 w-full rounded-2xl border px-4 pr-10 text-base"
-                placeholder={
-                  effectiveLocation
-                    ? 'Escriu o filtra maquinaria d aquesta ubicacio...'
-                    : 'Primer selecciona una ubicacio...'
-                }
-                value={machineQuery}
-                required
-                disabled={!effectiveLocation}
-                onFocus={() => {
-                  if (effectiveLocation) setShowMachineList(true)
-                }}
-                onChange={(e) => {
-                  setMachineQuery(e.target.value)
-                  setCreateMachine('')
-                  setShowMachineList(true)
-                }}
-                onBlur={() => {
-                  if (!_createMachine && machineQuery.trim()) {
-                    setCreateMachine(machineQuery.trim())
+              <div className="relative">
+                <input
+                  className="h-12 w-full rounded-2xl border px-4 pr-10 text-base disabled:bg-slate-50"
+                  placeholder={
+                    effectiveLocation
+                      ? 'Escriu o filtra maquinaria d aquesta ubicacio...'
+                      : 'Primer selecciona una ubicacio...'
                   }
-                }}
-              />
-              {machineQuery && (
-                <button
-                  type="button"
-                  onClick={clearMachine}
-                  className="absolute right-3 top-9 text-base text-gray-400 hover:text-gray-600"
-                  aria-label="Esborrar"
-                >
-                  x
-                </button>
-              )}
-              {showMachineList && effectiveLocation && (
-                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow">
+                  value={machineQuery}
+                  required
+                  disabled={!effectiveLocation}
+                  onFocus={() => {
+                    if (effectiveLocation) setShowMachineList(true)
+                  }}
+                  onChange={(e) => {
+                    setMachineQuery(e.target.value)
+                    setCreateMachine('')
+                    setShowMachineList(true)
+                  }}
+                  onBlur={() => {
+                    if (!_createMachine && machineQuery.trim()) {
+                      setCreateMachine(machineQuery.trim())
+                    }
+                  }}
+                />
+                {machineQuery ? (
+                  <button
+                    type="button"
+                    onClick={clearMachine}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-base text-gray-400 hover:text-gray-600"
+                    aria-label="Esborrar"
+                  >
+                    x
+                  </button>
+                ) : null}
+              </div>
+              {showMachineList && effectiveLocation ? (
+                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow-lg">
                   {filteredMachines.map((machine) => (
                     <button
                       key={machine.code + machine.name}
@@ -294,18 +307,18 @@ export default function CreateTicketModal({
                       {machine.label}
                     </button>
                   ))}
-                  {filteredMachines.length === 0 && (
+                  {filteredMachines.length === 0 ? (
                     <div className="px-4 py-3 text-sm text-gray-500">
                       {locationMachines.length === 0
                         ? 'No hi ha maquinaria registrada per aquesta ubicacio. Pots escriure el nom manualment.'
                         : 'Sense resultats. Pots escriure el nom de la maquinaria al camp.'}
                     </div>
-                  )}
+                  ) : null}
                 </div>
-              )}
-              {machines.length === 0 && (
+              ) : null}
+              {machines.length === 0 ? (
                 <div className="mt-1 text-xs text-amber-600">No s&apos;ha pogut carregar la maquinaria.</div>
-              )}
+              ) : null}
               {effectiveLocation && locationMachines.length > 0 ? (
                 <div className="mt-1 text-xs text-slate-500">
                   {locationMachines.length} maquina{locationMachines.length === 1 ? '' : 's'} a aquesta ubicacio
@@ -328,60 +341,62 @@ export default function CreateTicketModal({
           </div>
 
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="text-sm font-medium text-slate-700">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700">
                 Fotos i videos *{' '}
                 <span className="font-normal text-slate-500">(min. 1, max. {maxFiles})</span>
               </label>
-              <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
-                Fitxer
-                <input
-                  type="file"
-                  accept="image/*,video/*"
-                  multiple
-                  className="hidden"
-                  disabled={count >= maxFiles || attachmentCompressing}
-                  onChange={(e) => {
-                    void handleFileChange(e.target.files)
-                    e.currentTarget.value = ''
-                  }}
-                />
-              </label>
-              <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
-                Foto
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  disabled={count >= maxFiles || attachmentCompressing}
-                  onChange={(e) => {
-                    void handleFileChange(e.target.files)
-                    e.currentTarget.value = ''
-                  }}
-                />
-              </label>
-              <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
-                Video
-                <input
-                  type="file"
-                  accept="video/*"
-                  capture="environment"
-                  className="hidden"
-                  disabled={count >= maxFiles || attachmentCompressing}
-                  onChange={(e) => {
-                    void handleFileChange(e.target.files)
-                    e.currentTarget.value = ''
-                  }}
-                />
-              </label>
-              <span className="text-sm text-slate-500">
-                {count}/{maxFiles}
-              </span>
-              {fileError ? <span className="text-sm text-red-600">{fileError}</span> : null}
-              {attachmentCompressing ? (
-                <span className="text-sm text-slate-500">Comprimint video…</span>
-              ) : null}
+              <div className="grid grid-cols-3 gap-2">
+                <label className="flex min-h-[48px] cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 text-sm font-medium">
+                  Fitxer
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    className="hidden"
+                    disabled={count >= maxFiles || attachmentCompressing}
+                    onChange={(e) => {
+                      void handleFileChange(e.target.files)
+                      e.currentTarget.value = ''
+                    }}
+                  />
+                </label>
+                <label className="flex min-h-[48px] cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 text-sm font-medium">
+                  Foto
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    disabled={count >= maxFiles || attachmentCompressing}
+                    onChange={(e) => {
+                      void handleFileChange(e.target.files)
+                      e.currentTarget.value = ''
+                    }}
+                  />
+                </label>
+                <label className="flex min-h-[48px] cursor-pointer items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-800">
+                  Video
+                  <input
+                    type="file"
+                    accept="video/*"
+                    capture="environment"
+                    className="hidden"
+                    disabled={count >= maxFiles || attachmentCompressing}
+                    onChange={(e) => {
+                      void handleFileChange(e.target.files)
+                      e.currentTarget.value = ''
+                    }}
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                <span>
+                  {count}/{maxFiles}
+                </span>
+                {fileError ? <span className="text-red-600">{fileError}</span> : null}
+                {attachmentCompressing ? <span>Comprimint video…</span> : null}
+              </div>
             </div>
 
             {previews.length > 0 ? (
@@ -428,7 +443,8 @@ export default function CreateTicketModal({
           {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
         </div>
 
-        <div className="sticky bottom-0 flex flex-col gap-3 rounded-b-3xl border-t border-slate-100 bg-white px-5 py-4 sm:flex-row sm:justify-end md:px-6">
+        <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-6">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:justify-end">
           <button
             type="button"
             onClick={onClose}
@@ -444,6 +460,7 @@ export default function CreateTicketModal({
           >
             {createBusy ? 'Desant...' : 'Crear ticket'}
           </button>
+          </div>
         </div>
       </div>
     </div>

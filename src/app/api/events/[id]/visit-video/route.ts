@@ -14,6 +14,8 @@ import {
   MAX_UPLOAD_VIDEO_BYTES,
 } from '@/lib/media/ticketAttachments'
 import { listVisitVideoFieldKeys, nextVisitVideoField } from '@/lib/eventVisitVideo'
+import { cleanText } from '@/lib/media/collectMediaRefs'
+import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 
 export const runtime = 'nodejs'
 
@@ -118,6 +120,26 @@ export async function POST(
       },
       { merge: true }
     )
+
+    const eventCodeLabel =
+      cleanText(data.code) ||
+      cleanText(data.Code) ||
+      cleanText(data.C_digo) ||
+      eventCode
+    const eventTitle = cleanText(data.NomEvent).split('/')[0].trim()
+
+    void registerMediaRef({
+      path,
+      source: 'events',
+      firestoreDocId: snap.id,
+      refSuffix: field,
+      url,
+      size: buffer.length,
+      contentType: file.type,
+      title: [eventCodeLabel, eventTitle, displayName].filter(Boolean).join(' · '),
+      createdAt: Date.now(),
+      eventEventId: snap.id,
+    })
 
     return NextResponse.json({
       ok: true,

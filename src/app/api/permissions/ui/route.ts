@@ -72,6 +72,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/media', action: 'source:messaging' },
   { path: '/menu/media', action: 'source:audits' },
   { path: '/menu/media', action: 'source:spaces' },
+  { path: '/menu/media', action: 'source:events' },
   { path: '/menu/media', action: 'delete' },
   { path: '/menu/calendar', action: 'manual:create' },
   { path: '/menu/calendar', action: 'manual:update' },
