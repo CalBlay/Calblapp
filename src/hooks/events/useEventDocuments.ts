@@ -16,7 +16,7 @@ export type EventDoc = {
   source: 'calendar-attachment' | 'description-link' | 'firestore-file' | 'firestore-link'
   url: string
   previewUrl?: string
-  icon: 'pdf' | 'doc' | 'sheet' | 'slide' | 'img' | 'link'
+  icon: 'pdf' | 'doc' | 'sheet' | 'slide' | 'img' | 'video' | 'link'
 }
 
 function normalizeUrl(url?: string): string {

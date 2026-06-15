@@ -46,6 +46,10 @@ import {
   EVENTS_WAREHOUSE_COMANDA_ONLY_PERM,
   eventsWarehouseComandaActionBaseAccess,
 } from '@/lib/eventComandaPermissions'
+import {
+  baseCanAttachEventVisitVideo,
+  EVENT_VISIT_VIDEO_ACTION,
+} from '@/lib/eventVisitVideoPermissions'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 
@@ -301,6 +305,18 @@ export async function isUiPermissionGranted(params: {
       if (prepareEff !== 'allow' && legacyEff !== 'allow') return false
       const canViewEvents = await canViewUiPath({ user: params.user, path: EVENTS_UI_PATH })
       return eventsWarehouseComandaActionBaseAccess({ canViewEvents })
+    }
+
+    if (parsed.action === EVENT_VISIT_VIDEO_ACTION) {
+      const canViewEvents = await canViewUiPath({ user: params.user, path: EVENTS_UI_PATH })
+      if (!canViewEvents) return false
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        PERM.action(EVENTS_UI_PATH, EVENT_VISIT_VIDEO_ACTION)
+      )
+      if (eff === 'deny') return false
+      if (eff !== 'allow') return false
+      return baseCanAttachEventVisitVideo(params.user)
     }
   }
 

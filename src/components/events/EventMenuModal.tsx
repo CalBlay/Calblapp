@@ -13,6 +13,7 @@ import {
   FileSignature,
   FileBarChart2,
   Sparkles,
+  Video,
   X,
   ChevronRight,
   Home,
@@ -29,6 +30,7 @@ import {
 
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
 import EventKitchenDocumentsModal from '@/components/events/EventKitchenDocumentsModal'
+import EventVisitVideoModal from '@/components/events/EventVisitVideoModal'
 import EventPersonnelModal from './EventPersonnelModal'
 import { useEventPersonnel } from '@/hooks/useEventPersonnel'
 import EventIncidentsModal from './EventIncidentsModal'
@@ -40,6 +42,7 @@ import EventClosingModal from './EventClosingModal'
 import { normalizeAuditDepartment } from '@/lib/auditDepartment'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
+import { baseCanAttachEventVisitVideo } from '@/lib/eventVisitVideoPermissions'
 
 /** ───────────────────────── Helpers ───────────────────────── */
 const norm = (s?: string | number | null) =>
@@ -221,6 +224,7 @@ export default function EventMenuModal({
   const [showClosing, setShowClosing] = useState(false)
   const [showBudget, setShowBudget] = useState(false)
   const [showKitchenDocs, setShowKitchenDocs] = useState(false)
+  const [showVisitVideo, setShowVisitVideo] = useState(false)
 
 
   // ✅ Nou botó: Espais (placeholder fins que ens diguis on ha d'anar)
@@ -323,6 +327,8 @@ const treballadorsPersons =
 
 
 
+  const baseCanAttachVisitVideo = baseCanAttachEventVisitVideo(user)
+
   const canSeeIncidents = isAdmin || isDireccio || isCapDept || roleN === 'comercial'
   const baseCanSeeKitchenDocs = isAdmin || isDireccio || isCuina
 
@@ -374,9 +380,15 @@ const treballadorsPersons =
     if (!permsReady) return true
     return uiActions[PERM.action('/menu/events', 'event:close')] === true
   }, [permsReady, uiActions])
+  const canUiAttachVisitVideo = useMemo(() => {
+    if (!permsReady) return true
+    return uiActions[PERM.action('/menu/events', 'docs:attach:visit-video')] === true
+  }, [permsReady, uiActions])
 
   const canDocs = canUiViewDocs
   const canSeeKitchenDocs = baseCanSeeKitchenDocs && canUiKitchenDocs
+  const canAttachVisitVideo = baseCanAttachVisitVideo && canUiAttachVisitVideo
+  const canOpenVisitVideo = canAttachVisitVideo || canDocs
   const canCreateModificationPerm = canCreateModification && canUiRegisterModifications
   const canCloseEventPerm = canCloseEvent && canUiCloseEvent
 
@@ -541,8 +553,18 @@ const recursos = useMemo(
             onClick: () => setShowKitchenDocs(true),
           }
         : null,
+      canOpenVisitVideo
+        ? {
+            key: 'visit-video',
+            label: canAttachVisitVideo ? 'Vídeo visita comercial' : 'Veure vídeo visita',
+            badge: 'Visita',
+            icon: Video,
+            tone: 'info' as const,
+            onClick: () => setShowVisitVideo(true),
+          }
+        : null,
     ].filter(Boolean) as MenuActionItem[],
-  [event, canSeeKitchenDocs, canDocs]
+  [event, canSeeKitchenDocs, canDocs, canOpenVisitVideo, canAttachVisitVideo]
 )
 
   const economic = useMemo(
@@ -733,6 +755,14 @@ const recursos = useMemo(
         eventCode={event.eventCode || event.code || null}
         open={showKitchenDocs}
         onOpenChange={setShowKitchenDocs}
+      />
+      <EventVisitVideoModal
+        eventId={String(event.id)}
+        eventCode={event.eventCode || event.code || null}
+        eventSummary={event.summary}
+        open={showVisitVideo}
+        onOpenChange={setShowVisitVideo}
+        canUpload={canAttachVisitVideo}
       />
 
 

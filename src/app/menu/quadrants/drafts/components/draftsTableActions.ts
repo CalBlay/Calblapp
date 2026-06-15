@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import type { DraftInput, Row } from './types'
 
 type SaveResponse = {
@@ -84,7 +85,7 @@ export async function saveDraftTable({
       ? json.saved.updateData.groups
       : groups
 
-    alert('Quadrant desat correctament')
+    toast.success('Quadrant desat correctament')
     onSaved({
       cleanedRows: cleaned,
       savedRows,

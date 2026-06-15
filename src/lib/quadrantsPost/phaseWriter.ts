@@ -322,7 +322,9 @@ export function createWritePhaseDoc(deps: WritePhaseDocDeps) {
       .trim()
       .replace(/[^a-zA-Z0-9_-]/g, '')
     const docId = `${canonicalEventId}__${phaseKey}__${phaseDate}__${groupKey || 'group'}`
-    await ensureNoOverlapForQuadrantSave(toSave, [docId])
+    if (!phaseFirestoreQueue || !phaseSkipHeavyPipeline) {
+      await ensureNoOverlapForQuadrantSave(toSave, [docId])
+    }
     savedDraftSnapshotByDocId.set(docId, toSave)
     if (phaseFirestoreQueue && phaseSkipHeavyPipeline) {
       phaseFirestoreQueue.push({ docId, toSave })
@@ -349,6 +351,7 @@ export type ProcessPhaseRequestsParams = {
   getStageVerdCached: (stageDocId: string) => Promise<Record<string, unknown> | null>
   getDepartmentPeople: () => Promise<unknown>
   writePhaseDoc: ReturnType<typeof createWritePhaseDoc>
+  ensureNoOverlapForQuadrantSave: (doc: QuadrantSave, excludeDocIds?: string[]) => Promise<void>
   createdDocIds: string[]
   savedDraftSnapshotByDocId: Map<string, QuadrantSave>
 }
@@ -369,6 +372,7 @@ export async function processPhaseRequests(params: ProcessPhaseRequestsParams) {
     getStageVerdCached,
     getDepartmentPeople,
     writePhaseDoc,
+    ensureNoOverlapForQuadrantSave,
     createdDocIds,
     savedDraftSnapshotByDocId,
   } = params
@@ -442,9 +446,7 @@ export async function processPhaseRequests(params: ProcessPhaseRequestsParams) {
   }
 
   const manualPhasesFirestoreQueue =
-    mode === 'manual' &&
-    (deptNorm === 'logistica' ||
-      (deptNorm === 'serveis' && jamAssignmentsAllowServeisFirestoreBatch))
+    mode === 'manual' && (deptNorm === 'logistica' || deptNorm === 'serveis')
       ? ([] as Array<{ docId: string; toSave: QuadrantSave }>)
       : undefined
 
@@ -530,6 +532,12 @@ export async function processPhaseRequests(params: ProcessPhaseRequestsParams) {
   }
 
   if (manualPhasesFirestoreQueue && manualPhasesFirestoreQueue.length > 0) {
+    await Promise.all(
+      manualPhasesFirestoreQueue.map((row) =>
+        ensureNoOverlapForQuadrantSave(row.toSave, [row.docId])
+      )
+    )
+
     let fwBatch = db.batch()
     let fwCount = 0
     const fwCol = db.collection(collectionName)

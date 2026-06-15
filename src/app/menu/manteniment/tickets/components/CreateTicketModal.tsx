@@ -1,7 +1,14 @@
 import { useMemo } from 'react'
 import Image from 'next/image'
 import { matchesMaintenanceTicketLocation } from '@/lib/maintenanceTicketCreators'
+import {
+  DEFAULT_MAX_VIDEO_UPLOAD_BYTES,
+  formatTicketAttachmentLimitMb,
+} from '@/lib/media/ticketAttachments'
+import type { PendingTicketAttachment } from '../useMaintenanceTicketComposer'
 import type { MachineItem, TicketPriority } from '../types'
+
+export type TicketAttachmentPreview = Pick<PendingTicketAttachment, 'preview' | 'kind'>
 
 type Props = {
   locations: string[]
@@ -27,13 +34,26 @@ type Props = {
   onCreate: () => void
   createBusy: boolean
   canCreate: boolean
-  onImageChange: (files: FileList | null) => void | Promise<void>
-  imagePreviews: string[]
-  imageCount: number
-  maxImages: number
-  onRemoveImage: (index: number) => void
-  imageError: string | null
+  onAttachmentChange?: (files: FileList | null) => void | Promise<void>
+  attachmentPreviews?: TicketAttachmentPreview[]
+  attachmentCount?: number
+  maxAttachments?: number
+  onRemoveAttachment?: (index: number) => void
+  attachmentError?: string | null
+  attachmentCompressing?: boolean
   formError: string | null
+  /** @deprecated */
+  onImageChange?: (files: FileList | null) => void | Promise<void>
+  /** @deprecated */
+  imagePreviews?: string[]
+  /** @deprecated */
+  imageCount?: number
+  /** @deprecated */
+  maxImages?: number
+  /** @deprecated */
+  onRemoveImage?: (index: number) => void
+  /** @deprecated */
+  imageError?: string | null
 }
 
 export default function CreateTicketModal({
@@ -60,14 +80,31 @@ export default function CreateTicketModal({
   onCreate,
   createBusy,
   canCreate,
+  onAttachmentChange,
+  attachmentPreviews,
+  attachmentCount,
+  maxAttachments,
+  onRemoveAttachment,
+  attachmentError,
+  attachmentCompressing = false,
+  formError,
   onImageChange,
   imagePreviews,
   imageCount,
   maxImages,
   onRemoveImage,
   imageError,
-  formError,
 }: Props) {
+  const handleFileChange = onAttachmentChange || onImageChange || (async () => {})
+  const previews: TicketAttachmentPreview[] =
+    (attachmentPreviews && attachmentPreviews.length > 0)
+      ? attachmentPreviews
+      : (imagePreviews || []).map((preview) => ({ preview, kind: 'image' as const }))
+  const count = attachmentCount || imageCount || 0
+  const maxFiles = maxAttachments || maxImages || 3
+  const removeAt = onRemoveAttachment || onRemoveImage || (() => {})
+  const fileError = attachmentError ?? imageError ?? null
+  const videoLimitLabel = formatTicketAttachmentLimitMb(DEFAULT_MAX_VIDEO_UPLOAD_BYTES)
   const effectiveLocation = (_createLocation || locationQuery).trim()
   const machineQueryNorm = machineQuery.trim().toLowerCase()
 
@@ -115,7 +152,7 @@ export default function CreateTicketModal({
             <div className="flex-1 space-y-3">
               <h2 className="text-xl font-semibold text-slate-900">Nou ticket</h2>
               <p className="text-sm text-slate-500">
-                Tots els camps son obligatoris. Cal adjuntar entre 1 i {maxImages} fotos.
+                Tots els camps son obligatoris. Cal adjuntar entre 1 i {maxFiles} fotos o videos.
               </p>
               <div className="flex flex-wrap gap-2">
                 {(['urgent', 'alta', 'normal', 'baixa'] as TicketPriority[]).map((key) => (
@@ -293,18 +330,19 @@ export default function CreateTicketModal({
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <label className="text-sm font-medium text-slate-700">
-                Fotos * <span className="font-normal text-slate-500">(min. 1, max. {maxImages})</span>
+                Fotos i videos *{' '}
+                <span className="font-normal text-slate-500">(min. 1, max. {maxFiles})</span>
               </label>
               <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
                 Fitxer
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,video/*"
                   multiple
                   className="hidden"
-                  disabled={imageCount >= maxImages}
+                  disabled={count >= maxFiles || attachmentCompressing}
                   onChange={(e) => {
-                    void onImageChange(e.target.files)
+                    void handleFileChange(e.target.files)
                     e.currentTarget.value = ''
                   }}
                 />
@@ -316,34 +354,61 @@ export default function CreateTicketModal({
                   accept="image/*"
                   capture="environment"
                   className="hidden"
-                  disabled={imageCount >= maxImages}
+                  disabled={count >= maxFiles || attachmentCompressing}
                   onChange={(e) => {
-                    void onImageChange(e.target.files)
+                    void handleFileChange(e.target.files)
+                    e.currentTarget.value = ''
+                  }}
+                />
+              </label>
+              <label className="min-h-[44px] cursor-pointer rounded-full border px-4 py-2 text-sm">
+                Video
+                <input
+                  type="file"
+                  accept="video/*"
+                  capture="environment"
+                  className="hidden"
+                  disabled={count >= maxFiles || attachmentCompressing}
+                  onChange={(e) => {
+                    void handleFileChange(e.target.files)
                     e.currentTarget.value = ''
                   }}
                 />
               </label>
               <span className="text-sm text-slate-500">
-                {imageCount}/{maxImages}
+                {count}/{maxFiles}
               </span>
-              {imageError ? <span className="text-sm text-red-600">{imageError}</span> : null}
+              {fileError ? <span className="text-sm text-red-600">{fileError}</span> : null}
+              {attachmentCompressing ? (
+                <span className="text-sm text-slate-500">Comprimint video…</span>
+              ) : null}
             </div>
 
-            {imagePreviews.length > 0 ? (
-              <div className="grid grid-cols-3 gap-2">
-                {imagePreviews.map((preview, index) => (
-                  <div key={`${preview}-${index}`} className="relative overflow-hidden rounded-2xl border">
-                    <Image
-                      src={preview}
-                      alt={`Previsualitzacio ${index + 1}`}
-                      width={448}
-                      height={112}
-                      className="h-28 w-full object-cover"
-                      unoptimized
-                    />
+            {previews.length > 0 ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {previews.map((item, index) => (
+                  <div key={`${item.preview}-${index}`} className="relative overflow-hidden rounded-2xl border">
+                    {item.kind === 'video' ? (
+                      <video
+                        src={item.preview}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="h-28 w-full bg-black object-contain"
+                      />
+                    ) : (
+                      <Image
+                        src={item.preview}
+                        alt={`Previsualitzacio ${index + 1}`}
+                        width={448}
+                        height={112}
+                        className="h-28 w-full object-cover"
+                        unoptimized
+                      />
+                    )}
                     <button
                       type="button"
-                      onClick={() => onRemoveImage(index)}
+                      onClick={() => removeAt(index)}
                       className="absolute right-1 top-1 rounded-full bg-black/60 px-2 py-1 text-xs text-white"
                     >
                       X
@@ -353,7 +418,9 @@ export default function CreateTicketModal({
               </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-800">
-                Cal adjuntar com a minim una imatge. Es comprimeix automaticament (max. 1 MB per foto).
+                Cal adjuntar com a minim una imatge o un video. Les fotos es comprimeixen
+                automaticament (max. 1 MB). Els videos es redueixen al navegador (objectiu ~
+                {videoLimitLabel}, max. 2 min).
               </div>
             )}
           </div>
@@ -372,7 +439,7 @@ export default function CreateTicketModal({
           <button
             type="button"
             onClick={onCreate}
-            disabled={createBusy || !canCreate}
+            disabled={createBusy || attachmentCompressing || !canCreate}
             className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {createBusy ? 'Desant...' : 'Crear ticket'}

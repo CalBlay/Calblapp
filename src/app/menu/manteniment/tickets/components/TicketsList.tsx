@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
-import Image from 'next/image'
+import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
+import { isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 import { ChevronDown, ChevronUp, MessageCircle, Trash2 } from 'lucide-react'
 import { differenceInCalendarDays } from 'date-fns'
 import { formatDateOnly } from '@/lib/date-format'
@@ -488,28 +489,38 @@ export default function TicketsList({
 
                             {ticketImages.length > 0 ? (
                               <div className="space-y-2">
-                                <div className={typography('eyebrow')}>Imatges adjuntes</div>
+                                <div className={typography('eyebrow')}>Adjunts</div>
                                 <div
                                   className={`grid gap-3 ${ticketImages.length > 1 ? 'sm:grid-cols-2 lg:grid-cols-3' : ''}`}
                                 >
-                                  {ticketImages.map((imageUrl, index) => (
-                                    <a
-                                      key={`${imageUrl}-${index}`}
-                                      href={imageUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="flex max-h-40 items-center justify-center overflow-hidden rounded-2xl border border-white/80 bg-slate-100/90 p-2 shadow-sm"
-                                    >
-                                      <Image
-                                        src={imageUrl}
-                                        alt={`Imatge del ticket ${index + 1}`}
-                                        width={640}
-                                        height={360}
-                                        className="max-h-36 w-auto max-w-full object-contain"
-                                        unoptimized
-                                      />
-                                    </a>
-                                  ))}
+                                  {ticketImages.map((imageUrl, index) => {
+                                    const wrapperClass =
+                                      'flex max-h-40 items-center justify-center overflow-hidden rounded-2xl border border-white/80 bg-slate-100/90 p-2 shadow-sm'
+                                    if (isTicketVideoUrl(imageUrl)) {
+                                      return (
+                                        <div key={`${imageUrl}-${index}`} className={wrapperClass}>
+                                          <TicketAttachmentTile
+                                            url={imageUrl}
+                                            alt={`Adjunt del ticket ${index + 1}`}
+                                          />
+                                        </div>
+                                      )
+                                    }
+                                    return (
+                                      <a
+                                        key={`${imageUrl}-${index}`}
+                                        href={imageUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className={wrapperClass}
+                                      >
+                                        <TicketAttachmentTile
+                                          url={imageUrl}
+                                          alt={`Adjunt del ticket ${index + 1}`}
+                                        />
+                                      </a>
+                                    )
+                                  })}
                                 </div>
                               </div>
                             ) : null}

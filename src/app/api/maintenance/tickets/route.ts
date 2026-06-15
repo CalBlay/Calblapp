@@ -444,12 +444,12 @@ export async function POST(req: Request) {
     if (requiresManualImages) {
       if (images.length < 1) {
         return NextResponse.json(
-          { error: 'Cal adjuntar com a minim una foto (maxim 3).' },
+          { error: 'Cal adjuntar com a minim una foto o video (maxim 3).' },
           { status: 400 }
         )
       }
       if (images.length > MAX_TICKET_IMAGES) {
-        return NextResponse.json({ error: 'Com a maxim es permeten 3 fotos.' }, { status: 400 })
+        return NextResponse.json({ error: 'Com a maxim es permeten 3 adjunts.' }, { status: 400 })
       }
     }
 

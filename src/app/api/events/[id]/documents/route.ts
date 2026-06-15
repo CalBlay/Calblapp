@@ -6,21 +6,28 @@ import { storageAdmin } from '@/lib/firebaseAdmin'
 import { getGraphToken, getSiteAndDrive } from '@/services/sharepoint/graph'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
-import { isAllowedByClientOverride } from '@/lib/server/permissions'
+import { isAllowedByClientOverride, isUiPermissionGranted } from '@/lib/server/permissions'
+import {
+  EVENT_VISIT_VIDEO_PERM,
+  visitVideoAccessUserFromSession,
+} from '@/lib/eventVisitVideoPermissions'
 
 export type EventDoc = {
   id: string
   title: string
   source: 'firestore-file' | 'firestore-link'
   url: string
-  icon: 'pdf' | 'img' | 'doc' | 'sheet' | 'slide' | 'link'
+  icon: 'pdf' | 'img' | 'doc' | 'sheet' | 'slide' | 'video' | 'link'
   mimeType?: string
+  kind?: string
+  updatedAt?: string | number | null
 }
 
 function detectIcon(name: string): EventDoc['icon'] {
   const n = name.toLowerCase()
   if (n.endsWith('.pdf')) return 'pdf'
   if (/\.(png|jpg|jpeg|gif|webp)$/.test(n)) return 'img'
+  if (/\.(mp4|mov|webm|avi|m4v)$/.test(n)) return 'video'
   if (n.endsWith('.doc') || n.endsWith('.docx')) return 'doc'
   if (n.endsWith('.xls') || n.endsWith('.xlsx')) return 'sheet'
   if (n.endsWith('.ppt') || n.endsWith('.pptx')) return 'slide'
@@ -32,6 +39,7 @@ function detectIconFromMime(mime?: string): EventDoc['icon'] | null {
   const m = mime.toLowerCase()
   if (m.includes('pdf')) return 'pdf'
   if (m.startsWith('image/')) return 'img'
+  if (m.startsWith('video/')) return 'video'
   if (m.includes('sheet') || m.includes('excel')) return 'sheet'
   if (m.includes('presentation')) return 'slide'
   if (m.includes('word')) return 'doc'
@@ -92,14 +100,6 @@ export async function GET(
   try {
     const auth = await requireAuth()
     if (!auth.ok) return auth.res
-    const canViewDocs = await isAllowedByClientOverride({
-      userId: auth.user.id,
-      role: auth.user.role,
-      permission: PERM.action('/menu/events', 'docs:view'),
-    })
-    if (canViewDocs !== true) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
 
     const { id } = await ctx.params
     const url = new URL(req.url)
@@ -107,8 +107,35 @@ export async function GET(
     const prefixParam = url.searchParams.get('prefix') || 'file,zohoFile'
     const prefixes =
       prefixParam === 'all'
-        ? ['file', 'cuinaFile', 'zohoFile']
+        ? ['file', 'cuinaFile', 'zohoFile', 'visitVideo']
         : prefixParam.split(',').map((p) => p.trim()).filter(Boolean)
+
+    const wantsVisitVideoOnly =
+      prefixes.length > 0 && prefixes.every((p) => p.toLowerCase() === 'visitvideo')
+
+    const accessUser = visitVideoAccessUserFromSession(auth.user)
+
+    const canViewDocs = await isAllowedByClientOverride({
+      userId: auth.user.id,
+      role: auth.user.role,
+      permission: PERM.action('/menu/events', 'docs:view'),
+    })
+
+    const canAttachVisitVideo = await isUiPermissionGranted({
+      user: accessUser,
+      permission: EVENT_VISIT_VIDEO_PERM,
+    })
+
+    if (canViewDocs !== true && !(wantsVisitVideoOnly && canAttachVisitVideo)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const wantsVisitVideo = prefixes.some((p) => p.toLowerCase() === 'visitvideo')
+    if (wantsVisitVideo && !canAttachVisitVideo && canViewDocs !== true) {
+      const filtered = prefixes.filter((p) => p.toLowerCase() !== 'visitvideo')
+      if (filtered.length === 0) return NextResponse.json({ docs: [] })
+      ;(prefixes as string[]).splice(0, prefixes.length, ...filtered)
+    }
 
     const wantsKitchen = prefixes.some((p) => p.toLowerCase() === 'cuinafile')
     if (wantsKitchen) {
@@ -162,6 +189,8 @@ export async function GET(
         typeof data[`${key}MimeType`] === 'string'
           ? String(data[`${key}MimeType`]).trim()
           : ''
+      const storedAt = data[`${key}At`]
+      const isVisitVideo = /^visitVideo\d+$/i.test(key)
 
       const doc: EventDoc = {
         id: key,
@@ -170,6 +199,9 @@ export async function GET(
         url: path,
         icon: detectIconFromMime(storedMimeType) || detectIcon(filename),
         mimeType: storedMimeType || undefined,
+        kind: isVisitVideo ? 'Vídeo visita comercial' : undefined,
+        updatedAt:
+          typeof storedAt === 'string' || typeof storedAt === 'number' ? storedAt : null,
       }
 
       // SharePoint proxy -> recuperem nom real + mime
@@ -212,6 +244,15 @@ export async function GET(
         // si un fitxer no existeix o no és una ruta de Storage, el saltem
       }
     }
+
+    docs.sort((a, b) => {
+      const time = (value: string | number | null | undefined) => {
+        if (value == null || value === '') return 0
+        const parsed = new Date(value).getTime()
+        return Number.isFinite(parsed) ? parsed : 0
+      }
+      return time(b.updatedAt) - time(a.updatedAt)
+    })
 
     return NextResponse.json({ docs })
   } catch (err) {

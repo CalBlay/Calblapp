@@ -83,6 +83,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/calendar', action: 'sync:ada' },
   { path: '/menu/events', action: 'docs:view' },
   { path: '/menu/events', action: 'docs:attach:kitchen' },
+  { path: '/menu/events', action: 'docs:attach:visit-video' },
   { path: '/menu/events', action: 'modifications:register' },
   { path: '/menu/events', action: 'event:close' },
   { path: '/menu/events', action: 'comanda:create' },

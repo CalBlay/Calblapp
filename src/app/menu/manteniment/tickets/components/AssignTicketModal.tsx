@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import Image from 'next/image'
+import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
+import { isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { formatDateOnly, formatDateTimeValue, formatTimeValue } from '@/lib/date-format'
 import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
@@ -535,26 +537,33 @@ export default function AssignTicketModal({
 
                 {ticketImages.length > 0 && (
                   <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className={typography('sectionTitle')}>Imatges adjuntes</div>
+                    <div className={typography('sectionTitle')}>Adjunts</div>
                     <div className={`grid gap-3 ${ticketImages.length > 1 ? 'md:grid-cols-3' : ''}`}>
-                      {ticketImages.map((imageUrl, index) => (
-                        <a
-                          key={`${imageUrl}-${index}`}
-                          href={imageUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block overflow-hidden rounded-2xl border border-slate-200"
-                        >
-                          <div className="relative h-40 w-full">
-                            <Image
-                              src={imageUrl}
-                              alt={`Imatge del ticket ${index + 1}`}
-                              fill
-                              className="object-cover"
+                      {ticketImages.map((imageUrl, index) => {
+                        const tile = (
+                          <div className="relative flex h-40 w-full items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+                            <TicketAttachmentTile
+                              url={imageUrl}
+                              alt={`Adjunt del ticket ${index + 1}`}
+                              className="max-h-40 w-full object-contain"
                             />
                           </div>
-                        </a>
-                      ))}
+                        )
+                        if (isTicketVideoUrl(imageUrl)) {
+                          return <div key={`${imageUrl}-${index}`}>{tile}</div>
+                        }
+                        return (
+                          <a
+                            key={`${imageUrl}-${index}`}
+                            href={imageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block"
+                          >
+                            {tile}
+                          </a>
+                        )
+                      })}
                     </div>
                   </div>
                 )}

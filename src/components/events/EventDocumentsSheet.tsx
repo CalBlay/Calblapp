@@ -10,8 +10,11 @@ import {
   Presentation,
   File,
   Image as ImgIcon,
+  Video,
 } from 'lucide-react'
 import useEventDocuments, { EventDoc } from '@/hooks/events/useEventDocuments'
+import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
+import { isTicketVideoMime, isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 
@@ -26,6 +29,8 @@ function DocIcon({ d }: { d: EventDoc }) {
       return <Presentation className="h-4 w-4" />
     case 'img':
       return <ImgIcon className="h-4 w-4" />
+    case 'video':
+      return <Video className="h-4 w-4" />
     case 'doc':
       return <File className="h-4 w-4" />
     default:
@@ -79,6 +84,8 @@ const kindLabel = (doc: EventDoc) => {
       return 'Presentacio'
     case 'img':
       return 'Imatge'
+    case 'video':
+      return 'Vídeo'
     case 'doc':
       return 'Document'
     default:
@@ -220,6 +227,12 @@ export default function EventDocumentsSheet({
   )
 }
 
+const isVideoDoc = (doc: EventDoc) => {
+  if (doc.icon === 'video') return true
+  if (isTicketVideoMime(String(doc.mimeType || ''))) return true
+  return isTicketVideoUrl(String(doc.url || ''))
+}
+
 function ModalContent({
   docs,
   loading,
@@ -251,45 +264,58 @@ function ModalContent({
         {docs.map((d) => {
           const url = safeUrl(d.url)
           const isDisabled = !url
+          const isVideo = isVideoDoc(d)
 
           return (
             <div
               key={d.id}
-            className="w-full rounded-2xl border border-slate-100 p-4 flex items-center gap-4 bg-white shadow-sm"
+              className="w-full rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
             >
-            <div className="p-2 bg-gray-100 rounded-lg">
-              <DocIcon d={d} />
-            </div>
+              <div className="flex items-center gap-4">
+                <div className="rounded-lg bg-gray-100 p-2">
+                  <DocIcon d={d} />
+                </div>
 
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate" title={d.title || d.id}>
-                  {displayTitle(d)}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium" title={d.title || d.id}>
+                    {displayTitle(d)}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                      {kindLabel(d)}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {d.updatedAt ? new Date(d.updatedAt).toLocaleString('ca-ES') : 'Sense data'}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 mt-1">
-                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold shrink-0">
-                    {kindLabel(d)}
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    {d.updatedAt ? new Date(d.updatedAt).toLocaleString('ca-ES') : 'Sense data'}
-                  </span>
-                </div>
+
+                <button
+                  type="button"
+                  className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                    isDisabled
+                      ? 'cursor-not-allowed border border-gray-200 bg-gray-50 text-gray-400'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50'
+                  }`}
+                  onClick={() => {
+                    if (!url) return
+                    window.open(url, linkTarget, linkRel)
+                  }}
+                  disabled={isDisabled}
+                >
+                  Obre
+                </button>
               </div>
 
-              <button
-                type="button"
-                className={`px-4 py-2 rounded-xl text-xs font-semibold transition ${
-                  isDisabled
-                    ? 'border border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'
-                    : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50'
-                }`}
-                onClick={() => {
-                  if (!url) return
-                  window.open(url, linkTarget, linkRel)
-                }}
-                disabled={isDisabled}
-              >
-                Obre
-              </button>
+              {isVideo && url ? (
+                <div className="mt-3 overflow-hidden rounded-xl bg-black">
+                  <TicketAttachmentTile
+                    url={url}
+                    alt={displayTitle(d)}
+                    className="max-h-52 w-full object-contain"
+                  />
+                </div>
+              ) : null}
             </div>
           )
         })}

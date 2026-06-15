@@ -70,8 +70,35 @@ export async function singleFlowSave(params: SingleFlowSaveParams) {
     Array.isArray(assignBody.groups) &&
     assignBody.groups.length > 0
 
+  const manualCoreFast =
+    mode === 'manual' && isQuadrantCoreDepartment(deptNorm) && !cuinaManualFast
+
   let finalAssignBody: QuadrantSaveRequestBody
   let res: SingleFlowAssignResult
+
+  const manualAssignmentFromBody = (): SingleFlowAssignResult => {
+    const manualAssignment = body?.manualAssignment as
+      | { responsibleName?: string | null; driverNames?: string[]; staffNames?: string[] }
+      | undefined
+    return {
+      assignment: {
+        responsible: manualAssignment?.responsibleName
+          ? { name: String(manualAssignment.responsibleName) }
+          : null,
+        drivers: Array.isArray(manualAssignment?.driverNames)
+          ? manualAssignment.driverNames
+              .map((name) => ({ name: String(name || '').trim() }))
+              .filter((d) => d.name)
+          : [],
+        staff: Array.isArray(manualAssignment?.staffNames)
+          ? manualAssignment.staffNames
+              .map((name) => ({ name: String(name || '').trim() }))
+              .filter((s) => s.name)
+          : [],
+      },
+      meta: { needsReview: false, violations: [] as string[], notes: [] as string[] },
+    }
+  }
 
   if (cuinaManualFast) {
     finalAssignBody = assignBody as QuadrantSaveRequestBody
@@ -80,6 +107,9 @@ export async function singleFlowSave(params: SingleFlowSaveParams) {
       assignBody as unknown as Record<string, unknown>,
       departmentPeopleCu as DepartmentPersonLite[]
     )
+  } else if (manualCoreFast) {
+    finalAssignBody = assignBody as QuadrantSaveRequestBody
+    res = manualAssignmentFromBody()
   } else {
     const finalSurveyPreferred = await getSurveyPreferred(
       String(assignBody.phaseDate || assignBody.startDate || '').slice(0, 10)
@@ -107,30 +137,10 @@ export async function singleFlowSave(params: SingleFlowSaveParams) {
     const singleFlowDocIdForBusy = shouldIgnoreSelfSingleFlow
       ? `${normEvIdForBusy}__event__${singleFlowPhaseDateForBusy}__event`
       : normEvIdForBusy
-    const manualAssignment = body?.manualAssignment as
-      | { responsibleName?: string | null; driverNames?: string[]; staffNames?: string[] }
-      | undefined
 
     res =
       mode === 'manual'
-        ? {
-            assignment: {
-              responsible: manualAssignment?.responsibleName
-                ? { name: String(manualAssignment.responsibleName) }
-                : null,
-              drivers: Array.isArray(manualAssignment?.driverNames)
-                ? manualAssignment.driverNames
-                    .map((name) => ({ name: String(name || '').trim() }))
-                    .filter((d) => d.name)
-                : [],
-              staff: Array.isArray(manualAssignment?.staffNames)
-                ? manualAssignment.staffNames
-                    .map((name) => ({ name: String(name || '').trim() }))
-                    .filter((s) => s.name)
-                : [],
-            },
-            meta: { needsReview: false, violations: [] as string[], notes: [] as string[] },
-          }
+        ? manualAssignmentFromBody()
         : ((await autoAssign({
             ...(finalAssignBody as unknown as Parameters<typeof autoAssign>[0]),
             departmentPeople,

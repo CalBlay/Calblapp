@@ -94,7 +94,10 @@ export function CuinaCentralMaintenanceTicketProvider({
     [openCreateTicket]
   )
 
-  const imagePreviews = composer.createImages.map((item) => item.preview)
+  const attachmentPreviews = composer.createAttachments.map((item) => ({
+    preview: item.preview,
+    kind: item.kind,
+  }))
 
   return (
     <CuinaCentralTicketContext.Provider value={{ openCreateTicket, openForMachine }}>
@@ -123,13 +126,14 @@ export function CuinaCentralMaintenanceTicketProvider({
           onClose={() => composer.setShowCreate(false)}
           onCreate={() => void composer.handleCreateTicket()}
           createBusy={composer.createBusy}
+          attachmentCompressing={composer.attachmentCompressing}
           canCreate={composer.canCreateTicket}
-          onImageChange={composer.handleImageChange}
-          imagePreviews={imagePreviews}
-          imageCount={composer.createImageCount}
-          maxImages={composer.maxTicketImages}
-          onRemoveImage={composer.removeImage}
-          imageError={composer.imageError}
+          onAttachmentChange={composer.handleAttachmentChange}
+          attachmentPreviews={attachmentPreviews}
+          attachmentCount={composer.createAttachmentCount}
+          maxAttachments={composer.maxTicketAttachments}
+          onRemoveAttachment={composer.removeAttachment}
+          attachmentError={composer.attachmentError}
           formError={composer.formError}
         />
       ) : null}

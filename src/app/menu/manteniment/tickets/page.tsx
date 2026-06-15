@@ -189,14 +189,16 @@ export default function MaintenanceTicketsPage() {
     setCreateDescription,
     createPriority,
     setCreatePriority,
-    createImagePreviews,
-    createImageCount,
-    maxTicketImages,
+    createAttachmentPreviews,
+    createAttachmentCount,
+    maxTicketAttachments,
     createBusy,
-    imageError,
+    attachmentCompressing,
+    attachmentError,
     formError,
     canCreateTicket,
-    removeImage,
+    handleAttachmentChange,
+    removeAttachment,
     selected,
     setSelected,
     assignBusy,
@@ -226,7 +228,6 @@ export default function MaintenanceTicketsPage() {
     setDetailsPriority,
     maintenanceUsers,
     furgonetes,
-    handleImageChange,
     handleCreateTicket,
     handleAssign,
     handleStatusChange,
@@ -702,13 +703,14 @@ export default function MaintenanceTicketsPage() {
             onClose={() => setShowCreate(false)}
             onCreate={handleCreateTicket}
             createBusy={createBusy}
+            attachmentCompressing={attachmentCompressing}
             canCreate={canCreateTicket}
-            onImageChange={handleImageChange}
-            imagePreviews={createImagePreviews}
-            imageCount={createImageCount}
-            maxImages={maxTicketImages}
-            onRemoveImage={removeImage}
-            imageError={imageError}
+            onAttachmentChange={handleAttachmentChange}
+            attachmentPreviews={createAttachmentPreviews}
+            attachmentCount={createAttachmentCount}
+            maxAttachments={maxTicketAttachments}
+            onRemoveAttachment={removeAttachment}
+            attachmentError={attachmentError}
             formError={formError}
           />
         )}

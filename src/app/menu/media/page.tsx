@@ -7,6 +7,8 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import { Images, RefreshCw, Trash2 } from 'lucide-react'
 import Image from 'next/image'
+import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
+import { isTicketVideoMime, isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 import useSWR from 'swr'
 import { PERM } from '@/lib/permissionKeys'
 
@@ -46,7 +48,10 @@ function formatDate(value: number) {
   }).format(new Date(value))
 }
 
-function formatSize(bytes: number | null) {
+function isMediaVideo(item: MediaItem) {
+  if (isTicketVideoMime(String(item.type || ''))) return true
+  return isTicketVideoUrl(String(item.url || item.path || ''))
+}
   if (!bytes || bytes <= 0) return 'Sense mida'
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
@@ -234,7 +239,7 @@ function MediaPage() {
       <ModuleHeader
         icon={<Images className="w-7 h-7 text-slate-700" />}
         title="Gestio d'Imatges"
-        subtitle="Imatges optimitzades (WebP), indexades per font i consulta paginada"
+        subtitle="Imatges i videos indexats per font (WebP, MP4…), consulta paginada"
         mainHref="/menu/media"
         actions={
           <Button
@@ -319,13 +324,21 @@ function MediaPage() {
               >
                 <div className="overflow-hidden rounded-lg bg-gray-100">
                   {item.url ? (
-                    <div className="relative h-[120px] w-full">
-                      <Image
-                        src={item.url}
-                        alt={item.title || 'Imatge'}
-                        fill
-                        className="object-cover"
-                      />
+                    <div className="relative flex h-[120px] w-full items-center justify-center">
+                      {isMediaVideo(item) ? (
+                        <TicketAttachmentTile
+                          url={item.url}
+                          alt={item.title || 'Video'}
+                          className="max-h-[120px] w-full object-contain"
+                        />
+                      ) : (
+                        <Image
+                          src={item.url}
+                          alt={item.title || 'Imatge'}
+                          fill
+                          className="object-cover"
+                        />
+                      )}
                     </div>
                   ) : (
                     <div className="flex h-[120px] items-center justify-center text-xs text-gray-400">

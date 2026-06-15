@@ -68,11 +68,22 @@ export async function handlePostQuadrant(req: NextRequest) {
     }
 
     const deptNorm = norm(String(body.department || ''))
+    const mode: 'auto' | 'semi' | 'manual' =
+      body?.mode === 'auto' || body?.mode === 'semi' || body?.mode === 'manual'
+        ? body.mode
+        : 'semi'
+    const confirmImmediatelyRequested = Boolean(body?.confirmImmediately === true)
     const overlapStartBound = String(body.startDate || '').trim()
     const overlapEndBound = String(body.endDate || body.startDate || '').trim()
+    const overlapDepartmentScope =
+      mode === 'manual' && isQuadrantCoreDepartment(deptNorm) && !confirmImmediatelyRequested
+        ? deptNorm
+        : undefined
     let overlapWarmupPromise: Promise<OverlapBusySnapshot> | null =
       overlapStartBound && overlapEndBound
-        ? preloadQuadrantOverlapBusyDocs(overlapStartBound, overlapEndBound).catch((err) => {
+        ? preloadQuadrantOverlapBusyDocs(overlapStartBound, overlapEndBound, {
+            department: overlapDepartmentScope,
+          }).catch((err) => {
             console.warn('[quadrants/route] overlap warmup failed', err)
             return [] as OverlapBusySnapshot
           })
@@ -88,12 +99,6 @@ export async function handlePostQuadrant(req: NextRequest) {
     ])
     console.log('[quadrants/route] Escriurà a col·lecció:', collectionName)
 
-    const mode: 'auto' | 'semi' | 'manual' =
-      body?.mode === 'auto' || body?.mode === 'semi' || body?.mode === 'manual'
-        ? body.mode
-        : 'semi'
-
-    const confirmImmediatelyRequested = Boolean(body?.confirmImmediately === true)
     let jwtSessionForInlineConfirm: { user?: { email?: string }; email?: string } | null = null
 
     if (canSave !== true) return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
@@ -302,6 +307,7 @@ export async function handlePostQuadrant(req: NextRequest) {
         getStageVerdCached,
         getDepartmentPeople,
         writePhaseDoc,
+        ensureNoOverlapForQuadrantSave,
         createdDocIds,
         savedDraftSnapshotByDocId,
       })

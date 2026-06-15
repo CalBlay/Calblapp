@@ -2,7 +2,6 @@ import {
   fetchQuadrantDocsByEndDate,
   type QuadrantDoc,
 } from '@/utils/personnelRest'
-import { listOperationalQuadrantCollectionIds } from '@/lib/firestoreCollections'
 
 const BUSY_DOCS_CACHE_TTL_MS = 90_000
 const busyDocsCache = new Map<string, { snapshot: OverlapBusySnapshot; ts: number }>()
@@ -134,20 +133,27 @@ export type OverlapBusySnapshot = Array<{
 
 export async function preloadQuadrantOverlapBusyDocs(
   startBound: string,
-  endBound: string
+  endBound: string,
+  options?: { department?: string }
 ): Promise<OverlapBusySnapshot> {
   const start = String(startBound || '').trim()
   const end = String(endBound || '').trim()
   if (!start || !end) return []
 
-  const cacheKey = `${start}|${end}`
+  const deptKey = options?.department ? norm(options.department) : ''
+  const cacheKey = deptKey ? `${start}|${end}|${deptKey}` : `${start}|${end}`
   const now = Date.now()
   const cached = busyDocsCache.get(cacheKey)
   if (cached && now - cached.ts < BUSY_DOCS_CACHE_TTL_MS) {
     return cached.snapshot
   }
 
-  const collectionIds = await listOperationalQuadrantCollectionIds()
+  const { listOperationalQuadrantCollectionIds, resolveQuadrantCollection } = await import(
+    '@/lib/firestoreCollections'
+  )
+  const collectionIds = deptKey
+    ? [await resolveQuadrantCollection(deptKey, { prefer: 'singular' })]
+    : await listOperationalQuadrantCollectionIds()
   const snapshots = await Promise.all(
     collectionIds.map(async (collectionId) => {
       const docs = await fetchQuadrantDocsByEndDate(collectionId, end, start)

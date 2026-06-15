@@ -101,11 +101,16 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
   {
     id: 'eventsActions',
     title: 'Esdeveniments · Accions',
-    subtitle: 'Accions de gestió amb impacte.',
+    subtitle:
+      'Accions de gestió amb impacte. Vídeo visita: marcar allow per usuari (comercial, caps d’àrea comercial…).',
     visibleWhen: { path: '/menu/events' },
     actions: [
       { key: PERM.action('/menu/events', 'docs:view'), label: 'Veure documents' },
       { key: PERM.action('/menu/events', 'docs:attach:kitchen'), label: 'Adjuntar documents de cuina' },
+      {
+        key: PERM.action('/menu/events', 'docs:attach:visit-video'),
+        label: 'Adjuntar vídeo visita comercial',
+      },
       { key: PERM.action('/menu/events', 'modifications:register'), label: 'Registrar modificacions' },
       { key: PERM.action('/menu/events', 'event:close'), label: 'Tancar esdeveniment' },
     ],
