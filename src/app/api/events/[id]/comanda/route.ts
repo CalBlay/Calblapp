@@ -289,12 +289,13 @@ export async function PATCH(
   if (!auth.ok) return auth.res
 
   const accessUser = eventComandaAccessUserFromSession(auth.user)
-  const preparerOnly = await hasEventsComandaPreparerOnlyAccess(accessUser)
+  const [preparerOnly, canCreate] = await Promise.all([
+    hasEventsComandaPreparerOnlyAccess(accessUser),
+    hasEventComandaCreateAccess(accessUser),
+  ])
   if (preparerOnly) {
     return NextResponse.json({ error: 'Sense permís per enviar comandes.' }, { status: 403 })
   }
-
-  const canCreate = await hasEventComandaCreateAccess(accessUser)
   if (!canCreate) {
     return NextResponse.json({ error: 'Sense permís per enviar comandes.' }, { status: 403 })
   }
@@ -351,14 +352,19 @@ export async function PATCH(
             deliveryDate: String(body.deliveryDate || '').trim(),
             deliveryTimeSlot: String(body.deliveryTimeSlot || '').trim(),
           })
-    const template = await getEventComandaTemplate(eventId)
-    const eventInfo = await getEventComandaEventInfo(eventId)
+
+    const [template, eventInfo, assignedWarehouseIds] = await Promise.all([
+      getEventComandaTemplate(eventId),
+      getEventComandaEventInfo(eventId),
+      listWarehouseIdsForUser(auth.user.id),
+    ])
+
     return NextResponse.json({
       ok: true,
       summary: buildSummary(eventId, template, order, {
         userId: auth.user.id,
         role: normalizeRole(auth.user.role),
-        assignedWarehouseIds: await listWarehouseIdsForUser(auth.user.id),
+        assignedWarehouseIds,
       }, { filterBatches: false }, eventInfo),
     })
   } catch (error) {

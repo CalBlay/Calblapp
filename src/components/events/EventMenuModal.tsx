@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dialog'
 
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
+import { prefetchEventDocuments } from '@/hooks/events/useEventDocuments'
 import EventKitchenDocumentsModal from '@/components/events/EventKitchenDocumentsModal'
 import EventVisitVideoModal from '@/components/events/EventVisitVideoModal'
 import EventPersonnelModal from './EventPersonnelModal'
@@ -391,6 +392,15 @@ const treballadorsPersons =
   const canOpenVisitVideo = canAttachVisitVideo || canDocs
   const canCreateModificationPerm = canCreateModification && canUiRegisterModifications
   const canCloseEventPerm = canCloseEvent && canUiCloseEvent
+
+  useEffect(() => {
+    if (!event?.id || !permsReady || !canDocs) return
+    prefetchEventDocuments(
+      String(event.id),
+      event.eventCode || event.code || undefined,
+      'all'
+    )
+  }, [event?.id, event?.eventCode, event?.code, permsReady, canDocs])
 
   const navigateTo = useCallback(
     (path: string) => {
@@ -822,8 +832,6 @@ const recursos = useMemo(
   onClose={() => setShowEspais(false)}
   fincaId={(event.fincaId || event.fincaCode || '').trim() || null}
   eventSummary={event.summary}
-  eventId={event.id != null ? String(event.id) : null}
-  eventCode={event.eventCode ?? event.code ?? null}
 />
       <EventClosingModal
         open={showClosing}

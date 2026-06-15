@@ -12,6 +12,47 @@ import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 const NOTIFICATION_TYPE = 'event_comanda_warehouse'
 const NOTIFICATION_TYPE_BATCH_SENT = 'event_comanda_batch_sent'
 
+function notifyPushInBackground(params: {
+  userId: string
+  title: string
+  body: string
+  url: string
+}) {
+  const baseUrl = resolveBaseUrl()
+  if (!baseUrl) return
+  void fetch(`${baseUrl}/api/push/send`, {
+    method: 'POST',
+    headers: internalApiHeaders(),
+    body: JSON.stringify(params),
+  }).catch((error) => {
+    console.error('[eventComandaNotifications] push error', error)
+  })
+}
+
+async function notifyMember(params: {
+  userId: string
+  notification: Record<string, unknown>
+  docId: string
+  merge: boolean
+  ablyPayload: Record<string, unknown>
+}) {
+  await writeUserNotification(params.userId, params.notification, {
+    docId: params.docId,
+    merge: params.merge,
+  })
+
+  if (hasAblyApiKey()) {
+    try {
+      const rest = getAblyRest()
+      await rest.channels
+        .get(`user:${params.userId}:notifications`)
+        .publish('created', params.ablyPayload)
+    } catch (error) {
+      console.error('[eventComandaNotifications] Ably publish error', error)
+    }
+  }
+}
+
 async function resolveEventTitle(eventId: string): Promise<string> {
   try {
     const snap = await db.collection('stage_verd').doc(eventId).get()
@@ -53,10 +94,11 @@ export async function notifyWarehouseMembersForOrderUpdate(params: {
 
   const eventTitle =
     String(params.eventTitle || '').trim() || (await resolveEventTitle(eventId))
-  const baseUrl = resolveBaseUrl()
   const sentBy = String(params.sentByName || '').trim()
   const now = Date.now()
   let notifiedUsers = 0
+
+  const memberTasks: Array<Promise<void>> = []
 
   for (const notice of params.notifications) {
     const warehouseId = warehouseDocId(notice.warehouseId)
@@ -88,62 +130,45 @@ export async function notifyWarehouseMembersForOrderUpdate(params: {
       const userId = String(member.userId || '').trim()
       if (!userId) continue
 
-      await writeUserNotification(
-        userId,
-        {
-          type: NOTIFICATION_TYPE,
-          title,
-          body,
-          eventId,
-          eventTitle,
-          warehouseId,
-          warehouseCode: notice.warehouseCode,
-          warehouseName: notice.warehouseName,
-          batchId: notice.batchId,
-          modifiedLines: notice.modifiedLines,
-          lineCount: notice.modifiedLines.length,
-          sentBy: sentBy || null,
-          sentByUserId: params.sentByUserId || null,
-          url,
-          createdAt: now,
-          read: false,
-        },
-        { docId: notificationDocId, merge: false }
-      )
-
-      notifiedUsers += 1
-
-      if (hasAblyApiKey()) {
-        try {
-          const rest = getAblyRest()
-          await rest.channels.get(`user:${userId}:notifications`).publish('created', {
+      memberTasks.push(
+        notifyMember({
+          userId,
+          docId: notificationDocId,
+          merge: false,
+          notification: {
+            type: NOTIFICATION_TYPE,
+            title,
+            body,
+            eventId,
+            eventTitle,
+            warehouseId,
+            warehouseCode: notice.warehouseCode,
+            warehouseName: notice.warehouseName,
+            batchId: notice.batchId,
+            modifiedLines: notice.modifiedLines,
+            lineCount: notice.modifiedLines.length,
+            sentBy: sentBy || null,
+            sentByUserId: params.sentByUserId || null,
+            url,
+            createdAt: now,
+            read: false,
+          },
+          ablyPayload: {
             type: NOTIFICATION_TYPE,
             eventId,
             warehouseId,
             batchId: notice.batchId,
             createdAt: now,
-          })
-        } catch (error) {
-          console.error('[eventComandaNotifications] Ably publish error', error)
-        }
-      }
-
-      if (baseUrl) {
-        await fetch(`${baseUrl}/api/push/send`, {
-          method: 'POST',
-          headers: internalApiHeaders(),
-          body: JSON.stringify({
-            userId,
-            title,
-            body,
-            url,
-          }),
-        }).catch((error) => {
-          console.error('[eventComandaNotifications] push error', error)
+          },
         })
-      }
+      )
+
+      notifyPushInBackground({ userId, title, body, url })
+      notifiedUsers += 1
     }
   }
+
+  await Promise.all(memberTasks)
 
   return {
     notifiedUsers,
@@ -166,10 +191,11 @@ export async function notifyWarehouseMembersForOrderSent(params: {
 
   const eventTitle =
     String(params.eventTitle || '').trim() || (await resolveEventTitle(eventId))
-  const baseUrl = resolveBaseUrl()
   const sentBy = String(params.sentByName || '').trim()
   const now = Date.now()
   let notifiedUsers = 0
+
+  const memberTasks: Array<Promise<void>> = []
 
   for (const batch of params.batches) {
     const warehouseId = warehouseDocId(batch.warehouseId)
@@ -197,59 +223,42 @@ export async function notifyWarehouseMembersForOrderSent(params: {
       const userId = String(member.userId || '').trim()
       if (!userId) continue
 
-      await writeUserNotification(
-        userId,
-        {
-          type: NOTIFICATION_TYPE,
-          title,
-          body,
-          eventId,
-          eventTitle,
-          warehouseId,
-          warehouseCode: batch.warehouseCode,
-          warehouseName: batch.warehouseName,
-          lineCount,
-          sentBy: sentBy || null,
-          sentByUserId: params.sentByUserId || null,
-          url,
-          createdAt: now,
-          read: false,
-        },
-        { docId: notificationDocId, merge: true }
-      )
-
-      notifiedUsers += 1
-
-      if (hasAblyApiKey()) {
-        try {
-          const rest = getAblyRest()
-          await rest.channels.get(`user:${userId}:notifications`).publish('created', {
+      memberTasks.push(
+        notifyMember({
+          userId,
+          docId: notificationDocId,
+          merge: true,
+          notification: {
+            type: NOTIFICATION_TYPE,
+            title,
+            body,
+            eventId,
+            eventTitle,
+            warehouseId,
+            warehouseCode: batch.warehouseCode,
+            warehouseName: batch.warehouseName,
+            lineCount,
+            sentBy: sentBy || null,
+            sentByUserId: params.sentByUserId || null,
+            url,
+            createdAt: now,
+            read: false,
+          },
+          ablyPayload: {
             type: NOTIFICATION_TYPE,
             eventId,
             warehouseId,
             createdAt: now,
-          })
-        } catch (error) {
-          console.error('[eventComandaNotifications] Ably publish error', error)
-        }
-      }
-
-      if (baseUrl) {
-        await fetch(`${baseUrl}/api/push/send`, {
-          method: 'POST',
-          headers: internalApiHeaders(),
-          body: JSON.stringify({
-            userId,
-            title,
-            body,
-            url,
-          }),
-        }).catch((error) => {
-          console.error('[eventComandaNotifications] push error', error)
+          },
         })
-      }
+      )
+
+      notifyPushInBackground({ userId, title, body, url })
+      notifiedUsers += 1
     }
   }
+
+  await Promise.all(memberTasks)
 
   return {
     notifiedUsers,
@@ -376,17 +385,11 @@ export async function notifyRequesterBatchSent(params: {
 
   const baseUrl = resolveBaseUrl()
   if (baseUrl) {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: internalApiHeaders(),
-      body: JSON.stringify({
-        userId: requesterUserId,
-        title,
-        body,
-        url,
-      }),
-    }).catch((error) => {
-      console.error('[eventComandaNotifications] push error', error)
+    notifyPushInBackground({
+      userId: requesterUserId,
+      title,
+      body,
+      url,
     })
   }
 

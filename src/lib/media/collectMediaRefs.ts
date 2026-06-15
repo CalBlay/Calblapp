@@ -293,23 +293,38 @@ export async function collectSpaceRefs(): Promise<MediaRef[]> {
       data.produccio && typeof data.produccio === 'object'
         ? (data.produccio as Record<string, unknown>)
         : {}
-    const images = Array.isArray(produccio.images) ? (produccio.images as unknown[]) : []
 
-    images.forEach((imageUrl, index) => {
-      const url = cleanText(imageUrl)
+    const mediaRows = Array.isArray(produccio.media) ? (produccio.media as unknown[]) : []
+    const legacyImages = Array.isArray(produccio.images) ? (produccio.images as unknown[]) : []
+    const entries =
+      mediaRows.length > 0
+        ? mediaRows
+        : legacyImages.map((url) => ({ kind: 'image', url }))
+
+    entries.forEach((entry, index) => {
+      const row =
+        entry && typeof entry === 'object'
+          ? (entry as Record<string, unknown>)
+          : { kind: 'image', url: entry }
+      const url = cleanText(row.url ?? entry)
+      const kind = cleanText(row.kind).toLowerCase()
       const path = extractOwnedStoragePath(url, bucketName)
       if (!path) return
+
+      const label =
+        kind === 'video' ? `Vídeo ${index + 1}` : kind === 'google-photos' ? `Google Fotos ${index + 1}` : `Imatge ${index + 1}`
+
       refs.push({
         source: 'spaces',
         docId: doc.id,
-        refSuffix: `img_${index}`,
+        refSuffix: `${kind || 'img'}_${index}`,
         createdAt: toMillis(data.updatedAt || data.createdAt),
         url,
         path,
         size: null,
-        type: null,
+        type: kind === 'video' ? 'video' : null,
         title:
-          [cleanText(data.nom), cleanText(data.code), `Imatge ${index + 1}`]
+          [cleanText(data.nom), cleanText(data.code), label]
             .filter(Boolean)
             .join(' · ') || `Espai ${doc.id}`,
       })

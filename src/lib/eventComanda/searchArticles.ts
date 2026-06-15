@@ -37,6 +37,53 @@ export function buildOrderLinesFromTemplate(
     .sort((a, b) => a.articleCode.localeCompare(b.articleCode))
 }
 
+/** Combina línies de comanda existents amb tots els articles de la plantilla (qty 0 si no hi són). */
+export function mergeOrderLinesWithTemplate(
+  orderLines: EventComandaOrderLine[],
+  templateLines: EventComandaLine[]
+): EventComandaOrderLine[] {
+  const byCode = new Map<string, EventComandaOrderLine>()
+
+  for (const templateLine of templateLines) {
+    const code = templateLine.articleCode.toUpperCase()
+    byCode.set(code, {
+      articleCode: templateLine.articleCode,
+      articleName: templateLine.articleName,
+      family: templateLine.family,
+      qtyUnit: templateLine.qtyUnit,
+      qtyTemplate: templateLine.qtyInitial,
+      qtyRequested: 0,
+      warehouseId: null,
+      warehouseCode: null,
+      warehouseName: null,
+    })
+  }
+
+  for (const line of orderLines) {
+    const code = line.articleCode.toUpperCase()
+    const templateBase = byCode.get(code)
+    byCode.set(code, {
+      ...(templateBase ?? {
+        articleCode: line.articleCode,
+        articleName: line.articleName,
+        family: line.family,
+        qtyUnit: line.qtyUnit,
+        qtyTemplate: line.qtyTemplate ?? null,
+        qtyRequested: line.qtyRequested,
+        warehouseId: line.warehouseId ?? null,
+        warehouseCode: line.warehouseCode ?? null,
+        warehouseName: line.warehouseName ?? null,
+      }),
+      ...line,
+      qtyTemplate: templateBase?.qtyTemplate ?? line.qtyTemplate ?? null,
+    })
+  }
+
+  return [...byCode.values()].sort((a, b) =>
+    a.articleCode.localeCompare(b.articleCode, 'ca', { sensitivity: 'base' })
+  )
+}
+
 export function mergeWarehouseIntoOrderLines(
   lines: EventComandaOrderLine[],
   resolved: Array<{
@@ -69,43 +116,39 @@ export function templateLineByCode(
   return map
 }
 
+export function enrichCatalogArticlesWithTemplate(
+  catalogArticles: EventComandaArticleOption[],
+  templateLines: EventComandaLine[] = []
+): EventComandaArticleOption[] {
+  const templateByCode = new Map(
+    templateLines.map((line) => [line.articleCode.toUpperCase(), line])
+  )
+
+  return catalogArticles.map((article) => {
+    const template = templateByCode.get(article.articleCode.toUpperCase())
+    if (!template) {
+      return {
+        ...article,
+        inTemplate: false,
+        qtyTemplate: article.qtyTemplate ?? null,
+      }
+    }
+    return {
+      ...article,
+      inTemplate: true,
+      qtyTemplate: article.qtyTemplate ?? template.qtyInitial,
+      qtyUnit: article.qtyUnit || template.qtyUnit,
+      family: article.family || template.family,
+    }
+  })
+}
+
+/** @deprecated El cercador de comandes usa només el catàleg; vegeu enrichCatalogArticlesWithTemplate. */
 export function buildArticleSearchPool(
   templateLines: EventComandaLine[],
   catalogArticles: EventComandaArticleOption[] = []
 ): EventComandaArticleOption[] {
-  const byCode = new Map<string, EventComandaArticleOption>()
-
-  for (const line of templateLines) {
-    const code = line.articleCode.toUpperCase()
-    byCode.set(code, {
-      articleCode: line.articleCode,
-      articleName: line.articleName,
-      family: line.family,
-      qtyUnit: line.qtyUnit,
-      qtyTemplate: line.qtyInitial,
-      inTemplate: true,
-      warehouseId: null,
-      warehouseCode: null,
-      warehouseName: null,
-    })
-  }
-
-  for (const article of catalogArticles) {
-    const code = article.articleCode.toUpperCase()
-    const existing = byCode.get(code)
-    if (existing) {
-      byCode.set(code, {
-        ...existing,
-        warehouseId: article.warehouseId ?? existing.warehouseId ?? null,
-        warehouseCode: article.warehouseCode ?? existing.warehouseCode ?? null,
-        warehouseName: article.warehouseName ?? existing.warehouseName ?? null,
-      })
-      continue
-    }
-    byCode.set(code, { ...article, inTemplate: false, qtyTemplate: null })
-  }
-
-  return [...byCode.values()].sort((a, b) => a.articleCode.localeCompare(b.articleCode))
+  return enrichCatalogArticlesWithTemplate(catalogArticles, templateLines)
 }
 
 export function searchArticles(

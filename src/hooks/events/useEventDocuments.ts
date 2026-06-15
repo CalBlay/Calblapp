@@ -1,7 +1,8 @@
 // src/hooks/events/useEventDocuments.ts
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import useSWR, { mutate as globalMutate } from 'swr'
 
 export type EventDoc = {
   id: string
@@ -23,25 +24,59 @@ export type EventDoc = {
 function normalizeUrl(url?: string): string {
   if (!url) return ''
 
-  // ja es una URL valida
   if (url.startsWith('http://') || url.startsWith('https://')) {
     return url
   }
 
-  // links Drive tipus "drive:ID"
   if (url.startsWith('drive:')) {
     const id = url.replace('drive:', '')
     return `https://drive.google.com/file/d/${id}/view`
   }
 
-  // rutes relatives (ex. proxy SharePoint) -> les convertim a absolutes si podem
   if (url.startsWith('/')) {
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
     return origin ? `${origin}${url}` : url
   }
 
-  // qualsevol altra cosa no obrible
   return ''
+}
+
+export function buildEventDocumentsUrl(
+  eventId: string,
+  eventCode?: string,
+  fieldPrefix: string = 'file'
+) {
+  const qs = new URLSearchParams()
+  if (eventCode) qs.set('eventCode', eventCode)
+  if (fieldPrefix) qs.set('prefix', fieldPrefix)
+  return `/api/events/${encodeURIComponent(eventId)}/documents?${qs.toString()}`
+}
+
+async function fetchEventDocuments(url: string): Promise<EventDoc[]> {
+  const res = await fetch(url)
+  const json = (await res.json()) as { docs?: EventDoc[]; error?: string }
+  if (!res.ok) {
+    throw new Error(json.error || 'No s\'han pogut carregar els documents.')
+  }
+
+  return Array.isArray(json.docs)
+    ? json.docs
+        .map((doc) => ({
+          ...doc,
+          url: normalizeUrl(doc.url),
+        }))
+        .filter((doc) => doc.url)
+    : []
+}
+
+export function prefetchEventDocuments(
+  eventId?: string,
+  eventCode?: string,
+  fieldPrefix: string = 'all'
+) {
+  if (!eventId) return
+  const url = buildEventDocumentsUrl(eventId, eventCode, fieldPrefix)
+  void globalMutate(url, fetchEventDocuments(url), { revalidate: false })
 }
 
 export default function useEventDocuments(
@@ -50,48 +85,31 @@ export default function useEventDocuments(
   fieldPrefix: string = 'file',
   refreshToken: number = 0
 ) {
-  const [docs, setDocs] = useState<EventDoc[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const swrKey =
+    eventId || eventCode
+      ? buildEventDocumentsUrl(eventId ?? '__code__', eventCode, fieldPrefix)
+      : null
+
+  const { data, error, isLoading, isValidating, mutate } = useSWR(
+    swrKey,
+    fetchEventDocuments,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 30_000,
+      keepPreviousData: true,
+    }
+  )
 
   useEffect(() => {
-    if (!eventId && !eventCode) return
+    if (!swrKey || refreshToken === 0) return
+    void mutate()
+  }, [refreshToken, swrKey, mutate])
 
-    let alive = true
-    setLoading(true)
-    setError(null)
-
-    const qs = new URLSearchParams()
-    if (eventCode) qs.set('eventCode', eventCode)
-    if (fieldPrefix) qs.set('prefix', fieldPrefix)
-
-    fetch(`/api/events/${eventId ?? '__code__'}/documents?${qs.toString()}`)
-      .then((r) => r.json())
-      .then((j) => {
-        if (!alive) return
-
-        const cleanDocs: EventDoc[] = Array.isArray(j.docs)
-          ? j.docs
-              .map((d: EventDoc) => ({
-                ...d,
-                url: normalizeUrl(d.url),
-              }))
-              .filter((d) => d.url) // clau
-          : []
-
-        setDocs(cleanDocs)
-      })
-      .catch((e) => {
-        if (alive) setError(String(e))
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
-
-    return () => {
-      alive = false
-    }
-  }, [eventId, eventCode, fieldPrefix, refreshToken])
-
-  return { docs, loading, error }
+  return {
+    docs: data ?? [],
+    loading: isLoading && data === undefined,
+    validating: isValidating,
+    error: error ? String(error.message || error) : null,
+    refresh: mutate,
+  }
 }

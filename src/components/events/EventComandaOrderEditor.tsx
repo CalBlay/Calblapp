@@ -12,12 +12,12 @@ import {
   eventComandaWarehouseLabel,
 } from '@/lib/eventComanda/warehouseColors'
 import {
-  buildArticleSearchPool,
   buildOrderLinesFromTemplate,
+  enrichCatalogArticlesWithTemplate,
   filterOrderLinesByQuery,
   flattenTemplateLines,
+  mergeOrderLinesWithTemplate,
   mergeWarehouseIntoOrderLines,
-  searchArticles,
 } from '@/lib/eventComanda/searchArticles'
 import {
   loadOrderDraft,
@@ -38,7 +38,7 @@ import {
   resolveDeliveryDateBounds,
   type EventComandaDeliveryDateBounds,
 } from '@/lib/eventComanda/deliverySlots'
-import { eventComandaQtyUnit } from '@/lib/eventComanda/parseErpExcel'
+import { eventComandaQtyUnit, articleCodePrefix } from '@/lib/eventComanda/parseErpExcel'
 import { warehouseDocId } from '@/lib/eventComanda/warehouseIds'
 import type { EventComandaWarehouse } from '@/lib/eventComanda/warehouses.server'
 import {
@@ -134,12 +134,21 @@ export default function EventComandaOrderEditor({
   const [comments, setComments] = useState('')
   const [lineFilter, setLineFilter] = useState('')
   const [selectedWarehouseIds, setSelectedWarehouseIds] = useState<string[]>([])
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualCode, setManualCode] = useState('')
+  const [manualName, setManualName] = useState('')
+  const [manualUnit, setManualUnit] = useState('UN')
+  const [manualQty, setManualQty] = useState('')
+  const [manualAdding, setManualAdding] = useState(false)
+  const [manualError, setManualError] = useState<string | null>(null)
   const [warehouses, setWarehouses] = useState<EventComandaWarehouse[]>([])
   const [warehousesLoading, setWarehousesLoading] = useState(false)
+  const [editShowTemplate, setEditShowTemplate] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const resolveRequestId = useRef(0)
   const forceSourcePickInitializedRef = useRef(false)
+  const baselineOrderLinesRef = useRef<EventComandaOrderLine[]>([])
 
   const deliveryDateBounds = useMemo(
     () => deliveryDateBoundsProp ?? resolveDeliveryDateBounds(null),
@@ -228,11 +237,26 @@ export default function EventComandaOrderEditor({
   useEffect(() => {
     if (isEditMode) {
       forceSourcePickInitializedRef.current = false
-      setOrderLines(initialLines || [])
-      setSourceMode('scratch')
+      const baseline = initialLines || []
+      baselineOrderLinesRef.current = baseline
       setDeliveryDate(initialDelivery?.deliveryDate || '')
       setDeliveryTimeSlot(initialDelivery?.deliveryTimeSlot || '')
       setComments(initialDelivery?.comments || '')
+
+      if (templateLines.length > 0) {
+        const merged = mergeOrderLinesWithTemplate(baseline, templateLines)
+        setEditShowTemplate(true)
+        setOrderLines(merged)
+        setSourceMode('template')
+        setSortStack(COMANDA_LINE_TEMPLATE_SORT_STACK)
+        if (merged.some((line) => !line.warehouseId && !line.warehouseCode && !line.warehouseName)) {
+          void resolveTemplateWarehouses(merged)
+        }
+      } else {
+        setEditShowTemplate(false)
+        setOrderLines(baseline)
+        setSourceMode('scratch')
+      }
       return
     }
 
@@ -277,7 +301,7 @@ export default function EventComandaOrderEditor({
     }
 
     setSourceMode('pick')
-  }, [eventId, forceSourcePick, initialDelivery, initialLines, isEditMode, templateLines.length, resolveTemplateWarehouses])
+  }, [eventId, forceSourcePick, initialDelivery, initialLines, isEditMode, templateLines, resolveTemplateWarehouses])
 
   useEffect(() => {
     if (isEditMode || forceSourcePick) return
@@ -383,25 +407,31 @@ export default function EventComandaOrderEditor({
     }
   }, [debouncedSearch])
 
-  const searchPool = useMemo(
-    () => buildArticleSearchPool(templateLines, catalogArticles),
-    [templateLines, catalogArticles]
-  )
+  const templateByCode = useMemo(() => {
+    const map = new Map<string, (typeof templateLines)[number]>()
+    for (const line of templateLines) {
+      map.set(line.articleCode.toUpperCase(), line)
+    }
+    return map
+  }, [templateLines])
 
-  const searchResults = useMemo(() => searchArticles(searchPool, search), [searchPool, search])
+  const searchResults = useMemo(
+    () => enrichCatalogArticlesWithTemplate(catalogArticles, templateLines),
+    [catalogArticles, templateLines]
+  )
 
   useEffect(() => {
     if (!searchOpen) return
-    const handlePointerDown = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent) => {
       if (!searchRef.current?.contains(event.target as Node)) {
         setSearchOpen(false)
       }
     }
-    document.addEventListener('mousedown', handlePointerDown)
-    return () => document.removeEventListener('mousedown', handlePointerDown)
+    document.addEventListener('click', handleClickOutside, true)
+    return () => document.removeEventListener('click', handleClickOutside, true)
   }, [searchOpen])
 
-  const addArticle = (article: EventComandaArticleOption) => {
+  const addArticle = (article: EventComandaArticleOption, initialQty?: number | null) => {
     const code = article.articleCode.toUpperCase()
     const existing = orderLines.find((line) => line.articleCode.toUpperCase() === code)
     if (existing) {
@@ -412,13 +442,14 @@ export default function EventComandaOrderEditor({
       return
     }
 
+    const templateLine = templateByCode.get(code)
     const nextLine: EventComandaOrderLine = {
       articleCode: article.articleCode,
       articleName: article.articleName,
       family: article.family,
       qtyUnit: article.qtyUnit,
-      qtyTemplate: article.qtyTemplate,
-      qtyRequested: null,
+      qtyTemplate: article.qtyTemplate ?? templateLine?.qtyInitial ?? null,
+      qtyRequested: initialQty ?? null,
       warehouseId: article.warehouseId ?? null,
       warehouseCode: article.warehouseCode ?? null,
       warehouseName: article.warehouseName ?? null,
@@ -426,11 +457,134 @@ export default function EventComandaOrderEditor({
     setOrderLines((prev) => [...prev, nextLine])
     setSearch('')
     setSearchOpen(false)
+    setManualOpen(false)
+    setManualError(null)
     setHighlightCode(code)
-    window.setTimeout(() => qtyRefs.current[code]?.focus(), 0)
+    if (initialQty == null) {
+      window.setTimeout(() => qtyRefs.current[code]?.focus(), 0)
+    }
 
-    if (isWarehouseEdit) {
+    if (
+      isWarehouseEdit ||
+      (isEditMode && !nextLine.warehouseId && !nextLine.warehouseCode && !nextLine.warehouseName)
+    ) {
       void resolveTemplateWarehouses([nextLine])
+    }
+  }
+
+  const openManualArticleForm = (prefillQuery?: string) => {
+    const query = String(prefillQuery || '').trim()
+    if (query) {
+      const looksLikeCode = /^[A-Z0-9][A-Z0-9._/-]*$/i.test(query) && query.length <= 32
+      if (looksLikeCode) {
+        setManualCode(query.toUpperCase())
+        setManualName('')
+      } else {
+        setManualCode('')
+        setManualName(query)
+      }
+    }
+    setManualError(null)
+    setManualQty('')
+    setManualOpen(true)
+    setSearchOpen(false)
+  }
+
+  const submitManualArticle = async () => {
+    const code = manualCode.trim().toUpperCase()
+    const name = manualName.trim()
+    const qtyUnit = eventComandaQtyUnit(manualUnit.trim() || 'UN')
+    const qtyRaw = manualQty.trim().replace(',', '.')
+    let qtyRequested: number | null = null
+
+    if (!code) {
+      setManualError('Cal indicar el codi de l\'article.')
+      return
+    }
+    if (!name) {
+      setManualError('Cal indicar la descripció de l\'article.')
+      return
+    }
+    if (qtyRaw) {
+      const qty = Number(qtyRaw)
+      if (!Number.isFinite(qty) || qty <= 0) {
+        setManualError('La quantitat ha de ser un número superior a 0.')
+        return
+      }
+      qtyRequested = qty
+    }
+
+    const existing = orderLines.find((line) => line.articleCode.toUpperCase() === code)
+    if (existing) {
+      setHighlightCode(code)
+      qtyRefs.current[code]?.focus()
+      setManualOpen(false)
+      return
+    }
+
+    setManualAdding(true)
+    setManualError(null)
+
+    try {
+      const family = articleCodePrefix(code)
+      let warehouseId: string | null = null
+      let warehouseCode: string | null = null
+      let warehouseName: string | null = null
+
+      try {
+        const res = await fetch('/api/event-comanda/articles/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lines: [{ articleCode: code, articleName: name, family, qtyUnit }],
+            createMissing: true,
+          }),
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          articles?: Array<{
+            articleCode: string
+            warehouseId: string | null
+            warehouseCode: string | null
+            warehouseName: string | null
+          }>
+        }
+        if (res.ok) {
+          const resolved = json.articles?.find(
+            (row) => row.articleCode.toUpperCase() === code
+          )
+          if (resolved) {
+            warehouseId = resolved.warehouseId
+            warehouseCode = resolved.warehouseCode
+            warehouseName = resolved.warehouseName
+          }
+        }
+      } catch {
+        // Es pot afegir a la comanda sense registrar al catàleg en aquest moment.
+      }
+
+      const templateLine = templateByCode.get(code)
+      addArticle(
+        {
+          articleCode: code,
+          articleName: name,
+          family,
+          qtyUnit,
+          qtyTemplate: templateLine?.qtyInitial ?? null,
+          inTemplate: Boolean(templateLine),
+          warehouseId,
+          warehouseCode,
+          warehouseName,
+        },
+        qtyRequested
+      )
+      setManualCode('')
+      setManualName('')
+      setManualUnit('UN')
+      setManualQty('')
+    } catch (err) {
+      setManualError(err instanceof Error ? err.message : 'Error afegint l\'article manual.')
+    } finally {
+      setManualAdding(false)
     }
   }
 
@@ -487,6 +641,39 @@ export default function EventComandaOrderEditor({
     setSourceMode('scratch')
     setSearch('')
     setSearchOpen(false)
+    setLineFilter('')
+    setSelectedWarehouseIds([])
+  }
+
+  const toggleEditTemplate = () => {
+    if (editShowTemplate) {
+      const templateCodes = new Set(templateLines.map((line) => line.articleCode.toUpperCase()))
+      const baselineCodes = new Set(
+        baselineOrderLinesRef.current.map((line) => line.articleCode.toUpperCase())
+      )
+      setOrderLines((prev) =>
+        prev.filter((line) => {
+          const code = line.articleCode.toUpperCase()
+          if (baselineCodes.has(code)) return true
+          if (!templateCodes.has(code)) return true
+          return line.qtyRequested != null && Number(line.qtyRequested) > 0
+        })
+      )
+      setEditShowTemplate(false)
+      setLineFilter('')
+      setSelectedWarehouseIds([])
+      return
+    }
+
+    setOrderLines((prev) => {
+      const next = mergeOrderLinesWithTemplate(prev, templateLines)
+      if (next.some((line) => !line.warehouseId && !line.warehouseCode && !line.warehouseName)) {
+        void resolveTemplateWarehouses(next)
+      }
+      return next
+    })
+    setEditShowTemplate(true)
+    setSortStack(COMANDA_LINE_TEMPLATE_SORT_STACK)
     setLineFilter('')
     setSelectedWarehouseIds([])
   }
@@ -555,9 +742,11 @@ export default function EventComandaOrderEditor({
     [filteredOrderLines, sortStack]
   )
 
+  const isTemplateView = sourceMode === 'template' || (isEditMode && editShowTemplate)
+
   const showLineFilters =
     orderLines.length > 0 &&
-    (sourceMode === 'template' ||
+    (isTemplateView ||
       visibleOrderLines.length >= LARGE_LINE_LIST_THRESHOLD ||
       warehouseLineOptions.length > 1)
 
@@ -700,12 +889,26 @@ export default function EventComandaOrderEditor({
               ? `Modificar comanda · ${editScope!.warehouseLabel}`
               : 'Modificar comanda'}
           </h2>
-          {onCancelEdit ? (
-            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={onCancelEdit}>
-              <X className="h-4 w-4" />
-              Cancel·lar
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {templateLineCount > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={toggleEditTemplate}
+              >
+                <ClipboardList className="h-4 w-4" />
+                {editShowTemplate ? 'Només comanda actual' : 'Mostrar plantilla'}
+              </Button>
+            ) : null}
+            {onCancelEdit ? (
+              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={onCancelEdit}>
+                <X className="h-4 w-4" />
+                Cancel·lar
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : onCancelEdit && sourceMode !== 'pick' ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -723,7 +926,7 @@ export default function EventComandaOrderEditor({
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <Input
               value={search}
-              placeholder="Cerca articles per afegir a la comanda…"
+              placeholder="Cerca al catàleg o afegeix un article manual…"
               className="min-h-11 pl-9 text-base"
               onFocus={() => setSearchOpen(true)}
               onChange={(event) => {
@@ -734,13 +937,25 @@ export default function EventComandaOrderEditor({
           </div>
 
           {searchOpen && search.trim() ? (
-            <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+            <div
+              className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg"
+              onMouseDown={(event) => event.preventDefault()}
+            >
               {catalogSearchLoading ? (
                 <p className="px-3 py-4 text-sm text-slate-500">Cercant articles…</p>
               ) : debouncedSearch.length < 2 ? (
                 <p className="px-3 py-4 text-sm text-slate-500">Escriu almenys 2 caràcters per cercar al catàleg.</p>
               ) : searchResults.length === 0 ? (
-                <p className="px-3 py-4 text-sm text-slate-500">Cap article trobat.</p>
+                <div className="p-2">
+                  <p className="px-2 py-2 text-sm text-slate-500">Cap article al catàleg.</p>
+                  <button
+                    type="button"
+                    className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-amber-800 transition hover:bg-amber-50"
+                    onClick={() => openManualArticleForm(search)}
+                  >
+                    + Afegir «{search.trim()}» manualment
+                  </button>
+                </div>
               ) : (
                 <ul className="p-1">
                   {searchResults.map((article) => (
@@ -776,10 +991,132 @@ export default function EventComandaOrderEditor({
                       </button>
                     </li>
                   ))}
+                  <li className="border-t border-slate-100 mt-1 pt-1">
+                    <button
+                      type="button"
+                      className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                      onClick={() => openManualArticleForm(search)}
+                    >
+                      + Article manual (fora catàleg)
+                    </button>
+                  </li>
                 </ul>
               )}
             </div>
           ) : null}
+
+          {!manualOpen ? (
+            <button
+              type="button"
+              className="mt-2 text-sm font-medium text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline"
+              onClick={() => openManualArticleForm(search)}
+            >
+              + Afegir article manualment
+            </button>
+          ) : (
+            <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-3">
+              <div>
+                <p className={cn(typography('cardTitle'), 'text-amber-950')}>Article manual</p>
+                <p className={cn(typography('bodySm'), 'mt-1 text-slate-600')}>
+                  Per articles que no existeixen al catàleg ni a la plantilla. Es registraran al
+                  catàleg en desar la comanda.
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[7rem_1fr_5rem_4rem]">
+                <div className="space-y-1">
+                  <Label htmlFor={`manual-code-${eventId}`} className="text-xs">
+                    Codi
+                  </Label>
+                  <Input
+                    id={`manual-code-${eventId}`}
+                    value={manualCode}
+                    onChange={(event) => {
+                      setManualCode(event.target.value.toUpperCase())
+                      if (manualError) setManualError(null)
+                    }}
+                    placeholder="09…"
+                    className="h-9 font-mono text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`manual-name-${eventId}`} className="text-xs">
+                    Descripció
+                  </Label>
+                  <Input
+                    id={`manual-name-${eventId}`}
+                    value={manualName}
+                    onChange={(event) => {
+                      setManualName(event.target.value)
+                      if (manualError) setManualError(null)
+                    }}
+                    placeholder="Nom de l'article"
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`manual-qty-${eventId}`} className="text-xs">
+                    Quantitat
+                  </Label>
+                  <Input
+                    id={`manual-qty-${eventId}`}
+                    type="text"
+                    inputMode="decimal"
+                    value={manualQty}
+                    onChange={(event) => {
+                      setManualQty(event.target.value)
+                      if (manualError) setManualError(null)
+                    }}
+                    placeholder="0"
+                    className="h-9 text-right tabular-nums text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`manual-unit-${eventId}`} className="text-xs">
+                    U.
+                  </Label>
+                  <Input
+                    id={`manual-unit-${eventId}`}
+                    value={manualUnit}
+                    onChange={(event) => setManualUnit(event.target.value.toUpperCase())}
+                    placeholder="UN"
+                    className="h-9 text-sm uppercase"
+                  />
+                </div>
+              </div>
+              {manualError ? (
+                <p className="text-sm text-red-600">{manualError}</p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={manualAdding}
+                  onClick={() => void submitManualArticle()}
+                >
+                  {manualAdding ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <PenLine className="h-4 w-4" />
+                  )}
+                  Afegir a la comanda
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={manualAdding}
+                  onClick={() => {
+                    setManualOpen(false)
+                    setManualError(null)
+                    setManualQty('')
+                  }}
+                >
+                  Cancel·lar
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       ) : null}
 
@@ -910,7 +1247,7 @@ export default function EventComandaOrderEditor({
             <div
               className={cn(
                 'overflow-x-auto',
-                sourceMode === 'template' && 'max-h-[min(32rem,55vh)] overflow-y-auto'
+                isTemplateView && 'max-h-[min(32rem,55vh)] overflow-y-auto'
               )}
             >
               <table className={eventComandaTableClass}>
@@ -1006,7 +1343,7 @@ export default function EventComandaOrderEditor({
                             aria-label={`Magatzem per a ${line.articleName}`}
                           >
                             <option value="">
-                              {warehouseResolving && sourceMode === 'template' && !lineWarehouseKey
+                              {warehouseResolving && isTemplateView && !lineWarehouseKey
                                 ? 'Assignant…'
                                 : 'Tria magatzem…'}
                             </option>
@@ -1069,7 +1406,15 @@ export default function EventComandaOrderEditor({
         <div className={eventComandaActionBarClass}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             {isEditMode ? (
-              <span />
+              templateLineCount > 0 ? (
+                <p className={cn(typography('bodySm'), 'text-slate-600')}>
+                  {editShowTemplate
+                    ? `Plantilla visible: ${templateLineCount} articles de referència. Indica quantitat als que vulguis afegir o modificar.`
+                    : 'Només es mostren les línies actuals de la comanda.'}
+                </p>
+              ) : (
+                <span />
+              )
             ) : templateLineCount > 0 ? (
               <button
                 type="button"

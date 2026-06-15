@@ -230,7 +230,8 @@ function batchChannelLabel(batch: EventComandaOrderBatch, eventMeta: { code: str
 export async function syncEventComandaBatchChatChannel(
   eventId: string,
   warehouseId: string,
-  batchId: string
+  batchId: string,
+  order?: EventComandaOrderDoc | null
 ) {
   const trimmedEventId = String(eventId || '').trim()
   const warehouseKey = warehouseDocId(warehouseId)
@@ -238,15 +239,15 @@ export async function syncEventComandaBatchChatChannel(
   if (!trimmedEventId) throw new Error('Event id required.')
   if (!warehouseKey || !batchKey) throw new Error('Lot de magatzem no vàlid.')
 
-  const order = await getEventComandaOrder(trimmedEventId)
-  if (!order?.sentAt) throw new Error('Comanda no enviada.')
+  const resolvedOrder = order ?? (await getEventComandaOrder(trimmedEventId))
+  if (!resolvedOrder?.sentAt) throw new Error('Comanda no enviada.')
 
-  const batch = findBatchForComandaChat(order, warehouseKey, batchKey)
+  const batch = findBatchForComandaChat(resolvedOrder, warehouseKey, batchKey)
   if (!batch) throw new Error('Lot de magatzem no trobat.')
 
   const now = Date.now()
   const channelId = resolveEventComandaBatchChannelId(trimmedEventId, batch)
-  const memberIds = await collectBatchChatMemberIds(order, batch)
+  const memberIds = await collectBatchChatMemberIds(resolvedOrder, batch)
   const nameMap = await fetchUserDisplayNames(memberIds)
 
   const finalMembers: ChatMember[] = memberIds
@@ -283,9 +284,9 @@ export async function syncEventComandaBatchChatChannel(
       warehouseCode: batch.warehouseCode || null,
       warehouseName: batch.warehouseName || null,
       batchId: eventComandaBatchIdentity(batch),
-      orderSentAt: order.sentAt,
-      requesterUserId: order.sentByUserId || null,
-      requesterUserName: order.sentByUserName || null,
+      orderSentAt: resolvedOrder.sentAt,
+      requesterUserId: resolvedOrder.sentByUserId || null,
+      requesterUserName: resolvedOrder.sentByUserName || null,
       chatExtraMemberIds: batch.chatExtraMemberIds || [],
       status: 'active',
       updatedAt: now,
@@ -342,7 +343,7 @@ export async function syncEventComandaBatchChatChannel(
     eventId: trimmedEventId,
     batchId: eventComandaBatchIdentity(batch),
     channelId,
-    order,
+    order: resolvedOrder,
   })
 
   return {
@@ -423,42 +424,69 @@ export async function ensureEventComandaBatchChatChannel(params: {
   return syncEventComandaBatchChatChannel(trimmedEventId, warehouseKey, batchKey)
 }
 
-export async function syncEventComandaChatChannels(eventId: string) {
-  const order = await getEventComandaOrder(eventId)
+export async function syncEventComandaChatChannels(
+  eventId: string,
+  options?: { order?: EventComandaOrderDoc | null }
+) {
+  const order = options?.order ?? (await getEventComandaOrder(eventId))
   if (!order?.sentAt) return []
 
+  return syncEventComandaChatChannelsForOrder(eventId, order)
+}
+
+export async function syncEventComandaChatChannelsForOrder(
+  eventId: string,
+  order: EventComandaOrderDoc,
+  batchFilter?: Array<{ warehouseId: string; batchId: string }>
+) {
   type SyncResult = Awaited<ReturnType<typeof syncEventComandaBatchChatChannel>>
   type ArchiveResult = NonNullable<Awaited<ReturnType<typeof archiveEventComandaBatchChatChannel>>>
-  const results: Array<SyncResult | ArchiveResult> = []
+
+  const filterKeys = batchFilter
+    ? new Set(batchFilter.map((entry) => `${warehouseDocId(entry.warehouseId)}::${entry.batchId}`))
+    : null
+
+  const tasks: Array<Promise<SyncResult | ArchiveResult | null>> = []
+
   for (const batch of order.batches || []) {
     const warehouseKey = warehouseDocId(batch.warehouseId)
     const batchKey = eventComandaBatchIdentity(batch)
     if (!warehouseKey || !batchKey) continue
+    if (filterKeys && !filterKeys.has(`${warehouseKey}::${batchKey}`)) continue
 
     const status = normalizeEventComandaBatchStatus(batch.status)
-    try {
-      if (isComandaWarehouseChatActive(status)) {
-        results.push(
-          await syncEventComandaBatchChatChannel(eventId, warehouseKey, batchKey)
-        )
-      } else if (status === 'sent' || status === 'cancelled') {
-        const archived = await archiveEventComandaBatchChatChannel(
-          eventId,
-          warehouseKey,
-          batchKey
-        )
-        if (archived) results.push(archived)
-      }
-    } catch (error) {
-      console.error(
-        '[syncEventComandaChatChannels] batch sync failed',
-        warehouseKey,
-        batchKey,
-        error
+    if (isComandaWarehouseChatActive(status)) {
+      tasks.push(
+        syncEventComandaBatchChatChannel(eventId, warehouseKey, batchKey, order).catch((error) => {
+          console.error(
+            '[syncEventComandaChatChannels] batch sync failed',
+            warehouseKey,
+            batchKey,
+            error
+          )
+          return null
+        })
+      )
+      continue
+    }
+
+    if (status === 'sent' || status === 'cancelled') {
+      tasks.push(
+        archiveEventComandaBatchChatChannel(eventId, warehouseKey, batchKey).catch((error) => {
+          console.error(
+            '[syncEventComandaChatChannels] batch archive failed',
+            warehouseKey,
+            batchKey,
+            error
+          )
+          return null
+        })
       )
     }
   }
-  return results
+
+  const settled = await Promise.all(tasks)
+  return settled.filter(Boolean) as Array<SyncResult | ArchiveResult>
 }
 
 /** @deprecated Use syncEventComandaChatChannels */

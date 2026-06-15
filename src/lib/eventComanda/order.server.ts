@@ -36,11 +36,17 @@ import {
   notifyRequesterBatchSent,
 } from '@/lib/eventComanda/notifications.server'
 import { reconcileEventComandaNotificationCount } from '@/lib/eventComanda/notificationCount.server'
-import { listEventComandaWarehouses, warehouseDocId } from '@/lib/eventComanda/warehouses.server'
+import {
+  getCachedEventComandaWarehouseRules,
+  getCachedEventComandaWarehouses,
+} from '@/lib/eventComanda/warehouseCatalogCache.server'
+import { warehouseDocId } from '@/lib/eventComanda/warehouses.server'
+import { runInBackground } from '@/lib/server/backgroundTask'
 import {
   archiveEventComandaBatchChatChannel,
-  syncEventComandaChatChannels,
+  syncEventComandaChatChannelsForOrder,
 } from '@/lib/messaging/comandaChat.server'
+import { eventComandaBatchIdentity } from '@/lib/messaging/eventComandaChatIds'
 
 const COL = EVENT_COMANDA_COLLECTIONS.orders
 const ARTICLES_COL = EVENT_COMANDA_COLLECTIONS.articles
@@ -431,12 +437,6 @@ export async function sendEventComandaOrder(params: {
     throw new Error('Cal indicar la franja horària d\'entrega.')
   }
 
-  await assertEventComandaDeliveryDateAndSlot({
-    eventId,
-    deliveryDate,
-    deliveryTimeSlot,
-  })
-
   const comments = String(params.comments || '').trim() || null
 
   const validLines = params.lines.filter(
@@ -446,12 +446,17 @@ export async function sendEventComandaOrder(params: {
     throw new Error('Cal afegir almenys una línia amb quantitat.')
   }
 
-  const existing = await getEventComandaOrder(eventId)
+  const [existing, batches] = await Promise.all([
+    getEventComandaOrder(eventId),
+    assertEventComandaDeliveryDateAndSlot({
+      eventId,
+      deliveryDate,
+      deliveryTimeSlot,
+    }).then(() => buildOrderBatchesFromLines(validLines)),
+  ])
   if (existing && existing.status !== 'closed') {
     throw new Error('Ja hi ha una comanda activa per aquest esdeveniment.')
   }
-
-  const batches = await buildOrderBatchesFromLines(validLines)
   if (batches.length === 0) {
     throw new Error('No s\'han pogut agrupar línies per magatzem.')
   }
@@ -485,24 +490,20 @@ export async function sendEventComandaOrder(params: {
   await db.collection(COL).doc(eventId).set(payload, { merge: false })
 
   if (params.notifyWarehouseMembers !== false) {
-    try {
-      await notifyWarehouseMembersForOrderSent({
+    runInBackground('sendEventComandaOrder.notify', () =>
+      notifyWarehouseMembersForOrderSent({
         eventId,
         eventTitle: params.eventTitle,
         sentByUserId: params.userId || null,
         sentByName: params.userName || null,
         batches: stampedBatches,
       })
-    } catch (error) {
-      console.error('[sendEventComandaOrder] warehouse notifications failed', error)
-    }
+    )
   }
 
-  try {
-    await syncEventComandaChatChannels(eventId)
-  } catch (error) {
-    console.error('[sendEventComandaOrder] comanda chat sync failed', error)
-  }
+  runInBackground('sendEventComandaOrder.chat', () =>
+    syncEventComandaChatChannelsForOrder(eventId, payload)
+  )
 
   return payload
 }
@@ -516,10 +517,27 @@ async function buildOrderBatchesFromLines(
     preferCatalogWarehouse?: boolean
   }
 ) {
+  const [rules, warehouses] = await Promise.all([
+    getCachedEventComandaWarehouseRules(),
+    getCachedEventComandaWarehouses(true),
+  ])
+  const warehouseById = new Map(
+    warehouses.map((warehouse) => [
+      warehouse.id,
+      { code: warehouse.code, name: warehouse.name },
+    ])
+  )
+
+  const allLinesHaveWarehouse = lines.every((line) => {
+    const key = warehouseDocId(line.warehouseId || '')
+    return Boolean(key && key !== UNASSIGNED_WAREHOUSE_ID && warehouseById.has(key))
+  })
+
   const codes = [...new Set(lines.map((line) => articleDocId(line.articleCode)).filter(Boolean))]
-  const articleSnaps = codes.length
-    ? await db.getAll(...codes.map((id) => db.collection(ARTICLES_COL).doc(id)))
-    : []
+  const articleSnaps =
+    !allLinesHaveWarehouse && codes.length
+      ? await db.getAll(...codes.map((id) => db.collection(ARTICLES_COL).doc(id)))
+      : []
 
   const articleWarehouseByCode = new Map<string, string | null>()
   for (const snap of articleSnaps) {
@@ -531,17 +549,6 @@ async function buildOrderBatchesFromLines(
       data.warehouseId ? String(data.warehouseId).trim().toUpperCase() : null
     )
   }
-
-  const [rules, warehouses] = await Promise.all([
-    listEventComandaWarehouseRules(),
-    listEventComandaWarehouses(true),
-  ])
-  const warehouseById = new Map(
-    warehouses.map((warehouse) => [
-      warehouse.id,
-      { code: warehouse.code, name: warehouse.name },
-    ])
-  )
 
   const forcedId = warehouseDocId(options?.forceWarehouseId || '')
   const forceWarehouse = forcedId && warehouseById.has(forcedId)
@@ -594,12 +601,6 @@ export async function updateEventComandaOrder(params: {
     throw new Error('Cal indicar la franja horària d\'entrega.')
   }
 
-  await assertEventComandaDeliveryDateAndSlot({
-    eventId,
-    deliveryDate,
-    deliveryTimeSlot,
-  })
-
   const comments =
     params.comments !== undefined
       ? String(params.comments || '').trim() || null
@@ -618,9 +619,16 @@ export async function updateEventComandaOrder(params: {
     throw new Error('Cal seleccionar un magatzem per modificar.')
   }
 
-  const allResolvedBatches = await buildOrderBatchesFromLines(validLines, {
-    preferCatalogWarehouse: true,
-  })
+  const [, allResolvedBatches] = await Promise.all([
+    assertEventComandaDeliveryDateAndSlot({
+      eventId,
+      deliveryDate,
+      deliveryTimeSlot,
+    }),
+    buildOrderBatchesFromLines(validLines, {
+      preferCatalogWarehouse: true,
+    }),
+  ])
   if (allResolvedBatches.length === 0) {
     throw new Error('No s\'han pogut agrupar línies per magatzem.')
   }
@@ -691,25 +699,40 @@ export async function updateEventComandaOrder(params: {
 
   await db.collection(COL).doc(eventId).set(payload, { merge: false })
 
+  const affectedBatches = new Map<string, { warehouseId: string; batchId: string }>()
+  for (const notice of notifications) {
+    const warehouseId = warehouseDocId(notice.warehouseId)
+    const batchId = String(notice.batchId || warehouseId).trim()
+    if (!warehouseId || !batchId) continue
+    affectedBatches.set(`${warehouseId}::${batchId}`, { warehouseId, batchId })
+  }
+  for (const [, otherBatch] of otherBatches) {
+    const warehouseId = warehouseDocId(otherBatch.warehouseId)
+    const batchId = eventComandaBatchIdentity(otherBatch)
+    if (!warehouseId || !batchId) continue
+    affectedBatches.set(`${warehouseId}::${batchId}`, { warehouseId, batchId })
+  }
+
   if (params.notifyWarehouseMembers !== false && notifications.length) {
-    try {
-      await notifyWarehouseMembersForOrderUpdate({
+    runInBackground('updateEventComandaOrder.notify', () =>
+      notifyWarehouseMembersForOrderUpdate({
         eventId,
         eventTitle: params.eventTitle,
         sentByUserId: params.userId || null,
         sentByName: params.userName || null,
         notifications,
       })
-    } catch (error) {
-      console.error('[updateEventComandaOrder] warehouse notifications failed', error)
-    }
+    )
   }
 
-  try {
-    await syncEventComandaChatChannels(eventId)
-  } catch (error) {
-    console.error('[updateEventComandaOrder] comanda chat sync failed', error)
-  }
+  const batchFilter = [...affectedBatches.values()]
+  runInBackground('updateEventComandaOrder.chat', () =>
+    syncEventComandaChatChannelsForOrder(
+      eventId,
+      payload,
+      batchFilter.length ? batchFilter : undefined
+    )
+  )
 
   return payload
 }
@@ -789,17 +812,9 @@ export async function deleteEventComandaBatch(params: {
 
   await db.collection(COL).doc(eventId).set(payload, { merge: false })
 
-  try {
-    await archiveEventComandaBatchChatChannel(eventId, batch.warehouseId, batchKey)
-  } catch (error) {
-    console.error('[deleteEventComandaBatch] archive comanda chat failed', error)
-  }
-
-  try {
-    await syncEventComandaChatChannels(eventId)
-  } catch (error) {
-    console.error('[deleteEventComandaBatch] comanda chat sync failed', error)
-  }
+  runInBackground('deleteEventComandaBatch.archive', () =>
+    archiveEventComandaBatchChatChannel(eventId, batch.warehouseId, batchKey)
+  )
 
   return payload
 }

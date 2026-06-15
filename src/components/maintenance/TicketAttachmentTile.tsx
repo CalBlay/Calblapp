@@ -35,6 +35,7 @@ function LazyVideoPlayer({
   if (active) {
     return (
       <video
+        key="player"
         src={url}
         controls
         playsInline
@@ -47,6 +48,7 @@ function LazyVideoPlayer({
 
   return (
     <button
+      key="preview"
       type="button"
       onClick={() => setActive(true)}
       className={`flex min-h-[7rem] w-full flex-col items-center justify-center gap-2 bg-slate-900 text-white transition hover:bg-slate-800 ${className}`}

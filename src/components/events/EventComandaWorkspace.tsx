@@ -133,7 +133,7 @@ type Props = {
   eventMeta?: string
   summary: EventComandaSummary
   loading?: boolean
-  onRefresh: () => void
+  onRefresh: (summary?: EventComandaSummary) => void
   comandaPreparerOnly?: boolean
   comandaHistoryMode?: boolean
   returnTo?: string
@@ -330,13 +330,13 @@ export default function EventComandaWorkspace({
           comments: payload.comments,
         }),
       })
-      const json = (await res.json()) as { error?: string }
+      const json = (await res.json()) as { error?: string; summary?: EventComandaSummary }
       if (!res.ok) {
         setSendError(json.error || 'No s\'ha pogut enviar la comanda.')
         return
       }
       clearOrderDraft(eventId)
-      onRefresh()
+      onRefresh(json.summary)
     } catch {
       setSendError('No s\'ha pogut enviar la comanda.')
     } finally {
@@ -361,14 +361,14 @@ export default function EventComandaWorkspace({
           batchId: payload.batchId,
         }),
       })
-      const json = (await res.json()) as { error?: string }
+      const json = (await res.json()) as { error?: string; summary?: EventComandaSummary }
       if (!res.ok) {
         setSendError(json.error || 'No s\'ha pogut actualitzar la comanda.')
         return
       }
       setEditingBatch(null)
       setCreatingNewOrder(false)
-      onRefresh()
+      onRefresh(json.summary)
     } catch {
       setSendError('No s\'ha pogut actualitzar la comanda.')
     } finally {

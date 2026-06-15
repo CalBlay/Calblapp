@@ -75,10 +75,54 @@ async function graphFetch<T>(path: string, init?: RequestInit) {
 /**
  * 🏷️ Obté els IDs de site i drive per al site “EsdevenimentsCalBlay”
  */
+let cachedSiteAndDrive: { siteId: string; driveId: string; expires: number } | null = null
+const SITE_DRIVE_TTL_MS = 60 * 60 * 1000
+
 export async function getSiteAndDrive() {
+  const now = Date.now()
+  if (cachedSiteAndDrive && cachedSiteAndDrive.expires > now) {
+    return {
+      siteId: cachedSiteAndDrive.siteId,
+      driveId: cachedSiteAndDrive.driveId,
+    }
+  }
+
   const site = await graphFetch<{ id: string }>(`/sites/${siteDomain}:/sites/${siteName}`)
   const drive = await graphFetch<{ id: string }>(`/sites/${site.id}/drive`)
+  cachedSiteAndDrive = {
+    siteId: site.id,
+    driveId: drive.id,
+    expires: now + SITE_DRIVE_TTL_MS,
+  }
   return { siteId: site.id, driveId: drive.id }
+}
+
+export async function getSharePointItemMeta(
+  itemId: string,
+  driveId?: string,
+  accessToken?: string
+) {
+  const drive = driveId ?? (await getSiteAndDrive()).driveId
+  const token = accessToken ?? (await getGraphToken()).access_token
+
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/drives/${drive}/items/${encodeURIComponent(itemId)}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    }
+  )
+
+  if (!res.ok) throw new Error(`SharePoint meta error ${res.status}`)
+
+  const json = (await res.json()) as {
+    name?: string
+    file?: { mimeType?: string }
+  }
+  return {
+    name: json.name,
+    mimeType: json.file?.mimeType,
+  }
 }
 
 /**

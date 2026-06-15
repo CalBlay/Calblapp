@@ -115,7 +115,13 @@ export default function EventComandaPage() {
         eventMeta={eventMeta}
         summary={summary}
         loading={isLoading && !data}
-        onRefresh={() => void mutate()}
+        onRefresh={(nextSummary) => {
+          if (nextSummary) {
+            void mutate(nextSummary, { revalidate: false })
+            return
+          }
+          void mutate()
+        }}
         comandaPreparerOnly={comandaPreparerOnly}
         comandaHistoryMode={historyMode}
         returnTo={returnTo}

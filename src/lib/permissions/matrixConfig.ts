@@ -204,7 +204,7 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       },
       {
         key: PERM.action('/menu/spaces/info', 'bbdd:update'),
-        label: 'Editar espai (i pujar imatges)',
+        label: 'Editar espai (i pujar fotos/vídeos)',
       },
       {
         key: PERM.action('/menu/spaces/info', 'bbdd:delete'),

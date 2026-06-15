@@ -1,12 +1,16 @@
 // file: src/app/menu/spaces/info/SpaceDetailClient.tsx
 'use client'
 
-import { useCallback, useState } from 'react'
-import { MotionDiv } from '@/lib/lazyMotion'
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { compressRasterImageForUpload } from '@/lib/file-optimization'
+import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
+import { MotionDiv } from '@/lib/lazyMotion'
+import { useRouter } from 'next/navigation'
+import SpaceMediaAttachments from '@/components/spaces/SpaceMediaAttachments'
+import {
+  readSpaceMedia,
+  writeSpaceMediaPayload,
+  type SpaceMediaItem,
+} from '@/lib/spaces/spaceMedia'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import {
@@ -43,6 +47,7 @@ export type EspaiDetall = {
     observacions?: string[]
     fitxaUrl?: string
     images?: string[]
+    media?: SpaceMediaItem[]
     // Altres seccions laterals: "EVENTS GRANS", "CAIXA DE POTÈNCIES", etc.
     [clau: string]: unknown
   }
@@ -138,7 +143,7 @@ export default function SpaceDetailClient({
   // Seccions laterals (Events grans, Caixa de potències, etc.)
   // Agafem totes les claus de produccio que no siguin les principals
   const [sideSectionKeys, setSideSectionKeys] = useState<string[]>(() => {
-    const base = ['office', 'aperitiu', 'observacions', 'fitxaUrl', 'images', 'updatedAt']
+    const base = ['office', 'aperitiu', 'observacions', 'fitxaUrl', 'images', 'media', 'updatedAt']
     return Object.keys(produccio).filter((k) => !base.includes(k))
   })
 
@@ -162,55 +167,7 @@ export default function SpaceDetailClient({
     }
   )
 
-  // Imatges (llista d’URLs)
-  const [images, setImages] = useState<string[]>(produccio.images || [])
-
-  const removeImage = (idx: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== idx))
-  }
-const uploadImage = useCallback(async (file: File) => {
-  if (!espai.id) {
-    setError("Desa l'espai abans de pujar imatges.")
-    return
-  }
-  let uploadFile = file
-  if (file.type.startsWith('image/')) {
-    try {
-      uploadFile = await compressRasterImageForUpload(file)
-    } catch {
-      setError('No s ha pogut comprimir la imatge.')
-      return
-    }
-  }
-  const form = new FormData()
-  form.append('file', uploadFile)
-  form.append('fincaId', espai.id)
-
-  const res = await fetch('/api/spaces/upload', {
-    method: 'POST',
-    body: form,
-  })
-
-  const data = await res.json()
-  if (!data.url) {
-    throw new Error('Error pujant imatge')
-  }
-
-  setImages(prev => [...prev, data.url])
-}, [espai.id])
-useEffect(() => {
-  function handlePaste(e: ClipboardEvent) {
-    const item = e.clipboardData?.items?.[0]
-    if (!item) return
-    if (item.type.startsWith('image/')) {
-      const file = item.getAsFile()
-      if (file) uploadImage(file)
-    }
-  }
-
-  window.addEventListener('paste', handlePaste)
-  return () => window.removeEventListener('paste', handlePaste)
-}, [uploadImage])
+  const [media, setMedia] = useState<SpaceMediaItem[]>(() => readSpaceMedia(produccio))
 
   // ─────────────────────────────────────────────
   // 2) Preparar payload per desar
@@ -223,13 +180,14 @@ useEffect(() => {
         .map((t) => t.trim())
         .filter(Boolean)
 
+    const mediaPayload = writeSpaceMediaPayload(media)
     const produccioFinal: EspaiDetall['produccio'] = {
       ...produccio,
       office: toLines(officeText),
       aperitiu: toLines(aperitiuText),
       observacions: toLines(obsText),
       fitxaUrl: fitxaUrl.trim() || undefined,
-      images,
+      ...mediaPayload,
     }
 
     // Seccions laterals
@@ -798,75 +756,22 @@ const handleDelete = async () => {
 
         </MotionDiv>
 
-        {/* ───────────────── Imatges ───────────────── */}
+        {/* ───────────────── Fotos i vídeos ───────────────── */}
         <MotionDiv
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           className="rounded-2xl border bg-white p-4 shadow-sm md:col-span-2"
         >
           <h2 className="text-sm font-semibold text-gray-700 mb-3">
-            Imatges de l’espai
+            Fotos i vídeos de l&apos;espai
           </h2>
 
-          <div className="flex flex-wrap gap-3 mb-3">
-            {images.map((url, idx) => (
-              <div
-                key={`${url}-${idx}`}
-                className="w-24 h-24 rounded-lg border overflow-hidden relative bg-gray-100"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-<img
-  src={url}
-  alt=""
-  className="w-full h-full object-cover cursor-default"
-/>
-
-
-                <button
-                  type="button"
-                  onClick={() => removeImage(idx)}
-                  className="absolute top-0 right-0 m-1 rounded-full bg-black/60 text-white text-[11px] px-1"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-
-            {images.length === 0 && (
-              <p className="text-xs text-gray-400">
-                Encara no hi ha imatges. Pots enganxar URLs d’imatge (Drive, web,
-                etc.).
-              </p>
-            )}
-          </div>
-
-{/* DROPZONE/PASTEZONE MODERN */}
-<div
-  className="mt-4 w-full flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-6 text-gray-500 text-sm cursor-pointer hover:border-blue-400 transition"
-  onClick={() => document.getElementById('fileInput')?.click()}
-  onDragOver={(e) => e.preventDefault()}
-  onDrop={async (e) => {
-    e.preventDefault()
-    const file = e.dataTransfer.files?.[0]
-    if (file) await uploadImage(file)
-  }}
->
-  📸 <span className="font-medium text-gray-600">Arrossega, clica o enganxa una imatge</span>
-  <p className="text-xs mt-1 text-gray-400">També pots fer Ctrl+V</p>
-</div>
-
-<input
-  id="fileInput"
-  type="file"
-  accept="image/*"
-  className="hidden"
-  onChange={async (e) => {
-    const file = e.target.files?.[0]
-    if (file) await uploadImage(file)
-  }}
-/>
-
-
+          <SpaceMediaAttachments
+            fincaId={espai.id}
+            media={media}
+            canEdit={canEdit}
+            onChange={setMedia}
+          />
         </MotionDiv>
       </div>
     </section>

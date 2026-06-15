@@ -368,22 +368,42 @@ export async function registerFinquesProduccioImagesInIndex(
   fincaId: string,
   args: { nom?: string; code?: string; images: string[]; createdAt?: number }
 ): Promise<void> {
+  await registerFinquesProduccioMediaInIndex(fincaId, {
+    nom: args.nom,
+    code: args.code,
+    createdAt: args.createdAt,
+    media: args.images.map((url) => ({ kind: 'image' as const, url })),
+  })
+}
+
+export async function registerFinquesProduccioMediaInIndex(
+  fincaId: string,
+  args: {
+    nom?: string
+    code?: string
+    createdAt?: number
+    media: Array<{ kind: string; url: string }>
+  }
+): Promise<void> {
   const bucketName = storageAdmin.bucket().name
   const now = args.createdAt ?? Date.now()
   const nom = cleanText(args.nom)
   const code = cleanText(args.code)
 
-  args.images.forEach((rawUrl, index) => {
-    const url = cleanText(rawUrl)
+  args.media.forEach((item, index) => {
+    const url = cleanText(item.url)
     const path = extractOwnedStoragePath(url, bucketName)
     if (!path) return
+    const kind = cleanText(item.kind).toLowerCase()
+    const label =
+      kind === 'video' ? `Vídeo ${index + 1}` : kind === 'google-photos' ? `Google Fotos ${index + 1}` : `Imatge ${index + 1}`
     const title =
-      [nom, code, `Imatge ${index + 1}`].filter(Boolean).join(' · ') || `Espai ${fincaId}`
+      [nom, code, label].filter(Boolean).join(' · ') || `Espai ${fincaId}`
     void registerMediaRef({
       path,
       source: 'spaces',
       firestoreDocId: fincaId,
-      refSuffix: `img_${index}`,
+      refSuffix: `${kind || 'img'}_${index}`,
       url,
       title,
       createdAt: now,

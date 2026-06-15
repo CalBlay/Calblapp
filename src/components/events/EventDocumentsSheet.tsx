@@ -15,6 +15,14 @@ import {
 import useEventDocuments, { EventDoc } from '@/hooks/events/useEventDocuments'
 import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
 import { isTicketVideoMime, isTicketVideoUrl } from '@/lib/media/ticketAttachments'
+import {
+  GOOGLE_DRIVE_VIDEO_MIME,
+  extractGoogleDriveFileId,
+} from '@/lib/googleDriveVideoLink'
+import {
+  GOOGLE_PHOTOS_VIDEO_MIME,
+  isGooglePhotosVideoRef,
+} from '@/lib/googlePhotosVideoLink'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 
@@ -52,9 +60,7 @@ function Portal({ children }: { children: React.ReactNode }) {
     document.body.appendChild(el)
     setMounted(true)
     return () => {
-      if (document.body.contains(el)) {
-        document.body.removeChild(el)
-      }
+      el.remove()
     }
   }, [el])
 
@@ -227,10 +233,32 @@ export default function EventDocumentsSheet({
   )
 }
 
-const isVideoDoc = (doc: EventDoc) => {
+const isPhotosVideoDoc = (doc: EventDoc) => {
+  if (doc.mimeType === GOOGLE_PHOTOS_VIDEO_MIME) return true
+  return isGooglePhotosVideoRef(doc.url)
+}
+
+const isDriveVideoDoc = (doc: EventDoc) => {
+  if (doc.mimeType === GOOGLE_DRIVE_VIDEO_MIME) return true
+  return extractGoogleDriveFileId(doc.url) !== null
+}
+
+const isExternalVideoLinkDoc = (doc: EventDoc) =>
+  isPhotosVideoDoc(doc) || isDriveVideoDoc(doc)
+
+const isEmbeddableVideoDoc = (doc: EventDoc) => {
+  if (isExternalVideoLinkDoc(doc)) return false
   if (doc.icon === 'video') return true
   if (isTicketVideoMime(String(doc.mimeType || ''))) return true
   return isTicketVideoUrl(String(doc.url || ''))
+}
+
+function openDocumentUrl(url: string, linkTarget: string, linkRel?: string) {
+  if (linkTarget === '_blank') {
+    window.open(url, '_blank', linkRel || 'noopener,noreferrer')
+    return
+  }
+  window.location.assign(url)
 }
 
 function ModalContent({
@@ -264,7 +292,10 @@ function ModalContent({
         {docs.map((d) => {
           const url = safeUrl(d.url)
           const isDisabled = !url
-          const isVideo = isVideoDoc(d)
+          const isExternalVideo = isExternalVideoLinkDoc(d)
+          const isEmbeddableVideo = isEmbeddableVideoDoc(d)
+          const openTarget = isExternalVideo ? '_blank' : linkTarget
+          const openRel = openTarget === '_blank' ? 'noopener noreferrer' : linkRel
 
           return (
             <div
@@ -292,14 +323,14 @@ function ModalContent({
 
                 <button
                   type="button"
-                  className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                  className={`shrink-0 rounded-xl px-4 py-2 text-xs font-semibold transition ${
                     isDisabled
                       ? 'cursor-not-allowed border border-gray-200 bg-gray-50 text-gray-400'
                       : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50'
                   }`}
                   onClick={() => {
                     if (!url) return
-                    window.open(url, linkTarget, linkRel)
+                    openDocumentUrl(url, openTarget, openRel)
                   }}
                   disabled={isDisabled}
                 >
@@ -307,13 +338,14 @@ function ModalContent({
                 </button>
               </div>
 
-              {isVideo && url ? (
+              {isEmbeddableVideo && url ? (
                 <div className="mt-3 overflow-hidden rounded-xl bg-black">
                   <TicketAttachmentTile
                     url={url}
                     alt={displayTitle(d)}
                     mimeType={d.mimeType}
                     className="max-h-52 w-full object-contain"
+                    lazyVideo={false}
                   />
                 </div>
               ) : null}
