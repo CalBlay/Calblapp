@@ -1,7 +1,6 @@
 // src/app/api/events/[id]/documents/route.ts
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { getDownloadURL } from 'firebase-admin/storage'
 import { storageAdmin } from '@/lib/firebaseAdmin'
 import { getGraphToken, getSiteAndDrive } from '@/services/sharepoint/graph'
 import { requireAuth } from '@/lib/server/apiAuth'
@@ -11,6 +10,11 @@ import {
   EVENT_VISIT_VIDEO_PERM,
   visitVideoAccessUserFromSession,
 } from '@/lib/eventVisitVideoPermissions'
+import {
+  GOOGLE_DRIVE_VIDEO_MIME,
+  googleDriveVideoViewUrl,
+  isGoogleDriveVideoRef,
+} from '@/lib/googleDriveVideoLink'
 
 export type EventDoc = {
   id: string
@@ -21,6 +25,7 @@ export type EventDoc = {
   mimeType?: string
   kind?: string
   updatedAt?: string | number | null
+  createdBy?: string | null
 }
 
 function detectIcon(name: string): EventDoc['icon'] {
@@ -91,6 +96,10 @@ function parseItemId(path: string): string | null {
   } catch {
     return null
   }
+}
+
+function storageProxyUrl(path: string): string {
+  return `/api/storage/file?path=${encodeURIComponent(path)}`
 }
 
 export async function GET(
@@ -176,7 +185,6 @@ export async function GET(
       return okPrefix && typeof v === 'string' && v.length > 0
     })
 
-    const bucket = storageAdmin.bucket()
     const docs: EventDoc[] = []
 
     for (const [key, rawPath] of files) {
@@ -202,6 +210,10 @@ export async function GET(
         kind: isVisitVideo ? 'Vídeo visita comercial' : undefined,
         updatedAt:
           typeof storedAt === 'string' || typeof storedAt === 'number' ? storedAt : null,
+        createdBy:
+          isVisitVideo && typeof data[`${key}By`] === 'string'
+            ? String(data[`${key}By`]).trim() || null
+            : undefined,
       }
 
       // SharePoint proxy -> recuperem nom real + mime
@@ -225,6 +237,18 @@ export async function GET(
         }
       }
 
+      // Google Drive (vídeo de visita comercial)
+      if (isGoogleDriveVideoRef(path)) {
+        docs.push({
+          ...doc,
+          source: 'firestore-link',
+          url: googleDriveVideoViewUrl(path) || path,
+          mimeType: storedMimeType || GOOGLE_DRIVE_VIDEO_MIME,
+          icon: 'video',
+        })
+        continue
+      }
+
       // URL absoluta/relativa (SharePoint, etc.)
       if (looksLikeUrl(path)) {
         docs.push(doc)
@@ -232,13 +256,11 @@ export async function GET(
       }
 
       try {
-        const file = bucket.file(path)
-        const publicUrl = await getDownloadURL(file)
-
+        await storageAdmin.bucket().file(path).getMetadata()
         docs.push({
           ...doc,
           source: 'firestore-file',
-          url: publicUrl,
+          url: storageProxyUrl(path),
         })
       } catch {
         // si un fitxer no existeix o no és una ruta de Storage, el saltem

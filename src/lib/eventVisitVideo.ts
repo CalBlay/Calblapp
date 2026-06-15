@@ -1,6 +1,16 @@
 export const VISIT_VIDEO_FIELD_PREFIX = 'visitVideo'
 export const MAX_EVENT_VISIT_VIDEOS = 3
 
+export function normalizeVisitVideoUserId(value: string): string {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+}
+
+export function isVisitVideoFieldKey(key: string): boolean {
+  return /^visitVideo\d+$/i.test(String(key || '').trim())
+}
+
 export function visitVideoFieldKey(index: number): string {
   return `${VISIT_VIDEO_FIELD_PREFIX}${index}`
 }

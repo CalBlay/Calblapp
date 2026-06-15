@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState } from 'react'
-import { Video, X } from 'lucide-react'
+import React, { useCallback, useState } from 'react'
+import { useSession } from 'next-auth/react'
+import { Trash2, Video, X } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -14,9 +15,28 @@ import MobileVideoPicker from '@/components/media/MobileVideoPicker'
 import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
 import useEventDocuments, { type EventDoc } from '@/hooks/events/useEventDocuments'
 import { useEventVisitVideoUpload } from '@/hooks/events/useEventVisitVideoUpload'
-import { VISIT_VIDEO_FIELD_PREFIX } from '@/lib/eventVisitVideo'
+import { normalizeVisitVideoUserId, VISIT_VIDEO_FIELD_PREFIX } from '@/lib/eventVisitVideo'
+import {
+  extractGoogleDriveFileId,
+  GOOGLE_DRIVE_VIDEO_MIME,
+} from '@/lib/googleDriveVideoLink'
 
-function VisitVideoItem({ doc }: { doc: EventDoc }) {
+function isDriveVideoDoc(doc: EventDoc): boolean {
+  if (doc.mimeType === GOOGLE_DRIVE_VIDEO_MIME) return true
+  return extractGoogleDriveFileId(doc.url) !== null
+}
+
+function VisitVideoItem({
+  doc,
+  canDelete,
+  deleting,
+  onDelete,
+}: {
+  doc: EventDoc
+  canDelete: boolean
+  deleting: boolean
+  onDelete: () => void
+}) {
   return (
     <li className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="flex items-start justify-between gap-2">
@@ -24,24 +44,57 @@ function VisitVideoItem({ doc }: { doc: EventDoc }) {
           <p className="truncate text-sm font-semibold text-slate-900" title={doc.title}>
             {doc.title}
           </p>
-          <p className="text-xs text-slate-500">Vídeo de visita comercial</p>
+          <p className="text-xs text-slate-500">
+            {isDriveVideoDoc(doc) ? 'Vídeo a Google Drive' : 'Vídeo de visita comercial'}
+          </p>
         </div>
-        <a
-          href={doc.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 text-xs font-medium text-blue-600 hover:underline"
-        >
-          Obrir
-        </a>
+        <div className="flex shrink-0 items-center gap-2">
+          <a
+            href={doc.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-medium text-blue-600 hover:underline"
+          >
+            Obrir
+          </a>
+          {canDelete ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700"
+              onClick={onDelete}
+              disabled={deleting}
+              aria-label="Eliminar vídeo"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
       </div>
-      <div className="overflow-hidden rounded-xl bg-black">
-        <TicketAttachmentTile
-          url={doc.url}
-          alt={doc.title || 'Vídeo de visita'}
-          className="max-h-48 w-full object-contain"
-        />
-      </div>
+      {isDriveVideoDoc(doc) ? (
+        <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-6 text-center">
+          <p className="text-sm font-medium text-slate-800">Vídeo allotjat a Google Drive</p>
+          <p className="mt-1 text-xs text-slate-500">Obre l’enllaç per veure’l a Drive.</p>
+          <a
+            href={doc.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+          >
+            Obrir a Google Drive
+          </a>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl bg-black">
+          <TicketAttachmentTile
+            url={doc.url}
+            alt={doc.title || 'Vídeo de visita'}
+            mimeType={doc.mimeType}
+            className="max-h-48 w-full object-contain"
+          />
+        </div>
+      )}
     </li>
   )
 }
@@ -61,7 +114,11 @@ export default function EventVisitVideoModal({
   onOpenChange: (value: boolean) => void
   canUpload: boolean
 }) {
+  const { data: session } = useSession()
+  const currentUserId = normalizeVisitVideoUserId(session?.user?.id || '')
   const [refresh, setRefresh] = useState(0)
+  const [deletingField, setDeletingField] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const { docs, loading, error: loadError } = useEventDocuments(
     eventId,
     eventCode || undefined,
@@ -74,16 +131,50 @@ export default function EventVisitVideoModal({
   const {
     compressing,
     uploading,
+    linking,
     error: uploadError,
     previewUrl,
     clearPreview,
     handleVideoSelected,
+    attachDriveLink,
     maxVideos,
   } = useEventVisitVideoUpload({
     eventId,
     eventCode,
     onUploaded: bumpRefresh,
   })
+
+  const handleDelete = useCallback(
+    async (doc: EventDoc) => {
+      const confirmed = window.confirm(
+        `Vols eliminar aquest vídeo de visita?\n\n${doc.title || doc.id}`
+      )
+      if (!confirmed) return
+
+      setDeleteError(null)
+      setDeletingField(doc.id)
+      try {
+        const res = await fetch(`/api/events/${encodeURIComponent(eventId)}/visit-video`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            field: doc.id,
+            eventCode: eventCode || undefined,
+          }),
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(String(json?.error || "No s'ha pogut eliminar el vídeo"))
+        }
+        bumpRefresh()
+      } catch (err) {
+        setDeleteError(err instanceof Error ? err.message : 'Error eliminant el vídeo')
+      } finally {
+        setDeletingField(null)
+      }
+    },
+    [eventCode, eventId]
+  )
 
   const count = docs.length
   const showUploader = canUpload && count < maxVideos
@@ -101,7 +192,7 @@ export default function EventVisitVideoModal({
               <DialogDescription className="text-sm text-muted-foreground">
                 {eventSummary
                   ? `Visita a l'espai · ${eventSummary}`
-                  : 'Grava o adjunta el vídeo de la visita comercial a l\'espai.'}
+                  : "Adjunta un vídeo des del telèfon o un enllaç de Google Drive."}
               </DialogDescription>
             </div>
             <Button
@@ -126,8 +217,10 @@ export default function EventVisitVideoModal({
               error={uploadError}
               compressing={compressing}
               uploading={uploading}
+              linking={linking}
               disabled={!canUpload}
               onFilesSelected={handleVideoSelected}
+              onDriveLinkSubmit={attachDriveLink}
               onClearPreview={clearPreview}
             />
           ) : null}
@@ -141,6 +234,9 @@ export default function EventVisitVideoModal({
               {loadError ? (
                 <p className="px-2 py-3 text-sm text-red-600">{loadError}</p>
               ) : null}
+              {deleteError ? (
+                <p className="px-2 py-3 text-sm text-red-600">{deleteError}</p>
+              ) : null}
               {!loading && !loadError && docs.length === 0 ? (
                 <p className="px-2 py-4 text-center text-sm text-slate-500">
                   Encara no hi ha vídeos de visita.
@@ -148,9 +244,19 @@ export default function EventVisitVideoModal({
               ) : null}
               {docs.length > 0 ? (
                 <ul className="space-y-2">
-                  {docs.map((doc) => (
-                    <VisitVideoItem key={doc.id} doc={doc} />
-                  ))}
+                  {docs.map((doc) => {
+                    const createdBy = normalizeVisitVideoUserId(doc.createdBy || '')
+                    const canDelete = Boolean(currentUserId && createdBy && createdBy === currentUserId)
+                    return (
+                      <VisitVideoItem
+                        key={doc.id}
+                        doc={doc}
+                        canDelete={canDelete}
+                        deleting={deletingField === doc.id}
+                        onDelete={() => void handleDelete(doc)}
+                      />
+                    )
+                  })}
                 </ul>
               ) : null}
             </div>

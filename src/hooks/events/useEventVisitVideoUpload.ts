@@ -9,6 +9,7 @@ import {
   MAX_VIDEO_INPUT_BYTES,
 } from '@/lib/media/ticketAttachments'
 import { MAX_EVENT_VISIT_VIDEOS } from '@/lib/eventVisitVideo'
+import { normalizeGoogleDriveVideoRef } from '@/lib/googleDriveVideoLink'
 
 type Params = {
   eventId: string
@@ -19,6 +20,7 @@ type Params = {
 export function useEventVisitVideoUpload({ eventId, eventCode, onUploaded }: Params) {
   const [compressing, setCompressing] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [linking, setLinking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const previewRef = useRef<string | null>(null)
@@ -97,13 +99,51 @@ export function useEventVisitVideoUpload({ eventId, eventCode, onUploaded }: Par
     [clearPreview, eventCode, eventId, onUploaded]
   )
 
+  const attachDriveLink = useCallback(
+    async (driveUrl: string) => {
+      const trimmed = String(driveUrl || '').trim()
+      if (!trimmed) return
+
+      setError(null)
+
+      if (!normalizeGoogleDriveVideoRef(trimmed)) {
+        setError('Enganxa un enllaç vàlid de Google Drive (fitxer de vídeo).')
+        return
+      }
+
+      try {
+        setLinking(true)
+        const res = await fetch(`/api/events/${encodeURIComponent(eventId)}/visit-video`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            driveUrl: trimmed,
+            eventCode: eventCode || undefined,
+          }),
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(String(json?.error || "No s'ha pogut adjuntar l'enllaç"))
+        }
+        onUploaded?.()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Error adjuntant enllaç')
+      } finally {
+        setLinking(false)
+      }
+    },
+    [eventCode, eventId, onUploaded]
+  )
+
   return {
     compressing,
     uploading,
+    linking,
     error,
     previewUrl,
     clearPreview,
     handleVideoSelected,
+    attachDriveLink,
     maxVideos: MAX_EVENT_VISIT_VIDEOS,
   }
 }

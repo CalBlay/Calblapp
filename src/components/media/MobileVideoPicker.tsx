@@ -1,6 +1,8 @@
 'use client'
 
-import { Camera, Film } from 'lucide-react'
+import { useState } from 'react'
+import { Film, Link2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
 
 type Props = {
@@ -13,13 +15,15 @@ type Props = {
   disabled?: boolean
   compressing?: boolean
   uploading?: boolean
+  linking?: boolean
   onFilesSelected: (files: FileList | null) => void | Promise<void>
+  onDriveLinkSubmit?: (url: string) => void | Promise<void>
   onClearPreview?: () => void
 }
 
 export default function MobileVideoPicker({
   label = 'Vídeo de visita',
-  hint = 'Grava al lloc o tria un fitxer del telèfon.',
+  hint = 'Adjunta un fitxer de vídeo o enganxa un enllaç de Google Drive.',
   count,
   maxVideos,
   previewUrl,
@@ -27,15 +31,25 @@ export default function MobileVideoPicker({
   disabled = false,
   compressing = false,
   uploading = false,
+  linking = false,
   onFilesSelected,
+  onDriveLinkSubmit,
   onClearPreview,
 }: Props) {
-  const busy = compressing || uploading
+  const [driveLink, setDriveLink] = useState('')
+  const busy = compressing || uploading || linking
   const atLimit = count >= maxVideos
   const blocked = atLimit || disabled || busy
 
   const handleChange = (files: FileList | null) => {
     void onFilesSelected(files)
+  }
+
+  const handleDriveSubmit = () => {
+    const value = driveLink.trim()
+    if (!value || !onDriveLinkSubmit) return
+    void onDriveLinkSubmit(value)
+    setDriveLink('')
   }
 
   return (
@@ -51,18 +65,17 @@ export default function MobileVideoPicker({
       </div>
 
       {!atLimit ? (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="space-y-3">
           <label
-            className={`flex min-h-[56px] cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-emerald-300 bg-emerald-50 px-4 py-4 text-sm font-semibold text-emerald-800 transition ${
-              blocked ? 'pointer-events-none opacity-50' : 'hover:border-emerald-400 hover:bg-emerald-100'
+            className={`flex min-h-[56px] cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-4 text-sm font-semibold text-slate-700 transition ${
+              blocked ? 'pointer-events-none opacity-50' : 'hover:border-slate-400 hover:bg-slate-50'
             }`}
           >
-            <Camera className="h-5 w-5 shrink-0" aria-hidden />
-            Gravar vídeo
+            <Film className="h-5 w-5 shrink-0 text-slate-600" aria-hidden />
+            Triar vídeo del telèfon
             <input
               type="file"
               accept="video/*"
-              capture="environment"
               className="hidden"
               disabled={blocked}
               onChange={(e) => {
@@ -72,24 +85,35 @@ export default function MobileVideoPicker({
             />
           </label>
 
-          <label
-            className={`flex min-h-[56px] cursor-pointer items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-semibold text-slate-700 transition ${
-              blocked ? 'pointer-events-none opacity-50' : 'hover:border-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            <Film className="h-5 w-5 shrink-0 text-slate-600" aria-hidden />
-            Triar fitxer
-            <input
-              type="file"
-              accept="video/*"
-              className="hidden"
-              disabled={blocked}
-              onChange={(e) => {
-                handleChange(e.target.files)
-                e.currentTarget.value = ''
-              }}
-            />
-          </label>
+          {onDriveLinkSubmit ? (
+            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <Link2 className="h-4 w-4 shrink-0 text-blue-600" aria-hidden />
+                Enllaç de Google Drive
+              </div>
+              <input
+                type="url"
+                inputMode="url"
+                value={driveLink}
+                onChange={(e) => setDriveLink(e.target.value)}
+                placeholder="https://drive.google.com/file/d/..."
+                disabled={blocked}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                disabled={blocked || !driveLink.trim()}
+                onClick={handleDriveSubmit}
+              >
+                {linking ? 'Adjuntant enllaç…' : 'Adjuntar enllaç'}
+              </Button>
+              <p className="text-xs text-slate-500">
+                El fitxer ha de ser un vídeo compartit (com a mínim «qualsevol amb l’enllaç»).
+              </p>
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -99,7 +123,7 @@ export default function MobileVideoPicker({
 
       {busy ? (
         <p className="text-sm text-slate-600">
-          {compressing ? 'Comprimint vídeo…' : 'Pujant vídeo…'}
+          {compressing ? 'Comprimint vídeo…' : linking ? 'Adjuntant enllaç…' : 'Pujant vídeo…'}
         </p>
       ) : null}
 
@@ -111,6 +135,7 @@ export default function MobileVideoPicker({
             url={previewUrl}
             alt="Previsualització del vídeo"
             className="max-h-56 w-full object-contain"
+            lazyVideo={false}
           />
           {onClearPreview ? (
             <button

@@ -312,6 +312,7 @@ function ModalContent({
                   <TicketAttachmentTile
                     url={url}
                     alt={displayTitle(d)}
+                    mimeType={d.mimeType}
                     className="max-h-52 w-full object-contain"
                   />
                 </div>
