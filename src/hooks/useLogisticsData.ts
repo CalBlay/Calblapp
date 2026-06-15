@@ -2,24 +2,19 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import type {
+  LogisticsEventPrepRow,
+  LogisticsWarehousePrepRow,
+} from '@/lib/logistics/prepTypes'
 
-interface LogisticsEvent {
-  id: string
-  NomEvent: string
-  Ubicacio: string
-  NumPax?: number
-  DataInici: string
-  DataVisual?: string
-  HoraInici?: string
-  PreparacioData?: string
-  PreparacioHora?: string
-}
+export type { LogisticsEventPrepRow, LogisticsWarehousePrepRow }
 
 export function useLogisticsData(dateRange?: { start: string; end: string } | null) {
   const { data: session } = useSession()
   const role = (session?.user?.role || '').toLowerCase()
 
-  const [events, setEvents] = useState<LogisticsEvent[]>([])
+  const [events, setEvents] = useState<LogisticsEventPrepRow[]>([])
+  const [warehouseTasks, setWarehouseTasks] = useState<LogisticsWarehousePrepRow[]>([])
   const [loading, setLoading] = useState(true)
 
   const loadData = useCallback(async () => {
@@ -28,6 +23,7 @@ export function useLogisticsData(dateRange?: { start: string; end: string } | nu
 
       if (!dateRange?.start || !dateRange?.end) {
         setEvents([])
+        setWarehouseTasks([])
         return
       }
 
@@ -37,28 +33,42 @@ export function useLogisticsData(dateRange?: { start: string; end: string } | nu
       if (!res.ok) {
         console.error('Error API logistics:', await res.text())
         setEvents([])
+        setWarehouseTasks([])
         return
       }
 
-      const { ok, events: data } = (await res.json()) as {
+      const { ok, events: data, warehouseTasks: warehouseData } = (await res.json()) as {
         ok: boolean
-        events: LogisticsEvent[]
+        events: LogisticsEventPrepRow[]
+        warehouseTasks?: LogisticsWarehousePrepRow[]
       }
 
       if (!ok || !data) {
         setEvents([])
+        setWarehouseTasks([])
         return
       }
 
-      const visible =
-        role === 'treballador'
-          ? data.filter((event) => event.PreparacioData && event.PreparacioHora)
-          : data
+      const eventRows: LogisticsEventPrepRow[] = data.map((event) => ({
+        ...event,
+        rowType: 'event' as const,
+      }))
 
-      setEvents(visible)
+      const visibleEvents =
+        role === 'treballador'
+          ? eventRows.filter((event) => event.PreparacioData && event.PreparacioHora)
+          : eventRows
+
+      setEvents(visibleEvents)
+      setWarehouseTasks(
+        Array.isArray(warehouseData)
+          ? warehouseData.map((task) => ({ ...task, rowType: 'warehouse_comanda' as const }))
+          : []
+      )
     } catch (err) {
       console.error('Error carregant dades logistiques:', err)
       setEvents([])
+      setWarehouseTasks([])
     } finally {
       setLoading(false)
     }
@@ -68,5 +78,5 @@ export function useLogisticsData(dateRange?: { start: string; end: string } | nu
     loadData()
   }, [loadData])
 
-  return { events, loading, refresh: loadData }
+  return { events, warehouseTasks, loading, refresh: loadData }
 }

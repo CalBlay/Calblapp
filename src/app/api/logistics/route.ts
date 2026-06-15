@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { subDays, isMonday } from 'date-fns'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { listWarehousePrepTasksForUser } from '@/lib/logistics/warehousePrepTasks.server'
 import { normalizeRole } from '@/lib/roles'
 
 export const runtime = 'nodejs'
@@ -85,7 +86,12 @@ async function authContext(req: NextRequest) {
     return { error: NextResponse.json({ ok: false, error: 'Sense permisos' }, { status: 403 }) }
   }
 
-  return { role }
+  const userId = String(token.sub || '').trim()
+  if (!userId) {
+    return { error: NextResponse.json({ ok: false, error: 'Usuari no vàlid' }, { status: 401 }) }
+  }
+
+  return { role, userId }
 }
 
 async function queryByStringRange(start: string, end: string) {
@@ -187,10 +193,18 @@ export async function GET(req: NextRequest) {
       return (a.HoraInici || '').localeCompare(b.HoraInici || '')
     })
 
+    const warehouseTasks = await listWarehousePrepTasksForUser({
+      userId: auth.userId,
+      role: auth.role,
+      rangeStart: startStr,
+      rangeEnd: endStr,
+    })
+
     return NextResponse.json({
       ok: true,
       count: events.length,
       events,
+      warehouseTasks,
     })
   } catch (err) {
     console.error('Error /api/logistics:', err)

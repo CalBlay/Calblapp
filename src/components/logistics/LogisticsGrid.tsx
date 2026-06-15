@@ -5,24 +5,38 @@ import { useMemo } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
-import { RefreshCcw, CalendarClock } from 'lucide-react'
+import { CalendarClock, ClipboardList, Package, RefreshCcw } from 'lucide-react'
 import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { formatDayMonthValue } from '@/lib/date-format'
+import {
+  EVENT_COMANDA_BATCH_STATUS_BADGES,
+  EVENT_COMANDA_BATCH_STATUS_LABELS,
+  normalizeEventComandaBatchStatus,
+} from '@/lib/eventComanda/batchStatus'
+import {
+  isEventPrepRow,
+  isWarehousePrepRow,
+  type LogisticsEventPrepRow,
+  type LogisticsPrepRow,
+  type LogisticsWarehousePrepRow,
+} from '@/lib/logistics/prepTypes'
+import {
+  WAREHOUSE_PREP_VIEW_ROLE_LABELS,
+  type WarehousePrepViewRole,
+} from '@/lib/logistics/warehousePrepVisibility'
+import { cn } from '@/lib/utils'
 
 export type EditedMap = Record<string, { PreparacioData?: string; PreparacioHora?: string }>
 
-type LogisticsRow = {
-  id: string
-  PreparacioData?: string
-  PreparacioHora?: string
-  DataInici?: string
-  NomEvent?: string
-  NumPax?: number | string | null
-  Ubicacio?: string
+const VIEW_ROLE_BADGES: Record<WarehousePrepViewRole, string> = {
+  early_prep: 'border-violet-200 bg-violet-50 text-violet-900',
+  prep_tomorrow: 'border-amber-200 bg-amber-50 text-amber-900',
+  delivery_today: 'border-sky-200 bg-sky-50 text-sky-900',
 }
 
 interface LogisticsGridProps {
-  rows: LogisticsRow[]
+  rows: LogisticsEventPrepRow[]
+  warehouseTasks: LogisticsWarehousePrepRow[]
   loading: boolean
   isWorker: boolean
   isManager: boolean
@@ -31,6 +45,7 @@ interface LogisticsGridProps {
   onFilterChange: (f: SmartFiltersChange) => void
   onRefresh: () => void
   onConfirm: () => void
+  onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
   updating: boolean
   filterRole: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
 }
@@ -41,8 +56,55 @@ function fmtDM(dateIsoOrEmpty: string) {
   return formatted === '-' ? '' : formatted
 }
 
+function warehouseLabel(task: LogisticsWarehousePrepRow) {
+  const name = task.warehouseName?.trim()
+  const code = task.warehouseCode?.trim()
+  return name && code && name !== code ? `${name} · ${code}` : name || code || 'Magatzem'
+}
+
+function orderTypeLabel(kind: LogisticsWarehousePrepRow['batchKind']) {
+  return kind === 'revision' ? 'Reposició' : 'Comanda'
+}
+
+function formatOrderedAt(orderedAt: number) {
+  if (!orderedAt) return '—'
+  return new Date(orderedAt).toLocaleString('ca-ES', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function buildDayGroups(
+  events: LogisticsEventPrepRow[],
+  warehouseTasks: LogisticsWarehousePrepRow[]
+) {
+  const map = new Map<string, LogisticsPrepRow[]>()
+
+  events.forEach((ev) => {
+    const key = ev.PreparacioData || ev.DataInici?.toString() || 'sense-data'
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(ev)
+  })
+
+  warehouseTasks.forEach((task) => {
+    const key = task.viewDay || 'sense-data'
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(task)
+  })
+
+  return Array.from(map.entries()).sort((a, b) => {
+    const da = new Date(a[0]).getTime()
+    const db = new Date(b[0]).getTime()
+    return da - db
+  })
+}
+
 export default function LogisticsGrid({
   rows,
+  warehouseTasks,
   loading,
   isWorker,
   isManager,
@@ -51,10 +113,10 @@ export default function LogisticsGrid({
   onFilterChange,
   onRefresh,
   onConfirm,
+  onWarehouseComandaClick,
   updating,
   filterRole,
 }: LogisticsGridProps) {
-
   return (
     <div className="mt-4 w-full overflow-hidden rounded-xl border bg-white shadow-sm">
       <style>{`
@@ -81,14 +143,21 @@ export default function LogisticsGrid({
 
       <div id="preparacio-print-root">
         {isWorker ? (
-          <WorkerGroupedView events={rows} loading={loading} />
+          <WorkerGroupedView
+            events={rows}
+            warehouseTasks={warehouseTasks}
+            loading={loading}
+            onWarehouseComandaClick={onWarehouseComandaClick}
+          />
         ) : (
           <EditableTable
             rows={rows}
+            warehouseTasks={warehouseTasks}
             edited={edited}
             setEdited={setEdited}
             isManager={isManager}
             loading={loading}
+            onWarehouseComandaClick={onWarehouseComandaClick}
           />
         )}
       </div>
@@ -117,20 +186,87 @@ export default function LogisticsGrid({
   )
 }
 
-function WorkerGroupedView({ events, loading }: { events: LogisticsRow[]; loading: boolean }) {
-  const groups = useMemo(() => {
-    const map = new Map<string, LogisticsRow[]>()
-    events.forEach(ev => {
-      const key = ev.PreparacioData || ev.DataInici?.toString() || 'sense-data'
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(ev)
-    })
-    return Array.from(map.entries()).sort((a, b) => {
-      const da = new Date(a[0]).getTime()
-      const db = new Date(b[0]).getTime()
-      return da - db
-    })
-  }, [events])
+function WarehouseComandaCard({
+  task,
+  onClick,
+}: {
+  task: LogisticsWarehousePrepRow
+  onClick?: (task: LogisticsWarehousePrepRow) => void
+}) {
+  const status = normalizeEventComandaBatchStatus(task.batchStatus)
+  const statusLabel = EVENT_COMANDA_BATCH_STATUS_LABELS[status]
+  const clickable = Boolean(onClick)
+
+  return (
+    <button
+      type="button"
+      onClick={() => onClick?.(task)}
+      disabled={!clickable}
+      className={cn(
+        'w-full rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 text-left shadow-sm transition',
+        clickable && 'hover:border-indigo-200 hover:bg-indigo-50 cursor-pointer',
+        !clickable && 'cursor-default'
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+            VIEW_ROLE_BADGES[task.viewRole]
+          )}
+        >
+          <Package className="h-3 w-3" />
+          {WAREHOUSE_PREP_VIEW_ROLE_LABELS[task.viewRole]}
+        </span>
+        <span className="rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-indigo-900">
+          {orderTypeLabel(task.batchKind)}
+        </span>
+        <span
+          className={cn(
+            'rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+            EVENT_COMANDA_BATCH_STATUS_BADGES[status]
+          )}
+        >
+          {statusLabel}
+        </span>
+      </div>
+
+      <div className="mt-2 text-sm font-semibold leading-snug text-slate-900">
+        {task.eventTitle}
+      </div>
+      <div className="mt-0.5 text-xs font-medium text-indigo-900">{warehouseLabel(task)}</div>
+
+      <div className="mt-2 space-y-1 text-xs text-slate-700">
+        <div>
+          <span className="font-semibold text-slate-800">Entrega:</span>{' '}
+          {task.deliverySummary || formatDayMonthValue(task.deliveryDate, '—')}
+        </div>
+        <div>
+          <span className="font-semibold text-slate-800">Demanada:</span> {formatOrderedAt(task.orderedAt)}
+        </div>
+        <div>
+          <span className="font-semibold text-slate-800">Articles:</span> {task.lineCount}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function WorkerGroupedView({
+  events,
+  warehouseTasks,
+  loading,
+  onWarehouseComandaClick,
+}: {
+  events: LogisticsEventPrepRow[]
+  warehouseTasks: LogisticsWarehousePrepRow[]
+  loading: boolean
+  onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
+}) {
+  const groups = useMemo(
+    () => buildDayGroups(events, warehouseTasks),
+    [events, warehouseTasks]
+  )
 
   if (loading) {
     return <div className="p-4 text-center text-sm text-gray-500">Carregant dades...</div>
@@ -143,17 +279,21 @@ function WorkerGroupedView({ events, loading }: { events: LogisticsRow[]; loadin
   return (
     <div className="divide-y">
       {groups.map(([dayIso, items]) => {
-        const label = dayIso && dayIso !== 'sense-data'
-          ? (() => {
-              const d = parseISO(dayIso)
-              const dowIdx = d.getDay()
-              const dowMap = ['Dg', 'Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds']
-              const dow = dowMap[dowIdx] || format(d, 'EEE', { locale: ca })
-              return `${dow} ${format(d, 'dd/LL/yy', { locale: ca })}`
-            })()
-          : 'Sense data de preparació'
+        const eventItems = items.filter(isEventPrepRow)
+        const comandaItems = items.filter(isWarehousePrepRow)
 
-        const ordered = [...items].sort((a, b) => {
+        const label =
+          dayIso && dayIso !== 'sense-data'
+            ? (() => {
+                const d = parseISO(dayIso)
+                const dowIdx = d.getDay()
+                const dowMap = ['Dg', 'Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds']
+                const dow = dowMap[dowIdx] || format(d, 'EEE', { locale: ca })
+                return `${dow} ${format(d, 'dd/LL/yy', { locale: ca })}`
+              })()
+            : 'Sense data de preparació'
+
+        const orderedEvents = [...eventItems].sort((a, b) => {
           const ha = a.PreparacioHora || ''
           const hb = b.PreparacioHora || ''
           if (ha && hb) return ha.localeCompare(hb)
@@ -162,6 +302,11 @@ function WorkerGroupedView({ events, loading }: { events: LogisticsRow[]; loadin
           return 0
         })
 
+        const countParts = [
+          orderedEvents.length ? `${orderedEvents.length} prep` : '',
+          comandaItems.length ? `${comandaItems.length} comandes` : '',
+        ].filter(Boolean)
+
         return (
           <div key={dayIso} className="pb-4">
             <div className="flex items-center justify-between rounded-lg bg-green-50 px-4 py-2 text-sm font-semibold text-green-900">
@@ -169,69 +314,88 @@ function WorkerGroupedView({ events, loading }: { events: LogisticsRow[]; loadin
                 <CalendarClock className="h-4 w-4" />
                 <span className="uppercase tracking-wide">{label}</span>
               </div>
-              <div className="text-xs font-semibold text-pink-600">
-                {ordered.length} prep
-              </div>
+              <div className="text-xs font-semibold text-pink-600">{countParts.join(' · ')}</div>
             </div>
 
-            {/* Targetes per mòbil */}
-            <div className="mt-2 flex flex-col gap-3 md:hidden">
-              {ordered.map(ev => (
-                <div key={ev.id} className="rounded-xl border bg-white p-3 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold text-slate-900">
-                      {ev.PreparacioHora || '--:--'}
+            {orderedEvents.length > 0 && (
+              <>
+                <div className="mt-2 flex flex-col gap-3 md:hidden">
+                  {orderedEvents.map((ev) => (
+                    <div key={ev.id} className="rounded-xl border bg-white p-3 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-semibold text-slate-900">
+                          {ev.PreparacioHora || '--:--'}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {ev.DataInici ? formatDayMonthValue(ev.DataInici, '--/--') : '--/--'}
+                        </div>
+                      </div>
+                      <div className="mt-1 text-sm font-semibold leading-snug text-slate-900">
+                        {ev.NomEvent || 'Sense nom'}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-600 line-clamp-2">
+                        {ev.Ubicacio || 'Sense ubicació'}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-xs text-slate-700">
+                        <span>Pax: {ev.NumPax ?? '--'}</span>
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                          Prep: {ev.PreparacioHora || '--:--'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-500">
-                      {ev.DataInici ? formatDayMonthValue(ev.DataInici, '--/--') : '--/--'}
-                    </div>
-                  </div>
-
-                  <div className="mt-1 text-sm font-semibold leading-snug text-slate-900">
-                    {ev.NomEvent || 'Sense nom'}
-                  </div>
-
-                  <div className="mt-1 text-xs text-slate-600 line-clamp-2">
-                    {ev.Ubicacio || 'Sense ubicació'}
-                  </div>
-
-                  <div className="mt-2 flex items-center justify-between text-xs text-slate-700">
-                    <span>Pax: {ev.NumPax ?? '--'}</span>
-                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                      Prep: {ev.PreparacioHora || '--:--'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Taula per desktop */}
-            <div className="mt-2 hidden overflow-x-auto md:block">
-              <table className="w-full min-w-full overflow-hidden rounded-lg border border-slate-200 text-xs sm:min-w-[560px]">
-                <thead className="bg-slate-100 text-slate-700">
-                  <tr>
-                    <th className="w-24 px-3 py-2 text-left">Hora prep.</th>
-                    <th className="px-3 py-2 text-left">Nom esdeveniment</th>
-                    <th className="w-16 px-3 py-2 text-left">Pax</th>
-                    <th className="px-3 py-2 text-left">Ubicació</th>
-                    <th className="w-28 px-3 py-2 text-left">Data event</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ordered.map(ev => (
-                    <tr key={ev.id} className="border-t border-slate-200">
-                      <td className="px-3 py-2 text-slate-700">{ev.PreparacioHora || '--:--'}</td>
-                      <td className="px-3 py-2 font-semibold text-slate-800">{ev.NomEvent || 'Sense nom'}</td>
-                      <td className="px-3 py-2 text-slate-700">{ev.NumPax ?? '--'}</td>
-                      <td className="px-3 py-2 text-slate-700">{ev.Ubicacio || 'Sense ubicació'}</td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {ev.DataInici ? formatDayMonthValue(ev.DataInici, '--/--') : '--/--'}
-                      </td>
-                    </tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
+
+                <div className="mt-2 hidden overflow-x-auto md:block">
+                  <table className="w-full min-w-full overflow-hidden rounded-lg border border-slate-200 text-xs sm:min-w-[560px]">
+                    <thead className="bg-slate-100 text-slate-700">
+                      <tr>
+                        <th className="w-24 px-3 py-2 text-left">Hora prep.</th>
+                        <th className="px-3 py-2 text-left">Nom esdeveniment</th>
+                        <th className="w-16 px-3 py-2 text-left">Pax</th>
+                        <th className="px-3 py-2 text-left">Ubicació</th>
+                        <th className="w-28 px-3 py-2 text-left">Data event</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orderedEvents.map((ev) => (
+                        <tr key={ev.id} className="border-t border-slate-200">
+                          <td className="px-3 py-2 text-slate-700">{ev.PreparacioHora || '--:--'}</td>
+                          <td className="px-3 py-2 font-semibold text-slate-800">
+                            {ev.NomEvent || 'Sense nom'}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700">{ev.NumPax ?? '--'}</td>
+                          <td className="px-3 py-2 text-slate-700">{ev.Ubicacio || 'Sense ubicació'}</td>
+                          <td className="px-3 py-2 text-slate-700">
+                            {ev.DataInici ? formatDayMonthValue(ev.DataInici, '--/--') : '--/--'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {comandaItems.length > 0 && (
+              <div className={cn('flex flex-col gap-3', orderedEvents.length > 0 ? 'mt-3' : 'mt-2')}>
+                {orderedEvents.length > 0 && (
+                  <div className="flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-indigo-800">
+                    <ClipboardList className="h-4 w-4" />
+                    Comandes de magatzem
+                  </div>
+                )}
+                <div className="grid gap-3 md:grid-cols-2">
+                  {comandaItems.map((task) => (
+                    <WarehouseComandaCard
+                      key={task.id}
+                      task={task}
+                      onClick={onWarehouseComandaClick}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )
       })}
@@ -241,17 +405,23 @@ function WorkerGroupedView({ events, loading }: { events: LogisticsRow[]; loadin
 
 function EditableTable({
   rows,
+  warehouseTasks,
   edited,
   setEdited,
   isManager,
   loading,
+  onWarehouseComandaClick,
 }: {
-  rows: LogisticsRow[]
+  rows: LogisticsEventPrepRow[]
+  warehouseTasks: LogisticsWarehousePrepRow[]
   edited: EditedMap
   setEdited: React.Dispatch<React.SetStateAction<EditedMap>>
   isManager: boolean
   loading: boolean
+  onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
 }) {
+  const hasWarehouseTasks = warehouseTasks.length > 0
+
   return (
     <div className="overflow-x-auto scroll-smooth">
       <table className="min-w-full w-full border-collapse text-[10px] sm:min-w-[560px] sm:text-xs">
@@ -327,21 +497,54 @@ function EditableTable({
                   <td className="p-2">{ev.NomEvent}</td>
                   <td className="p-2">{ev.NumPax ?? '-'}</td>
                   <td className="p-2">{ev.Ubicacio}</td>
-                  <td className="p-2">
-                    {formatDayMonthValue(ev.DataInici, '--/--')}
-                  </td>
+                  <td className="p-2">{formatDayMonthValue(ev.DataInici, '--/--')}</td>
                 </tr>
               )
             })
-          ) : (
+          ) : !hasWarehouseTasks ? (
             <tr>
               <td colSpan={6} className="py-6 text-center text-gray-400">
                 No hi ha dades disponibles.
               </td>
             </tr>
-          )}
+          ) : null}
         </tbody>
       </table>
+
+      {hasWarehouseTasks && (
+        <div className="border-t bg-indigo-50/40 p-4">
+          <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-indigo-900">
+            <ClipboardList className="h-4 w-4" />
+            Comandes de magatzem assignades
+          </div>
+          <div className="space-y-4">
+            {buildDayGroups([], warehouseTasks).map(([dayIso, items]) => {
+              const comandaItems = items.filter(isWarehousePrepRow)
+              if (!comandaItems.length) return null
+
+              const label =
+                dayIso && dayIso !== 'sense-data'
+                  ? formatDayMonthValue(dayIso, dayIso)
+                  : 'Sense data'
+
+              return (
+                <div key={dayIso}>
+                  <div className="mb-2 text-xs font-semibold text-indigo-800">{label}</div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {comandaItems.map((task) => (
+                      <WarehouseComandaCard
+                        key={task.id}
+                        task={task}
+                        onClick={onWarehouseComandaClick}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

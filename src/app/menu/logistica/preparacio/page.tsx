@@ -1,7 +1,7 @@
 ﻿// file: src/app/menu/logistica/preparacio/page.tsx
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { useSession } from 'next-auth/react'
@@ -10,6 +10,12 @@ import ExportMenu from '@/components/export/ExportMenu'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { LogisticsGrid } from '@/components/logistics'
 import { useLogisticsData } from '@/hooks/useLogisticsData'
+import type { LogisticsWarehousePrepRow } from '@/lib/logistics/prepTypes'
+import {
+  EVENT_COMANDA_BATCH_STATUS_LABELS,
+  normalizeEventComandaBatchStatus,
+} from '@/lib/eventComanda/batchStatus'
+import { WAREHOUSE_PREP_VIEW_ROLE_LABELS } from '@/lib/logistics/warehousePrepVisibility'
 import type { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import type { EditedMap } from '@/components/logistics/LogisticsGrid'
 import { Truck } from 'lucide-react'
@@ -71,7 +77,7 @@ export default function LogisticsPage() {
   const isManager = role === 'cap' || role === 'admin' || role === 'direccio'
 
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(() => buildDefaultRange())
-  const { events, refresh, loading } = useLogisticsData(dateRange)
+  const { events, warehouseTasks, refresh, loading } = useLogisticsData(dateRange)
   const [updating, setUpdating] = useState(false)
   const [edited, setEdited] = useState<EditedMap>({})
   const [rows, setRows] = useState(events)
@@ -168,8 +174,14 @@ export default function LogisticsPage() {
     ? `preparacio-logistica-${dateRange.start}-${dateRange.end}`
     : 'preparacio-logistica-setmana'
 
+  const handleWarehouseComandaClick = useCallback((task: LogisticsWarehousePrepRow) => {
+    const returnTo = encodeURIComponent('/menu/logistica/preparacio')
+    const url = `/menu/events/${encodeURIComponent(task.eventId)}/comanda?returnTo=${returnTo}`
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }, [])
+
   const exportRows = useMemo<PreparationExportRow[]>(() => {
-    return rows.map((ev) => ({
+    const eventRows = rows.map((ev) => ({
       PreparacioData: formatDayMonthValue(ev.PreparacioData, ''),
       PreparacioHora: ev.PreparacioHora || '',
       Event: ev.NomEvent || '',
@@ -178,7 +190,20 @@ export default function LogisticsPage() {
       DataEvent: formatDateOnly(ev.DataInici, ''),
       HoraEvent: ev.HoraInici || '',
     }))
-  }, [rows])
+
+    const comandaRows = warehouseTasks.map((task) => ({
+      PreparacioData: formatDayMonthValue(task.viewDay, ''),
+      PreparacioHora: WAREHOUSE_PREP_VIEW_ROLE_LABELS[task.viewRole],
+      Event: `${task.eventTitle} · ${task.batchKind === 'revision' ? 'Reposició' : 'Comanda'}`,
+      Ubicacio: task.deliverySummary || formatDayMonthValue(task.deliveryDate, ''),
+      Pax:
+        EVENT_COMANDA_BATCH_STATUS_LABELS[normalizeEventComandaBatchStatus(task.batchStatus)],
+      DataEvent: formatDayMonthValue(task.deliveryDate, ''),
+      HoraEvent: String(task.lineCount),
+    }))
+
+    return [...eventRows, ...comandaRows]
+  }, [rows, warehouseTasks])
 
   const handleExportExcel = async () => {
     const XLSX = await loadXlsx()
@@ -272,6 +297,7 @@ export default function LogisticsPage() {
       <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
         <LogisticsGrid
           rows={rows}
+          warehouseTasks={warehouseTasks}
           loading={loading}
           isWorker={isWorker}
           isManager={isManager}
@@ -280,6 +306,7 @@ export default function LogisticsPage() {
           onFilterChange={handleFilterChange}
           onRefresh={handleRefresh}
           onConfirm={handleConfirm}
+          onWarehouseComandaClick={handleWarehouseComandaClick}
           updating={updating}
           filterRole={parseRoleForFilters(role)}
         />

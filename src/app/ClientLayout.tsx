@@ -20,6 +20,7 @@ import { resolveModuleMenuHref } from '@/lib/moduleMenuNavigation'
 import { FiltersProvider } from '@/context/FiltersContext'
 import FilterSlideOver from '@/components/ui/filter-slide-over'
 import PWARegister from '@/components/PWARegister'
+import DocumentTitle from '@/components/DocumentTitle'
 import useSWR from 'swr'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -35,6 +36,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     <Providers>
       <TooltipProvider>
         <FiltersProvider>
+          <DocumentTitle />
           <InnerLayout>{children}</InnerLayout>
           <FilterSlideOver />
           <PWARegister />

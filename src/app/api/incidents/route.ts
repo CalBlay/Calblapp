@@ -11,7 +11,7 @@ import {
 } from '@/lib/maintenanceNotifications'
 import { notifyMarketingManagersFor9xxIncident } from '@/lib/incidentNotifications'
 import { canPostIncident } from '@/lib/incidentPolicy'
-import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
+import { canViewIncidentsModule } from '@/lib/server/incidentsApiAuth'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { normalizeRole } from '@/lib/roles'
 import { isIncidentCategoryGroup2xx } from '@/lib/incidentTypology'
@@ -560,9 +560,6 @@ export async function POST(req: Request) {
  * ----------------------------------------------------- */
 export async function GET(req: Request) {
   try {
-    const auth = await requireIncidentsModuleView();
-    if (!auth.ok) return auth.res;
-
     const { searchParams } = new URL(req.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
@@ -579,6 +576,21 @@ export async function GET(req: Request) {
     );
     const lightList =
       searchParams.get("light") === "1" || searchParams.get("light") === "true";
+
+    const session = await getServerSession(authOptions);
+    const user = session?.user as
+      | { id?: string; role?: string; department?: string; name?: string; commercialName?: string }
+      | undefined;
+    if (!user?.id) {
+      return NextResponse.json({ error: "No autenticat" }, { status: 401 });
+    }
+
+    const accessUser = { ...user, id: String(user.id) };
+    const canViewModule = await canViewIncidentsModule(accessUser);
+    const canViewEventScopedIncidents = Boolean(eventId) && canPostIncident(accessUser);
+    if (!canViewModule && !canViewEventScopedIncidents) {
+      return NextResponse.json({ error: "Sense permisos" }, { status: 403 });
+    }
 
     // Amb rang de dates: filtre i ordre per **data de l'esdeveniment** (reunió setmanal).
     // Sense rang: ordre per creació (tauler general).
