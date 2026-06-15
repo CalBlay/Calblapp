@@ -33,12 +33,13 @@ function LoginInner() {
     const username = user.trim()
     const password = pass
 
-    let res: Awaited<ReturnType<typeof signIn>>
+    let res: Awaited<ReturnType<typeof signIn>> | null = null
     try {
       res = await signIn('credentials', {
         redirect: false,
         username,
         password,
+        callbackUrl,
       })
     } catch (err) {
       console.error('[AUTH] signIn exception', err)
@@ -47,9 +48,18 @@ function LoginInner() {
       return
     }
 
-    // NextAuth v4: cal comprovar `ok`; a vegades `error` ve buit però `ok === false`.
-    if (!res || res.ok === false) {
-      const rawError = (res?.error as string | undefined) || ''
+    if (!res || typeof res !== 'object') {
+      console.error('[AUTH] signIn resposta buida o invàlida', res)
+      setLoading(false)
+      setError(
+        'El servidor d’autenticació no ha respost. Reinicieu `npm run dev` i comproveu que NEXTAUTH_SECRET està definit a .env.local.'
+      )
+      return
+    }
+
+    // NextAuth v4: només continuar quan `ok === true`.
+    if (res.ok !== true) {
+      const rawError = (res.error as string | undefined) || ''
       const isCreds =
         rawError === 'CredentialsSignin' ||
         rawError === 'credentials' ||
@@ -71,12 +81,7 @@ function LoginInner() {
             : 'No s’ha pogut iniciar sessió. Comproveu usuari i contrasenya o torneu a provar.'
       }
 
-      console.error('[AUTH] signIn failed', {
-        ok: res?.ok,
-        status: res?.status,
-        error: res?.error,
-        url: res?.url,
-      })
+      console.error('[AUTH] signIn failed', JSON.stringify(res))
       setLoading(false)
       setError(friendly)
       return

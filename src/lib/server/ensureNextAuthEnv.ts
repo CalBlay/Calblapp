@@ -9,7 +9,10 @@ export function ensureNextAuthEnv() {
     configured.includes('calblapp')
 
   if (isLocalDev) {
-    process.env.NEXTAUTH_URL = 'http://localhost:3000'
+    const port = String(process.env.PORT || '3000').trim() || '3000'
+    const localUrl = `http://localhost:${port}`
+    process.env.NEXTAUTH_URL = localUrl
+    process.env.AUTH_URL = localUrl
   }
 
   if (!process.env.NEXTAUTH_SECRET?.trim()) {

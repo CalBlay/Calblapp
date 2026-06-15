@@ -3,7 +3,6 @@ import type { AdapterUser } from 'next-auth/adapters'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import type { JWT } from 'next-auth/jwt'
 import { normalizeRole } from '@/lib/roles'
-import { resolveRobaPersonnelLinkForUser } from '@/lib/roba-personal/resolvePersonnelLink'
 import { verifyPasswordWithMigration } from '@/lib/server/passwords'
 import { ensureNextAuthEnv } from '@/lib/server/ensureNextAuthEnv'
 
@@ -78,7 +77,13 @@ export const authOptions: NextAuthOptions = {
             const passDoc = (data.password || '').toString().trim()
             if (!passDoc) continue
 
-            const passwordCheck = await verifyPasswordWithMigration(passInput, passDoc)
+            let passwordCheck: { ok: boolean }
+            try {
+              passwordCheck = await verifyPasswordWithMigration(passInput, passDoc)
+            } catch (passErr) {
+              console.error('[AUTH] Error verificant contrasenya per usuari', doc.id, passErr)
+              continue
+            }
             if (!passwordCheck.ok) continue
 
             const mergeFields: Record<string, unknown> = {}
@@ -109,7 +114,11 @@ export const authOptions: NextAuthOptions = {
             }
           }
         } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
           console.error('[AUTH] Error inesperat a authorize:', err)
+          if (message.includes('Missing Firebase Admin env vars')) {
+            throw new Error('Configuration')
+          }
           return null
         }
 
@@ -159,6 +168,9 @@ export const authOptions: NextAuthOptions = {
       if (uid && !token.robaPersonnelLinkResolved) {
         token.robaPersonnelLinkResolved = true
         try {
+          const { resolveRobaPersonnelLinkForUser } = await import(
+            '@/lib/roba-personal/resolvePersonnelLink'
+          )
           const link = await resolveRobaPersonnelLinkForUser(uid)
           token.robaLinkedPersonnelId = link?.personnelId ?? null
           token.robaWorkerDeptNorm = link?.workerDeptNorm ?? null

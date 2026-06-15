@@ -267,6 +267,11 @@ export const MODULES: ModuleDef[] = [
         path: '/menu/settings/articles',
         roles: ['admin', 'direccio'],
       },
+      {
+        label: 'Serveis',
+        path: '/menu/settings/serveis',
+        roles: ['admin', 'direccio'],
+      },
     ],
   },
 

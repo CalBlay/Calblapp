@@ -222,6 +222,15 @@ export async function GET() {
     }
   }
 
+  // Settings: edició al pare implica edició als submòduls (llevat de deny explícit)
+  if (edit['/menu/settings'] === true) {
+    const settingsMod = MODULES.find((m) => m.path === '/menu/settings')
+    for (const sub of settingsMod?.submodules || []) {
+      if (effectFor(assignment, PERM.edit(sub.path)) === 'deny') continue
+      edit[sub.path] = true
+    }
+  }
+
   // Edició al calendari implica crear/editar manuals i adjuntar (llevat de deny explícit)
   if (edit['/menu/calendar'] === true) {
     for (const action of CALENDAR_EDIT_IMPLIED_ACTIONS) {

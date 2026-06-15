@@ -91,6 +91,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     permisos: 'Permisos',
     magatzems: 'Magatzems',
     articles: 'Articles comanda',
+    serveis: 'Serveis',
   }
 
   const subKey = subLabels[subsubmodule] ? subsubmodule : submodule

@@ -3,6 +3,7 @@
  * A denied parent must not block a child path explicitly allowed via overrides.
  */
 const ALWAYS_ALLOWED_UI_PATHS = ['/menu/configuracio']
+const SETTINGS_UI_PATH = '/menu/settings'
 
 function isAlwaysAllowedUiPath(pathname: string): boolean {
   const path = String(pathname || '').trim()
@@ -29,5 +30,10 @@ export function isUiPathAllowed(pathname: string, uiMap: Record<string, boolean>
   const matches = matchingUiPaths(path, uiMap)
   if (matches.length === 0) return false
   matches.sort((a, b) => b.length - a.length)
-  return uiMap[matches[0]] === true
+  if (uiMap[matches[0]] === true) return true
+  if (uiMap[matches[0]] === false) return false
+  if (path.startsWith(`${SETTINGS_UI_PATH}/`) && uiMap[SETTINGS_UI_PATH] === true) {
+    return true
+  }
+  return false
 }

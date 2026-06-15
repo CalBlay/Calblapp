@@ -59,6 +59,16 @@ export function buildUiViewMap(
     }
   }
 
+  // Allow explícit al pare → hereta visualització als fills (llevat de deny explícit al fill)
+  for (const mod of MODULES) {
+    if (viewOverrideEffect(assignment, mod.path) !== 'allow') continue
+    map[mod.path] = true
+    for (const sub of mod.submodules || []) {
+      if (viewOverrideEffect(assignment, sub.path) === 'deny') continue
+      map[sub.path] = true
+    }
+  }
+
   // Promoure pare si algun fill és visible (mai si el pare està denegat explícitament)
   for (const mod of MODULES) {
     if (viewOverrideEffect(assignment, mod.path) === 'deny') continue
