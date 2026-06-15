@@ -45,7 +45,7 @@ function VisitVideoItem({
             {doc.title}
           </p>
           <p className="text-xs text-slate-500">
-            {isDriveVideoDoc(doc) ? 'Vídeo a Google Drive' : 'Vídeo de visita comercial'}
+            {isDriveVideoDoc(doc) ? 'Google Drive' : 'Vídeo'}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -73,16 +73,14 @@ function VisitVideoItem({
         </div>
       </div>
       {isDriveVideoDoc(doc) ? (
-        <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-6 text-center">
-          <p className="text-sm font-medium text-slate-800">Vídeo allotjat a Google Drive</p>
-          <p className="mt-1 text-xs text-slate-500">Obre l’enllaç per veure’l a Drive.</p>
+        <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-4 text-center">
           <a
             href={doc.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 inline-flex rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+            className="text-sm font-semibold text-blue-700 hover:underline"
           >
-            Obrir a Google Drive
+            Obrir a Drive
           </a>
         </div>
       ) : (
@@ -187,13 +185,13 @@ export default function EventVisitVideoModal({
             <div className="min-w-0 space-y-2 text-left">
               <DialogTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
                 <Video className="h-5 w-5 text-blue-600" />
-                Vídeo visita comercial
+                Vídeo visita
               </DialogTitle>
-              <DialogDescription className="text-sm text-muted-foreground">
-                {eventSummary
-                  ? `Visita a l'espai · ${eventSummary}`
-                  : "Adjunta un vídeo des del telèfon o un enllaç de Google Drive."}
-              </DialogDescription>
+              {eventSummary ? (
+                <DialogDescription className="truncate text-sm text-muted-foreground">
+                  {eventSummary}
+                </DialogDescription>
+              ) : null}
             </div>
             <Button
               type="button"
@@ -227,7 +225,7 @@ export default function EventVisitVideoModal({
 
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Vídeos guardats
+              Guardats
             </p>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
               {loading && <p className="px-2 py-3 text-sm text-slate-500">Carregant…</p>}
@@ -239,7 +237,7 @@ export default function EventVisitVideoModal({
               ) : null}
               {!loading && !loadError && docs.length === 0 ? (
                 <p className="px-2 py-4 text-center text-sm text-slate-500">
-                  Encara no hi ha vídeos de visita.
+                  Cap vídeo.
                 </p>
               ) : null}
               {docs.length > 0 ? (

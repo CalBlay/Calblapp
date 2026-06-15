@@ -1,13 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Film, Link2 } from 'lucide-react'
+import { Camera, Film, Link2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
 
 type Props = {
-  label?: string
-  hint?: string
   count: number
   maxVideos: number
   previewUrl?: string | null
@@ -21,9 +19,14 @@ type Props = {
   onClearPreview?: () => void
 }
 
+const optionClass = (blocked: boolean) =>
+  `flex min-h-[52px] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border px-2 py-3 text-center text-xs font-semibold transition ${
+    blocked
+      ? 'pointer-events-none border-slate-200 bg-slate-50 text-slate-400 opacity-50'
+      : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+  }`
+
 export default function MobileVideoPicker({
-  label = 'Vídeo de visita',
-  hint = 'Adjunta un fitxer de vídeo o enganxa un enllaç de Google Drive.',
   count,
   maxVideos,
   previewUrl,
@@ -41,11 +44,11 @@ export default function MobileVideoPicker({
   const atLimit = count >= maxVideos
   const blocked = atLimit || disabled || busy
 
-  const handleChange = (files: FileList | null) => {
+  const pickFile = (files: FileList | null) => {
     void onFilesSelected(files)
   }
 
-  const handleDriveSubmit = () => {
+  const submitDrive = () => {
     const value = driveLink.trim()
     if (!value || !onDriveLinkSubmit) return
     void onDriveLinkSubmit(value)
@@ -53,97 +56,105 @@ export default function MobileVideoPicker({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-sm font-medium text-gray-700">{label}</div>
-          {hint ? <p className="mt-0.5 text-xs text-slate-500">{hint}</p> : null}
-        </div>
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+    <div className="space-y-2">
+      <div className="flex items-center justify-end">
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
           {count}/{maxVideos}
         </span>
       </div>
 
       {!atLimit ? (
-        <div className="space-y-3">
-          <label
-            className={`flex min-h-[56px] cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-4 text-sm font-semibold text-slate-700 transition ${
-              blocked ? 'pointer-events-none opacity-50' : 'hover:border-slate-400 hover:bg-slate-50'
-            }`}
-          >
-            <Film className="h-5 w-5 shrink-0 text-slate-600" aria-hidden />
-            Triar vídeo del telèfon
-            <input
-              type="file"
-              accept="video/*"
-              className="hidden"
-              disabled={blocked}
-              onChange={(e) => {
-                handleChange(e.target.files)
-                e.currentTarget.value = ''
-              }}
-            />
-          </label>
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <label className={optionClass(blocked)}>
+              <Camera className="h-5 w-5 text-emerald-600" aria-hidden />
+              <span>1. Gravar</span>
+              <input
+                type="file"
+                accept="video/*"
+                capture="environment"
+                className="hidden"
+                disabled={blocked}
+                onChange={(e) => {
+                  pickFile(e.target.files)
+                  e.currentTarget.value = ''
+                }}
+              />
+            </label>
+
+            <label className={optionClass(blocked)}>
+              <Film className="h-5 w-5 text-slate-600" aria-hidden />
+              <span>2. Adjuntar fitxer</span>
+              <input
+                type="file"
+                accept="video/*"
+                className="hidden"
+                disabled={blocked}
+                onChange={(e) => {
+                  pickFile(e.target.files)
+                  e.currentTarget.value = ''
+                }}
+              />
+            </label>
+          </div>
 
           {onDriveLinkSubmit ? (
-            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                <Link2 className="h-4 w-4 shrink-0 text-blue-600" aria-hidden />
-                Enllaç de Google Drive
+            <div className="flex gap-2">
+              <div className="flex shrink-0 items-center gap-1 text-xs font-semibold text-slate-700">
+                <Link2 className="h-4 w-4 text-blue-600" aria-hidden />
+                <span className="whitespace-nowrap">3. Google Drive</span>
               </div>
               <input
                 type="url"
                 inputMode="url"
                 value={driveLink}
                 onChange={(e) => setDriveLink(e.target.value)}
-                placeholder="https://drive.google.com/file/d/..."
+                placeholder="Enllaç Google Drive"
                 disabled={blocked}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
               />
               <Button
                 type="button"
                 variant="secondary"
-                className="w-full"
+                size="sm"
+                className="shrink-0 px-3"
                 disabled={blocked || !driveLink.trim()}
-                onClick={handleDriveSubmit}
+                onClick={submitDrive}
               >
-                {linking ? 'Adjuntant enllaç…' : 'Adjuntar enllaç'}
+                {linking ? '…' : 'OK'}
               </Button>
-              <p className="text-xs text-slate-500">
-                El fitxer ha de ser un vídeo compartit (com a mínim «qualsevol amb l’enllaç»).
-              </p>
             </div>
           ) : null}
-        </div>
+        </>
       ) : (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Ja has arribat al màxim de vídeos per aquest esdeveniment.
+          Màxim de vídeos assolit.
         </p>
       )}
 
       {busy ? (
-        <p className="text-sm text-slate-600">
-          {compressing ? 'Comprimint vídeo…' : linking ? 'Adjuntant enllaç…' : 'Pujant vídeo…'}
+        <p className="text-xs text-slate-500">
+          {compressing ? 'Comprimint…' : linking ? 'Adjuntant…' : 'Pujant…'}
         </p>
       ) : null}
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
       {previewUrl ? (
-        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-black">
+        <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-black">
           <TicketAttachmentTile
             url={previewUrl}
-            alt="Previsualització del vídeo"
-            className="max-h-56 w-full object-contain"
+            alt="Previsualització"
+            className="max-h-48 w-full object-contain"
             lazyVideo={false}
           />
           {onClearPreview ? (
             <button
               type="button"
-              className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-1 text-xs font-medium text-white"
+              className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-1 text-xs text-white"
               onClick={onClearPreview}
             >
-              Tancar
+              ×
             </button>
           ) : null}
         </div>
