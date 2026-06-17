@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { typography } from '@/lib/typography'
@@ -35,6 +35,7 @@ type Props = {
   expandedId: string | null
   onExpandedIdChange: (id: string | null) => void
   department: string
+  forceExpanded?: boolean
   onCreatePhase?: (phaseKey: string, phase: UnifiedEvent) => void
   onRefreshDrafts?: () => Promise<unknown>
 }
@@ -48,9 +49,14 @@ export default function QuadrantsEventGroup({
   expandedId,
   onExpandedIdChange,
   department,
+  forceExpanded = false,
   onRefreshDrafts,
 }: Props) {
   const [expanded, setExpanded] = useState(false)
+  const anchorId = useMemo(() => {
+    const base = String(event.eventId || '').split('__')[0] || 'unknown'
+    return `qe-${base}`
+  }, [event.eventId])
   const [confirmLoading, setConfirmLoading] = useState(false)
   const { ready, canViewPath, hasAction } = useUiPermissions()
   const canConfirm =
@@ -189,6 +195,12 @@ export default function QuadrantsEventGroup({
     onExpandedIdChange(null)
   }
 
+  // Auto-open this group when deep-link targets it.
+  useEffect(() => {
+    if (!forceExpanded) return
+    setExpanded(true)
+  }, [forceExpanded])
+
   const handlePhaseClick = (phase: UnifiedEvent) => {
     const draft = phase.draft as { id?: string } | null | undefined
     if (phase.quadrantStatus === 'pending') return
@@ -202,6 +214,7 @@ export default function QuadrantsEventGroup({
 
   return (
     <article
+      id={anchorId}
       className={cn(
         'flex min-w-0 flex-col overflow-hidden rounded-xl border border-l-4 transition-all duration-200',
         blockVisual.accent,

@@ -1,8 +1,9 @@
 // filename: src/app/menu/pissarra/page.tsx
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { startOfWeek, endOfWeek } from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
@@ -16,6 +17,8 @@ import { Button } from '@/components/ui/button'
 import FilterButton from '@/components/ui/filter-button'
 import ExportMenu from '@/components/export/ExportMenu'
 import { useFilters } from '@/context/FiltersContext'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { PERM } from '@/lib/permissionKeys'
 
 type PissarraExportRow = {
   Data: string
@@ -44,25 +47,43 @@ type PissarraExportRow = {
 
 export default function PissarraPage() {
   const { data: session, status } = useSession()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
 
   const role = normalizeRole(session?.user?.role || 'treballador')
   const dept = (session?.user?.department || '').toLowerCase()
-  const defaultMode: 'produccio' | 'logistica' | 'cuina' =
+  const defaultModeFromSession: 'produccio' | 'logistica' | 'cuina' =
     dept === 'cuina' ? 'cuina' : dept === 'logistica' ? 'logistica' : 'produccio'
-  const [mode, setMode] = useState<'produccio' | 'logistica' | 'cuina'>(defaultMode)
-  const [lnFilter, setLnFilter] = useState<string>('__all__')
-  const [commercialFilter, setCommercialFilter] = useState<string>('__all__')
-  const [statusFilter, setStatusFilter] = useState<'__all__' | 'confirmed' | 'draft'>(
-    '__all__'
-  )
+
+  const modeParam = (searchParams.get('mode') || '').toLowerCase()
+  const initialMode: 'produccio' | 'logistica' | 'cuina' =
+    modeParam === 'cuina' || modeParam === 'logistica' || modeParam === 'produccio'
+      ? (modeParam as 'produccio' | 'logistica' | 'cuina')
+      : defaultModeFromSession
+
+  const initialLn = searchParams.get('ln') || '__all__'
+  const initialCommercial = searchParams.get('commercial') || '__all__'
+  const statusParam = (searchParams.get('status') || '').toLowerCase()
+  const initialStatusFilter: '__all__' | 'confirmed' | 'draft' =
+    statusParam === 'confirmed' || statusParam === 'draft' ? statusParam : '__all__'
 
   const now = new Date()
   const defaultWeekStart = startOfWeek(now, { weekStartsOn: 1 })
   const defaultWeekEnd = endOfWeek(now, { weekStartsOn: 1 })
 
+  const initialStartISO = searchParams.get('start') || defaultWeekStart.toISOString().slice(0, 10)
+  const initialEndISO = searchParams.get('end') || defaultWeekEnd.toISOString().slice(0, 10)
+
+  const [mode, setMode] = useState<'produccio' | 'logistica' | 'cuina'>(initialMode)
+  const [lnFilter, setLnFilter] = useState<string>(initialLn)
+  const [commercialFilter, setCommercialFilter] = useState<string>(initialCommercial)
+  const [statusFilter, setStatusFilter] = useState<'__all__' | 'confirmed' | 'draft'>(
+    initialStatusFilter
+  )
   const [week, setWeek] = useState({
-    startISO: defaultWeekStart.toISOString().slice(0, 10),
-    endISO: defaultWeekEnd.toISOString().slice(0, 10),
+    startISO: initialStartISO,
+    endISO: initialEndISO,
   })
 
   const { flat, loading, error, canEdit, updateField } = usePissarra(
@@ -74,6 +95,50 @@ export default function PissarraPage() {
   )
 
   const { setContent, setOpen } = useFilters()
+
+  const { ready: permsReady, canViewPath, hasAction } = useUiPermissions()
+  const hasQuadrantsEditAction =
+    permsReady &&
+    canViewPath('/menu/quadrants') &&
+    (hasAction(PERM.action('/menu/quadrants', 'save')) ||
+      hasAction(PERM.action('/menu/quadrants', 'draft:save')))
+
+  const normalizedDept = (dept || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+
+  const userQuadrantsDepartment: 'serveis' | 'logistica' | 'cuina' | null =
+    normalizedDept === 'serveis'
+      ? 'serveis'
+      : normalizedDept === 'logistica'
+      ? 'logistica'
+      : normalizedDept === 'cuina' ||
+        normalizedDept === 'cuina central' ||
+        normalizedDept === 'cuina-central' ||
+        normalizedDept === 'cuinacentral'
+      ? 'cuina'
+      : null
+
+  const canOpenQuadrants = hasQuadrantsEditAction && Boolean(userQuadrantsDepartment)
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams.toString())
+    next.set('start', week.startISO)
+    next.set('end', week.endISO)
+    next.set('mode', mode)
+    next.set('ln', lnFilter || '__all__')
+    next.set('commercial', commercialFilter || '__all__')
+    next.set('status', statusFilter || '__all__')
+
+    const nextQs = next.toString()
+    const currentQs = searchParams.toString()
+    if (nextQs !== currentQs) {
+      router.replace(`${pathname}?${nextQs}`)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [week.startISO, week.endISO, mode, lnFilter, commercialFilter, statusFilter, pathname, router])
 
   const lnOptions = useMemo(
     () => Array.from(new Set(flat.map((e) => e.LN).filter(Boolean))).sort(),
@@ -508,7 +573,11 @@ export default function PissarraPage() {
               canEdit={canEdit}
               onUpdate={updateField}
               weekStart={new Date(week.startISO)}
+              weekStartISO={week.startISO}
+              weekEndISO={week.endISO}
               variant={mode}
+              canOpenQuadrants={canOpenQuadrants}
+              quadrantsDepartmentOverride={userQuadrantsDepartment}
             />
           </div>
         )}

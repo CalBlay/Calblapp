@@ -2,6 +2,7 @@
 'use client'
 
 import type { PissarraItem } from '@/hooks/usePissarra'
+import Link from 'next/link'
 import {
   MapPin,
   Clock,
@@ -14,6 +15,8 @@ import {
 
 type Props = {
   item: PissarraItem
+  canOpenQuadrants?: boolean
+  quadrantsHref?: string
 }
 
 const formatEventTitle = (title?: string) => {
@@ -23,7 +26,11 @@ const formatEventTitle = (title?: string) => {
   return trimmed || '-'
 }
 
-export default function PissarraCardCuina({ item }: Props) {
+export default function PissarraCardCuina({
+  item,
+  canOpenQuadrants = false,
+  quadrantsHref,
+}: Props) {
   const status = (item.status || '').toLowerCase()
   const statusDot =
     status === 'confirmed'
@@ -103,8 +110,20 @@ export default function PissarraCardCuina({ item }: Props) {
       <div className="flex flex-col gap-1 mb-2">
         <div className="flex items-center gap-2">
           <span className={`h-2.5 w-2.5 rounded-full ${statusDot}`} />
-          <div className="font-semibold text-gray-800 text-[13px] truncate">
-            {formatEventTitle(item.eventName)}
+          <div className="font-semibold text-gray-800 text-[13px] truncate min-w-0">
+            {canOpenQuadrants && quadrantsHref ? (
+              <Link
+                href={quadrantsHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="cursor-pointer hover:underline"
+                title="Obre el quadrant (nova pestanya)"
+              >
+                {formatEventTitle(item.eventName)}
+              </Link>
+            ) : (
+              formatEventTitle(item.eventName)
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 text-gray-700">

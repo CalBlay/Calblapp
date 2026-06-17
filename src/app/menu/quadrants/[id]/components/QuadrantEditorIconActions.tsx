@@ -80,44 +80,52 @@ export default function QuadrantEditorIconActions({
     : null
 
   return (
-    <div className="flex items-center gap-1.5">
-      <Button
-        type="button"
-        size="sm"
-        className="h-9 w-9 rounded-full bg-red-600 p-0 text-white shadow hover:bg-red-700"
-        onClick={() => void onDelete()}
-        disabled={deleteDisabled}
-        title={hasPersistedDraft ? 'Eliminar borrador' : 'Tancar sense desar'}
-        aria-label={hasPersistedDraft ? 'Eliminar borrador' : 'Tancar sense desar'}
-      >
-        {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-      </Button>
-
-      {showManualLikeButtons ? (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <Button
           type="button"
           size="sm"
-          className="h-9 w-9 rounded-full bg-emerald-500 p-0 text-white shadow hover:bg-emerald-600"
-          onClick={() => onSave(true)}
-          disabled={confirmDisabled}
-          title={confirmDisabledReason || 'Confirmar quadrant'}
-          aria-label="Confirmar quadrant"
+          className="h-9 w-9 rounded-full bg-red-600 p-0 text-white shadow hover:bg-red-700"
+          onClick={() => void onDelete()}
+          disabled={deleteDisabled}
+          title={hasPersistedDraft ? 'Eliminar borrador' : 'Tancar sense desar'}
+          aria-label={hasPersistedDraft ? 'Eliminar borrador' : 'Tancar sense desar'}
         >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
         </Button>
-      ) : null}
 
-      <Button
-        type="button"
-        size="sm"
-        className="h-9 w-9 rounded-full bg-blue-600 p-0 text-white shadow hover:bg-blue-700"
-        onClick={() => onSave(false)}
-        disabled={saveDisabled}
-        title={saveDisabledReason || (showManualLikeButtons ? 'Desar borrador' : 'Auto generar i desa')}
-        aria-label={showManualLikeButtons ? 'Desar borrador' : 'Auto generar i desa'}
-      >
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-      </Button>
+        {showManualLikeButtons ? (
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 w-9 rounded-full bg-emerald-500 p-0 text-white shadow hover:bg-emerald-600"
+            onClick={() => onSave(true)}
+            disabled={confirmDisabled}
+            title={confirmDisabledReason || 'Confirmar quadrant'}
+            aria-label="Confirmar quadrant"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+          </Button>
+        ) : null}
+
+        <Button
+          type="button"
+          size="sm"
+          className="h-9 w-9 rounded-full bg-blue-600 p-0 text-white shadow hover:bg-blue-700"
+          onClick={() => onSave(false)}
+          disabled={saveDisabled}
+          title={saveDisabledReason || (showManualLikeButtons ? 'Desar borrador' : 'Auto generar i desa')}
+          aria-label={showManualLikeButtons ? 'Desar borrador' : 'Auto generar i desa'}
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        </Button>
+      </div>
+
+      {ready && !canSave ? (
+        <span className="text-[11px] font-semibold text-amber-700">
+          Sense permís per desar
+        </span>
+      ) : null}
     </div>
   )
 }

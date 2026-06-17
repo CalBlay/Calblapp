@@ -16,6 +16,7 @@ type Props = {
   expandedId: string | null
   onExpandedIdChange: (id: string | null) => void
   department: string
+  openEventId?: string | null
   onCreatePhase?: (phaseKey: string, phase: UnifiedEvent) => void
   onRefreshDrafts?: () => Promise<unknown>
 }
@@ -41,16 +42,31 @@ export default function QuadrantsTable({
   expandedId,
   onExpandedIdChange,
   department,
+  openEventId,
   onCreatePhase,
   onRefreshDrafts,
 }: Props) {
+  const visibleDays = React.useMemo(() => {
+    if (!openEventId) return groupedDays
+    return groupedDays
+      .map(({ day, events, totalPax }) => {
+        const filtered = events.filter(
+          (ev) => String(ev.eventId || '').split('__')[0] === openEventId
+        )
+        if (filtered.length === 0) return null
+        const pax = filtered.reduce((sum, ev) => sum + (Number(ev.numPax || 0) || 0), 0)
+        return { day, events: filtered, totalPax: pax || totalPax }
+      })
+      .filter(Boolean) as GroupedQuadrantDay[]
+  }, [groupedDays, openEventId])
+
   return (
     <section
       id="quadrants-print-root"
       className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:rounded-xl"
     >
       <div className="space-y-6 p-3 sm:space-y-7 sm:p-4 lg:space-y-6 lg:p-4">
-        {groupedDays.map(({ day, events, totalPax }) => (
+        {visibleDays.map(({ day, events, totalPax }) => (
           <section
             key={day || 'sense-data'}
             className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3 shadow-inner sm:p-4"
@@ -82,6 +98,7 @@ export default function QuadrantsTable({
                   expandedId={expandedId}
                   onExpandedIdChange={onExpandedIdChange}
                   department={department}
+                  forceExpanded={Boolean(openEventId && String(event.eventId || '').split('__')[0] === openEventId)}
                   onCreatePhase={onCreatePhase}
                   onRefreshDrafts={onRefreshDrafts}
                 />

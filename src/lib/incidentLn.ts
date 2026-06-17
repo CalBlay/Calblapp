@@ -24,5 +24,13 @@ export function incidentMatchesLnFilter(
 ): boolean {
   const selected = String(filterLn || 'all').trim()
   if (!selected || selected === 'all') return true
-  return normalizeIncidentLn(incidentLn) === normalizeIncidentLn(selected)
+
+  const parts = selected
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (parts.length === 0) return true
+
+  const normalizedIncident = normalizeIncidentLn(incidentLn)
+  return parts.some((part) => normalizeIncidentLn(part) === normalizedIncident)
 }

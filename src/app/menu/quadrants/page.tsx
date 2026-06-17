@@ -6,6 +6,7 @@ import Link from 'next/link'
 import useSWR from 'swr'
 import { startOfWeek, endOfWeek, format } from 'date-fns'
 import { useSession } from 'next-auth/react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { CalendarDays } from 'lucide-react'
@@ -36,6 +37,7 @@ import type { Draft } from './drafts/page'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import { QUADRANTS_ACTION, QUADRANTS_UI_PATH } from '@/lib/quadrantsPermissions'
+import { buildPendingExpandKey } from '@/lib/buildPendingQuadrantDraft'
 
 type SessionDepartmentSource = {
   department?: string
@@ -75,6 +77,11 @@ const SERVICE_PHASE_OPTIONS = [
 
 const CUINA_PHASE_OPTIONS = [{ key: 'event', label: 'Event' }]
 
+function parseIsoDateParam(value: string | null): string | null {
+  const s = String(value || '').trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null
+}
+
 type DashboardResponse = {
   events?: QuadrantEvent[]
   quadrants?: Draft[]
@@ -91,12 +98,17 @@ const fetchDashboard = async (url: string): Promise<DashboardResponse> => {
 
 
 export default function QuadrantsPage() {
-  const start = startOfWeek(new Date(), { weekStartsOn: 1 })
-  const end = endOfWeek(new Date(), { weekStartsOn: 1 })
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const defaultWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
+  const defaultWeekEnd = endOfWeek(new Date(), { weekStartsOn: 1 })
+  const urlStart = parseIsoDateParam(searchParams.get('start'))
+  const urlEnd = parseIsoDateParam(searchParams.get('end'))
 
   const [filters, setFilters] = useState<FiltersState>(() => ({
-    start: format(start, 'yyyy-MM-dd'),
-    end: format(end, 'yyyy-MM-dd'),
+    start: urlStart || format(defaultWeekStart, 'yyyy-MM-dd'),
+    end: urlEnd || format(defaultWeekEnd, 'yyyy-MM-dd'),
     mode: 'week',
     ln: 'all',
     responsable: '__all__',
@@ -112,14 +124,21 @@ export default function QuadrantsPage() {
     !permsReady ||
     hasAction(PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT))
   const sessionUser = session?.user as SessionDepartmentSource | undefined
-  const department =
-    (
-      sessionUser?.department ||
-      sessionUser?.dept ||
-      'serveis'
-    )
-      .toString()
-      .toLowerCase()
+  const qsDepartment = (searchParams.get('department') || '').toLowerCase().trim()
+  const department = (qsDepartment === 'serveis' || qsDepartment === 'cuina' || qsDepartment === 'logistica'
+    ? qsDepartment
+    : (
+        sessionUser?.department ||
+        sessionUser?.dept ||
+        'serveis'
+      )
+        .toString()
+        .toLowerCase()
+  )
+  const openEventId = useMemo(() => {
+    const raw = String(searchParams.get('openEventId') || '').trim()
+    return raw ? raw.split('__')[0] : null
+  }, [searchParams])
   const isCuinaDepartment = department === 'cuina'
   const [hideCuinaMinorServices, setHideCuinaMinorServices] = useState(
     isCuinaDepartment
@@ -219,6 +238,39 @@ export default function QuadrantsPage() {
     () => groupQuadrantsByDayAndEvent(visibleFilteredEvents),
     [visibleFilteredEvents]
   )
+
+  // Deep-link: if openEventId is provided, auto-select a sensible expandedId
+  useEffect(() => {
+    if (!openEventId) return
+    if (expandedId) return
+    if (visibleFilteredEvents.length === 0) return
+
+    const phases = visibleFilteredEvents.filter(
+      (ev) => String(ev.eventId || '').split('__')[0] === openEventId
+    )
+    if (phases.length === 0) return
+
+    // Prefer a managed draft (draft/confirmed) if present; otherwise open first pending phase.
+    const managed = phases.find((p) => p.quadrantStatus !== 'pending' && (p.draft as { id?: string } | null | undefined)?.id)
+    const managedDraftId = (managed?.draft as { id?: string } | undefined)?.id
+    if (managedDraftId) {
+      setExpandedId(managedDraftId)
+      return
+    }
+    const pending = phases.find((p) => p.quadrantStatus === 'pending')
+    if (pending) {
+      setExpandedId(buildPendingExpandKey(pending))
+    }
+  }, [openEventId, expandedId, visibleFilteredEvents])
+
+  // Ensure the selected event is visible when deep-linking (scroll to anchor).
+  useEffect(() => {
+    if (!openEventId) return
+    const id = `qe-${openEventId}`
+    const el = document.getElementById(id)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [openEventId, groupedDays.length])
 
   const visibleCounts = useMemo(() => {
     let pending = 0
@@ -421,6 +473,20 @@ export default function QuadrantsPage() {
     })
   }
 
+  const clearAllFilters = useCallback(() => {
+    const next = new URLSearchParams(searchParams.toString())
+    next.delete('openEventId')
+    next.delete('returnTo')
+    next.delete('phaseKey')
+    next.delete('phaseDate')
+    next.delete('start')
+    next.delete('end')
+    setExpandedId(null)
+    resetFilters()
+    const qs = next.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname)
+  }, [pathname, router, searchParams])
+
   const toggleStatusFilter = (status: 'pending' | 'draft' | 'confirmed') => {
     setFilters((prev) => ({
       ...prev,
@@ -544,6 +610,9 @@ export default function QuadrantsPage() {
           value={filters.ln || 'all'}
           onChange={(ln) => setFilters((prev) => ({ ...prev, ln }))}
         />
+        <span title="Neteja filtres" className="shrink-0">
+          <ResetFilterButton onClick={clearAllFilters} />
+        </span>
         <div className="min-w-[8px] flex-1" />
         <FilterButton onClick={openFiltersPanel} />
       </CorporateFiltersShell>
@@ -641,6 +710,7 @@ export default function QuadrantsPage() {
           expandedId={expandedId}
           onExpandedIdChange={setExpandedId}
           department={department}
+          openEventId={openEventId}
           onRefreshDrafts={reload}
         />
       )}

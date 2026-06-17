@@ -8,6 +8,7 @@ import PissarraCard from "./PissarraCard"
 import PissarraCardLogistica from "./PissarraCardLogistica"
 import PissarraCardCuina from "./PissarraCardCuina"
 import type { PissarraItem } from "@/hooks/usePissarra"
+import { useMemo } from "react"
 
 type Variant = "produccio" | "logistica" | "cuina"
 
@@ -16,7 +17,11 @@ type Props = {
   canEdit: boolean
   onUpdate: (id: string, payload: Partial<PissarraItem>) => Promise<void>
   weekStart: Date
+  weekStartISO: string
+  weekEndISO: string
   variant?: Variant
+  canOpenQuadrants?: boolean
+  quadrantsDepartmentOverride?: 'serveis' | 'logistica' | 'cuina' | null
 }
 
 export default function PissarraList({
@@ -24,11 +29,31 @@ export default function PissarraList({
   canEdit,
   onUpdate,
   weekStart,
+  weekStartISO,
+  weekEndISO,
   variant = "produccio",
+  canOpenQuadrants = false,
+  quadrantsDepartmentOverride = null,
 }: Props) {
   const start = startOfWeek(weekStart, { weekStartsOn: 1 })
   const end = endOfWeek(weekStart, { weekStartsOn: 1 })
   const days = eachDayOfInterval({ start, end })
+
+  const quadrantsDepartment = useMemo(() => {
+    if (quadrantsDepartmentOverride) return quadrantsDepartmentOverride
+    if (variant === "cuina") return "cuina"
+    if (variant === "logistica") return "logistica"
+    return "serveis"
+  }, [quadrantsDepartmentOverride, variant])
+
+  const buildQuadrantsHref = (item: PissarraItem) => {
+    const params = new URLSearchParams()
+    params.set("department", quadrantsDepartment)
+    params.set("start", weekStartISO)
+    params.set("end", weekEndISO)
+    params.set("openEventId", String(item.id || "").trim().split("__")[0])
+    return `/menu/quadrants?${params.toString()}`
+  }
 
   return (
     <div
@@ -77,11 +102,25 @@ export default function PissarraList({
                 events.map((ev) => (
                   <MotionDiv key={ev.id} layout>
                     {variant === "logistica" ? (
-                      <PissarraCardLogistica item={ev} />
+                      <PissarraCardLogistica
+                        item={ev}
+                        canOpenQuadrants={canOpenQuadrants}
+                        quadrantsHref={buildQuadrantsHref(ev)}
+                      />
                     ) : variant === "cuina" ? (
-                      <PissarraCardCuina item={ev} />
+                      <PissarraCardCuina
+                        item={ev}
+                        canOpenQuadrants={canOpenQuadrants}
+                        quadrantsHref={buildQuadrantsHref(ev)}
+                      />
                     ) : (
-                      <PissarraCard item={ev} canEdit={canEdit} onUpdate={onUpdate} />
+                      <PissarraCard
+                        item={ev}
+                        canEdit={canEdit}
+                        onUpdate={onUpdate}
+                        canOpenQuadrants={canOpenQuadrants}
+                        quadrantsHref={buildQuadrantsHref(ev)}
+                      />
                     )}
                   </MotionDiv>
                 ))

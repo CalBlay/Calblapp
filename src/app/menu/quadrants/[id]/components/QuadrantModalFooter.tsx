@@ -127,6 +127,11 @@ export default function QuadrantModalFooter({
                 : 'Auto generar i desa'}
           </Button>
         </DialogFooter>
+        {ready && !canSave ? (
+          <p className="mt-2 text-[11px] text-amber-700">
+            Sense permís per desar quadrants.
+          </p>
+        ) : null}
         {!canAutoGen ? (
           <p className="mt-2 text-[11px] text-slate-500">
             {mode === 'manual'

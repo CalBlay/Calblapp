@@ -38,8 +38,20 @@ function attachConnectionGuards(realtime: Ably.Realtime) {
 }
 
 function isBenignAblyCloseError(error: unknown) {
-  const message = (error instanceof Error ? error.message : String(error || '')).toLowerCase()
-  return message.includes('connection closed') || message.includes('connection is closed')
+  const message =
+    (error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error && 'message' in error
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        String((error as any).message || '')
+      : String(error || '')
+    ).toLowerCase()
+  return (
+    message.includes('connection closed') ||
+    message.includes('connection is closed') ||
+    message.includes('closed') ||
+    message.includes('closing')
+  )
 }
 
 export function resetAblyClient() {
@@ -51,14 +63,22 @@ export function resetAblyClient() {
 
   detachConnectionGuards(current)
 
-  try {
-    const state = current.connection.state
-    if (state === 'closed' || state === 'closing') return
-    current.close()
-  } catch (error) {
+  const safeLog = (error: unknown) => {
     if (!isBenignAblyCloseError(error)) {
       console.warn('[ably] close failed', error)
     }
+  }
+
+  try {
+    const state = current.connection.state
+    if (state === 'closed' || state === 'closing') return
+
+    const maybePromise = current.close()
+    if (maybePromise && typeof (maybePromise as Promise<unknown>).catch === 'function') {
+      ;(maybePromise as Promise<unknown>).catch(safeLog)
+    }
+  } catch (error) {
+    safeLog(error)
   }
 }
 
