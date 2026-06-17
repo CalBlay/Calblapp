@@ -12,6 +12,7 @@ export type { LogisticsEventPrepRow, LogisticsWarehousePrepRow }
 export function useLogisticsData(dateRange?: { start: string; end: string } | null) {
   const { data: session } = useSession()
   const role = (session?.user?.role || '').toLowerCase()
+  const filterByPreparation = role === 'treballador'
 
   const [events, setEvents] = useState<LogisticsEventPrepRow[]>([])
   const [warehouseTasks, setWarehouseTasks] = useState<LogisticsWarehousePrepRow[]>([])
@@ -27,7 +28,8 @@ export function useLogisticsData(dateRange?: { start: string; end: string } | nu
         return
       }
 
-      const url = `/api/logistics?start=${dateRange.start}&end=${dateRange.end}`
+      const prepQuery = filterByPreparation ? '&filterByPreparation=1' : ''
+      const url = `/api/logistics?start=${dateRange.start}&end=${dateRange.end}${prepQuery}`
       const res = await fetch(url, { cache: 'no-store' })
 
       if (!res.ok) {
@@ -72,7 +74,7 @@ export function useLogisticsData(dateRange?: { start: string; end: string } | nu
     } finally {
       setLoading(false)
     }
-  }, [role, dateRange?.start, dateRange?.end])
+  }, [dateRange?.start, dateRange?.end, filterByPreparation, role])
 
   useEffect(() => {
     loadData()

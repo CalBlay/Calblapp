@@ -333,6 +333,9 @@ function WorkerGroupedView({
                       <div className="mt-1 text-sm font-semibold leading-snug text-slate-900">
                         {ev.NomEvent || 'Sense nom'}
                       </div>
+                      <div className="mt-1 text-xs font-medium text-slate-500">
+                        Codi: {ev.EventCode || '-'}
+                      </div>
                       <div className="mt-1 text-xs text-slate-600 line-clamp-2">
                         {ev.Ubicacio || 'Sense ubicació'}
                       </div>
@@ -351,6 +354,7 @@ function WorkerGroupedView({
                     <thead className="bg-slate-100 text-slate-700">
                       <tr>
                         <th className="w-24 px-3 py-2 text-left">Hora prep.</th>
+                        <th className="w-28 px-3 py-2 text-left">Codi event</th>
                         <th className="px-3 py-2 text-left">Nom esdeveniment</th>
                         <th className="w-16 px-3 py-2 text-left">Pax</th>
                         <th className="px-3 py-2 text-left">Ubicació</th>
@@ -361,6 +365,7 @@ function WorkerGroupedView({
                       {orderedEvents.map((ev) => (
                         <tr key={ev.id} className="border-t border-slate-200">
                           <td className="px-3 py-2 text-slate-700">{ev.PreparacioHora || '--:--'}</td>
+                          <td className="px-3 py-2 text-slate-700">{ev.EventCode || '-'}</td>
                           <td className="px-3 py-2 font-semibold text-slate-800">
                             {ev.NomEvent || 'Sense nom'}
                           </td>
@@ -429,6 +434,7 @@ function EditableTable({
           <tr className="bg-gray-100 text-left">
             <th className="sticky left-0 z-30 bg-white p-2 shadow-sm">Data preparació</th>
             <th className="p-2">Hora preparació</th>
+            <th className="p-2">Codi event</th>
             <th className="p-2">Nom</th>
             <th className="p-2">Pax</th>
             <th className="p-2">Ubicació</th>
@@ -439,7 +445,7 @@ function EditableTable({
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={6} className="py-6 text-center text-gray-400">
+              <td colSpan={7} className="py-6 text-center text-gray-400">
                 Carregant dades...
               </td>
             </tr>
@@ -494,6 +500,7 @@ function EditableTable({
                     )}
                   </td>
 
+                  <td className="p-2">{ev.EventCode || '-'}</td>
                   <td className="p-2">{ev.NomEvent}</td>
                   <td className="p-2">{ev.NumPax ?? '-'}</td>
                   <td className="p-2">{ev.Ubicacio}</td>
@@ -503,7 +510,7 @@ function EditableTable({
             })
           ) : !hasWarehouseTasks ? (
             <tr>
-              <td colSpan={6} className="py-6 text-center text-gray-400">
+              <td colSpan={7} className="py-6 text-center text-gray-400">
                 No hi ha dades disponibles.
               </td>
             </tr>

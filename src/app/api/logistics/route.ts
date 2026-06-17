@@ -11,6 +11,10 @@ const ALLOWED_ROLES = new Set(['admin', 'direccio', 'cap', 'treballador'])
 
 type RawEvent = {
   code?: string
+  Code?: string
+  C_digo?: string
+  codi?: string
+  Codi?: string
   NomEvent?: string
   eventName?: string
   Ubicacio?: string
@@ -26,6 +30,7 @@ type RawEvent = {
 
 type LogisticsEvent = {
   id: string
+  EventCode: string
   NomEvent: string
   Ubicacio: string
   NumPax: number
@@ -50,6 +55,15 @@ const formatEventName = (value?: string | null) => {
   const raw = String(value || '').trim()
   if (!raw) return ''
   return raw.split('/')[0].trim()
+}
+
+const firstEventCode = (event: RawEvent) => {
+  const candidates = [event.code, event.Code, event.C_digo, event.codi, event.Codi]
+  for (const candidate of candidates) {
+    const value = String(candidate ?? '').trim()
+    if (value) return value
+  }
+  return ''
 }
 
 const normalizeDataInici = (value: unknown) => {
@@ -113,7 +127,32 @@ async function queryByDateRange(start: string, end: string) {
     .get()
 }
 
-async function loadStageVerdRange(start: string, end: string) {
+async function queryByPreparationRange(start: string, end: string) {
+  return db
+    .collection('stage_verd')
+    .where('PreparacioData', '>=', start)
+    .where('PreparacioData', '<=', end)
+    .get()
+}
+
+async function loadStageVerdRange(start: string, end: string, filterByPreparation: boolean) {
+  if (filterByPreparation) {
+    const preparationSnap = await Promise.allSettled([queryByPreparationRange(start, end)])
+    const preparationDocs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
+
+    if (preparationSnap[0].status === 'fulfilled') {
+      preparationSnap[0].value.forEach((doc) => preparationDocs.set(doc.id, doc))
+    }
+
+    if (preparationDocs.size > 0) return Array.from(preparationDocs.values())
+
+    const fullSnap = await db.collection('stage_verd').get()
+    return fullSnap.docs.filter((doc) => {
+      const ev = doc.data() as RawEvent
+      return isPreparationDateInRange(ev.PreparacioData, start, end)
+    })
+  }
+
   const docs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
   const [stringSnap, dateSnap] = await Promise.allSettled([
     queryByStringRange(start, end),
@@ -138,6 +177,11 @@ async function loadStageVerdRange(start: string, end: string) {
   })
 }
 
+function isPreparationDateInRange(preparacioData: string | undefined, start: string, end: string) {
+  const value = String(preparacioData ?? '').trim()
+  return Boolean(value) && isIsoDate(value) && value >= start && value <= end
+}
+
 export async function GET(req: NextRequest) {
   try {
     const auth = await authContext(req)
@@ -146,6 +190,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const start = searchParams.get('start')
     const end = searchParams.get('end')
+    const filterByPreparation = searchParams.get('filterByPreparation') === '1'
 
     if (!isIsoDate(start) || !isIsoDate(end)) {
       return NextResponse.json(
@@ -156,15 +201,24 @@ export async function GET(req: NextRequest) {
 
     const startStr = String(start)
     const endStr = String(end)
-    const docs = await loadStageVerdRange(startStr, endStr)
+    const docs = await loadStageVerdRange(startStr, endStr, filterByPreparation)
     const events: LogisticsEvent[] = []
 
     docs.forEach((doc) => {
       const ev = doc.data() as RawEvent
-      if (!ev.code || String(ev.code).trim() === '') return
+      const eventCode = firstEventCode(ev)
+      if (!eventCode) return
 
       const dataIniciIso = normalizeDataInici(ev.DataInici)
-      if (!dataIniciIso || dataIniciIso < startStr || dataIniciIso > endStr) return
+      const preparationMatches = isPreparationDateInRange(ev.PreparacioData, startStr, endStr)
+
+      if (filterByPreparation) {
+        if (!preparationMatches) return
+      } else if (!dataIniciIso || dataIniciIso < startStr || dataIniciIso > endStr) {
+        return
+      }
+
+      if (!dataIniciIso) return
 
       const dataInici = parseDateOnly(dataIniciIso)
       if (!dataInici) return
@@ -177,6 +231,7 @@ export async function GET(req: NextRequest) {
 
       events.push({
         id: doc.id,
+        EventCode: eventCode,
         NomEvent: formatEventName(ev.NomEvent ?? ev.eventName ?? ''),
         Ubicacio: ev.Ubicacio ?? ev.finca ?? '',
         NumPax: Number(ev.NumPax ?? ev.numPax ?? ev.Pax ?? 0) || 0,

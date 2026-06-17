@@ -63,6 +63,7 @@ function parseRoleForFilters(role: string): 'Admin' | 'Direcció' | 'Cap Departa
 interface PreparationExportRow {
   PreparacioData: string
   PreparacioHora: string
+  CodiEvent: string
   Event: string
   Ubicacio: string
   Pax: string | number
@@ -184,6 +185,7 @@ export default function LogisticsPage() {
     const eventRows = rows.map((ev) => ({
       PreparacioData: formatDayMonthValue(ev.PreparacioData, ''),
       PreparacioHora: ev.PreparacioHora || '',
+      CodiEvent: ev.EventCode || '',
       Event: ev.NomEvent || '',
       Ubicacio: ev.Ubicacio || '',
       Pax: ev.NumPax ?? '',
@@ -194,6 +196,7 @@ export default function LogisticsPage() {
     const comandaRows = warehouseTasks.map((task) => ({
       PreparacioData: formatDayMonthValue(task.viewDay, ''),
       PreparacioHora: WAREHOUSE_PREP_VIEW_ROLE_LABELS[task.viewRole],
+      CodiEvent: '',
       Event: `${task.eventTitle} · ${task.batchKind === 'revision' ? 'Reposició' : 'Comanda'}`,
       Ubicacio: task.deliverySummary || formatDayMonthValue(task.deliveryDate, ''),
       Pax:
@@ -225,6 +228,7 @@ export default function LogisticsPage() {
     const cols: Array<keyof PreparationExportRow> = [
       'PreparacioData',
       'PreparacioHora',
+      'CodiEvent',
       'Event',
       'Ubicacio',
       'Pax',

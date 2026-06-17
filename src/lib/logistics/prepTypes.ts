@@ -3,6 +3,7 @@ import type { WarehousePrepViewRole } from '@/lib/logistics/warehousePrepVisibil
 export type LogisticsEventPrepRow = {
   rowType: 'event'
   id: string
+  EventCode: string
   NomEvent: string
   Ubicacio: string
   NumPax?: number
