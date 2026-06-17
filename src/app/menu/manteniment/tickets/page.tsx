@@ -26,7 +26,6 @@ import {
 import { canUserDeleteMaintenanceTicket } from '@/lib/maintenanceTicketDeletePolicy'
 import {
   getCurrentMaintenanceWeekRange,
-  MAINTENANCE_DATE_MODE_LABELS,
   type MaintenanceDateFilterMode,
 } from '@/lib/maintenanceDateFilter'
 import {
@@ -166,7 +165,6 @@ export default function MaintenanceTicketsPage() {
   }, [hasAccess, router, status])
 
   const {
-    role: ticketRole,
     userId,
     isExternalReporter,
     canValidate,
@@ -410,6 +408,7 @@ export default function MaintenanceTicketsPage() {
       }
 
   const queryTicketId = (searchParams?.get('ticketId') || '').trim()
+  const queryOpenOps = searchParams?.get('ops') === '1'
   const queryStart = (searchParams?.get('start') || '').trim()
   const queryEnd = (searchParams?.get('end') || '').trim()
 
@@ -501,6 +500,16 @@ export default function MaintenanceTicketsPage() {
   const openTicketOps = useCallback((ticket: Ticket) => {
     setOpsTicket(ticket)
   }, [])
+
+  useEffect(() => {
+    if (!queryOpenOps || !queryTicketId) return
+    const ticket =
+      tickets.find((entry) => String(entry.id) === queryTicketId) ||
+      (selected?.id === queryTicketId ? selected : null)
+    if (!ticket || !canShowTicketOps(ticket)) return
+    if (opsTicket?.id === ticket.id) return
+    setOpsTicket(ticket)
+  }, [canShowTicketOps, opsTicket?.id, queryOpenOps, queryTicketId, selected, tickets])
 
   const { data: selectedOpsData } = useSWR<{ rooms?: Array<{ unreadCount?: number }> }>(
     selected && canShowTicketOps(selected)

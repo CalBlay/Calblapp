@@ -373,7 +373,7 @@ export async function listAllMaintenanceTicketOpsRooms(params: {
   const rooms: MaintenanceTicketOpsRoom[] = []
 
   for (const doc of snap.docs) {
-    const ticket = { id: doc.id, ...(doc.data() as MaintenanceTicketOpsRecord) }
+    const ticket = { ...(doc.data() as MaintenanceTicketOpsRecord), id: doc.id }
     if (!isOpsActiveMaintenanceTicket(ticket)) continue
 
     const canAccess = await canAccessMaintenanceTicketOps({ ticket, user: params.user })
@@ -403,7 +403,7 @@ export async function addMaintenanceTicketChatExtraMember(params: {
 
   const ticketSnap = await db.collection('maintenanceTickets').doc(ticketId).get()
   if (!ticketSnap.exists) throw new Error('Ticket no trobat.')
-  const ticket = { id: ticketSnap.id, ...(ticketSnap.data() as MaintenanceTicketOpsRecord) }
+  const ticket = { ...(ticketSnap.data() as MaintenanceTicketOpsRecord), id: ticketSnap.id }
 
   const channelId =
     String(ticket.opsChannelId || '').trim() || buildMaintenanceTicketChannelId(ticketId)
@@ -444,7 +444,7 @@ export async function removeMaintenanceTicketChatExtraMember(params: {
 
   const ticketSnap = await db.collection('maintenanceTickets').doc(ticketId).get()
   if (!ticketSnap.exists) throw new Error('Ticket no trobat.')
-  const ticket = { id: ticketSnap.id, ...(ticketSnap.data() as MaintenanceTicketOpsRecord) }
+  const ticket = { ...(ticketSnap.data() as MaintenanceTicketOpsRecord), id: ticketSnap.id }
 
   const channelId =
     String(ticket.opsChannelId || '').trim() || buildMaintenanceTicketChannelId(ticketId)

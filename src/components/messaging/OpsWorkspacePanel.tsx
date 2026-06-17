@@ -56,11 +56,10 @@ export default function OpsWorkspacePanel<TRoom extends OpsWorkspaceRoom>({
   )
 
   const rooms = useMemo(() => (Array.isArray(data?.rooms) ? data.rooms : []), [data?.rooms])
+  const filters = config.filters
 
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null)
-  const [activeFilterKey, setActiveFilterKey] = useState<string | null>(
-    config.filters?.[0]?.key ?? null
-  )
+  const [activeFilterKey, setActiveFilterKey] = useState<string | null>(filters?.[0]?.key ?? null)
   const [channelId, setChannelId] = useState<string | null>(null)
   const [ensuring, setEnsuring] = useState(false)
   const [ensureCanManageMembers, setEnsureCanManageMembers] = useState<boolean | null>(null)
@@ -86,14 +85,12 @@ export default function OpsWorkspacePanel<TRoom extends OpsWorkspaceRoom>({
   )
 
   useEffect(() => {
-    if (!open || !config.filters?.length) return
+    if (!open || !filters?.length) return
     const pool = config.getVisibleRooms(rooms, activeFilterKey)
     if (pool.length > 0) return
-    const fallback = config.filters.find(
-      (filter) => config.getVisibleRooms(rooms, filter.key).length > 0
-    )
+    const fallback = filters.find((filter) => config.getVisibleRooms(rooms, filter.key).length > 0)
     if (fallback) setActiveFilterKey(fallback.key)
-  }, [activeFilterKey, config, open, rooms])
+  }, [activeFilterKey, config, filters, open, rooms])
 
   useEffect(() => {
     if (!open) {
@@ -104,7 +101,7 @@ export default function OpsWorkspacePanel<TRoom extends OpsWorkspaceRoom>({
       setEnsuring(false)
       setEnsureCanManageMembers(null)
       setParticipantsOpen(false)
-      setActiveFilterKey(config.filters?.[0]?.key ?? null)
+      setActiveFilterKey(filters?.[0]?.key ?? null)
       return
     }
 
@@ -116,7 +113,7 @@ export default function OpsWorkspacePanel<TRoom extends OpsWorkspaceRoom>({
     if (activeRoomId && visibleRooms.some((room) => room.roomId === activeRoomId)) return
 
     setActiveRoomId(visibleRooms[0]?.roomId || null)
-  }, [activeRoomId, open, visibleRooms])
+  }, [activeRoomId, filters, open, visibleRooms])
 
   useEffect(() => {
     if (!open || wasOpenRef.current) return

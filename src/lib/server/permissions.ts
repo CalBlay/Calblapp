@@ -11,7 +11,11 @@ import {
   editPathFromPerm,
   viewPathFromPerm,
 } from '@/lib/permissionKeys'
-import { baseCanValidateReservaComercials, RESERVA_COMERCIALS_UI_PATH } from '@/lib/reservaComercialsPermissions'
+import {
+  baseCanKeysHandoverReservaComercials,
+  baseCanValidateReservaComercials,
+  RESERVA_COMERCIALS_UI_PATH,
+} from '@/lib/reservaComercialsPermissions'
 import {
   QUADRANTS_ACTION,
   QUADRANTS_UI_PATH,
@@ -190,6 +194,13 @@ export async function isUiPermissionGranted(params: {
     if (parsed.action === 'validate') {
       return baseCanValidateReservaComercials({
         role: params.user.role,
+        isTransportLead: params.user.isTransportLead,
+      })
+    }
+    if (parsed.action === 'keys') {
+      return baseCanKeysHandoverReservaComercials({
+        role: params.user.role,
+        department: params.user.department,
         isTransportLead: params.user.isTransportLead,
       })
     }

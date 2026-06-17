@@ -939,13 +939,6 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   if (!auth.ok) return auth.res
 
   const user = auth.user as SessionUser
-  const role = auth.role
-  const dept = (user.department || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
   const { id } = await ctx.params
 
   try {

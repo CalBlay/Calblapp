@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { getVisibleModules, MODULES, type AccessUser } from '@/lib/accessControl'
-import { baseCanValidateReservaComercials, RESERVA_COMERCIALS_UI_PATH } from '@/lib/reservaComercialsPermissions'
+import {
+  baseCanKeysHandoverReservaComercials,
+  baseCanValidateReservaComercials,
+  RESERVA_COMERCIALS_UI_PATH,
+} from '@/lib/reservaComercialsPermissions'
 import {
   QUADRANTS_ACTION,
   QUADRANTS_UI_PATH,
@@ -400,6 +404,7 @@ export async function GET() {
   if (map[RESERVA_COMERCIALS_UI_PATH] === true) {
     const requestKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, 'request')
     const validateKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, 'validate')
+    const keysKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, 'keys')
     if (effectFor(assignment, requestKey) !== 'deny') actions[requestKey] = true
     if (
       baseCanValidateReservaComercials({
@@ -409,6 +414,18 @@ export async function GET() {
       effectFor(assignment, validateKey) !== 'deny'
     ) {
       actions[validateKey] = true
+    }
+    if (
+      baseCanKeysHandoverReservaComercials({
+        role: accessUser.role,
+        department: accessUser.department,
+        isTransportLead: accessUser.isTransportLead,
+      }) &&
+      effectFor(assignment, keysKey) !== 'deny'
+    ) {
+      actions[keysKey] = true
+    } else if (effectFor(assignment, keysKey) === 'allow') {
+      actions[keysKey] = true
     }
   }
 

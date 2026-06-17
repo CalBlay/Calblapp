@@ -10,6 +10,10 @@ import {
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { internalApiHeaders } from '@/lib/server/internalApiAuth'
 import { buildUnreadIncrement } from '@/lib/messaging/channelUnread'
+import {
+  buildChannelPushUrl,
+  resolveMessagePushRecipients,
+} from '@/lib/messaging/messagePush.server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -520,14 +524,32 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const pushRecipients = recipients.filter((uid) => !mutedUsers.has(uid))
 
     const baseUrl = new URL(req.url).origin
-    const title = channelName ? `Missatge: ${channelName}` : 'Nou missatge'
+    const channelTitle = channelName ? `Missatge: ${channelName}` : 'Nou missatge'
     const pushBody = text ? text.slice(0, 180) : 'Imatge'
-    const url = `/menu/missatgeria?channel=${id}`
+    const url = buildChannelPushUrl(id, channelData)
     const shouldSendPush =
       channelSource !== 'projects' || visibility === 'direct'
 
-    if (shouldSendPush) {
-      await sendPushToUids(baseUrl, pushRecipients, title, pushBody, url)
+    const memberRows = memberDocs.map((d) => d.data() as ChannelMemberRecord)
+    const { finalRecipients, isMentionPush } = resolveMessagePushRecipients({
+      visibility,
+      targetUserId,
+      senderUserId: userId,
+      text,
+      channelSource,
+      members: memberRows,
+      mutedUserIds: mutedUsers,
+      regularRecipientIds: pushRecipients,
+      shouldSendChannelPush: shouldSendPush,
+    })
+
+    if (finalRecipients.length > 0) {
+      const pushTitle = isMentionPush
+        ? senderName
+          ? `${senderName} t'ha mencionat`
+          : "T'han mencionat al xat"
+        : channelTitle
+      await sendPushToUids(baseUrl, finalRecipients, pushTitle, pushBody, url)
     }
 
     const shouldAutoTicket =
@@ -578,7 +600,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           (uid): uid is string =>
             typeof uid === 'string' && uid.length > 0 && uid !== userId && !mutedUsersForTicket.has(uid)
         )
-        await sendPushToUids(baseUrl, pushRecipientsTicket, title, ticketResult.summaryData.body, url)
+        await sendPushToUids(baseUrl, pushRecipientsTicket, channelTitle, ticketResult.summaryData.body, url)
       }
     }
 

@@ -11,7 +11,7 @@ export type OpsWorkspaceRoom = {
   channelReady?: boolean
 }
 
-export type OpsWorkspaceInitialSelection<TRoom extends OpsWorkspaceRoom> = {
+export type OpsWorkspaceInitialSelection = {
   roomId: string | null
   filterKey?: string | null
 }
@@ -31,7 +31,7 @@ export type OpsWorkspaceConfig<TRoom extends OpsWorkspaceRoom> = {
   resolveInitialSelection?: (params: {
     rooms: TRoom[]
     initialRoomId: string | null
-  }) => OpsWorkspaceInitialSelection<TRoom>
+  }) => OpsWorkspaceInitialSelection
   getActiveLabel: (room: TRoom | null) => string
   getTopSubtitle: (room: TRoom | null, contextTitle: string) => string
   getChannelSubtitle: (room: TRoom | null, contextTitle: string) => string

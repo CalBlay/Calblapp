@@ -150,6 +150,10 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
         key: PERM.action('/menu/logistica/reserva-comercials', 'validate'),
         label: 'Validació (aprovar / rebutjar)',
       },
+      {
+        key: PERM.action('/menu/logistica/reserva-comercials', 'keys'),
+        label: 'Lliurament de claus (vista diària)',
+      },
     ],
   },
   {
