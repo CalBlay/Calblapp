@@ -1,11 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Printer, X } from 'lucide-react'
+import { X } from 'lucide-react'
 
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
+import ExportMenu from '@/components/export/ExportMenu'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import {
@@ -343,10 +343,12 @@ export default function KeysHandoverTab({
             {totalFleetVehicles === 1 ? '' : 's'}
           </Badge>
 
-          <Button type="button" variant="outline" className="ml-auto shrink-0" onClick={handlePrint}>
-            <Printer className="mr-2 h-4 w-4" />
-            Imprimir
-          </Button>
+          <div className="ml-auto shrink-0">
+            <ExportMenu
+              items={[{ label: 'Imprimir', onClick: handlePrint }]}
+              ariaLabel="Imprimir"
+            />
+          </div>
         </div>
       </CorporateFiltersShell>
 

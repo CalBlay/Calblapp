@@ -273,7 +273,9 @@ export default function CalendarModal({
     return aliases.includes(eventCommercial)
   }, [editData.Comercial, isComercialRole, sessionCommercialName, sessionName])
   const canEditCode =
-    !readonly && (isZohoVerd || isManual) && (isAdmin || isProduccio || isOwnCommercialEvent)
+    !readonly &&
+    (isZohoVerd || isManual) &&
+    canUpdate
   const canEditComercialIntern =
     !readonly && (isZohoVerd || isManual) && (isAdmin || isCapProduccio)
   const canManageDocuments = !readonly && canAttach && (canEdit || isOwnCommercialEvent)
@@ -1141,8 +1143,6 @@ export default function CalendarModal({
     </>
   )
 }
-
-
 
 
 
