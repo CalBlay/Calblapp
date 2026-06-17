@@ -4,6 +4,7 @@ import {
   EVENTS_COMANDA_PREPARE_PERM,
 } from '@/lib/eventComandaPermissions'
 import { INCIDENTS_COMMAND_BOARD_PERM, INCIDENTS_MEETING_MINUTES_PERM } from '@/lib/incidentsPermissions'
+import { MAINTENANCE_TICKETS_INBOX_PERM } from '@/lib/maintenanceTicketsPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import type { MatrixRow } from '@/lib/permissions/types'
 
@@ -168,6 +169,19 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       { key: PERM.action('/menu/quadrants', 'draft:confirm'), label: 'Esborranys · confirmar' },
       { key: PERM.action('/menu/quadrants', 'draft:unconfirm'), label: 'Esborranys · desconfirmar' },
       { key: PERM.action('/menu/quadrants', 'draft:delete'), label: 'Esborranys · eliminar' },
+    ],
+  },
+  {
+    id: 'maintenanceTicketsActions',
+    title: 'Manteniment · Tickets',
+    subtitle:
+      'Safata d\'entrada i avisos (campaneta). Per defecte actiu per usuaris de logística; denega o assigna allow a altres.',
+    visibleWhen: { path: '/menu/manteniment/tickets' },
+    actions: [
+      {
+        key: MAINTENANCE_TICKETS_INBOX_PERM,
+        label: 'Gestionar safata de tickets (avisos nous)',
+      },
     ],
   },
   {

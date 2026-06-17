@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import Image from 'next/image'
 import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
 import { isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { formatDateOnly, formatDateTimeValue, formatTimeValue } from '@/lib/date-format'
 import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
 import { typography } from '@/lib/typography'
+import { getMaintenanceTicketValidationSummary } from '@/lib/maintenanceTicketValidation'
 import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
 import { DEFAULT_MAX_IMAGE_UPLOAD_BYTES, optimizeUploadFile } from '@/lib/file-optimization'
 import type {
@@ -69,6 +69,8 @@ type Props = {
   detailsPriority: TicketPriority
   setDetailsPriority: (value: TicketPriority) => void
   canValidate: boolean
+  canCapValidate?: (ticket: Ticket) => boolean
+  onCapValidate?: (ticket: Ticket) => void
   canReopen: boolean
   canExternalize: boolean
   onUpdateDetails: () => void | Promise<void>
@@ -122,6 +124,9 @@ type Props = {
     ariaLabel?: string
     onClick: () => void | Promise<void>
   } | null
+  showOpsButton?: boolean
+  opsUnreadCount?: number
+  onOpenOps?: () => void
   onClose: () => void
 }
 
@@ -155,6 +160,8 @@ export default function AssignTicketModal({
   detailsPriority,
   setDetailsPriority,
   canValidate,
+  canCapValidate,
+  onCapValidate,
   canReopen,
   canExternalize,
   onUpdateDetails,
@@ -173,10 +180,15 @@ export default function AssignTicketModal({
   onResolveTicket,
   onSendToPlanner,
   destructiveAction,
+  showOpsButton = false,
+  opsUnreadCount = 0,
+  onOpenOps,
   onClose,
 }: Props) {
   const isDeco = ticket.ticketType === 'deco'
   const isValidated = ticket.status === 'validat'
+  const validationSummary = getMaintenanceTicketValidationSummary(ticket)
+  const canCapValidateTicket = canCapValidate?.(ticket) ?? canValidate
   const isPlanningStage = ticket.status === 'nou' || ticket.status === 'no_fet'
   const isAssignedStage = ticket.status === 'assignat'
   const machineLabel = isDeco ? 'Material' : 'Maquinaria'
@@ -505,6 +517,9 @@ export default function AssignTicketModal({
           headerTitle={headerTitle}
           headerMeta={headerMeta}
           eventMeta={eventMeta}
+          showOpsButton={showOpsButton}
+          opsUnreadCount={opsUnreadCount}
+          onOpenOps={onOpenOps}
           onClose={() => void handleCloseModal()}
         />
 
@@ -531,6 +546,7 @@ export default function AssignTicketModal({
                   createdDateLabel={createdDateLabel}
                   createdFullLabel={createdFullLabel}
                   createdByName={ticket.createdByName}
+                  workerName={ticket.workerName}
                   sourceText={getSourceText(ticket.source)}
                   assignedToNames={ticket.assignedToNames}
                 />
@@ -614,19 +630,34 @@ export default function AssignTicketModal({
                 </div>
               ) : null}
 
-              {(ticket.status === 'fet' || ticket.status === 'resolut') && canValidate ? (
+              {(ticket.status === 'fet' || ticket.status === 'resolut') &&
+              canCapValidateTicket &&
+              (!validationSummary.requiresCreatorValidation ||
+                validationSummary.pendingCap ||
+                !validationSummary.capDone) ? (
                 <div className="flex flex-wrap items-center gap-3">
                   {ticket.externalized ? (
                     <div className="text-sm text-slate-600">
                       Resolucio proveidor: {formatDateTime(ticket.supplierResolvedAt)}
                     </div>
                   ) : null}
+                  {validationSummary.requiresCreatorValidation ? (
+                    <div className="text-sm text-slate-600">
+                      {validationSummary.creatorDone
+                        ? 'Creador validat'
+                        : 'Pendent validacio del creador'}
+                      {' · '}
+                      {validationSummary.capDone ? 'Manteniment validat' : 'Pendent manteniment'}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() => onStatusChange(ticket, 'validat')}
+                    onClick={() =>
+                      onCapValidate ? onCapValidate(ticket) : onStatusChange(ticket, 'validat')
+                    }
                     className="min-h-[44px] rounded-full border border-violet-300 px-4 text-sm font-semibold text-violet-700"
                   >
-                    Validar
+                    Validar (manteniment)
                   </button>
                 </div>
               ) : null}

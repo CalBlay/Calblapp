@@ -76,14 +76,13 @@ export function isExternalMaintenanceTicketReporter(user?: AccessUser): boolean 
   return dept !== 'logistica' && dept !== 'manteniment'
 }
 
-/** Pot veure i gestionar tots els tickets (no només els propis). */
+/** Pot veure i gestionar tots els tickets (admin/cap manteniment). Logística: permís inbox. */
 export function canManageMaintenanceTickets(user?: AccessUser): boolean {
   if (!user) return false
   const role = normalizeRole(user.role)
   const dept = normalizeDept(user.department)
   if (role === 'admin' || role === 'direccio') return true
   if (role === 'cap' && isMaintenanceCapDepartment(dept)) return true
-  if (isLogisticsMaintenanceTicketsManager(user)) return true
   return false
 }
 

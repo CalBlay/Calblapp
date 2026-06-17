@@ -2,6 +2,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { formatDateTimeValue } from '@/lib/date-format'
 import { normalizeRole } from '@/lib/roles'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
+import { listMaintenanceTicketInboxRecipientIds } from '@/lib/server/maintenanceTicketInboxRecipients'
 import {
   getLastExternalFollowUpAt,
   getTicketAgeDays,
@@ -17,6 +18,8 @@ type NotificationPayload = {
   type:
     | 'maintenance_ticket_new'
     | 'maintenance_ticket_assigned'
+    | 'maintenance_ticket_resolved'
+    | 'maintenance_ticket_pending_cap_validation'
     | 'maintenance_ticket_validated'
     | 'maintenance_ticket_stale'
     | 'maintenance_ticket_external_stale'
@@ -43,10 +46,7 @@ function externalStaleNotificationDocId(ticketId: string, userId: string) {
 }
 
 async function getLogisticsTicketUserIds(): Promise<string[]> {
-  const snap = await db.collection('users').where('departmentLower', '==', 'logistica').get()
-  return snap.docs
-    .filter((doc) => normalizeRole(String((doc.data() as { role?: string })?.role || '')) === 'usuari')
-    .map((doc) => doc.id)
+  return listMaintenanceTicketInboxRecipientIds()
 }
 
 async function getMaintenanceCapUserIds(): Promise<string[]> {
@@ -130,6 +130,23 @@ export async function notifyTicketCreator(params: {
   if (!uid) return
   if (excludeIds.includes(uid)) return
   await createNotifications([uid], payload)
+}
+
+/** Gestor ha resolt directament: el creador ha de validar. */
+export async function notifyTicketResolvedForCreator(params: {
+  uid?: string | null
+  payload: NotificationPayload
+  excludeIds?: string[]
+}) {
+  await notifyTicketCreator(params)
+}
+
+/** Creador validat: avisa el cap de manteniment per completar la validació. */
+export async function notifyTicketPendingCapValidation(params: {
+  payload: NotificationPayload
+  excludeIds?: string[]
+}) {
+  await notifyMaintenanceManagers(params)
 }
 
 async function createNotifications(uids: string[], payload: NotificationPayload, docId?: string) {

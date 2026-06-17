@@ -16,12 +16,12 @@ export type ChannelInvitePermissionInput = {
 export function resolveChannelInvitePermission(input: ChannelInvitePermissionInput): boolean {
   if (!input.channelId) return false
 
-  if (input.membersLoaded) {
-    return Boolean(input.apiCanManage)
-  }
+  if (input.apiCanManage) return true
+  if (input.hintCanManage) return true
 
-  if (input.hintCanManage === true) return true
-  if (input.hintCanManage === false) return false
+  if (!input.membersLoaded) {
+    if (input.hintCanManage === false) return false
+  }
 
   const role = normalizeRole(input.actorRole || '')
   if (role === 'admin' || role === 'direccio') return true

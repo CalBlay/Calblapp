@@ -14,6 +14,8 @@ export const LOGISTICS_NOTIFICATION_TYPES = [
 export const MAINTENANCE_NOTIFICATION_TYPES = [
   'maintenance_ticket_new',
   'maintenance_ticket_assigned',
+  'maintenance_ticket_resolved',
+  'maintenance_ticket_pending_cap_validation',
   'maintenance_ticket_validated',
   'maintenance_ticket_stale',
   'maintenance_ticket_external_stale',

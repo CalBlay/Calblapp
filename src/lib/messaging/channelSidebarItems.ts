@@ -2,6 +2,7 @@ import type { Channel } from '@/app/menu/missatgeria/types'
 import { eventDateLabel, initials, timeLabel } from '@/app/menu/missatgeria/utils'
 import type { EventOpsRoom } from '@/components/messaging/opsSidebarTypes'
 import type { OpsSidebarItem } from '@/components/messaging/opsSidebarTypes'
+import type { MaintenanceTicketOpsRoom } from '@/lib/messaging/maintenanceTicketOps.server'
 
 export function channelToSidebarItem(channel: Channel): OpsSidebarItem {
   const label =
@@ -83,4 +84,24 @@ export function channelsToSidebarItems(channels: Channel[]): OpsSidebarItem[] {
 
 export function eventOpsRoomsToSidebarItems(rooms: EventOpsRoom[]): OpsSidebarItem[] {
   return rooms.map(eventOpsRoomToSidebarItem)
+}
+
+export function maintenanceTicketOpsRoomToSidebarItem(
+  room: MaintenanceTicketOpsRoom
+): OpsSidebarItem {
+  return {
+    id: room.roomId,
+    label: room.ticketLabel,
+    meta: room.creatorName || null,
+    preview: null,
+    avatarLabel: initials(room.ticketLabel),
+    unreadCount: room.unreadCount,
+    closed: false,
+  }
+}
+
+export function maintenanceTicketOpsRoomsToSidebarItems(
+  rooms: MaintenanceTicketOpsRoom[]
+): OpsSidebarItem[] {
+  return rooms.map(maintenanceTicketOpsRoomToSidebarItem)
 }

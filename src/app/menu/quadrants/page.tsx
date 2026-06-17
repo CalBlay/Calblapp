@@ -356,7 +356,7 @@ export default function QuadrantsPage() {
           Estat: statusLabel(ev.quadrantStatus),
         }
       }),
-    [visibleFilteredEvents]
+    [visibleFilteredEvents, statusLabel]
   )
 
   const handleExportExcel = async () => {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { canManageMaintenanceTickets } from '@/lib/accessControl'
+import { canManageMaintenanceTicketInbox } from '@/lib/server/maintenanceTicketsAccess'
 import {
   MAINTENANCE_TICKETS_PATH,
   requireMaintenanceTicketApiView,
@@ -11,7 +12,8 @@ import {
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { resolveOpsChannelByLocationName } from '@/lib/opsMessagingChannels'
-import { resolveManualTicketRouting } from '@/lib/maintenanceTicketCreators'
+import { resolveManualTicketRouting, requiresMaintenanceTicketWorkerName } from '@/lib/maintenanceTicketCreators'
+import { getMaintenanceDateRangeMs } from '@/lib/maintenanceDateFilter'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -34,6 +36,7 @@ type TicketPayload = {
   machine?: string
   description?: string
   operatorTitle?: string | null
+  workerName?: string | null
   priority?: 'urgent' | 'alta' | 'normal' | 'baixa'
   ticketType?: 'maquinaria' | 'deco'
   imageUrl?: string | null
@@ -196,7 +199,7 @@ function getTicketDateByMode(
     return null
   }
 
-  if (mode === 'planned') return toMs(ticket.plannedStart)
+  if (mode === 'planned') return toMs(ticket.plannedStart) ?? toMs(ticket.createdAt)
   if (mode === 'created') return toMs(ticket.createdAt)
   if (mode === 'updated') {
     const history = Array.isArray(ticket.statusHistory) ? ticket.statusHistory : []
@@ -256,7 +259,9 @@ export async function GET(req: Request) {
   const cursorCreatedAt = Number(searchParams.get('cursorCreatedAt') || 0)
   const limit = Math.max(1, Math.min(200, Number(searchParams.get('limit') || 100)))
 
-  const canViewAllTickets = canManageMaintenanceTickets({ role, department: deptRaw })
+  const canViewAllTickets =
+    canManageMaintenanceTickets({ role, department: deptRaw }) ||
+    (await canManageMaintenanceTicketInbox(user))
 
   try {
     let ref: FirebaseFirestore.Query = db.collection('maintenanceTickets')
@@ -334,8 +339,8 @@ export async function GET(req: Request) {
       tickets = tickets.filter((t) => String(t.ticketType || '').toLowerCase() === ticketType)
     }
     if ((start || end) && dateMode !== 'all') {
-      const startMs = start ? new Date(`${start}T00:00:00.000Z`).getTime() : null
-      const endMs = end ? new Date(`${end}T23:59:59.999Z`).getTime() : null
+      const { startMs, endMs } =
+        start && end ? getMaintenanceDateRangeMs(start, end) : { startMs: null, endMs: null }
       tickets = tickets.filter((t) => {
         const timelineMs = getTicketDateByMode(t, dateMode)
         if (timelineMs === null) return false
@@ -414,6 +419,7 @@ export async function POST(req: Request) {
     const location = (body.location || '').trim()
     const machine = (body.machine || '').trim()
     const description = (body.description || '').trim()
+    const workerName = String(body.workerName || '').trim()
     const priority = normalizePriority(body.priority)
     const status = normalizeStatus(body.status)
     const ticketType =
@@ -432,6 +438,10 @@ export async function POST(req: Request) {
     const intakeChannel = manualRouting
       ? manualRouting.intakeChannel
       : normalizeIntakeChannel(body.intakeChannel, body.source)
+    const requiresWorkerName = requiresMaintenanceTicketWorkerName({
+      department: user.department,
+      location,
+    })
     const sourceChannelId =
       String(body.sourceChannelId || '').trim() || opsChannel?.channelId || null
     const images = normalizeTicketImages(body)
@@ -439,6 +449,10 @@ export async function POST(req: Request) {
 
     if (!location || !description || (!isWhatsBlapp && !machine)) {
       return NextResponse.json({ error: 'Falten camps obligatoris' }, { status: 400 })
+    }
+
+    if (requiresWorkerName && !workerName) {
+      return NextResponse.json({ error: 'Cal indicar el nom del treballador' }, { status: 400 })
     }
 
     if (requiresManualImages) {
@@ -481,6 +495,7 @@ export async function POST(req: Request) {
       createdAt: now,
       createdById: user.id,
       createdByName: user.name || '',
+      workerName: workerName || null,
       assignedToIds: [],
       assignedToNames: [],
       assignedAt: null,
@@ -532,7 +547,12 @@ export async function POST(req: Request) {
       payload: {
         type: 'maintenance_ticket_new',
         title: 'Nou ticket de manteniment',
-        body: buildTicketBody({ machine, location, description }),
+        body: [
+          buildTicketBody({ machine, location, description }),
+          workerName ? `Treballador: ${workerName}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
         ticketId: doc.id,
         ticketCode,
         status,

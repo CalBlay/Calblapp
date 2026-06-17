@@ -43,6 +43,8 @@ export type Ticket = {
   createdAt: number | string
   createdById?: string
   createdByName?: string
+  /** Nom real del treballador quan el compte de sessió és genèric (restaurants). */
+  workerName?: string | null
   assignedToIds?: string[]
   assignedToNames?: string[]
   assignedAt?: number | null
@@ -64,12 +66,21 @@ export type Ticket = {
   externalStatus?: 'sent' | 'resent' | 'answered' | 'closed' | null
   intakeChannel?: TicketIntakeChannel | null
   workflowStage?: TicketWorkflowStage | null
+  opsChannelId?: string | null
+  opsManagerUserId?: string | null
   resolutionCategory?: string | null
   resolutionNote?: string | null
   resolvedByArea?: TicketResolutionArea | null
   resolvedAt?: number | string | null
   resolvedById?: string | null
   resolvedByName?: string | null
+  requiresCreatorValidation?: boolean | null
+  creatorValidatedAt?: number | string | null
+  creatorValidatedById?: string | null
+  creatorValidatedByName?: string | null
+  capValidatedAt?: number | string | null
+  capValidatedById?: string | null
+  capValidatedByName?: string | null
   externalSentAt?: number | string | null
   externalSentById?: string | null
   externalSentByName?: string | null

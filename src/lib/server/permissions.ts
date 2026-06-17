@@ -50,6 +50,12 @@ import {
   baseCanAttachEventVisitVideo,
   EVENT_VISIT_VIDEO_ACTION,
 } from '@/lib/eventVisitVideoPermissions'
+import {
+  MAINTENANCE_TICKETS_ACTION,
+  MAINTENANCE_TICKETS_INBOX_PERM,
+  MAINTENANCE_TICKETS_UI_PATH,
+  baseCanReceiveMaintenanceTicketInboxNotifications,
+} from '@/lib/maintenanceTicketsPermissions'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 
@@ -317,6 +323,23 @@ export async function isUiPermissionGranted(params: {
       if (eff === 'deny') return false
       if (eff !== 'allow') return false
       return baseCanAttachEventVisitVideo(params.user)
+    }
+  }
+
+  if (parsed?.path === MAINTENANCE_TICKETS_UI_PATH) {
+    if (parsed.action === MAINTENANCE_TICKETS_ACTION.INBOX) {
+      const canViewTickets = await canViewUiPath({
+        user: params.user,
+        path: MAINTENANCE_TICKETS_UI_PATH,
+      })
+      if (!canViewTickets) return false
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        MAINTENANCE_TICKETS_INBOX_PERM
+      )
+      if (eff === 'deny') return false
+      if (eff === 'allow') return true
+      return baseCanReceiveMaintenanceTicketInboxNotifications(params.user)
     }
   }
 

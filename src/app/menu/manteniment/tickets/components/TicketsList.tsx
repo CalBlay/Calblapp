@@ -6,8 +6,8 @@ import { differenceInCalendarDays } from 'date-fns'
 import { formatDateOnly } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
 import { isTicketStaleAlert, STALE_TICKET_CARD_CLASS } from '@/lib/maintenanceTicketAlerts'
-import { getExternalReporterTicketBucket } from '@/lib/maintenanceTicketCreators'
-import { resolveOpsChannelByLocationName } from '@/lib/opsMessagingChannels'
+import { getExternalReporterTicketBucket, formatTicketReporterDetail, formatTicketReporterLabel } from '@/lib/maintenanceTicketCreators'
+import { getMaintenanceTicketValidationSummary } from '@/lib/maintenanceTicketValidation'
 import type { Ticket, TicketPriority, TicketStatus } from '../types'
 
 type TicketSection = {
@@ -25,6 +25,10 @@ type Props = {
   canPlanifyDirectly: (ticket: Ticket) => boolean
   onDelete: (ticket: Ticket) => void
   canDelete: (ticket: Ticket) => boolean
+  canCreatorValidate?: (ticket: Ticket) => boolean
+  onCreatorValidate?: (ticket: Ticket) => void
+  canShowOps?: (ticket: Ticket) => boolean
+  onOpenOps?: (ticket: Ticket) => void
   formatDateTime: (value?: number | string | null) => string
   statusBadgeClasses: Record<TicketStatus, string>
   priorityBadgeClasses: Record<TicketPriority, string>
@@ -122,48 +126,6 @@ const normalizeText = (value: string) =>
     .toLowerCase()
     .trim()
 
-const getOpsAccessLink = (ticket: Ticket) => {
-  const location = String(ticket.location || ticket.workLocation || '').trim()
-  let channelId = String(ticket.sourceChannelId || '').trim()
-  let intake = String(ticket.intakeChannel || '').toLowerCase()
-
-  if (!channelId) {
-    const resolved = resolveOpsChannelByLocationName(location)
-    if (resolved) {
-      channelId = resolved.channelId
-      if (!intake || intake === 'manual_tickets') intake = resolved.intakeChannel
-    }
-  }
-
-  if (!channelId) return null
-
-  const href = `/menu/missatgeria?channel=${encodeURIComponent(channelId)}`
-  const isRestaurant =
-    intake === 'restaurant' || channelId.startsWith('restaurants_')
-  const isFinca =
-    intake === 'finca' ||
-    intake === 'ops' ||
-    channelId.startsWith('finques_')
-
-  const ariaLabel = isRestaurant
-    ? location
-      ? `Obrir OPS restaurant · ${location}`
-      : 'Obrir OPS restaurant'
-    : isFinca
-      ? location
-        ? `Obrir OPS finca · ${location}`
-        : 'Obrir OPS finca'
-      : location
-        ? `Obrir OPS · ${location}`
-        : 'Obrir OPS'
-
-  if (isRestaurant || isFinca || ticket.source === 'whatsblapp') {
-    return { href, ariaLabel }
-  }
-
-  return null
-}
-
 const getDaysOpen = (value?: number | string | null) => {
   if (!value && value !== 0) return null
   const date = typeof value === 'number' ? new Date(value) : new Date(value)
@@ -200,10 +162,20 @@ const getExternalReporterStatusSummary = (
   }
 
   if (bucket === 'fet') {
+    const validation = getMaintenanceTicketValidationSummary(ticket)
     const resolvedAt = (ticket.statusHistory || [])
       .filter((entry) => entry.status === 'resolut' || entry.status === 'validat')
       .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]?.at
-    const label = ticket.status === 'validat' ? 'Validat' : 'Resolt'
+    if (ticket.status === 'validat') {
+      return resolvedAt ? `Validat: ${formatDateTime(resolvedAt)}` : 'Validat'
+    }
+    if (validation.requiresCreatorValidation && validation.pendingCreator) {
+      return 'Resolt · Pendent la teva validacio'
+    }
+    if (validation.requiresCreatorValidation && validation.creatorDone && validation.pendingCap) {
+      return 'Validat per tu · Pendent manteniment'
+    }
+    const label = 'Resolt'
     return resolvedAt ? `${label}: ${formatDateTime(resolvedAt)}` : label
   }
 
@@ -232,6 +204,10 @@ export default function TicketsList({
   canPlanifyDirectly,
   onDelete,
   canDelete,
+  canCreatorValidate,
+  onCreatorValidate,
+  canShowOps,
+  onOpenOps,
   formatDateTime,
   statusBadgeClasses,
   priorityBadgeClasses,
@@ -302,7 +278,8 @@ export default function TicketsList({
                   const codeLabel = codeLabelById.get(ticket.id) || 'TIC'
                   const daysOpen = getDaysOpen(ticket.createdAt)
                   const eventLabel = String(ticket.sourceEventTitle || '').trim()
-                  const creatorLabel = String(ticket.createdByName || '').trim() || 'Sense usuari'
+                  const creatorLabel = formatTicketReporterLabel(ticket)
+                  const creatorDetail = formatTicketReporterDetail(ticket)
                   const locationLabel =
                     String(ticket.workLocation || ticket.location || '').trim() || 'Sense ubicacio'
                   const machineLabel = String(ticket.machine || '').trim() || 'Sense maquinaria'
@@ -321,7 +298,8 @@ export default function TicketsList({
                   const ticketImages = getTicketImages(ticket)
                   const cardTitle = getCardTitle(ticket)
                   const cardDescription = getCardDescription(ticket)
-                  const opsAccessLink = getOpsAccessLink(ticket)
+                  const showOps = Boolean(canShowOps?.(ticket) && onOpenOps)
+                  const showCreatorValidate = Boolean(canCreatorValidate?.(ticket) && onCreatorValidate)
 
                   return (
                     <article
@@ -362,7 +340,7 @@ export default function TicketsList({
                           </div>
 
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                          {!externalReporterView ? <span>Creat per: {creatorLabel}</span> : null}
+                          {!externalReporterView ? <span>{creatorDetail}</span> : null}
                           <span>Ubicacio: {locationLabel}</span>
                           {!externalReporterView && eventLabel ? (
                             <span>Esdeveniment: {eventLabel}</span>
@@ -389,6 +367,34 @@ export default function TicketsList({
                         </div>
 
                         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                          {showCreatorValidate ? (
+                            <button
+                              type="button"
+                              title="Validar resolucio"
+                              aria-label="Validar resolucio del ticket"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onCreatorValidate?.(ticket)
+                              }}
+                              className="rounded-full border border-violet-300 bg-white/85 px-3 py-2 text-xs font-semibold text-violet-700 shadow-sm hover:bg-white"
+                            >
+                              Validar
+                            </button>
+                          ) : null}
+                          {showOps ? (
+                            <button
+                              type="button"
+                              title="Ops"
+                              aria-label="Obrir Ops del ticket"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onOpenOps?.(ticket)
+                              }}
+                              className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:bg-amber-100"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </button>
+                          ) : null}
                           {!externalReporterView && canResolveDirectly(ticket) ? (
                             <button
                               type="button"
@@ -407,7 +413,7 @@ export default function TicketsList({
                               Planificar
                             </button>
                           ) : null}
-                          {!externalReporterView && canDelete(ticket) ? (
+                          {canDelete(ticket) ? (
                             <button
                               type="button"
                               title="Eliminar ticket"
@@ -446,22 +452,7 @@ export default function TicketsList({
                                 </div>
                                 <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
                                   <div className={typography('eyebrow')}>Ubicacio</div>
-                                  <div className="mt-1 flex items-center justify-between gap-2">
-                                    <span className="min-w-0 text-sm text-slate-800">{locationLabel}</span>
-                                    {opsAccessLink ? (
-                                      <a
-                                        href={opsAccessLink.href}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        aria-label={opsAccessLink.ariaLabel}
-                                        title={opsAccessLink.ariaLabel}
-                                        className="inline-flex shrink-0 rounded-lg p-1 text-amber-600 transition hover:bg-amber-50"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <MessageCircle className="h-4 w-4" />
-                                      </a>
-                                    ) : null}
-                                  </div>
+                                  <div className="mt-1 text-sm text-slate-800">{locationLabel}</div>
                                 </div>
                                 <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
                                   <div className={typography('eyebrow')}>Maquinaria</div>

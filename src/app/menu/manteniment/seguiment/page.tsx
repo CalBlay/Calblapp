@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { differenceInCalendarDays, format, parseISO } from 'date-fns'
+import { differenceInCalendarDays, format } from 'date-fns'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useFilters } from '@/context/FiltersContext'
@@ -15,13 +15,19 @@ import {
   CorporateFiltersShell,
 } from '@/components/layout/corporate-filters'
 import { corporateFilterBadgeClass } from '@/lib/corporate-filters'
+import {
+  getCurrentMaintenanceWeekRange,
+  MAINTENANCE_DATE_MODE_LABELS,
+  formatMaintenanceDateRangeLabel,
+  matchesMaintenancePlannedDateFilter,
+  type MaintenanceDateFilterMode,
+} from '@/lib/maintenanceDateFilter'
 import { maintenanceStatusBadge } from '@/lib/colors'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import type { MachineItem, Ticket, TicketStatus, UserItem } from '@/app/menu/manteniment/tickets/types'
 import PlannerTicketModal from '@/app/menu/manteniment/preventius/planificador/components/PlannerTicketModal'
 
 type TabKey = 'tickets' | 'preventius'
-type DateMode = 'all' | 'planned'
 type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat'
 type WorkHistoryEntry = {
   status?: string | null
@@ -86,10 +92,6 @@ const STATUS_LABELS: Record<MaintenanceStatus, string> = {
   no_fet: 'No fet',
   resolut: 'Resolt',
   validat: 'Validat',
-}
-const DATE_MODE_LABELS: Record<DateMode, string> = {
-  all: 'No aplicar filtre de dates',
-  planned: 'Filtre de dates actiu',
 }
 const PRIORITY_BADGES: Record<string, string> = {
   urgent: 'bg-red-100 text-red-700',
@@ -192,15 +194,6 @@ const normalizeMachineLabel = (value?: string | null, machineNameMap?: Map<strin
   if (dashMatch?.[1]) return dashMatch[1].trim()
   return raw
 }
-const getCurrentWeekRange = () => {
-  const now = new Date()
-  const start = new Date(now)
-  const day = start.getDay() || 7
-  if (day !== 1) start.setDate(start.getDate() - (day - 1))
-  const end = new Date(start)
-  end.setDate(start.getDate() + 6)
-  return { start: format(start, 'yyyy-MM-dd'), end: format(end, 'yyyy-MM-dd') }
-}
 
 function buildSeguimentRows(ticketsJson: unknown, plannedJson: unknown, completedJson: unknown) {
   const nextTickets = Array.isArray((ticketsJson as { tickets?: unknown })?.tickets)
@@ -265,7 +258,7 @@ export default function MaintenanceSeguimentPage() {
   const [users, setUsers] = useState<UserItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [dateMode, setDateMode] = useState<DateMode>('planned')
+  const [dateMode, setDateMode] = useState<MaintenanceDateFilterMode>('planned')
   const [externalFilter, setExternalFilter] = useState<'all' | 'internal' | 'external'>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [workerFilter, setWorkerFilter] = useState<string>('all')
@@ -276,7 +269,7 @@ export default function MaintenanceSeguimentPage() {
   const [dateResetSignal, setDateResetSignal] = useState(0)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [openedTicket, setOpenedTicket] = useState<Ticket | null>(null)
-  const [dateRange, setDateRange] = useState(getCurrentWeekRange)
+  const [dateRange, setDateRange] = useState(getCurrentMaintenanceWeekRange)
 
   const loadData = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true
@@ -364,20 +357,21 @@ export default function MaintenanceSeguimentPage() {
         <label className="space-y-2 text-sm text-slate-700"><span className="font-medium">Ubicació</span><select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"><option value="all">Totes</option>{locations.map((location) => <option key={location} value={location}>{location}</option>)}</select></label>
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"><input type="checkbox" checked={pendingValidationOnly} onChange={(e) => setPendingValidationOnly(e.target.checked)} />Només pendents de validar</label>
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"><input type="checkbox" checked={stalledOnly} onChange={(e) => setStalledOnly(e.target.checked)} />Només oberts 3+ dies</label>
-        <div className="flex justify-end"><ResetFilterButton onClick={() => { setDateMode('planned'); setStatusFilter('all'); setExternalFilter('all'); setWorkerFilter('all'); setLocationFilter('all'); setPendingValidationOnly(false); setStalledOnly(false); setSearch(''); setDateRange(getCurrentWeekRange()); setDateResetSignal((current) => current + 1) }} /></div>
+        <div className="flex justify-end"><ResetFilterButton onClick={() => { setDateMode('planned'); setStatusFilter('all'); setExternalFilter('all'); setWorkerFilter('all'); setLocationFilter('all'); setPendingValidationOnly(false); setStalledOnly(false); setSearch(''); setDateRange(getCurrentMaintenanceWeekRange()); setDateResetSignal((current) => current + 1) }} /></div>
       </div>
     )
   }, [dateMode, externalFilter, locationFilter, locations, pendingValidationOnly, setContent, stalledOnly, statusFilter, tab, users, workerFilter])
 
-  const weekStart = useMemo(() => parseISO(dateRange.start), [dateRange.start])
-  const weekEnd = useMemo(() => parseISO(dateRange.end), [dateRange.end])
-  const applyDateFilter = useCallback((value: number | string | null) => {
-    if (dateMode === 'all') return true
-    const date = parseDate(value)
-    if (!date) return false
-    const ms = date.getTime()
-    return ms >= weekStart.getTime() && ms <= weekEnd.getTime()
-  }, [dateMode, weekEnd, weekStart])
+  const applyDateFilter = useCallback(
+    (value: number | string | null) =>
+      matchesMaintenancePlannedDateFilter({
+        mode: dateMode,
+        start: dateRange.start,
+        end: dateRange.end,
+        plannedStart: value,
+      }),
+    [dateMode, dateRange.end, dateRange.start]
+  )
 
   const ticketRows = useMemo(() => tickets.filter((ticket) => {
     if (statusFilter !== 'all' && normalizeStatus(ticket.status) !== statusFilter) return false
@@ -390,7 +384,7 @@ export default function MaintenanceSeguimentPage() {
     if (search.trim() && ![ticket.ticketCode, ticket.incidentNumber, ticket.description, ticket.machine, ticket.location, ...(ticket.assignedToNames || []), ticket.supplierName].join(' ').toLowerCase().includes(search.trim().toLowerCase())) return false
     const reference = ticket.plannedStart
     return applyDateFilter(reference || null)
-  }).sort((a, b) => (parseDate((b.statusHistory || []).slice().sort((x, y) => Number(y.at || 0) - Number(x.at || 0))[0]?.at || b.createdAt)?.getTime() || 0) - (parseDate((a.statusHistory || []).slice().sort((x, y) => Number(y.at || 0) - Number(x.at || 0))[0]?.at || a.createdAt)?.getTime() || 0)), [applyDateFilter, dateMode, externalFilter, locationFilter, pendingValidationOnly, search, stalledOnly, statusFilter, tickets, workerFilter])
+  }).sort((a, b) => (parseDate((b.statusHistory || []).slice().sort((x, y) => Number(y.at || 0) - Number(x.at || 0))[0]?.at || b.createdAt)?.getTime() || 0) - (parseDate((a.statusHistory || []).slice().sort((x, y) => Number(y.at || 0) - Number(x.at || 0))[0]?.at || a.createdAt)?.getTime() || 0)), [applyDateFilter, externalFilter, locationFilter, pendingValidationOnly, search, stalledOnly, statusFilter, tickets, workerFilter])
 
   const preventiuRows = useMemo(() => preventius.filter((item) => {
     if (statusFilter !== 'all' && item.status !== statusFilter) return false
@@ -401,7 +395,7 @@ export default function MaintenanceSeguimentPage() {
     if (search.trim() && ![item.title, item.location, ...item.workerNames].join(' ').toLowerCase().includes(search.trim().toLowerCase())) return false
     const reference = parseDateFromParts(item.plannedDate, item.plannedStart)?.getTime()
     return applyDateFilter(reference || null)
-  }).sort((a, b) => (parseDate(b.updatedAt || b.createdAt)?.getTime() || 0) - (parseDate(a.updatedAt || a.createdAt)?.getTime() || 0)), [applyDateFilter, dateMode, locationFilter, pendingValidationOnly, preventius, search, stalledOnly, statusFilter, workerFilter])
+  }).sort((a, b) => (parseDate(b.updatedAt || b.createdAt)?.getTime() || 0) - (parseDate(a.updatedAt || a.createdAt)?.getTime() || 0)), [applyDateFilter, locationFilter, pendingValidationOnly, preventius, search, stalledOnly, statusFilter, workerFilter])
 
   const currentRows = tab === 'tickets' ? ticketRows : preventiuRows
   const statusCounts = useMemo(() => Object.fromEntries(STATUSES.map((status) => [status, currentRows.filter((row: SeguimentRow) => normalizeStatus(row.status) === status).length])) as Record<MaintenanceStatus, number>, [currentRows])
@@ -445,10 +439,10 @@ export default function MaintenanceSeguimentPage() {
                 initialEnd={dateRange.end}
               />
             </div>
-            <CorporateActiveFilterChip variant="active">{DATE_MODE_LABELS[dateMode]}</CorporateActiveFilterChip>
+            <CorporateActiveFilterChip variant="active">{MAINTENANCE_DATE_MODE_LABELS[dateMode]}</CorporateActiveFilterChip>
             {dateMode !== 'all' ? (
               <CorporateActiveFilterChip>
-                {dateRange.start === dateRange.end ? dateRange.start : `${dateRange.start} - ${dateRange.end}`}
+                {formatMaintenanceDateRangeLabel(dateRange.start, dateRange.end)}
               </CorporateActiveFilterChip>
             ) : null}
             <div className="relative min-w-[260px] flex-1">
@@ -505,7 +499,7 @@ export default function MaintenanceSeguimentPage() {
               </CorporateActiveFilterChip>
             ) : null}
             {dateMode !== 'all' ? (
-              <CorporateActiveFilterChip>{DATE_MODE_LABELS[dateMode]}</CorporateActiveFilterChip>
+              <CorporateActiveFilterChip>{MAINTENANCE_DATE_MODE_LABELS[dateMode]}</CorporateActiveFilterChip>
             ) : null}
             {pendingValidationOnly ? (
               <CorporateActiveFilterChip variant="amber">Pendents de validar</CorporateActiveFilterChip>

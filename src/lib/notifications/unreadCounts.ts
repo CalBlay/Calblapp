@@ -39,6 +39,8 @@ export function bucketForNotificationType(type: string): BucketKey | null {
   if (
     normalized === 'maintenance_ticket_new' ||
     normalized === 'maintenance_ticket_assigned' ||
+    normalized === 'maintenance_ticket_resolved' ||
+    normalized === 'maintenance_ticket_pending_cap_validation' ||
     normalized === 'maintenance_ticket_validated' ||
     normalized === 'maintenance_ticket_stale' ||
     normalized === 'maintenance_ticket_external_stale'

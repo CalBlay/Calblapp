@@ -26,6 +26,8 @@ type Props = {
   trailingActions?: React.ReactNode
   className?: string
   tone?: 'default' | 'muted'
+  /** Només icones d'acció (sense avatar ni títol duplicat). */
+  showTitle?: boolean
 }
 
 export default function ChannelChatHeader({
@@ -46,9 +48,68 @@ export default function ChannelChatHeader({
   trailingActions,
   className,
   tone = 'default',
+  showTitle = true,
 }: Props) {
   const mutedTone = tone === 'muted'
   const circleText = avatarText || initials(avatarLabel || channelTitle)
+
+  const actionButtons = (
+    <>
+      {trailingActions}
+      {onToggleMute ? (
+        <button
+          type="button"
+          className={cn(
+            'rounded-full p-2 transition',
+            mutedTone
+              ? 'text-slate-400 hover:bg-slate-100'
+              : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+          )}
+          onClick={onToggleMute}
+          title={channelMuted ? 'Activar notificacions' : 'Silenciar notificacions'}
+        >
+          {channelMuted ? <BellRing className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+        </button>
+      ) : null}
+
+      {canInvite && onInvite ? (
+        <UserInviteSearchCombobox
+          users={inviteUsers}
+          excludeIds={inviteExcludeIds || new Set()}
+          onPick={onInvite}
+          adding={inviteAdding}
+          disabled={inviteDisabled}
+          variant="icon"
+        />
+      ) : null}
+
+      {onToggleParticipants ? (
+        <button
+          type="button"
+          className={cn(
+            'rounded-full p-2 transition',
+            participantsOpen
+              ? mutedTone
+                ? 'bg-slate-200 text-slate-600'
+                : chatTheme.actionActive
+              : mutedTone
+                ? 'text-slate-400 hover:bg-slate-100'
+                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+          )}
+          onClick={onToggleParticipants}
+          title="Participants"
+        >
+          <Users2 className="h-4 w-4" />
+        </button>
+      ) : null}
+    </>
+  )
+
+  if (!showTitle) {
+    return (
+      <div className={cn('flex shrink-0 items-center gap-1', className)}>{actionButtons}</div>
+    )
+  }
 
   return (
     <div
@@ -82,55 +143,7 @@ export default function ChannelChatHeader({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
-        {trailingActions}
-        {onToggleMute ? (
-          <button
-            type="button"
-            className={cn(
-              'rounded-full p-2 transition',
-              mutedTone
-                ? 'text-slate-400 hover:bg-slate-100'
-                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-            )}
-            onClick={onToggleMute}
-            title={channelMuted ? 'Activar notificacions' : 'Silenciar notificacions'}
-          >
-            {channelMuted ? <BellRing className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
-          </button>
-        ) : null}
-
-        {canInvite && onInvite ? (
-          <UserInviteSearchCombobox
-            users={inviteUsers}
-            excludeIds={inviteExcludeIds || new Set()}
-            onPick={onInvite}
-            adding={inviteAdding}
-            disabled={inviteDisabled}
-            variant="icon"
-          />
-        ) : null}
-
-        {onToggleParticipants ? (
-          <button
-            type="button"
-            className={cn(
-              'rounded-full p-2 transition',
-              participantsOpen
-                ? mutedTone
-                  ? 'bg-slate-200 text-slate-600'
-                  : chatTheme.actionActive
-                : mutedTone
-                  ? 'text-slate-400 hover:bg-slate-100'
-                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-            )}
-            onClick={onToggleParticipants}
-            title="Participants"
-          >
-            <Users2 className="h-4 w-4" />
-          </button>
-        ) : null}
-      </div>
+      <div className="flex shrink-0 items-center gap-1">{actionButtons}</div>
     </div>
   )
 }

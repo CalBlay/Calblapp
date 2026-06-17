@@ -72,11 +72,7 @@ export function resetAblyClient() {
   try {
     const state = current.connection.state
     if (state === 'closed' || state === 'closing') return
-
-    const maybePromise = current.close()
-    if (maybePromise && typeof (maybePromise as Promise<unknown>).catch === 'function') {
-      ;(maybePromise as Promise<unknown>).catch(safeLog)
-    }
+    current.close()
   } catch (error) {
     safeLog(error)
   }

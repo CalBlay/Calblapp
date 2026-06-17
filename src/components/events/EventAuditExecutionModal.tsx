@@ -695,6 +695,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                               rel="noreferrer"
                                               className="block overflow-hidden rounded-md border border-slate-200"
                                             >
+                                              {/* eslint-disable-next-line @next/next/no-img-element -- URL dinàmica externa */}
                                               <img
                                                 src={photo.url}
                                                 alt={`Foto ${pIdx + 1}`}

@@ -85,7 +85,7 @@ export default function SpaceMediaAttachments({
   const {
     busy,
     compressing,
-    uploading,
+    uploading: _uploading,
     error,
     setError,
     handleImageSelected,

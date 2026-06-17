@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import admin from 'firebase-admin'
 import {
-  isLogisticsMaintenanceTicketsManager,
   isMaintenanceCapDepartment,
 } from '@/lib/accessControl'
+import { canManageMaintenanceTicketInbox } from '@/lib/server/maintenanceTicketsAccess'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { sendMaintenanceSupplierEmail } from '@/services/graph/calendar'
 import { clearExternalStaleMaintenanceTicketNotifications } from '@/lib/maintenanceNotifications'
@@ -100,10 +100,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const user = auth.user as SessionUser
   const role = auth.role
   const dept = normalizeDept(user.department)
-  const logisticsTicketsManager = isLogisticsMaintenanceTicketsManager({
-    role,
-    department: dept,
-  })
+  const logisticsTicketsManager = await canManageMaintenanceTicketInbox(user)
   if (role !== 'admin' && role !== 'direccio' && role !== 'cap' && role !== 'usuari') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }

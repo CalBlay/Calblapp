@@ -17,15 +17,28 @@ import {
   collectOpsLocationExtraMemberIds,
   isOpsLocationChannelSource,
 } from '@/lib/messaging/opsChannelMembers.server'
+import {
+  canManageMaintenanceTicketChatMembers,
+  addMaintenanceTicketChatExtraMember,
+  removeMaintenanceTicketChatExtraMember,
+  collectMaintenanceTicketExtraMemberIds,
+} from '@/lib/messaging/maintenanceTicketOps.server'
 import { warehouseDocId } from '@/lib/eventComanda/warehouseIds'
+import { accessUserFromAuth } from '@/lib/server/spacesApiAuth'
 
 export const runtime = 'nodejs'
 
-type SessionUser = { id: string; role?: string }
+type SessionUser = {
+  id: string
+  role?: string
+  department?: string
+  name?: string
+}
 type ChannelRecord = Record<string, unknown> & {
   source?: string
   eventId?: string
   warehouseId?: string
+  ticketId?: string
   requesterUserId?: string | null
   requesterUserName?: string | null
   responsibleUserId?: string | null
@@ -146,6 +159,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     let canManageComandaMembers = false
     let canManageProductionMembers = false
     let canManageOpsLocationMembers = false
+    let canManageMaintenanceTicketMembers = false
     let requesterUserId = String(channel.requesterUserId || channel.responsibleUserId || '').trim()
     const responsibleUserId = String(channel.responsibleUserId || requesterUserId || '').trim()
 
@@ -169,6 +183,22 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         channel: { responsibleUserId: channel.responsibleUserId },
         userId,
         role,
+      })
+    }
+
+    if (channelSource === 'maintenance_ticket') {
+      extraMemberIds = collectMaintenanceTicketExtraMemberIds(channel)
+      const accessUser = accessUserFromAuth(user)
+      canManageMaintenanceTicketMembers = await canManageMaintenanceTicketChatMembers({
+        ticket: {
+          id: String(channel.ticketId || ''),
+          createdById: channel.requesterUserId ?? null,
+          opsManagerUserId: channel.responsibleUserId ?? null,
+        },
+        channel: { responsibleUserId: channel.responsibleUserId },
+        userId,
+        role,
+        user: accessUser,
       })
     }
 
@@ -260,6 +290,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           (channelSource === 'events' &&
             canManageProductionMembers &&
             extraMemberIds.has(uid)) ||
+          (channelSource === 'maintenance_ticket' &&
+            canManageMaintenanceTicketMembers &&
+            extraMemberIds.has(uid)) ||
           (isOpsLocationChannelSource(channelSource) &&
             canManageOpsLocationMembers &&
             extraMemberIds.has(uid)),
@@ -278,6 +311,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           ? canManageComandaMembers
           : channelSource === 'events'
             ? canManageProductionMembers
+            : channelSource === 'maintenance_ticket'
+              ? canManageMaintenanceTicketMembers
             : isOpsLocationChannelSource(channelSource)
               ? canManageOpsLocationMembers
               : false,
@@ -328,6 +363,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       return NextResponse.json({ ok: true, channelId: result?.channelId || id })
     }
 
+    if (source === 'maintenance_ticket') {
+      const ticketId = String(channel.ticketId || '').trim()
+      if (!ticketId) {
+        return NextResponse.json({ error: 'Ticket no vàlid.' }, { status: 400 })
+      }
+      const result = await addMaintenanceTicketChatExtraMember({
+        ticketId,
+        targetUserId,
+        actorUserId: user.id,
+        actorRole: role,
+      })
+      return NextResponse.json({ ok: true, channelId: result.channelId })
+    }
+
     if (isOpsLocationChannelSource(source)) {
       const result = await addOpsLocationChannelExtraMember({
         channelId: id,
@@ -376,6 +425,20 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
         actorRole: role,
       })
       return NextResponse.json({ ok: true, channelId: result?.channelId || id })
+    }
+
+    if (source === 'maintenance_ticket') {
+      const ticketId = String(channel.ticketId || '').trim()
+      if (!ticketId) {
+        return NextResponse.json({ error: 'Ticket no vàlid.' }, { status: 400 })
+      }
+      const result = await removeMaintenanceTicketChatExtraMember({
+        ticketId,
+        targetUserId,
+        actorUserId: user.id,
+        actorRole: role,
+      })
+      return NextResponse.json({ ok: true, channelId: result.channelId })
     }
 
     if (isOpsLocationChannelSource(source)) {

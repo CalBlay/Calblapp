@@ -40,6 +40,12 @@ import {
   eventsWarehouseComandaActionBaseAccess,
 } from '@/lib/eventComandaPermissions'
 import {
+  MAINTENANCE_TICKETS_ACTION,
+  MAINTENANCE_TICKETS_INBOX_PERM,
+  MAINTENANCE_TICKETS_UI_PATH,
+  baseCanReceiveMaintenanceTicketInboxNotifications,
+} from '@/lib/maintenanceTicketsPermissions'
+import {
   CALENDAR_EDIT_IMPLIED_ACTIONS,
   PERM,
   actionPermKey,
@@ -92,6 +98,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/events', action: 'warehouse:comanda-only' },
   { path: INCIDENTS_UI_PATH, action: 'command-board' },
   { path: INCIDENTS_UI_PATH, action: 'meeting-minutes' },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.INBOX },
   { path: '/menu/quadrants', action: 'save' },
   { path: '/menu/quadrants', action: 'confirm' },
   { path: '/menu/quadrants', action: 'draft:save' },
@@ -365,6 +372,18 @@ export async function GET() {
     actions[EVENTS_COMANDA_PREPARE_PERM] = true
     if (effectFor(assignment, EVENTS_WAREHOUSE_COMANDA_ONLY_PERM) === 'allow') {
       actions[EVENTS_WAREHOUSE_COMANDA_ONLY_PERM] = true
+    }
+  }
+
+  if (map[MAINTENANCE_TICKETS_UI_PATH] === true) {
+    const inboxEff = effectFor(assignment, MAINTENANCE_TICKETS_INBOX_PERM)
+    if (inboxEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_INBOX_PERM] = false
+    } else if (
+      inboxEff === 'allow' ||
+      baseCanReceiveMaintenanceTicketInboxNotifications(accessUser)
+    ) {
+      actions[MAINTENANCE_TICKETS_INBOX_PERM] = true
     }
   }
 

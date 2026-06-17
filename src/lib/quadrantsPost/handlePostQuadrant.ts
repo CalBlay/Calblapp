@@ -79,7 +79,7 @@ export async function handlePostQuadrant(req: NextRequest) {
       mode === 'manual' && isQuadrantCoreDepartment(deptNorm) && !confirmImmediatelyRequested
         ? deptNorm
         : undefined
-    let overlapWarmupPromise: Promise<OverlapBusySnapshot> | null =
+    const overlapWarmupPromise: Promise<OverlapBusySnapshot> | null =
       overlapStartBound && overlapEndBound
         ? preloadQuadrantOverlapBusyDocs(overlapStartBound, overlapEndBound, {
             department: overlapDepartmentScope,
@@ -246,7 +246,7 @@ export async function handlePostQuadrant(req: NextRequest) {
     let phaseRequests: PhaseRequest[] = []
     const createdDocIds: string[] = []
     const savedDraftSnapshotByDocId = new Map<string, QuadrantSave>()
-    let remainingServiceJamoneroAssignments: JamoneroAssignmentNormalized[] = Array.isArray(
+    const remainingServiceJamoneroAssignments: JamoneroAssignmentNormalized[] = Array.isArray(
       body.serviceJamoneroAssignments
     )
       ? (body.serviceJamoneroAssignments as JamoneroAssignmentRaw[]).map(normalizeJamoneroAssignment)

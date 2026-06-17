@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { endOfWeek, format, startOfWeek } from 'date-fns'
 import { CalendarCheck2 } from 'lucide-react'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import ModuleHeader from '@/components/layout/ModuleHeader'
@@ -21,13 +21,22 @@ import { useFilters } from '@/context/FiltersContext'
 import { normalizeRole } from '@/lib/roles'
 import { canManageMaintenanceTickets } from '@/lib/accessControl'
 import {
+  MAINTENANCE_TICKETS_INBOX_PERM,
+} from '@/lib/maintenanceTicketsPermissions'
+import { canUserDeleteMaintenanceTicket } from '@/lib/maintenanceTicketDeletePolicy'
+import {
+  getCurrentMaintenanceWeekRange,
+  MAINTENANCE_DATE_MODE_LABELS,
+  type MaintenanceDateFilterMode,
+} from '@/lib/maintenanceDateFilter'
+import {
   isCuinaCentralDepartment,
   isMaintenanceTicketCreatorOnlyUser,
   isRestaurantOpsDepartment,
 } from '@/lib/maintenanceTicketCreators'
 import { OPS_CHANNEL_LOCATIONS } from '@/lib/opsMessagingChannels'
 import { markTicketSeen } from '@/lib/maintenanceSeen'
-import { formatDateOnly, formatDateTimeValue } from '@/lib/date-format'
+import { formatDateTimeValue } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
 import { useMaintenanceTickets } from './useMaintenanceTickets'
 import type { Ticket, TicketPriority, TicketStatus } from './types'
@@ -35,6 +44,11 @@ import TicketsList from './components/TicketsList'
 import CreateTicketModal from './components/CreateTicketModal'
 import AssignTicketModal from './components/AssignTicketModal'
 import ResolveTicketModal from './components/ResolveTicketModal'
+import OpsWorkspacePanel from '@/components/messaging/OpsWorkspacePanel'
+import { createMaintenanceOpsWorkspaceConfig } from '@/lib/messaging/maintenanceOpsWorkspace'
+import MaintenanceNotificationsBell from '../components/MaintenanceNotificationsBell'
+
+const opsRoomsFetcher = (url: string) => fetch(url).then((r) => r.json())
 
 type SessionUser = {
   id?: string
@@ -66,14 +80,6 @@ const PRIORITY_LABELS: Record<TicketPriority, string> = {
   alta: 'Alta',
   normal: 'Normal',
   baixa: 'Baixa',
-}
-
-const DATE_MODE_LABELS: Record<'all' | 'planned' | 'created' | 'updated' | 'completed', string> = {
-  all: 'Sense filtre de data',
-  planned: 'Data planificada',
-  created: 'Data creacio',
-  updated: 'Ultim canvi',
-  completed: 'Data tancament',
 }
 
 const statusBadgeClasses: Record<TicketStatus, string> = {
@@ -123,7 +129,7 @@ export default function MaintenanceTicketsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setContent } = useFilters()
-  const { isPathAllowed } = useUiPermissions()
+  const { isPathAllowed, hasAction } = useUiPermissions()
   const canViewPlanner = isPathAllowed(MAINTENANCE_PLANNER_PATH)
   const sessionUser = (session?.user || {}) as SessionUser
   const department = normalizeDept(sessionUser.department || '')
@@ -131,10 +137,13 @@ export default function MaintenanceTicketsPage() {
   const isMaintenance = department === 'manteniment'
   const isMaintenanceWorker = userRole === 'treballador' && isMaintenance
   const isOwnTicketsOnly = isMaintenanceTicketCreatorOnlyUser(sessionUser)
-  const canManageAllTickets = canManageMaintenanceTickets({
-    role: userRole,
-    department,
-  })
+  const canManageInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
+  const canManageAllTickets =
+    canManageMaintenanceTickets({
+      role: userRole,
+      department,
+    }) || canManageInbox
+  const canSeeMaintenanceBell = canManageAllTickets || canManageInbox
   const hasAccess =
     !isMaintenanceWorker &&
     (userRole === 'admin' ||
@@ -148,6 +157,8 @@ export default function MaintenanceTicketsPage() {
   const [dateResetSignal, setDateResetSignal] = useState(0)
   const [resolveTicket, setResolveTicket] = useState<Ticket | null>(null)
   const [resolveBusy, setResolveBusy] = useState(false)
+  const [opsTicket, setOpsTicket] = useState<Ticket | null>(null)
+  const maintenanceOpsConfig = useMemo(() => createMaintenanceOpsWorkspaceConfig(), [])
 
   useEffect(() => {
     if (status === 'loading') return
@@ -159,6 +170,8 @@ export default function MaintenanceTicketsPage() {
     userId,
     isExternalReporter,
     canValidate,
+    canCapValidateTicket,
+    canCreatorValidateTicket,
     canReopen,
     canExternalize,
     tickets,
@@ -187,6 +200,9 @@ export default function MaintenanceTicketsPage() {
     setShowMachineList,
     createDescription,
     setCreateDescription,
+    createWorkerName,
+    setCreateWorkerName,
+    needsWorkerName,
     createPriority,
     setCreatePriority,
     createAttachmentPreviews,
@@ -237,6 +253,7 @@ export default function MaintenanceTicketsPage() {
     handleExternalize,
     handleSendToPlanner,
     handleDirectResolution,
+    handleCreatorValidate,
     handleDelete,
     fetchMoreTickets,
     groupedTickets,
@@ -273,20 +290,19 @@ export default function MaintenanceTicketsPage() {
 
   useEffect(() => {
     setContent(
-      <div key={`tickets-filters-${filters.dateMode ?? 'all'}-${dateResetSignal}`} className="space-y-4 p-4">
-        <label className="space-y-2 text-sm text-slate-700">
-          <span className="font-medium">Tipus de data</span>
-          <select
-            value={filters.dateMode ?? 'all'}
-            onChange={(e) => setFilters((prev) => ({ ...prev, dateMode: e.target.value as typeof prev.dateMode }))}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-          >
-            <option value="all">Sense filtre de data</option>
-            <option value="planned">Data planificada</option>
-            <option value="created">Data creacio</option>
-            <option value="updated">Ultim canvi</option>
-            <option value="completed">Data tancament</option>
-          </select>
+      <div key={`tickets-filters-${filters.dateMode ?? 'planned'}-${dateResetSignal}`} className="space-y-4 p-4">
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={(filters.dateMode ?? 'planned') !== 'all'}
+            onChange={(e) =>
+              setFilters((prev) => ({
+                ...prev,
+                dateMode: (e.target.checked ? 'planned' : 'all') as MaintenanceDateFilterMode,
+              }))
+            }
+          />
+          Aplicar filtre de dates
         </label>
         {isExternalReporter ? (
           <label className="space-y-2 text-sm text-slate-700">
@@ -357,17 +373,16 @@ export default function MaintenanceTicketsPage() {
         <div className="flex justify-end">
           <ResetFilterButton
             onClick={() => {
-              const start = startOfWeek(new Date(), { weekStartsOn: 1 })
-              const end = endOfWeek(new Date(), { weekStartsOn: 1 })
+              const { start, end } = getCurrentMaintenanceWeekRange()
               const next = {
                 ...filters,
-                start: format(start, 'yyyy-MM-dd'),
-                end: format(end, 'yyyy-MM-dd'),
+                start,
+                end,
                 status: '__all__',
                 priority: '__all__',
                 location: '__all__',
                 ticketBucket: '__all__',
-                dateMode: 'all' as const,
+                dateMode: 'planned' as const,
               }
               setFilters(next)
               setDateResetSignal((current) => current + 1)
@@ -469,6 +484,32 @@ export default function MaintenanceTicketsPage() {
     [canManageAllTickets]
   )
 
+  const canDeleteTicket = useCallback(
+    (ticket: Ticket) => canUserDeleteMaintenanceTicket(ticket, userId),
+    [userId]
+  )
+
+  const canShowTicketOps = useCallback(
+    (ticket: Ticket) => {
+      if (canManageAllTickets) return true
+      if (userId && ticket.createdById === userId) return true
+      return false
+    },
+    [canManageAllTickets, userId]
+  )
+
+  const openTicketOps = useCallback((ticket: Ticket) => {
+    setOpsTicket(ticket)
+  }, [])
+
+  const { data: selectedOpsData } = useSWR<{ rooms?: Array<{ unreadCount?: number }> }>(
+    selected && canShowTicketOps(selected)
+      ? `/api/maintenance/tickets/${encodeURIComponent(selected.id)}/ops/rooms`
+      : null,
+    opsRoomsFetcher
+  )
+  const selectedOpsUnread = Number(selectedOpsData?.rooms?.[0]?.unreadCount || 0)
+
   if (!hasAccess && status !== 'loading') return null
 
   return (
@@ -479,8 +520,9 @@ export default function MaintenanceTicketsPage() {
           subtitle="Tickets"
           mainHref="/menu/manteniment"
           actions={
-            canViewPlanner || (hasAccess && (canManageAllTickets || isOwnTicketsOnly)) ? (
+            canViewPlanner || (hasAccess && (canManageAllTickets || isOwnTicketsOnly)) || canSeeMaintenanceBell ? (
               <div className="flex flex-wrap items-center justify-end gap-2">
+                {canSeeMaintenanceBell ? <MaintenanceNotificationsBell /> : null}
                 {canViewPlanner ? (
                   <Link
                     href={MAINTENANCE_PLANNER_PATH}
@@ -539,18 +581,6 @@ export default function MaintenanceTicketsPage() {
                 initialEnd={filters.end}
               />
             </div>
-            <div className="flex min-w-[260px] flex-1 flex-wrap items-center gap-2">
-              <CorporateActiveFilterChip variant="active">
-                {DATE_MODE_LABELS[filters.dateMode ?? 'all']}
-              </CorporateActiveFilterChip>
-              {(filters.dateMode ?? 'all') !== 'all' && filters.start && filters.end ? (
-                <CorporateActiveFilterChip>
-                  {filters.start === filters.end
-                    ? formatDateOnly(filters.start, filters.start)
-                    : `${formatDateOnly(filters.start, filters.start)} - ${formatDateOnly(filters.end, filters.end)}`}
-                </CorporateActiveFilterChip>
-              ) : null}
-            </div>
             <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
               <FilterButton />
             </div>
@@ -573,11 +603,6 @@ export default function MaintenanceTicketsPage() {
             ) : null}
             {!isExternalReporter && filters.location && filters.location !== '__all__' ? (
               <CorporateActiveFilterChip>{filters.location}</CorporateActiveFilterChip>
-            ) : null}
-            {(filters.dateMode ?? 'all') !== 'all' ? (
-              <CorporateActiveFilterChip>
-                {DATE_MODE_LABELS[filters.dateMode ?? 'all']}
-              </CorporateActiveFilterChip>
             ) : null}
           </CorporateFiltersActiveRow>
         </CorporateFiltersShell>
@@ -653,12 +678,11 @@ export default function MaintenanceTicketsPage() {
           canResolveDirectly={canResolveDirectly}
           canPlanifyDirectly={canPlanifyDirectly}
           onDelete={handleDelete}
-          canDelete={(ticket) =>
-            ticket.createdById === userId ||
-            ticketRole === 'admin' ||
-            ticketRole === 'direccio' ||
-            (ticketRole === 'cap' && isMaintenance)
-          }
+          canDelete={canDeleteTicket}
+          canCreatorValidate={canCreatorValidateTicket}
+          onCreatorValidate={handleCreatorValidate}
+          canShowOps={canShowTicketOps}
+          onOpenOps={openTicketOps}
           formatDateTime={formatDateTime}
           statusBadgeClasses={displayStatusBadgeClasses}
           priorityBadgeClasses={priorityBadgeClasses}
@@ -695,6 +719,9 @@ export default function MaintenanceTicketsPage() {
             setCreateMachine={setCreateMachine}
             createDescription={createDescription}
             setCreateDescription={setCreateDescription}
+            createWorkerName={createWorkerName}
+            setCreateWorkerName={setCreateWorkerName}
+            needsWorkerName={needsWorkerName}
             showLocationList={showLocationList}
             setShowLocationList={setShowLocationList}
             showMachineList={showMachineList}
@@ -745,6 +772,8 @@ export default function MaintenanceTicketsPage() {
             detailsPriority={detailsPriority}
             setDetailsPriority={setDetailsPriority}
             canValidate={canValidate}
+            canCapValidate={canCapValidateTicket}
+            onCapValidate={(ticket) => void handleStatusChange(ticket, 'validat')}
             canReopen={canReopen}
             canExternalize={canExternalize}
             externalizeBusy={externalizeBusy}
@@ -763,9 +792,23 @@ export default function MaintenanceTicketsPage() {
             resolveArea="administracio"
             onResolveTicket={handleDirectResolution}
             onSendToPlanner={handleSendToPlanner}
+            showOpsButton={canShowTicketOps(selected)}
+            opsUnreadCount={selectedOpsUnread}
+            onOpenOps={() => openTicketOps(selected)}
             onClose={closeSelectedTicket}
           />
         )}
+
+        {opsTicket ? (
+          <OpsWorkspacePanel
+            open
+            initialRoomId={opsTicket.id}
+            config={maintenanceOpsConfig}
+            onOpenChange={(open) => {
+              if (!open) setOpsTicket(null)
+            }}
+          />
+        ) : null}
 
         {resolveTicket && (
           <ResolveTicketModal

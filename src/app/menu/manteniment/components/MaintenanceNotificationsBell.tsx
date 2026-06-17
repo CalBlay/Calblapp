@@ -41,6 +41,8 @@ type MaintenanceTicketResponse = {
 const MAINTENANCE_NOTIFICATION_TYPES = new Set([
   'maintenance_ticket_new',
   'maintenance_ticket_assigned',
+  'maintenance_ticket_resolved',
+  'maintenance_ticket_pending_cap_validation',
   'maintenance_ticket_validated',
   'maintenance_ticket_stale',
   'maintenance_ticket_external_stale',
@@ -79,6 +81,12 @@ function extractNotificationLabel(notification: MaintenanceNotification) {
 
   if (notification.type === 'maintenance_ticket_assigned') {
     return { prefix: 'Assignat', primary, secondary }
+  }
+  if (notification.type === 'maintenance_ticket_resolved') {
+    return { prefix: 'Resolt', primary, secondary }
+  }
+  if (notification.type === 'maintenance_ticket_pending_cap_validation') {
+    return { prefix: 'Pendent validar', primary, secondary }
   }
   if (notification.type === 'maintenance_ticket_validated') {
     return { prefix: 'Validat', primary, secondary }

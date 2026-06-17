@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { compressRasterImageForUpload, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
 import { compressVideoForUpload } from '@/lib/media/compressVideoForUpload'
 import {
   resolveManualTicketRouting,
+  requiresMaintenanceTicketWorkerName,
   type ManualTicketRouting,
 } from '@/lib/maintenanceTicketCreators'
 import {
@@ -52,6 +53,7 @@ export function useMaintenanceTicketComposer({
   const [showLocationList, setShowLocationList] = useState(false)
   const [showMachineList, setShowMachineList] = useState(false)
   const [createDescription, setCreateDescription] = useState('')
+  const [createWorkerName, setCreateWorkerName] = useState('')
   const [createPriority, setCreatePriority] = useState<TicketPriority>('normal')
   const [createAttachments, setCreateAttachments] = useState<PendingTicketAttachment[]>([])
   const [createBusy, setCreateBusy] = useState(false)
@@ -59,6 +61,15 @@ export function useMaintenanceTicketComposer({
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const attachmentsRef = useRef<PendingTicketAttachment[]>([])
+
+  const needsWorkerName = useMemo(
+    () =>
+      requiresMaintenanceTicketWorkerName({
+        department: sessionUser.department,
+        location: createLocation.trim() || locationQuery.trim(),
+      }),
+    [sessionUser.department, createLocation, locationQuery]
+  )
 
   useEffect(() => {
     setLocationQuery(createLocation)
@@ -101,6 +112,7 @@ export function useMaintenanceTicketComposer({
     setShowLocationList(false)
     setShowMachineList(false)
     setCreateDescription('')
+    setCreateWorkerName('')
     setCreatePriority('normal')
     createAttachments.forEach((item) => URL.revokeObjectURL(item.preview))
     setCreateAttachments([])
@@ -224,6 +236,9 @@ export function useMaintenanceTicketComposer({
     if (!createDescription.trim()) {
       return 'La descripcio es obligatoria.'
     }
+    if (needsWorkerName && !createWorkerName.trim()) {
+      return 'Indica el nom del treballador que reporta el ticket.'
+    }
     if (createAttachments.length < 1) {
       return `Cal adjuntar com a minim una foto o video (maxim ${MAX_TICKET_ATTACHMENTS}).`
     }
@@ -260,6 +275,7 @@ export function useMaintenanceTicketComposer({
           machine: getEffectiveMachine(),
           operatorTitle: getEffectiveMachine(),
           description: createDescription.trim(),
+          workerName: createWorkerName.trim() || null,
           priority: createPriority,
           ticketType: 'maquinaria',
           source: routing.source,
@@ -288,6 +304,7 @@ export function useMaintenanceTicketComposer({
     Boolean(createLocation.trim()) &&
     Boolean(getEffectiveMachine()) &&
     Boolean(createDescription.trim()) &&
+    (!needsWorkerName || Boolean(createWorkerName.trim())) &&
     createAttachments.length >= 1 &&
     createAttachments.length <= MAX_TICKET_ATTACHMENTS
 
@@ -308,6 +325,9 @@ export function useMaintenanceTicketComposer({
     setShowMachineList,
     createDescription,
     setCreateDescription,
+    createWorkerName,
+    setCreateWorkerName,
+    needsWorkerName,
     createPriority,
     setCreatePriority,
     createAttachments,

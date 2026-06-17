@@ -1,6 +1,5 @@
 import type { AccessUser } from '@/lib/accessControl'
 import { PERM } from '@/lib/permissionKeys'
-import { normalizeRole } from '@/lib/roles'
 
 export const EVENT_VISIT_VIDEO_ACTION = 'docs:attach:visit-video'
 export const EVENT_VISIT_VIDEO_PERM = PERM.action('/menu/events', EVENT_VISIT_VIDEO_ACTION)

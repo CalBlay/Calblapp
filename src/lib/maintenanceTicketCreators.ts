@@ -103,6 +103,45 @@ export function isMaintenanceTicketCreatorDepartment(raw?: string | null) {
   return isCuinaCentralDepartment(raw) || isRestaurantOpsDepartment(raw)
 }
 
+/** Cal indicar qui reporta el ticket (comptes genèrics de restaurant). */
+export function requiresMaintenanceTicketWorkerName(params: {
+  department?: string | null
+  location?: string | null
+}): boolean {
+  const location = String(params.location || '').trim()
+  if (isRestaurantOpsDepartment(params.department)) return true
+  if (!location) return false
+  const routing = resolveManualTicketRouting({
+    department: params.department,
+    location,
+  })
+  return routing.intakeChannel === 'restaurant'
+}
+
+export function formatTicketReporterLabel(ticket: {
+  workerName?: string | null
+  createdByName?: string | null
+}): string {
+  const worker = String(ticket.workerName || '').trim()
+  const account = String(ticket.createdByName || '').trim()
+  if (worker) return worker
+  return account || 'Sense identificar'
+}
+
+export function formatTicketReporterDetail(ticket: {
+  workerName?: string | null
+  createdByName?: string | null
+}): string {
+  const worker = String(ticket.workerName || '').trim()
+  const account = String(ticket.createdByName || '').trim()
+  if (worker && account && worker.toLowerCase() !== account.toLowerCase()) {
+    return `Treballador: ${worker} · Compte: ${account}`
+  }
+  if (worker) return `Treballador: ${worker}`
+  if (account) return `Creat per: ${account}`
+  return 'Sense identificar'
+}
+
 export type ExternalReporterTicketBucket = 'nou' | 'assignat' | 'fet' | 'externalitzat'
 
 const normalizeTicketStatusKey = (status?: string | null) =>

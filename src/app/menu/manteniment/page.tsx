@@ -12,9 +12,10 @@ import { useSession } from 'next-auth/react'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { normalizeRole } from '@/lib/roles'
 import {
-  isLogisticsMaintenanceTicketsManager,
   isMaintenanceCapDepartment,
+  canManageMaintenanceTickets,
 } from '@/lib/accessControl'
+import { MAINTENANCE_TICKETS_INBOX_PERM } from '@/lib/maintenanceTicketsPermissions'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import MaintenanceNotificationsBell from './components/MaintenanceNotificationsBell'
 import { useMaintenanceAssignedCount } from '@/hooks/useMaintenanceAssignedCount'
@@ -41,15 +42,12 @@ export default function MantenimentIndexPage() {
   const userDepartment = normalizeDept(sessionUser?.department || '')
   const isMaintenanceWorker = userRole === 'treballador' && userDepartment === 'manteniment'
   const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(userDepartment)
-  const isLogisticsTicketsManager = isLogisticsMaintenanceTicketsManager({
-    role: userRole,
-    department: userDepartment,
-  })
   const isAdmin = userRole === 'admin' || userRole === 'direccio'
   const isProductionWorker = userRole === 'treballador' && userDepartment === 'produccio'
   const isCommercial = userRole === 'comercial'
-  const { canViewPath } = useUiPermissions()
+  const { canViewPath, hasAction } = useUiPermissions()
   const canViewTickets = canViewPath('/menu/manteniment/tickets')
+  const canManageTicketInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
   const { count: assignedTicketsCount } = useMaintenanceAssignedCount()
 
   return (
@@ -62,7 +60,11 @@ export default function MantenimentIndexPage() {
         />
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {(isAdmin || isMaintenanceCap || isLogisticsTicketsManager || canViewTickets) && (
+          {(isAdmin ||
+            isMaintenanceCap ||
+            canManageTicketInbox ||
+            canManageMaintenanceTickets({ role: userRole, department: userDepartment }) ||
+            canViewTickets) && (
             <Link
               href="/menu/manteniment/tickets"
               className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-amber-50 to-yellow-100"

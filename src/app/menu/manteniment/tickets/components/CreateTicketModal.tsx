@@ -25,6 +25,9 @@ type Props = {
   setCreateMachine: (value: string) => void
   createDescription: string
   setCreateDescription: (value: string) => void
+  createWorkerName?: string
+  setCreateWorkerName?: (value: string) => void
+  needsWorkerName?: boolean
   showLocationList: boolean
   setShowLocationList: (value: boolean) => void
   showMachineList: boolean
@@ -71,6 +74,9 @@ export default function CreateTicketModal({
   setCreateMachine,
   createDescription,
   setCreateDescription,
+  createWorkerName = '',
+  setCreateWorkerName,
+  needsWorkerName = false,
   showLocationList,
   setShowLocationList,
   showMachineList,
@@ -326,6 +332,25 @@ export default function CreateTicketModal({
               ) : null}
             </div>
           </div>
+
+          {needsWorkerName ? (
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Nom treballador *
+              </label>
+              <input
+                className="h-12 w-full rounded-2xl border px-4 text-base"
+                placeholder="Qui reporta la incidència?"
+                value={createWorkerName}
+                required
+                autoComplete="name"
+                onChange={(e) => setCreateWorkerName?.(e.target.value)}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Indica el nom de la persona de restaurant perquè manteniment sàpiga a qui dirigir-se.
+              </p>
+            </div>
+          ) : null}
 
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">

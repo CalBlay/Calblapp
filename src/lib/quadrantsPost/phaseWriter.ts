@@ -365,7 +365,7 @@ export async function processPhaseRequests(params: ProcessPhaseRequestsParams) {
     canonicalEventId,
     collectionName,
     phaseRequests,
-    jamAssignmentsAllowServeisFirestoreBatch,
+    jamAssignmentsAllowServeisFirestoreBatch: _jamAssignmentsAllowServeisFirestoreBatch,
     confirmImmediatelyRequested,
     jwtSessionForInlineConfirm,
     learningStatus,

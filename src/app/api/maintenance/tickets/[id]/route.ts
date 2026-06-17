@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { canManageMaintenanceTickets, isMaintenanceCapDepartment } from '@/lib/accessControl'
+import { canManageMaintenanceTicketInbox } from '@/lib/server/maintenanceTicketsAccess'
+import { canUserDeleteMaintenanceTicket } from '@/lib/maintenanceTicketDeletePolicy'
+import { clearStaleMaintenanceTicketNotifications } from '@/lib/maintenanceNotifications'
 import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
 import {
   buildAssignedTicketBodyForCreator,
@@ -8,8 +11,15 @@ import {
   notifyMaintenanceAssignees,
   notifyTicketCreator,
   notifyTicketEnteredPlanner,
+  notifyTicketPendingCapValidation,
+  notifyTicketResolvedForCreator,
   onMaintenanceTicketUpdated,
 } from '@/lib/maintenanceNotifications'
+import {
+  canCapValidateMaintenanceTicket,
+  canCreatorValidateMaintenanceTicket,
+  maintenanceTicketRequiresCreatorValidation,
+} from '@/lib/maintenanceTicketValidation'
 import {
   normalizeTicketWorkflowStage,
   type TicketAlertSnapshot,
@@ -77,6 +87,7 @@ type UpdatePayload = {
   statusEndTime?: string | null
   newSegmentEndTime?: string | null
   statusNote?: string | null
+  validationApproval?: 'creator' | 'cap'
   completionImages?: Array<{
     url?: string | null
     path?: string | null
@@ -107,6 +118,10 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   outlookCalendarEvents?: Record<string, MaintenanceTicketOutlookEventRef>
   statusHistory?: StatusHistoryEntry[]
   imageUrls?: string[] | null
+  requiresCreatorValidation?: boolean
+  creatorValidatedAt?: number | string | null
+  capValidatedAt?: number | string | null
+  resolvedByArea?: string | null
 }
 
 const normalizePriority = (value?: string) => {
@@ -194,7 +209,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const data = snap.data() as MaintenanceTicketRecord
-    const canViewAllTickets = canManageMaintenanceTickets({ role, department: dept })
+    const canViewAllTickets =
+      canManageMaintenanceTickets({ role, department: dept }) ||
+      (await canManageMaintenanceTicketInbox(user))
 
     const assignedIds = Array.isArray(data.assignedToIds) ? data.assignedToIds.map(String) : []
     const assignedNames = Array.isArray(data.assignedToNames)
@@ -234,7 +251,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .trim()
-  const canManageTickets = canManageMaintenanceTickets({ role, department: dept })
+  const canManageTickets =
+    canManageMaintenanceTickets({ role, department: dept }) ||
+    (await canManageMaintenanceTicketInbox(user))
   if (
     role !== 'admin' &&
     role !== 'direccio' &&
@@ -295,6 +314,85 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const currentStatus = normalizeStatus(current.status)
     const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
     const canReopen = canValidate
+    const isMaintenanceCap = role === 'cap' && isMaintenanceCapDepartment(dept)
+    const validationApproval =
+      body.validationApproval === 'creator' || body.validationApproval === 'cap'
+        ? body.validationApproval
+        : null
+
+    if (validationApproval === 'creator') {
+      if (!canCreatorValidateMaintenanceTicket(current, user.id)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+
+      const now = Date.now()
+      const ticketCode = current.ticketCode || current.incidentNumber || null
+      const notifyBase = {
+        ticketId: id,
+        ticketCode,
+        status: 'resolut' as const,
+        priority: current.priority || null,
+        location: current.location || null,
+        machine: current.machine || null,
+        source: current.source || null,
+        body: buildTicketBody({
+          machine: current.machine,
+          location: current.location,
+          description: current.description,
+        }),
+      }
+
+      const creatorUpdates: Record<string, unknown> = {
+        creatorValidatedAt: now,
+        creatorValidatedById: user.id,
+        creatorValidatedByName: user.name || '',
+        updatedAt: now,
+      }
+
+      if (current.capValidatedAt) {
+        creatorUpdates.status = 'validat'
+        creatorUpdates.workflowStage = 'closed'
+        creatorUpdates.resolvedAt = now
+        creatorUpdates.resolvedById = user.id
+        creatorUpdates.resolvedByName = user.name || ''
+        creatorUpdates.statusHistory = admin.firestore.FieldValue.arrayUnion({
+          status: 'validat',
+          at: now,
+          byId: user.id,
+          byName: user.name || '',
+          note: 'Validat pel creador',
+        })
+      }
+
+      await ref.set(creatorUpdates, { merge: true })
+
+      if (!current.capValidatedAt) {
+        await notifyTicketPendingCapValidation({
+          payload: {
+            type: 'maintenance_ticket_pending_cap_validation',
+            title: 'Ticket pendent de validar',
+            ...notifyBase,
+          },
+          excludeIds: [user.id],
+        })
+      } else {
+        await notifyTicketCreator({
+          uid: current.createdById || null,
+          payload: {
+            type: 'maintenance_ticket_validated',
+            title: 'Ticket validat',
+            ...notifyBase,
+            status: 'validat',
+          },
+          excludeIds: [user.id],
+        })
+      }
+
+      const updatedSnap = await ref.get()
+      return NextResponse.json({ ticket: { id, ...(updatedSnap.data() || {}) } })
+    }
+
+    const wantsCapValidation = validationApproval === 'cap' || nextStatus === 'validat'
 
     const wantsDataEdit =
       body.assignedToIds !== undefined ||
@@ -436,21 +534,39 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     }
 
-    if (nextStatus === 'validat') {
-      if (!canValidate) {
+    if (wantsCapValidation) {
+      if (!canCapValidateMaintenanceTicket(current, { role, isMaintenanceCap })) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
-      const directResolutionStage =
-        updates.workflowStage === 'resolved_admin' || updates.workflowStage === 'resolved_planner'
-      if (currentStatus !== 'fet' && currentStatus !== 'resolut' && !directResolutionStage) {
+
+      const requiresCreatorValidation = maintenanceTicketRequiresCreatorValidation(current)
+      if (
+        currentStatus !== 'fet' &&
+        currentStatus !== 'resolut' &&
+        !requiresCreatorValidation
+      ) {
         return NextResponse.json({ error: 'Nomes es pot validar des de Fet o Resolt' }, { status: 400 })
       }
-      updates.resolvedAt = Date.now()
-      updates.resolvedById = user.id
-      updates.resolvedByName = user.name || ''
-      if (!updates.workflowStage) {
+
+      const now = Date.now()
+      updates.capValidatedAt = now
+      updates.capValidatedById = user.id
+      updates.capValidatedByName = user.name || ''
+
+      const creatorAlreadyValidated = Boolean(current.creatorValidatedAt)
+      if (requiresCreatorValidation && !creatorAlreadyValidated) {
+        nextStatus = 'resolut'
+        updates.status = 'resolut'
+      } else {
+        nextStatus = 'validat'
+        updates.status = 'validat'
+        updates.resolvedAt = now
+        updates.resolvedById = user.id
+        updates.resolvedByName = user.name || ''
         updates.workflowStage = current.externalized ? 'externalized' : 'closed'
       }
+    } else if (nextStatus === 'validat') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     if (role === 'treballador' && !canManageTickets && nextStatus) {
@@ -542,6 +658,17 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       updates.resolvedByName = user.name || ''
       updates.status = 'resolut'
       nextStatus = 'resolut'
+      updates.creatorValidatedAt = null
+      updates.creatorValidatedById = null
+      updates.creatorValidatedByName = null
+      updates.capValidatedAt = null
+      updates.capValidatedById = null
+      updates.capValidatedByName = null
+      if (updates.workflowStage === 'resolved_admin') {
+        updates.requiresCreatorValidation = true
+      } else {
+        updates.requiresCreatorValidation = false
+      }
       updates.statusHistory = admin.firestore.FieldValue.arrayUnion({
         status: 'resolut',
         at: Date.now(),
@@ -591,6 +718,43 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     await onMaintenanceTicketUpdated(id, mergedTicket)
+
+    if (
+      nextWorkflowStage === 'resolved_admin' &&
+      previousWorkflowStage !== 'resolved_admin'
+    ) {
+      const ticketCode = current.ticketCode || current.incidentNumber || null
+      const effectiveMachine =
+        body.machine !== undefined ? String(body.machine).trim() : (current.machine || '')
+      const effectiveLocation =
+        body.location !== undefined ? String(body.location).trim() : (current.location || '')
+      const effectiveDescription =
+        body.description !== undefined
+          ? String(body.description).trim()
+          : (current.description || '')
+
+      await notifyTicketResolvedForCreator({
+        uid: current.createdById || null,
+        payload: {
+          type: 'maintenance_ticket_resolved',
+          title: 'Ticket resolt',
+          body: buildTicketBody({
+            machine: effectiveMachine,
+            location: effectiveLocation,
+            description: effectiveDescription,
+          }),
+          ticketId: id,
+          ticketCode,
+          status: 'resolut',
+          priority: updates.priority ? String(updates.priority) : current.priority || null,
+          location: effectiveLocation,
+          machine: effectiveMachine,
+          source: current.source || null,
+          workflowStage: 'resolved_admin',
+        },
+        excludeIds: [user.id],
+      })
+    }
 
     if (
       nextWorkflowStage === 'planner_queue' &&
@@ -792,12 +956,20 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     }
 
     const data = snap.data() as MaintenanceTicketRecord
-    const canDeleteAny = canManageMaintenanceTickets({ role, department: dept })
-    if (data.createdById !== user.id && !canDeleteAny) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+    if (!canUserDeleteMaintenanceTicket(data, user.id)) {
+      const isCreator = String(data.createdById || '').trim() === String(user.id || '').trim()
+      if (!isCreator) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      return NextResponse.json(
+        { error: 'No es pot eliminar un ticket resolt o ja planificat' },
+        { status: 400 }
+      )
     }
 
     await ref.delete()
+    await clearStaleMaintenanceTicketNotifications(id)
     return NextResponse.json({ success: true })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
