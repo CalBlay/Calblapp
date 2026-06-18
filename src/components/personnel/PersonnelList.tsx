@@ -83,7 +83,6 @@ export default function PersonnelList({ personnel, mutate, onEdit }: Props) {
     if (!p.name?.trim()) missing.push('nom')
     if (!p.role?.toString().trim()) missing.push('rol')
     if (!p.department?.toString().trim()) missing.push('departament')
-    if (!p.email?.toString().trim()) missing.push('email')
     if (!p.phone?.toString().trim()) missing.push('telèfon')
     const deptLower = (p.department || '')
       .normalize('NFD')
@@ -94,9 +93,12 @@ export default function PersonnelList({ personnel, mutate, onEdit }: Props) {
       const hasType = p.driver.camioGran || p.driver.camioPetit
       if (!hasType) missing.push('tipus conductor')
     }
-    if (missing.length) {
+    const blockingMissing = missing.filter(
+      (field) => field !== 'email' && !field.toLowerCase().startsWith('tel')
+    )
+    if (blockingMissing.length) {
       alert(
-        `Falten camps obligatoris per demanar usuari: ${missing.join(', ')}`
+        `Falten camps obligatoris per demanar usuari: ${blockingMissing.join(', ')}`
       )
       return
     }
