@@ -6,7 +6,7 @@ import { getWarehouseMembers } from '@/lib/eventComanda/warehouseMembers.server'
 import { warehouseDocId } from '@/lib/eventComanda/warehouseIds'
 import { writeUserNotification } from '@/lib/notifications/writeUserNotification'
 import { decrementUnreadFromNotificationDocs } from '@/lib/notifications/unreadCounts'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 
 const NOTIFICATION_TYPE = 'event_comanda_warehouse'
@@ -18,12 +18,10 @@ function notifyPushInBackground(params: {
   body: string
   url: string
 }) {
-  const baseUrl = resolveBaseUrl()
-  if (!baseUrl) return
-  void fetch(`${baseUrl}/api/push/send`, {
-    method: 'POST',
-    headers: internalApiHeaders(),
-    body: JSON.stringify(params),
+  void sendPushToUsers([params.userId], {
+    title: params.title,
+    body: params.body,
+    url: params.url,
   }).catch((error) => {
     console.error('[eventComandaNotifications] push error', error)
   })

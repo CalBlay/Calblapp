@@ -11,7 +11,7 @@ import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 
 import { normalizeRole } from '@/lib/roles'
 import { saveUserAccessAssignment } from '@/lib/server/userAccessAssignment'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 import { stripPassword } from '@/lib/server/userApiSerialization'
 import type { UserAccessAssignmentInput } from '@/lib/permissions/types'
 
@@ -57,7 +57,7 @@ async function notifyRequester(params: {
   personId: string
   baseUrl: string
 }) {
-  const { requesterId, title, body, personId, baseUrl } = params
+  const { requesterId, title, body, personId } = params
   if (!requesterId) return
 
   try {
@@ -74,27 +74,25 @@ async function notifyRequester(params: {
     })
     await incrementUserUnreadCount(requesterId, 'user_request_result', 1)
 
-    if (!hasAblyApiKey()) return
+    if (hasAblyApiKey()) {
+      try {
+        const rest = getAblyRest()
+        const channel = rest.channels.get(`user:${requesterId}:notifications`)
+        await channel.publish('created', {
+          type: 'user_request_result',
+          personId,
+          createdAt: Date.now(),
+        })
+      } catch (err) {
+        console.error('[approve user request] Ably publish error', err)
+      }
+    }
 
-    const rest = getAblyRest()
-    const channel = rest.channels.get(`user:${requesterId}:notifications`)
-    await channel.publish('created', {
-      type: 'user_request_result',
-      personId,
-      createdAt: Date.now(),
-    })
-
-    // Push al requester (mòbil)
     try {
-      await fetch(`${baseUrl}/api/push/send`, {
-        method: 'POST',
-        headers: internalApiHeaders(),
-        body: JSON.stringify({
-          userId: requesterId,
-          title,
-          body,
-          url: '/menu/personnel',
-        }),
+      await sendPushToUsers([requesterId], {
+        title,
+        body,
+        url: '/menu/personnel',
       })
     } catch (err) {
       console.error('Error enviant push al requester:', err)
@@ -332,4 +330,3 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
-

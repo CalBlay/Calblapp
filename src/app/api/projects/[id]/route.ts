@@ -26,7 +26,7 @@ import {
 } from '@/services/graph/calendar'
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 
 type SessionUser = {
   id: string
@@ -211,20 +211,11 @@ async function notifyProjectOwner(params: {
     }
   }
 
-  try {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: internalApiHeaders(),
-      body: JSON.stringify({
-        userId,
-        title,
-        body,
-        url: `/menu/projects/${projectId}`,
-      }),
-    })
-  } catch (err) {
-    console.error('[projects] push error', err)
-  }
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: `/menu/projects/${projectId}`,
+  })
 }
 
 async function notifyBlockOwnerAssignment(params: {
@@ -282,20 +273,11 @@ async function notifyBlockOwnerAssignment(params: {
     }
   }
 
-  try {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: internalApiHeaders(),
-      body: JSON.stringify({
-        userId,
-        title,
-        body,
-        url: `/menu/projects/${projectId}?tab=blocks`,
-      }),
-    })
-  } catch (err) {
-    console.error('[projects] block assignment push error', err)
-  }
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: `/menu/projects/${projectId}?tab=blocks`,
+  })
 
   if (!userEmail) return
 
@@ -390,20 +372,11 @@ async function notifyTaskOwnerAssignment(params: {
     }
   }
 
-  try {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: internalApiHeaders(),
-      body: JSON.stringify({
-        userId,
-        title,
-        body,
-        url: `/menu/projects/${projectId}?tab=tasks`,
-      }),
-    })
-  } catch (err) {
-    console.error('[projects] task assignment push error', err)
-  }
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: `/menu/projects/${projectId}?tab=tasks`,
+  })
 
   if (!userEmail) return
 

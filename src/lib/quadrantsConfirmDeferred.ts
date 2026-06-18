@@ -6,7 +6,8 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import type { Timestamp as AdminTimestamp } from 'firebase-admin/firestore'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { formatTornNotificationLabel } from '@/lib/date-format'
 import { resolveEventDisplayName } from '@/lib/eventDisplayName'
 
@@ -397,19 +398,31 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
       validUsers.map((u) => ({ userId: u.userId, type: 'torn' }))
     )
 
-    await Promise.all(
-      validUsers.map((u) =>
-        fetch(`${ctx.requestOrigin}/api/push/send`, {
-          method: 'POST',
-          headers: internalApiHeaders(),
-          body: JSON.stringify({
-            userId: u.userId,
-            title: pushTitle,
-            body: pushBody,
-            url: `/menu/torns?open=${ctx.eventId}`,
-          }),
-        }).catch(() => {})
-      )
+    if (hasAblyApiKey()) {
+      try {
+        const rest = getAblyRest()
+        await Promise.all(
+          validUsers.map((u) =>
+            rest.channels.get(`user:${u.userId}:notifications`).publish('created', {
+              type: 'torn',
+              eventId: String(ctx.eventId),
+              eventDate: ctx.firstPrev?.startDate || null,
+              createdAt: now,
+            })
+          )
+        )
+      } catch (err) {
+        console.warn('[quadrantsConfirmDeferred] Ably publish error', err)
+      }
+    }
+
+    await sendPushToUsers(
+      validUsers.map((u) => u.userId),
+      {
+        title: pushTitle,
+        body: pushBody,
+        url: `/menu/torns?open=${ctx.eventId}`,
+      }
     )
   } catch (err) {
     console.warn('[quadrantsConfirmDeferred] notifications/push failed', err)

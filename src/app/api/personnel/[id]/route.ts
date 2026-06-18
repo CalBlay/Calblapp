@@ -1,7 +1,24 @@
 // src/app/api/personnel/[id]/route.ts
 import { NextResponse } from 'next/server'
-import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { requireAuth, type AuthSuccess } from '@/lib/server/apiAuth'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import { canEditUiPath } from '@/lib/server/permissions'
+
+const PERSONNEL_UI_PATH = '/menu/personnel'
+
+async function requirePersonnelEdit(auth: AuthSuccess): Promise<NextResponse | null> {
+  const sessionUser = auth.session.user as { isAdmin?: boolean }
+  if (auth.role === 'admin' || sessionUser?.isAdmin) return null
+
+  const canEdit = await canEditUiPath({ user: auth.user, path: PERSONNEL_UI_PATH })
+  if (!canEdit) {
+    return NextResponse.json(
+      { error: 'Permís denegat', message: 'No tens permís per editar personal' },
+      { status: 403 }
+    )
+  }
+  return null
+}
 
 
 /** Estructura mínima d’un document de personnel */
@@ -67,8 +84,8 @@ export async function PUT(
 ) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
-  const denied = requireRoles(auth, ['admin', 'direccio', 'cap'])
-  if (denied) return denied.res
+  const denied = await requirePersonnelEdit(auth)
+  if (denied) return denied
 
   const { params } = context
   const { id: personnelId } = await params
@@ -106,8 +123,8 @@ export async function DELETE(
 ) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
-  const denied = requireRoles(auth, ['admin', 'direccio', 'cap'])
-  if (denied) return denied.res
+  const denied = await requirePersonnelEdit(auth)
+  if (denied) return denied
 
   const { params } = context
   const { id: personnelId } = await params

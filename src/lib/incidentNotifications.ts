@@ -1,6 +1,6 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 
 type IncidentNotificationPayload = {
   type: 'incident_marketing_9xx_new'
@@ -21,7 +21,7 @@ export async function notifyMarketingManagersFor9xxIncident(params: {
   baseUrl?: string | null
   excludeIds?: string[]
 }) {
-  const { payload, baseUrl, excludeIds = [] } = params
+  const { payload, excludeIds = [] } = params
   const snap = await db.collection('users').get()
   const targets = snap.docs
     .filter((doc) => {
@@ -74,23 +74,10 @@ export async function notifyMarketingManagersFor9xxIncident(params: {
     }
   }
 
-  if (baseUrl) {
-    await Promise.all(
-      targets.map((userId) =>
-        fetch(`${baseUrl}/api/push/send`, {
-          method: 'POST',
-          headers: internalApiHeaders(),
-          body: JSON.stringify({
-            userId,
-            title: payload.title,
-            body: payload.body,
-            url: '/menu/incidents',
-          }),
-        }).catch((err) => {
-          console.error('[incidentNotifications] push error', err)
-        })
-      )
-    )
-  }
+  await sendPushToUsers(targets, {
+    title: payload.title,
+    body: payload.body,
+    url: '/menu/incidents',
+  })
 }
 

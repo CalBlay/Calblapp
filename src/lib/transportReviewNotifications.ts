@@ -4,7 +4,7 @@ import {
   createTransportItvCalendarEvent,
   createTransportReviewCalendarEvent,
 } from '@/services/graph/calendar'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 
 type TransportMonthlyMileageEntry = {
   month?: string
@@ -193,21 +193,12 @@ async function publishRealtime(
   }
 }
 
-async function sendPush(baseUrl: string, userId: string, title: string, body: string) {
-  try {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: internalApiHeaders(),
-      body: JSON.stringify({
-        userId,
-        title,
-        body,
-        url: '/menu/logistica/transports',
-      }),
-    })
-  } catch (err) {
-    console.error('[transportReviewNotifications] push error', err)
-  }
+async function sendPush(_baseUrl: string, userId: string, title: string, body: string) {
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: '/menu/logistica/transports',
+  })
 }
 
 async function getTransportLeadUsers() {

@@ -137,6 +137,7 @@ export default function ConfiguracioPage() {
         setName(data.name || '')
         setEmail(data.email || '')
         setPhone(data.phone || '')
+        setPushEnabled(data.pushEnabled === true)
         if (userRole !== 'admin' && Array.isArray(data.opsChannelsConfigurable)) {
           const allowed = data.opsChannelsConfigurable.map(String).filter(Boolean)
           setSelectedChannels((prev) => prev.filter((id) => allowed.includes(id)))

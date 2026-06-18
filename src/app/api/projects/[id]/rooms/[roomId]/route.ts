@@ -19,7 +19,7 @@ import {
 } from '@/services/graph/calendar'
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 import type { DocumentReference } from 'firebase-admin/firestore'
 
 type SessionUser = {
@@ -142,20 +142,11 @@ async function notifyTaskOwnerAssignment(params: {
     }
   }
 
-  try {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: internalApiHeaders(),
-      body: JSON.stringify({
-        userId,
-        title,
-        body,
-        url: `/menu/projects/${projectId}?tab=tasks`,
-      }),
-    })
-  } catch (err) {
-    console.error('[project-room] task assignment push error', err)
-  }
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: `/menu/projects/${projectId}?tab=tasks`,
+  })
 
   if (!userEmail) return
 

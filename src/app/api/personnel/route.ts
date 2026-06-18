@@ -6,7 +6,10 @@ import type { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
-import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { requireAuth, type AuthSuccess } from '@/lib/server/apiAuth'
+import { canEditUiPath } from '@/lib/server/permissions'
+
+const PERSONNEL_UI_PATH = '/menu/personnel'
 
 
 import { canRequestMaintenancePersonnelByQuery, normalizeDept } from '@/lib/accessControl'
@@ -242,8 +245,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: Request) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
-  const denied = requireRoles(auth, ['admin', 'direccio', 'cap'])
-  if (denied) return denied.res
+
+  const sessionUser = (auth as AuthSuccess).session.user as { isAdmin?: boolean }
+  const canEdit =
+    auth.role === 'admin' ||
+    sessionUser?.isAdmin ||
+    (await canEditUiPath({ user: auth.user, path: PERSONNEL_UI_PATH }))
+  if (!canEdit) {
+    return NextResponse.json(
+      { success: false, error: 'Permís denegat', message: 'No tens permís per crear personal' },
+      { status: 403 }
+    )
+  }
 
   try {
     const body = await request.json()

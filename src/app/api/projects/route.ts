@@ -20,7 +20,7 @@ import {
 } from '@/lib/projects/listQuery'
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 
 type SessionUser = {
   id: string
@@ -121,7 +121,7 @@ async function notifyProjectOwner(params: {
   projectName: string
   baseUrl: string
 }) {
-  const { userId, projectId, projectName, baseUrl } = params
+  const { userId, projectId, projectName } = params
   const title = "T'han assignat un projecte"
   const body = `Ara ets responsable del projecte: ${projectName || 'Projecte'}`
   const now = Date.now()
@@ -149,20 +149,11 @@ async function notifyProjectOwner(params: {
     }
   }
 
-  try {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: internalApiHeaders(),
-      body: JSON.stringify({
-        userId,
-        title,
-        body,
-        url: `/menu/projects/${projectId}`,
-      }),
-    })
-  } catch (err) {
-    console.error('[projects] push error', err)
-  }
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: `/menu/projects/${projectId}`,
+  })
 }
 
 export async function GET(req: Request) {

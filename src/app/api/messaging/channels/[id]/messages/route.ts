@@ -8,7 +8,7 @@ import {
   notifyForNewMaintenanceTicket,
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 import { buildUnreadIncrement } from '@/lib/messaging/channelUnread'
 import {
   buildChannelPushUrl,
@@ -51,17 +51,9 @@ type MessageRecord = Record<string, unknown> & {
   body?: string
 }
 
-async function sendPushToUids(baseUrl: string, uids: string[], title: string, body: string, url: string) {
+async function sendPushToUids(_baseUrl: string, uids: string[], title: string, body: string, url: string) {
   if (!uids.length) return
-  await Promise.all(
-    uids.map((uid) =>
-      fetch(`${baseUrl}/api/push/send`, {
-        method: 'POST',
-        headers: internalApiHeaders(),
-        body: JSON.stringify({ userId: uid, title, body, url }),
-      }).catch(() => {})
-    )
-  )
+  await sendPushToUsers(uids, { title, body, url })
 }
 
 async function ensureMember(channelId: string, userId: string) {

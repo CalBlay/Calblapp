@@ -26,10 +26,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    await db.collection('users').doc(uid).collection('pushSubscriptions').add({
-      subscription,
-      createdAt: Date.now(),
-    })
+    const endpoint = String(subscription?.endpoint || '').trim()
+    const subsCol = db.collection('users').doc(uid).collection('pushSubscriptions')
+    if (endpoint) {
+      const existing = await subsCol.where('endpoint', '==', endpoint).limit(1).get()
+      if (!existing.empty) {
+        await existing.docs[0].ref.set(
+          { subscription, endpoint, updatedAt: Date.now() },
+          { merge: true }
+        )
+      } else {
+        await subsCol.add({
+          subscription,
+          endpoint,
+          createdAt: Date.now(),
+        })
+      }
+    } else {
+      await subsCol.add({
+        subscription,
+        createdAt: Date.now(),
+      })
+    }
 
     await db.collection('users').doc(uid).set(
       { pushEnabled: true, updatedAt: Date.now() },

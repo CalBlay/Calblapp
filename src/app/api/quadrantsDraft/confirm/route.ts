@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { getToken } from 'next-auth/jwt'
 import { requireAuth } from '@/lib/server/apiAuth'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 import { PERM } from '@/lib/permissionKeys'
 import { canViewUiPath, isAllowedByClientOverride } from '@/lib/server/permissions'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
@@ -138,24 +138,13 @@ async function resolveUids(users: AssignedUser[]): Promise<string[]> {
 }
 
 async function sendPushToUids(params: {
-  baseUrl: string
   uids: string[]
   title: string
   body: string
   url: string
 }) {
-  const { baseUrl, uids, title, body, url } = params
-  if (!uids.length) return
-
-  await Promise.all(
-    uids.map(uid =>
-      fetch(`${baseUrl}/api/push/send`, {
-        method: 'POST',
-        headers: internalApiHeaders(),
-        body: JSON.stringify({ userId: uid, title, body, url }),
-      }).catch(() => {})
-    )
-  )
+  const { uids, title, body, url } = params
+  await sendPushToUsers(uids, { title, body, url })
 }
 
 async function createTornNotifications(params: {
@@ -421,7 +410,6 @@ export async function POST(req: NextRequest) {
         eventName,
       })
       await sendPushToUids({
-        baseUrl: req.nextUrl.origin,
         uids,
         title: 'Tens un nou torn assignat',
         body: notificationBody,
@@ -438,7 +426,6 @@ export async function POST(req: NextRequest) {
         eventName,
       })
       await sendPushToUids({
-        baseUrl: req.nextUrl.origin,
         uids,
         title: 'Tens canvis al teu torn',
         body: notificationBody,

@@ -1,6 +1,6 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { lookupUidByNameLoose } from '@/lib/eventExtras'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 
 type NotifyEventExtrasParams = {
@@ -54,20 +54,11 @@ export async function notifyCommercialInternalForEventExtras(
     }
   }
 
-  if (params.baseUrl) {
-    await fetch(`${params.baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: internalApiHeaders(),
-      body: JSON.stringify({
-        userId: uid,
-        title,
-        body,
-        url: '/menu/events',
-      }),
-    }).catch((error) => {
-      console.error('[eventExtrasNotifications] push error', error)
-    })
-  }
+  await sendPushToUsers([uid], {
+    title,
+    body,
+    url: '/menu/events',
+  })
 
   return { notified: true, userId: uid, reason: null as null }
 }

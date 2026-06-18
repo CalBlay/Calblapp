@@ -6,6 +6,10 @@ export function getInternalApiSecret(): string | undefined {
   return value?.trim() || undefined
 }
 
+export function hasInternalApiSecret(): boolean {
+  return Boolean(getInternalApiSecret())
+}
+
 export function readInternalSecretFromRequest(req: Request): string {
   const authorization = req.headers.get('authorization') || ''
   const bearer = authorization.startsWith('Bearer ')

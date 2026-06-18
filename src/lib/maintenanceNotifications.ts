@@ -4,6 +4,10 @@ import { normalizeRole } from '@/lib/roles'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import { listMaintenanceTicketInboxRecipientIds } from '@/lib/server/maintenanceTicketInboxRecipients'
 import {
+  defaultPushUrlForNotificationType,
+  sendPushToUsers,
+} from '@/lib/notifications/sendUserPush.server'
+import {
   getLastExternalFollowUpAt,
   getTicketAgeDays,
   isExternalizedTicketStaleAlert,
@@ -177,24 +181,29 @@ async function createNotifications(uids: string[], payload: NotificationPayload,
     uids.map((uid) => ({ userId: uid, type: String(payload.type || '') }))
   )
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (!apiKey) return
-
-  try {
-    const { getAblyRest } = await import('@/lib/server/ablyRest')
-    const rest = getAblyRest()
-    await Promise.all(
-      uids.map((uid) =>
-        rest.channels.get(`user:${uid}:notifications`).publish('created', {
-          type: payload.type,
-          ticketId: payload.ticketId,
-          createdAt: now,
-        })
+  if (process.env.ABLY_API_KEY) {
+    try {
+      const { getAblyRest } = await import('@/lib/server/ablyRest')
+      const rest = getAblyRest()
+      await Promise.all(
+        uids.map((uid) =>
+          rest.channels.get(`user:${uid}:notifications`).publish('created', {
+            type: payload.type,
+            ticketId: payload.ticketId,
+            createdAt: now,
+          })
+        )
       )
-    )
-  } catch (err) {
-    console.error('[maintenanceNotifications] Ably publish error', err)
+    } catch (err) {
+      console.error('[maintenanceNotifications] Ably publish error', err)
+    }
   }
+
+  await sendPushToUsers(uids, {
+    title: payload.title,
+    body: payload.body,
+    url: defaultPushUrlForNotificationType(payload.type, { ticketId: payload.ticketId }),
+  })
 }
 
 export function buildTicketBody(params: {

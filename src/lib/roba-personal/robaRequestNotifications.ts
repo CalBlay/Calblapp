@@ -1,9 +1,16 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { DOTACIO_COLLECTIONS } from '@/lib/dotacio/collections'
 import { departmentsInSameRobaScope } from '@/lib/roba-personal/deptScope'
-import { getAblyRest } from '@/lib/server/ablyRest'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { sendOutlookTextMail } from '@/services/graph/calendar'
 import * as XLSX from 'xlsx'
+
+const ROBA_PUSH_URL = '/menu/roba-personal'
+
+async function sendRobaPush(uids: string[], title: string, body: string) {
+  await sendPushToUsers(uids, { title, body, url: ROBA_PUSH_URL })
+}
 
 const PROD = DOTACIO_COLLECTIONS.products
 const MAX_ROBA_REQUEST_BODY_CHARS = 3500
@@ -393,23 +400,24 @@ export async function notifyRecursosHumansNewRobaRequest(params: {
 
   await batch.commit()
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (!apiKey) return
-
-  try {
-    const rest = getAblyRest()
-    await Promise.all(
-      uids.map((uid) =>
-        rest.channels.get(`user:${uid}:notifications`).publish('created', {
-          type: 'roba_personal_request',
-          requestId: params.requestId,
-          createdAt: now,
-        })
+  if (hasAblyApiKey()) {
+    try {
+      const rest = getAblyRest()
+      await Promise.all(
+        uids.map((uid) =>
+          rest.channels.get(`user:${uid}:notifications`).publish('created', {
+            type: 'roba_personal_request',
+            requestId: params.requestId,
+            createdAt: now,
+          })
+        )
       )
-    )
-  } catch (err) {
-    console.error('[robaRequestNotifications] Ably publish error', err)
+    } catch (err) {
+      console.error('[robaRequestNotifications] Ably publish error', err)
+    }
   }
+
+  await sendRobaPush(uids, title, body)
 }
 
 export async function notifyRobaDepartmentLeadsNewRequest(params: {
@@ -459,23 +467,24 @@ export async function notifyRobaDepartmentLeadsNewRequest(params: {
   }
   await batch.commit()
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (!apiKey) return
-
-  try {
-    const rest = getAblyRest()
-    await Promise.all(
-      uids.map((uid) =>
-        rest.channels.get(`user:${uid}:notifications`).publish('created', {
-          type: 'roba_personal_request',
-          requestId: params.requestId,
-          createdAt: now,
-        })
+  if (hasAblyApiKey()) {
+    try {
+      const rest = getAblyRest()
+      await Promise.all(
+        uids.map((uid) =>
+          rest.channels.get(`user:${uid}:notifications`).publish('created', {
+            type: 'roba_personal_request',
+            requestId: params.requestId,
+            createdAt: now,
+          })
+        )
       )
-    )
-  } catch (err) {
-    console.error('[robaRequestNotifications] Ably publish dept request error', err)
+    } catch (err) {
+      console.error('[robaRequestNotifications] Ably publish dept request error', err)
+    }
   }
+
+  await sendRobaPush(uids, title, body)
 }
 
 export async function notifyRecursosHumansRobaRequestSentToRrhh(params: {
@@ -550,6 +559,8 @@ export async function notifyRecursosHumansRobaRequestSentToRrhh(params: {
       console.error('[robaRequestNotifications] Ably publish sent_to_rrhh error', err)
     }
   }
+
+  await sendRobaPush(uids, title, body)
 
   const senderSnap = await db.collection('users').doc(params.senderUserId).get()
   const organizerEmail = String(
@@ -671,6 +682,8 @@ export async function notifyRecursosHumansRobaRequestBatchSentToRrhh(params: {
     }
   }
 
+  await sendRobaPush(uids, title, body)
+
   const senderSnap = await db.collection('users').doc(params.senderUserId).get()
   const organizerEmail = String(
     senderSnap.exists ? (senderSnap.data() as { email?: string }).email || '' : ''
@@ -765,6 +778,8 @@ export async function notifyRecursosHumansRobaRequestCancelled(params: {
         console.error('[robaRequestNotifications] Ably publish cancelled error', err)
       }
     }
+
+    await sendRobaPush(uids, title, body)
   }
 
   const senderSnap = await db.collection('users').doc(params.senderUserId).get()
@@ -825,19 +840,20 @@ export async function notifyRobaRequestMaterialReady(params: {
     read: false,
   })
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (!apiKey) return
-
-  try {
-    const rest = getAblyRest()
-    await rest.channels.get(`user:${uid}:notifications`).publish('created', {
-      type: 'roba_personal_ready',
-      requestId: params.requestId,
-      createdAt: now,
-    })
-  } catch (err) {
-    console.error('[robaRequestNotifications] Ably publish ready error', err)
+  if (hasAblyApiKey()) {
+    try {
+      const rest = getAblyRest()
+      await rest.channels.get(`user:${uid}:notifications`).publish('created', {
+        type: 'roba_personal_ready',
+        requestId: params.requestId,
+        createdAt: now,
+      })
+    } catch (err) {
+      console.error('[robaRequestNotifications] Ably publish ready error', err)
+    }
   }
+
+  await sendRobaPush([uid], title, body)
 }
 
 /**
@@ -886,23 +902,24 @@ export async function notifyRobaDepartmentLeadsPickupDate(params: {
 
   await batch.commit()
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (!apiKey) return
-
-  try {
-    const rest = getAblyRest()
-    await Promise.all(
-      uids.map((uid) =>
-        rest.channels.get(`user:${uid}:notifications`).publish('created', {
-          type: 'roba_personal_ready',
-          requestId: params.requestId,
-          createdAt: now,
-        })
+  if (hasAblyApiKey()) {
+    try {
+      const rest = getAblyRest()
+      await Promise.all(
+        uids.map((uid) =>
+          rest.channels.get(`user:${uid}:notifications`).publish('created', {
+            type: 'roba_personal_ready',
+            requestId: params.requestId,
+            createdAt: now,
+          })
+        )
       )
-    )
-  } catch (err) {
-    console.error('[robaRequestNotifications] Ably dept lead pickup error', err)
+    } catch (err) {
+      console.error('[robaRequestNotifications] Ably dept lead pickup error', err)
+    }
   }
+
+  await sendRobaPush(uids, title, body)
 }
 
 /**
@@ -938,20 +955,21 @@ export async function notifyRobaWorkerDeliveryAck(params: {
     read: false,
   })
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (!apiKey) return
-
-  try {
-    const rest = getAblyRest()
-    await rest.channels.get(`user:${uid}:notifications`).publish('created', {
-      type: 'roba_personal_delivery_ack',
-      deliveryId: params.deliveryId,
-      requestId: params.requestId,
-      createdAt: now,
-    })
-  } catch (err) {
-    console.error('[robaRequestNotifications] Ably delivery ack error', err)
+  if (hasAblyApiKey()) {
+    try {
+      const rest = getAblyRest()
+      await rest.channels.get(`user:${uid}:notifications`).publish('created', {
+        type: 'roba_personal_delivery_ack',
+        deliveryId: params.deliveryId,
+        requestId: params.requestId,
+        createdAt: now,
+      })
+    } catch (err) {
+      console.error('[robaRequestNotifications] Ably delivery ack error', err)
+    }
   }
+
+  await sendRobaPush([uid], title, body)
 }
 
 /**
@@ -988,19 +1006,20 @@ export async function notifyRobaResponsibleDeliveryDispute(params: {
     read: false,
   })
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (!apiKey) return
-
-  try {
-    const rest = getAblyRest()
-    await rest.channels.get(`user:${uid}:notifications`).publish('created', {
-      type: 'roba_personal_delivery_dispute',
-      deliveryId: params.deliveryId,
-      createdAt: now,
-    })
-  } catch (err) {
-    console.error('[robaRequestNotifications] Ably delivery dispute error', err)
+  if (hasAblyApiKey()) {
+    try {
+      const rest = getAblyRest()
+      await rest.channels.get(`user:${uid}:notifications`).publish('created', {
+        type: 'roba_personal_delivery_dispute',
+        deliveryId: params.deliveryId,
+        createdAt: now,
+      })
+    } catch (err) {
+      console.error('[robaRequestNotifications] Ably delivery dispute error', err)
+    }
   }
+
+  await sendRobaPush([uid], title, body)
 }
 
 /** Després de corregir línies d’entrega: torna a avisar el treballador per confirmar. */
@@ -1034,18 +1053,19 @@ export async function notifyRobaWorkerDeliveryRevised(params: {
     read: false,
   })
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (!apiKey) return
-
-  try {
-    const rest = getAblyRest()
-    await rest.channels.get(`user:${uid}:notifications`).publish('created', {
-      type: 'roba_personal_delivery_revised',
-      deliveryId: params.deliveryId,
-      requestId: params.requestId,
-      createdAt: now,
-    })
-  } catch (err) {
-    console.error('[robaRequestNotifications] Ably delivery revised error', err)
+  if (hasAblyApiKey()) {
+    try {
+      const rest = getAblyRest()
+      await rest.channels.get(`user:${uid}:notifications`).publish('created', {
+        type: 'roba_personal_delivery_revised',
+        deliveryId: params.deliveryId,
+        requestId: params.requestId,
+        createdAt: now,
+      })
+    } catch (err) {
+      console.error('[robaRequestNotifications] Ably delivery revised error', err)
+    }
   }
+
+  await sendRobaPush([uid], title, body)
 }

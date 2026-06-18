@@ -39,8 +39,8 @@ export function useUpdatePersonnel() {
         body: JSON.stringify(updateData),
       })
       if (!res.ok) {
-        const body = await res.json().catch(() => ({} as { message?: string }))
-        throw new Error(body.message || `Error ${res.status}`)
+        const body = await res.json().catch(() => ({} as { message?: string; error?: string }))
+        throw new Error(body.message || body.error || `Error ${res.status}`)
       }
       return await res.json()
     } catch (err: unknown) {

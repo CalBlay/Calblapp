@@ -20,6 +20,7 @@ import { resolveModuleMenuHref } from '@/lib/moduleMenuNavigation'
 import { FiltersProvider } from '@/context/FiltersContext'
 import FilterSlideOver from '@/components/ui/filter-slide-over'
 import PWARegister from '@/components/PWARegister'
+import PushNotificationHandler from '@/components/PushNotificationHandler'
 import DocumentTitle from '@/components/DocumentTitle'
 import useSWR from 'swr'
 
@@ -40,6 +41,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
           <InnerLayout>{children}</InnerLayout>
           <FilterSlideOver />
           <PWARegister />
+          <PushNotificationHandler />
         </FiltersProvider>
       </TooltipProvider>
     </Providers>

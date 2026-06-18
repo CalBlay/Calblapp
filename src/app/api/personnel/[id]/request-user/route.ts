@@ -7,17 +7,21 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
-
 import { normalizeRole } from '@/lib/roles'
-import { internalApiHeaders } from '@/lib/server/internalApiAuth'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
+import { canViewUiPath } from '@/lib/server/permissions'
 
 interface SessionUser {
   id?: string
   userId?: string
   name?: string
   role?: string
-  deptLower?: string
   department?: string
+  canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
+  robaLinkedPersonnelId?: string | null
+  opsProjectsConfigurable?: boolean
+  isTransportLead?: boolean
   [key: string]: unknown
 }
 
@@ -39,7 +43,6 @@ interface PersonnelDoc {
   [key: string]: unknown
 }
 
-
 interface UserRequestDoc {
   personId: string
   departmentLower: string
@@ -59,10 +62,8 @@ interface UserRequestDoc {
   available: boolean
 }
 
-const unaccent = (s: string) =>
-  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-const normLower = (s?: string) =>
-  unaccent((s || '').toString().trim()).toLowerCase()
+const unaccent = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+const normLower = (s?: string) => unaccent((s || '').toString().trim()).toLowerCase()
 
 const requiredFields = ['name', 'role', 'department'] as const
 
@@ -74,14 +75,12 @@ function findMissingFields(person: PersonnelDoc) {
     return false
   }
 
-  requiredFields.forEach(field => {
+  requiredFields.forEach((field) => {
     if (isEmpty((person as Record<string, unknown>)[field])) missing.push(field)
   })
 
   const dept = normLower(person.department || person.departmentLower)
-  const deptRaw = normLower(
-    `${person.department || ''} ${person.departmentLower || ''}`
-  )
+  const deptRaw = normLower(`${person.department || ''} ${person.departmentLower || ''}`)
   const isServeis = dept.includes('servei') || deptRaw.includes('servei')
   if (person.driver?.isDriver && !isServeis) {
     const hasType = person.driver.camioGran || person.driver.camioPetit
@@ -91,18 +90,22 @@ function findMissingFields(person: PersonnelDoc) {
   return missing
 }
 
+function userRequestNotificationDocId(personId: string) {
+  return `user_request__${String(personId || '').trim()}`
+}
+
 async function notifyAdmins(params: {
   title: string
   body: string
   personId: string
   requesterName: string
   department: string
-  baseUrl: string
 }) {
-  const { title, body, personId, requesterName, department, baseUrl } = params
+  const { title, body, personId, requesterName, department } = params
+  const notifDocId = userRequestNotificationDocId(personId)
 
   const snap = await firestoreAdmin.collection('users').get()
-  const admins = snap.docs.filter(d => {
+  const admins = snap.docs.filter((d) => {
     const data = d.data() as { role?: string }
     return normalizeRole(String(data.role || '')) === 'admin'
   })
@@ -111,9 +114,14 @@ async function notifyAdmins(params: {
 
   const now = Date.now()
   const batch = firestoreAdmin.batch()
+  const adminsToAlert: string[] = []
 
-  admins.forEach((d) => {
-    const notifRef = d.ref.collection('notifications').doc()
+  for (const d of admins) {
+    const notifRef = d.ref.collection('notifications').doc(notifDocId)
+    const existing = await notifRef.get()
+    const wasUnread =
+      existing.exists && (existing.data() as { read?: boolean }).read === false
+
     batch.set(notifRef, {
       title,
       body,
@@ -124,150 +132,115 @@ async function notifyAdmins(params: {
       requesterName,
       department,
     })
-  })
 
-  await batch.commit()
-  const { afterNotificationsCommitted } = await import('@/lib/notifications/writeUserNotification')
-  await afterNotificationsCommitted(
-    admins.map((admin) => ({ userId: admin.id, type: 'user_request' }))
-  )
-
-  if (!hasAblyApiKey()) {
-    console.warn('[request-user] Missing ABLY_API_KEY, skipping realtime')
-    return
+    if (!wasUnread) adminsToAlert.push(d.id)
   }
 
-  const rest = getAblyRest()
-  const channel = rest.channels.get('admin:user-requests')
-  await channel.publish('created', {
-    personId,
-    requesterName,
-    department,
-    createdAt: now,
-  })
+  await batch.commit()
 
-  // Push a admins (mòbil)
-  try {
-    for (const d of admins) {
-      await fetch(`${baseUrl}/api/push/send`, {
-        method: 'POST',
-        headers: internalApiHeaders(),
-        body: JSON.stringify({
-          userId: d.id,
-          title: 'Nova sol·licitud d’usuari',
-          body: `${requesterName} ha enviat una sol·licitud.`,
-          url: '/menu/users',
-        }),
+  if (adminsToAlert.length > 0) {
+    const { afterNotificationsCommitted } = await import('@/lib/notifications/writeUserNotification')
+    await afterNotificationsCommitted(
+      adminsToAlert.map((userId) => ({ userId, type: 'user_request' }))
+    )
+  }
+
+  if (hasAblyApiKey()) {
+    try {
+      const rest = getAblyRest()
+      const channel = rest.channels.get('admin:user-requests')
+      await channel.publish('created', {
+        personId,
+        requesterName,
+        department,
+        createdAt: now,
       })
+    } catch (err) {
+      console.error('[request-user] Ably publish error', err)
     }
-  } catch (err) {
-    console.error('[request-user] push error:', err)
+  } else {
+    console.warn('[request-user] Missing ABLY_API_KEY, skipping realtime')
+  }
+
+  if (adminsToAlert.length > 0) {
+    try {
+      await sendPushToUsers(adminsToAlert, {
+        title: 'Nova sollicitud d usuari',
+        body: `${requesterName} ha enviat una sollicitud.`,
+        url: '/menu/users',
+      })
+    } catch (err) {
+      console.error('[request-user] push error:', err)
+    }
   }
 }
 
-export async function POST(
-  req: NextRequest,
-  ctx: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 401 }
-    )
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
   const { id } = await ctx.params
   const personId = id
 
   const su = session.user as SessionUser
-  const requesterId = su.id || su.userId || ''
-  const requesterName = su.name || '—'
-  const requesterRole = normalizeRole(su.role)
-  const requesterDeptLower = su.deptLower || normLower(su.department)
-
-  const isPrivileged =
-    requesterRole === 'admin' || requesterRole === 'direccio'
-  const isCapDept = [
-    'capdepartament',
-    'cap_departament',
-    'cap',
-    'capdept',
-    'head',
-  ].includes(requesterRole)
+  const requesterId = String(su.id || su.userId || '').trim()
+  const requesterName = String(su.name || '-').trim() || '-'
 
   try {
-    console.log('📩 Nova sol·licitud → personId:', personId)
+    if (!requesterId) {
+      return NextResponse.json({ success: false, error: 'Usuari de sessio invalid' }, { status: 400 })
+    }
 
-    // Carreguem el personal
+    const canRequestFromPersonnel = await canViewUiPath({
+      user: {
+        id: requesterId,
+        role: su.role,
+        department: su.department,
+        canRespondSurveys: Boolean(su.canRespondSurveys),
+        isDepartmentRobaLead: Boolean(su.isDepartmentRobaLead),
+        robaLinkedPersonnelId:
+          typeof su.robaLinkedPersonnelId === 'string' ? su.robaLinkedPersonnelId : null,
+        opsProjectsConfigurable:
+          typeof su.opsProjectsConfigurable === 'boolean' ? su.opsProjectsConfigurable : undefined,
+        isTransportLead: Boolean(su.isTransportLead),
+      },
+      path: '/menu/personnel',
+    })
+
+    if (!canRequestFromPersonnel) {
+      return NextResponse.json({ success: false, error: 'Permis denegat' }, { status: 403 })
+    }
+
     const personSnap = await firestoreAdmin.collection('personnel').doc(personId).get()
     if (!personSnap.exists) {
-      console.error('❌ No existeix el personal:', personId)
-      return NextResponse.json(
-        { success: false, error: 'No existeix el personal' },
-        { status: 404 }
-      )
+      return NextResponse.json({ success: false, error: 'No existeix el personal' }, { status: 404 })
     }
-    const p = personSnap.data() as unknown as PersonnelDoc
-
-    const personDeptLower = normLower(p.departmentLower || p.department)
+    const p = personSnap.data() as PersonnelDoc
 
     const missing = findMissingFields(p)
     if (missing.length) {
       return NextResponse.json(
         {
           success: false,
-          error: `Falten camps obligatoris per sol·licitar usuari: ${missing.join(', ')}`,
+          error: `Falten camps obligatoris per sollicitar usuari: ${missing.join(', ')}`,
           missing,
         },
         { status: 400 }
       )
     }
 
-    // Comprovació permisos
-    if (!isPrivileged) {
-      if (!isCapDept) {
-        return NextResponse.json(
-          { success: false, error: 'Permís denegat (rol)' },
-          { status: 403 }
-        )
-      }
-      if (personDeptLower !== requesterDeptLower) {
-        return NextResponse.json(
-          { success: false, error: 'Només pots demanar usuaris del teu departament' },
-          { status: 403 }
-        )
-      }
-    }
-
-    // Si ja té usuari → sortim
     const userDoc = await firestoreAdmin.collection('users').doc(personId).get()
     if (userDoc.exists) {
-      console.warn('⚠️ Aquest treballador ja té usuari:', personId)
-      return NextResponse.json(
-        { success: false, error: 'Aquest treballador ja té usuari' },
-        { status: 409 }
-      )
+      return NextResponse.json({ success: false, error: 'Aquest treballador ja te usuari' }, { status: 409 })
     }
 
-    // Si ja hi ha sol·licitud pendent → idempotent
     const reqRef = firestoreAdmin.collection('userRequests').doc(personId)
-    const reqSnap = await reqRef.get()
-    const existing = reqSnap.data() as unknown as UserRequestDoc | undefined
-    if (reqSnap.exists && existing?.status === 'pending') {
-      console.log('ℹ️ Ja hi ha una sol·licitud pendent per:', personId)
-      return NextResponse.json({
-        success: true,
-        alreadyPending: true,
-        status: 'pending',
-      })
-    }
-
-    // Crear/actualitzar sol·licitud
     const now = Date.now()
     const payload: UserRequestDoc = {
       personId,
-      departmentLower: personDeptLower,
+      departmentLower: normLower(p.departmentLower || p.department),
       department: p.department || null,
       requestedByUserId: requesterId || null,
       requestedByName: requesterName || null,
@@ -288,31 +261,35 @@ export async function POST(
       available: p.available ?? true,
     }
 
-    console.log('📝 Guardant sol·licitud userRequests:', payload)
-    await reqRef.set(payload, { merge: true })
+    let alreadyPending = false
+    await firestoreAdmin.runTransaction(async (tx) => {
+      const reqSnap = await tx.get(reqRef)
+      const existing = reqSnap.data() as UserRequestDoc | undefined
+      if (reqSnap.exists && existing?.status === 'pending') {
+        alreadyPending = true
+        return
+      }
+      tx.set(reqRef, payload, { merge: true })
+    })
+
+    if (alreadyPending) {
+      return NextResponse.json({ success: true, alreadyPending: true, status: 'pending' })
+    }
 
     await notifyAdmins({
-      title: 'Nova sol·licitud d’usuari',
+      title: 'Nova sollicitud d usuari',
       body: `${requesterName} demana crear usuari per a ${p.name || personId} (${p.department || ''}).`,
       personId,
       requesterName,
       department: p.department || '',
-      baseUrl: req.nextUrl.origin,
     })
 
-    console.log('✅ Sol·licitud guardada correctament per:', personId)
     return NextResponse.json({ success: true, status: 'pending' })
   } catch (e: unknown) {
     console.error('[request-user] error:', e)
     if (e instanceof Error) {
-      return NextResponse.json(
-        { success: false, error: e.message },
-        { status: 500 }
-      )
+      return NextResponse.json({ success: false, error: e.message }, { status: 500 })
     }
-    return NextResponse.json(
-      { success: false, error: 'Error intern' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: 'Error intern' }, { status: 500 })
   }
 }
