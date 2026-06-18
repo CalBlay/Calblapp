@@ -64,7 +64,7 @@ const unaccent = (s: string) =>
 const normLower = (s?: string) =>
   unaccent((s || '').toString().trim()).toLowerCase()
 
-const requiredFields = ['name', 'role', 'department', 'email', 'phone'] as const
+const requiredFields = ['name', 'role', 'department'] as const
 
 function findMissingFields(person: PersonnelDoc) {
   const missing: string[] = []
