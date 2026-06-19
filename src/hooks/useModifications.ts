@@ -48,24 +48,39 @@ export function useModifications(filters: {
   /** Si és `false`, no es fa cap fetch (p. ex. modal tancat). */
   enabled?: boolean
 }) {
-  const enabled = filters.enabled !== false
+  const {
+    from,
+    to,
+    department,
+    eventId,
+    importance,
+    categoryId,
+    categoryLabel,
+    commercial,
+    enabled: enabledOption,
+  } = filters
+  const enabled = enabledOption !== false
+
   const [modifications, setModifications] = useState<Modification[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<null | string>(null)
 
-  const fetchKey = useMemo(() => {
-    const { enabled: _enabled, ...rest } = filters
-    return JSON.stringify(rest)
-  }, [filters])
+  const fetchKey = useMemo(
+    () =>
+      JSON.stringify({
+        from,
+        to,
+        department,
+        eventId,
+        importance,
+        categoryId,
+        categoryLabel,
+        commercial,
+      }),
+    [from, to, department, eventId, importance, categoryId, categoryLabel, commercial]
+  )
 
   const fetchModifications = useCallback(async () => {
-    if (!enabled) {
-      setModifications([])
-      setLoading(false)
-      setError(null)
-      return
-    }
-
     try {
       setLoading(true)
       setError(null)
@@ -77,24 +92,21 @@ export function useModifications(filters: {
       }
 
       const params = new URLSearchParams()
-      if (filters.from) params.set('from', filters.from)
-      if (filters.to) params.set('to', filters.to)
-      if (filters.eventId) params.set('eventId', filters.eventId)
-      if (filters.department && filters.department !== 'all')
-        params.set('department', filters.department)
-      if (filters.importance && filters.importance !== 'all')
-        params.set('importance', filters.importance.toLowerCase())
-      if (filters.commercial && filters.commercial !== 'all')
-        params.set('commercial', filters.commercial)
+      if (from) params.set('from', from)
+      if (to) params.set('to', to)
+      if (eventId) params.set('eventId', eventId)
+      if (department && department !== 'all') params.set('department', department)
+      if (importance && importance !== 'all') params.set('importance', importance.toLowerCase())
+      if (commercial && commercial !== 'all') params.set('commercial', commercial)
 
-      const categoryLabel =
-        filters.categoryLabel && filters.categoryLabel !== 'all'
-          ? filters.categoryLabel
-          : filters.categoryId && filters.categoryId !== 'all'
-          ? filters.categoryId
-          : null
+      const resolvedCategoryLabel =
+        categoryLabel && categoryLabel !== 'all'
+          ? categoryLabel
+          : categoryId && categoryId !== 'all'
+            ? categoryId
+            : null
 
-      if (categoryLabel) params.set('categoryLabel', categoryLabel)
+      if (resolvedCategoryLabel) params.set('categoryLabel', resolvedCategoryLabel)
 
       const res = await fetch(`/api/modifications?${params.toString()}`, {
         cache: 'no-store',
@@ -111,11 +123,12 @@ export function useModifications(filters: {
     } finally {
       setLoading(false)
     }
-  }, [enabled, fetchKey, filters])
+  }, [fetchKey, from, to, department, eventId, importance, categoryId, categoryLabel, commercial])
 
   useEffect(() => {
-    fetchModifications()
-  }, [fetchModifications])
+    if (!enabled) return
+    void fetchModifications()
+  }, [enabled, fetchModifications])
 
   const updateModification = async (id: string, data: Partial<Modification>) => {
     const res = await fetch(`/api/modifications/${id}`, {
