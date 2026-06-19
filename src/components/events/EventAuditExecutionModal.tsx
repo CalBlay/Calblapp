@@ -27,6 +27,8 @@ import { useIncidents } from '@/hooks/useIncidents'
 import CreateIncidentModal from '@/components/incidents/CreateIncidentModal'
 import { Switch } from '@/components/ui/switch'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
+import { isLikelyImageFile } from '@/lib/media/isLikelyImageFile'
+import { MAX_UPLOAD_IMAGE_BYTES } from '@/lib/media/uploadLimits'
 import { normalizeAuditDepartment } from '@/lib/auditDepartment'
 import EventExtrasModal from './EventExtrasModal'
 
@@ -390,12 +392,21 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     setUploadingItemId(itemId)
     setError('')
     try {
-      if (!file.type.startsWith('image/')) {
+      if (!isLikelyImageFile(file)) {
         throw new Error('Nomes es permeten imatges')
       }
-      const optimizedFile = await compressRasterImageForUpload(file, MAX_AUDIT_IMAGE_SIZE)
-      if (optimizedFile.size > MAX_AUDIT_IMAGE_SIZE) {
-        throw new Error('La imatge encara pesa massa despres de comprimir-se')
+
+      let optimizedFile: File
+      try {
+        optimizedFile = await compressRasterImageForUpload(file, MAX_AUDIT_IMAGE_SIZE)
+        if (optimizedFile.size > MAX_AUDIT_IMAGE_SIZE) {
+          throw new Error('La imatge encara pesa massa despres de comprimir-se')
+        }
+      } catch {
+        if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
+          throw new Error('La imatge es massa gran. Prova amb una foto mes petita o fes-la de nou.')
+        }
+        optimizedFile = file
       }
 
       const form = new FormData()
@@ -449,8 +460,11 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="w-[96vw] max-w-lg rounded-2xl p-0 overflow-hidden" lockDismissOnOutside>
-          <DialogHeader className="px-4 pt-4 pb-2 space-y-0">
+        <DialogContent
+          className="flex max-h-[min(90dvh,100svh)] w-[96vw] max-w-lg flex-col gap-0 overflow-hidden rounded-2xl p-0"
+          lockDismissOnOutside
+        >
+          <DialogHeader className="shrink-0 px-4 pt-4 pb-2 space-y-0">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 space-y-2 text-left">
                 <DialogTitle>Tancament operatiu</DialogTitle>
@@ -474,7 +488,8 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
           {loadingExecution ? (
             <p className="px-4 pb-4 text-sm text-gray-500">Carregant...</p>
           ) : (
-            <div className="px-4 pb-2 max-h-[80vh] overflow-y-auto space-y-4">
+            <>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y px-4 pb-4">
               <div className="rounded-xl border border-gray-200 p-3 space-y-3">
                 <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-orange-600" />
@@ -641,15 +656,15 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                   )}
                                   {type === 'photo' && (
                                     <div className="mt-1 space-y-1">
-                                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                        <label className="inline-flex min-h-10 items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-1 cursor-pointer text-sm">
-                                          <Camera className="w-3.5 h-3.5" />
+                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                        <label className="inline-flex min-h-11 touch-manipulation items-center justify-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 cursor-pointer text-sm">
+                                          <Camera className="w-4 h-4 shrink-0" />
                                           Fer foto
                                           <input
                                             type="file"
-                                            accept="image/*"
+                                            accept="image/*,.heic,.heif"
                                             capture="environment"
-                                            className="hidden"
+                                            className="sr-only"
                                             disabled={isLocked || totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL}
                                             onChange={(e) => {
                                               void uploadPhoto(
@@ -661,13 +676,13 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                             }}
                                           />
                                         </label>
-                                        <label className="inline-flex min-h-10 items-center justify-center gap-1 rounded-md border border-slate-300 px-2 py-1 cursor-pointer text-sm">
-                                          <Paperclip className="w-3.5 h-3.5" />
+                                        <label className="inline-flex min-h-11 touch-manipulation items-center justify-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 cursor-pointer text-sm">
+                                          <Paperclip className="w-4 h-4 shrink-0" />
                                           Afegir fitxer
                                           <input
                                             type="file"
-                                            accept="image/*"
-                                            className="hidden"
+                                            accept="image/*,.heic,.heif"
+                                            className="sr-only"
                                             disabled={isLocked || totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL}
                                             onChange={(e) => {
                                               void uploadPhoto(
@@ -738,8 +753,9 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                   {success}
                 </p>
               )}
+              </div>
 
-              <div className="sticky bottom-0 bg-white pt-2 pb-[calc(env(safe-area-inset-bottom)+8px)]">
+              <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                 {!isLocked ? (
                   <div className="grid grid-cols-2 gap-2">
                     <Button
@@ -776,7 +792,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                   </Button>
                 )}
               </div>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>

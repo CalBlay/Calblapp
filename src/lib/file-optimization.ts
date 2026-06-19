@@ -1,13 +1,15 @@
 'use client'
 
+import { isLikelyImageFile } from '@/lib/media/isLikelyImageFile'
+
 /** Objectiu per defecte igual que incidències / auditoria (API 1MB). */
 export const DEFAULT_MAX_IMAGE_UPLOAD_BYTES = 1024 * 1024
 
 const SKIP_REENCODE_TYPES = new Set(['image/svg+xml', 'image/gif'])
 
 function isRasterImageFile(file: File) {
+  if (!isLikelyImageFile(file)) return false
   const type = String(file.type || '').toLowerCase()
-  if (!type.startsWith('image/')) return false
   if (SKIP_REENCODE_TYPES.has(type)) return false
   return true
 }
