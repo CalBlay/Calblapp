@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import useSWR from 'swr'
 import {
   AlertTriangle,
@@ -16,19 +17,13 @@ import {
   XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog'
 import { useIncidents } from '@/hooks/useIncidents'
 import CreateIncidentModal from '@/components/incidents/CreateIncidentModal'
 import { Switch } from '@/components/ui/switch'
-import { compressRasterImageForUpload } from '@/lib/file-optimization'
-import { isLikelyImageFile } from '@/lib/media/isLikelyImageFile'
-import { MAX_UPLOAD_IMAGE_BYTES } from '@/lib/media/uploadLimits'
+import {
+  afterMobileFilePicker,
+  prepareAuditImageUpload,
+} from '@/lib/media/prepareAuditImageUpload'
 import { normalizeAuditDepartment } from '@/lib/auditDepartment'
 import { cn } from '@/lib/utils'
 import ClientErrorBoundary from '@/components/ui/ClientErrorBoundary'
@@ -80,7 +75,6 @@ type VisibleTemplate = {
   }>
 } | null
 
-const MAX_AUDIT_IMAGE_SIZE = 1024 * 1024
 const MAX_AUDIT_PHOTOS_TOTAL = 10
 
 type AuditExecutionPayload = {
@@ -123,6 +117,12 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   >({})
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null)
   const [executionStatus, setExecutionStatus] = useState<'draft' | 'completed' | 'validated' | 'rejected'>('draft')
+  const [portalReady, setPortalReady] = useState(false)
+
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const galleryInputRef = useRef<HTMLInputElement>(null)
+  const pendingPhotoRef = useRef<{ itemId: string; blockId: string } | null>(null)
+  const mountedRef = useRef(true)
 
   const userRole = String(user.role || '').trim().toLowerCase()
   const department =
@@ -196,8 +196,27 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const loadingExecution = Boolean(executionUrl) && isLoading && data === undefined
 
   useEffect(() => {
+    mountedRef.current = true
+    setPortalReady(true)
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
     if (!open) {
       setLocalIncidentIds([])
+      setShowCreateIncident(false)
+      setShowExtrasModal(false)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
     }
   }, [open])
 
@@ -386,33 +405,20 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   }
 
   const uploadPhoto = async (itemId: string, blockId: string, file: File | null) => {
-    if (!file) return
+    if (!file || !mountedRef.current) return
     if (totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) {
-      setError(`L'auditoria admet com a maxim ${MAX_AUDIT_PHOTOS_TOTAL} fotos.`)
+      if (mountedRef.current) setError(`L'auditoria admet com a maxim ${MAX_AUDIT_PHOTOS_TOTAL} fotos.`)
       return
     }
-    setUploadingItemId(itemId)
-    setError('')
+    if (mountedRef.current) {
+      setUploadingItemId(itemId)
+      setError('')
+    }
     try {
-      if (!isLikelyImageFile(file)) {
-        throw new Error('Nomes es permeten imatges')
-      }
-
-      let optimizedFile: File
-      try {
-        optimizedFile = await compressRasterImageForUpload(file, MAX_AUDIT_IMAGE_SIZE)
-        if (optimizedFile.size > MAX_AUDIT_IMAGE_SIZE) {
-          throw new Error('La imatge encara pesa massa despres de comprimir-se')
-        }
-      } catch {
-        if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
-          throw new Error('La imatge es massa gran. Prova amb una foto mes petita o fes-la de nou.')
-        }
-        optimizedFile = file
-      }
+      const fileToUpload = prepareAuditImageUpload(file)
 
       const form = new FormData()
-      form.append('file', optimizedFile)
+      form.append('file', fileToUpload)
       form.append('eventId', eventId)
       form.append('department', department)
       form.append('itemId', itemId)
@@ -426,6 +432,8 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       const meta = json?.meta as { size?: number; type?: string } | undefined
       const size = typeof meta?.size === 'number' && meta.size > 0 ? meta.size : undefined
       const mime = String(meta?.type || '').trim()
+
+      if (!mountedRef.current) return
 
       setAnswers((prev) => {
         const current = prev[itemId] || {
@@ -454,47 +462,116 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       })
       setSuccess('Foto pujada correctament.')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error pujant imatge')
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Error pujant imatge')
+      }
     } finally {
-      setUploadingItemId(null)
+      if (mountedRef.current) setUploadingItemId(null)
     }
   }
 
-  return (
-    <>
-      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-        <DialogContent
-          className={cn(
-            'flex w-[96vw] max-w-lg flex-col gap-0 overflow-hidden rounded-2xl p-0',
-            'max-h-[min(92dvh,100svh)]',
-            'max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:left-0 max-sm:h-[min(92dvh,100svh)]',
-            'max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0',
-            'max-sm:rounded-b-none max-sm:rounded-t-2xl'
-          )}
-          lockDismissOnOutside
-        >
-          <ClientErrorBoundary title="Error al tancament operatiu" onReset={() => void mutate()}>
-          <DialogHeader className="shrink-0 px-4 pt-3 pb-2 space-y-0 sm:pt-4">
-            <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden />
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 space-y-2 text-left">
-                <DialogTitle>Tancament operatiu</DialogTitle>
-                <DialogDescription>
-                  Auditoria + incidencies - {event.summary.replace(/#.*$/, '').trim()}
-                </DialogDescription>
+  const openCameraPicker = (itemId: string, blockId: string) => {
+    if (isLocked || totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) return
+    pendingPhotoRef.current = { itemId, blockId }
+    cameraInputRef.current?.click()
+  }
+
+  const openGalleryPicker = (itemId: string, blockId: string) => {
+    if (isLocked || totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) return
+    pendingPhotoRef.current = { itemId, blockId }
+    galleryInputRef.current?.click()
+  }
+
+  const handlePickedFile = (file: File | null, source: 'camera' | 'gallery') => {
+    const pending = pendingPhotoRef.current
+    pendingPhotoRef.current = null
+    if (!file || !pending) return
+    const { itemId, blockId } = pending
+    afterMobileFilePicker(() => {
+      void uploadPhoto(itemId, blockId, file)
+    }, source)
+  }
+
+  const childModalOpen = showCreateIncident || showExtrasModal
+  const eventTitle = event.summary.replace(/#.*$/, '').trim()
+
+  if (!open || !portalReady) return null
+
+  const modalLayer = !childModalOpen ? (
+    <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/50 sm:items-center sm:px-4">
+      <div
+        className={cn(
+          'relative flex h-[min(92dvh,100svh)] w-full max-w-lg flex-col overflow-hidden bg-white shadow-2xl',
+          'rounded-t-2xl sm:max-h-[min(92dvh,100svh)] sm:rounded-2xl'
+        )}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="audit-execution-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {uploadingItemId ? (
+          <div
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-white/90 px-6 text-center"
+            aria-live="polite"
+          >
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-cyan-700" />
+            <p className="text-sm font-medium text-slate-800">Pujant fitxer…</p>
+            <p className="text-xs text-slate-500">No tanquis aquesta pantalla</p>
+          </div>
+        ) : null}
+
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          tabIndex={-1}
+          aria-hidden
+          className="pointer-events-none fixed h-px w-px opacity-0"
+          onChange={(e) => {
+            const file = e.currentTarget.files?.[0] || null
+            e.currentTarget.value = ''
+            handlePickedFile(file, 'camera')
+          }}
+        />
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          tabIndex={-1}
+          aria-hidden
+          className="pointer-events-none fixed h-px w-px opacity-0"
+          onChange={(e) => {
+            const file = e.currentTarget.files?.[0] || null
+            e.currentTarget.value = ''
+            handlePickedFile(file, 'gallery')
+          }}
+        />
+
+        <ClientErrorBoundary title="Error al tancament operatiu" onReset={() => void mutate()}>
+              <div className="shrink-0 border-b border-gray-100 px-4 pb-2 pt-3 sm:pt-4">
+                <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden />
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1 text-left">
+                    <h2 id="audit-execution-title" className="text-lg font-semibold leading-none">
+                      Tancament operatiu
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Auditoria + incidencies - {eventTitle}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 h-9 w-9 rounded-full"
+                    onClick={onClose}
+                    aria-label="Tancar"
+                  >
+                    <X className="h-5 w-5" />
+                  </Button>
+                </div>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="shrink-0 h-9 w-9 rounded-full"
-                onClick={onClose}
-                aria-label="Tancar"
-              >
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-          </DialogHeader>
 
           {loadingExecution ? (
             <p className="px-4 pb-4 text-sm text-gray-500">Carregant...</p>
@@ -668,43 +745,38 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                   {type === 'photo' && (
                                     <div className="mt-1 space-y-1">
                                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                                        <label className="inline-flex min-h-11 touch-manipulation items-center justify-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 cursor-pointer text-sm">
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          className="min-h-11 touch-manipulation justify-center gap-1.5"
+                                          disabled={
+                                            isLocked ||
+                                            Boolean(uploadingItemId) ||
+                                            totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL
+                                          }
+                                          onClick={() =>
+                                            openCameraPicker(itemId, String(block.id || ''))
+                                          }
+                                        >
                                           <Camera className="w-4 h-4 shrink-0" />
                                           Fer foto
-                                          <input
-                                            type="file"
-                                            accept="image/*,.heic,.heif"
-                                            capture="environment"
-                                            className="sr-only"
-                                            disabled={isLocked || totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL}
-                                            onChange={(e) => {
-                                              void uploadPhoto(
-                                                itemId,
-                                                String(block.id || ''),
-                                                e.currentTarget.files?.[0] || null
-                                              )
-                                              e.currentTarget.value = ''
-                                            }}
-                                          />
-                                        </label>
-                                        <label className="inline-flex min-h-11 touch-manipulation items-center justify-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 cursor-pointer text-sm">
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          className="min-h-11 touch-manipulation justify-center gap-1.5"
+                                          disabled={
+                                            isLocked ||
+                                            Boolean(uploadingItemId) ||
+                                            totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL
+                                          }
+                                          onClick={() =>
+                                            openGalleryPicker(itemId, String(block.id || ''))
+                                          }
+                                        >
                                           <Paperclip className="w-4 h-4 shrink-0" />
                                           Afegir fitxer
-                                          <input
-                                            type="file"
-                                            accept="image/*,.heic,.heif"
-                                            className="sr-only"
-                                            disabled={isLocked || totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL}
-                                            onChange={(e) => {
-                                              void uploadPhoto(
-                                                itemId,
-                                                String(block.id || ''),
-                                                e.currentTarget.files?.[0] || null
-                                              )
-                                              e.currentTarget.value = ''
-                                            }}
-                                          />
-                                        </label>
+                                        </Button>
                                       </div>
                                       <div className="text-[11px] text-slate-600">
                                         Fotos: {current?.photos?.length || 0}
@@ -805,9 +877,14 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
               </div>
             </>
           )}
-          </ClientErrorBoundary>
-        </DialogContent>
-      </Dialog>
+            </ClientErrorBoundary>
+          </div>
+        </div>
+  ) : null
+
+  return (
+    <>
+      {modalLayer ? createPortal(modalLayer, document.body) : null}
 
       <CreateIncidentModal
         open={showCreateIncident}
