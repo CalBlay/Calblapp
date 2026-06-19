@@ -30,6 +30,8 @@ import { compressRasterImageForUpload } from '@/lib/file-optimization'
 import { isLikelyImageFile } from '@/lib/media/isLikelyImageFile'
 import { MAX_UPLOAD_IMAGE_BYTES } from '@/lib/media/uploadLimits'
 import { normalizeAuditDepartment } from '@/lib/auditDepartment'
+import { cn } from '@/lib/utils'
+import ClientErrorBoundary from '@/components/ui/ClientErrorBoundary'
 import EventExtrasModal from './EventExtrasModal'
 
 type Outcome = 'none' | 'reported'
@@ -450,6 +452,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
           },
         }
       })
+      setSuccess('Foto pujada correctament.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error pujant imatge')
     } finally {
@@ -461,10 +464,18 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
         <DialogContent
-          className="flex max-h-[min(90dvh,100svh)] w-[96vw] max-w-lg flex-col gap-0 overflow-hidden rounded-2xl p-0"
+          className={cn(
+            'flex w-[96vw] max-w-lg flex-col gap-0 overflow-hidden rounded-2xl p-0',
+            'max-h-[min(92dvh,100svh)]',
+            'max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:left-0 max-sm:h-[min(92dvh,100svh)]',
+            'max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0',
+            'max-sm:rounded-b-none max-sm:rounded-t-2xl'
+          )}
           lockDismissOnOutside
         >
-          <DialogHeader className="shrink-0 px-4 pt-4 pb-2 space-y-0">
+          <ClientErrorBoundary title="Error al tancament operatiu" onReset={() => void mutate()}>
+          <DialogHeader className="shrink-0 px-4 pt-3 pb-2 space-y-0 sm:pt-4">
+            <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-slate-200 sm:hidden" aria-hidden />
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 space-y-2 text-left">
                 <DialogTitle>Tancament operatiu</DialogTitle>
@@ -489,7 +500,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
             <p className="px-4 pb-4 text-sm text-gray-500">Carregant...</p>
           ) : (
             <>
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y px-4 pb-4">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] touch-pan-y px-4 pb-4">
               <div className="rounded-xl border border-gray-200 p-3 space-y-3">
                 <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-orange-600" />
@@ -794,6 +805,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
               </div>
             </>
           )}
+          </ClientErrorBoundary>
         </DialogContent>
       </Dialog>
 
