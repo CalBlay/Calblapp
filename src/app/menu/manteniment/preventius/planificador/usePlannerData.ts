@@ -22,6 +22,7 @@ import {
 } from './utils'
 
 type UsePlannerDataArgs = {
+  canViewTickets: boolean
   weekStart: Date
   dayCount: number
   tab: 'preventius' | 'tickets'
@@ -243,6 +244,7 @@ function getPlannedTemplateIdsForCurrentCycle(
 }
 
 export default function usePlannerData({
+  canViewTickets,
   weekStart,
   dayCount,
   tab,
@@ -262,6 +264,14 @@ export default function usePlannerData({
   const [externalizedTickets, setExternalizedTickets] = useState<TicketCard[]>([])
 
   const loadTicketsData = useCallback(async () => {
+    if (!canViewTickets) {
+      return {
+        list: [] as PlannerTicketLike[],
+        lookup: {},
+        pending: [] as TicketCard[],
+        externalized: [] as TicketCard[],
+      }
+    }
     const res = await fetch('/api/maintenance/tickets?ticketType=maquinaria', { cache: 'no-store' })
     const json = res.ok ? await res.json() : { tickets: [] }
     const list: PlannerTicketLike[] = Array.isArray(json?.tickets) ? json.tickets : []
@@ -271,7 +281,7 @@ export default function usePlannerData({
       pending: mapPendingTickets(list),
       externalized: mapExternalizedTickets(list),
     }
-  }, [])
+  }, [canViewTickets])
 
   const dueTemplates = useMemo<DueTemplate[]>(() => {
     const weekEnd = addDays(weekStart, dayCount - 1)

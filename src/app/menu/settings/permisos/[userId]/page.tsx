@@ -63,6 +63,26 @@ type MatrixRow = {
   level: 'module' | 'submodule'
 }
 
+const MAINTENANCE_VISIBILITY_GROUPS: Array<{
+  id: string
+  label: string
+  description: string
+  paths: string[]
+}> = [
+  {
+    id: 'maintenance_tickets',
+    label: 'Tickets',
+    description: 'Veure el mòdul de tickets de manteniment.',
+    paths: ['/menu/manteniment/tickets'],
+  },
+  {
+    id: 'maintenance_preventius',
+    label: 'Preventius',
+    description: 'Veure planificador i jornada de preventius.',
+    paths: ['/menu/manteniment/preventius', '/menu/manteniment/preventius/fulls'],
+  },
+]
+
 const compareLabels = (a: string, b: string) =>
   a.localeCompare(b, 'ca', { sensitivity: 'base' })
 
@@ -202,6 +222,27 @@ export default function PermisosUserPage() {
   const setOverrideEffect = (permission: string, effect: 'allow' | 'deny' | null) => {
     setOverrideEffects([{ permission, effect }])
   }
+
+  const setPathVisibility = (paths: string[], desired: boolean) => {
+    const updates: Array<{ permission: string; effect: 'allow' | 'deny' | null }> = []
+    for (const path of paths) {
+      const base = baseFor(path)
+      updates.push({
+        permission: PERM.view(path),
+        effect: desired === base.view ? null : desired ? 'allow' : 'deny',
+      })
+      if (!desired) {
+        updates.push({ permission: PERM.edit(path), effect: null })
+      }
+    }
+    setOverrideEffects(updates)
+  }
+
+  const isPathGroupVisible = (paths: string[]) =>
+    paths.every((path) => {
+      const base = baseFor(path)
+      return effectiveAllowed(PERM.view(path), base.view)
+    })
 
   useEffect(() => {
     if (!data) return
@@ -441,6 +482,36 @@ export default function PermisosUserPage() {
         </div>
       </div>
 
+      <div className="rounded-xl border border-border bg-background p-4 space-y-3">
+        <h2 className="font-semibold">Accessos ràpids · Manteniment</h2>
+        <p className="text-sm text-muted-foreground">
+          Dreceres per decidir ràpidament qui veu només tickets, només preventius o tots dos.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {MAINTENANCE_VISIBILITY_GROUPS.map((group) => {
+            const checked = isPathGroupVisible(group.paths)
+            return (
+              <label
+                key={group.id}
+                className="flex items-start gap-3 rounded-xl border border-border p-3"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => setPathVisibility(group.paths, e.target.checked)}
+                  className="mt-1"
+                />
+                <span className="space-y-1">
+                  <span className="block text-sm font-medium">{group.label}</span>
+                  <span className="block text-xs text-muted-foreground">{group.description}</span>
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      </div>
+
       {PERMISSION_ACTION_GROUPS.map((group) => {
         const p = group.visibleWhen.path
         const base = baseFor(p)
@@ -490,4 +561,3 @@ export default function PermisosUserPage() {
     </div>
   )
 }
-

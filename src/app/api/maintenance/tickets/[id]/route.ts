@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { canManageMaintenanceTickets, isMaintenanceCapDepartment } from '@/lib/accessControl'
-import { canManageMaintenanceTicketInbox } from '@/lib/server/maintenanceTicketsAccess'
+import {
+  canDeleteMaintenanceTickets,
+  canManageAllMaintenanceTickets,
+  canManageMaintenanceTicketInbox,
+  canReopenMaintenanceTickets,
+  canValidateMaintenanceTickets,
+} from '@/lib/server/maintenanceTicketsAccess'
 import { canUserDeleteMaintenanceTicket } from '@/lib/maintenanceTicketDeletePolicy'
 import { clearStaleMaintenanceTicketNotifications } from '@/lib/maintenanceNotifications'
 import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
@@ -16,7 +21,6 @@ import {
   onMaintenanceTicketUpdated,
 } from '@/lib/maintenanceNotifications'
 import {
-  canCapValidateMaintenanceTicket,
   canCreatorValidateMaintenanceTicket,
   maintenanceTicketRequiresCreatorValidation,
 } from '@/lib/maintenanceTicketValidation'
@@ -181,23 +185,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!auth.ok) return auth.res
 
   const user = auth.user as SessionUser
-  const role = auth.role
-  const dept = (user.department || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-  if (
-    role !== 'admin' &&
-    role !== 'direccio' &&
-    role !== 'cap' &&
-    role !== 'treballador' &&
-    role !== 'comercial' &&
-    role !== 'usuari'
-  ) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const { id } = await ctx.params
 
@@ -210,8 +197,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
     const data = snap.data() as MaintenanceTicketRecord
     const canViewAllTickets =
-      canManageMaintenanceTickets({ role, department: dept }) ||
-      (await canManageMaintenanceTicketInbox(user))
+      (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
 
     const assignedIds = Array.isArray(data.assignedToIds) ? data.assignedToIds.map(String) : []
     const assignedNames = Array.isArray(data.assignedToNames)
@@ -244,25 +230,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!auth.ok) return auth.res
 
   const user = auth.user as SessionUser
-  const role = auth.role
-  const dept = (user.department || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
   const canManageTickets =
-    canManageMaintenanceTickets({ role, department: dept }) ||
-    (await canManageMaintenanceTicketInbox(user))
-  if (
-    role !== 'admin' &&
-    role !== 'direccio' &&
-    role !== 'cap' &&
-    role !== 'treballador' &&
-    !(role === 'usuari' && canManageTickets)
-  ) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+    (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
+  const canValidate = await canValidateMaintenanceTickets(user)
+  const canReopen = await canReopenMaintenanceTickets(user)
+  const role = auth.role
 
   const { id } = await ctx.params
   const body = (await req.json()) as UpdatePayload
@@ -312,9 +284,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     let nextStatus = body.status ? normalizeStatus(body.status) : null
     const nextPriority = body.priority ? normalizePriority(body.priority) : null
     const currentStatus = normalizeStatus(current.status)
-    const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(dept))
-    const canReopen = canValidate
-    const isMaintenanceCap = role === 'cap' && isMaintenanceCapDepartment(dept)
     const validationApproval =
       body.validationApproval === 'creator' || body.validationApproval === 'cap'
         ? body.validationApproval
@@ -535,7 +504,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     if (wantsCapValidation) {
-      if (!canCapValidateMaintenanceTicket(current, { role, isMaintenanceCap })) {
+      if (!canValidate) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
 
@@ -949,8 +918,9 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     }
 
     const data = snap.data() as MaintenanceTicketRecord
+    const canDeleteAsManager = await canDeleteMaintenanceTickets(user)
 
-    if (!canUserDeleteMaintenanceTicket(data, user.id)) {
+    if (!canDeleteAsManager && !canUserDeleteMaintenanceTicket(data, user.id)) {
       const isCreator = String(data.createdById || '').trim() === String(user.id || '').trim()
       if (!isCreator) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

@@ -56,8 +56,13 @@ import {
 } from '@/lib/eventVisitVideoPermissions'
 import {
   MAINTENANCE_TICKETS_ACTION,
+  MAINTENANCE_TICKETS_DELETE_PERM,
+  MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
   MAINTENANCE_TICKETS_INBOX_PERM,
+  MAINTENANCE_TICKETS_MANAGE_PERM,
+  MAINTENANCE_TICKETS_REOPEN_PERM,
   MAINTENANCE_TICKETS_UI_PATH,
+  MAINTENANCE_TICKETS_VALIDATE_PERM,
   baseCanReceiveMaintenanceTicketInboxNotifications,
 } from '@/lib/maintenanceTicketsPermissions'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
@@ -352,6 +357,71 @@ export async function isUiPermissionGranted(params: {
       if (eff === 'allow') return true
       return baseCanReceiveMaintenanceTicketInboxNotifications(params.user)
     }
+
+    if (parsed.action === MAINTENANCE_TICKETS_ACTION.DELETE) {
+      const canViewTickets = await canViewUiPath({
+        user: params.user,
+        path: MAINTENANCE_TICKETS_UI_PATH,
+      })
+      if (!canViewTickets) return false
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        MAINTENANCE_TICKETS_DELETE_PERM
+      )
+      return eff === 'allow'
+    }
+
+    if (parsed.action === MAINTENANCE_TICKETS_ACTION.MANAGE) {
+      const canViewTickets = await canViewUiPath({
+        user: params.user,
+        path: MAINTENANCE_TICKETS_UI_PATH,
+      })
+      if (!canViewTickets) return false
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        MAINTENANCE_TICKETS_MANAGE_PERM
+      )
+      return eff === 'allow'
+    }
+
+    if (parsed.action === MAINTENANCE_TICKETS_ACTION.VALIDATE) {
+      const canViewTickets = await canViewUiPath({
+        user: params.user,
+        path: MAINTENANCE_TICKETS_UI_PATH,
+      })
+      if (!canViewTickets) return false
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        MAINTENANCE_TICKETS_VALIDATE_PERM
+      )
+      return eff === 'allow'
+    }
+
+    if (parsed.action === MAINTENANCE_TICKETS_ACTION.REOPEN) {
+      const canViewTickets = await canViewUiPath({
+        user: params.user,
+        path: MAINTENANCE_TICKETS_UI_PATH,
+      })
+      if (!canViewTickets) return false
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        MAINTENANCE_TICKETS_REOPEN_PERM
+      )
+      return eff === 'allow'
+    }
+
+    if (parsed.action === MAINTENANCE_TICKETS_ACTION.EXTERNALIZE) {
+      const canViewTickets = await canViewUiPath({
+        user: params.user,
+        path: MAINTENANCE_TICKETS_UI_PATH,
+      })
+      if (!canViewTickets) return false
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        MAINTENANCE_TICKETS_EXTERNALIZE_PERM
+      )
+      return eff === 'allow'
+    }
   }
 
   return false
@@ -411,4 +481,3 @@ export async function canEditUiPath(params: { user: AccessUser & { id: string };
 
   return base
 }
-

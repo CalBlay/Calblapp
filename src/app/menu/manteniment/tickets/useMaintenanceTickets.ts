@@ -5,9 +5,9 @@ import {
   type MaintenanceDateFilterMode,
 } from '@/lib/maintenanceDateFilter'
 import { useSession } from 'next-auth/react'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 import {
   isExternalMaintenanceTicketReporter,
-  isMaintenanceCapDepartment,
 } from '@/lib/accessControl'
 import {
   getExternalReporterTicketBucket,
@@ -22,9 +22,13 @@ import { useMaintenanceTicketCatalog } from './useMaintenanceTicketCatalog'
 import { useMaintenanceTicketComposer } from './useMaintenanceTicketComposer'
 import { normalizeName } from '@/app/menu/manteniment/preventius/planificador/utils'
 import {
-  canCapValidateMaintenanceTicket,
   canCreatorValidateMaintenanceTicket,
 } from '@/lib/maintenanceTicketValidation'
+import {
+  MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
+  MAINTENANCE_TICKETS_REOPEN_PERM,
+  MAINTENANCE_TICKETS_VALIDATE_PERM,
+} from '@/lib/maintenanceTicketsPermissions'
 
 type SessionUser = {
   id?: string
@@ -56,26 +60,23 @@ export function useMaintenanceTickets() {
   const role = normalizeRole(sessionUser.role || '')
   const department = normalizeDept(sessionUser.department || '')
   const userId = sessionUser.id || ''
+  const { hasAction } = useUiPermissions()
 
-  const isMaintenanceCap = role === 'cap' && isMaintenanceCapDepartment(department)
   const isExternalReporter = isExternalMaintenanceTicketReporter({
     role,
     department,
   })
-  const canValidate = role === 'admin' || isMaintenanceCap
-  const canReopen = canValidate
+  const canValidate = hasAction(MAINTENANCE_TICKETS_VALIDATE_PERM)
+  const canReopen = hasAction(MAINTENANCE_TICKETS_REOPEN_PERM)
   const canCapValidateTicket = useCallback(
-    (ticket: Ticket) => canCapValidateMaintenanceTicket(ticket, { role, isMaintenanceCap }),
-    [isMaintenanceCap, role]
+    (_ticket: Ticket) => canValidate,
+    [canValidate]
   )
   const canCreatorValidateTicket = useCallback(
     (ticket: Ticket) => canCreatorValidateMaintenanceTicket(ticket, userId),
     [userId]
   )
-  const canExternalize =
-    role === 'admin' ||
-    role === 'direccio' ||
-    (role === 'cap' && isMaintenanceCapDepartment(department))
+  const canExternalize = hasAction(MAINTENANCE_TICKETS_EXTERNALIZE_PERM)
 
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(false)

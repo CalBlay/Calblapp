@@ -4,8 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { differenceInCalendarDays, parseISO } from 'date-fns'
 import { useSession } from 'next-auth/react'
 import { useTransports } from '@/hooks/useTransports'
-import { isMaintenanceCapDepartment } from '@/lib/accessControl'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { formatDateTimeValue } from '@/lib/date-format'
+import {
+  MAINTENANCE_TICKETS_DELETE_PERM,
+  MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
+  MAINTENANCE_TICKETS_REOPEN_PERM,
+  MAINTENANCE_TICKETS_VALIDATE_PERM,
+} from '@/lib/maintenanceTicketsPermissions'
+import { canUserDeleteMaintenanceTicket } from '@/lib/maintenanceTicketDeletePolicy'
 import { normalizeRole } from '@/lib/roles'
 import AssignTicketModal from '@/app/menu/manteniment/tickets/components/AssignTicketModal'
 import type {
@@ -18,6 +25,7 @@ import type {
 import { minutesFromTime, normalizeName, timeFromMinutes } from '../utils'
 
 type SessionUser = {
+  id?: string
   role?: string
   department?: string
 }
@@ -87,19 +95,12 @@ export default function PlannerTicketModal({
   onRefresh,
 }: Props) {
   const { data: session } = useSession()
+  const { hasAction } = useUiPermissions()
   const sessionUser = (session?.user || {}) as SessionUser
-  const role = normalizeRole(sessionUser.role || '')
-  const department = normalizeDept(sessionUser.department || '')
-  const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
-  const canReopen = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
-  const canExternalize =
-    role === 'admin' ||
-    role === 'direccio' ||
-    (role === 'cap' &&
-      (isMaintenanceCapDepartment(department) ||
-        department === 'decoracio' ||
-        department === 'decoracions' ||
-        department === 'decoracion'))
+  const canDeleteAnyTicket = hasAction(MAINTENANCE_TICKETS_DELETE_PERM)
+  const canValidate = hasAction(MAINTENANCE_TICKETS_VALIDATE_PERM)
+  const canReopen = hasAction(MAINTENANCE_TICKETS_REOPEN_PERM)
+  const canExternalize = hasAction(MAINTENANCE_TICKETS_EXTERNALIZE_PERM)
 
   const [selected, setSelected] = useState<Ticket | null>(initialTicket || null)
   const [assignBusy, setAssignBusy] = useState(false)
@@ -120,6 +121,8 @@ export default function PlannerTicketModal({
   const [detailsMachine, setDetailsMachine] = useState('')
   const [detailsDescription, setDetailsDescription] = useState('')
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
+  const canDeleteSelectedTicket =
+    canDeleteAnyTicket || canUserDeleteMaintenanceTicket(selected || initialTicket || {}, sessionUser.id)
   const { data: transports } = useTransports()
 
   const maintenanceUsers = useMemo(
@@ -298,7 +301,7 @@ export default function PlannerTicketModal({
   }, [onDeletePlanned])
 
   const destructiveAction = useMemo(() => {
-    if (deleteMode === 'delete-ticket') {
+    if (deleteMode === 'delete-ticket' && canDeleteSelectedTicket) {
       return {
         label: 'Eliminar ticket',
         title: 'Eliminar ticket',
@@ -315,7 +318,7 @@ export default function PlannerTicketModal({
       }
     }
     return null
-  }, [deleteMode, handleDeleteTicket, handleUnplanTicket, onDeletePlanned])
+  }, [canDeleteSelectedTicket, deleteMode, handleDeleteTicket, handleUnplanTicket, onDeletePlanned])
 
   const handleAssignVehicle = async (
     ticket: Ticket,

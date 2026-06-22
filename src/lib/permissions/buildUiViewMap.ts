@@ -9,6 +9,7 @@ import { PERM } from '@/lib/permissionKeys'
  * Amb `user_access_assignments`, només són visibles amb `allow` explícit a Settings.
  */
 const EXPLICIT_ALLOW_ONLY_MODULE_PATHS = ['/menu/roba-personal'] as const
+const NO_CHILD_INHERITANCE_MODULE_PATHS = ['/menu/manteniment'] as const
 
 function viewOverrideEffect(
   assignment: UserAccessAssignmentDoc,
@@ -63,6 +64,13 @@ export function buildUiViewMap(
   for (const mod of MODULES) {
     if (viewOverrideEffect(assignment, mod.path) !== 'allow') continue
     map[mod.path] = true
+    if (
+      NO_CHILD_INHERITANCE_MODULE_PATHS.includes(
+        mod.path as (typeof NO_CHILD_INHERITANCE_MODULE_PATHS)[number]
+      )
+    ) {
+      continue
+    }
     for (const sub of mod.submodules || []) {
       if (viewOverrideEffect(assignment, sub.path) === 'deny') continue
       map[sub.path] = true
@@ -77,6 +85,15 @@ export function buildUiViewMap(
         map[mod.path] = true
         break
       }
+    }
+  }
+
+  for (const modPath of NO_CHILD_INHERITANCE_MODULE_PATHS) {
+    const mod = MODULES.find((entry) => entry.path === modPath)
+    if (!mod) continue
+    const anySubVisible = (mod.submodules || []).some((sub) => map[sub.path] === true)
+    if (!anySubVisible) {
+      map[mod.path] = false
     }
   }
 

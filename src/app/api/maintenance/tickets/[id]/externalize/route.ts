@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import admin from 'firebase-admin'
 import {
-  isMaintenanceCapDepartment,
-} from '@/lib/accessControl'
-import { canManageMaintenanceTicketInbox } from '@/lib/server/maintenanceTicketsAccess'
+  canExternalizeMaintenanceTickets,
+  canManageMaintenanceTicketInbox,
+} from '@/lib/server/maintenanceTicketsAccess'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { sendMaintenanceSupplierEmail } from '@/services/graph/calendar'
 import { clearExternalStaleMaintenanceTicketNotifications } from '@/lib/maintenanceNotifications'
@@ -51,14 +51,6 @@ type MaintenanceTicketExternalizeRecord = Record<string, unknown> & {
   externalizationHistory?: Array<Record<string, unknown>>
 }
 
-const normalizeDept = (raw?: string) =>
-  (raw || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-
 const normalizeStatus = (value?: string) => {
   const v = (value || '').trim().toLowerCase()
   if (v === 'assignat') return 'assignat'
@@ -98,14 +90,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!auth.ok) return auth.res
 
   const user = auth.user as SessionUser
-  const role = auth.role
-  const dept = normalizeDept(user.department)
   const logisticsTicketsManager = await canManageMaintenanceTicketInbox(user)
-  if (role !== 'admin' && role !== 'direccio' && role !== 'cap' && role !== 'usuari') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const canExternalize = await canExternalizeMaintenanceTickets(user)
 
-  if (role === 'usuari' && !logisticsTicketsManager) {
+  if (!canExternalize && !logisticsTicketsManager) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -142,16 +130,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const current = snap.data() as MaintenanceTicketExternalizeRecord
-    const ticketType = String(current.ticketType || 'maquinaria').trim().toLowerCase()
-    const capAllowed =
-      role === 'cap' &&
-      ((ticketType === 'deco' &&
-        ['decoracio', 'decoracions', 'decoracion'].includes(dept)) ||
-        (ticketType !== 'deco' && isMaintenanceCapDepartment(dept)))
-    if (role === 'cap' && !capAllowed && !logisticsTicketsManager) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
     const currentStatus = normalizeStatus(String(current.status || ''))
     if (currentStatus === 'validat') {
       return NextResponse.json(

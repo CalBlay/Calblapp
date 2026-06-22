@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { canManageMaintenanceTickets } from '@/lib/accessControl'
-import { canManageMaintenanceTicketInbox } from '@/lib/server/maintenanceTicketsAccess'
+import {
+  canManageAllMaintenanceTickets,
+  canManageMaintenanceTicketInbox,
+} from '@/lib/server/maintenanceTicketsAccess'
 import {
   MAINTENANCE_TICKETS_PATH,
   requireMaintenanceTicketApiView,
@@ -230,16 +232,6 @@ export async function GET(req: Request) {
   const role = auth.role
   const sessionName = normalizeName(user.name || '')
   const deptRaw = (user.department || '').toString()
-  if (
-    role !== 'admin' &&
-    role !== 'direccio' &&
-    role !== 'cap' &&
-    role !== 'treballador' &&
-    role !== 'comercial' &&
-    role !== 'usuari'
-  ) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const { searchParams } = new URL(req.url)
   const status = (searchParams.get('status') || 'all').toLowerCase()
@@ -260,8 +252,7 @@ export async function GET(req: Request) {
   const limit = Math.max(1, Math.min(200, Number(searchParams.get('limit') || 100)))
 
   const canViewAllTickets =
-    canManageMaintenanceTickets({ role, department: deptRaw }) ||
-    (await canManageMaintenanceTicketInbox(user))
+    (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
 
   try {
     let ref: FirebaseFirestore.Query = db.collection('maintenanceTickets')
@@ -402,17 +393,6 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.res
 
   const user = auth.user as SessionUser
-  const role = auth.role
-  if (
-    role !== 'admin' &&
-    role !== 'direccio' &&
-    role !== 'cap' &&
-    role !== 'treballador' &&
-    role !== 'comercial' &&
-    role !== 'usuari'
-  ) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   try {
     const body = (await req.json()) as TicketPayload

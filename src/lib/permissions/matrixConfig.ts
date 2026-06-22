@@ -4,7 +4,14 @@ import {
   EVENTS_COMANDA_PREPARE_PERM,
 } from '@/lib/eventComandaPermissions'
 import { INCIDENTS_COMMAND_BOARD_PERM, INCIDENTS_MEETING_MINUTES_PERM } from '@/lib/incidentsPermissions'
-import { MAINTENANCE_TICKETS_INBOX_PERM } from '@/lib/maintenanceTicketsPermissions'
+import {
+  MAINTENANCE_TICKETS_DELETE_PERM,
+  MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
+  MAINTENANCE_TICKETS_INBOX_PERM,
+  MAINTENANCE_TICKETS_MANAGE_PERM,
+  MAINTENANCE_TICKETS_REOPEN_PERM,
+  MAINTENANCE_TICKETS_VALIDATE_PERM,
+} from '@/lib/maintenanceTicketsPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import type { MatrixRow } from '@/lib/permissions/types'
 
@@ -185,6 +192,26 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       {
         key: MAINTENANCE_TICKETS_INBOX_PERM,
         label: 'Gestionar safata de tickets (avisos nous)',
+      },
+      {
+        key: MAINTENANCE_TICKETS_MANAGE_PERM,
+        label: 'Gestionar tickets',
+      },
+      {
+        key: MAINTENANCE_TICKETS_VALIDATE_PERM,
+        label: 'Validar tickets',
+      },
+      {
+        key: MAINTENANCE_TICKETS_REOPEN_PERM,
+        label: 'Reobrir tickets validats',
+      },
+      {
+        key: MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
+        label: 'Externalitzar tickets',
+      },
+      {
+        key: MAINTENANCE_TICKETS_DELETE_PERM,
+        label: 'Eliminar tickets',
       },
     ],
   },

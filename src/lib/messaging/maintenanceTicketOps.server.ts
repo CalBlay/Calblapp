@@ -1,7 +1,10 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { canManageMaintenanceTickets, type AccessUser } from '@/lib/accessControl'
+import type { AccessUser } from '@/lib/accessControl'
 import { normalizeRole } from '@/lib/roles'
-import { canManageMaintenanceTicketInbox } from '@/lib/server/maintenanceTicketsAccess'
+import {
+  canManageAllMaintenanceTickets,
+  canManageMaintenanceTicketInbox,
+} from '@/lib/server/maintenanceTicketsAccess'
 import { listMaintenanceTicketInboxRecipientIds } from '@/lib/server/maintenanceTicketInboxRecipients'
 import { buildMaintenanceTicketChannelId } from '@/lib/messaging/maintenanceTicketChatIds'
 
@@ -71,7 +74,7 @@ export async function canAccessMaintenanceTicketOps(params: {
 }): Promise<boolean> {
   const role = normalizeRole(params.user.role)
   if (role === 'admin' || role === 'direccio') return true
-  if (canManageMaintenanceTickets(params.user)) return true
+  if (await canManageAllMaintenanceTickets(params.user)) return true
   if (String(params.ticket.createdById || '').trim() === params.user.id) return true
   return await canManageMaintenanceTicketInbox(params.user)
 }
@@ -86,7 +89,7 @@ export async function canManageMaintenanceTicketChatMembers(params: {
   const role = normalizeRole(params.role)
   if (role === 'admin' || role === 'direccio') return true
 
-  if (params.user && canManageMaintenanceTickets(params.user)) return true
+  if (params.user && (await canManageAllMaintenanceTickets(params.user))) return true
 
   const managerId = String(
     params.channel.responsibleUserId || params.ticket.opsManagerUserId || ''
@@ -108,7 +111,7 @@ async function resolveManagerUserId(params: {
   const stored = String(params.ticket.opsManagerUserId || '').trim()
   if (stored) return stored
 
-  if (canManageMaintenanceTickets(params.actor)) return params.actor.id
+  if (await canManageAllMaintenanceTickets(params.actor)) return params.actor.id
   if (await canManageMaintenanceTicketInbox(params.actor)) return params.actor.id
   return ''
 }
@@ -355,7 +358,7 @@ export async function listAllMaintenanceTicketOpsRooms(params: {
   user: AccessUser & { id: string }
 }): Promise<MaintenanceTicketOpsRoom[]> {
   const canViewAll =
-    canManageMaintenanceTickets(params.user) ||
+    (await canManageAllMaintenanceTickets(params.user)) ||
     (await canManageMaintenanceTicketInbox(params.user))
 
   let snap: FirebaseFirestore.QuerySnapshot

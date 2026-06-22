@@ -45,8 +45,13 @@ import {
 } from '@/lib/eventComandaPermissions'
 import {
   MAINTENANCE_TICKETS_ACTION,
+  MAINTENANCE_TICKETS_DELETE_PERM,
+  MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
   MAINTENANCE_TICKETS_INBOX_PERM,
+  MAINTENANCE_TICKETS_MANAGE_PERM,
+  MAINTENANCE_TICKETS_REOPEN_PERM,
   MAINTENANCE_TICKETS_UI_PATH,
+  MAINTENANCE_TICKETS_VALIDATE_PERM,
   baseCanReceiveMaintenanceTicketInboxNotifications,
 } from '@/lib/maintenanceTicketsPermissions'
 import {
@@ -102,6 +107,11 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/events', action: 'warehouse:comanda-only' },
   { path: INCIDENTS_UI_PATH, action: 'command-board' },
   { path: INCIDENTS_UI_PATH, action: 'meeting-minutes' },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.DELETE },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.MANAGE },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.VALIDATE },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.REOPEN },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.EXTERNALIZE },
   { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.INBOX },
   { path: '/menu/quadrants', action: 'save' },
   { path: '/menu/quadrants', action: 'confirm' },
@@ -381,6 +391,11 @@ export async function GET() {
 
   if (map[MAINTENANCE_TICKETS_UI_PATH] === true) {
     const inboxEff = effectFor(assignment, MAINTENANCE_TICKETS_INBOX_PERM)
+    const deleteEff = effectFor(assignment, MAINTENANCE_TICKETS_DELETE_PERM)
+    const manageEff = effectFor(assignment, MAINTENANCE_TICKETS_MANAGE_PERM)
+    const validateEff = effectFor(assignment, MAINTENANCE_TICKETS_VALIDATE_PERM)
+    const reopenEff = effectFor(assignment, MAINTENANCE_TICKETS_REOPEN_PERM)
+    const externalizeEff = effectFor(assignment, MAINTENANCE_TICKETS_EXTERNALIZE_PERM)
     if (inboxEff === 'deny') {
       actions[MAINTENANCE_TICKETS_INBOX_PERM] = false
     } else if (
@@ -388,6 +403,36 @@ export async function GET() {
       baseCanReceiveMaintenanceTicketInboxNotifications(accessUser)
     ) {
       actions[MAINTENANCE_TICKETS_INBOX_PERM] = true
+    }
+
+    if (deleteEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_DELETE_PERM] = false
+    } else if (deleteEff === 'allow') {
+      actions[MAINTENANCE_TICKETS_DELETE_PERM] = true
+    }
+
+    if (manageEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_MANAGE_PERM] = false
+    } else if (manageEff === 'allow') {
+      actions[MAINTENANCE_TICKETS_MANAGE_PERM] = true
+    }
+
+    if (validateEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_VALIDATE_PERM] = false
+    } else if (validateEff === 'allow') {
+      actions[MAINTENANCE_TICKETS_VALIDATE_PERM] = true
+    }
+
+    if (reopenEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_REOPEN_PERM] = false
+    } else if (reopenEff === 'allow') {
+      actions[MAINTENANCE_TICKETS_REOPEN_PERM] = true
+    }
+
+    if (externalizeEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_EXTERNALIZE_PERM] = false
+    } else if (externalizeEff === 'allow') {
+      actions[MAINTENANCE_TICKETS_EXTERNALIZE_PERM] = true
     }
   }
 

@@ -19,9 +19,10 @@ import {
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
 import { normalizeRole } from '@/lib/roles'
-import { canManageMaintenanceTickets } from '@/lib/accessControl'
 import {
+  MAINTENANCE_TICKETS_DELETE_PERM,
   MAINTENANCE_TICKETS_INBOX_PERM,
+  MAINTENANCE_TICKETS_MANAGE_PERM,
 } from '@/lib/maintenanceTicketsPermissions'
 import { canUserDeleteMaintenanceTicket } from '@/lib/maintenanceTicketDeletePolicy'
 import {
@@ -137,11 +138,8 @@ export default function MaintenanceTicketsPage() {
   const isMaintenanceWorker = userRole === 'treballador' && isMaintenance
   const isOwnTicketsOnly = isMaintenanceTicketCreatorOnlyUser(sessionUser)
   const canManageInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
-  const canManageAllTickets =
-    canManageMaintenanceTickets({
-      role: userRole,
-      department,
-    }) || canManageInbox
+  const canDeleteAnyTicket = hasAction(MAINTENANCE_TICKETS_DELETE_PERM)
+  const canManageAllTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM) || canManageInbox
   const canSeeMaintenanceBell = canManageAllTickets || canManageInbox
   const hasAccess =
     !isMaintenanceWorker &&
@@ -484,8 +482,8 @@ export default function MaintenanceTicketsPage() {
   )
 
   const canDeleteTicket = useCallback(
-    (ticket: Ticket) => canUserDeleteMaintenanceTicket(ticket, userId),
-    [userId]
+    (ticket: Ticket) => canDeleteAnyTicket || canUserDeleteMaintenanceTicket(ticket, userId),
+    [canDeleteAnyTicket, userId]
   )
 
   const canShowTicketOps = useCallback(

@@ -8,45 +8,20 @@ import {
   ClipboardList,
   Database,
 } from 'lucide-react'
-import { useSession } from 'next-auth/react'
 import { RoleGuard } from '@/lib/withRoleGuard'
-import { normalizeRole } from '@/lib/roles'
-import {
-  isMaintenanceCapDepartment,
-  canManageMaintenanceTickets,
-} from '@/lib/accessControl'
 import { MAINTENANCE_TICKETS_INBOX_PERM } from '@/lib/maintenanceTicketsPermissions'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import MaintenanceNotificationsBell from './components/MaintenanceNotificationsBell'
 import { useMaintenanceAssignedCount } from '@/hooks/useMaintenanceAssignedCount'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 
-const normalizeDept = (raw?: string) =>
-  (raw || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-
-type SessionUser = {
-  id?: string
-  role?: string
-  department?: string
-}
-
 export default function MantenimentIndexPage() {
-  const { data: session } = useSession()
-  const sessionUser = session?.user as SessionUser | undefined
-  const userRole = normalizeRole(sessionUser?.role || '')
-  const userDepartment = normalizeDept(sessionUser?.department || '')
-  const isMaintenanceWorker = userRole === 'treballador' && userDepartment === 'manteniment'
-  const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(userDepartment)
-  const isAdmin = userRole === 'admin' || userRole === 'direccio'
-  const isProductionWorker = userRole === 'treballador' && userDepartment === 'produccio'
-  const isCommercial = userRole === 'comercial'
   const { canViewPath, hasAction } = useUiPermissions()
   const canViewTickets = canViewPath('/menu/manteniment/tickets')
+  const canViewPlanner = canViewPath('/menu/manteniment/preventius')
+  const canViewJourney = canViewPath('/menu/manteniment/preventius/fulls')
+  const canViewData = canViewPath('/menu/manteniment/dades')
+  const canViewSeguiment = canViewPath('/menu/manteniment/seguiment')
   const canManageTicketInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
   const { count: assignedTicketsCount } = useMaintenanceAssignedCount()
 
@@ -56,15 +31,11 @@ export default function MantenimentIndexPage() {
         <ModuleHeader
           title="Manteniment"
           subtitle="Gestió i assignació"
-          actions={<MaintenanceNotificationsBell />}
+          actions={canManageTicketInbox || canViewTickets ? <MaintenanceNotificationsBell /> : undefined}
         />
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {(isAdmin ||
-            isMaintenanceCap ||
-            canManageTicketInbox ||
-            canManageMaintenanceTickets({ role: userRole, department: userDepartment }) ||
-            canViewTickets) && (
+          {canViewTickets && (
             <Link
               href="/menu/manteniment/tickets"
               className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-amber-50 to-yellow-100"
@@ -81,7 +52,7 @@ export default function MantenimentIndexPage() {
             </Link>
           )}
 
-          {(isAdmin || isMaintenanceCap) && (
+          {canViewPlanner && (
             <Link
               href="/menu/manteniment/preventius/planificador"
               className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-teal-50 to-cyan-100"
@@ -92,13 +63,15 @@ export default function MantenimentIndexPage() {
                 </div>
                 <div>
                   <div className="text-base font-semibold text-gray-900">Planificador</div>
-                  <div className="text-xs text-gray-500">Preventius + tickets</div>
+                  <div className="text-xs text-gray-500">
+                    {canViewTickets ? 'Preventius + tickets' : 'Preventius'}
+                  </div>
                 </div>
               </div>
             </Link>
           )}
 
-          {(isAdmin || isMaintenanceCap) && (
+          {canViewData && (
             <Link
               href="/menu/manteniment/dades"
               className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-sky-50 to-blue-100"
@@ -115,7 +88,7 @@ export default function MantenimentIndexPage() {
             </Link>
           )}
 
-          {(isMaintenanceWorker || isMaintenanceCap || isAdmin) && (
+          {canViewJourney && (
             <Link
               href="/menu/manteniment/preventius/fulls"
               className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-emerald-50 to-green-100"
@@ -133,13 +106,15 @@ export default function MantenimentIndexPage() {
                 </div>
                 <div>
                   <div className="text-base font-semibold text-gray-900">Jornada</div>
-                  <div className="text-xs text-gray-500">Preventius + tickets</div>
+                  <div className="text-xs text-gray-500">
+                    {canViewTickets ? 'Preventius + tickets' : 'Preventius'}
+                  </div>
                 </div>
               </div>
             </Link>
           )}
 
-          {(isAdmin || isMaintenanceCap || isCommercial || isProductionWorker) && (
+          {canViewSeguiment && (
             <Link
               href="/menu/manteniment/seguiment"
               className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-indigo-50 to-purple-100"
@@ -160,4 +135,3 @@ export default function MantenimentIndexPage() {
     </RoleGuard>
   )
 }
-

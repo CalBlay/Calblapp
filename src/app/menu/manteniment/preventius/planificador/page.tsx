@@ -151,6 +151,7 @@ export default function PreventiusPlanificadorPage() {
     resolveWorkerIds,
     persistTicketPlanning,
   } = usePlannerData({
+    canViewTickets,
     weekStart,
     dayCount: DAY_COUNT,
     tab,
