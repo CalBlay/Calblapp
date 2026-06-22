@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Trash2 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import { RoleGuard } from '@/lib/withRoleGuard'
+import MaintenancePermissionGate from '../../../components/MaintenancePermissionGate'
 
 type TemplateSection = { location: string; items: { label: string }[] }
 type EditableSection = { id: string; location: string; items: { id: string; label: string }[] }
@@ -294,14 +294,14 @@ export default function PlantillaDetailPage() {
 
   if (!template) {
     return (
-      <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
+      <MaintenancePermissionGate>
         <div className="p-6 text-sm text-gray-600">Plantilla no trobada.</div>
-      </RoleGuard>
+      </MaintenancePermissionGate>
     )
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
+    <MaintenancePermissionGate>
       <div className="min-h-screen w-full bg-white flex flex-col">
         <ModuleHeader subtitle={form.name || template.name} />
 
@@ -537,6 +537,6 @@ export default function PlantillaDetailPage() {
           </button>
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

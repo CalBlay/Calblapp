@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import { RoleGuard } from '@/lib/withRoleGuard'
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
+import MaintenancePermissionGate from '../../../components/MaintenancePermissionGate'
 import MachineDetailView from '../../components/MachineDetailView'
 import type { MachineRow, MachineView, MachineViewTab, SupplierRow } from '../../types'
 import { emptyMachine } from '../../types'
@@ -117,7 +117,7 @@ export default function MachineDetailPage({ params }: { params: Promise<{ id: st
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
+    <MaintenancePermissionGate>
       <div className="mx-auto w-full max-w-7xl space-y-4 p-4">
         <ModuleHeader title="Manteniment" subtitle="Fitxa de maquina" mainHref="/menu/manteniment/dades" />
 
@@ -142,6 +142,6 @@ export default function MachineDetailPage({ params }: { params: Promise<{ id: st
           />
         )}
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

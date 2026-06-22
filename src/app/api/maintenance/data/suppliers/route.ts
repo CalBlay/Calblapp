@@ -26,7 +26,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireMaintenanceDataAccess()
+  const auth = await requireMaintenanceDataAccess('edit')
   if (!auth.ok) return auth.res
 
   try {

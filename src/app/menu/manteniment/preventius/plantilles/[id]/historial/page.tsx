@@ -9,7 +9,7 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { maintenanceStatusBadge } from '@/lib/colors'
-import { RoleGuard } from '@/lib/withRoleGuard'
+import MaintenancePermissionGate from '../../../../components/MaintenancePermissionGate'
 
 type Template = {
   id: string
@@ -255,7 +255,7 @@ export default function PlantillaHistorialPage() {
   ]
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+    <MaintenancePermissionGate>
       <div className="min-h-screen space-y-5 px-4 pb-8">
         <style>{`
           @media print {
@@ -355,6 +355,6 @@ export default function PlantillaHistorialPage() {
           </section>
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

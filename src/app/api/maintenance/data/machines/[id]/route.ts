@@ -18,7 +18,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireMaintenanceDataAccess()
+  const auth = await requireMaintenanceDataAccess('edit')
   if (!auth.ok) return auth.res
 
   try {

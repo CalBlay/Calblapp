@@ -95,7 +95,7 @@ type UpdatePayload = {
   completionImages?: Array<{
     url?: string | null
     path?: string | null
-    meta?: { size?: number; type?: string } | null
+    meta?: { size?: number; type?: string; name?: string } | null
   }>
 }
 
@@ -122,6 +122,11 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   outlookCalendarEvents?: Record<string, MaintenanceTicketOutlookEventRef>
   statusHistory?: StatusHistoryEntry[]
   imageUrls?: string[] | null
+  completionAttachments?: Array<{
+    url?: string | null
+    path?: string | null
+    meta?: { size?: number; type?: string; name?: string } | null
+  }> | null
   requiresCreatorValidation?: boolean
   creatorValidatedAt?: number | string | null
   capValidatedAt?: number | string | null
@@ -230,8 +235,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!auth.ok) return auth.res
 
   const user = auth.user as SessionUser
-  const canManageTickets =
-    (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
+  const canManageTickets = await canManageAllMaintenanceTickets(user)
   const canValidate = await canValidateMaintenanceTickets(user)
   const canReopen = await canReopenMaintenanceTickets(user)
   const role = auth.role
@@ -595,24 +599,49 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       )
 
       if (Array.isArray(body.completionImages) && body.completionImages.length > 0) {
-        const added = body.completionImages
-          .map((image) => String(image?.url || '').trim())
-          .filter(Boolean)
-        if (nextStatus === 'fet' && role === 'treballador' && !canManageTickets && added.length < 1) {
+        const newAttachments = body.completionImages
+          .map((item) => ({
+            url: String(item?.url || '').trim() || null,
+            path: String(item?.path || '').trim() || null,
+            meta: item?.meta || null,
+          }))
+          .filter((item) => item.url || item.path)
+        if (
+          nextStatus === 'fet' &&
+          role === 'treballador' &&
+          !canManageTickets &&
+          newAttachments.length < 1
+        ) {
           return NextResponse.json(
-            { error: 'Cal adjuntar com a minim una foto en marcar Fet.' },
+            { error: 'Cal adjuntar com a minim un fitxer o foto en marcar Fet.' },
             { status: 400 }
           )
         }
-        const existing = Array.isArray(current.imageUrls)
-          ? current.imageUrls.map((url) => String(url || '').trim()).filter(Boolean)
+        const existing = Array.isArray(current.completionAttachments)
+          ? current.completionAttachments
+              .map((item) => ({
+                url: String(item?.url || '').trim() || null,
+                path: String(item?.path || '').trim() || null,
+                meta:
+                  item?.meta && typeof item.meta === 'object'
+                    ? {
+                        size:
+                          typeof item.meta.size === 'number' ? item.meta.size : undefined,
+                        type: String(item.meta.type || '').trim() || undefined,
+                        name: String(item.meta.name || '').trim() || undefined,
+                      }
+                    : null,
+              }))
+              .filter((item) => item.url || item.path)
           : []
-        const merged = [...existing, ...added]
-        updates.imageUrls = merged
-        if (!current.imageUrl && merged[0]) updates.imageUrl = merged[0]
+        const merged = [
+          ...existing,
+          ...newAttachments,
+        ]
+        updates.completionAttachments = merged
       } else if (nextStatus === 'fet' && role === 'treballador' && !canManageTickets) {
         return NextResponse.json(
-          { error: 'Cal adjuntar com a minim una foto en marcar Fet.' },
+          { error: 'Cal adjuntar com a minim un fitxer o foto en marcar Fet.' },
           { status: 400 }
         )
       }

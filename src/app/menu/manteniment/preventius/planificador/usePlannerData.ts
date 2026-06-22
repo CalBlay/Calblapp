@@ -26,8 +26,8 @@ type UsePlannerDataArgs = {
   weekStart: Date
   dayCount: number
   tab: 'preventius' | 'tickets' | 'externalized'
-  preventiusFilter: 'all' | 'due' | 'overdue'
-  ticketsAgeFilter: 'all' | 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus'
+  preventiusFilter: 'due' | 'overdue' | null
+  ticketsAgeFilter: 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus' | null
 }
 
 type PlannerTicketLike = Partial<Ticket> & {
@@ -173,8 +173,8 @@ function mapExternalizedCalendarTickets(
       if (dayIndex < 0 || dayIndex >= dayCount) return null
 
       const minutesFromDay = followUpDate.getHours() * 60 + followUpDate.getMinutes()
-      const startMinutes = Math.min(Math.max(minutesFromDay, 8 * 60), 16 * 60 + 30)
-      const endMinutes = Math.min(startMinutes + 30, 17 * 60)
+      const startMinutes = Math.min(Math.max(minutesFromDay, 8 * 60), 17 * 60 + 30)
+      const endMinutes = Math.min(startMinutes + 30, 18 * 60)
       const workers = Array.isArray(t.assignedToNames) ? t.assignedToNames.map(String) : []
       const title = String(t.operatorTitle || t.description || t.machine || t.workLocation || t.location || '')
       const code = String(t.ticketCode || t.incidentNumber || 'TIC')
@@ -370,7 +370,7 @@ export default function usePlannerData({
   }, [templates, weekStart, dayCount])
 
   const filteredDueTemplates = useMemo(() => {
-    if (preventiusFilter === 'all') return dueTemplates
+    if (preventiusFilter == null) return dueTemplates
     return dueTemplates.filter((t) => t.dueState === preventiusFilter)
   }, [dueTemplates, preventiusFilter])
 
@@ -381,7 +381,7 @@ export default function usePlannerData({
       if (b.ageDays !== a.ageDays) return b.ageDays - a.ageDays
       return a.code.localeCompare(b.code)
     })
-    if (ticketsAgeFilter === 'all') return base
+    if (ticketsAgeFilter == null) return base
     return base.filter((ticket) => ticket.ageBucket === ticketsAgeFilter)
   }, [realTickets, ticketsAgeFilter])
 
@@ -392,7 +392,7 @@ export default function usePlannerData({
       if (b.ageDays !== a.ageDays) return b.ageDays - a.ageDays
       return a.code.localeCompare(b.code)
     })
-    if (ticketsAgeFilter === 'all') return base
+    if (ticketsAgeFilter == null) return base
     return base.filter((ticket) => ticket.ageBucket === ticketsAgeFilter)
   }, [externalizedTickets, ticketsAgeFilter])
 
@@ -419,11 +419,11 @@ export default function usePlannerData({
 
   const timeSlots = useMemo(() => {
     const slots: string[] = []
-    for (let h = 8; h <= 16; h += 1) {
+    for (let h = 8; h <= 17; h += 1) {
       slots.push(`${String(h).padStart(2, '0')}:00`)
       slots.push(`${String(h).padStart(2, '0')}:30`)
     }
-    slots.push('17:00')
+    slots.push('18:00')
     return slots
   }, [])
 

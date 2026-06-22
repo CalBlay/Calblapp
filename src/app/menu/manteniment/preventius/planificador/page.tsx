@@ -6,10 +6,10 @@ import { addDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
 import { ca } from 'date-fns/locale'
 import { AlertTriangle, ChevronDown, ChevronUp, Ticket } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import { RoleGuard } from '@/lib/withRoleGuard'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
 import { typography } from '@/lib/typography'
+import { MAINTENANCE_TICKETS_MANAGE_PERM } from '@/lib/maintenanceTicketsPermissions'
 import type { PlannerDraft, ScheduledItem } from './types'
 import {
   PRIORITY_LABEL,
@@ -31,9 +31,10 @@ const GRID_GAP = 1
 const HEADER_HEIGHT = 32
 const TIME_COL_WIDTH = 80
 const DAY_COUNT = 6
+type PlannerTypeFilter = 'preventius' | 'tickets' | 'externalized'
 
 const TICKET_STATUS_FILTER_STYLES: Record<
-  'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'externalized',
+  'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat',
   { active: string; dot: string; label: string }
 > = {
   all: {
@@ -76,11 +77,6 @@ const TICKET_STATUS_FILTER_STYLES: Record<
     dot: 'bg-violet-500',
     label: 'Validat',
   },
-  externalized: {
-    active: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-    dot: 'bg-indigo-500',
-    label: 'Externalitzats',
-  },
 }
 
 function normalizePlannerTicketStatus(value?: string | null) {
@@ -100,8 +96,9 @@ function normalizePlannerTicketStatus(value?: string | null) {
 const MAINTENANCE_TICKETS_PATH = '/menu/manteniment/tickets'
 
 export default function PreventiusPlanificadorPage() {
-  const { isPathAllowed } = useUiPermissions()
+  const { isPathAllowed, hasAction } = useUiPermissions()
   const canViewTickets = isPathAllowed(MAINTENANCE_TICKETS_PATH)
+  const canManagePlannerTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM)
   const [filters, setFiltersState] = useState<FiltersState>(() => {
     const base = startOfWeek(new Date(), { weekStartsOn: 1 })
     const end = endOfWeek(base, { weekStartsOn: 1 })
@@ -112,18 +109,24 @@ export default function PreventiusPlanificadorPage() {
     }
   })
   const [tab, setTab] = useState<'preventius' | 'tickets' | 'externalized'>('preventius')
-  const [plannerViewFilter, setPlannerViewFilter] = useState<'all' | 'preventius' | 'tickets' | 'externalized'>('all')
-  const [preventiusFilter, setPreventiusFilter] = useState<'all' | 'due' | 'overdue'>('all')
+  const [plannerViewFilters, setPlannerViewFilters] = useState<PlannerTypeFilter[]>([])
+  const [preventiusFilter, setPreventiusFilter] = useState<'due' | 'overdue' | null>(null)
   const [ticketsAgeFilter, setTicketsAgeFilter] = useState<
-    'all' | 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus'
-  >('all')
+    'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus' | null
+  >(null)
   const [ticketsStatusFilter, setTicketsStatusFilter] = useState<
-    'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat' | 'externalized'
+    'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat'
   >('all')
   const [showLegend, setShowLegend] = useState(false)
   const [showScheduledInSidebar, setShowScheduledInSidebar] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [draft, setDraft] = useState<PlannerDraft | null>(null)
+
+  const togglePlannerViewFilter = (filter: PlannerTypeFilter) => {
+    setPlannerViewFilters((current) =>
+      current.includes(filter) ? current.filter((item) => item !== filter) : [...current, filter]
+    )
+  }
 
   const setFilters = (partial: Partial<FiltersState>) =>
     setFiltersState((prev) => ({ ...prev, ...partial }))
@@ -177,31 +180,33 @@ export default function PreventiusPlanificadorPage() {
     [scheduledItems]
   )
 
+  const hasPlannerTypeFilter = plannerViewFilters.length > 0
+
   const kindFilteredScheduledItems = useMemo(() => {
-    if (plannerViewFilter === 'all') return scheduledItems
-    if (plannerViewFilter === 'externalized') {
-      return scheduledItems.filter((item) => item.kind === 'ticket' && item.workflowStage === 'externalized')
-    }
-    return scheduledItems.filter((item) => item.kind === plannerViewFilter.slice(0, -1))
-  }, [plannerViewFilter, scheduledItems])
+    if (!hasPlannerTypeFilter) return scheduledItems
+    return scheduledItems.filter((item) => {
+      const isExternalizedTicket = item.kind === 'ticket' && item.workflowStage === 'externalized'
+      const matchesPreventius = plannerViewFilters.includes('preventius') && item.kind === 'preventiu'
+      const matchesTickets =
+        plannerViewFilters.includes('tickets') && item.kind === 'ticket' && !isExternalizedTicket
+      const matchesExternalized = plannerViewFilters.includes('externalized') && isExternalizedTicket
+      return matchesPreventius || matchesTickets || matchesExternalized
+    })
+  }, [hasPlannerTypeFilter, plannerViewFilters, scheduledItems])
 
   const ticketStatusFilteredScheduledItems = useMemo(() => {
-    if (plannerViewFilter !== 'tickets' || ticketsStatusFilter === 'all') return kindFilteredScheduledItems
+    if (!plannerViewFilters.includes('tickets') || ticketsStatusFilter === 'all') return kindFilteredScheduledItems
     return kindFilteredScheduledItems.filter((item) => {
-      if (item.kind !== 'ticket') return true
-      if (ticketsStatusFilter === 'externalized') {
-        return item.workflowStage === 'externalized'
-      }
+      if (item.kind !== 'ticket' || item.workflowStage === 'externalized') return true
       if (item.workflowStage === 'externalized') return false
       return normalizePlannerTicketStatus(item.status) === ticketsStatusFilter
     })
-  }, [kindFilteredScheduledItems, plannerViewFilter, ticketsStatusFilter])
+  }, [kindFilteredScheduledItems, plannerViewFilters, ticketsStatusFilter])
 
   const filteredExternalizedTickets = useMemo(() => {
     if (tab !== 'tickets' && tab !== 'externalized') return []
-    if (ticketsStatusFilter !== 'all' && ticketsStatusFilter !== 'externalized') return []
     return externalizedTickets
-  }, [externalizedTickets, tab, ticketsStatusFilter])
+  }, [externalizedTickets, tab])
 
   const filteredScheduledItems = useMemo(() => {
     if (!selectedWorker || selectedWorker === '__all__') return ticketStatusFilteredScheduledItems
@@ -371,6 +376,7 @@ export default function PreventiusPlanificadorPage() {
       }
 
       if (payload.kind === 'ticket') {
+        if (!canManagePlannerTickets) return
         const alreadyPlanned = scheduledItems.some(
           (i) => i.kind === 'ticket' && (i.ticketId || i.id) === payload.ticketId
         )
@@ -401,6 +407,7 @@ export default function PreventiusPlanificadorPage() {
       }
 
       if (payload.kind === 'ticket') {
+        if (!canManagePlannerTickets) return
         setScheduledItems((prev) => [...prev.filter((item) => item.id !== nextItem.id), nextItem])
         try {
           await persistTicketPlanning(nextItem)
@@ -556,6 +563,10 @@ export default function PreventiusPlanificadorPage() {
       if (target.kind === 'preventiu') {
         await unplanPreventiu(target.id, target.templateId)
       } else {
+        if (!canManagePlannerTickets) {
+          await loadWeekSchedule()
+          return
+        }
         const ticketId = target.ticketId || target.id
         const ok = await unplanTicket(ticketId, target.id)
         if (!ok) return
@@ -567,6 +578,7 @@ export default function PreventiusPlanificadorPage() {
   }
 
   const unplanTicket = async (ticketId: string, scheduledId?: string) => {
+    if (!canManagePlannerTickets) return false
     const current = ticketById[ticketId]
     const status = normalizePlannerTicketStatus(current?.status)
 
@@ -630,7 +642,6 @@ export default function PreventiusPlanificadorPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
       <div className="w-full max-w-none mx-auto p-4 space-y-4">
         <ModuleHeader
           title="Manteniment"
@@ -657,7 +668,7 @@ export default function PreventiusPlanificadorPage() {
 
         <div className="space-y-4 lg:hidden">
           <div className="flex items-center justify-between gap-3">
-            <div className={typography('bodyXs')}>DL-DS · Jornada base 08:00-17:00</div>
+            <div className={typography('bodyXs')}>DL-DS · Jornada base 08:00-18:00</div>
             <div className={typography('bodyXs')}>Setmana: {weekLabel}</div>
           </div>
 
@@ -828,19 +839,7 @@ export default function PreventiusPlanificadorPage() {
               <>
                 <button
                   type="button"
-                  onClick={() => setPreventiusFilter('all')}
-                  className={[
-                    'rounded-full px-3 py-2 text-xs font-semibold border',
-                    preventiusFilter === 'all'
-                      ? 'bg-gray-900 text-white border-gray-900'
-                      : 'bg-white text-gray-700 border-gray-200',
-                  ].join(' ')}
-                >
-                  Tots
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreventiusFilter('due')}
+                  onClick={() => setPreventiusFilter((current) => (current === 'due' ? null : 'due'))}
                   className={[
                     'rounded-full px-3 py-2 text-xs font-semibold border',
                     preventiusFilter === 'due'
@@ -852,7 +851,7 @@ export default function PreventiusPlanificadorPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPreventiusFilter('overdue')}
+                  onClick={() => setPreventiusFilter((current) => (current === 'overdue' ? null : 'overdue'))}
                   className={[
                     'rounded-full px-3 py-2 text-xs font-semibold border',
                     preventiusFilter === 'overdue'
@@ -868,19 +867,7 @@ export default function PreventiusPlanificadorPage() {
               <>
                 <button
                   type="button"
-                  onClick={() => setTicketsAgeFilter('all')}
-                  className={[
-                    'rounded-full px-3 py-2 text-xs font-semibold border',
-                    ticketsAgeFilter === 'all'
-                      ? 'bg-gray-900 text-white border-gray-900'
-                      : 'bg-white text-gray-700 border-gray-200',
-                  ].join(' ')}
-                >
-                  Tots
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTicketsAgeFilter('today')}
+                  onClick={() => setTicketsAgeFilter((current) => (current === 'today' ? null : 'today'))}
                   className={[
                     'rounded-full px-3 py-2 text-xs font-semibold border',
                     ticketsAgeFilter === 'today'
@@ -892,7 +879,7 @@ export default function PreventiusPlanificadorPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTicketsAgeFilter('days_1_2')}
+                  onClick={() => setTicketsAgeFilter((current) => (current === 'days_1_2' ? null : 'days_1_2'))}
                   className={[
                     'rounded-full px-3 py-2 text-xs font-semibold border',
                     ticketsAgeFilter === 'days_1_2'
@@ -904,7 +891,7 @@ export default function PreventiusPlanificadorPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTicketsAgeFilter('days_3_7')}
+                  onClick={() => setTicketsAgeFilter((current) => (current === 'days_3_7' ? null : 'days_3_7'))}
                   className={[
                     'rounded-full px-3 py-2 text-xs font-semibold border',
                     ticketsAgeFilter === 'days_3_7'
@@ -916,7 +903,7 @@ export default function PreventiusPlanificadorPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTicketsAgeFilter('days_8_plus')}
+                  onClick={() => setTicketsAgeFilter((current) => (current === 'days_8_plus' ? null : 'days_8_plus'))}
                   className={[
                     'rounded-full px-3 py-2 text-xs font-semibold border',
                     ticketsAgeFilter === 'days_8_plus'
@@ -929,10 +916,10 @@ export default function PreventiusPlanificadorPage() {
               </>
             )}
             <div className="ml-auto flex items-center gap-2">
-              {plannerViewFilter === 'tickets' && (
+              {plannerViewFilters.includes('tickets') && (
                 <>
                   <div className="mr-1 h-6 w-px bg-slate-200" />
-                  {(['nou', 'assignat', 'en_curs', 'espera', 'fet', 'no_fet', 'validat', 'externalized'] as const).map((status) => (
+                  {(['nou', 'assignat', 'en_curs', 'espera', 'fet', 'no_fet', 'validat'] as const).map((status) => (
                     <button
                       key={status}
                       type="button"
@@ -954,22 +941,10 @@ export default function PreventiusPlanificadorPage() {
               <div className="text-xs font-semibold text-gray-500">Calendari</div>
               <button
                 type="button"
-                onClick={() => setPlannerViewFilter('all')}
+                onClick={() => togglePlannerViewFilter('preventius')}
                 className={[
                   'rounded-full px-3 py-2 text-xs font-semibold border',
-                  plannerViewFilter === 'all'
-                    ? 'bg-gray-900 text-white border-gray-900'
-                    : 'bg-white text-gray-700 border-gray-200',
-                ].join(' ')}
-              >
-                Tots
-              </button>
-              <button
-                type="button"
-                onClick={() => setPlannerViewFilter('preventius')}
-                className={[
-                  'rounded-full px-3 py-2 text-xs font-semibold border',
-                  plannerViewFilter === 'preventius'
+                  plannerViewFilters.includes('preventius')
                     ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
                     : 'bg-white text-gray-700 border-gray-200',
                 ].join(' ')}
@@ -978,10 +953,10 @@ export default function PreventiusPlanificadorPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setPlannerViewFilter('tickets')}
+                onClick={() => togglePlannerViewFilter('tickets')}
                 className={[
                   'rounded-full px-3 py-2 text-xs font-semibold border',
-                  plannerViewFilter === 'tickets'
+                  plannerViewFilters.includes('tickets')
                     ? 'bg-sky-100 text-sky-800 border-sky-200'
                     : 'bg-white text-gray-700 border-gray-200',
                 ].join(' ')}
@@ -990,10 +965,10 @@ export default function PreventiusPlanificadorPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setPlannerViewFilter('externalized')}
+                onClick={() => togglePlannerViewFilter('externalized')}
                 className={[
                   'rounded-full px-3 py-2 text-xs font-semibold border',
-                  plannerViewFilter === 'externalized'
+                  plannerViewFilters.includes('externalized')
                     ? 'bg-violet-100 text-violet-800 border-violet-200'
                     : 'bg-white text-gray-700 border-gray-200',
                 ].join(' ')}
@@ -1091,7 +1066,7 @@ export default function PreventiusPlanificadorPage() {
                   className="grid gap-px bg-gray-100 text-xs"
                   style={{
                     gridTemplateColumns: `${TIME_COL_WIDTH}px repeat(${DAY_COUNT}, minmax(160px, 1fr))`,
-                    gridTemplateRows: `${HEADER_HEIGHT}px repeat(${timeSlots.length - 1}, ${ROW_HEIGHT}px)`,
+                    gridTemplateRows: `${HEADER_HEIGHT}px repeat(${timeSlots.length - 1}, ${ROW_HEIGHT}px) 24px`,
                   }}
                 >
                   <div className="bg-white" />
@@ -1117,6 +1092,11 @@ export default function PreventiusPlanificadorPage() {
                         />
                       ))}
                     </React.Fragment>
+                  ))}
+
+                  <div className="bg-white px-2 py-1 text-gray-500">{timeSlots[timeSlots.length - 1]}</div>
+                  {days.map((_, colIdx) => (
+                    <div key={`footer-${colIdx}`} className="bg-white" />
                   ))}
                 </div>
 
@@ -1289,6 +1269,5 @@ export default function PreventiusPlanificadorPage() {
           />
         )}
       </div>
-    </RoleGuard>
   )
 }

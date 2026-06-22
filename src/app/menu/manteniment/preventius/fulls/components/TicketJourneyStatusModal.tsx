@@ -55,6 +55,30 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
   return (
     <TicketJourneyModalShell title={title} subtitle={subtitle} onClose={handleClose} footer={footer}>
       <div className="space-y-5">
+        {form.existingImages.length > 0 ? (
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-gray-700">Fotos/adjunts del ticket</div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {form.existingImages.map((url, index) => (
+                <a
+                  key={`${url}-${index}`}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`Foto ticket ${index + 1}`}
+                    className="aspect-[4/3] w-full object-cover"
+                  />
+                </a>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div>
           <div className="text-sm font-medium text-gray-700">Nou estat</div>
 
@@ -94,8 +118,8 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
             horaFi={form.horaFi}
             note={form.note}
             showPhotos={form.showPhotos}
-            existingImages={form.existingImages}
-            previews={form.previews}
+            existingCompletionAttachments={form.existingCompletionAttachments}
+            pendingAttachments={form.pendingAttachments}
             imageCount={form.imageCount}
             maxCompletionImages={form.maxCompletionImages}
             imageError={form.imageError}

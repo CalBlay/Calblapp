@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
-import { canManageMaintenanceTickets } from '@/lib/accessControl'
 import { requireAuth, type AuthFailure, type AuthSuccess } from '@/lib/server/apiAuth'
-import { canViewUiPath } from '@/lib/server/permissions'
+import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
 
 export const MAINTENANCE_TICKETS_PATH = '/menu/manteniment/tickets'
 
@@ -35,10 +34,18 @@ export async function requireMaintenanceTicketApiView(
 }
 
 /** Accés a dades mestres de manteniment (màquines, proveïdors, centres). */
-export async function requireMaintenanceDataAccess(): Promise<AuthSuccess | AuthFailure> {
+export async function requireMaintenanceDataAccess(
+  mode: 'view' | 'edit' = 'view'
+): Promise<AuthSuccess | AuthFailure> {
   const auth = await requireAuth()
   if (!auth.ok) return auth
-  if (!canManageMaintenanceTickets(auth.user)) {
+
+  const allowed =
+    mode === 'edit'
+      ? await canEditUiPath({ user: auth.user, path: '/menu/manteniment/dades' })
+      : await canViewUiPath({ user: auth.user, path: '/menu/manteniment/dades' })
+
+  if (!allowed) {
     return { ok: false, res: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
   return auth

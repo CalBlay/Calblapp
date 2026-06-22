@@ -7,8 +7,9 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import ExportMenu from '@/components/export/ExportMenu'
 import { useTransports } from '@/hooks/useTransports'
 import { normalizeRole } from '@/lib/roles'
-import { RoleGuard } from '@/lib/withRoleGuard'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
+import MaintenancePermissionGate from '../../components/MaintenancePermissionGate'
 import type { JourneyStatus } from '@/lib/maintenanceJourneyStatus'
 import JourneyKindFilter from './components/JourneyKindFilter'
 import JourneyWorkList from './components/JourneyWorkList'
@@ -40,10 +41,11 @@ export default function PreventiusFullsPage() {
   const sessionUser = (session?.user || {}) as SessionUser
   const searchParams = useSearchParams()
   const { data: transports } = useTransports()
+  const { canViewPath } = useUiPermissions()
 
   const role = normalizeRole(sessionUser.role || '')
   const userId = String(sessionUser.id || '').trim()
-  const canFilterByWorker = role === 'admin' || role === 'direccio' || role === 'cap'
+  const canFilterByWorker = canViewPath('/menu/manteniment/preventius/planificador')
 
   const queryStart = (searchParams?.get('start') || '').trim()
   const queryEnd = (searchParams?.get('end') || '').trim()
@@ -113,7 +115,7 @@ export default function PreventiusFullsPage() {
       : null
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+    <MaintenancePermissionGate path="/menu/manteniment/preventius/fulls">
       <div className="mx-auto w-full max-w-4xl space-y-4 p-4 pb-8">
         <style>{PRINT_STYLES}</style>
 
@@ -171,6 +173,6 @@ export default function PreventiusFullsPage() {
           />
         ) : null}
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

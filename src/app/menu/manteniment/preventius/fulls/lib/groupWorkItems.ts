@@ -74,7 +74,18 @@ export function groupWorkItems({
     map.set(item.date, list)
   })
 
-  return Array.from(map.entries()).sort(([a], [b]) => (a > b ? 1 : -1))
+  return Array.from(map.entries())
+    .map(([day, dayItems]) => [
+      day,
+      [...dayItems].sort((a, b) => {
+        const byStart = String(a.startTime || '').localeCompare(String(b.startTime || ''))
+        if (byStart !== 0) return byStart
+        const byEnd = String(a.endTime || '').localeCompare(String(b.endTime || ''))
+        if (byEnd !== 0) return byEnd
+        return String(a.title || '').localeCompare(String(b.title || ''))
+      }),
+    ] as [string, WorkItem[]])
+    .sort(([a], [b]) => (a > b ? 1 : -1))
 }
 
 export function collectWorkerOptions(items: WorkItem[]): string[] {

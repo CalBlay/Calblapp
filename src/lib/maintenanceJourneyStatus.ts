@@ -126,7 +126,7 @@ export function validateJourneyStatusPayload(params: {
 
   if (nextStatus === 'fet') {
     const count = params.completionImageCount ?? 0
-    if (count < 1) return 'Cal adjuntar com a minim una foto (maxim 3).'
+    if (count < 1) return 'Cal adjuntar com a minim un fitxer o foto (maxim 3).'
   }
 
   if (nextStatus === 'no_fet' && !note) {

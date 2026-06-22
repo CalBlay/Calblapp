@@ -6,9 +6,9 @@ import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CalendarCheck2 } from 'lucide-react'
-import { RoleGuard } from '@/lib/withRoleGuard'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
+import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import FilterButton from '@/components/ui/filter-button'
 import {
@@ -125,7 +125,7 @@ const EXTERNAL_KPI_STYLES = {
 const MAINTENANCE_PLANNER_PATH = '/menu/manteniment/preventius/planificador'
 
 export default function MaintenanceTicketsPage() {
-  const { data: session, status } = useSession()
+  const { data: session } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setContent } = useFilters()
@@ -139,16 +139,9 @@ export default function MaintenanceTicketsPage() {
   const isOwnTicketsOnly = isMaintenanceTicketCreatorOnlyUser(sessionUser)
   const canManageInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
   const canDeleteAnyTicket = hasAction(MAINTENANCE_TICKETS_DELETE_PERM)
-  const canManageAllTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM) || canManageInbox
+  const canManageAllTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM)
   const canSeeMaintenanceBell = canManageAllTickets || canManageInbox
-  const hasAccess =
-    !isMaintenanceWorker &&
-    (userRole === 'admin' ||
-      userRole === 'direccio' ||
-      userRole === 'cap' ||
-      userRole === 'treballador' ||
-      userRole === 'comercial' ||
-      userRole === 'usuari')
+  const canManageInboxTickets = canManageInbox
 
   const formatDateTime = (value?: number | string | null) => formatDateTimeValue(value, '')
   const [dateResetSignal, setDateResetSignal] = useState(0)
@@ -156,11 +149,6 @@ export default function MaintenanceTicketsPage() {
   const [resolveBusy, setResolveBusy] = useState(false)
   const [opsTicket, setOpsTicket] = useState<Ticket | null>(null)
   const maintenanceOpsConfig = useMemo(() => createMaintenanceOpsWorkspaceConfig(), [])
-
-  useEffect(() => {
-    if (status === 'loading') return
-    if (!hasAccess) router.replace('/menu')
-  }, [hasAccess, router, status])
 
   const {
     userId,
@@ -463,22 +451,22 @@ export default function MaintenanceTicketsPage() {
 
   const canResolveDirectly = useCallback(
     (ticket: Ticket) =>
-      canManageAllTickets &&
+      canManageInboxTickets &&
       !ticket.externalized &&
       (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
       ticket.status !== 'validat' &&
       ticket.status !== 'resolut',
-    [canManageAllTickets]
+    [canManageInboxTickets]
   )
 
   const canPlanifyDirectly = useCallback(
     (ticket: Ticket) =>
-      canManageAllTickets &&
+      canManageInboxTickets &&
       !ticket.externalized &&
       (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
       ticket.status !== 'validat' &&
       ticket.status !== 'resolut',
-    [canManageAllTickets]
+    [canManageInboxTickets]
   )
 
   const canDeleteTicket = useCallback(
@@ -517,17 +505,15 @@ export default function MaintenanceTicketsPage() {
   )
   const selectedOpsUnread = Number(selectedOpsData?.rooms?.[0]?.unreadCount || 0)
 
-  if (!hasAccess && status !== 'loading') return null
-
   return (
-      <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador', 'comercial', 'usuari']}>
+      <MaintenancePermissionGate path="/menu/manteniment/tickets">
       <div className="flex w-full max-w-none flex-col gap-5 p-4 pb-8">
         <ModuleHeader
           title="Manteniment"
           subtitle="Tickets"
           mainHref="/menu/manteniment"
           actions={
-            canViewPlanner || (hasAccess && (canManageAllTickets || isOwnTicketsOnly)) || canSeeMaintenanceBell ? (
+            canViewPlanner || (canManageAllTickets || isOwnTicketsOnly) || canSeeMaintenanceBell ? (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {canSeeMaintenanceBell ? <MaintenanceNotificationsBell /> : null}
                 {canViewPlanner ? (
@@ -539,7 +525,7 @@ export default function MaintenanceTicketsPage() {
                     Planificador
                   </Link>
                 ) : null}
-                {hasAccess && (canManageAllTickets || isOwnTicketsOnly) ? (
+                {canManageAllTickets || isOwnTicketsOnly ? (
                   <button
                     type="button"
                     className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
@@ -778,27 +764,29 @@ export default function MaintenanceTicketsPage() {
             setDetailsDescription={setDetailsDescription}
             detailsPriority={detailsPriority}
             setDetailsPriority={setDetailsPriority}
-            canValidate={canValidate}
-            canCapValidate={canCapValidateTicket}
-            onCapValidate={(ticket) => void handleStatusChange(ticket, 'validat')}
-            canReopen={canReopen}
-            canExternalize={canExternalize}
+            canValidate={canManageInboxTickets && canValidate}
+            canCapValidate={canManageInboxTickets ? canCapValidateTicket : undefined}
+            onCapValidate={canManageInboxTickets ? (ticket) => void handleStatusChange(ticket, 'validat') : undefined}
+            canReopen={canManageInboxTickets && canReopen}
+            canExternalize={canManageInboxTickets && canExternalize}
             externalizeBusy={externalizeBusy}
-            onUpdateDetails={handleUpdateDetails}
+            onUpdateDetails={canManageInboxTickets ? handleUpdateDetails : async () => undefined}
             formatDateTime={formatDateTime}
             statusLabels={displayStatusLabels}
             showHistory={showHistory}
             setShowHistory={setShowHistory}
             setSelected={setSelected}
-            onAssign={handleAssign}
-            onStatusChange={handleStatusChange}
-            onAssignVehicle={handleAssignVehicle}
-            onReopen={handleReopen}
-            onExternalize={handleExternalize}
-            canResolveInCurrentModule={(selected.workflowStage || 'tickets_inbox') === 'tickets_inbox'}
+            onAssign={canManageInboxTickets ? handleAssign : async () => undefined}
+            onStatusChange={canManageInboxTickets ? handleStatusChange : async () => undefined}
+            onAssignVehicle={canManageInboxTickets ? handleAssignVehicle : async () => undefined}
+            onReopen={canManageInboxTickets ? handleReopen : async () => undefined}
+            onExternalize={canManageInboxTickets ? handleExternalize : async () => undefined}
+            canResolveInCurrentModule={
+              canManageInboxTickets && (selected.workflowStage || 'tickets_inbox') === 'tickets_inbox'
+            }
             resolveArea="administracio"
-            onResolveTicket={handleDirectResolution}
-            onSendToPlanner={handleSendToPlanner}
+            onResolveTicket={canManageInboxTickets ? handleDirectResolution : undefined}
+            onSendToPlanner={canManageInboxTickets ? handleSendToPlanner : undefined}
             showOpsButton={canShowTicketOps(selected)}
             opsUnreadCount={selectedOpsUnread}
             onOpenOps={() => openTicketOps(selected)}
@@ -838,6 +826,6 @@ export default function MaintenanceTicketsPage() {
           />
         )}
       </div>
-    </RoleGuard>
+      </MaintenancePermissionGate>
   )
 }

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import { RoleGuard } from '@/lib/withRoleGuard'
+import MaintenancePermissionGate from '../../../components/MaintenancePermissionGate'
 
 type PersonnelApiItem = { name?: string }
 
@@ -79,7 +79,7 @@ export default function PlantillaNewPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
+    <MaintenancePermissionGate>
       <div className="w-full max-w-5xl mx-auto p-4 space-y-5">
         <ModuleHeader subtitle="Nova plantilla" />
 
@@ -182,6 +182,6 @@ export default function PlantillaNewPage() {
           </div>
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

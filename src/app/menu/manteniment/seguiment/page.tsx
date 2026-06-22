@@ -23,9 +23,9 @@ import {
   type MaintenanceDateFilterMode,
 } from '@/lib/maintenanceDateFilter'
 import { maintenanceStatusBadge } from '@/lib/colors'
-import { RoleGuard } from '@/lib/withRoleGuard'
 import type { MachineItem, Ticket, TicketStatus, UserItem } from '@/app/menu/manteniment/tickets/types'
 import PlannerTicketModal from '@/app/menu/manteniment/preventius/planificador/components/PlannerTicketModal'
+import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
 
 type TabKey = 'tickets' | 'preventius'
 type MaintenanceStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat'
@@ -413,7 +413,7 @@ export default function MaintenanceSeguimentPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+    <MaintenancePermissionGate path="/menu/manteniment/seguiment">
       <div className="mx-auto w-full max-w-7xl space-y-5 px-4 pb-8">
         <ModuleHeader title="Manteniment" subtitle="Seguiment" mainHref="/menu/manteniment" />
         <CorporateFiltersShell
@@ -565,6 +565,6 @@ export default function MaintenanceSeguimentPage() {
           />
         ) : null}
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

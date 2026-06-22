@@ -26,7 +26,7 @@ export function useUiPermissions() {
   const { data, error, isLoading, mutate } = useSWR<UiPermissionsResponse>(
     userId ? '/api/permissions/ui' : null,
     fetcher,
-    { revalidateOnFocus: false }
+    { revalidateOnFocus: true, revalidateOnReconnect: true }
   )
 
   const map = useMemo(() => (data?.map || {}) as Record<string, boolean>, [data])

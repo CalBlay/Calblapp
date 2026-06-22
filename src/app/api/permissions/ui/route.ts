@@ -52,7 +52,6 @@ import {
   MAINTENANCE_TICKETS_REOPEN_PERM,
   MAINTENANCE_TICKETS_UI_PATH,
   MAINTENANCE_TICKETS_VALIDATE_PERM,
-  baseCanReceiveMaintenanceTicketInboxNotifications,
 } from '@/lib/maintenanceTicketsPermissions'
 import {
   CALENDAR_EDIT_IMPLIED_ACTIONS,
@@ -398,10 +397,7 @@ export async function GET() {
     const externalizeEff = effectFor(assignment, MAINTENANCE_TICKETS_EXTERNALIZE_PERM)
     if (inboxEff === 'deny') {
       actions[MAINTENANCE_TICKETS_INBOX_PERM] = false
-    } else if (
-      inboxEff === 'allow' ||
-      baseCanReceiveMaintenanceTicketInboxNotifications(accessUser)
-    ) {
+    } else if (inboxEff === 'allow') {
       actions[MAINTENANCE_TICKETS_INBOX_PERM] = true
     }
 

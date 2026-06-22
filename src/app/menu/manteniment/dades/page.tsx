@@ -5,8 +5,8 @@ import { Building2, ClipboardList, Factory, Search, Truck, X } from 'lucide-reac
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useFilters } from '@/context/FiltersContext'
 import FloatingAddButton from '@/components/ui/floating-add-button'
-import { RoleGuard } from '@/lib/withRoleGuard'
 import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
+import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
 import MachinesPanel from './components/MachinesPanel'
 import SuppliersPanel from './components/SuppliersPanel'
 import CentersPanel from './components/CentersPanel'
@@ -286,7 +286,7 @@ export default function MaintenanceDataPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
+    <MaintenancePermissionGate path="/menu/manteniment/dades">
       <div className="mx-auto w-full max-w-7xl space-y-4 p-4">
         <ModuleHeader title="Manteniment" subtitle="Dades" mainHref="/menu/manteniment" />
 
@@ -525,6 +525,6 @@ export default function MaintenanceDataPage() {
         />
         ) : null}
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

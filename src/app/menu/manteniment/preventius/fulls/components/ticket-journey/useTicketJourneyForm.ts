@@ -5,7 +5,6 @@ import { useMemo, useState } from 'react'
 import {
   getOpenSegmentStart,
   needsClosePreviousSegment,
-  needsCompletionPhotos,
   needsStartOnNextStatus,
   validateJourneyStatusPayload,
   type JourneyStatus,
@@ -35,6 +34,7 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
   const [busy, setBusy] = useState(false)
 
   const {
+    images,
     previews,
     imageCount,
     imageError,
@@ -44,13 +44,21 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     uploadImages,
   } = usePendingImages(MAX_COMPLETION_IMAGES)
 
-  const showPhotos = Boolean(nextStatus && needsCompletionPhotos(nextStatus))
+  const showPhotos = Boolean(nextStatus)
 
   const existingImages = useMemo(() => {
     const urls = Array.isArray(ticket.imageUrls) ? ticket.imageUrls : []
     const legacy = ticket.imageUrl ? [ticket.imageUrl] : []
     return [...urls, ...legacy].map((url) => String(url || '').trim()).filter(Boolean)
   }, [ticket.imageUrl, ticket.imageUrls])
+
+  const existingCompletionAttachments = useMemo(
+    () =>
+      Array.isArray(ticket.completionAttachments)
+        ? ticket.completionAttachments.filter((item) => item?.url || item?.path)
+        : [],
+    [ticket.completionAttachments]
+  )
 
   const isDirty = useMemo(
     () => Boolean(nextStatus || horaInici || horaFi || note.trim() || imageCount > 0),
@@ -117,7 +125,7 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     try {
       setBusy(true)
       setFormError(null)
-      const completionImages = showPhotos ? await uploadImages() : []
+      const completionImages = imageCount > 0 ? await uploadImages() : []
 
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
         method: 'PATCH',
@@ -155,6 +163,8 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     busy,
     showPhotos,
     existingImages,
+    existingCompletionAttachments,
+    pendingAttachments: images,
     isDirty,
     previews,
     imageCount,

@@ -8,7 +8,7 @@ import { PERM } from '@/lib/permissionKeys'
  * Mòduls que abans s'obrien per vincle `personnel` / regles legacy.
  * Amb `user_access_assignments`, només són visibles amb `allow` explícit a Settings.
  */
-const EXPLICIT_ALLOW_ONLY_MODULE_PATHS = ['/menu/roba-personal'] as const
+const ASSIGNMENT_EXPLICIT_ALLOW_ONLY_MODULE_PATHS = ['/menu/roba-personal'] as const
 const NO_CHILD_INHERITANCE_MODULE_PATHS = ['/menu/manteniment'] as const
 
 function viewOverrideEffect(
@@ -103,7 +103,7 @@ export function buildUiViewMap(
   })
 
   if (assignment !== null) {
-    enforceExplicitAllowOnlyModules(map, assignment)
+    enforceExplicitAllowOnlyModules(map, assignment, ASSIGNMENT_EXPLICIT_ALLOW_ONLY_MODULE_PATHS)
   }
 
   return map
@@ -111,9 +111,10 @@ export function buildUiViewMap(
 
 function enforceExplicitAllowOnlyModules(
   map: Record<string, boolean>,
-  assignment: UserAccessAssignmentDoc
+  assignment: UserAccessAssignmentDoc,
+  modulePaths: readonly string[]
 ): void {
-  for (const modPath of EXPLICIT_ALLOW_ONLY_MODULE_PATHS) {
+  for (const modPath of modulePaths) {
     const mod = MODULES.find((m) => m.path === modPath)
     if (!mod) continue
 

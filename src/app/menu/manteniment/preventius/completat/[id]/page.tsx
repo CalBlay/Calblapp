@@ -7,7 +7,7 @@ import ExportMenu from '@/components/export/ExportMenu'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { addCalBlayLogoToPdf, fetchCalBlayLogoDataUrl, printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { loadXlsx } from '@/lib/loadXlsx'
-import { RoleGuard } from '@/lib/withRoleGuard'
+import MaintenancePermissionGate from '../../../components/MaintenancePermissionGate'
 
 const EMAIL_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
 
@@ -561,14 +561,14 @@ export default function PreventiuCompletatPage() {
 
   if (!record) {
     return (
-      <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+      <MaintenancePermissionGate>
         <div className="p-6 text-sm text-gray-600">Checklist no trobat.</div>
-      </RoleGuard>
+      </MaintenancePermissionGate>
     )
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+    <MaintenancePermissionGate>
       <div className="min-h-screen w-full bg-white flex flex-col">
         <style>{`
           @media print {
@@ -654,6 +654,6 @@ export default function PreventiuCompletatPage() {
           </div>
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

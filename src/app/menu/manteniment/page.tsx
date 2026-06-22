@@ -8,10 +8,10 @@ import {
   ClipboardList,
   Database,
 } from 'lucide-react'
-import { RoleGuard } from '@/lib/withRoleGuard'
 import { MAINTENANCE_TICKETS_INBOX_PERM } from '@/lib/maintenanceTicketsPermissions'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import MaintenanceNotificationsBell from './components/MaintenanceNotificationsBell'
+import MaintenancePermissionGate from './components/MaintenancePermissionGate'
 import { useMaintenanceAssignedCount } from '@/hooks/useMaintenanceAssignedCount'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 
@@ -26,7 +26,7 @@ export default function MantenimentIndexPage() {
   const { count: assignedTicketsCount } = useMaintenanceAssignedCount()
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+    <MaintenancePermissionGate path="/menu/manteniment">
       <div className="w-full max-w-6xl mx-auto p-4 space-y-5">
         <ModuleHeader
           title="Manteniment"
@@ -132,6 +132,6 @@ export default function MantenimentIndexPage() {
           )}
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

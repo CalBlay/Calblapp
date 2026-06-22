@@ -63,7 +63,6 @@ import {
   MAINTENANCE_TICKETS_REOPEN_PERM,
   MAINTENANCE_TICKETS_UI_PATH,
   MAINTENANCE_TICKETS_VALIDATE_PERM,
-  baseCanReceiveMaintenanceTicketInboxNotifications,
 } from '@/lib/maintenanceTicketsPermissions'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
@@ -355,7 +354,7 @@ export async function isUiPermissionGranted(params: {
       )
       if (eff === 'deny') return false
       if (eff === 'allow') return true
-      return baseCanReceiveMaintenanceTicketInboxNotifications(params.user)
+      return false
     }
 
     if (parsed.action === MAINTENANCE_TICKETS_ACTION.DELETE) {

@@ -1,4 +1,4 @@
-import { isLogisticsMaintenanceTicketsManager, type AccessUser } from '@/lib/accessControl'
+import type { AccessUser } from '@/lib/accessControl'
 import { PERM } from '@/lib/permissionKeys'
 
 export const MAINTENANCE_TICKETS_UI_PATH = '/menu/manteniment/tickets'
@@ -44,5 +44,6 @@ export const MAINTENANCE_TICKETS_EXTERNALIZE_PERM = PERM.action(
 
 /** Rol/departament que pot rebre el permís de safata (logística). */
 export function baseCanReceiveMaintenanceTicketInboxNotifications(user?: AccessUser): boolean {
-  return isLogisticsMaintenanceTicketsManager(user)
+  void user
+  return false
 }

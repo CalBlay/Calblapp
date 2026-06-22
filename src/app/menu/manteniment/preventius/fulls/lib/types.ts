@@ -72,6 +72,11 @@ export type JourneyTicket = {
   statusHistory?: StatusHistoryEntry[]
   imageUrl?: string | null
   imageUrls?: string[] | null
+  completionAttachments?: Array<{
+    url?: string | null
+    path?: string | null
+    meta?: { size?: number; type?: string; name?: string } | null
+  }> | null
 }
 
 export type WorkExportRow = {

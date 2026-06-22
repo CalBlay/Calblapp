@@ -4,8 +4,8 @@ import React, { useEffect, useMemo, useState } from 'react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useFilters } from '@/context/FiltersContext'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
-import { RoleGuard } from '@/lib/withRoleGuard'
 import FloatingAddButton from '@/components/ui/floating-add-button'
+import MaintenancePermissionGate from '../../components/MaintenancePermissionGate'
 import { formatDateOnly } from '@/lib/date-format'
 import ImportTemplatesCard from './components/ImportTemplatesCard'
 import TemplatesFiltersCard from './components/TemplatesFiltersCard'
@@ -530,7 +530,7 @@ export function PreventiusTemplatesContent({
 
   if (embedded) return content
 
-  return <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>{content}</RoleGuard>
+  return <MaintenancePermissionGate>{content}</MaintenancePermissionGate>
 }
 
 export default function PreventiusPlantillesPage() {

@@ -54,6 +54,11 @@ export type Ticket = {
   estimatedMinutes?: number | null
   imageUrl?: string | null
   imageUrls?: string[] | null
+  completionAttachments?: Array<{
+    url?: string | null
+    path?: string | null
+    meta?: { size?: number; type?: string; name?: string } | null
+  }> | null
   imagePath?: string | null
   imageMeta?: { size?: number; type?: string } | null
   needsVehicle?: boolean

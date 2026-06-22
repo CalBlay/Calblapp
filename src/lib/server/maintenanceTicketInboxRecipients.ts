@@ -2,7 +2,6 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import type { AccessUser } from '@/lib/accessControl'
 import {
   MAINTENANCE_TICKETS_INBOX_PERM,
-  baseCanReceiveMaintenanceTicketInboxNotifications,
 } from '@/lib/maintenanceTicketsPermissions'
 import { isUiPermissionGranted } from '@/lib/server/permissions'
 
@@ -36,19 +35,10 @@ async function explicitAllowUserIds(permission: string): Promise<string[]> {
   return ids
 }
 
-async function logisticsCandidateUserIds(): Promise<string[]> {
-  const snap = await db.collection('users').where('departmentLower', '==', 'logistica').get()
-  return snap.docs.map((doc) => doc.id)
-}
-
 /** Usuaris que reben avisos de tickets nous / endarrerits a la safata (campaneta). */
 export async function listMaintenanceTicketInboxRecipientIds(): Promise<string[]> {
-  const [explicitIds, logisticsIds] = await Promise.all([
-    explicitAllowUserIds(MAINTENANCE_TICKETS_INBOX_PERM),
-    logisticsCandidateUserIds(),
-  ])
-
-  const candidateSet = new Set([...explicitIds, ...logisticsIds])
+  const explicitIds = await explicitAllowUserIds(MAINTENANCE_TICKETS_INBOX_PERM)
+  const candidateSet = new Set(explicitIds)
   const recipients: string[] = []
 
   await Promise.all(
@@ -66,5 +56,3 @@ export async function listMaintenanceTicketInboxRecipientIds(): Promise<string[]
 
   return Array.from(new Set(recipients))
 }
-
-export { baseCanReceiveMaintenanceTicketInboxNotifications }
