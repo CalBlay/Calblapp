@@ -126,6 +126,11 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const [portalReady, setPortalReady] = useState(false)
 
   const mountedRef = useRef(true)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const galleryInputRef = useRef<HTMLInputElement | null>(null)
+  const pendingPhotoTargetRef = useRef<{ itemId: string; blockId: string; source: 'camera' | 'gallery' } | null>(
+    null
+  )
 
   const userRole = String(user.role || '').trim().toLowerCase()
   const department =
@@ -549,6 +554,24 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     })
   }
 
+  const openPhotoPicker = (itemId: string, blockId: string, source: 'camera' | 'gallery') => {
+    if (isLocked || uploadingItemId || totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) return
+    pendingPhotoTargetRef.current = { itemId, blockId, source }
+    const input = source === 'camera' ? cameraInputRef.current : galleryInputRef.current
+    input?.click()
+  }
+
+  const handlePickerInputChange = (source: 'camera' | 'gallery', event: React.ChangeEvent<HTMLInputElement>) => {
+    const target = pendingPhotoTargetRef.current
+    const file = event.currentTarget.files?.[0] || null
+    window.setTimeout(() => {
+      event.currentTarget.value = ''
+    }, 0)
+    pendingPhotoTargetRef.current = null
+    if (!target || target.source !== source) return
+    handlePickedFile(target.itemId, target.blockId, file, source)
+  }
+
   const childModalOpen = showCreateIncident || showExtrasModal
   const eventTitle = event.summary.replace(/#.*$/, '').trim()
 
@@ -774,7 +797,8 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                   {type === 'photo' && (
                                     <div className="mt-1 space-y-1">
                                       <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-                                        <label
+                                        <button
+                                          type="button"
                                           className={cn(
                                             'flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium touch-manipulation',
                                             (isLocked ||
@@ -782,32 +806,20 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                               totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) &&
                                               'pointer-events-none opacity-50'
                                           )}
+                                          disabled={
+                                            isLocked ||
+                                            Boolean(uploadingItemId) ||
+                                            totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL
+                                          }
+                                          onClick={() =>
+                                            openPhotoPicker(itemId, String(block.id || ''), 'camera')
+                                          }
                                         >
                                           <Camera className="w-4 h-4 shrink-0" />
                                           Fer foto
-                                          <input
-                                            type="file"
-                                            accept="image/*"
-                                            capture="environment"
-                                            className="hidden"
-                                            disabled={
-                                              isLocked ||
-                                              Boolean(uploadingItemId) ||
-                                              totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL
-                                            }
-                                            onChange={(e) => {
-                                              const file = e.currentTarget.files?.[0] || null
-                                              e.currentTarget.value = ''
-                                              handlePickedFile(
-                                                itemId,
-                                                String(block.id || ''),
-                                                file,
-                                                'camera'
-                                              )
-                                            }}
-                                          />
-                                        </label>
-                                        <label
+                                        </button>
+                                        <button
+                                          type="button"
                                           className={cn(
                                             'flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium touch-manipulation',
                                             (isLocked ||
@@ -815,30 +827,18 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                               totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) &&
                                               'pointer-events-none opacity-50'
                                           )}
+                                          disabled={
+                                            isLocked ||
+                                            Boolean(uploadingItemId) ||
+                                            totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL
+                                          }
+                                          onClick={() =>
+                                            openPhotoPicker(itemId, String(block.id || ''), 'gallery')
+                                          }
                                         >
                                           <Paperclip className="w-4 h-4 shrink-0" />
                                           Afegir fitxer
-                                          <input
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            disabled={
-                                              isLocked ||
-                                              Boolean(uploadingItemId) ||
-                                              totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL
-                                            }
-                                            onChange={(e) => {
-                                              const file = e.currentTarget.files?.[0] || null
-                                              e.currentTarget.value = ''
-                                              handlePickedFile(
-                                                itemId,
-                                                String(block.id || ''),
-                                                file,
-                                                'gallery'
-                                              )
-                                            }}
-                                          />
-                                        </label>
+                                        </button>
                                       </div>
                                       <div className="text-[11px] text-slate-600">
                                         Fotos: {current?.photos?.length || 0}
@@ -966,6 +966,25 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   return (
     <>
       {modalLayer ? createPortal(modalLayer, document.body) : null}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(e) => handlePickerInputChange('camera', e)}
+      />
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(e) => handlePickerInputChange('gallery', e)}
+      />
 
       <CreateIncidentModal
         open={showCreateIncident}
