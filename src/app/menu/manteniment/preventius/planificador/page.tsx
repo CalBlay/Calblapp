@@ -33,7 +33,7 @@ const TIME_COL_WIDTH = 80
 const DAY_COUNT = 6
 
 const TICKET_STATUS_FILTER_STYLES: Record<
-  'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat',
+  'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'externalized',
   { active: string; dot: string; label: string }
 > = {
   all: {
@@ -76,6 +76,11 @@ const TICKET_STATUS_FILTER_STYLES: Record<
     dot: 'bg-violet-500',
     label: 'Validat',
   },
+  externalized: {
+    active: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    dot: 'bg-indigo-500',
+    label: 'Externalitzats',
+  },
 }
 
 function normalizePlannerTicketStatus(value?: string | null) {
@@ -106,14 +111,14 @@ export default function PreventiusPlanificadorPage() {
       mode: 'week',
     }
   })
-  const [tab, setTab] = useState<'preventius' | 'tickets'>('preventius')
-  const [plannerViewFilter, setPlannerViewFilter] = useState<'all' | 'preventius' | 'tickets'>('all')
+  const [tab, setTab] = useState<'preventius' | 'tickets' | 'externalized'>('preventius')
+  const [plannerViewFilter, setPlannerViewFilter] = useState<'all' | 'preventius' | 'tickets' | 'externalized'>('all')
   const [preventiusFilter, setPreventiusFilter] = useState<'all' | 'due' | 'overdue'>('all')
   const [ticketsAgeFilter, setTicketsAgeFilter] = useState<
     'all' | 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus'
   >('all')
   const [ticketsStatusFilter, setTicketsStatusFilter] = useState<
-    'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat'
+    'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat' | 'externalized'
   >('all')
   const [showLegend, setShowLegend] = useState(false)
   const [showScheduledInSidebar, setShowScheduledInSidebar] = useState(false)
@@ -174,6 +179,9 @@ export default function PreventiusPlanificadorPage() {
 
   const kindFilteredScheduledItems = useMemo(() => {
     if (plannerViewFilter === 'all') return scheduledItems
+    if (plannerViewFilter === 'externalized') {
+      return scheduledItems.filter((item) => item.kind === 'ticket' && item.workflowStage === 'externalized')
+    }
     return scheduledItems.filter((item) => item.kind === plannerViewFilter.slice(0, -1))
   }, [plannerViewFilter, scheduledItems])
 
@@ -181,9 +189,19 @@ export default function PreventiusPlanificadorPage() {
     if (plannerViewFilter !== 'tickets' || ticketsStatusFilter === 'all') return kindFilteredScheduledItems
     return kindFilteredScheduledItems.filter((item) => {
       if (item.kind !== 'ticket') return true
+      if (ticketsStatusFilter === 'externalized') {
+        return item.workflowStage === 'externalized'
+      }
+      if (item.workflowStage === 'externalized') return false
       return normalizePlannerTicketStatus(item.status) === ticketsStatusFilter
     })
   }, [kindFilteredScheduledItems, plannerViewFilter, ticketsStatusFilter])
+
+  const filteredExternalizedTickets = useMemo(() => {
+    if (tab !== 'tickets' && tab !== 'externalized') return []
+    if (ticketsStatusFilter !== 'all' && ticketsStatusFilter !== 'externalized') return []
+    return externalizedTickets
+  }, [externalizedTickets, tab, ticketsStatusFilter])
 
   const filteredScheduledItems = useMemo(() => {
     if (!selectedWorker || selectedWorker === '__all__') return ticketStatusFilteredScheduledItems
@@ -668,12 +686,25 @@ export default function PreventiusPlanificadorPage() {
             >
               Tickets
             </button>
+            <button
+              type="button"
+              onClick={() => setTab('externalized')}
+              className={[
+                'min-h-[44px] rounded-full px-4 text-sm font-semibold border',
+                tab === 'externalized'
+                  ? 'bg-violet-600 text-white border-violet-600'
+                  : 'bg-white text-gray-700 border-gray-200',
+              ].join(' ')}
+            >
+              Externalitzats
+            </button>
           </div>
 
           <PlannerSidebar
             tab={tab}
             visibleItems={visibleItems}
-            scheduledItems={scheduledItems}
+            externalizedItems={filteredExternalizedTickets}
+            scheduledItems={filteredScheduledItems}
             dayLabels={daySidebarLabels}
             showScheduledInSidebar={showScheduledInSidebar}
             onShowScheduledInSidebarChange={setShowScheduledInSidebar}
@@ -781,6 +812,18 @@ export default function PreventiusPlanificadorPage() {
             >
               Tickets
             </button>
+            <button
+              type="button"
+              onClick={() => setTab('externalized')}
+              className={[
+                'rounded-full px-4 py-2 text-xs font-semibold border',
+                tab === 'externalized'
+                  ? 'bg-violet-600 text-white border-violet-600'
+                  : 'bg-white text-gray-700 border-gray-200',
+              ].join(' ')}
+            >
+              Externalitzats
+            </button>
             {tab === 'preventius' && (
               <>
                 <button
@@ -821,7 +864,7 @@ export default function PreventiusPlanificadorPage() {
                 </button>
               </>
             )}
-            {tab === 'tickets' && (
+            {(tab === 'tickets' || tab === 'externalized') && (
               <>
                 <button
                   type="button"
@@ -889,7 +932,7 @@ export default function PreventiusPlanificadorPage() {
               {plannerViewFilter === 'tickets' && (
                 <>
                   <div className="mr-1 h-6 w-px bg-slate-200" />
-                  {(['nou', 'assignat', 'en_curs', 'espera', 'fet', 'no_fet', 'validat'] as const).map((status) => (
+                  {(['nou', 'assignat', 'en_curs', 'espera', 'fet', 'no_fet', 'validat', 'externalized'] as const).map((status) => (
                     <button
                       key={status}
                       type="button"
@@ -944,6 +987,18 @@ export default function PreventiusPlanificadorPage() {
                 ].join(' ')}
               >
                 Tickets
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlannerViewFilter('externalized')}
+                className={[
+                  'rounded-full px-3 py-2 text-xs font-semibold border',
+                  plannerViewFilter === 'externalized'
+                    ? 'bg-violet-100 text-violet-800 border-violet-200'
+                    : 'bg-white text-gray-700 border-gray-200',
+                ].join(' ')}
+              >
+                Externalitzats
               </button>
               <button
                 type="button"
@@ -1018,8 +1073,8 @@ export default function PreventiusPlanificadorPage() {
               <PlannerSidebar
                 tab={tab}
                 visibleItems={visibleItems}
-                externalizedItems={externalizedTickets}
-                scheduledItems={scheduledItems}
+                externalizedItems={filteredExternalizedTickets}
+                scheduledItems={filteredScheduledItems}
                 dayLabels={daySidebarLabels}
                 showScheduledInSidebar={showScheduledInSidebar}
                 onShowScheduledInSidebarChange={setShowScheduledInSidebar}

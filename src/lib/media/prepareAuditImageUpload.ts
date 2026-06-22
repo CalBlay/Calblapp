@@ -1,22 +1,40 @@
+'use client'
+
+import { compressRasterImageForUpload } from '@/lib/file-optimization'
 import { isLikelyImageFile } from '@/lib/media/isLikelyImageFile'
 import { MAX_UPLOAD_IMAGE_BYTES } from '@/lib/media/uploadLimits'
 
 /**
  * Prepara una imatge d'auditoria per pujar.
- * Sense compressió al client: evita crashes de canvas/Image en mòbils antics (HEIC, memòria baixa).
- * La conversió es fa al servidor amb Sharp.
+ * Fitxers ≤ 4 MB es pugen sense tocar (evita canvas en mòbils antics).
+ * Només es comprimeix al client si superen el límit; la conversió HEIC etc. es fa al servidor.
  */
-export function prepareAuditImageUpload(file: File): File {
+export async function prepareAuditImageUpload(file: File): Promise<File> {
   if (!isLikelyImageFile(file)) {
     throw new Error('Nomes es permeten imatges')
-  }
-  if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
-    throw new Error('La imatge es massa gran (maxim 4 MB). Prova amb una foto mes petita.')
   }
   if (file.size <= 0) {
     throw new Error('El fitxer seleccionat es buit')
   }
-  return file
+  if (file.size <= MAX_UPLOAD_IMAGE_BYTES) {
+    return file
+  }
+
+  try {
+    const compressed = await compressRasterImageForUpload(file, MAX_UPLOAD_IMAGE_BYTES)
+    if (compressed.size > MAX_UPLOAD_IMAGE_BYTES) {
+      throw new Error('La imatge es massa gran despres de comprimir-la. Prova amb una foto mes petita.')
+    }
+    return compressed
+  } catch (err) {
+    if (err instanceof Error) {
+      if (err.message.includes('massa gran')) throw err
+      if (err.message.includes('No s ha pogut')) throw err
+    }
+    throw new Error(
+      'La imatge es massa gran i no s ha pogut reduir en aquest dispositiu. Prova amb una foto mes petita.'
+    )
+  }
 }
 
 /** Espera que el navegador estabilitzi el DOM després de tancar càmera o selector de fitxers. */

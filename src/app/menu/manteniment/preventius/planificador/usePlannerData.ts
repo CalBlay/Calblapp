@@ -25,7 +25,7 @@ type UsePlannerDataArgs = {
   canViewTickets: boolean
   weekStart: Date
   dayCount: number
-  tab: 'preventius' | 'tickets'
+  tab: 'preventius' | 'tickets' | 'externalized'
   preventiusFilter: 'all' | 'due' | 'overdue'
   ticketsAgeFilter: 'all' | 'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus'
 }
@@ -151,6 +151,55 @@ function mapExternalizedTickets(list: PlannerTicketLike[]) {
         machine: t.machine || '',
       }
     })
+}
+
+function mapExternalizedCalendarTickets(
+  ticketList: PlannerTicketLike[],
+  weekStart: Date,
+  dayCount: number,
+  startStr: string,
+  endStr: string
+) {
+  return ticketList
+    .filter((t) => Boolean(t.externalized) || String(t.workflowStage || '') === 'externalized')
+    .map((t) => {
+      const followUpAt = Number(t.externalSentAt || t.createdAt || 0)
+      if (!Number.isFinite(followUpAt) || followUpAt <= 0) return null
+      const followUpDate = new Date(followUpAt)
+      const date = format(followUpDate, 'yyyy-MM-dd')
+      if (date < startStr || date > endStr) return null
+
+      const dayIndex = Math.round((parseISO(date).getTime() - weekStart.getTime()) / 86400000)
+      if (dayIndex < 0 || dayIndex >= dayCount) return null
+
+      const minutesFromDay = followUpDate.getHours() * 60 + followUpDate.getMinutes()
+      const startMinutes = Math.min(Math.max(minutesFromDay, 8 * 60), 16 * 60 + 30)
+      const endMinutes = Math.min(startMinutes + 30, 17 * 60)
+      const workers = Array.isArray(t.assignedToNames) ? t.assignedToNames.map(String) : []
+      const title = String(t.operatorTitle || t.description || t.machine || t.workLocation || t.location || '')
+      const code = String(t.ticketCode || t.incidentNumber || 'TIC')
+
+      return {
+        id: `externalized-${String(t.id || '')}`,
+        kind: 'ticket' as const,
+        title: `${code} - ${title}`.trim(),
+        workers,
+        workersCount: workers.length || 1,
+        dayIndex,
+        start: timeFromMinutes(startMinutes),
+        end: timeFromMinutes(endMinutes),
+        minutes: Math.max(30, Math.min(60, Number(t.estimatedMinutes || 30))),
+        priority: (t.priority || 'normal') as ScheduledItem['priority'],
+        location: String(t.workLocation || t.location || ''),
+        machine: String(t.machine || ''),
+        createdAt: t.createdAt || null,
+        templateId: null,
+        ticketId: String(t.id || ''),
+        status: normalizePlannerTicketStatus(t.status),
+        workflowStage: 'externalized',
+      }
+    })
+    .filter(Boolean) as ScheduledItem[]
 }
 
 function buildTicketLookup(list: PlannerTicketLike[]) {
@@ -336,6 +385,17 @@ export default function usePlannerData({
     return base.filter((ticket) => ticket.ageBucket === ticketsAgeFilter)
   }, [realTickets, ticketsAgeFilter])
 
+  const filteredExternalizedTickets = useMemo(() => {
+    const base = [...externalizedTickets].sort((a, b) => {
+      const priorityDiff = PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority]
+      if (priorityDiff !== 0) return priorityDiff
+      if (b.ageDays !== a.ageDays) return b.ageDays - a.ageDays
+      return a.code.localeCompare(b.code)
+    })
+    if (ticketsAgeFilter === 'all') return base
+    return base.filter((ticket) => ticket.ageBucket === ticketsAgeFilter)
+  }, [externalizedTickets, ticketsAgeFilter])
+
   const visibleItems = useMemo(() => {
     if (tab === 'preventius') {
       return filteredDueTemplates.filter(
@@ -344,8 +404,18 @@ export default function usePlannerData({
           !isPreventiuScheduledInWeek(item.id, item.name, scheduledItems)
       )
     }
+    if (tab === 'externalized') {
+      return filteredExternalizedTickets.filter((item) => !isTicketScheduledInWeek(item.id, scheduledItems))
+    }
     return filteredRealTickets.filter((item) => !isTicketScheduledInWeek(item.id, scheduledItems))
-  }, [tab, filteredDueTemplates, filteredRealTickets, plannedPreventiuTemplateIds, scheduledItems])
+  }, [
+    tab,
+    filteredDueTemplates,
+    filteredExternalizedTickets,
+    filteredRealTickets,
+    plannedPreventiuTemplateIds,
+    scheduledItems,
+  ])
 
   const timeSlots = useMemo(() => {
     const slots: string[] = []
@@ -498,9 +568,16 @@ export default function usePlannerData({
       setRealTickets(ticketsData.pending)
       setExternalizedTickets(ticketsData.externalized)
       const ticketsMapped = mapPlannedTickets(ticketList, weekStart, dayCount, startStr, endStr)
+      const externalizedMapped = mapExternalizedCalendarTickets(
+        ticketList,
+        weekStart,
+        dayCount,
+        startStr,
+        endStr
+      )
 
       const workingPreventius = [...plannedMapped]
-      const workingAgenda: ScheduledItem[] = [...plannedMapped, ...ticketsMapped]
+      const workingAgenda: ScheduledItem[] = [...plannedMapped, ...ticketsMapped, ...externalizedMapped]
       const templateMap = new Map(templates.map((template) => [template.id, template]))
       const maintenanceWorkerNames = users
         .map((user) => String(user.name || '').trim())
@@ -629,7 +706,7 @@ export default function usePlannerData({
       }
 
       setPlannedPreventiuTemplateIds(Array.from(alreadyPlannedTemplateIds) as string[])
-      setScheduledItems([...workingPreventius, ...ticketsMapped])
+      setScheduledItems([...workingPreventius, ...ticketsMapped, ...externalizedMapped])
     } catch {
       setPlannedPreventiuTemplateIds([])
       setScheduledItems([])

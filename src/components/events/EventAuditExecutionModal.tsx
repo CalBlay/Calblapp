@@ -91,6 +91,11 @@ type ExtrasPayload = {
   required?: boolean
 }
 
+type AnswersSnapshot = Record<
+  string,
+  { blockId: string; type: string; value: unknown; photos: Array<{ url: string; path: string; size?: number; type?: string }> }
+>
+
 const nextChecklistValue = (current: unknown) => {
   if (current === true) return false
   if (current === false) return null
@@ -119,9 +124,6 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
   const [executionStatus, setExecutionStatus] = useState<'draft' | 'completed' | 'validated' | 'rejected'>('draft')
   const [portalReady, setPortalReady] = useState(false)
 
-  const cameraInputRef = useRef<HTMLInputElement>(null)
-  const galleryInputRef = useRef<HTMLInputElement>(null)
-  const pendingPhotoRef = useRef<{ itemId: string; blockId: string } | null>(null)
   const mountedRef = useRef(true)
 
   const userRole = String(user.role || '').trim().toLowerCase()
@@ -295,26 +297,8 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     setAnswers(mapped)
   }, [open, department, executionUrl, loadingExecution, swrError, extrasError, data, isWeddingServicesAudit])
 
-  const submit = async (mode: 'save' | 'finalize') => {
-    setError('')
-    setSuccess('')
-    if (!department) {
-      setError('No s ha pogut identificar el departament del responsable.')
-      return
-    }
-    const outcome: Outcome = hasIncidents ? 'reported' : 'none'
-    const extraOutcome: Outcome = hasExtras ? 'reported' : 'none'
-
-    if (mode === 'finalize' && outcome === 'reported' && incidentIds.length === 0) {
-      setError('Has indicat incidencies, pero no n hi ha cap creada.')
-      return
-    }
-    if (mode === 'finalize' && extraOutcome === 'reported' && extrasCount === 0) {
-      setError('Has indicat extres, pero no n hi ha cap registrat.')
-      return
-    }
-
-    const auditAnswers = Object.entries(answers).map(([itemId, a]) => ({
+  const buildAuditAnswersPayload = (snapshot: AnswersSnapshot) =>
+    Object.entries(snapshot).map(([itemId, a]) => ({
       itemId,
       blockId: a.blockId || null,
       type: a.type || 'checklist',
@@ -322,7 +306,33 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       photos: a.photos || [],
     }))
 
-    setSaving(true)
+  const persistExecution = async (
+    mode: 'save' | 'finalize',
+    opts?: { answersSnapshot?: AnswersSnapshot; quiet?: boolean; successMessage?: string }
+  ) => {
+    if (!opts?.quiet) {
+      setError('')
+      setSuccess('')
+    }
+    if (!department) {
+      if (!opts?.quiet) setError('No s ha pogut identificar el departament del responsable.')
+      return false
+    }
+    const outcome: Outcome = hasIncidents ? 'reported' : 'none'
+    const extraOutcome: Outcome = hasExtras ? 'reported' : 'none'
+
+    if (mode === 'finalize' && outcome === 'reported' && incidentIds.length === 0) {
+      if (!opts?.quiet) setError('Has indicat incidencies, pero no n hi ha cap creada.')
+      return false
+    }
+    if (mode === 'finalize' && extraOutcome === 'reported' && extrasCount === 0) {
+      if (!opts?.quiet) setError('Has indicat extres, pero no n hi ha cap registrat.')
+      return false
+    }
+
+    const auditAnswers = buildAuditAnswersPayload(opts?.answersSnapshot ?? answers)
+
+    if (!opts?.quiet) setSaving(true)
     try {
       const res = await fetch('/api/auditoria/executions', {
         method: 'POST',
@@ -347,13 +357,26 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       const newStatus = String(json?.status || (mode === 'save' ? 'draft' : 'completed')).toLowerCase()
       if (newStatus === 'completed' || newStatus === 'validated' || newStatus === 'rejected') setExecutionStatus(newStatus)
       else setExecutionStatus('draft')
-      setSuccess(mode === 'save' ? 'Auditoria desada com esborrany.' : 'Auditoria finalitzada correctament.')
+      if (mountedRef.current) {
+        setSuccess(
+          opts?.successMessage ||
+            (mode === 'save' ? 'Auditoria desada com esborrany.' : 'Auditoria finalitzada correctament.')
+        )
+      }
       void mutate()
+      return true
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error guardant tancament')
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Error guardant tancament')
+      }
+      return false
     } finally {
-      setSaving(false)
+      if (!opts?.quiet) setSaving(false)
     }
+  }
+
+  const submit = async (mode: 'save' | 'finalize') => {
+    await persistExecution(mode)
   }
 
   const reopen = async () => {
@@ -415,7 +438,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
       setError('')
     }
     try {
-      const fileToUpload = prepareAuditImageUpload(file)
+      const fileToUpload = await prepareAuditImageUpload(file)
 
       const form = new FormData()
       form.append('file', fileToUpload)
@@ -435,6 +458,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
 
       if (!mountedRef.current) return
 
+      let nextAnswers: AnswersSnapshot | undefined
       setAnswers((prev) => {
         const current = prev[itemId] || {
           blockId,
@@ -442,7 +466,7 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
           value: null,
           photos: [] as Array<{ url: string; path: string; size?: number; type?: string }>,
         }
-        return {
+        nextAnswers = {
           ...prev,
           [itemId]: {
             ...current,
@@ -459,8 +483,18 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
             ],
           },
         }
+        return nextAnswers
       })
-      setSuccess('Foto pujada correctament.')
+
+      if (!isLocked && nextAnswers) {
+        await persistExecution('save', {
+          answersSnapshot: nextAnswers,
+          quiet: true,
+          successMessage: 'Foto guardada a l’auditoria.',
+        })
+      } else if (mountedRef.current) {
+        setSuccess('Foto pujada correctament.')
+      }
     } catch (err) {
       if (mountedRef.current) {
         setError(err instanceof Error ? err.message : 'Error pujant imatge')
@@ -470,23 +504,13 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     }
   }
 
-  const openCameraPicker = (itemId: string, blockId: string) => {
-    if (isLocked || totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) return
-    pendingPhotoRef.current = { itemId, blockId }
-    cameraInputRef.current?.click()
-  }
-
-  const openGalleryPicker = (itemId: string, blockId: string) => {
-    if (isLocked || totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) return
-    pendingPhotoRef.current = { itemId, blockId }
-    galleryInputRef.current?.click()
-  }
-
-  const handlePickedFile = (file: File | null, source: 'camera' | 'gallery') => {
-    const pending = pendingPhotoRef.current
-    pendingPhotoRef.current = null
-    if (!file || !pending) return
-    const { itemId, blockId } = pending
+  const handlePickedFile = (
+    itemId: string,
+    blockId: string,
+    file: File | null,
+    source: 'camera' | 'gallery'
+  ) => {
+    if (!file) return
     afterMobileFilePicker(() => {
       void uploadPhoto(itemId, blockId, file)
     }, source)
@@ -515,38 +539,10 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
             aria-live="polite"
           >
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-cyan-700" />
-            <p className="text-sm font-medium text-slate-800">Pujant fitxer…</p>
+            <p className="text-sm font-medium text-slate-800">Pujant i desant foto…</p>
             <p className="text-xs text-slate-500">No tanquis aquesta pantalla</p>
           </div>
         ) : null}
-
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          tabIndex={-1}
-          aria-hidden
-          className="pointer-events-none fixed h-px w-px opacity-0"
-          onChange={(e) => {
-            const file = e.currentTarget.files?.[0] || null
-            e.currentTarget.value = ''
-            handlePickedFile(file, 'camera')
-          }}
-        />
-        <input
-          ref={galleryInputRef}
-          type="file"
-          accept="image/*"
-          tabIndex={-1}
-          aria-hidden
-          className="pointer-events-none fixed h-px w-px opacity-0"
-          onChange={(e) => {
-            const file = e.currentTarget.files?.[0] || null
-            e.currentTarget.value = ''
-            handlePickedFile(file, 'gallery')
-          }}
-        />
 
         <ClientErrorBoundary title="Error al tancament operatiu" onReset={() => void mutate()}>
               <div className="shrink-0 border-b border-gray-100 px-4 pb-2 pt-3 sm:pt-4">
@@ -744,39 +740,72 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                   )}
                                   {type === 'photo' && (
                                     <div className="mt-1 space-y-1">
-                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                                        <Button
-                                          type="button"
-                                          variant="outline"
-                                          className="min-h-11 touch-manipulation justify-center gap-1.5"
-                                          disabled={
-                                            isLocked ||
-                                            Boolean(uploadingItemId) ||
-                                            totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL
-                                          }
-                                          onClick={() =>
-                                            openCameraPicker(itemId, String(block.id || ''))
-                                          }
+                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                                        <label
+                                          className={cn(
+                                            'flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium touch-manipulation',
+                                            (isLocked ||
+                                              Boolean(uploadingItemId) ||
+                                              totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) &&
+                                              'pointer-events-none opacity-50'
+                                          )}
                                         >
                                           <Camera className="w-4 h-4 shrink-0" />
                                           Fer foto
-                                        </Button>
-                                        <Button
-                                          type="button"
-                                          variant="outline"
-                                          className="min-h-11 touch-manipulation justify-center gap-1.5"
-                                          disabled={
-                                            isLocked ||
-                                            Boolean(uploadingItemId) ||
-                                            totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL
-                                          }
-                                          onClick={() =>
-                                            openGalleryPicker(itemId, String(block.id || ''))
-                                          }
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            capture="environment"
+                                            className="hidden"
+                                            disabled={
+                                              isLocked ||
+                                              Boolean(uploadingItemId) ||
+                                              totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL
+                                            }
+                                            onChange={(e) => {
+                                              const file = e.currentTarget.files?.[0] || null
+                                              e.currentTarget.value = ''
+                                              handlePickedFile(
+                                                itemId,
+                                                String(block.id || ''),
+                                                file,
+                                                'camera'
+                                              )
+                                            }}
+                                          />
+                                        </label>
+                                        <label
+                                          className={cn(
+                                            'flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium touch-manipulation',
+                                            (isLocked ||
+                                              Boolean(uploadingItemId) ||
+                                              totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL) &&
+                                              'pointer-events-none opacity-50'
+                                          )}
                                         >
                                           <Paperclip className="w-4 h-4 shrink-0" />
                                           Afegir fitxer
-                                        </Button>
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            disabled={
+                                              isLocked ||
+                                              Boolean(uploadingItemId) ||
+                                              totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL
+                                            }
+                                            onChange={(e) => {
+                                              const file = e.currentTarget.files?.[0] || null
+                                              e.currentTarget.value = ''
+                                              handlePickedFile(
+                                                itemId,
+                                                String(block.id || ''),
+                                                file,
+                                                'gallery'
+                                              )
+                                            }}
+                                          />
+                                        </label>
                                       </div>
                                       <div className="text-[11px] text-slate-600">
                                         Fotos: {current?.photos?.length || 0}
