@@ -5,7 +5,7 @@ import { useMemo } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
-import { CalendarClock, ClipboardList, Package, Plus, RefreshCcw } from 'lucide-react'
+import { CalendarClock, ClipboardList, Package, Plus, RefreshCcw, Trash2 } from 'lucide-react'
 import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { formatDayMonthValue } from '@/lib/date-format'
 import {
@@ -56,12 +56,14 @@ interface LogisticsGridProps {
   onRefresh: () => void
   onConfirm: () => void
   onAddRow?: () => void
+  onDeleteRow?: (rowId: string) => void
   onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
   updating: boolean
   filterRole: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
 }
 
 interface LogisticsGridProps {
+  onDeleteRow?: (rowId: string) => void
   locationOptions?: string[]
 }
 
@@ -129,6 +131,7 @@ export default function LogisticsGrid({
   onRefresh,
   onConfirm,
   onAddRow,
+  onDeleteRow,
   onWarehouseComandaClick,
   updating,
   filterRole,
@@ -175,6 +178,7 @@ export default function LogisticsGrid({
             isManager={isManager}
             loading={loading}
             locationOptions={locationOptions}
+            onDeleteRow={onDeleteRow}
             onWarehouseComandaClick={onWarehouseComandaClick}
           />
         )}
@@ -444,6 +448,7 @@ function EditableTable({
   isManager,
   loading,
   locationOptions,
+  onDeleteRow,
   onWarehouseComandaClick,
 }: {
   rows: LogisticsEventPrepRow[]
@@ -453,6 +458,7 @@ function EditableTable({
   isManager: boolean
   loading: boolean
   locationOptions: string[]
+  onDeleteRow?: (rowId: string) => void
   onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
 }) {
   const hasWarehouseTasks = warehouseTasks.length > 0
@@ -475,13 +481,14 @@ function EditableTable({
             <th className="p-2">Pax</th>
             <th className="p-2">Ubicació</th>
             <th className="p-2">Data esdeveniment</th>
+            <th className="w-12 p-2 text-center"> </th>
           </tr>
         </thead>
 
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={7} className="py-6 text-center text-gray-400">
+              <td colSpan={8} className="py-6 text-center text-gray-400">
                 Carregant dades...
               </td>
             </tr>
@@ -600,12 +607,25 @@ function EditableTable({
                       <span>{formatDayMonthValue(dataInici, '--/--')}</span>
                     )}
                   </td>
+                  <td className="p-2 text-center">
+                    {isManager ? (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteRow?.(ev.id)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                        aria-label="Eliminar línia"
+                        title="Eliminar línia"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                  </td>
                 </tr>
               )
             })
           ) : !hasWarehouseTasks ? (
             <tr>
-              <td colSpan={7} className="py-6 text-center text-gray-400">
+              <td colSpan={8} className="py-6 text-center text-gray-400">
                 No hi ha dades disponibles.
               </td>
             </tr>

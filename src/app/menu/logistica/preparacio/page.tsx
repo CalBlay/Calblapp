@@ -160,6 +160,45 @@ export default function LogisticsPage() {
     ])
   }, [dateRange?.start, manualRows.length])
 
+  const handleDeleteRow = useCallback(async (rowId: string) => {
+    if (!rowId) return
+
+    if (rowId.startsWith('draft_')) {
+      setManualRows((prev) => prev.filter((row) => row.id !== rowId))
+      setEdited((prev) => {
+        const next = { ...prev }
+        delete next[rowId]
+        return next
+      })
+      return
+    }
+
+    if (!window.confirm('Vols eliminar aquesta línia?')) return
+
+    setUpdating(true)
+    try {
+      const res = await fetch(`/api/logistics/${encodeURIComponent(rowId)}`, {
+        method: 'DELETE',
+      })
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null
+      if (!res.ok) {
+        throw new Error(payload?.error || 'No s’ha pogut eliminar la línia')
+      }
+
+      await refresh()
+      setEdited((prev) => {
+        const next = { ...prev }
+        delete next[rowId]
+        return next
+      })
+    } catch (error) {
+      console.error('Error eliminant fila logística:', error)
+      alert(error instanceof Error ? error.message : 'No s’ha pogut eliminar la línia.')
+    } finally {
+      setUpdating(false)
+    }
+  }, [refresh])
+
   const handleConfirm = async () => {
     const ids = Object.keys(edited)
     if (!ids.length && !manualRows.length) return
@@ -398,6 +437,7 @@ export default function LogisticsPage() {
           onRefresh={handleRefresh}
           onConfirm={handleConfirm}
           onAddRow={handleAddRow}
+          onDeleteRow={handleDeleteRow}
           onWarehouseComandaClick={handleWarehouseComandaClick}
           updating={updating}
           filterRole={parseRoleForFilters(role)}
