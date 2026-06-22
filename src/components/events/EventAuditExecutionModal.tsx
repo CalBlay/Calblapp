@@ -13,6 +13,7 @@ import {
   Paperclip,
   RotateCcw,
   Save,
+  Trash2,
   X,
   XCircle,
 } from 'lucide-react'
@@ -516,6 +517,38 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
     }, source)
   }
 
+  const removePhoto = async (itemId: string, blockId: string, photoIndex: number) => {
+    if (isLocked || !mountedRef.current) return
+    setError('')
+
+    let nextAnswers: AnswersSnapshot | undefined
+    setAnswers((prev) => {
+      const current = prev[itemId]
+      if (!current || !Array.isArray(current.photos) || photoIndex < 0 || photoIndex >= current.photos.length) {
+        return prev
+      }
+      const photos = current.photos.filter((_, index) => index !== photoIndex)
+      nextAnswers = {
+        ...prev,
+        [itemId]: {
+          ...current,
+          blockId,
+          type: 'photo',
+          photos,
+        },
+      }
+      return nextAnswers
+    })
+
+    if (!nextAnswers) return
+
+    await persistExecution('save', {
+      answersSnapshot: nextAnswers,
+      quiet: true,
+      successMessage: 'Foto eliminada.',
+    })
+  }
+
   const childModalOpen = showCreateIncident || showExtrasModal
   const eventTitle = event.summary.replace(/#.*$/, '').trim()
 
@@ -813,23 +846,42 @@ export default function EventAuditExecutionModal({ open, onClose, event, user }:
                                         {!isLocked && totalAuditPhotos >= MAX_AUDIT_PHOTOS_TOTAL ? ' - Limit total assolit' : ''}
                                       </div>
                                       {Array.isArray(current?.photos) && current.photos.length > 0 ? (
-                                        <div className="grid grid-cols-3 gap-2 pt-1">
+                                        <div className="grid grid-cols-2 gap-2 pt-1 sm:grid-cols-3">
                                           {current.photos.map((photo, pIdx) => (
-                                            <a
+                                            <div
                                               key={`${itemId}-photo-${pIdx}`}
-                                              href={photo.url}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              className="block overflow-hidden rounded-md border border-slate-200"
+                                              className="space-y-1.5 overflow-hidden rounded-md border border-slate-200 bg-slate-50 p-1"
                                             >
-                                              {/* eslint-disable-next-line @next/next/no-img-element -- URL dinàmica externa */}
-                                              <img
-                                                src={photo.url}
-                                                alt={`Foto ${pIdx + 1}`}
-                                                className="h-16 w-full object-cover"
-                                                loading="lazy"
-                                              />
-                                            </a>
+                                              <a
+                                                href={photo.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="block overflow-hidden rounded"
+                                              >
+                                                {/* eslint-disable-next-line @next/next/no-img-element -- URL dinàmica externa */}
+                                                <img
+                                                  src={photo.url}
+                                                  alt={`Foto ${pIdx + 1}`}
+                                                  className="aspect-[4/3] h-16 w-full object-cover sm:h-20"
+                                                  loading="lazy"
+                                                />
+                                              </a>
+                                              {!isLocked ? (
+                                                <Button
+                                                  type="button"
+                                                  variant="secondary"
+                                                  size="sm"
+                                                  className="h-8 w-full text-xs"
+                                                  disabled={Boolean(uploadingItemId) || saving}
+                                                  onClick={() =>
+                                                    void removePhoto(itemId, String(block.id || ''), pIdx)
+                                                  }
+                                                >
+                                                  <Trash2 className="mr-1 h-3.5 w-3.5" />
+                                                  Eliminar
+                                                </Button>
+                                              ) : null}
+                                            </div>
                                           ))}
                                         </div>
                                       ) : null}
