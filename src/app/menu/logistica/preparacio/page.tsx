@@ -10,7 +10,7 @@ import ExportMenu from '@/components/export/ExportMenu'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { LogisticsGrid } from '@/components/logistics'
 import { useLogisticsData } from '@/hooks/useLogisticsData'
-import type { LogisticsWarehousePrepRow } from '@/lib/logistics/prepTypes'
+import type { LogisticsEventPrepRow, LogisticsWarehousePrepRow } from '@/lib/logistics/prepTypes'
 import {
   EVENT_COMANDA_BATCH_STATUS_LABELS,
   normalizeEventComandaBatchStatus,
@@ -81,27 +81,51 @@ export default function LogisticsPage() {
   const { events, warehouseTasks, refresh, loading } = useLogisticsData(dateRange)
   const [updating, setUpdating] = useState(false)
   const [edited, setEdited] = useState<EditedMap>({})
-  const [rows, setRows] = useState(events)
+  const [manualRows, setManualRows] = useState<LogisticsEventPrepRow[]>([])
+  const [locationOptions, setLocationOptions] = useState<string[]>([])
 
   useEffect(() => {
-    if (events.length > 0) {
-      const sorted = [...events].sort((a, b) => {
-        const aHas = !!(a.PreparacioData && a.PreparacioHora)
-        const bHas = !!(b.PreparacioData && b.PreparacioHora)
-        if (aHas && !bHas) return -1
-        if (!aHas && bHas) return 1
-        if (!aHas && !bHas) {
-          return new Date(a.DataInici).getTime() - new Date(b.DataInici).getTime()
+    let ignore = false
+
+    const loadLocations = async () => {
+      try {
+        const res = await fetch('/api/logistics/locations', { cache: 'no-store' })
+        const json = (await res.json().catch(() => null)) as { locations?: string[] } | null
+        if (!res.ok) throw new Error('No s’han pogut carregar les finques')
+        if (!ignore) {
+          setLocationOptions(
+            Array.isArray(json?.locations)
+              ? json.locations.map((item) => String(item || '').trim()).filter(Boolean)
+              : []
+          )
         }
-        const d1 = new Date(`${a.PreparacioData}T${a.PreparacioHora || '00:00'}`).getTime()
-        const d2 = new Date(`${b.PreparacioData}T${b.PreparacioHora || '00:00'}`).getTime()
-        return d1 - d2
-      })
-      setRows(sorted)
-    } else {
-      setRows([])
+      } catch (error) {
+        console.error('Error carregant finques per logística:', error)
+      }
     }
-  }, [events])
+
+    void loadLocations()
+
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  const rows = useMemo(() => {
+    const allRows = [...events, ...manualRows]
+    return allRows.sort((a, b) => {
+      const aHas = !!(a.PreparacioData && a.PreparacioHora)
+      const bHas = !!(b.PreparacioData && b.PreparacioHora)
+      if (aHas && !bHas) return -1
+      if (!aHas && bHas) return 1
+      if (!aHas && !bHas) {
+        return new Date(a.DataInici).getTime() - new Date(b.DataInici).getTime()
+      }
+      const d1 = new Date(`${a.PreparacioData}T${a.PreparacioHora || '00:00'}`).getTime()
+      const d2 = new Date(`${b.PreparacioData}T${b.PreparacioHora || '00:00'}`).getTime()
+      return d1 - d2
+    })
+  }, [events, manualRows])
 
   const handleFilterChange = (f: SmartFiltersChange) => {
     if (f.start && f.end) setDateRange({ start: f.start, end: f.end })
@@ -110,38 +134,100 @@ export default function LogisticsPage() {
   const handleRefresh = async () => {
     setUpdating(true)
     await refresh()
+    setManualRows([])
+    setEdited({})
     setUpdating(false)
   }
 
+  const handleAddRow = useCallback(() => {
+    const baseDate = dateRange?.start || new Date().toISOString().slice(0, 10)
+    const draftId = `draft_${Date.now()}_${manualRows.length}`
+    setManualRows((prev) => [
+      ...prev,
+      {
+        rowType: 'event',
+        id: draftId,
+        EventCode: '',
+        NomEvent: '',
+        Ubicacio: '',
+        NumPax: undefined,
+        DataInici: baseDate,
+        DataVisual: baseDate,
+        HoraInici: '',
+        PreparacioData: baseDate,
+        PreparacioHora: '',
+      },
+    ])
+  }, [dateRange?.start, manualRows.length])
+
   const handleConfirm = async () => {
     const ids = Object.keys(edited)
-    if (!ids.length) return
+    if (!ids.length && !manualRows.length) return
 
     setUpdating(true)
 
     try {
-      const updates: Array<{ id: string; PreparacioData?: string; PreparacioHora?: string }> = []
+      const updates: Array<{
+        id: string
+        isNew?: boolean
+        PreparacioData?: string
+        PreparacioHora?: string
+        EventCode?: string
+        NomEvent?: string
+        NumPax?: string
+        Ubicacio?: string
+        DataInici?: string
+      }> = []
 
-      for (const id of ids) {
+      const targetIds = Array.from(new Set([...rows.map((row) => row.id).filter((id) => edited[id]), ...manualRows.map((row) => row.id)]))
+
+      for (const id of targetIds) {
         const original = rows.find((r) => r.id === id)
-        const payload: { id: string; PreparacioData?: string; PreparacioHora?: string } = { id }
+        if (!original) continue
 
-        if (edited[id]?.PreparacioData) {
-          const year = original ? new Date(original.DataInici).getFullYear() : new Date().getFullYear()
-          const isoDate = toISOFromDM(edited[id].PreparacioData!, year)
-          if (!isoDate) {
-            alert(`La data de preparació de l'esdeveniment ${original?.NomEvent || id} no és vàlida.`)
-            setUpdating(false)
-            return
-          }
-          payload.PreparacioData = isoDate
+        const rowEdit = edited[id] || {}
+        const isNew = id.startsWith('draft_')
+        const payload: {
+          id: string
+          isNew?: boolean
+          PreparacioData?: string
+          PreparacioHora?: string
+          EventCode?: string
+          NomEvent?: string
+          NumPax?: string
+          Ubicacio?: string
+          DataInici?: string
+        } = { id, isNew }
+
+        const nextPreparacioData = rowEdit.PreparacioData ?? original.PreparacioData ?? ''
+        const nextPreparacioHora = rowEdit.PreparacioHora ?? original.PreparacioHora ?? ''
+        const nextEventCode = rowEdit.EventCode ?? original.EventCode ?? ''
+        const nextNomEvent = rowEdit.NomEvent ?? original.NomEvent ?? ''
+        const nextNumPax = rowEdit.NumPax ?? (original.NumPax != null ? String(original.NumPax) : '')
+        const nextUbicacio = rowEdit.Ubicacio ?? original.Ubicacio ?? ''
+        const nextDataInici = rowEdit.DataInici ?? original.DataInici ?? ''
+
+        if (nextPreparacioData && !/^\d{4}-\d{2}-\d{2}$/.test(nextPreparacioData)) {
+          alert(`La data de preparació de l'esdeveniment ${original.NomEvent || id} no és vàlida.`)
+          setUpdating(false)
+          return
         }
 
-        if (edited[id]?.PreparacioHora) {
-          payload.PreparacioHora = edited[id].PreparacioHora!
+        if (nextDataInici && !/^\d{4}-\d{2}-\d{2}$/.test(nextDataInici)) {
+          alert(`La data de l'esdeveniment ${original.NomEvent || id} no és vàlida.`)
+          setUpdating(false)
+          return
         }
 
-        if (payload.PreparacioData || payload.PreparacioHora) {
+        if (isNew || rowEdit.PreparacioData !== undefined) payload.PreparacioData = nextPreparacioData
+        if (isNew || rowEdit.PreparacioHora !== undefined) payload.PreparacioHora = nextPreparacioHora
+        if (isNew || rowEdit.EventCode !== undefined) payload.EventCode = nextEventCode
+        if (isNew || rowEdit.NomEvent !== undefined) payload.NomEvent = nextNomEvent
+        if (isNew || rowEdit.NumPax !== undefined) payload.NumPax = nextNumPax
+        if (isNew || rowEdit.Ubicacio !== undefined) payload.Ubicacio = nextUbicacio
+        if (isNew || rowEdit.DataInici !== undefined) payload.DataInici = nextDataInici
+
+        if (isNew || Object.keys(rowEdit).length > 0) {
           updates.push(payload)
         }
       }
@@ -162,6 +248,7 @@ export default function LogisticsPage() {
       }
 
       await refresh()
+      setManualRows([])
       setEdited({})
     } catch (err) {
       console.error('Error guardant preparacions:', err)
@@ -310,9 +397,11 @@ export default function LogisticsPage() {
           onFilterChange={handleFilterChange}
           onRefresh={handleRefresh}
           onConfirm={handleConfirm}
+          onAddRow={handleAddRow}
           onWarehouseComandaClick={handleWarehouseComandaClick}
           updating={updating}
           filterRole={parseRoleForFilters(role)}
+          locationOptions={locationOptions}
         />
       </RoleGuard>
     </section>

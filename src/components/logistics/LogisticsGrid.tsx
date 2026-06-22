@@ -5,7 +5,7 @@ import { useMemo } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
-import { CalendarClock, ClipboardList, Package, RefreshCcw } from 'lucide-react'
+import { CalendarClock, ClipboardList, Package, Plus, RefreshCcw } from 'lucide-react'
 import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { formatDayMonthValue } from '@/lib/date-format'
 import {
@@ -26,7 +26,17 @@ import {
 } from '@/lib/logistics/warehousePrepVisibility'
 import { cn } from '@/lib/utils'
 
-export type EditedMap = Record<string, { PreparacioData?: string; PreparacioHora?: string }>
+export type EditedFields = {
+  PreparacioData?: string
+  PreparacioHora?: string
+  EventCode?: string
+  NomEvent?: string
+  NumPax?: string
+  Ubicacio?: string
+  DataInici?: string
+}
+
+export type EditedMap = Record<string, EditedFields>
 
 const VIEW_ROLE_BADGES: Record<WarehousePrepViewRole, string> = {
   early_prep: 'border-violet-200 bg-violet-50 text-violet-900',
@@ -45,9 +55,14 @@ interface LogisticsGridProps {
   onFilterChange: (f: SmartFiltersChange) => void
   onRefresh: () => void
   onConfirm: () => void
+  onAddRow?: () => void
   onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
   updating: boolean
   filterRole: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
+}
+
+interface LogisticsGridProps {
+  locationOptions?: string[]
 }
 
 function fmtDM(dateIsoOrEmpty: string) {
@@ -113,9 +128,11 @@ export default function LogisticsGrid({
   onFilterChange,
   onRefresh,
   onConfirm,
+  onAddRow,
   onWarehouseComandaClick,
   updating,
   filterRole,
+  locationOptions = [],
 }: LogisticsGridProps) {
   return (
     <div className="mt-4 w-full overflow-hidden rounded-xl border bg-white shadow-sm">
@@ -157,6 +174,7 @@ export default function LogisticsGrid({
             setEdited={setEdited}
             isManager={isManager}
             loading={loading}
+            locationOptions={locationOptions}
             onWarehouseComandaClick={onWarehouseComandaClick}
           />
         )}
@@ -164,13 +182,23 @@ export default function LogisticsGrid({
 
       {isManager && (
         <div className="flex justify-between border-t bg-gray-50 p-4">
-          <button
-            onClick={onRefresh}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-600 transition hover:bg-gray-100"
-          >
-            <RefreshCcw className={`h-4 w-4 ${updating ? 'animate-spin' : ''}`} />
-            Actualitzar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onRefresh}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-600 transition hover:bg-gray-100"
+            >
+              <RefreshCcw className={`h-4 w-4 ${updating ? 'animate-spin' : ''}`} />
+              Actualitzar
+            </button>
+            <button
+              type="button"
+              onClick={onAddRow}
+              className="flex items-center gap-1 rounded-md bg-white px-3 py-1 text-sm text-gray-700 ring-1 ring-slate-200 transition hover:bg-slate-50"
+            >
+              <Plus className="h-4 w-4" />
+              Afegir línia
+            </button>
+          </div>
           <button
             onClick={onConfirm}
             disabled={updating}
@@ -415,6 +443,7 @@ function EditableTable({
   setEdited,
   isManager,
   loading,
+  locationOptions,
   onWarehouseComandaClick,
 }: {
   rows: LogisticsEventPrepRow[]
@@ -423,9 +452,16 @@ function EditableTable({
   setEdited: React.Dispatch<React.SetStateAction<EditedMap>>
   isManager: boolean
   loading: boolean
+  locationOptions: string[]
   onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
 }) {
   const hasWarehouseTasks = warehouseTasks.length > 0
+  const setField = (id: string, key: keyof EditedFields, value: string) => {
+    setEdited((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], [key]: value },
+    }))
+  }
 
   return (
     <div className="overflow-x-auto scroll-smooth">
@@ -451,33 +487,36 @@ function EditableTable({
             </tr>
           ) : rows.length > 0 ? (
             rows.map((ev, idx) => {
-              const prepDM = edited[ev.id]?.PreparacioData ?? fmtDM(ev.PreparacioData || '')
+              const prepDate = edited[ev.id]?.PreparacioData ?? (ev.PreparacioData || '')
               const prepH = edited[ev.id]?.PreparacioHora ?? (ev.PreparacioHora || '')
+              const eventCode = edited[ev.id]?.EventCode ?? (ev.EventCode || '')
+              const eventName = edited[ev.id]?.NomEvent ?? (ev.NomEvent || '')
+              const pax = edited[ev.id]?.NumPax ?? (ev.NumPax != null ? String(ev.NumPax) : '')
+              const ubicacio = edited[ev.id]?.Ubicacio ?? (ev.Ubicacio || '')
+              const dataInici = edited[ev.id]?.DataInici ?? (ev.DataInici || '')
+              const rowIsNew = ev.id.startsWith('draft_')
+              const rowLocations = ubicacio && !locationOptions.includes(ubicacio)
+                ? [ubicacio, ...locationOptions]
+                : locationOptions
 
               return (
                 <tr
                   key={`row-${idx}`}
-                  className="border-t text-left align-top transition-colors hover:bg-gray-50"
+                  className={cn(
+                    'border-t text-left align-top transition-colors hover:bg-gray-50',
+                    rowIsNew && 'bg-amber-50/40'
+                  )}
                 >
                   <td className="sticky left-0 border-r bg-white p-2 font-medium shadow-sm">
                     {isManager ? (
                       <input
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="dd/MM"
-                        pattern="\d{1,2}/\d{1,2}"
-                        value={prepDM}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          setEdited((prev) => ({
-                            ...prev,
-                            [ev.id]: { ...prev[ev.id], PreparacioData: v },
-                          }))
-                        }}
+                        type="date"
+                        value={prepDate}
+                        onChange={(e) => setField(ev.id, 'PreparacioData', e.target.value)}
                         className="w-full rounded border p-1 text-xs"
                       />
                     ) : (
-                      <span>{prepDM || '-'}</span>
+                      <span>{fmtDM(prepDate) || '-'}</span>
                     )}
                   </td>
 
@@ -486,13 +525,7 @@ function EditableTable({
                       <input
                         type="time"
                         value={prepH}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          setEdited((prev) => ({
-                            ...prev,
-                            [ev.id]: { ...prev[ev.id], PreparacioHora: v },
-                          }))
-                        }}
+                        onChange={(e) => setField(ev.id, 'PreparacioHora', e.target.value)}
                         className="w-full rounded border p-1 text-xs"
                       />
                     ) : (
@@ -500,11 +533,73 @@ function EditableTable({
                     )}
                   </td>
 
-                  <td className="p-2">{ev.EventCode || '-'}</td>
-                  <td className="p-2">{ev.NomEvent}</td>
-                  <td className="p-2">{ev.NumPax ?? '-'}</td>
-                  <td className="p-2">{ev.Ubicacio}</td>
-                  <td className="p-2">{formatDayMonthValue(ev.DataInici, '--/--')}</td>
+                  <td className="p-2">
+                    {isManager ? (
+                      <input
+                        type="text"
+                        value={eventCode}
+                        onChange={(e) => setField(ev.id, 'EventCode', e.target.value)}
+                        className="w-full rounded border p-1 text-xs"
+                      />
+                    ) : (
+                      <span>{eventCode || '-'}</span>
+                    )}
+                  </td>
+                  <td className="p-2">
+                    {isManager ? (
+                      <input
+                        type="text"
+                        value={eventName}
+                        onChange={(e) => setField(ev.id, 'NomEvent', e.target.value)}
+                        className="w-full min-w-[220px] rounded border p-1 text-xs"
+                      />
+                    ) : (
+                      <span>{eventName || '-'}</span>
+                    )}
+                  </td>
+                  <td className="p-2">
+                    {isManager ? (
+                      <input
+                        type="number"
+                        min="0"
+                        value={pax}
+                        onChange={(e) => setField(ev.id, 'NumPax', e.target.value)}
+                        className="w-20 rounded border p-1 text-xs"
+                      />
+                    ) : (
+                      <span>{pax || '-'}</span>
+                    )}
+                  </td>
+                  <td className="p-2">
+                    {isManager ? (
+                      <select
+                        value={ubicacio}
+                        onChange={(e) => setField(ev.id, 'Ubicacio', e.target.value)}
+                        className="w-full min-w-[180px] rounded border bg-white p-1 text-xs"
+                      >
+                        <option value="">Selecciona finca</option>
+                        {rowLocations.map((location) => (
+                          <option key={`${ev.id}-${location}`} value={location}>
+                            {location}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span>{ubicacio || '-'}</span>
+                    )}
+                  </td>
+                  <td className="p-2">
+                    {isManager ? (
+                      <input
+                        type="date"
+                        value={dataInici}
+                        onChange={(e) => setField(ev.id, 'DataInici', e.target.value)}
+                        className="w-full rounded border p-1 text-xs"
+                      />
+                    ) : (
+                      <span>{formatDayMonthValue(dataInici, '--/--')}</span>
+                    )}
+                  </td>
                 </tr>
               )
             })

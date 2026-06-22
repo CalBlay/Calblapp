@@ -11,8 +11,14 @@ const isTime = (value?: string | null) => /^([01]\d|2[0-3]):[0-5]\d$/.test(Strin
 
 type UpdateItem = {
   id: string
+  isNew?: boolean
   PreparacioData?: string
   PreparacioHora?: string
+  EventCode?: string
+  NomEvent?: string
+  NumPax?: string | number | null
+  Ubicacio?: string
+  DataInici?: string
 }
 
 async function authContext(req: NextRequest) {
@@ -38,6 +44,10 @@ function normalizeUpdates(body: unknown): UpdateItem[] {
   return []
 }
 
+function trimOrEmpty(value: unknown) {
+  return String(value ?? '').trim()
+}
+
 export async function POST(req: NextRequest) {
   try {
     const auth = await authContext(req)
@@ -59,36 +69,122 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: false, error: 'Falta ID del document' }, { status: 400 })
       }
 
-      const updateFields: Record<string, string> = {}
+      const updateFields: Record<string, string | number | null | boolean> = {}
 
       if (item.PreparacioData !== undefined) {
-        if (!isIsoDate(item.PreparacioData)) {
+        const value = trimOrEmpty(item.PreparacioData)
+        if (value && !isIsoDate(value)) {
           return NextResponse.json(
-            { ok: false, error: `PreparacioData invàlida per ${id}` },
+            { ok: false, error: `PreparacioData invalida per ${id}` },
             { status: 400 }
           )
         }
-        updateFields.PreparacioData = item.PreparacioData
+        updateFields.PreparacioData = value
       }
 
       if (item.PreparacioHora !== undefined) {
-        if (!isTime(item.PreparacioHora)) {
+        const value = trimOrEmpty(item.PreparacioHora)
+        if (value && !isTime(value)) {
           return NextResponse.json(
-            { ok: false, error: `PreparacioHora invàlida per ${id}` },
+            { ok: false, error: `PreparacioHora invalida per ${id}` },
             { status: 400 }
           )
         }
-        updateFields.PreparacioHora = item.PreparacioHora
+        updateFields.PreparacioHora = value
+      }
+
+      if (item.EventCode !== undefined) {
+        const value = trimOrEmpty(item.EventCode)
+        updateFields.code = value
+        updateFields.codeConfirmed = value !== ''
+        updateFields.codeSource = value !== '' ? 'manual' : ''
+      }
+
+      if (item.NomEvent !== undefined) {
+        updateFields.NomEvent = trimOrEmpty(item.NomEvent)
+      }
+
+      if (item.Ubicacio !== undefined) {
+        updateFields.Ubicacio = trimOrEmpty(item.Ubicacio)
+      }
+
+      if (item.DataInici !== undefined) {
+        const value = trimOrEmpty(item.DataInici)
+        if (!value || !isIsoDate(value)) {
+          return NextResponse.json(
+            { ok: false, error: `DataInici invalida per ${id}` },
+            { status: 400 }
+          )
+        }
+        updateFields.DataInici = value
+        updateFields.DataFi = value
+      }
+
+      if (item.NumPax !== undefined) {
+        const value = trimOrEmpty(item.NumPax)
+        if (!value) {
+          updateFields.NumPax = null
+        } else {
+          const parsed = Number(value)
+          if (!Number.isFinite(parsed) || parsed < 0) {
+            return NextResponse.json(
+              { ok: false, error: `NumPax invalid per ${id}` },
+              { status: 400 }
+            )
+          }
+          updateFields.NumPax = parsed
+        }
       }
 
       if (!Object.keys(updateFields).length) continue
 
-      batch.update(db.collection('stage_verd').doc(id), updateFields)
+      if (item.isNew) {
+        const dataInici = trimOrEmpty(updateFields.DataInici)
+        const nomEvent = trimOrEmpty(updateFields.NomEvent)
+        if (!dataInici || !nomEvent) {
+          return NextResponse.json(
+            { ok: false, error: `Les files noves necessiten NomEvent i DataInici (${id})` },
+            { status: 400 }
+          )
+        }
+
+        const createdId = `manual_${Date.now()}_${applied}`
+        const code = trimOrEmpty(updateFields.code)
+        const payload: Record<string, string | number | null | boolean> = {
+          id: createdId,
+          NomEvent: nomEvent,
+          Servei: '',
+          Comercial: '',
+          LN: 'Altres',
+          StageGroup: 'Confirmat',
+          collection: 'stage_verd',
+          origen: 'manual',
+          DataInici: dataInici,
+          DataFi: trimOrEmpty(updateFields.DataFi) || dataInici,
+          HoraInici: '',
+          HoraFi: '',
+          Ubicacio: trimOrEmpty(updateFields.Ubicacio),
+          NumPax: updateFields.NumPax ?? null,
+          code,
+          PreparacioData: trimOrEmpty(updateFields.PreparacioData),
+          PreparacioHora: trimOrEmpty(updateFields.PreparacioHora),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          codeConfirmed: code !== '',
+          codeSource: code !== '' ? 'manual' : '',
+        }
+
+        batch.set(db.collection('stage_verd').doc(createdId), payload)
+      } else {
+        updateFields.updatedAt = new Date().toISOString()
+        batch.update(db.collection('stage_verd').doc(id), updateFields)
+      }
+
       applied += 1
     }
 
     if (!applied) {
-      return NextResponse.json({ ok: false, error: 'Cap canvi vàlid per guardar' }, { status: 400 })
+      return NextResponse.json({ ok: false, error: 'Cap canvi valid per guardar' }, { status: 400 })
     }
 
     await batch.commit()
