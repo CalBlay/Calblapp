@@ -302,6 +302,8 @@ export default function usePlannerData({
 }: UsePlannerDataArgs) {
   const isLoadingWeekRef = useRef(false)
   const pendingReloadRef = useRef(false)
+  const requestedScheduleSeqRef = useRef(0)
+  const latestLoadWeekScheduleRef = useRef<(() => Promise<void>) | null>(null)
   const [templates, setTemplates] = useState<Template[]>([])
   const [realTickets, setRealTickets] = useState<TicketCard[]>([])
   const [ticketById, setTicketById] = useState<Record<string, Ticket>>({})
@@ -503,6 +505,8 @@ export default function usePlannerData({
   )
 
   const loadWeekSchedule = useCallback(async () => {
+    requestedScheduleSeqRef.current += 1
+    const requestId = requestedScheduleSeqRef.current
     if (isLoadingWeekRef.current) {
       pendingReloadRef.current = true
       return
@@ -528,6 +532,7 @@ export default function usePlannerData({
 
       const plannedJson = plannedRes.ok ? await plannedRes.json() : { items: [] }
       const plannedList = Array.isArray(plannedJson?.items) ? plannedJson.items : []
+      if (requestedScheduleSeqRef.current !== requestId) return
       const plannedMapped: ScheduledItem[] = plannedList
         .map((p: PlannedApiItem) => {
           const date = parseISO(String(p.date || ''))
@@ -564,6 +569,7 @@ export default function usePlannerData({
         .filter(Boolean) as ScheduledItem[]
 
       const ticketList = ticketsData.list
+      if (requestedScheduleSeqRef.current !== requestId) return
       setTicketById(ticketsData.lookup)
       setRealTickets(ticketsData.pending)
       setExternalizedTickets(ticketsData.externalized)
@@ -583,9 +589,11 @@ export default function usePlannerData({
         .map((user) => String(user.name || '').trim())
         .filter(Boolean)
       const alreadyPlannedTemplateIds = getPlannedTemplateIdsForCurrentCycle(dueTemplates, plannedList)
+      if (requestedScheduleSeqRef.current !== requestId) return
       setPlannedPreventiuTemplateIds(Array.from(alreadyPlannedTemplateIds) as string[])
 
       for (let index = 0; index < workingPreventius.length; index += 1) {
+        if (requestedScheduleSeqRef.current !== requestId) return
         const item = workingPreventius[index]
         if (!item.templateId || item.workers.length > 0) continue
         const template = templateMap.get(String(item.templateId))
@@ -643,6 +651,7 @@ export default function usePlannerData({
       }
 
       for (const template of dueTemplates) {
+        if (requestedScheduleSeqRef.current !== requestId) return
         if (alreadyPlannedTemplateIds.has(template.id)) continue
         if ((template.autoPlanExcludedWeeks || []).includes(format(weekStart, "yyyy-'W'II"))) continue
 
@@ -705,19 +714,25 @@ export default function usePlannerData({
         }
       }
 
+      if (requestedScheduleSeqRef.current !== requestId) return
       setPlannedPreventiuTemplateIds(Array.from(alreadyPlannedTemplateIds) as string[])
       setScheduledItems([...workingPreventius, ...ticketsMapped, ...externalizedMapped])
     } catch {
+      if (requestedScheduleSeqRef.current !== requestId) return
       setPlannedPreventiuTemplateIds([])
       setScheduledItems([])
     } finally {
       isLoadingWeekRef.current = false
       if (pendingReloadRef.current) {
         pendingReloadRef.current = false
-        void loadWeekSchedule()
+        void latestLoadWeekScheduleRef.current?.()
       }
     }
   }, [dayCount, dueTemplates, loadTicketsData, resolveWorkerIds, templates, users, weekStart])
+
+  useEffect(() => {
+    latestLoadWeekScheduleRef.current = loadWeekSchedule
+  }, [loadWeekSchedule])
 
   useEffect(() => {
     void loadWeekSchedule()

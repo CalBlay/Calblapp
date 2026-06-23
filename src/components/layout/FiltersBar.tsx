@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 export type FiltersState = {
   start: string
   end: string
-  mode?: 'week' | 'day' | 'range'
+  mode?: 'week' | 'month' | 'day' | 'range'
   dateMode?: 'all' | 'planned' | 'created' | 'updated' | 'completed'
   ln?: string
   responsable?: string
@@ -47,6 +47,8 @@ export type FiltersBarProps = {
   priorityOptions?: { value: string; label: string }[]
   priorityLabel?: string
   showResponsableFilter?: boolean
+  modeDefault?: 'week' | 'month' | 'day' | 'range'
+  modeOptions?: Array<'week' | 'month' | 'day' | 'range'>
 }
 
 export default function FiltersBar({
@@ -65,6 +67,8 @@ export default function FiltersBar({
   priorityOptions = [],
   priorityLabel = 'Prioritat',
   showResponsableFilter = false,
+  modeDefault = 'week',
+  modeOptions = ['week', 'day', 'range'],
 }: FiltersBarProps) {
   void hiddenFilters
   void collapseOnMobile
@@ -84,7 +88,34 @@ export default function FiltersBar({
 
   const handleDatesChange = useCallback(
     (f: SmartFiltersChange) => {
-      if (f.start) {
+      if (f.start && f.end) {
+        if (f.mode === 'month') {
+          setFilters({
+            start: f.start,
+            end: f.end,
+            mode: 'month',
+          })
+          return
+        }
+
+        if (f.mode === 'day') {
+          setFilters({
+            start: f.start,
+            end: f.end,
+            mode: 'day',
+          })
+          return
+        }
+
+        if (f.mode === 'range') {
+          setFilters({
+            start: f.start,
+            end: f.end,
+            mode: 'range',
+          })
+          return
+        }
+
         const base = new Date(f.start)
         const weekStart = startOfWeek(base, { weekStartsOn: 1 })
         const weekEnd = endOfWeek(base, { weekStartsOn: 1 })
@@ -180,7 +211,8 @@ export default function FiltersBar({
       bodyClassName="items-center overflow-x-auto"
     >
       <SmartFilters
-        modeDefault="week"
+        modeDefault={modeDefault}
+        modeOptions={modeOptions}
         role="Treballador"
         showDepartment={false}
         showWorker={false}

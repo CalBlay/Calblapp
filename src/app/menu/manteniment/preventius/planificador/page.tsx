@@ -2,7 +2,17 @@
 
 import React, { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { addDays, endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
+import {
+  addDays,
+  differenceInCalendarDays,
+  endOfWeek,
+  format,
+  isSameMonth,
+  isToday,
+  parseISO,
+  startOfMonth,
+  startOfWeek,
+} from 'date-fns'
 import { ca } from 'date-fns/locale'
 import { AlertTriangle, ChevronDown, ChevronUp, Ticket } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
@@ -31,6 +41,7 @@ const GRID_GAP = 1
 const HEADER_HEIGHT = 32
 const TIME_COL_WIDTH = 80
 const DAY_COUNT = 6
+const MONTH_DAY_COUNT = 7
 type PlannerTypeFilter = 'preventius' | 'tickets' | 'externalized'
 
 const TICKET_STATUS_FILTER_STYLES: Record<
@@ -121,6 +132,7 @@ export default function PreventiusPlanificadorPage() {
   const [showScheduledInSidebar, setShowScheduledInSidebar] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [draft, setDraft] = useState<PlannerDraft | null>(null)
+  const [selectedMonthDayKey, setSelectedMonthDayKey] = useState<string | null>(null)
 
   const togglePlannerViewFilter = (filter: PlannerTypeFilter) => {
     setPlannerViewFilters((current) =>
@@ -131,12 +143,29 @@ export default function PreventiusPlanificadorPage() {
   const setFilters = (partial: Partial<FiltersState>) =>
     setFiltersState((prev) => ({ ...prev, ...partial }))
 
-  const weekStart = useMemo(() => parseISO(filters.start), [filters.start])
-  const weekLabel = format(weekStart, "yyyy-'W'II")
+  const isMonthMode = filters.mode === 'month'
+  const rangeStart = useMemo(() => parseISO(filters.start), [filters.start])
+  const rangeEnd = useMemo(() => parseISO(filters.end), [filters.end])
+  const plannerStart = useMemo(
+    () => (isMonthMode ? startOfWeek(rangeStart, { weekStartsOn: 1 }) : rangeStart),
+    [isMonthMode, rangeStart]
+  )
+  const plannerDayCount = useMemo(
+    () =>
+      isMonthMode
+        ? differenceInCalendarDays(endOfWeek(rangeEnd, { weekStartsOn: 1 }), plannerStart) + 1
+        : DAY_COUNT,
+    [isMonthMode, plannerStart, rangeEnd]
+  )
+  const weekLabel = format(rangeStart, "yyyy-'W'II")
+  const monthLabel = format(startOfMonth(rangeStart), 'MMMM yyyy', { locale: ca }).replace(
+    /^./,
+    (char) => char.toUpperCase()
+  )
   const selectedWorker = String(filters.responsable || '__all__')
   const days = useMemo(
-    () => Array.from({ length: DAY_COUNT }, (_, i) => addDays(weekStart, i)),
-    [weekStart]
+    () => Array.from({ length: plannerDayCount }, (_, i) => addDays(plannerStart, i)),
+    [plannerDayCount, plannerStart]
   )
   const daySidebarLabels = useMemo(
     () => days.map((d) => format(d, 'EEE dd/MM', { locale: ca })),
@@ -160,8 +189,8 @@ export default function PreventiusPlanificadorPage() {
     persistTicketPlanning,
   } = usePlannerData({
     canViewTickets,
-    weekStart,
-    dayCount: DAY_COUNT,
+    weekStart: plannerStart,
+    dayCount: plannerDayCount,
     tab,
     preventiusFilter,
     ticketsAgeFilter,
@@ -180,28 +209,36 @@ export default function PreventiusPlanificadorPage() {
     [scheduledItems]
   )
 
-  const hasPlannerTypeFilter = plannerViewFilters.length > 0
+  const effectivePlannerViewFilters = useMemo<PlannerTypeFilter[]>(
+    () =>
+      isMonthMode
+        ? [tab === 'externalized' ? 'externalized' : tab]
+        : plannerViewFilters,
+    [isMonthMode, plannerViewFilters, tab]
+  )
+
+  const hasPlannerTypeFilter = effectivePlannerViewFilters.length > 0
 
   const kindFilteredScheduledItems = useMemo(() => {
     if (!hasPlannerTypeFilter) return scheduledItems
     return scheduledItems.filter((item) => {
       const isExternalizedTicket = item.kind === 'ticket' && item.workflowStage === 'externalized'
-      const matchesPreventius = plannerViewFilters.includes('preventius') && item.kind === 'preventiu'
+      const matchesPreventius = effectivePlannerViewFilters.includes('preventius') && item.kind === 'preventiu'
       const matchesTickets =
-        plannerViewFilters.includes('tickets') && item.kind === 'ticket' && !isExternalizedTicket
-      const matchesExternalized = plannerViewFilters.includes('externalized') && isExternalizedTicket
+        effectivePlannerViewFilters.includes('tickets') && item.kind === 'ticket' && !isExternalizedTicket
+      const matchesExternalized = effectivePlannerViewFilters.includes('externalized') && isExternalizedTicket
       return matchesPreventius || matchesTickets || matchesExternalized
     })
-  }, [hasPlannerTypeFilter, plannerViewFilters, scheduledItems])
+  }, [effectivePlannerViewFilters, hasPlannerTypeFilter, scheduledItems])
 
   const ticketStatusFilteredScheduledItems = useMemo(() => {
-    if (!plannerViewFilters.includes('tickets') || ticketsStatusFilter === 'all') return kindFilteredScheduledItems
+    if (!effectivePlannerViewFilters.includes('tickets') || ticketsStatusFilter === 'all') return kindFilteredScheduledItems
     return kindFilteredScheduledItems.filter((item) => {
       if (item.kind !== 'ticket' || item.workflowStage === 'externalized') return true
       if (item.workflowStage === 'externalized') return false
       return normalizePlannerTicketStatus(item.status) === ticketsStatusFilter
     })
-  }, [kindFilteredScheduledItems, plannerViewFilters, ticketsStatusFilter])
+  }, [effectivePlannerViewFilters, kindFilteredScheduledItems, ticketsStatusFilter])
 
   const filteredExternalizedTickets = useMemo(() => {
     if (tab !== 'tickets' && tab !== 'externalized') return []
@@ -231,6 +268,24 @@ export default function PreventiusPlanificadorPage() {
     })
     return grouped
   }, [filteredScheduledItems])
+
+  const monthWeeks = useMemo(() => {
+    if (!isMonthMode) return []
+    return Array.from({ length: Math.ceil(days.length / MONTH_DAY_COUNT) }, (_, weekIndex) =>
+      days.slice(weekIndex * MONTH_DAY_COUNT, weekIndex * MONTH_DAY_COUNT + MONTH_DAY_COUNT)
+    )
+  }, [days, isMonthMode])
+
+  const selectedMonthDay = useMemo(() => {
+    if (!selectedMonthDayKey) return null
+    const dayIndex = days.findIndex((day) => format(day, 'yyyy-MM-dd') === selectedMonthDayKey)
+    if (dayIndex < 0) return null
+    return {
+      date: days[dayIndex],
+      dayIndex,
+      items: scheduledItemsByDay.get(dayIndex) || [],
+    }
+  }, [days, scheduledItemsByDay, selectedMonthDayKey])
 
   const positionedScheduledItemsByDay = useMemo(() => {
     const grouped = new Map<
@@ -350,7 +405,7 @@ export default function PreventiusPlanificadorPage() {
           if (target.kind === 'ticket') {
             await persistTicketPlanning(movedItem)
           } else {
-            const dateStr = format(addDays(weekStart, dayIndex), 'yyyy-MM-dd')
+            const dateStr = format(addDays(plannerStart, dayIndex), 'yyyy-MM-dd')
             const workerNames = movedItem.workers || []
             const workerIds = resolveWorkerIds(workerNames)
             await fetch(`/api/maintenance/preventius/planned/${encodeURIComponent(target.id)}`, {
@@ -419,7 +474,7 @@ export default function PreventiusPlanificadorPage() {
 
       setScheduledItems((prev) => [...prev, nextItem])
       try {
-        const dateStr = format(addDays(weekStart, dayIndex), 'yyyy-MM-dd')
+        const dateStr = format(addDays(plannerStart, dayIndex), 'yyyy-MM-dd')
         const res = await fetch('/api/maintenance/preventius/planned', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -459,7 +514,7 @@ export default function PreventiusPlanificadorPage() {
       ticketId: item.ticketId || (item.kind === 'ticket' ? item.id : null),
       title: item.title,
       createdAt: item.createdAt || null,
-      planDate: format(addDays(weekStart, item.dayIndex), 'yyyy-MM-dd'),
+      planDate: format(addDays(plannerStart, item.dayIndex), 'yyyy-MM-dd'),
       dayIndex: item.dayIndex,
       start: item.start,
       duration,
@@ -480,7 +535,7 @@ export default function PreventiusPlanificadorPage() {
       kind: 'preventiu',
       templateId: null,
       title: '',
-      planDate: format(addDays(weekStart, dayIndex), 'yyyy-MM-dd'),
+      planDate: format(addDays(plannerStart, dayIndex), 'yyyy-MM-dd'),
       dayIndex,
       start: startTime,
       duration: 60,
@@ -641,6 +696,27 @@ export default function PreventiusPlanificadorPage() {
     })
   }
 
+  const renderMonthCellSummary = (dayIndex: number) => {
+    const items = scheduledItemsByDay.get(dayIndex) || []
+    const preventiusCount = items.filter((item) => item.kind === 'preventiu').length
+    const externalizedCount = items.filter(
+      (item) => item.kind === 'ticket' && item.workflowStage === 'externalized'
+    ).length
+    const ticketsCount = items.filter(
+      (item) => item.kind === 'ticket' && item.workflowStage !== 'externalized'
+    ).length
+    const highlights = [...items]
+      .sort((a, b) => {
+        const weightA = a.priority ? (a.priority === 'urgent' ? 0 : a.priority === 'alta' ? 1 : a.priority === 'normal' ? 2 : 3) : 2
+        const weightB = b.priority ? (b.priority === 'urgent' ? 0 : b.priority === 'alta' ? 1 : b.priority === 'normal' ? 2 : 3) : 2
+        if (weightA !== weightB) return weightA - weightB
+        return minutesFromTime(a.start) - minutesFromTime(b.start)
+      })
+      .slice(0, 2)
+
+    return { items, preventiusCount, ticketsCount, externalizedCount, highlights }
+  }
+
   return (
       <div className="w-full max-w-none mx-auto p-4 space-y-4">
         <ModuleHeader
@@ -664,8 +740,244 @@ export default function PreventiusPlanificadorPage() {
           filters={filters}
           setFilters={setFilters}
           responsables={workerOptions}
+          modeDefault={isMonthMode ? 'month' : 'week'}
+          modeOptions={['week', 'month']}
         />
 
+        {isMonthMode ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setTab('preventius')}
+                className={[
+                  'rounded-full px-4 py-2 text-xs font-semibold border',
+                  tab === 'preventius'
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-gray-700 border-gray-200',
+                ].join(' ')}
+              >
+                Preventius
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('tickets')}
+                className={[
+                  'rounded-full px-4 py-2 text-xs font-semibold border',
+                  tab === 'tickets'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-200',
+                ].join(' ')}
+              >
+                Tickets
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('externalized')}
+                className={[
+                  'rounded-full px-4 py-2 text-xs font-semibold border',
+                  tab === 'externalized'
+                    ? 'bg-violet-600 text-white border-violet-600'
+                    : 'bg-white text-gray-700 border-gray-200',
+                ].join(' ')}
+              >
+                Externalitzats
+              </button>
+              <div className="ml-auto text-xs font-semibold text-slate-500">
+                Vista mensual · {monthLabel}
+              </div>
+            </div>
+
+            <div className="overflow-auto rounded-2xl border bg-white p-3">
+              <div className="min-w-[980px]">
+                <div className="grid grid-cols-7 gap-px rounded-2xl bg-slate-200 overflow-hidden">
+                  {['Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds', 'Dg'].map((label) => (
+                    <div
+                      key={label}
+                      className="bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600"
+                    >
+                      {label}
+                    </div>
+                  ))}
+
+                  {monthWeeks.flatMap((week) =>
+                    week.map((day) => {
+                      const dayKey = format(day, 'yyyy-MM-dd')
+                      const dayIndex = days.findIndex((item) => format(item, 'yyyy-MM-dd') === dayKey)
+                      const summary = renderMonthCellSummary(dayIndex)
+                      const isCurrentMonth = isSameMonth(day, rangeStart)
+                      return (
+                        <button
+                          key={dayKey}
+                          type="button"
+                          onClick={() => setSelectedMonthDayKey(dayKey)}
+                          className={[
+                            'min-h-[138px] bg-white px-3 py-2 text-left align-top transition hover:bg-slate-50',
+                            !isCurrentMonth ? 'bg-slate-50/70 text-slate-400' : '',
+                          ].join(' ')}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span
+                              className={[
+                                'inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold',
+                                isToday(day)
+                                  ? 'bg-slate-900 text-white'
+                                  : isCurrentMonth
+                                    ? 'text-slate-900'
+                                    : 'text-slate-400',
+                              ].join(' ')}
+                            >
+                              {format(day, 'd')}
+                            </span>
+                            <span className="text-[11px] font-medium text-slate-500">
+                              {summary.items.length} tasques
+                            </span>
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {summary.preventiusCount > 0 ? (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                P {summary.preventiusCount}
+                              </span>
+                            ) : null}
+                            {summary.ticketsCount > 0 ? (
+                              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+                                T {summary.ticketsCount}
+                              </span>
+                            ) : null}
+                            {summary.externalizedCount > 0 ? (
+                              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-800">
+                                E {summary.externalizedCount}
+                              </span>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-2 space-y-1">
+                            {summary.highlights.map((item) => {
+                              const priority = item.priority || 'normal'
+                              const tone = getPriorityTone(item.kind, priority)
+                              const displayTitle =
+                                item.kind === 'ticket'
+                                  ? item.title.replace(/^[A-Z]{2,}\d+\s*-\s*/i, '').trim() || item.title
+                                  : item.title
+                              return (
+                                <div
+                                  key={item.id}
+                                  className={`rounded-lg border px-2 py-1 text-[11px] ${tone.card}`}
+                                >
+                                  <div className="truncate font-semibold">{displayTitle}</div>
+                                  <div className="mt-0.5 truncate text-[10px] text-slate-600">
+                                    {item.start}
+                                    {item.location ? ` · ${item.location}` : ''}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                            {summary.items.length > 2 ? (
+                              <div className="text-[11px] font-semibold text-slate-500">
+                                +{summary.items.length - 2} més
+                              </div>
+                            ) : null}
+                          </div>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {selectedMonthDay ? (
+              <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:p-4">
+                <div className="w-full max-w-3xl rounded-t-3xl bg-white shadow-2xl md:rounded-3xl">
+                  <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 md:px-6">
+                    <div>
+                      <div className="text-lg font-semibold text-slate-900">
+                        {format(selectedMonthDay.date, 'EEEE d MMMM', { locale: ca })}
+                      </div>
+                      <div className="mt-1 text-sm text-slate-500">
+                        {selectedMonthDay.items.length} tasques planificades
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMonthDayKey(null)}
+                      className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600"
+                    >
+                      Tancar
+                    </button>
+                  </div>
+
+                  <div className="max-h-[70vh] space-y-3 overflow-auto px-5 py-5 md:px-6">
+                    {tab === 'preventius' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedMonthDayKey(null)
+                          handleCreateEmpty(selectedMonthDay.dayIndex, '08:00')
+                        }}
+                        className="min-h-[44px] rounded-full border px-4 text-sm font-medium"
+                      >
+                        Nova tasca
+                      </button>
+                    ) : null}
+
+                    {selectedMonthDay.items.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed p-4 text-sm text-slate-500">
+                        No hi ha tasques planificades aquest dia.
+                      </div>
+                    ) : (
+                      selectedMonthDay.items.map((item) => {
+                        const priority = item.priority || 'normal'
+                        const tone = getPriorityTone(item.kind, priority)
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMonthDayKey(null)
+                              handleEdit(item)
+                            }}
+                            className={`w-full rounded-2xl border px-4 py-3 text-left ${tone.card}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className={typography('sectionTitle')}>{item.title}</div>
+                                <div className={`mt-1 ${typography('bodySm')}`}>
+                                  {item.start} - {item.end}
+                                  {item.location ? ` · ${item.location}` : ''}
+                                </div>
+                              </div>
+                              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${tone.pill}`}>
+                                {PRIORITY_LABEL[priority]}
+                              </span>
+                            </div>
+                            {item.workers.length > 0 ? (
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {item.workers.map((worker) => (
+                                  <span
+                                    key={`${item.id}-${worker}`}
+                                    className={[
+                                      'inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold',
+                                      getWorkerBadgeClass(worker),
+                                    ].join(' ')}
+                                  >
+                                    {worker}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <>
         <div className="space-y-4 lg:hidden">
           <div className="flex items-center justify-between gap-3">
             <div className={typography('bodyXs')}>DL-DS · Jornada base 08:00-18:00</div>
@@ -1215,19 +1527,21 @@ export default function PreventiusPlanificadorPage() {
             </div>
           </div>
         </div>
+          </>
+        )}
 
         {isModalOpen && draft && draft.kind === 'ticket' && draft.ticketId && (
           <PlannerTicketModal
             ticketId={draft.ticketId}
-            initialDate={draft.planDate || format(addDays(weekStart, draft.dayIndex), 'yyyy-MM-dd')}
+            initialDate={draft.planDate || format(addDays(plannerStart, draft.dayIndex), 'yyyy-MM-dd')}
             initialStartTime={draft.start}
             initialDurationMinutes={draft.duration}
             initialTicket={ticketById[draft.ticketId] || null}
             locations={locations}
             machines={machines}
             users={users}
-            weekStart={weekStart}
-            dayCount={DAY_COUNT}
+            weekStart={plannerStart}
+            dayCount={plannerDayCount}
             availableWorkers={availableWorkers}
             deleteMode={draft.source === 'scheduled' ? 'unplan-ticket' : 'delete-ticket'}
             onDeletePlanned={async () => {
@@ -1250,7 +1564,7 @@ export default function PreventiusPlanificadorPage() {
           <PlannerEditModal
             draft={draft}
             days={days}
-            dayCount={DAY_COUNT}
+            dayCount={plannerDayCount}
             machines={machines}
             users={users}
             getWorkerConflicts={getWorkerConflicts}
@@ -1261,7 +1575,7 @@ export default function PreventiusPlanificadorPage() {
             setIsModalOpen={setIsModalOpen}
             setScheduledItems={setScheduledItems}
             resolveWorkerIds={resolveWorkerIds}
-            weekStart={weekStart}
+            weekStart={plannerStart}
             persistTicketPlanning={persistTicketPlanning}
             loadWeekSchedule={loadWeekSchedule}
             onUnplanPreventiu={unplanPreventiu}
