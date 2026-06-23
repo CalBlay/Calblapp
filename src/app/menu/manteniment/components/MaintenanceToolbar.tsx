@@ -1,6 +1,7 @@
 'use client'
 
 import FilterButton from '@/components/ui/filter-button'
+import { cn } from '@/lib/utils'
 
 type ModeOption = {
   value: string
@@ -15,7 +16,12 @@ type Props = {
   modeOptions?: ModeOption[]
   onModeChange?: (value: string) => void
   onOpenFilters?: () => void
+  leftSlot?: React.ReactNode
+  centerSlot?: React.ReactNode
   rightSlot?: React.ReactNode
+  bottomSlot?: React.ReactNode
+  className?: string
+  bodyClassName?: string
 }
 
 export default function MaintenanceToolbar({
@@ -26,15 +32,20 @@ export default function MaintenanceToolbar({
   modeOptions,
   onModeChange,
   onOpenFilters,
+  leftSlot,
+  centerSlot,
   rightSlot,
+  bottomSlot,
+  className,
+  bodyClassName,
 }: Props) {
   const hasDateNav = Boolean(rangeLabel)
   const hasModeSelect = Boolean(modeValue && modeOptions?.length && onModeChange)
-  const hasLeftControls = hasDateNav || hasModeSelect
+  const hasLeftControls = hasDateNav || hasModeSelect || leftSlot
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <div className={cn('rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm', className)}>
+      <div className={cn('flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between', bodyClassName)}>
         <div className={`flex min-w-0 flex-wrap items-center gap-3 ${hasLeftControls ? '' : 'lg:hidden'}`}>
           {hasDateNav ? (
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
@@ -69,13 +80,19 @@ export default function MaintenanceToolbar({
               ))}
             </select>
           ) : null}
+
+          {leftSlot}
         </div>
 
-        <div className={`flex flex-wrap items-center gap-2 ${hasLeftControls ? 'justify-end' : 'justify-start lg:w-full'}`}>
+        {centerSlot ? <div className="min-w-[240px] flex-1">{centerSlot}</div> : null}
+
+        <div className={`flex flex-wrap items-center gap-2 ${hasLeftControls || centerSlot ? 'justify-end' : 'justify-start lg:w-full'}`}>
           {rightSlot}
           {onOpenFilters ? <FilterButton onClick={onOpenFilters} /> : null}
         </div>
       </div>
+
+      {bottomSlot ? <div className="mt-3">{bottomSlot}</div> : null}
     </div>
   )
 }

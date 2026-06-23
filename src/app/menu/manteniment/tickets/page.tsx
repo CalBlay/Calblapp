@@ -8,9 +8,9 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { CalendarCheck2 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
+import MaintenanceToolbar from '../components/MaintenanceToolbar'
 import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
-import FilterButton from '@/components/ui/filter-button'
 import {
   CorporateActiveFilterChip,
   CorporateFiltersActiveRow,
@@ -543,12 +543,11 @@ export default function MaintenanceTicketsPage() {
           </div>
         ) : null}
 
-        <CorporateFiltersShell
-          variant="toolbar"
-          bodyClassName="flex-col items-stretch gap-0 xl:flex-row xl:flex-wrap xl:items-center"
-        >
-          <div className="flex w-full flex-wrap items-center gap-3 xl:flex-nowrap">
-            <div className="shrink-0">
+        <CorporateFiltersShell variant="toolbar" bodyClassName="p-0">
+          <MaintenanceToolbar
+            className="border-0 bg-transparent px-0 py-0 shadow-none"
+            bodyClassName="flex-col items-stretch gap-0 xl:flex-row xl:flex-wrap xl:items-center"
+            leftSlot={
               <SmartFilters
                 modeDefault="week"
                 modeOptions={['week', 'month', 'year', 'day', 'range']}
@@ -569,31 +568,31 @@ export default function MaintenanceTicketsPage() {
                 initialStart={filters.start}
                 initialEnd={filters.end}
               />
-            </div>
-            <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
-              <FilterButton />
-            </div>
-          </div>
-          <CorporateFiltersActiveRow>
-            {isExternalReporter && filters.ticketBucket && filters.ticketBucket !== '__all__' ? (
-              <CorporateActiveFilterChip>
-                {EXTERNAL_BUCKET_LABELS[filters.ticketBucket as keyof typeof EXTERNAL_BUCKET_LABELS]}
-              </CorporateActiveFilterChip>
-            ) : null}
-            {!isExternalReporter && filters.status && filters.status !== '__all__' ? (
-              <CorporateActiveFilterChip>
-                {STATUS_LABELS[filters.status as TicketStatus]}
-              </CorporateActiveFilterChip>
-            ) : null}
-            {!isExternalReporter && filters.priority && filters.priority !== '__all__' ? (
-              <CorporateActiveFilterChip>
-                {PRIORITY_LABELS[filters.priority as TicketPriority]}
-              </CorporateActiveFilterChip>
-            ) : null}
-            {!isExternalReporter && filters.location && filters.location !== '__all__' ? (
-              <CorporateActiveFilterChip>{filters.location}</CorporateActiveFilterChip>
-            ) : null}
-          </CorporateFiltersActiveRow>
+            }
+            onOpenFilters={() => undefined}
+            bottomSlot={
+              <CorporateFiltersActiveRow>
+                {isExternalReporter && filters.ticketBucket && filters.ticketBucket !== '__all__' ? (
+                  <CorporateActiveFilterChip>
+                    {EXTERNAL_BUCKET_LABELS[filters.ticketBucket as keyof typeof EXTERNAL_BUCKET_LABELS]}
+                  </CorporateActiveFilterChip>
+                ) : null}
+                {!isExternalReporter && filters.status && filters.status !== '__all__' ? (
+                  <CorporateActiveFilterChip>
+                    {STATUS_LABELS[filters.status as TicketStatus]}
+                  </CorporateActiveFilterChip>
+                ) : null}
+                {!isExternalReporter && filters.priority && filters.priority !== '__all__' ? (
+                  <CorporateActiveFilterChip>
+                    {PRIORITY_LABELS[filters.priority as TicketPriority]}
+                  </CorporateActiveFilterChip>
+                ) : null}
+                {!isExternalReporter && filters.location && filters.location !== '__all__' ? (
+                  <CorporateActiveFilterChip>{filters.location}</CorporateActiveFilterChip>
+                ) : null}
+              </CorporateFiltersActiveRow>
+            }
+          />
         </CorporateFiltersShell>
 
         {loading && <p className="text-sm text-gray-500">Carregant...</p>}

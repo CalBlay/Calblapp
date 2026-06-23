@@ -18,6 +18,7 @@ import { AlertTriangle, ChevronDown, ChevronUp, Ticket } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
+import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
 import { typography } from '@/lib/typography'
 import { MAINTENANCE_TICKETS_MANAGE_PERM } from '@/lib/maintenanceTicketsPermissions'
 import type { PlannerDraft, ScheduledItem } from './types'
@@ -746,48 +747,49 @@ export default function PreventiusPlanificadorPage() {
 
         {isMonthMode ? (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setTab('preventius')}
-                className={[
-                  'rounded-full px-4 py-2 text-xs font-semibold border',
-                  tab === 'preventius'
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : 'bg-white text-gray-700 border-gray-200',
-                ].join(' ')}
-              >
-                Preventius
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab('tickets')}
-                className={[
-                  'rounded-full px-4 py-2 text-xs font-semibold border',
-                  tab === 'tickets'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-200',
-                ].join(' ')}
-              >
-                Tickets
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab('externalized')}
-                className={[
-                  'rounded-full px-4 py-2 text-xs font-semibold border',
-                  tab === 'externalized'
-                    ? 'bg-violet-600 text-white border-violet-600'
-                    : 'bg-white text-gray-700 border-gray-200',
-                ].join(' ')}
-              >
-                Externalitzats
-              </button>
-              <div className="ml-auto text-xs font-semibold text-slate-500">
-                Vista mensual Â· {monthLabel}
-              </div>
-            </div>
-
+            <MaintenanceToolbar
+              leftSlot={
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTab('preventius')}
+                    className={[
+                      'rounded-full px-4 py-2 text-xs font-semibold border',
+                      tab === 'preventius'
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-white text-gray-700 border-gray-200',
+                    ].join(' ')}
+                  >
+                    Preventius
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTab('tickets')}
+                    className={[
+                      'rounded-full px-4 py-2 text-xs font-semibold border',
+                      tab === 'tickets'
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-200',
+                    ].join(' ')}
+                  >
+                    Tickets
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTab('externalized')}
+                    className={[
+                      'rounded-full px-4 py-2 text-xs font-semibold border',
+                      tab === 'externalized'
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'bg-white text-gray-700 border-gray-200',
+                    ].join(' ')}
+                  >
+                    Externalitzats
+                  </button>
+                </div>
+              }
+              rightSlot={<div className="text-xs font-semibold text-slate-500">Vista mensual · {monthLabel}</div>}
+            />
             <div className="overflow-auto rounded-2xl border bg-white p-3">
               <div className="min-w-[980px]">
                 <div className="grid grid-cols-7 gap-px rounded-2xl bg-slate-200 overflow-hidden">

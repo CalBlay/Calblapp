@@ -7,7 +7,6 @@ import { X } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useFilters } from '@/context/FiltersContext'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
-import FilterButton from '@/components/ui/filter-button'
 import {
   CorporateActiveFilterChip,
   CorporateFilterSearch,
@@ -26,6 +25,7 @@ import { normalizeRole } from '@/lib/roles'
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
 import PlannerTicketModal from '@/app/menu/manteniment/preventius/planificador/components/PlannerTicketModal'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
+import MaintenanceToolbar from '../components/MaintenanceToolbar'
 import SeguimentKpiGrid from './components/SeguimentKpiGrid'
 import SeguimentPreventiuRow from './components/SeguimentPreventiuRow'
 import SeguimentSidebarFilters from './components/SeguimentSidebarFilters'
@@ -185,12 +185,11 @@ export default function MaintenanceSeguimentPage() {
       <div className="flex w-full max-w-none flex-col gap-5 p-4 pb-8">
         <ModuleHeader title="Manteniment" subtitle="Seguiment" mainHref="/menu/manteniment" />
 
-        <CorporateFiltersShell
-          variant="toolbar"
-          bodyClassName="flex-col items-stretch gap-0 xl:flex-row xl:flex-wrap xl:items-center"
-        >
-          <div className="flex w-full flex-wrap items-center gap-3 xl:flex-nowrap">
-            <div className="shrink-0">
+        <CorporateFiltersShell variant="toolbar" bodyClassName="p-0">
+          <MaintenanceToolbar
+            className="border-0 bg-transparent px-0 py-0 shadow-none"
+            bodyClassName="flex-col items-stretch gap-0 xl:flex-row xl:flex-wrap xl:items-center"
+            leftSlot={
               <SmartFilters
                 modeDefault="week"
                 modeOptions={['week', 'month', 'year', 'day', 'range']}
@@ -207,75 +206,80 @@ export default function MaintenanceSeguimentPage() {
                 initialStart={dateRange.start}
                 initialEnd={dateRange.end}
               />
-            </div>
-
-            <div className="relative min-w-[260px] flex-1">
-              <CorporateFilterSearch
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={
-                  tab === 'tickets'
-                    ? 'Codi, maquina, ubicacio o descripcio...'
-                    : 'Preventiu, ubicacio o operari...'
-                }
-                className="pr-10"
-              />
-              {search.trim() ? (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              ) : null}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
-              {(['tickets', 'preventius'] as TabKey[]).map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => {
-                    setTab(item)
-                    setExpandedId(null)
-                  }}
-                  className={corporateFilterBadgeClass(tab === item)}
-                >
-                  {item === 'tickets' ? 'Tickets' : 'Preventius'}
-                </button>
-              ))}
-              <FilterButton onClick={() => undefined} />
-            </div>
-          </div>
-
-          <CorporateFiltersActiveRow>
-            {statusFilter !== 'all' ? (
-              <CorporateActiveFilterChip>
-                {STATUS_LABELS[statusFilter as MaintenanceStatus]}
-              </CorporateActiveFilterChip>
-            ) : null}
-            {workerFilter !== 'all' ? (
-              <CorporateActiveFilterChip>{workerFilter}</CorporateActiveFilterChip>
-            ) : null}
-            {locationFilter !== 'all' ? (
-              <CorporateActiveFilterChip>{locationFilter}</CorporateActiveFilterChip>
-            ) : null}
-            {tab === 'tickets' && externalFilter !== 'all' ? (
-              <CorporateActiveFilterChip>
-                {externalFilter === 'external' ? 'Derivats a proveidor' : 'Interns'}
-              </CorporateActiveFilterChip>
-            ) : null}
-            {pendingValidationOnly ? (
-              <CorporateActiveFilterChip variant="amber">
-                Pendents de validar
-              </CorporateActiveFilterChip>
-            ) : null}
-            {stalledOnly ? (
-              <CorporateActiveFilterChip variant="rose">Oberts 3+ dies</CorporateActiveFilterChip>
-            ) : null}
-            {search.trim() ? <CorporateActiveFilterChip>Cerca activa</CorporateActiveFilterChip> : null}
-          </CorporateFiltersActiveRow>
+            }
+            centerSlot={
+              <div className="relative min-w-[260px]">
+                <CorporateFilterSearch
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={
+                    tab === 'tickets'
+                      ? 'Codi, maquina, ubicacio o descripcio...'
+                      : 'Preventiu, ubicacio o operari...'
+                  }
+                  className="pr-10"
+                />
+                {search.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+            }
+            rightSlot={
+              <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
+                {(['tickets', 'preventius'] as TabKey[]).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => {
+                      setTab(item)
+                      setExpandedId(null)
+                    }}
+                    className={corporateFilterBadgeClass(tab === item)}
+                  >
+                    {item === 'tickets' ? 'Tickets' : 'Preventius'}
+                  </button>
+                ))}
+              </div>
+            }
+            onOpenFilters={() => undefined}
+            bottomSlot={
+              <CorporateFiltersActiveRow>
+                {statusFilter !== 'all' ? (
+                  <CorporateActiveFilterChip>
+                    {STATUS_LABELS[statusFilter as MaintenanceStatus]}
+                  </CorporateActiveFilterChip>
+                ) : null}
+                {workerFilter !== 'all' ? (
+                  <CorporateActiveFilterChip>{workerFilter}</CorporateActiveFilterChip>
+                ) : null}
+                {locationFilter !== 'all' ? (
+                  <CorporateActiveFilterChip>{locationFilter}</CorporateActiveFilterChip>
+                ) : null}
+                {tab === 'tickets' && externalFilter !== 'all' ? (
+                  <CorporateActiveFilterChip>
+                    {externalFilter === 'external' ? 'Derivats a proveidor' : 'Interns'}
+                  </CorporateActiveFilterChip>
+                ) : null}
+                {pendingValidationOnly ? (
+                  <CorporateActiveFilterChip variant="amber">
+                    Pendents de validar
+                  </CorporateActiveFilterChip>
+                ) : null}
+                {stalledOnly ? (
+                  <CorporateActiveFilterChip variant="rose">Oberts 3+ dies</CorporateActiveFilterChip>
+                ) : null}
+                {search.trim() ? (
+                  <CorporateActiveFilterChip>Cerca activa</CorporateActiveFilterChip>
+                ) : null}
+              </CorporateFiltersActiveRow>
+            }
+          />
         </CorporateFiltersShell>
 
         <SeguimentKpiGrid
