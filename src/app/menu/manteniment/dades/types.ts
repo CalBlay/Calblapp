@@ -32,6 +32,12 @@ export type SupplierRow = {
   supplierDepartments?: string[]
 }
 
+export type ResolutionCategoryRow = {
+  id: string
+  name: string
+  active?: boolean
+}
+
 export const emptyMachine = {
   id: '',
   code: '',
@@ -56,8 +62,15 @@ export const emptySupplier = {
   supplierDepartments: ['Manteniment'] as string[],
 }
 
+export const emptyResolutionCategory = {
+  id: '',
+  name: '',
+  active: true,
+}
+
 export type MachineView = typeof emptyMachine
 export type MachineViewTab = 'summary' | 'tickets' | 'timeline' | 'data'
+export type ResolutionCategoryView = typeof emptyResolutionCategory
 
 export type MachineListStats = {
   total: number

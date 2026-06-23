@@ -10,6 +10,7 @@ import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
 import MachinesPanel from './components/MachinesPanel'
 import SuppliersPanel from './components/SuppliersPanel'
 import CentersPanel from './components/CentersPanel'
+import ResolutionCategoriesPanel from './components/ResolutionCategoriesPanel'
 import { PreventiusTemplatesContent } from '../preventius/plantilles/page'
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
 import {
@@ -20,26 +21,33 @@ import {
 } from './utils'
 import {
   emptyMachine,
+  emptyResolutionCategory,
   emptySupplier,
   type CenterRow,
   type MachineListStats,
   type MachineRow,
   type MachineView,
+  type ResolutionCategoryRow,
+  type ResolutionCategoryView,
   type SupplierRow,
 } from './types'
 import { parseFetchJson } from '@/lib/parseFetchJson'
 
 export default function MaintenanceDataPage() {
   const { setContent } = useFilters()
-  const [tab, setTab] = useState<'machines' | 'preventives' | 'suppliers' | 'centers'>('machines')
+  const [tab, setTab] = useState<'machines' | 'preventives' | 'suppliers' | 'centers' | 'resolutionCategories'>('machines')
   const [machines, setMachines] = useState<MachineRow[]>([])
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([])
+  const [resolutionCategories, setResolutionCategories] = useState<ResolutionCategoryRow[]>([])
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [machineForm, setMachineForm] = useState<MachineView>(emptyMachine)
   const [supplierForm, setSupplierForm] = useState(emptySupplier)
+  const [resolutionCategoryForm, setResolutionCategoryForm] =
+    useState<ResolutionCategoryView>(emptyResolutionCategory)
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null)
   const [machineSearch, setMachineSearch] = useState('')
   const [supplierSearch, setSupplierSearch] = useState('')
+  const [resolutionCategorySearch, setResolutionCategorySearch] = useState('')
   const [centerSearch, setCenterSearch] = useState('')
   const [centerTipusFilter, setCenterTipusFilter] = useState<'all' | 'propi' | 'extern'>('all')
   const [centers, setCenters] = useState<CenterRow[]>([])
@@ -49,6 +57,7 @@ export default function MaintenanceDataPage() {
     machines: false,
     suppliers: false,
     centers: false,
+    resolutionCategories: false,
   })
 
   const loadMachinesData = async () => {
@@ -108,6 +117,24 @@ export default function MaintenanceDataPage() {
     }
   }
 
+  const loadResolutionCategoriesData = async () => {
+    try {
+      setLoading(true)
+      const categoriesRes = await fetch('/api/maintenance/data/resolution-categories', {
+        cache: 'no-store',
+      })
+      const categoriesJson = await parseFetchJson(categoriesRes, {
+        categories: [] as ResolutionCategoryRow[],
+      })
+      setResolutionCategories(
+        Array.isArray(categoriesJson?.categories) ? categoriesJson.categories : []
+      )
+      setLoadedTabs((current) => ({ ...current, resolutionCategories: true }))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     setContent(<></>)
   }, [setContent])
@@ -120,7 +147,10 @@ export default function MaintenanceDataPage() {
     if (tab === 'suppliers' && !loadedTabs.suppliers) {
       void loadSuppliersData()
     }
-  }, [loadedTabs.machines, loadedTabs.suppliers, tab])
+    if (tab === 'resolutionCategories' && !loadedTabs.resolutionCategories) {
+      void loadResolutionCategoriesData()
+    }
+  }, [loadedTabs.machines, loadedTabs.resolutionCategories, loadedTabs.suppliers, tab])
 
   useEffect(() => {
     if (tab === 'centers' && !loadedTabs.centers) {
@@ -155,6 +185,12 @@ export default function MaintenanceDataPage() {
       [item.name, item.email, item.phone, item.specialty].join(' ').toLowerCase().includes(q)
     )
   }, [supplierSearch, suppliers])
+
+  const filteredResolutionCategories = useMemo(() => {
+    const q = resolutionCategorySearch.trim().toLowerCase()
+    if (!q) return resolutionCategories
+    return resolutionCategories.filter((item) => item.name.toLowerCase().includes(q))
+  }, [resolutionCategories, resolutionCategorySearch])
 
   const selectedMachine = useMemo(
     () => machines.find((item) => item.id === selectedMachineId) || null,
@@ -285,6 +321,46 @@ export default function MaintenanceDataPage() {
     }
   }
 
+  const saveResolutionCategory = async () => {
+    setSaving(true)
+    try {
+      const url = resolutionCategoryForm.id
+        ? `/api/maintenance/data/resolution-categories/${encodeURIComponent(resolutionCategoryForm.id)}`
+        : '/api/maintenance/data/resolution-categories'
+      const method = resolutionCategoryForm.id ? 'PATCH' : 'POST'
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resolutionCategoryForm),
+      })
+      if (!res.ok) throw new Error('save_failed')
+      setResolutionCategoryForm(emptyResolutionCategory)
+      await loadResolutionCategoriesData()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const deleteResolutionCategory = async () => {
+    if (!resolutionCategoryForm.id) return
+    if (!window.confirm(`Eliminar la categoria «${resolutionCategoryForm.name || 'sense nom'}»?`)) {
+      return
+    }
+
+    setSaving(true)
+    try {
+      const res = await fetch(
+        `/api/maintenance/data/resolution-categories/${encodeURIComponent(resolutionCategoryForm.id)}`,
+        { method: 'DELETE' }
+      )
+      if (!res.ok) throw new Error('delete_failed')
+      setResolutionCategoryForm(emptyResolutionCategory)
+      await loadResolutionCategoriesData()
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <MaintenancePermissionGate path="/menu/manteniment/dades">
       <div className="mx-auto w-full max-w-7xl space-y-4 p-4">
@@ -297,29 +373,47 @@ export default function MaintenanceDataPage() {
                 <div className="relative w-full max-w-xl">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
-                    value={tab === 'machines' ? machineSearch : supplierSearch}
+                    value={
+                      tab === 'machines'
+                        ? machineSearch
+                        : tab === 'suppliers'
+                          ? supplierSearch
+                          : resolutionCategorySearch
+                    }
                     onChange={(e) => {
                       if (tab === 'machines') {
                         setMachineSearch(e.target.value)
-                      } else {
+                      } else if (tab === 'suppliers') {
                         setSupplierSearch(e.target.value)
+                      } else {
+                        setResolutionCategorySearch(e.target.value)
                       }
                     }}
                     placeholder={
                       tab === 'machines'
                         ? 'Cerca codi, nom o ubicacio...'
-                        : 'Cerca nom, email o especialitat...'
+                        : tab === 'suppliers'
+                          ? 'Cerca nom, email o especialitat...'
+                          : 'Cerca categories de resolucio...'
                     }
                     className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-10 text-sm text-slate-900"
                   />
-                  {(tab === 'machines' ? machineSearch : supplierSearch).trim() ? (
+                  {(
+                    tab === 'machines'
+                      ? machineSearch
+                      : tab === 'suppliers'
+                        ? supplierSearch
+                        : resolutionCategorySearch
+                  ).trim() ? (
                     <button
                       type="button"
                       onClick={() => {
                         if (tab === 'machines') {
                           setMachineSearch('')
-                        } else {
+                        } else if (tab === 'suppliers') {
                           setSupplierSearch('')
+                        } else {
+                          setResolutionCategorySearch('')
                         }
                       }}
                       className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
@@ -334,22 +428,22 @@ export default function MaintenanceDataPage() {
           />
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <button
             type="button"
             onClick={() => setTab('machines')}
-            className={`rounded-2xl border p-4 text-left ${
+            className={`rounded-2xl border p-3 text-left ${
               tab === 'machines'
                 ? 'border-cyan-200 bg-gradient-to-br from-cyan-50 to-sky-100'
                 : 'bg-white'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-cyan-700 shadow">
-                <Factory className="h-5 w-5" />
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-cyan-700 shadow">
+                <Factory className="h-4 w-4" />
               </div>
-              <div>
-                <div className="text-base font-semibold text-gray-900">Maquinaria</div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900">Maquinaria</div>
                 <div className="text-xs text-gray-500">Fitxa d&apos;actiu i historial de tickets</div>
               </div>
             </div>
@@ -358,18 +452,18 @@ export default function MaintenanceDataPage() {
           <button
             type="button"
             onClick={() => setTab('preventives')}
-            className={`rounded-2xl border p-4 text-left ${
+            className={`rounded-2xl border p-3 text-left ${
               tab === 'preventives'
                 ? 'border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50'
                 : 'bg-white'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-violet-700 shadow">
-                <ClipboardList className="h-5 w-5" />
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-violet-700 shadow">
+                <ClipboardList className="h-4 w-4" />
               </div>
-              <div>
-                <div className="text-base font-semibold text-gray-900">Preventius</div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900">Preventius</div>
                 <div className="text-xs text-gray-500">Plantilles, plans i checklists</div>
               </div>
             </div>
@@ -378,18 +472,18 @@ export default function MaintenanceDataPage() {
           <button
             type="button"
             onClick={() => setTab('suppliers')}
-            className={`rounded-2xl border p-4 text-left ${
+            className={`rounded-2xl border p-3 text-left ${
               tab === 'suppliers'
                 ? 'border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-100'
                 : 'bg-white'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-amber-700 shadow">
-                <Truck className="h-5 w-5" />
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-amber-700 shadow">
+                <Truck className="h-4 w-4" />
               </div>
-              <div>
-                <div className="text-base font-semibold text-gray-900">Proveidors</div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900">Proveidors</div>
                 <div className="text-xs text-gray-500">Contactes externs de suport</div>
               </div>
             </div>
@@ -398,19 +492,39 @@ export default function MaintenanceDataPage() {
           <button
             type="button"
             onClick={() => setTab('centers')}
-            className={`rounded-2xl border p-4 text-left ${
+            className={`rounded-2xl border p-3 text-left ${
               tab === 'centers'
                 ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-100'
                 : 'bg-white'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-emerald-700 shadow">
-                <Building2 className="h-5 w-5" />
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-emerald-700 shadow">
+                <Building2 className="h-4 w-4" />
               </div>
-              <div>
-                <div className="text-base font-semibold text-gray-900">Centres</div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900">Centres</div>
                 <div className="text-xs text-gray-500">Temps de desplaçament per finca</div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTab('resolutionCategories')}
+            className={`rounded-2xl border p-3 text-left ${
+              tab === 'resolutionCategories'
+                ? 'border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50'
+                : 'bg-white'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-rose-700 shadow">
+                <ClipboardList className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900">Resolucions</div>
+                <div className="text-xs text-gray-500">Categories de tancament dels tickets</div>
               </div>
             </div>
           </button>
@@ -478,7 +592,7 @@ export default function MaintenanceDataPage() {
               }}
             />
           </>
-        ) : (
+        ) : tab === 'suppliers' ? (
           <SuppliersPanel
             filteredSuppliers={filteredSuppliers}
             supplierForm={supplierForm}
@@ -504,6 +618,23 @@ export default function MaintenanceDataPage() {
             onResetSupplier={() => setSupplierForm(emptySupplier)}
             onSaveSupplier={() => void saveSupplier()}
           />
+        ) : (
+          <ResolutionCategoriesPanel
+            filteredCategories={filteredResolutionCategories}
+            categoryForm={resolutionCategoryForm}
+            loading={loading}
+            saving={saving}
+            onSelectCategory={(category) =>
+              setResolutionCategoryForm({
+                id: category.id,
+                name: category.name || '',
+                active: category.active !== false,
+              })
+            }
+            onCategoryFormChange={(updater) => setResolutionCategoryForm((prev) => updater(prev))}
+            onSaveCategory={() => void saveResolutionCategory()}
+            onDeleteCategory={() => void deleteResolutionCategory()}
+          />
         )}
 
         {tab !== 'centers' ? (
@@ -520,7 +651,11 @@ export default function MaintenanceDataPage() {
               if (win) win.opener = null
               return
             }
-            setSupplierForm(emptySupplier)
+            if (tab === 'suppliers') {
+              setSupplierForm(emptySupplier)
+              return
+            }
+            setResolutionCategoryForm(emptyResolutionCategory)
           }}
         />
         ) : null}

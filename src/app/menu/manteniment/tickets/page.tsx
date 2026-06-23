@@ -766,7 +766,11 @@ export default function MaintenanceTicketsPage() {
             setDetailsPriority={setDetailsPriority}
             canValidate={canManageInboxTickets && canValidate}
             canCapValidate={canManageInboxTickets ? canCapValidateTicket : undefined}
-            onCapValidate={canManageInboxTickets ? (ticket) => void handleStatusChange(ticket, 'validat') : undefined}
+            onCapValidate={
+              canManageInboxTickets
+                ? (ticket, meta) => void handleStatusChange(ticket, 'validat', meta)
+                : undefined
+            }
             canReopen={canManageInboxTickets && canReopen}
             canExternalize={canManageInboxTickets && canExternalize}
             externalizeBusy={externalizeBusy}
@@ -810,13 +814,14 @@ export default function MaintenanceTicketsPage() {
             ticket={resolveTicket}
             busy={resolveBusy}
             onClose={() => setResolveTicket(null)}
-            onSubmit={async ({ category, note }) => {
+            onSubmit={async ({ category, note, completionImages }) => {
               try {
                 setResolveBusy(true)
                 await handleDirectResolution(resolveTicket, {
                   area: 'administracio',
                   category,
                   note,
+                  completionImages,
                 })
                 setResolveTicket(null)
               } finally {

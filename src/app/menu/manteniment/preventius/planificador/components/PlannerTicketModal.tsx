@@ -456,7 +456,16 @@ export default function PlannerTicketModal({
 
   const handleDirectResolution = async (
     ticket: Ticket,
-    payload: { area: 'administracio' | 'manteniment'; category: string; note: string }
+    payload: {
+      area: 'administracio' | 'manteniment'
+      category: string
+      note: string
+      completionImages?: Array<{
+        url?: string | null
+        path?: string | null
+        meta?: { size?: number; type?: string; name?: string } | null
+      }>
+    }
   ) => {
     if (!canManagePlannerTickets) return
     try {
@@ -469,6 +478,7 @@ export default function PlannerTicketModal({
           resolutionCategory: payload.category.trim() || null,
           resolutionNote: payload.note.trim() || null,
           statusNote: payload.note.trim() || 'Resolt des del planificador',
+          completionImages: payload.completionImages,
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)

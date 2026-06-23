@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
+import { Button } from '@/components/ui/button'
 import { isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { formatDateOnly, formatDateTimeValue, formatTimeValue } from '@/lib/date-format'
@@ -8,6 +9,7 @@ import { typography } from '@/lib/typography'
 import { getMaintenanceTicketValidationSummary } from '@/lib/maintenanceTicketValidation'
 import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
 import { DEFAULT_MAX_IMAGE_UPLOAD_BYTES, optimizeUploadFile } from '@/lib/file-optimization'
+import { usePendingImages } from '../../preventius/fulls/hooks/usePendingImages'
 import type {
   MachineItem,
   Ticket,
@@ -70,7 +72,17 @@ type Props = {
   setDetailsPriority: (value: TicketPriority) => void
   canValidate: boolean
   canCapValidate?: (ticket: Ticket) => boolean
-  onCapValidate?: (ticket: Ticket) => void
+  onCapValidate?: (
+    ticket: Ticket,
+    meta?: {
+      validationApproval?: 'cap'
+      completionImages?: Array<{
+        url?: string | null
+        path?: string | null
+        meta?: { size?: number; type?: string; name?: string } | null
+      }>
+    }
+  ) => void
   canReopen: boolean
   canExternalize: boolean
   onUpdateDetails: () => void | Promise<void>
@@ -83,7 +95,16 @@ type Props = {
   onStatusChange: (
     ticket: Ticket,
     status: TicketStatus,
-    meta?: { supplierResolvedAt?: number | null; note?: string | null }
+    meta?: {
+      supplierResolvedAt?: number | null
+      note?: string | null
+      validationApproval?: 'cap'
+      completionImages?: Array<{
+        url?: string | null
+        path?: string | null
+        meta?: { size?: number; type?: string; name?: string } | null
+      }>
+    }
   ) => void
   onAssignVehicle: (
     ticket: Ticket,
@@ -115,6 +136,11 @@ type Props = {
       area: 'administracio' | 'manteniment'
       category: string
       note: string
+      completionImages?: Array<{
+        url?: string | null
+        path?: string | null
+        meta?: { size?: number; type?: string; name?: string } | null
+      }>
     }
   ) => void | Promise<void>
   onSendToPlanner?: (ticket: Ticket) => void | Promise<void>
@@ -263,6 +289,15 @@ export default function AssignTicketModal({
   )
   const [resolveOpen, setResolveOpen] = useState(false)
   const [resolveBusy, setResolveBusy] = useState(false)
+  const {
+    images: providerPendingAttachments,
+    imageCount: providerAttachmentCount,
+    imageError: providerAttachmentError,
+    handleImageChange: handleProviderAttachmentChange,
+    removeImage: removeProviderAttachment,
+    clearImages: clearProviderAttachments,
+    uploadImages: uploadProviderAttachments,
+  } = usePendingImages(3)
 
   const planningWindow = useMemo(() => {
     if (!assignDate || !assignStartTime || !assignDuration) return null
@@ -327,6 +362,53 @@ export default function AssignTicketModal({
       ).slice(0, 3),
     [ticket.imageUrl, ticket.imageUrls]
   )
+  const providerCompletionAttachments = useMemo(
+    () =>
+      Array.isArray(ticket.completionAttachments)
+        ? ticket.completionAttachments.filter((item) => item?.url || item?.path)
+        : [],
+    [ticket.completionAttachments]
+  )
+
+  const isStoredImageAttachment = (mimeType?: string | null) =>
+    String(mimeType || '')
+      .trim()
+      .toLowerCase()
+      .startsWith('image/')
+  const buildProviderAttachmentPayload = async () =>
+    providerAttachmentCount > 0 ? await uploadProviderAttachments() : []
+  const handleMarkProviderResolved = async () => {
+    try {
+      const completionImages = await buildProviderAttachmentPayload()
+      await onStatusChange(ticket, 'fet', {
+        supplierResolvedAt: supplierResolvedDate
+          ? new Date(`${supplierResolvedDate}T12:00:00`).getTime()
+          : Date.now(),
+        note: 'Resolt per proveidor',
+        completionImages,
+      })
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "No s'han pogut adjuntar els fitxers")
+    }
+  }
+  const handleProviderValidation = async () => {
+    try {
+      const completionImages = await buildProviderAttachmentPayload()
+      if (onCapValidate) {
+        await onCapValidate(ticket, {
+          validationApproval: 'cap',
+          completionImages,
+        })
+        return
+      }
+      await onStatusChange(ticket, 'validat', {
+        validationApproval: 'cap',
+        completionImages,
+      })
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "No s'han pogut adjuntar els fitxers")
+    }
+  }
 
   useEffect(() => {
     setSupplierName(String(ticket.supplierName || '').trim())
@@ -339,10 +421,11 @@ export default function AssignTicketModal({
     )
     setEmailAttachments([])
     setEmailAttachmentError('')
+    clearProviderAttachments()
     setProviderOpen(false)
     setCreateSupplierOpen(false)
   }, [
-    ticket,
+    clearProviderAttachments,
     ticket.id,
     ticket.location,
     ticket.machine,
@@ -602,6 +685,134 @@ export default function AssignTicketModal({
                 ) : null}
               </div>
 
+              {((ticket.externalized && ticket.status === 'espera' && canValidate) ||
+                ((ticket.status === 'fet' || ticket.status === 'resolut') && canCapValidateTicket)) ? (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-medium text-slate-800">
+                        {ticket.externalized ? 'Factura o adjunts del proveidor' : 'Adjunts de validacio'}
+                      </div>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {ticket.externalized
+                          ? 'Pots adjuntar fins a 3 fitxers per deixar constancia de la resolucio.'
+                          : 'Pots adjuntar fins a 3 fitxers per deixar constancia del tancament o la validacio.'}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                      {providerAttachmentCount}/3 nous
+                    </span>
+                  </div>
+
+                  {providerCompletionAttachments.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Ja pujats
+                      </div>
+                      <div className="space-y-2">
+                        {providerCompletionAttachments.map((item, index) => {
+                          const url = String(item?.url || '').trim()
+                          if (!url) return null
+
+                          return (
+                            <a
+                              key={`${url}-${index}`}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate font-medium">
+                                  {String(item?.meta?.name || `Adjunt ${index + 1}`)}
+                                </div>
+                                <div className="mt-0.5 text-xs text-slate-500">
+                                  {isStoredImageAttachment(item?.meta?.type) ? 'Foto' : 'Fitxer'}
+                                </div>
+                              </div>
+                              <span className="shrink-0 text-xs font-medium text-slate-500">Obrir</span>
+                            </a>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="flex min-h-[48px] cursor-pointer items-center justify-center rounded-2xl border border-dashed border-slate-300 px-4 text-sm font-medium text-slate-700 hover:border-indigo-300 hover:bg-indigo-50">
+                      Afegir foto
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        disabled={providerAttachmentCount >= 3}
+                        onChange={(e) => {
+                          void handleProviderAttachmentChange(e.target.files)
+                          e.currentTarget.value = ''
+                        }}
+                      />
+                    </label>
+                    <label className="flex min-h-[48px] cursor-pointer items-center justify-center rounded-2xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50">
+                      Afegir fitxer
+                      <input
+                        type="file"
+                        accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                        multiple
+                        className="hidden"
+                        disabled={providerAttachmentCount >= 3}
+                        onChange={(e) => {
+                          void handleProviderAttachmentChange(e.target.files)
+                          e.currentTarget.value = ''
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {providerAttachmentError ? (
+                    <p className="text-sm text-red-600">{providerAttachmentError}</p>
+                  ) : null}
+
+                  {providerPendingAttachments.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Pendents de pujar
+                      </div>
+                      <div className="space-y-2">
+                        {providerPendingAttachments.map((item, index) => (
+                          <div
+                            key={`${item.file.name}-${index}`}
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2"
+                          >
+                            <div className="min-w-0 flex-1 text-sm text-slate-700">
+                              <div className="truncate font-medium">{item.file.name}</div>
+                              <div className="mt-0.5 text-xs text-slate-500">
+                                {item.kind === 'image'
+                                  ? 'Foto'
+                                  : item.kind === 'video'
+                                    ? 'Video'
+                                    : 'Fitxer'}
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="icon"
+                              onClick={() => removeProviderAttachment(index)}
+                              className="h-9 w-9 shrink-0 rounded-full"
+                              aria-label={`Eliminar adjunt ${index + 1}`}
+                              title="Eliminar adjunt"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               {ticket.externalized && ticket.status === 'espera' && canValidate ? (
                 <div className="flex flex-wrap items-end gap-3">
                   <label className="text-sm text-gray-700">
@@ -615,14 +826,7 @@ export default function AssignTicketModal({
                   </label>
                   <button
                     type="button"
-                    onClick={() =>
-                      onStatusChange(ticket, 'fet', {
-                        supplierResolvedAt: supplierResolvedDate
-                          ? new Date(`${supplierResolvedDate}T12:00:00`).getTime()
-                          : Date.now(),
-                        note: 'Resolt per proveidor',
-                      })
-                    }
+                    onClick={() => void handleMarkProviderResolved()}
                     className="min-h-[44px] rounded-full border border-emerald-300 px-4 text-sm font-semibold text-emerald-700"
                   >
                     Marcar fet
@@ -652,9 +856,7 @@ export default function AssignTicketModal({
                   ) : null}
                   <button
                     type="button"
-                    onClick={() =>
-                      onCapValidate ? onCapValidate(ticket) : onStatusChange(ticket, 'validat')
-                    }
+                    onClick={() => void handleProviderValidation()}
                     className="min-h-[44px] rounded-full border border-violet-300 px-4 text-sm font-semibold text-violet-700"
                   >
                     Validar (manteniment)
@@ -1174,13 +1376,14 @@ export default function AssignTicketModal({
         ticket={ticket}
         busy={resolveBusy}
         onClose={() => setResolveOpen(false)}
-        onSubmit={async ({ category, note }) => {
+        onSubmit={async ({ category, note, completionImages }) => {
           try {
             setResolveBusy(true)
             await onResolveTicket(ticket, {
               area: resolveArea,
               category,
               note,
+              completionImages,
             })
             setResolveOpen(false)
             onClose()

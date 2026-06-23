@@ -284,6 +284,36 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       updatedById: user.id,
       updatedByName: user.name || '',
     }
+    const buildMergedCompletionAttachments = () => {
+      const newAttachments = Array.isArray(body.completionImages)
+        ? body.completionImages
+            .map((item) => ({
+              url: String(item?.url || '').trim() || null,
+              path: String(item?.path || '').trim() || null,
+              meta: item?.meta || null,
+            }))
+            .filter((item) => item.url || item.path)
+        : []
+
+      const existing = Array.isArray(current.completionAttachments)
+        ? current.completionAttachments
+            .map((item) => ({
+              url: String(item?.url || '').trim() || null,
+              path: String(item?.path || '').trim() || null,
+              meta:
+                item?.meta && typeof item.meta === 'object'
+                  ? {
+                      size: typeof item.meta.size === 'number' ? item.meta.size : undefined,
+                      type: String(item.meta.type || '').trim() || undefined,
+                      name: String(item.meta.name || '').trim() || undefined,
+                    }
+                  : null,
+            }))
+            .filter((item) => item.url || item.path)
+        : []
+
+      return { newAttachments, merged: [...existing, ...newAttachments] }
+    }
 
     let nextStatus = body.status ? normalizeStatus(body.status) : null
     const nextPriority = body.priority ? normalizePriority(body.priority) : null
@@ -599,13 +629,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       )
 
       if (Array.isArray(body.completionImages) && body.completionImages.length > 0) {
-        const newAttachments = body.completionImages
-          .map((item) => ({
-            url: String(item?.url || '').trim() || null,
-            path: String(item?.path || '').trim() || null,
-            meta: item?.meta || null,
-          }))
-          .filter((item) => item.url || item.path)
+        const { newAttachments, merged } = buildMergedCompletionAttachments()
         if (
           nextStatus === 'fet' &&
           role === 'treballador' &&
@@ -617,27 +641,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
             { status: 400 }
           )
         }
-        const existing = Array.isArray(current.completionAttachments)
-          ? current.completionAttachments
-              .map((item) => ({
-                url: String(item?.url || '').trim() || null,
-                path: String(item?.path || '').trim() || null,
-                meta:
-                  item?.meta && typeof item.meta === 'object'
-                    ? {
-                        size:
-                          typeof item.meta.size === 'number' ? item.meta.size : undefined,
-                        type: String(item.meta.type || '').trim() || undefined,
-                        name: String(item.meta.name || '').trim() || undefined,
-                      }
-                    : null,
-              }))
-              .filter((item) => item.url || item.path)
-          : []
-        const merged = [
-          ...existing,
-          ...newAttachments,
-        ]
         updates.completionAttachments = merged
       } else if (nextStatus === 'fet' && role === 'treballador' && !canManageTickets) {
         return NextResponse.json(
@@ -666,6 +669,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         updates.requiresCreatorValidation = true
       } else {
         updates.requiresCreatorValidation = false
+      }
+      if (
+        Array.isArray(body.completionImages) &&
+        body.completionImages.length > 0 &&
+        updates.completionAttachments === undefined
+      ) {
+        updates.completionAttachments = buildMergedCompletionAttachments().merged
       }
       updates.statusHistory = admin.firestore.FieldValue.arrayUnion({
         status: 'resolut',

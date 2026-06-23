@@ -380,7 +380,16 @@ export function useMaintenanceTickets() {
   const handleStatusChange = async (
     ticket: Ticket,
     status: TicketStatus,
-    meta?: { supplierResolvedAt?: number | null; note?: string | null }
+    meta?: {
+      supplierResolvedAt?: number | null
+      note?: string | null
+      validationApproval?: 'cap'
+      completionImages?: Array<{
+        url?: string | null
+        path?: string | null
+        meta?: { size?: number; type?: string; name?: string } | null
+      }>
+    }
   ) => {
     try {
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
@@ -390,6 +399,8 @@ export function useMaintenanceTickets() {
           status,
           supplierResolvedAt: meta?.supplierResolvedAt,
           statusNote: meta?.note,
+          validationApproval: meta?.validationApproval,
+          completionImages: meta?.completionImages,
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -629,6 +640,11 @@ export function useMaintenanceTickets() {
       area: 'administracio' | 'manteniment'
       category: string
       note: string
+      completionImages?: Array<{
+        url?: string | null
+        path?: string | null
+        meta?: { size?: number; type?: string; name?: string } | null
+      }>
     }
   ) => {
     try {
@@ -642,6 +658,7 @@ export function useMaintenanceTickets() {
           resolutionCategory: payload.category.trim() || null,
           resolutionNote: payload.note.trim() || null,
           statusNote: payload.note.trim() || `Resolt per ${payload.area}`,
+          completionImages: payload.completionImages,
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
