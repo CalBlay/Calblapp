@@ -8,7 +8,6 @@ import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { useSession } from 'next-auth/react'
 import ExportMenu from '@/components/export/ExportMenu'
-import { normalizeRole } from '@/lib/roles'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import MaintenancePermissionGate from '../../../components/MaintenancePermissionGate'
 
@@ -115,7 +114,6 @@ export default function PreventiusFullsFitxaPage() {
   const [activeRecordId, setActiveRecordId] = useState<string | null>(recordId)
   const { canViewPath } = useUiPermissions()
   const sessionUser = session?.user as SessionUser | undefined
-  const role = normalizeRole(sessionUser?.role || '')
   const canValidate = canViewPath('/menu/manteniment/preventius/planificador')
   const isValidated = lastRecord?.status === 'validat'
   const currentStatus = draft?.status || 'assignat'

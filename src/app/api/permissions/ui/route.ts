@@ -44,6 +44,10 @@ import {
   eventsWarehouseComandaActionBaseAccess,
 } from '@/lib/eventComandaPermissions'
 import {
+  PREPARATION_UI_PATH,
+  PREPARATION_WAREHOUSE_PERMISSION_KEYS,
+} from '@/lib/logistics/preparationPermissions'
+import {
   MAINTENANCE_TICKETS_ACTION,
   MAINTENANCE_TICKETS_DELETE_PERM,
   MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
@@ -104,6 +108,10 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/events', action: 'comanda:create' },
   { path: '/menu/events', action: 'comanda:prepare' },
   { path: '/menu/events', action: 'warehouse:comanda-only' },
+  ...PREPARATION_WAREHOUSE_PERMISSION_KEYS.map((key) => {
+    const action = key.replace(`ui:action:${PREPARATION_UI_PATH}:`, '')
+    return { path: PREPARATION_UI_PATH, action }
+  }),
   { path: INCIDENTS_UI_PATH, action: 'command-board' },
   { path: INCIDENTS_UI_PATH, action: 'meeting-minutes' },
   { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.DELETE },
@@ -385,6 +393,17 @@ export async function GET() {
     actions[EVENTS_COMANDA_PREPARE_PERM] = true
     if (effectFor(assignment, EVENTS_WAREHOUSE_COMANDA_ONLY_PERM) === 'allow') {
       actions[EVENTS_WAREHOUSE_COMANDA_ONLY_PERM] = true
+    }
+  }
+
+  if (map[PREPARATION_UI_PATH] === true) {
+    for (const key of PREPARATION_WAREHOUSE_PERMISSION_KEYS) {
+      if (effectFor(assignment, key) === 'allow') {
+        actions[key] = true
+      }
+      if (effectFor(assignment, key) === 'deny') {
+        actions[key] = false
+      }
     }
   }
 

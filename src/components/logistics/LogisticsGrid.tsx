@@ -7,7 +7,6 @@ import { format, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
 import {
   CalendarClock,
-  CheckCircle2,
   ClipboardList,
   Package,
   Plus,
@@ -32,6 +31,11 @@ import {
   WAREHOUSE_PREP_VIEW_ROLE_LABELS,
   type WarehousePrepViewRole,
 } from '@/lib/logistics/warehousePrepVisibility'
+import { computeLineProgress } from '@/lib/logistics/preparationProgress'
+import type { PreparationWarehouseCode } from '@/lib/logistics/preparationWarehouses'
+import PreparationWarehouseToggles, {
+  type AllowedPreparationWarehouse,
+} from '@/components/logistics/PreparationWarehouseToggles'
 import { cn } from '@/lib/utils'
 
 export type EditedFields = {
@@ -65,22 +69,20 @@ interface LogisticsGridProps {
   onConfirm: () => void
   onAddRow?: () => void
   onDeleteRow?: (rowId: string) => void
-  onTogglePrepared?: (rowId: string, done: boolean) => void
+  onToggleWarehousePrepared?: (
+    rowId: string,
+    warehouse: PreparationWarehouseCode,
+    done: boolean
+  ) => void
   onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
   updating: boolean
   filterRole: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
   filterModeDefault?: 'week' | 'month' | 'year' | 'day' | 'range'
   initialStart?: string
   initialEnd?: string
-}
-
-interface LogisticsGridProps {
-  onDeleteRow?: (rowId: string) => void
-  onTogglePrepared?: (rowId: string, done: boolean) => void
   locationOptions?: string[]
-  filterModeDefault?: 'week' | 'day' | 'range'
-  initialStart?: string
-  initialEnd?: string
+  allowedWarehouses?: AllowedPreparationWarehouse[]
+  showAllWarehouses?: boolean
 }
 
 function fmtDM(dateIsoOrEmpty: string) {
@@ -148,7 +150,7 @@ export default function LogisticsGrid({
   onConfirm,
   onAddRow,
   onDeleteRow,
-  onTogglePrepared,
+  onToggleWarehousePrepared,
   onWarehouseComandaClick,
   updating,
   filterRole,
@@ -156,7 +158,17 @@ export default function LogisticsGrid({
   filterModeDefault = 'week',
   initialStart,
   initialEnd,
+  allowedWarehouses = [],
+  showAllWarehouses = false,
 }: LogisticsGridProps) {
+  const displayWarehouses = showAllWarehouses
+    ? ([
+        { code: 'BODEGA' as const, label: 'Bodega' },
+        { code: 'PARAMENT' as const, label: 'Parament' },
+        { code: 'MATERIAL' as const, label: 'Material' },
+      ] satisfies AllowedPreparationWarehouse[])
+    : allowedWarehouses
+
   return (
     <div className="mt-4 w-full overflow-hidden rounded-xl border bg-white shadow-sm">
       <style>{`
@@ -189,7 +201,8 @@ export default function LogisticsGrid({
             events={rows}
             warehouseTasks={warehouseTasks}
             loading={loading}
-            onTogglePrepared={onTogglePrepared}
+            allowedWarehouses={displayWarehouses}
+            onToggleWarehousePrepared={onToggleWarehousePrepared}
             onWarehouseComandaClick={onWarehouseComandaClick}
           />
         ) : (
@@ -311,13 +324,19 @@ function WorkerGroupedView({
   events,
   warehouseTasks,
   loading,
-  onTogglePrepared,
+  allowedWarehouses,
+  onToggleWarehousePrepared,
   onWarehouseComandaClick,
 }: {
   events: LogisticsEventPrepRow[]
   warehouseTasks: LogisticsWarehousePrepRow[]
   loading: boolean
-  onTogglePrepared?: (rowId: string, done: boolean) => void
+  allowedWarehouses: AllowedPreparationWarehouse[]
+  onToggleWarehousePrepared?: (
+    rowId: string,
+    warehouse: PreparationWarehouseCode,
+    done: boolean
+  ) => void
   onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
 }) {
   const groups = useMemo(
@@ -377,14 +396,18 @@ function WorkerGroupedView({
             {orderedEvents.length > 0 && (
               <>
                 <div className="mt-2 flex flex-col gap-3 md:hidden">
-                  {orderedEvents.map((ev) => (
+                  {orderedEvents.map((ev) => {
+                    const progress = computeLineProgress(ev)
+                    return (
                     <div
                       key={ev.id}
                       className={cn(
                         'rounded-xl border p-3 shadow-sm transition-colors',
-                        ev.PreparacioFeta
+                        progress.status === 'complete'
                           ? 'border-emerald-200 bg-emerald-50/80'
-                          : 'bg-white'
+                          : progress.status === 'in_progress'
+                            ? 'border-sky-200 bg-sky-50/40'
+                            : 'bg-white'
                       )}
                     >
                       <div className="flex items-center justify-between">
@@ -398,7 +421,9 @@ function WorkerGroupedView({
                       <div
                         className={cn(
                           'mt-1 text-sm font-semibold leading-snug',
-                          ev.PreparacioFeta ? 'text-emerald-900 line-through' : 'text-slate-900'
+                          progress.status === 'complete'
+                            ? 'text-emerald-900 line-through'
+                            : 'text-slate-900'
                         )}
                       >
                         {ev.NomEvent || 'Sense nom'}
@@ -409,29 +434,20 @@ function WorkerGroupedView({
                       <div className="mt-1 text-xs text-slate-600 line-clamp-2">
                         {ev.Ubicacio || 'Sense ubicació'}
                       </div>
-                      <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-700">
-                        <span>Pax: {ev.NumPax ?? '--'}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                            Prep: {ev.PreparacioHora || '--:--'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => onTogglePrepared?.(ev.id, !ev.PreparacioFeta)}
-                            className={cn(
-                              'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition',
-                              ev.PreparacioFeta
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-slate-100 text-slate-700 hover:bg-emerald-100 hover:text-emerald-800'
-                            )}
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            {ev.PreparacioFeta ? 'Fet' : 'Marcar fet'}
-                          </button>
+                      <div className="mt-3 space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Magatzems ({progress.pct}%)
                         </div>
+                        <PreparationWarehouseToggles
+                          rowId={ev.id}
+                          completionMap={ev.PreparacioMagatzems}
+                          allowedWarehouses={allowedWarehouses}
+                          onToggle={onToggleWarehousePrepared}
+                        />
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
 
                 <div className="mt-2 hidden overflow-x-auto md:block">
@@ -444,16 +460,19 @@ function WorkerGroupedView({
                         <th className="w-16 px-3 py-2 text-left">Pax</th>
                         <th className="px-3 py-2 text-left">Ubicació</th>
                         <th className="w-28 px-3 py-2 text-left">Data event</th>
-                        <th className="w-32 px-3 py-2 text-left">Estat</th>
+                        <th className="px-3 py-2 text-left">Magatzems</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {orderedEvents.map((ev) => (
+                      {orderedEvents.map((ev) => {
+                        const progress = computeLineProgress(ev)
+                        return (
                         <tr
                           key={ev.id}
                           className={cn(
                             'border-t border-slate-200',
-                            ev.PreparacioFeta && 'bg-emerald-50/70'
+                            progress.status === 'complete' && 'bg-emerald-50/70',
+                            progress.status === 'in_progress' && 'bg-sky-50/40'
                           )}
                         >
                           <td className="px-3 py-2 text-slate-700">{ev.PreparacioHora || '--:--'}</td>
@@ -461,7 +480,9 @@ function WorkerGroupedView({
                           <td
                             className={cn(
                               'px-3 py-2 font-semibold',
-                              ev.PreparacioFeta ? 'text-emerald-900 line-through' : 'text-slate-800'
+                              progress.status === 'complete'
+                                ? 'text-emerald-900 line-through'
+                                : 'text-slate-800'
                             )}
                           >
                             {ev.NomEvent || 'Sense nom'}
@@ -472,22 +493,19 @@ function WorkerGroupedView({
                             {ev.DataInici ? formatDayMonthValue(ev.DataInici, '--/--') : '--/--'}
                           </td>
                           <td className="px-3 py-2">
-                            <button
-                              type="button"
-                              onClick={() => onTogglePrepared?.(ev.id, !ev.PreparacioFeta)}
-                              className={cn(
-                                'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition',
-                                ev.PreparacioFeta
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-slate-100 text-slate-700 hover:bg-emerald-100 hover:text-emerald-800'
-                              )}
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              {ev.PreparacioFeta ? 'Fet' : 'Marcar fet'}
-                            </button>
+                            <div className="mb-1 text-[10px] font-semibold text-slate-500">
+                              {progress.pct}%
+                            </div>
+                            <PreparationWarehouseToggles
+                              rowId={ev.id}
+                              completionMap={ev.PreparacioMagatzems}
+                              allowedWarehouses={allowedWarehouses}
+                              onToggle={onToggleWarehousePrepared}
+                            />
                           </td>
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>

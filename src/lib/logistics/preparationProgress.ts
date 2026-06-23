@@ -1,60 +1,72 @@
 import type { LogisticsEventPrepRow } from '@/lib/logistics/prepTypes'
+import {
+  countCompletedWarehouses,
+  isPreparationLineComplete,
+  normalizePreparationWarehouseMap,
+  preparationLinePct,
+} from '@/lib/logistics/preparationMagatzem'
+import {
+  PREPARATION_WAREHOUSE_CODES,
+  PREPARATION_WAREHOUSE_LABELS,
+  type PreparationWarehouseCode,
+} from '@/lib/logistics/preparationWarehouses'
 
 export type PrepLineStatus = 'unscheduled' | 'not_started' | 'in_progress' | 'complete'
 
 export type PrepLineProgress = {
   row: LogisticsEventPrepRow
   status: PrepLineStatus
-  /** 0–100: fracció de preparadors que han registrat la línia */
   pct: number
-  /** Preparadors que han registrat (segons dades disponibles: 0 o 1) */
-  registeredCount: number
+  completedWarehouses: PreparationWarehouseCode[]
+  warehouseMap: ReturnType<typeof normalizePreparationWarehouseMap>
 }
 
-export function computeLineProgress(
-  row: LogisticsEventPrepRow,
-  preparadorCount: number
-): PrepLineProgress {
+export type WarehouseProgressSummary = {
+  warehouse: PreparationWarehouseCode
+  label: string
+  doneCount: number
+  plannedCount: number
+  pct: number
+}
+
+export function computeLineProgress(row: LogisticsEventPrepRow): PrepLineProgress {
+  const warehouseMap = normalizePreparationWarehouseMap(row.PreparacioMagatzems)
+  const completedWarehouses = PREPARATION_WAREHOUSE_CODES.filter((warehouse) =>
+    Boolean(warehouseMap[warehouse]?.at)
+  )
+
   if (!row.PreparacioData || !row.PreparacioHora) {
-    return { row, status: 'unscheduled', pct: 0, registeredCount: 0 }
+    return { row, status: 'unscheduled', pct: 0, completedWarehouses, warehouseMap }
   }
 
-  const teamSize = Math.max(1, preparadorCount)
-  const registeredCount = row.PreparacioFeta ? 1 : 0
-
-  if (registeredCount === 0) {
-    return { row, status: 'not_started', pct: 0, registeredCount: 0 }
+  const pct = preparationLinePct(warehouseMap)
+  if (completedWarehouses.length === 0) {
+    return { row, status: 'not_started', pct: 0, completedWarehouses, warehouseMap }
   }
-
-  const pct = Math.round((registeredCount / teamSize) * 100)
-
-  if (pct >= 100) {
-    return { row, status: 'complete', pct: 100, registeredCount }
+  if (isPreparationLineComplete(warehouseMap)) {
+    return { row, status: 'complete', pct: 100, completedWarehouses, warehouseMap }
   }
-
-  return { row, status: 'in_progress', pct, registeredCount }
+  return { row, status: 'in_progress', pct, completedWarehouses, warehouseMap }
 }
 
 export type PreparationProgressSummary = {
-  preparadorCount: number
   totalCount: number
   plannedCount: number
   completeCount: number
   inProgressCount: number
   notStartedCount: number
   unscheduledCount: number
-  /** Mitjana del % de cada línia planificada */
   averageCompletionPct: number
+  warehouseSummaries: WarehouseProgressSummary[]
   lines: PrepLineProgress[]
   plannedLines: PrepLineProgress[]
 }
 
 export function computePreparationProgressSummary(
-  rows: LogisticsEventPrepRow[],
-  preparadorCount: number
+  rows: LogisticsEventPrepRow[]
 ): PreparationProgressSummary {
   const persistedRows = rows.filter((row) => !row.id.startsWith('draft_'))
-  const lines = persistedRows.map((row) => computeLineProgress(row, preparadorCount))
+  const lines = persistedRows.map((row) => computeLineProgress(row))
 
   const plannedLines = lines.filter((line) => line.status !== 'unscheduled')
   const completeLines = lines.filter((line) => line.status === 'complete')
@@ -66,15 +78,32 @@ export function computePreparationProgressSummary(
     ? Math.round(plannedLines.reduce((sum, line) => sum + line.pct, 0) / plannedLines.length)
     : 0
 
+  const plannedCount = plannedLines.length
+  const warehouseSummaries: WarehouseProgressSummary[] = PREPARATION_WAREHOUSE_CODES.map(
+    (warehouse) => {
+      const doneCount = plannedLines.filter((line) =>
+        Boolean(line.warehouseMap[warehouse]?.at)
+      ).length
+      const pct = plannedCount ? Math.round((doneCount / plannedCount) * 100) : 0
+      return {
+        warehouse,
+        label: PREPARATION_WAREHOUSE_LABELS[warehouse],
+        doneCount,
+        plannedCount,
+        pct,
+      }
+    }
+  )
+
   return {
-    preparadorCount: Math.max(1, preparadorCount),
     totalCount: persistedRows.length,
-    plannedCount: plannedLines.length,
+    plannedCount,
     completeCount: completeLines.length,
     inProgressCount: inProgressLines.length,
     notStartedCount: notStartedLines.length,
     unscheduledCount: unscheduledLines.length,
     averageCompletionPct,
+    warehouseSummaries,
     lines,
     plannedLines,
   }
@@ -83,7 +112,7 @@ export function computePreparationProgressSummary(
 export function statusLabel(status: PrepLineStatus, pct: number): string {
   switch (status) {
     case 'complete':
-      return 'Completada'
+      return 'Completada (100%)'
     case 'in_progress':
       return `En curs (${pct}%)`
     case 'not_started':
@@ -92,3 +121,5 @@ export function statusLabel(status: PrepLineStatus, pct: number): string {
       return 'Sense planificar'
   }
 }
+
+export { countCompletedWarehouses, preparationLinePct }

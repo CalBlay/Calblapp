@@ -3,6 +3,11 @@ import {
   EVENTS_COMANDA_CREATE_PERM,
   EVENTS_COMANDA_PREPARE_PERM,
 } from '@/lib/eventComandaPermissions'
+import {
+  PREPARATION_UI_PATH,
+  PREPARATION_WAREHOUSE_PERMISSION_KEYS,
+} from '@/lib/logistics/preparationPermissions'
+import { PREPARATION_WAREHOUSE_LABELS } from '@/lib/logistics/preparationWarehouses'
 import { INCIDENTS_COMMAND_BOARD_PERM, INCIDENTS_MEETING_MINUTES_PERM } from '@/lib/incidentsPermissions'
 import {
   MAINTENANCE_TICKETS_DELETE_PERM,
@@ -141,6 +146,22 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
         label: 'Preparar comandes (magatzem assignat)',
       },
     ],
+  },
+  {
+    id: 'logisticsPreparationWarehouses',
+    title: 'Logística · Preparació · Magatzems',
+    subtitle:
+      'Assigna un o més magatzems (Bodega, Parament, Material) per marcar preparacions com a fetes.',
+    visibleWhen: { path: PREPARATION_UI_PATH },
+    requireViewOnly: true,
+    actions: PREPARATION_WAREHOUSE_PERMISSION_KEYS.map((key) => {
+      const warehouse = key.split(':').pop() || ''
+      const label =
+        PREPARATION_WAREHOUSE_LABELS[
+          warehouse as keyof typeof PREPARATION_WAREHOUSE_LABELS
+        ] || warehouse
+      return { key, label }
+    }),
   },
   {
     id: 'reservaComercialsActions',

@@ -69,7 +69,7 @@ export default function PlannerSidebar({
   const externalizedTickets = useMemo(() => {
     if (tab === 'externalized') return visibleItems as TicketCard[]
     return []
-  }, [externalizedItems, tab, visibleItems])
+  }, [tab, visibleItems])
 
   const scheduledPreventiusOnCalendar = useMemo(() => {
     if (tab !== 'preventius') return []

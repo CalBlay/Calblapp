@@ -3,6 +3,7 @@ import { getToken } from 'next-auth/jwt'
 import { subDays, isMonday } from 'date-fns'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { listWarehousePrepTasksForUser } from '@/lib/logistics/warehousePrepTasks.server'
+import { normalizePreparationWarehouseMap } from '@/lib/logistics/preparationMagatzem'
 import { normalizeRole } from '@/lib/roles'
 
 export const runtime = 'nodejs'
@@ -30,6 +31,7 @@ type RawEvent = {
   PreparacioFetaPerUserId?: string
   PreparacioFetaPerNom?: string
   PreparacioFetaAt?: string
+  PreparacioMagatzems?: Record<string, { userId?: string; userName?: string; at?: string }>
 }
 
 type LogisticsEvent = {
@@ -47,6 +49,7 @@ type LogisticsEvent = {
   PreparacioFetaPerUserId: string
   PreparacioFetaPerNom: string
   PreparacioFetaAt: string
+  PreparacioMagatzems: ReturnType<typeof normalizePreparationWarehouseMap>
 }
 
 const isIsoDate = (value?: string | null) =>
@@ -252,6 +255,7 @@ export async function GET(req: NextRequest) {
         PreparacioFetaPerUserId: String(ev.PreparacioFetaPerUserId ?? '').trim(),
         PreparacioFetaPerNom: String(ev.PreparacioFetaPerNom ?? '').trim(),
         PreparacioFetaAt: String(ev.PreparacioFetaAt ?? '').trim(),
+        PreparacioMagatzems: normalizePreparationWarehouseMap(ev.PreparacioMagatzems),
       })
     })
 

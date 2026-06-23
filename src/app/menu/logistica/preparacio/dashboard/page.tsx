@@ -7,9 +7,7 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { RoleGuard } from '@/lib/withRoleGuard'
-import PreparationProgressDashboard, {
-  type PreparationEligibleUser,
-} from '@/components/logistics/PreparationProgressDashboard'
+import PreparationProgressDashboard from '@/components/logistics/PreparationProgressDashboard'
 import { useLogisticsData } from '@/hooks/useLogisticsData'
 import type { LogisticsEventPrepRow } from '@/lib/logistics/prepTypes'
 import {
@@ -25,7 +23,6 @@ export default function PreparationDashboardPage() {
   const searchParams = useSearchParams()
   const { data: session } = useSession()
   const role = (session?.user?.role || '').toLowerCase()
-  const isManager = role === 'cap' || role === 'admin' || role === 'direccio'
 
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(() =>
     parseDateRangeFromSearch(searchParams, buildDefaultWeekRange())
@@ -33,7 +30,6 @@ export default function PreparationDashboardPage() {
   const [filterMode, setFilterMode] = useState<PreparationFilterMode>(() =>
     parseFilterMode(searchParams.get('mode'))
   )
-  const [eligibleUsers, setEligibleUsers] = useState<PreparationEligibleUser[]>([])
   const { events, loading } = useLogisticsData(dateRange)
 
   useEffect(() => {
@@ -49,37 +45,6 @@ export default function PreparationDashboardPage() {
       setFilterMode(f.mode)
     }
   }, [])
-
-  useEffect(() => {
-    if (!isManager) {
-      setEligibleUsers([])
-      return
-    }
-
-    let ignore = false
-
-    const loadEligibleUsers = async () => {
-      try {
-        const res = await fetch('/api/logistics/preparation-users', { cache: 'no-store' })
-        const json = (await res.json().catch(() => null)) as
-          | { ok?: boolean; users?: PreparationEligibleUser[] }
-          | null
-        if (!res.ok || !json?.ok) throw new Error('No s’han pogut carregar els preparadors')
-        if (!ignore) {
-          setEligibleUsers(Array.isArray(json.users) ? json.users : [])
-        }
-      } catch (error) {
-        console.error('Error carregant preparadors de logística:', error)
-        if (!ignore) setEligibleUsers([])
-      }
-    }
-
-    void loadEligibleUsers()
-
-    return () => {
-      ignore = true
-    }
-  }, [isManager])
 
   const rows = useMemo<LogisticsEventPrepRow[]>(() => {
     return [...events].sort((a, b) => {
@@ -139,11 +104,7 @@ export default function PreparationDashboardPage() {
                 Carregant dades del dashboard...
               </div>
             ) : (
-              <PreparationProgressDashboard
-                rows={rows}
-                dateRange={dateRange}
-                eligibleUsers={eligibleUsers}
-              />
+              <PreparationProgressDashboard rows={rows} dateRange={dateRange} />
             )}
           </div>
         </div>

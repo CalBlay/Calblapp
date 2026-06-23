@@ -18,7 +18,6 @@ import {
 } from '@/components/layout/corporate-filters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
-import { normalizeRole } from '@/lib/roles'
 import {
   MAINTENANCE_TICKETS_DELETE_PERM,
   MAINTENANCE_TICKETS_INBOX_PERM,
@@ -133,9 +132,6 @@ export default function MaintenanceTicketsPage() {
   const canViewPlanner = isPathAllowed(MAINTENANCE_PLANNER_PATH)
   const sessionUser = (session?.user || {}) as SessionUser
   const department = normalizeDept(sessionUser.department || '')
-  const userRole = normalizeRole(sessionUser.role || '')
-  const isMaintenance = department === 'manteniment'
-  const isMaintenanceWorker = userRole === 'treballador' && isMaintenance
   const isOwnTicketsOnly = isMaintenanceTicketCreatorOnlyUser(sessionUser)
   const canManageInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
   const canDeleteAnyTicket = hasAction(MAINTENANCE_TICKETS_DELETE_PERM)

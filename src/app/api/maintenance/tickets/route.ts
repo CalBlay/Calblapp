@@ -231,7 +231,6 @@ export async function GET(req: Request) {
   const user = auth.user as SessionUser
   const role = auth.role
   const sessionName = normalizeName(user.name || '')
-  const deptRaw = (user.department || '').toString()
 
   const { searchParams } = new URL(req.url)
   const status = (searchParams.get('status') || 'all').toLowerCase()

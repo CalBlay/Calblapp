@@ -105,7 +105,6 @@ async function notifyTaskOwnerAssignment(params: {
     taskId,
     taskName,
     deadline,
-    baseUrl,
     senderEmail,
   } = params
   const title = "T'han assignat una tasca"

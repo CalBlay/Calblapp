@@ -182,7 +182,7 @@ async function notifyProjectOwner(params: {
   projectName: string
   baseUrl: string
 }) {
-  const { userId, projectId, projectName, baseUrl } = params
+  const { userId, projectId, projectName } = params
   const title = "T'han assignat un projecte"
   const body = `Ara ets responsable del projecte: ${projectName || 'Projecte'}`
   const now = Date.now()
@@ -239,7 +239,6 @@ async function notifyBlockOwnerAssignment(params: {
     blockId,
     blockName,
     deadline,
-    baseUrl,
     senderEmail,
   } = params
   const title = "T'han assignat un bloc"
@@ -335,7 +334,6 @@ async function notifyTaskOwnerAssignment(params: {
     taskId,
     taskName,
     deadline,
-    baseUrl,
     senderEmail,
   } = params
   const title = "T'han assignat una tasca"

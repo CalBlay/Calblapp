@@ -29,25 +29,10 @@ import {
 } from '@/lib/logistics/preparationFilters'
 import type { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import type { EditedMap } from '@/components/logistics/LogisticsGrid'
+import type { AllowedPreparationWarehouse } from '@/components/logistics/PreparationWarehouseToggles'
+import type { PreparationWarehouseCode } from '@/lib/logistics/preparationWarehouses'
 import { BarChart3, Truck } from 'lucide-react'
 import { formatDateOnly, formatDayMonthValue } from '@/lib/date-format'
-
-function parseDM(value: string) {
-  const m = /^(\d{1,2})\/(\d{1,2})$/.exec(value?.trim() || '')
-  if (!m) return null
-  const d = Number(m[1])
-  const mm = Number(m[2])
-  if (d < 1 || d > 31 || mm < 1 || mm > 12) return null
-  return { d, m: mm }
-}
-
-function toISOFromDM(dm: string, year: number) {
-  const p = parseDM(dm)
-  if (!p) return ''
-  const dd = String(p.d).padStart(2, '0')
-  const mm = String(p.m).padStart(2, '0')
-  return `${year}-${mm}-${dd}`
-}
 
 interface PreparationExportRow {
   PreparacioData: string
@@ -92,6 +77,32 @@ export default function LogisticsPage() {
   const [edited, setEdited] = useState<EditedMap>({})
   const [manualRows, setManualRows] = useState<LogisticsEventPrepRow[]>([])
   const [locationOptions, setLocationOptions] = useState<string[]>([])
+  const [allowedWarehouses, setAllowedWarehouses] = useState<AllowedPreparationWarehouse[]>([])
+
+  useEffect(() => {
+    let ignore = false
+
+    const loadWarehouses = async () => {
+      try {
+        const res = await fetch('/api/logistics/preparation-warehouses', { cache: 'no-store' })
+        const json = (await res.json().catch(() => null)) as
+          | { ok?: boolean; warehouses?: AllowedPreparationWarehouse[] }
+          | null
+        if (!res.ok || !json?.ok) return
+        if (!ignore) {
+          setAllowedWarehouses(Array.isArray(json.warehouses) ? json.warehouses : [])
+        }
+      } catch (error) {
+        console.error('Error carregant magatzems de preparació:', error)
+      }
+    }
+
+    void loadWarehouses()
+
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   useEffect(() => {
     let ignore = false
@@ -243,33 +254,36 @@ export default function LogisticsPage() {
     }
   }, [refresh])
 
-  const handleTogglePrepared = useCallback(async (rowId: string, done: boolean) => {
-    if (!rowId || rowId.startsWith('draft_')) return
+  const handleToggleWarehousePrepared = useCallback(
+    async (rowId: string, warehouse: PreparationWarehouseCode, done: boolean) => {
+      if (!rowId || rowId.startsWith('draft_')) return
 
-    setUpdating(true)
-    try {
-      const res = await fetch(`/api/logistics/${encodeURIComponent(rowId)}/complete`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ done }),
-      })
-      const payload = (await res.json().catch(() => null)) as { error?: string } | null
-      if (!res.ok) {
-        throw new Error(payload?.error || 'No s’ha pogut actualitzar l’estat de la preparació')
+      setUpdating(true)
+      try {
+        const res = await fetch(`/api/logistics/${encodeURIComponent(rowId)}/complete`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ warehouse, done }),
+        })
+        const payload = (await res.json().catch(() => null)) as { error?: string } | null
+        if (!res.ok) {
+          throw new Error(payload?.error || 'No s’ha pogut actualitzar l’estat de la preparació')
+        }
+
+        await refresh()
+      } catch (error) {
+        console.error('Error actualitzant estat de preparació:', error)
+        alert(
+          error instanceof Error
+            ? error.message
+            : 'No s’ha pogut actualitzar l’estat de la preparació.'
+        )
+      } finally {
+        setUpdating(false)
       }
-
-      await refresh()
-    } catch (error) {
-      console.error('Error actualitzant estat de preparació:', error)
-      alert(
-        error instanceof Error
-          ? error.message
-          : 'No s’ha pogut actualitzar l’estat de la preparació.'
-      )
-    } finally {
-      setUpdating(false)
-    }
-  }, [refresh])
+    },
+    [refresh]
+  )
 
   const handleConfirm = async () => {
     const ids = Object.keys(edited)
@@ -525,11 +539,13 @@ export default function LogisticsPage() {
           onConfirm={handleConfirm}
           onAddRow={handleAddRow}
           onDeleteRow={handleDeleteRow}
-          onTogglePrepared={handleTogglePrepared}
+          onToggleWarehousePrepared={handleToggleWarehousePrepared}
           onWarehouseComandaClick={handleWarehouseComandaClick}
           updating={updating}
           filterRole={parseRoleForPreparationFilters(role)}
           locationOptions={locationOptions}
+          allowedWarehouses={allowedWarehouses}
+          showAllWarehouses={isManager}
           filterModeDefault={isWorker ? 'day' : filterMode}
           initialStart={dateRange?.start}
           initialEnd={dateRange?.end}

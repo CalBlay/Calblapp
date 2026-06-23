@@ -424,19 +424,7 @@ export default function AssignTicketModal({
     clearProviderAttachments()
     setProviderOpen(false)
     setCreateSupplierOpen(false)
-  }, [
-    clearProviderAttachments,
-    ticket.id,
-    ticket.location,
-    ticket.machine,
-    ticket.description,
-    ticket.operatorTitle,
-    ticket.ticketCode,
-    ticket.incidentNumber,
-    ticket.supplierName,
-    ticket.supplierEmail,
-    ticket.externalReference,
-  ])
+  }, [clearProviderAttachments, ticket])
 
   useEffect(() => {
     if (providerBlockedByInternal && providerOpen) {

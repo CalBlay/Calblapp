@@ -1,4 +1,15 @@
 import type { WarehousePrepViewRole } from '@/lib/logistics/warehousePrepVisibility'
+import type { PreparationWarehouseCode } from '@/lib/logistics/preparationWarehouses'
+
+export type PreparationWarehouseCompletion = {
+  userId: string
+  userName: string
+  at: string
+}
+
+export type PreparationWarehouseCompletionMap = Partial<
+  Record<PreparationWarehouseCode, PreparationWarehouseCompletion>
+>
 
 export type LogisticsEventPrepRow = {
   rowType: 'event'
@@ -12,10 +23,15 @@ export type LogisticsEventPrepRow = {
   HoraInici?: string
   PreparacioData?: string
   PreparacioHora?: string
+  /** @deprecated Usa PreparacioMagatzems */
   PreparacioFeta?: boolean
+  /** @deprecated Usa PreparacioMagatzems */
   PreparacioFetaPerUserId?: string
+  /** @deprecated Usa PreparacioMagatzems */
   PreparacioFetaPerNom?: string
+  /** @deprecated Usa PreparacioMagatzems */
   PreparacioFetaAt?: string
+  PreparacioMagatzems?: PreparationWarehouseCompletionMap
 }
 
 export type LogisticsWarehousePrepRow = {
