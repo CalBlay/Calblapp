@@ -12,6 +12,10 @@ export type LogisticsEventPrepRow = {
   HoraInici?: string
   PreparacioData?: string
   PreparacioHora?: string
+  PreparacioFeta?: boolean
+  PreparacioFetaPerUserId?: string
+  PreparacioFetaPerNom?: string
+  PreparacioFetaAt?: string
 }
 
 export type LogisticsWarehousePrepRow = {

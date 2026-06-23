@@ -26,6 +26,10 @@ type RawEvent = {
   HoraInici?: string
   PreparacioData?: string
   PreparacioHora?: string
+  PreparacioFeta?: boolean
+  PreparacioFetaPerUserId?: string
+  PreparacioFetaPerNom?: string
+  PreparacioFetaAt?: string
 }
 
 type LogisticsEvent = {
@@ -39,6 +43,10 @@ type LogisticsEvent = {
   HoraInici: string
   PreparacioData: string
   PreparacioHora: string
+  PreparacioFeta: boolean
+  PreparacioFetaPerUserId: string
+  PreparacioFetaPerNom: string
+  PreparacioFetaAt: string
 }
 
 const isIsoDate = (value?: string | null) =>
@@ -240,6 +248,10 @@ export async function GET(req: NextRequest) {
         HoraInici: horaInici,
         PreparacioData: ev.PreparacioData ?? '',
         PreparacioHora: ev.PreparacioHora ?? '',
+        PreparacioFeta: Boolean(ev.PreparacioFeta),
+        PreparacioFetaPerUserId: String(ev.PreparacioFetaPerUserId ?? '').trim(),
+        PreparacioFetaPerNom: String(ev.PreparacioFetaPerNom ?? '').trim(),
+        PreparacioFetaAt: String(ev.PreparacioFetaAt ?? '').trim(),
       })
     })
 

@@ -5,7 +5,15 @@ import { useMemo } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
-import { CalendarClock, ClipboardList, Package, Plus, RefreshCcw, Trash2 } from 'lucide-react'
+import {
+  CalendarClock,
+  CheckCircle2,
+  ClipboardList,
+  Package,
+  Plus,
+  RefreshCcw,
+  Trash2,
+} from 'lucide-react'
 import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { formatDayMonthValue } from '@/lib/date-format'
 import {
@@ -57,14 +65,22 @@ interface LogisticsGridProps {
   onConfirm: () => void
   onAddRow?: () => void
   onDeleteRow?: (rowId: string) => void
+  onTogglePrepared?: (rowId: string, done: boolean) => void
   onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
   updating: boolean
   filterRole: 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador'
+  filterModeDefault?: 'week' | 'month' | 'year' | 'day' | 'range'
+  initialStart?: string
+  initialEnd?: string
 }
 
 interface LogisticsGridProps {
   onDeleteRow?: (rowId: string) => void
+  onTogglePrepared?: (rowId: string, done: boolean) => void
   locationOptions?: string[]
+  filterModeDefault?: 'week' | 'day' | 'range'
+  initialStart?: string
+  initialEnd?: string
 }
 
 function fmtDM(dateIsoOrEmpty: string) {
@@ -132,10 +148,14 @@ export default function LogisticsGrid({
   onConfirm,
   onAddRow,
   onDeleteRow,
+  onTogglePrepared,
   onWarehouseComandaClick,
   updating,
   filterRole,
   locationOptions = [],
+  filterModeDefault = 'week',
+  initialStart,
+  initialEnd,
 }: LogisticsGridProps) {
   return (
     <div className="mt-4 w-full overflow-hidden rounded-xl border bg-white shadow-sm">
@@ -151,12 +171,14 @@ export default function LogisticsGrid({
           <SmartFilters
             role={filterRole}
             showStatus={false}
-            modeDefault="week"
+            modeDefault={filterModeDefault}
             onChange={onFilterChange}
             showDepartment={false}
             showWorker={false}
             showLocation={false}
             showAdvanced={false}
+            initialStart={initialStart}
+            initialEnd={initialEnd}
           />
         </div>
       </div>
@@ -167,6 +189,7 @@ export default function LogisticsGrid({
             events={rows}
             warehouseTasks={warehouseTasks}
             loading={loading}
+            onTogglePrepared={onTogglePrepared}
             onWarehouseComandaClick={onWarehouseComandaClick}
           />
         ) : (
@@ -288,11 +311,13 @@ function WorkerGroupedView({
   events,
   warehouseTasks,
   loading,
+  onTogglePrepared,
   onWarehouseComandaClick,
 }: {
   events: LogisticsEventPrepRow[]
   warehouseTasks: LogisticsWarehousePrepRow[]
   loading: boolean
+  onTogglePrepared?: (rowId: string, done: boolean) => void
   onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
 }) {
   const groups = useMemo(
@@ -353,7 +378,15 @@ function WorkerGroupedView({
               <>
                 <div className="mt-2 flex flex-col gap-3 md:hidden">
                   {orderedEvents.map((ev) => (
-                    <div key={ev.id} className="rounded-xl border bg-white p-3 shadow-sm">
+                    <div
+                      key={ev.id}
+                      className={cn(
+                        'rounded-xl border p-3 shadow-sm transition-colors',
+                        ev.PreparacioFeta
+                          ? 'border-emerald-200 bg-emerald-50/80'
+                          : 'bg-white'
+                      )}
+                    >
                       <div className="flex items-center justify-between">
                         <div className="text-sm font-semibold text-slate-900">
                           {ev.PreparacioHora || '--:--'}
@@ -362,7 +395,12 @@ function WorkerGroupedView({
                           {ev.DataInici ? formatDayMonthValue(ev.DataInici, '--/--') : '--/--'}
                         </div>
                       </div>
-                      <div className="mt-1 text-sm font-semibold leading-snug text-slate-900">
+                      <div
+                        className={cn(
+                          'mt-1 text-sm font-semibold leading-snug',
+                          ev.PreparacioFeta ? 'text-emerald-900 line-through' : 'text-slate-900'
+                        )}
+                      >
                         {ev.NomEvent || 'Sense nom'}
                       </div>
                       <div className="mt-1 text-xs font-medium text-slate-500">
@@ -371,11 +409,26 @@ function WorkerGroupedView({
                       <div className="mt-1 text-xs text-slate-600 line-clamp-2">
                         {ev.Ubicacio || 'Sense ubicació'}
                       </div>
-                      <div className="mt-2 flex items-center justify-between text-xs text-slate-700">
+                      <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-700">
                         <span>Pax: {ev.NumPax ?? '--'}</span>
-                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                          Prep: {ev.PreparacioHora || '--:--'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                            Prep: {ev.PreparacioHora || '--:--'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => onTogglePrepared?.(ev.id, !ev.PreparacioFeta)}
+                            className={cn(
+                              'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition',
+                              ev.PreparacioFeta
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-slate-100 text-slate-700 hover:bg-emerald-100 hover:text-emerald-800'
+                            )}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            {ev.PreparacioFeta ? 'Fet' : 'Marcar fet'}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -391,20 +444,47 @@ function WorkerGroupedView({
                         <th className="w-16 px-3 py-2 text-left">Pax</th>
                         <th className="px-3 py-2 text-left">Ubicació</th>
                         <th className="w-28 px-3 py-2 text-left">Data event</th>
+                        <th className="w-32 px-3 py-2 text-left">Estat</th>
                       </tr>
                     </thead>
                     <tbody>
                       {orderedEvents.map((ev) => (
-                        <tr key={ev.id} className="border-t border-slate-200">
+                        <tr
+                          key={ev.id}
+                          className={cn(
+                            'border-t border-slate-200',
+                            ev.PreparacioFeta && 'bg-emerald-50/70'
+                          )}
+                        >
                           <td className="px-3 py-2 text-slate-700">{ev.PreparacioHora || '--:--'}</td>
                           <td className="px-3 py-2 text-slate-700">{ev.EventCode || '-'}</td>
-                          <td className="px-3 py-2 font-semibold text-slate-800">
+                          <td
+                            className={cn(
+                              'px-3 py-2 font-semibold',
+                              ev.PreparacioFeta ? 'text-emerald-900 line-through' : 'text-slate-800'
+                            )}
+                          >
                             {ev.NomEvent || 'Sense nom'}
                           </td>
                           <td className="px-3 py-2 text-slate-700">{ev.NumPax ?? '--'}</td>
                           <td className="px-3 py-2 text-slate-700">{ev.Ubicacio || 'Sense ubicació'}</td>
                           <td className="px-3 py-2 text-slate-700">
                             {ev.DataInici ? formatDayMonthValue(ev.DataInici, '--/--') : '--/--'}
+                          </td>
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => onTogglePrepared?.(ev.id, !ev.PreparacioFeta)}
+                              className={cn(
+                                'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition',
+                                ev.PreparacioFeta
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-slate-100 text-slate-700 hover:bg-emerald-100 hover:text-emerald-800'
+                              )}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              {ev.PreparacioFeta ? 'Fet' : 'Marcar fet'}
+                            </button>
                           </td>
                         </tr>
                       ))}

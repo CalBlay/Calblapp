@@ -159,56 +159,44 @@ export default function SmartFilters({
   const [dayStr, setDayStr] = useState<string>(toIso(new Date()))
   const [rangeStartStr, setRangeStartStr] = useState<string>('')
   const [rangeEndStr, setRangeEndStr] = useState<string>('')
-// 🔹 Inicialitza automàticament el mode i les dates si venen donades per props
-const didInitRef = useRef(false)
+// 🔹 Sincronitza mode i dates quan venen controlades des de fora
+const lastExternalSyncRef = useRef<string>('')
 useEffect(() => {
-  if (didInitRef.current) return
-  if (initialStart && initialEnd) {
-    const parsedStart = parseISO(initialStart)
+  if (!initialStart || !initialEnd) return
 
-    if (modeDefault === 'week') {
-      setMode('week')
-      setAnchor(parsedStart)
-      setDayStr(initialStart)
-      setRangeStartStr(initialStart)
-      setRangeEndStr(initialEnd)
-      didInitRef.current = true
-      return
-    }
+  const syncKey = `${modeDefault}|${initialStart}|${initialEnd}`
+  if (lastExternalSyncRef.current === syncKey) return
+  lastExternalSyncRef.current = syncKey
 
-    if (modeDefault === 'month') {
-      setMode('month')
-      setAnchor(parsedStart)
-      setDayStr(initialStart)
-      setRangeStartStr(initialStart)
-      setRangeEndStr(initialEnd)
-      didInitRef.current = true
-      return
-    }
+  const parsedStart = parseISO(initialStart)
+  if (!isValid(parsedStart)) return
 
-    if (modeDefault === 'year') {
-      setMode('year')
-      setAnchor(parsedStart)
-      setDayStr(initialStart)
-      setRangeStartStr(initialStart)
-      setRangeEndStr(initialEnd)
-      didInitRef.current = true
-      return
-    }
+  setAnchor(parsedStart)
+  setDayStr(initialStart)
+  setRangeStartStr(initialStart)
+  setRangeEndStr(initialEnd)
 
-    if (initialStart === initialEnd) {
-      setMode('day')
-      setDayStr(initialStart)
-      setAnchor(parsedStart)
-      didInitRef.current = true
-      return
-    }
-
-    setMode('range')
-    setRangeStartStr(initialStart)
-    setRangeEndStr(initialEnd)
-    didInitRef.current = true
+  if (initialStart === initialEnd || modeDefault === 'day') {
+    setMode('day')
+    return
   }
+
+  if (modeDefault === 'range') {
+    setMode('range')
+    return
+  }
+
+  if (modeDefault === 'month') {
+    setMode('month')
+    return
+  }
+
+  if (modeDefault === 'year') {
+    setMode('year')
+    return
+  }
+
+  setMode('week')
 }, [initialStart, initialEnd, modeDefault])
 
 
@@ -636,20 +624,36 @@ if (key !== lastPayloadRef.current) {
         variant={mode === opt ? 'secondary' : 'ghost'}
         className="px-3"
         onClick={() => {
+          const currentVisibleStart =
+            mode === 'day'
+              ? dayStr
+              : mode === 'range'
+                ? rangeStartStr
+                : mode === 'month'
+                  ? toIso(monthStart)
+                  : mode === 'year'
+                    ? toIso(yearStart)
+                    : toIso(weekStart)
+
           setMode(opt)
           // 🔹 Reiniciem estats segons el mode
           if (opt === 'week' || opt === 'month' || opt === 'year') {
-            setAnchor(new Date())
-            setDayStr(toIso(new Date()))
+            const nextAnchor = parseISO(currentVisibleStart)
+            setAnchor(isValid(nextAnchor) ? nextAnchor : new Date())
+            setDayStr(currentVisibleStart || toIso(new Date()))
             setRangeStartStr('')
             setRangeEndStr('')
           }
           if (opt === 'day') {
+            setDayStr(currentVisibleStart || toIso(new Date()))
+            const nextAnchor = parseISO(currentVisibleStart || toIso(new Date()))
+            if (isValid(nextAnchor)) setAnchor(nextAnchor)
             setRangeStartStr('')
             setRangeEndStr('')
           }
           if (opt === 'range') {
-            setDayStr(toIso(new Date()))
+            setRangeStartStr(currentVisibleStart || toIso(new Date()))
+            setRangeEndStr(currentVisibleStart || toIso(new Date()))
           }
         }}
       >

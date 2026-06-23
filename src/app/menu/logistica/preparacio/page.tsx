@@ -1,12 +1,14 @@
 ﻿// file: src/app/menu/logistica/preparacio/page.tsx
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { useSession } from 'next-auth/react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import ExportMenu from '@/components/export/ExportMenu'
+import { Button } from '@/components/ui/button'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { LogisticsGrid } from '@/components/logistics'
 import { useLogisticsData } from '@/hooks/useLogisticsData'
@@ -16,9 +18,18 @@ import {
   normalizeEventComandaBatchStatus,
 } from '@/lib/eventComanda/batchStatus'
 import { WAREHOUSE_PREP_VIEW_ROLE_LABELS } from '@/lib/logistics/warehousePrepVisibility'
+import {
+  buildDashboardHref,
+  buildDefaultWeekRange,
+  buildTodayRange,
+  parseDateRangeFromSearch,
+  parseFilterMode,
+  parseRoleForPreparationFilters,
+  type PreparationFilterMode,
+} from '@/lib/logistics/preparationFilters'
 import type { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import type { EditedMap } from '@/components/logistics/LogisticsGrid'
-import { Truck } from 'lucide-react'
+import { BarChart3, Truck } from 'lucide-react'
 import { formatDateOnly, formatDayMonthValue } from '@/lib/date-format'
 
 function parseDM(value: string) {
@@ -38,28 +49,6 @@ function toISOFromDM(dm: string, year: number) {
   return `${year}-${mm}-${dd}`
 }
 
-function buildDefaultRange() {
-  const now = new Date()
-  const day = now.getDay()
-  const diffToMonday = (day + 6) % 7
-  const monday = new Date(now)
-  monday.setDate(now.getDate() - diffToMonday)
-  const sunday = new Date(monday)
-  sunday.setDate(monday.getDate() + 6)
-
-  return {
-    start: monday.toISOString().slice(0, 10),
-    end: sunday.toISOString().slice(0, 10),
-  }
-}
-
-function parseRoleForFilters(role: string): 'Admin' | 'Direcció' | 'Cap Departament' | 'Treballador' {
-  if (role === 'admin') return 'Admin'
-  if (role === 'direccio') return 'Direcció'
-  if (role === 'cap') return 'Cap Departament'
-  return 'Treballador'
-}
-
 interface PreparationExportRow {
   PreparacioData: string
   PreparacioHora: string
@@ -72,12 +61,32 @@ interface PreparationExportRow {
 }
 
 export default function LogisticsPage() {
+  const searchParams = useSearchParams()
   const { data: session } = useSession()
   const role = (session?.user?.role || '').toLowerCase()
   const isWorker = role === 'treballador'
   const isManager = role === 'cap' || role === 'admin' || role === 'direccio'
 
-  const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(() => buildDefaultRange())
+  const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(() => {
+    const fallback = isWorker ? buildTodayRange() : buildDefaultWeekRange()
+    return parseDateRangeFromSearch(searchParams, fallback)
+  })
+  const [filterMode, setFilterMode] = useState<PreparationFilterMode>(() =>
+    parseFilterMode(searchParams.get('mode'))
+  )
+  const latestFilterRef = useRef({
+    dateRange: parseDateRangeFromSearch(
+      searchParams,
+      isWorker ? buildTodayRange() : buildDefaultWeekRange()
+    ),
+    mode: parseFilterMode(searchParams.get('mode')) as PreparationFilterMode,
+  })
+
+  useEffect(() => {
+    if (dateRange?.start && dateRange?.end) {
+      latestFilterRef.current = { dateRange, mode: filterMode }
+    }
+  }, [dateRange, filterMode])
   const { events, warehouseTasks, refresh, loading } = useLogisticsData(dateRange)
   const [updating, setUpdating] = useState(false)
   const [edited, setEdited] = useState<EditedMap>({})
@@ -111,6 +120,21 @@ export default function LogisticsPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!isWorker) return
+
+    setDateRange((prev) => {
+      const defaultWeek = buildDefaultWeekRange()
+      if (
+        !prev ||
+        (prev.start === defaultWeek.start && prev.end === defaultWeek.end)
+      ) {
+        return buildTodayRange()
+      }
+      return prev
+    })
+  }, [isWorker])
+
   const rows = useMemo(() => {
     const allRows = [...events, ...manualRows]
     return allRows.sort((a, b) => {
@@ -128,7 +152,27 @@ export default function LogisticsPage() {
   }, [events, manualRows])
 
   const handleFilterChange = (f: SmartFiltersChange) => {
-    if (f.start && f.end) setDateRange({ start: f.start, end: f.end })
+    if (f.start && f.end) {
+      const nextRange = { start: f.start, end: f.end }
+      setDateRange(nextRange)
+      latestFilterRef.current = {
+        dateRange: nextRange,
+        mode: f.mode || filterMode,
+      }
+    }
+    if (f.mode) {
+      setFilterMode(f.mode)
+      latestFilterRef.current = {
+        ...latestFilterRef.current,
+        mode: f.mode,
+      }
+    }
+  }
+
+  const handleOpenDashboard = () => {
+    const { dateRange: currentRange, mode } = latestFilterRef.current
+    const href = buildDashboardHref(currentRange, mode)
+    window.open(href, '_blank', 'noopener,noreferrer')
   }
 
   const handleRefresh = async () => {
@@ -194,6 +238,34 @@ export default function LogisticsPage() {
     } catch (error) {
       console.error('Error eliminant fila logística:', error)
       alert(error instanceof Error ? error.message : 'No s’ha pogut eliminar la línia.')
+    } finally {
+      setUpdating(false)
+    }
+  }, [refresh])
+
+  const handleTogglePrepared = useCallback(async (rowId: string, done: boolean) => {
+    if (!rowId || rowId.startsWith('draft_')) return
+
+    setUpdating(true)
+    try {
+      const res = await fetch(`/api/logistics/${encodeURIComponent(rowId)}/complete`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ done }),
+      })
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null
+      if (!res.ok) {
+        throw new Error(payload?.error || 'No s’ha pogut actualitzar l’estat de la preparació')
+      }
+
+      await refresh()
+    } catch (error) {
+      console.error('Error actualitzant estat de preparació:', error)
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'No s’ha pogut actualitzar l’estat de la preparació.'
+      )
     } finally {
       setUpdating(false)
     }
@@ -421,7 +493,22 @@ export default function LogisticsPage() {
         icon={<Truck className="h-7 w-7 text-emerald-600" />}
         title="Preparació logística"
         subtitle="Planificació de dates i hores de preparació dels esdeveniments"
-        actions={<ExportMenu items={exportItems} />}
+        actions={
+          <div className="flex items-center gap-2">
+            {isManager ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                onClick={handleOpenDashboard}
+              >
+                <BarChart3 className="h-4 w-4" />
+                Dashboard
+              </Button>
+            ) : null}
+            <ExportMenu items={exportItems} />
+          </div>
+        }
       />
 
       <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
@@ -438,10 +525,14 @@ export default function LogisticsPage() {
           onConfirm={handleConfirm}
           onAddRow={handleAddRow}
           onDeleteRow={handleDeleteRow}
+          onTogglePrepared={handleTogglePrepared}
           onWarehouseComandaClick={handleWarehouseComandaClick}
           updating={updating}
-          filterRole={parseRoleForFilters(role)}
+          filterRole={parseRoleForPreparationFilters(role)}
           locationOptions={locationOptions}
+          filterModeDefault={isWorker ? 'day' : filterMode}
+          initialStart={dateRange?.start}
+          initialEnd={dateRange?.end}
         />
       </RoleGuard>
     </section>

@@ -12,7 +12,12 @@ export type { LogisticsEventPrepRow, LogisticsWarehousePrepRow }
 export function useLogisticsData(dateRange?: { start: string; end: string } | null) {
   const { data: session } = useSession()
   const role = (session?.user?.role || '').toLowerCase()
-  const filterByPreparation = role === 'treballador'
+  const isSingleDayFilter = Boolean(
+    dateRange?.start &&
+    dateRange?.end &&
+    dateRange.start === dateRange.end
+  )
+  const filterByPreparation = role === 'treballador' || isSingleDayFilter
 
   const [events, setEvents] = useState<LogisticsEventPrepRow[]>([])
   const [warehouseTasks, setWarehouseTasks] = useState<LogisticsWarehousePrepRow[]>([])
