@@ -788,7 +788,7 @@ export default function PreventiusPlanificadorPage() {
                   </button>
                 </div>
               }
-              rightSlot={<div className="text-xs font-semibold text-slate-500">Vista mensual · {monthLabel}</div>}
+              rightSlot={<div className="text-xs font-semibold text-slate-500">Vista mensual Â· {monthLabel}</div>}
             />
             <div className="overflow-auto rounded-2xl border bg-white p-3">
               <div className="min-w-[980px]">
