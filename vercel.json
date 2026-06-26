@@ -8,6 +8,10 @@
     },
     {
       "path": "/api/sync/zoho-to-firestore?mode=cron",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/sync/zoho-to-firestore?mode=cron",
       "schedule": "0 19 * * *"
     },
     {
