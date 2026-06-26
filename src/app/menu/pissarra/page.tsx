@@ -48,23 +48,24 @@ type PissarraExportRow = {
 export default function PissarraPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
+  const searchParamsSafe = searchParams ?? new URLSearchParams()
 
   const role = normalizeRole(session?.user?.role || 'treballador')
   const dept = (session?.user?.department || '').toLowerCase()
   const defaultModeFromSession: 'produccio' | 'logistica' | 'cuina' =
     dept === 'cuina' ? 'cuina' : dept === 'logistica' ? 'logistica' : 'produccio'
 
-  const modeParam = (searchParams.get('mode') || '').toLowerCase()
+  const modeParam = (searchParamsSafe.get('mode') || '').toLowerCase()
   const initialMode: 'produccio' | 'logistica' | 'cuina' =
     modeParam === 'cuina' || modeParam === 'logistica' || modeParam === 'produccio'
       ? (modeParam as 'produccio' | 'logistica' | 'cuina')
       : defaultModeFromSession
 
-  const initialLn = searchParams.get('ln') || '__all__'
-  const initialCommercial = searchParams.get('commercial') || '__all__'
-  const statusParam = (searchParams.get('status') || '').toLowerCase()
+  const initialLn = searchParamsSafe.get('ln') || '__all__'
+  const initialCommercial = searchParamsSafe.get('commercial') || '__all__'
+  const statusParam = (searchParamsSafe.get('status') || '').toLowerCase()
   const initialStatusFilter: '__all__' | 'confirmed' | 'draft' =
     statusParam === 'confirmed' || statusParam === 'draft' ? statusParam : '__all__'
 
@@ -72,8 +73,10 @@ export default function PissarraPage() {
   const defaultWeekStart = startOfWeek(now, { weekStartsOn: 1 })
   const defaultWeekEnd = endOfWeek(now, { weekStartsOn: 1 })
 
-  const initialStartISO = searchParams.get('start') || defaultWeekStart.toISOString().slice(0, 10)
-  const initialEndISO = searchParams.get('end') || defaultWeekEnd.toISOString().slice(0, 10)
+  const initialStartISO =
+    searchParamsSafe.get('start') || defaultWeekStart.toISOString().slice(0, 10)
+  const initialEndISO =
+    searchParamsSafe.get('end') || defaultWeekEnd.toISOString().slice(0, 10)
 
   const [mode, setMode] = useState<'produccio' | 'logistica' | 'cuina'>(initialMode)
   const [lnFilter, setLnFilter] = useState<string>(initialLn)
@@ -124,7 +127,7 @@ export default function PissarraPage() {
   const canOpenQuadrants = hasQuadrantsEditAction && Boolean(userQuadrantsDepartment)
 
   useEffect(() => {
-    const next = new URLSearchParams(searchParams.toString())
+    const next = new URLSearchParams(searchParamsSafe.toString())
     next.set('start', week.startISO)
     next.set('end', week.endISO)
     next.set('mode', mode)
@@ -133,12 +136,12 @@ export default function PissarraPage() {
     next.set('status', statusFilter || '__all__')
 
     const nextQs = next.toString()
-    const currentQs = searchParams.toString()
+    const currentQs = searchParamsSafe.toString()
     if (nextQs !== currentQs) {
       router.replace(`${pathname}?${nextQs}`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [week.startISO, week.endISO, mode, lnFilter, commercialFilter, statusFilter, pathname, router])
+  }, [week.startISO, week.endISO, mode, lnFilter, commercialFilter, statusFilter, pathname, router, searchParamsSafe])
 
   const lnOptions = useMemo(
     () => Array.from(new Set(flat.map((e) => e.LN).filter(Boolean))).sort(),

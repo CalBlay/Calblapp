@@ -58,12 +58,12 @@ export default function PissarraList({
   return (
     <div
       key={weekStart.toISOString()}
-      className="relative w-full overflow-x-auto"
+      className="relative w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm"
       data-print="root"
     >
       {/* Header */}
       <div
-        className="grid grid-cols-7 min-w-[720px] sm:min-w-[900px] bg-white sticky top-0 z-20 border-b"
+        className="grid grid-cols-7 min-w-[980px] xl:min-w-[1260px] 2xl:min-w-[1540px] bg-white sticky top-0 z-20 border-b"
         data-print="header"
       >
         {days.map((day) => (
@@ -79,7 +79,7 @@ export default function PissarraList({
 
       {/* Content */}
       <div
-        className="grid grid-cols-7 min-w-[720px] sm:min-w-[900px] max-h-[80vh] overflow-y-auto"
+        className="grid grid-cols-7 min-w-[980px] xl:min-w-[1260px] 2xl:min-w-[1540px] max-h-[80vh] overflow-y-auto"
         data-print="content"
       >
         {days.map((day) => {

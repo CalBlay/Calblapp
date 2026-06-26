@@ -47,6 +47,7 @@ interface PreparationExportRow {
 
 export default function LogisticsPage() {
   const searchParams = useSearchParams()
+  const searchParamsSafe = searchParams ?? new URLSearchParams()
   const { data: session } = useSession()
   const role = (session?.user?.role || '').toLowerCase()
   const isWorker = role === 'treballador'
@@ -54,17 +55,17 @@ export default function LogisticsPage() {
 
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(() => {
     const fallback = isWorker ? buildTodayRange() : buildDefaultWeekRange()
-    return parseDateRangeFromSearch(searchParams, fallback)
+    return parseDateRangeFromSearch(searchParamsSafe, fallback)
   })
   const [filterMode, setFilterMode] = useState<PreparationFilterMode>(() =>
-    parseFilterMode(searchParams.get('mode'))
+    parseFilterMode(searchParamsSafe.get('mode'))
   )
   const latestFilterRef = useRef({
     dateRange: parseDateRangeFromSearch(
-      searchParams,
+      searchParamsSafe,
       isWorker ? buildTodayRange() : buildDefaultWeekRange()
     ),
-    mode: parseFilterMode(searchParams.get('mode')) as PreparationFilterMode,
+    mode: parseFilterMode(searchParamsSafe.get('mode')) as PreparationFilterMode,
   })
 
   useEffect(() => {

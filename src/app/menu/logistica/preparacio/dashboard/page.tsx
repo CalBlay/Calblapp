@@ -21,21 +21,22 @@ import { BarChart3, Truck } from 'lucide-react'
 
 export default function PreparationDashboardPage() {
   const searchParams = useSearchParams()
+  const searchParamsSafe = searchParams ?? new URLSearchParams()
   const { data: session } = useSession()
   const role = (session?.user?.role || '').toLowerCase()
 
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(() =>
-    parseDateRangeFromSearch(searchParams, buildDefaultWeekRange())
+    parseDateRangeFromSearch(searchParamsSafe, buildDefaultWeekRange())
   )
   const [filterMode, setFilterMode] = useState<PreparationFilterMode>(() =>
-    parseFilterMode(searchParams.get('mode'))
+    parseFilterMode(searchParamsSafe.get('mode'))
   )
   const { events, loading } = useLogisticsData(dateRange)
 
   useEffect(() => {
-    setDateRange(parseDateRangeFromSearch(searchParams, buildDefaultWeekRange()))
-    setFilterMode(parseFilterMode(searchParams.get('mode')))
-  }, [searchParams])
+    setDateRange(parseDateRangeFromSearch(searchParamsSafe, buildDefaultWeekRange()))
+    setFilterMode(parseFilterMode(searchParamsSafe.get('mode')))
+  }, [searchParamsSafe])
 
   const handleFilterChange = useCallback((f: SmartFiltersChange) => {
     if (f.start && f.end) {

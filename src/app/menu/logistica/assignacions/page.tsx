@@ -278,17 +278,25 @@ export default function TransportAssignacionsPage() {
       )}
 
       {!loading && !error && grouped.length > 0 && (
-        <div id="assignacions-print-root" className="space-y-6">
+        <div id="assignacions-print-root" className="space-y-5">
           {grouped.map(([day, evs]) => (
-            <section key={day} className="space-y-3">
-              <div className="rounded-xl border bg-emerald-50 px-3 py-2 font-semibold text-emerald-800">
-                {formatAssignmentDay(day)}
-              </div>
+            <section
+              key={day}
+              className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:rounded-xl"
+            >
+              <header className="mb-0 flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border-b border-emerald-100 bg-emerald-50/70 px-3 py-2 shadow-sm lg:rounded-t-xl lg:px-3 lg:py-2">
+                <div className="font-semibold text-emerald-900">
+                  {formatAssignmentDay(day)}
+                </div>
+                <div className="text-xs font-medium text-emerald-700">
+                  {evs.length} assignacions
+                </div>
+              </header>
 
-              <div className="space-y-3">
-                {evs.map((ev) => (
+              <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
+                {evs.map((ev, index) => (
                   <TransportAssignmentCard
-                    key={ev.eventCode}
+                    key={`${ev.eventCode || 'event'}-${day}-${index}`}
                     item={ev}
                     onChanged={refetch}
                   />

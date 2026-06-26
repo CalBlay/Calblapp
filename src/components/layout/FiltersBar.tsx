@@ -74,6 +74,8 @@ export default function FiltersBar({
   void collapseOnMobile
   const pathname = usePathname()
   const isQuadrants = pathname?.startsWith('/menu/quadrants')
+  const isAssignments = pathname?.startsWith('/menu/logistica/assignacions')
+  const isWideLayout = isQuadrants || isAssignments
   const { setOpen, setContent } = useFilters()
 
   const [resetSignal, setResetSignal] = useState(0)
@@ -207,7 +209,7 @@ export default function FiltersBar({
     <CorporateFiltersShell
       variant="toolbar"
       sticky
-      className={cn('w-full', isQuadrants ? 'max-w-none' : 'mx-auto max-w-5xl')}
+      className={cn('w-full', isWideLayout ? 'max-w-none' : 'mx-auto max-w-5xl')}
       bodyClassName="items-center overflow-x-auto"
     >
       <SmartFilters

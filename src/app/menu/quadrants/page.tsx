@@ -100,11 +100,12 @@ const fetchDashboard = async (url: string): Promise<DashboardResponse> => {
 export default function QuadrantsPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
+  const searchParamsSafe = searchParams ?? new URLSearchParams()
   const defaultWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
   const defaultWeekEnd = endOfWeek(new Date(), { weekStartsOn: 1 })
-  const urlStart = parseIsoDateParam(searchParams.get('start'))
-  const urlEnd = parseIsoDateParam(searchParams.get('end'))
+  const urlStart = parseIsoDateParam(searchParamsSafe.get('start'))
+  const urlEnd = parseIsoDateParam(searchParamsSafe.get('end'))
 
   const [filters, setFilters] = useState<FiltersState>(() => ({
     start: urlStart || format(defaultWeekStart, 'yyyy-MM-dd'),
@@ -124,7 +125,7 @@ export default function QuadrantsPage() {
     !permsReady ||
     hasAction(PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT))
   const sessionUser = session?.user as SessionDepartmentSource | undefined
-  const qsDepartment = (searchParams.get('department') || '').toLowerCase().trim()
+  const qsDepartment = (searchParamsSafe.get('department') || '').toLowerCase().trim()
   const department = (qsDepartment === 'serveis' || qsDepartment === 'cuina' || qsDepartment === 'logistica'
     ? qsDepartment
     : (
@@ -136,9 +137,9 @@ export default function QuadrantsPage() {
         .toLowerCase()
   )
   const openEventId = useMemo(() => {
-    const raw = String(searchParams.get('openEventId') || '').trim()
+    const raw = String(searchParamsSafe.get('openEventId') || '').trim()
     return raw ? raw.split('__')[0] : null
-  }, [searchParams])
+  }, [searchParamsSafe])
   const isCuinaDepartment = department === 'cuina'
   const [hideCuinaMinorServices, setHideCuinaMinorServices] = useState(
     isCuinaDepartment
@@ -474,7 +475,7 @@ export default function QuadrantsPage() {
   }
 
   const clearAllFilters = useCallback(() => {
-    const next = new URLSearchParams(searchParams.toString())
+    const next = new URLSearchParams(searchParamsSafe.toString())
     next.delete('openEventId')
     next.delete('returnTo')
     next.delete('phaseKey')
@@ -485,7 +486,7 @@ export default function QuadrantsPage() {
     resetFilters()
     const qs = next.toString()
     router.replace(qs ? `${pathname}?${qs}` : pathname)
-  }, [pathname, router, searchParams])
+  }, [pathname, router, searchParamsSafe])
 
   const toggleStatusFilter = (status: 'pending' | 'draft' | 'confirmed') => {
     setFilters((prev) => ({

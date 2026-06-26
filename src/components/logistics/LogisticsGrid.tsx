@@ -569,17 +569,17 @@ function EditableTable({
 
   return (
     <div className="overflow-x-auto scroll-smooth">
-      <table className="min-w-full w-full border-collapse text-[10px] sm:min-w-[560px] sm:text-xs">
+      <table className="w-full min-w-[980px] border-collapse text-[10px] sm:text-xs xl:min-w-[1240px] 2xl:min-w-[1440px]">
         <thead>
           <tr className="bg-gray-100 text-left">
-            <th className="sticky left-0 z-30 bg-white p-2 shadow-sm">Data preparació</th>
-            <th className="p-2">Hora preparació</th>
-            <th className="p-2">Codi event</th>
-            <th className="p-2">Nom</th>
-            <th className="p-2">Pax</th>
-            <th className="p-2">Ubicació</th>
-            <th className="p-2">Data esdeveniment</th>
-            <th className="w-12 p-2 text-center"> </th>
+            <th className="sticky left-0 z-30 bg-white px-3 py-3 shadow-sm xl:px-4">Data preparació</th>
+            <th className="px-3 py-3 xl:px-4">Hora preparació</th>
+            <th className="px-3 py-3 xl:px-4">Codi event</th>
+            <th className="px-3 py-3 xl:px-4">Nom</th>
+            <th className="px-3 py-3 xl:px-4">Pax</th>
+            <th className="px-3 py-3 xl:px-4">Ubicació</th>
+            <th className="px-3 py-3 xl:px-4">Data esdeveniment</th>
+            <th className="w-12 px-3 py-3 text-center xl:px-4"> </th>
           </tr>
         </thead>
 
@@ -612,7 +612,7 @@ function EditableTable({
                     rowIsNew && 'bg-amber-50/40'
                   )}
                 >
-                  <td className="sticky left-0 border-r bg-white p-2 font-medium shadow-sm">
+                  <td className="sticky left-0 border-r bg-white px-3 py-3 font-medium shadow-sm xl:px-4">
                     {isManager ? (
                       <input
                         type="date"
@@ -625,7 +625,7 @@ function EditableTable({
                     )}
                   </td>
 
-                  <td className="p-2">
+                  <td className="px-3 py-3 xl:px-4">
                     {isManager ? (
                       <input
                         type="time"
@@ -638,7 +638,7 @@ function EditableTable({
                     )}
                   </td>
 
-                  <td className="p-2">
+                  <td className="px-3 py-3 xl:px-4">
                     {isManager ? (
                       <input
                         type="text"
@@ -650,19 +650,19 @@ function EditableTable({
                       <span>{eventCode || '-'}</span>
                     )}
                   </td>
-                  <td className="p-2">
+                  <td className="px-3 py-3 xl:px-4">
                     {isManager ? (
                       <input
                         type="text"
                         value={eventName}
                         onChange={(e) => setField(ev.id, 'NomEvent', e.target.value)}
-                        className="w-full min-w-[220px] rounded border p-1 text-xs"
+                        className="w-full min-w-[260px] rounded border p-1 text-xs xl:min-w-[320px]"
                       />
                     ) : (
                       <span>{eventName || '-'}</span>
                     )}
                   </td>
-                  <td className="p-2">
+                  <td className="px-3 py-3 xl:px-4">
                     {isManager ? (
                       <input
                         type="number"
@@ -675,12 +675,12 @@ function EditableTable({
                       <span>{pax || '-'}</span>
                     )}
                   </td>
-                  <td className="p-2">
+                  <td className="px-3 py-3 xl:px-4">
                     {isManager ? (
                       <select
                         value={ubicacio}
                         onChange={(e) => setField(ev.id, 'Ubicacio', e.target.value)}
-                        className="w-full min-w-[180px] rounded border bg-white p-1 text-xs"
+                        className="w-full min-w-[240px] rounded border bg-white p-1 text-xs xl:min-w-[300px]"
                       >
                         <option value="">Selecciona finca</option>
                         {rowLocations.map((location) => (
@@ -693,7 +693,7 @@ function EditableTable({
                       <span>{ubicacio || '-'}</span>
                     )}
                   </td>
-                  <td className="p-2">
+                  <td className="px-3 py-3 xl:px-4">
                     {isManager ? (
                       <input
                         type="date"
@@ -705,7 +705,7 @@ function EditableTable({
                       <span>{formatDayMonthValue(dataInici, '--/--')}</span>
                     )}
                   </td>
-                  <td className="p-2 text-center">
+                  <td className="px-3 py-3 text-center xl:px-4">
                     {isManager ? (
                       <button
                         type="button"
