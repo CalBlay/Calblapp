@@ -84,7 +84,7 @@ export default function CalendarPeriodList({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-auto min-h-0 flex-col md:h-full">
       <div className="shrink-0 border-b bg-slate-50 px-3 py-2">
         <Input
           value={query}
@@ -98,7 +98,7 @@ export default function CalendarPeriodList({
       </div>
 
       {/* Targetes mòbil */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain md:hidden">
+      <div className="md:hidden">
         <ul className="space-y-2 p-3">
           {rows.map((deal) => {
             const selected = selectedDealId === deal.id

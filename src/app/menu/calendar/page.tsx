@@ -685,7 +685,7 @@ export default function CalendarPage() {
   ]
 
   return (
-    <div className="relative flex w-full flex-col pb-24 sm:pb-0 lg:h-[calc(100dvh-3.5rem-1.5rem)] lg:min-h-[480px]">
+    <div className="relative flex w-full flex-col overflow-x-hidden pb-24 sm:pb-0 lg:h-[calc(100dvh-3.5rem-1.5rem)] lg:min-h-[480px]">
       {/* CAPÇALERA */}
       <div className="mb-3 mt-2 flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -909,8 +909,8 @@ export default function CalendarPage() {
         </div>
 
         <div className="flex min-h-0 flex-1 gap-0 lg:gap-3">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white shadow-sm print:overflow-visible">
-            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto print:overflow-visible">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-visible rounded-xl border bg-white shadow-sm lg:overflow-hidden print:overflow-visible">
+            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-visible lg:overflow-y-auto print:overflow-visible">
               {contentLayout === 'list' && mode !== 'range' ? (
                 <CalendarPeriodList
                   deals={visibleDeals}
@@ -982,7 +982,7 @@ export default function CalendarPage() {
             onClick={() => setSelectedDay(null)}
             aria-hidden
           />
-          <div className="absolute inset-x-0 bottom-0 flex max-h-[min(88dvh,720px)] flex-col rounded-t-2xl bg-white shadow-xl">
+          <div className="absolute inset-x-0 bottom-0 flex max-h-[min(88dvh,720px)] flex-col overflow-hidden rounded-t-2xl bg-white pb-[env(safe-area-inset-bottom)] shadow-xl">
             <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-slate-200" />
             <CalendarDayPanel
               dateIso={selectedDay}
@@ -1003,7 +1003,7 @@ export default function CalendarPage() {
             className="absolute inset-0 bg-black/40"
             onClick={() => setMobileDetailDeal(null)}
           />
-          <div className="absolute inset-0 flex flex-col bg-white">
+          <div className="absolute inset-0 flex flex-col overflow-hidden bg-white pb-[env(safe-area-inset-bottom)]">
             <CalendarModal
               key={mobileDetailDeal.id}
               embedded
@@ -1024,7 +1024,6 @@ export default function CalendarPage() {
     </div>
   )
 }
-
 
 
 

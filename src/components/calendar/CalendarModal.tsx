@@ -1016,7 +1016,7 @@ export default function CalendarModal({
   )
 
   const footer = (
-        <div className="mt-4 flex flex-col gap-2">
+        <div className="flex flex-col gap-2">
           {canSave && (
             <>
               <Button onClick={handleSave} className="w-full">
@@ -1112,38 +1112,25 @@ export default function CalendarModal({
       ) : null}
 
       <DialogContent
-        className="
-          w-full
-          max-w-lg
-
-          /* 📱 Mòbil: modal fullscreen vertical */
-          h-[92dvh]
-          max-h-[92dvh]
-          overflow-y-auto
-          rounded-none
-          pt-10
-
-          /* 🖥 Desktop: modal centrat */
-          sm:rounded-lg
-          sm:h-auto
-          sm:max-h-[85vh]
-          sm:pt-6
-        "
+        className="flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-auto sm:max-h-[85vh] sm:w-full sm:max-w-lg sm:rounded-lg sm:border sm:p-6 sm:pt-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0 border-b px-4 py-3 sm:border-b-0 sm:px-0 sm:py-0">
           <DialogTitle className="text-base font-semibold">{title}</DialogTitle>
         </DialogHeader>
 
-        {body}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 sm:px-0 sm:py-0">
+          {body}
+        </div>
 
-        <DialogFooter>{footer}</DialogFooter>
+        <DialogFooter className="shrink-0 border-t px-4 py-3 sm:border-t-0 sm:px-0 sm:py-0">
+          {footer}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
     </>
   )
 }
-
 
 
 
