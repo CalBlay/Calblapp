@@ -33,6 +33,25 @@ type MatchResult = {
 const ADA_API_URL = process.env.ADA_API_URL || 'https://api.calblay.com/evento'
 const ADA_API_TOKEN = process.env.ADA_API_TOKEN || ''
 const ADA_TIMEZONE = 'Europe/Madrid'
+const ADA_RETRYABLE_STATUS = new Set([429, 502, 503, 504])
+const ADA_MAX_ATTEMPTS = 3
+
+export class AdaApiError extends Error {
+  status: number
+  retryAfter: string | null
+  responseBody: string | null
+
+  constructor(
+    message: string,
+    opts: { status: number; retryAfter?: string | null; responseBody?: string | null }
+  ) {
+    super(message)
+    this.name = 'AdaApiError'
+    this.status = opts.status
+    this.retryAfter = opts.retryAfter ?? null
+    this.responseBody = opts.responseBody ?? null
+  }
+}
 
 const unaccent = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -78,6 +97,14 @@ const addMonthsToISO = (iso: string, months: number, timeZone: string) => {
   return formatDateInTZ(base, timeZone)
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const getRetryDelayMs = (attempt: number, retryAfter: string | null) => {
+  const seconds = Number(retryAfter)
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000
+  return attempt * 1000
+}
+
 const buildMatch = (stage: StageEvent, ada: AdaEvent): MatchResult => {
   const stageDate = dateKey(stage.DataInici)
   const adaDate = dateKey(ada.fechaInicio)
@@ -111,53 +138,78 @@ async function fetchAdaEvents(startDate: string, endDate: string): Promise<AdaEv
 
   const allowInsecure =
     process.env.ADA_INSECURE_TLS === 'true' && process.env.NODE_ENV !== 'production'
-  if (allowInsecure) {
-    const agent = new Agent({ rejectUnauthorized: false })
-    const { status, body } = await new Promise<{
-      status: number
-      body: string
-    }>((resolve, reject) => {
-      const req = request(
-        url,
-        {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${ADA_API_TOKEN}` },
-          agent,
-        },
-        (res) => {
-          let data = ''
-          res.setEncoding('utf8')
-          res.on('data', (chunk) => {
-            data += chunk
-          })
-          res.on('end', () => {
-            resolve({ status: res.statusCode || 0, body: data })
-          })
-        }
-      )
-      req.on('error', reject)
-      req.end()
-    })
-
-    if (status < 200 || status >= 300) {
-      throw new Error(`ADA API error: ${status}`)
+  const requestOnce = async () => {
+    if (allowInsecure) {
+      const agent = new Agent({ rejectUnauthorized: false })
+      return new Promise<{
+        status: number
+        body: string
+        retryAfter: string | null
+      }>((resolve, reject) => {
+        const req = request(
+          url,
+          {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${ADA_API_TOKEN}` },
+            agent,
+          },
+          (res) => {
+            let data = ''
+            res.setEncoding('utf8')
+            res.on('data', (chunk) => {
+              data += chunk
+            })
+            res.on('end', () => {
+              const header = res.headers['retry-after']
+              resolve({
+                status: res.statusCode || 0,
+                body: data,
+                retryAfter: Array.isArray(header) ? header[0] : header || null,
+              })
+            })
+          }
+        )
+        req.on('error', reject)
+        req.end()
+      })
     }
 
-    const data = JSON.parse(body) as AdaEvent[]
-    return Array.isArray(data) ? data : []
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${ADA_API_TOKEN}` },
+    })
+
+    return {
+      status: res.status,
+      body: await res.text(),
+      retryAfter: res.headers.get('retry-after'),
+    }
   }
 
-  const res = await fetch(url.toString(), {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${ADA_API_TOKEN}` },
-  })
+  let lastError: AdaApiError | null = null
 
-  if (!res.ok) {
-    throw new Error(`ADA API error: ${res.status}`)
+  for (let attempt = 1; attempt <= ADA_MAX_ATTEMPTS; attempt++) {
+    const { status, body, retryAfter } = await requestOnce()
+
+    if (status >= 200 && status < 300) {
+      const data = JSON.parse(body) as AdaEvent[]
+      return Array.isArray(data) ? data : []
+    }
+
+    lastError = new AdaApiError(`ADA API error: ${status}`, {
+      status,
+      retryAfter,
+      responseBody: body.slice(0, 500) || null,
+    })
+
+    if (!ADA_RETRYABLE_STATUS.has(status) || attempt === ADA_MAX_ATTEMPTS) {
+      throw lastError
+    }
+
+    await sleep(getRetryDelayMs(attempt, retryAfter))
   }
 
-  const data = (await res.json()) as AdaEvent[]
-  return Array.isArray(data) ? data : []
+  throw lastError || new AdaApiError('ADA API error: unknown', { status: 0 })
 }
 
 export async function syncAdaEventsToFirestore(opts?: {

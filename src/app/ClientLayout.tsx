@@ -26,6 +26,14 @@ import useSWR from 'swr'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
+function FullScreenStatus({ message }: { message: string }) {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 text-center text-sm text-muted-foreground">
+      <p>{message}</p>
+    </div>
+  )
+}
+
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -132,14 +140,22 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
   /* 🔓 Pantalla login sense layout */
   if (isLogin) {
     return (
-      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background text-foreground">
-        <Image src="/logo.png" alt="Cal Blay" width={200} height={80} />
-        {children}
+      <div className="flex min-h-[100dvh] items-center justify-center bg-gray-50 px-4 py-8 text-foreground">
+        <div className="flex w-full max-w-sm flex-col items-center gap-6">
+          <Image src="/logo.png" alt="Cal Blay" width={200} height={80} priority />
+          <div className="w-full">{children}</div>
+        </div>
       </div>
     )
   }
 
-  if (!user) return null
+  if (status === 'loading') {
+    return <FullScreenStatus message="Carregant sessio..." />
+  }
+
+  if (!user) {
+    return <FullScreenStatus message="Redirigint a l'inici de sessio..." />
+  }
 
   return (
       <div className="min-h-[100dvh] bg-background text-foreground">

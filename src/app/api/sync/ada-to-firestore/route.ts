@@ -1,6 +1,6 @@
 // file: src/app/api/sync/ada-to-firestore/route.ts
 import { NextResponse } from 'next/server'
-import { syncAdaEventsToFirestore } from '@/services/sync/adaSync'
+import { AdaApiError, syncAdaEventsToFirestore } from '@/services/sync/adaSync'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { requireCronAuth } from '@/lib/server/internalApiAuth'
 import { PERM } from '@/lib/permissionKeys'
@@ -53,6 +53,21 @@ export async function GET(req: Request) {
     })
   } catch (error) {
     console.error('Error a /api/sync/ada-to-firestore:', error)
+
+    if (error instanceof AdaApiError) {
+      return NextResponse.json(
+        {
+          error:
+            error.status === 503
+              ? 'ADA temporalment no disponible. Torna-ho a provar d aqui uns minuts.'
+              : 'Error responent des de l API d ADA.',
+          upstreamStatus: error.status,
+          retryAfter: error.retryAfter,
+        },
+        { status: error.status || 502 }
+      )
+    }
+
     return NextResponse.json(
       { error: 'Error durant la sincronitzacio ADA a Firestore' },
       { status: 500 }
