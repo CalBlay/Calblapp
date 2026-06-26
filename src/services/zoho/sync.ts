@@ -744,7 +744,21 @@ async function cleanupGrocTaronjaStageDocs(
 // SYNC PRINCIPAL
 // ─────────────────────────────
 
-export async function syncZohoDealsToFirestore(): Promise<{
+type SyncZohoDealsOptions = {
+  includeAttachments?: boolean
+}
+
+const EMPTY_ATTACHMENT_SYNC_RESULT = {
+  fields: {} as Record<string, unknown>,
+  stats: {
+    checked: 0,
+    downloaded: 0,
+    reused: 0,
+    deletedFromStorage: 0,
+  },
+}
+
+export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {}): Promise<{
   totalCount: number
   createdCount: number
   deletedCount: number
@@ -755,6 +769,7 @@ export async function syncZohoDealsToFirestore(): Promise<{
   attachmentsDeletedFromStorage: number
 }> {
   console.info('🚀 Iniciant sincronització Zoho → Firestore')
+  const includeAttachments = options.includeAttachments === true
 
   const todayISO = new Date().toISOString().slice(0, 10)
   const moduleName = process.env.ZOHO_CRM_MODULE || 'Deals'
@@ -792,26 +807,33 @@ export async function syncZohoDealsToFirestore(): Promise<{
   })
 
   // 3️⃣ Funció per determinar LN segons propietari (Owner)
-  const getLN = async (ownerId?: string): Promise<string> => {
-    if (!ownerId) return 'Altres'
-    // Micro delay per no saturar la API de Zoho
-    await new Promise((r) => setTimeout(r, 100))
-    try {
-      const res = await zohoFetch<{ users: { role?: { name?: string } }[] }>(
-        `/users/${ownerId}`
-      )
-      const role = res.users?.[0]?.role?.name?.toLowerCase() ?? ''
+  const ownerLnCache = new Map<string, Promise<string>>()
+  const getLN = (ownerId?: string): Promise<string> => {
+    if (!ownerId) return Promise.resolve('Altres')
 
-      if (role.includes('bodas')) return 'Casaments'
-      if (role.includes('corporativo') || role.includes('empresa')) return 'Empresa'
-      if (role.includes('comida preparada') || role.includes('preparada')) {
-        // Correcte: Menjar Preparat (no Foodlovers)
-        return 'Menjar Preparat'
+    const cached = ownerLnCache.get(ownerId)
+    if (cached) return cached
+
+    const pending = (async () => {
+      try {
+        const res = await zohoFetch<{ users: { role?: { name?: string } }[] }>(
+          `/users/${ownerId}`
+        )
+        const role = res.users?.[0]?.role?.name?.toLowerCase() ?? ''
+
+        if (role.includes('bodas')) return 'Casaments'
+        if (role.includes('corporativo') || role.includes('empresa')) return 'Empresa'
+        if (role.includes('comida preparada') || role.includes('preparada')) {
+          return 'Menjar Preparat'
+        }
+        return 'Agenda'
+      } catch {
+        return 'Agenda'
       }
-      return 'Agenda'
-    } catch {
-      return 'Agenda'
-    }
+    })()
+
+    ownerLnCache.set(ownerId, pending)
+    return pending
   }
 
   // 3️⃣ bis – Index de finques per matching avançat (per bloc 5 i bloc 8)
@@ -1170,12 +1192,14 @@ StageGroup:
     if (deal.collection !== 'verd') continue
     const ref = firestore.collection('stage_verd').doc(deal.idZoho)
     const existingDoc = getExistingStageDoc(deal.idZoho)
-    const zohoAttachments = await buildZohoAttachmentFields(
-      moduleName,
-      deal.idZoho,
-      zohoById.get(deal.idZoho),
-      existingDoc
-    )
+    const zohoAttachments = includeAttachments
+      ? await buildZohoAttachmentFields(
+          moduleName,
+          deal.idZoho,
+          zohoById.get(deal.idZoho),
+          existingDoc
+        )
+      : EMPTY_ATTACHMENT_SYNC_RESULT
     attachmentsChecked += zohoAttachments.stats.checked
     attachmentsDownloaded += zohoAttachments.stats.downloaded
     attachmentsReused += zohoAttachments.stats.reused
@@ -1219,12 +1243,14 @@ StageGroup:
     if (idsVerd.has(id)) continue
 
     const existingDoc = getExistingStageDoc(id)
-    const zohoAttachments = await buildZohoAttachmentFields(
-      moduleName,
-      id,
-      zohoById.get(id),
-      existingDoc
-    )
+    const zohoAttachments = includeAttachments
+      ? await buildZohoAttachmentFields(
+          moduleName,
+          id,
+          zohoById.get(id),
+          existingDoc
+        )
+      : EMPTY_ATTACHMENT_SYNC_RESULT
     attachmentsChecked += zohoAttachments.stats.checked
     attachmentsDownloaded += zohoAttachments.stats.downloaded
     attachmentsReused += zohoAttachments.stats.reused

@@ -12,15 +12,19 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url)
     const mode = url.searchParams.get('mode')
+    const includeAttachments =
+      url.searchParams.get('includeAttachments') === '1' ||
+      url.searchParams.get('includeAttachments') === 'true'
 
     if (mode === 'cron') {
       const cronDenied = requireCronAuth(req)
       if (cronDenied) return cronDenied
 
-      const result = await syncZohoDealsToFirestore()
+      const result = await syncZohoDealsToFirestore({ includeAttachments })
       return NextResponse.json({
         ok: true,
         mode: 'cron',
+        includeAttachments,
         ...result,
         timestamp: new Date().toISOString(),
       })
@@ -35,11 +39,12 @@ export async function GET(req: Request) {
     })
     if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    const result = await syncZohoDealsToFirestore()
+    const result = await syncZohoDealsToFirestore({ includeAttachments })
 
     return NextResponse.json({
       ok: true,
       mode: 'manual',
+      includeAttachments,
       ...result,
       timestamp: new Date().toISOString(),
     })
@@ -51,4 +56,3 @@ export async function GET(req: Request) {
     )
   }
 }
-
