@@ -199,17 +199,35 @@ export default function IncidentsPage() {
     [deleteIncident]
   )
 
-  const handleFilterChange = (f: SmartFiltersChange) => {
-    setFilters(prev => ({
-      ...prev,
-      from: f.start,
-      to: f.end,
-      department: f.department,
-      importance: f.importance || 'all',
-      categoryLabel:
-        f.categoryId === undefined ? prev.categoryLabel : f.categoryId !== 'all' ? f.categoryId : 'all',
-    }))
-  }
+  const handleFilterChange = React.useCallback((f: SmartFiltersChange) => {
+    setFilters((prev) => {
+      const nextCategoryLabel =
+        f.categoryId === undefined ? prev.categoryLabel : f.categoryId !== 'all' ? f.categoryId : 'all'
+      const nextFrom = f.start
+      const nextTo = f.end
+      const nextDepartment = f.department
+      const nextImportance = f.importance || 'all'
+
+      if (
+        prev.from === nextFrom &&
+        prev.to === nextTo &&
+        prev.department === nextDepartment &&
+        prev.importance === nextImportance &&
+        prev.categoryLabel === nextCategoryLabel
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        from: nextFrom,
+        to: nextTo,
+        department: nextDepartment,
+        importance: nextImportance,
+        categoryLabel: nextCategoryLabel,
+      }
+    })
+  }, [])
 
   const { setContent, setOpen } = useFilters()
 
@@ -567,8 +585,6 @@ export default function IncidentsPage() {
           categoryOptions={categoryOptions}
           showAdvanced={false}
           compact
-          initialStart={filters.from}
-          initialEnd={filters.to}
           resetSignal={dateResetSignal}
         />
         <IncidentsLnFilterBadges

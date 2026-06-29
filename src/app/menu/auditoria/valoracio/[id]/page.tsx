@@ -266,7 +266,7 @@ export default function AuditoriaValoracioDetailPage() {
 
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
-      <div className="w-full max-w-6xl mx-auto p-3 sm:p-4 space-y-4">
+      <div className="w-full max-w-none p-3 sm:p-4 space-y-4">
         <ModuleHeader subtitle="Valoracio" />
 
         <Card className="space-y-6">
