@@ -1,6 +1,7 @@
 export type JourneyStatus =
   | 'nou'
   | 'assignat'
+  | 'reassignat'
   | 'en_curs'
   | 'espera'
   | 'fet'

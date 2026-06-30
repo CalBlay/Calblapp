@@ -88,6 +88,7 @@ function normalizePlannerTicketStatus(value?: unknown) {
     .trim()
     .toLowerCase()
   if (v === 'assignat') return 'assignat'
+  if (v === 'reassignat') return 'reassignat'
   if (v === 'en_curs' || v === 'en curs') return 'en_curs'
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
@@ -102,7 +103,7 @@ function mapPendingTickets(list: PlannerTicketLike[]) {
     .filter((t) => !t.externalized)
     .filter((t) => String(t.workflowStage || 'tickets_inbox') === 'planner_queue')
     .filter((t) => !t.plannedStart && !t.plannedEnd)
-    .filter((t) => ['nou', 'no_fet'].includes(normalizePlannerTicketStatus(t.status)))
+    .filter((t) => ['nou', 'no_fet', 'reassignat'].includes(normalizePlannerTicketStatus(t.status)))
     .map((t) => {
       const code = t.ticketCode || t.incidentNumber || 'TIC'
       const title = t.operatorTitle || t.description || t.machine || t.location || ''
@@ -817,7 +818,7 @@ export default function usePlannerData({
           machine: item.machine || undefined,
           assignedToNames: assignedToNames.length ? assignedToNames : undefined,
           assignedToIds: assignedToIds.length ? assignedToIds : undefined,
-          ...(normalizePlannerTicketStatus(ticketById[ticketId]?.status) === 'no_fet' &&
+          ...(['no_fet', 'reassignat'].includes(normalizePlannerTicketStatus(ticketById[ticketId]?.status)) &&
           assignedToIds.length > 0
             ? { status: 'assignat' }
             : {}),

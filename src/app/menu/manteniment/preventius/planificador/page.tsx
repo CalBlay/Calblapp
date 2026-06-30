@@ -46,7 +46,7 @@ const MONTH_DAY_COUNT = 7
 type PlannerTypeFilter = 'preventius' | 'tickets' | 'externalized'
 
 const TICKET_STATUS_FILTER_STYLES: Record<
-  'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat',
+  'all' | 'nou' | 'assignat' | 'reassignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat',
   { active: string; dot: string; label: string }
 > = {
   all: {
@@ -63,6 +63,11 @@ const TICKET_STATUS_FILTER_STYLES: Record<
     active: 'bg-sky-100 text-sky-800 border-sky-200',
     dot: 'bg-sky-500',
     label: 'Assignat',
+  },
+  reassignat: {
+    active: 'bg-orange-100 text-orange-800 border-orange-200',
+    dot: 'bg-orange-500',
+    label: 'Reassignat',
   },
   en_curs: {
     active: 'bg-amber-100 text-amber-800 border-amber-200',
@@ -96,6 +101,7 @@ function normalizePlannerTicketStatus(value?: string | null) {
     .trim()
     .toLowerCase()
   if (v === 'assignat') return 'assignat'
+  if (v === 'reassignat') return 'reassignat'
   if (v === 'en_curs' || v === 'en curs') return 'en_curs'
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
@@ -127,7 +133,7 @@ export default function PreventiusPlanificadorPage() {
     'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus' | null
   >(null)
   const [ticketsStatusFilter, setTicketsStatusFilter] = useState<
-    'all' | 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat'
+    'all' | 'nou' | 'assignat' | 'reassignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat'
   >('all')
   const [showLegend, setShowLegend] = useState(false)
   const [showScheduledInSidebar, setShowScheduledInSidebar] = useState(false)
@@ -607,7 +613,7 @@ export default function PreventiusPlanificadorPage() {
 
       if (target.kind === 'preventiu') {
         const status = normalizePlannerTicketStatus(target.status)
-        if (!['nou', 'assignat', 'no_fet'].includes(status)) {
+        if (!['nou', 'assignat', 'reassignat', 'no_fet'].includes(status)) {
           window.alert('Només pots tornar a pendents preventius en estat Nou, Assignat o No fet.')
           await loadWeekSchedule()
           return
@@ -638,13 +644,13 @@ export default function PreventiusPlanificadorPage() {
     const current = ticketById[ticketId]
     const status = normalizePlannerTicketStatus(current?.status)
 
-    if (!['nou', 'assignat', 'no_fet'].includes(status)) {
+    if (!['nou', 'assignat', 'reassignat', 'no_fet'].includes(status)) {
       window.alert('Només pots tornar a pendents tickets en estat Nou, Assignat o No fet.')
       await loadWeekSchedule()
       return false
     }
 
-    const nextStatus = status === 'no_fet' ? 'no_fet' : 'nou'
+    const nextStatus = status === 'no_fet' || status === 'reassignat' ? 'reassignat' : 'nou'
     const res = await fetch(`/api/maintenance/tickets/${ticketId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1233,7 +1239,7 @@ export default function PreventiusPlanificadorPage() {
               {plannerViewFilters.includes('tickets') && (
                 <>
                   <div className="mr-1 h-6 w-px bg-slate-200" />
-                  {(['nou', 'assignat', 'en_curs', 'espera', 'fet', 'no_fet', 'validat'] as const).map((status) => (
+                  {(['nou', 'assignat', 'reassignat', 'en_curs', 'espera', 'fet', 'no_fet', 'validat'] as const).map((status) => (
                     <button
                       key={status}
                       type="button"

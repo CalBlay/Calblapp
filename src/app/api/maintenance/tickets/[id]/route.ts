@@ -47,6 +47,8 @@ import admin from 'firebase-admin'
 
 export const runtime = 'nodejs'
 
+const REASSIGN_PENDING_NOTE = 'Pendent de reassignar al planificador'
+
 type SessionUser = {
   id: string
   name?: string
@@ -55,7 +57,7 @@ type SessionUser = {
 }
 
 type UpdatePayload = {
-  status?: 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
+  status?: 'nou' | 'assignat' | 'reassignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
   workflowStage?:
     | 'tickets_inbox'
     | 'planner_queue'
@@ -150,6 +152,7 @@ const normalizePriority = (value?: string) => {
 const normalizeStatus = (value?: string) => {
   const v = (value || '').trim().toLowerCase()
   if (v === 'assignat') return 'assignat'
+  if (v === 'reassignat') return 'reassignat'
   if (v === 'en_curs' || v === 'en curs') return 'en_curs'
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
@@ -527,6 +530,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     }
 
+    let autoReturnToPlanner = false
+
     if (body.assignedToIds !== undefined) {
       updates.assignedAt = body.assignedToIds.length ? Date.now() : null
       updates.assignedById = user.id
@@ -537,7 +542,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         updates.workflowStage = 'planner_queue'
       }
       const currentStatus = normalizeStatus(current.status)
-      if (!nextStatus && body.assignedToIds.length > 0 && currentStatus === 'nou') {
+      if (
+        !nextStatus &&
+        body.assignedToIds.length > 0 &&
+        (currentStatus === 'nou' || currentStatus === 'reassignat')
+      ) {
         nextStatus = 'assignat'
         updates.status = nextStatus
       }
@@ -634,6 +643,50 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         }
       )
 
+      if (role === 'treballador' && !canManageTickets && nextStatus === 'no_fet') {
+        autoReturnToPlanner = true
+        const autoReassignNote = String(body.statusNote || '').trim()
+        const historyWithReassign = Array.isArray(updates.statusHistory)
+          ? [...updates.statusHistory]
+          : []
+        historyWithReassign.push({
+          status: 'reassignat',
+          at: Date.now(),
+          byId: user.id,
+          byName: user.name || '',
+          note: autoReassignNote
+            ? `${REASSIGN_PENDING_NOTE}: ${autoReassignNote}`
+            : REASSIGN_PENDING_NOTE,
+          startTime: null,
+          endTime: null,
+        })
+        updates.statusHistory = historyWithReassign
+        updates.status = 'reassignat'
+        nextStatus = 'reassignat'
+        updates.workflowStage = 'planner_queue'
+        updates.plannedStart = null
+        updates.plannedEnd = null
+        updates.assignedToIds = []
+        updates.assignedToNames = []
+        updates.assignedAt = null
+        updates.assignedById = null
+        updates.assignedByName = null
+        updates.planningHistory = admin.firestore.FieldValue.arrayUnion({
+          action: 'desplanificat',
+          at: Date.now(),
+          byId: user.id,
+          byName: user.name || '',
+          plannedStart: null,
+          plannedEnd: null,
+          previousPlannedStart,
+          previousPlannedEnd,
+          assignedToNames: Array.isArray(current.assignedToNames) ? current.assignedToNames : [],
+          note: autoReassignNote
+            ? `No fet. ${REASSIGN_PENDING_NOTE.toLowerCase()}: ${autoReassignNote}`
+            : `No fet. ${REASSIGN_PENDING_NOTE.toLowerCase()}`,
+        })
+      }
+
       if (role === 'treballador' && !canManageTickets) {
         const workLogs = Array.isArray(current.workLogs)
           ? (current.workLogs as MaintenanceWorkLogEntry[])
@@ -726,23 +779,35 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         ? String(updates.workflowStage)
         : current.workflowStage
     )
+    const mergedAssignedToIds =
+      body.assignedToIds !== undefined
+        ? body.assignedToIds
+        : updates.assignedToIds !== undefined
+          ? (updates.assignedToIds as string[] | undefined)
+          : Array.isArray(updated.assignedToIds)
+            ? (updated.assignedToIds as string[])
+            : (current.assignedToIds as string[] | undefined)
+    const mergedPlannedStart =
+      body.plannedStart !== undefined
+        ? body.plannedStart
+        : updates.plannedStart !== undefined
+          ? (updates.plannedStart as TicketAlertSnapshot['plannedStart'])
+          : (updated.plannedStart ?? current.plannedStart) as TicketAlertSnapshot['plannedStart']
+    const mergedPlannedEnd =
+      body.plannedEnd !== undefined
+        ? body.plannedEnd
+        : updates.plannedEnd !== undefined
+          ? (updates.plannedEnd as TicketAlertSnapshot['plannedEnd'])
+          : (updated.plannedEnd ?? current.plannedEnd) as TicketAlertSnapshot['plannedEnd']
+
     const mergedTicket: TicketAlertSnapshot = {
       createdAt: current.createdAt as TicketAlertSnapshot['createdAt'],
       updatedAt: (updated.updatedAt ?? current.updatedAt) as TicketAlertSnapshot['updatedAt'],
       workflowStage: nextWorkflowStage,
       status: nextStatus || (updated.status as string | undefined) || (current.status as string | undefined),
-      assignedToIds:
-        body.assignedToIds !== undefined
-          ? body.assignedToIds
-          : (current.assignedToIds as string[] | undefined),
-      plannedStart:
-        body.plannedStart !== undefined
-          ? body.plannedStart
-          : (current.plannedStart as TicketAlertSnapshot['plannedStart']),
-      plannedEnd:
-        body.plannedEnd !== undefined
-          ? body.plannedEnd
-          : (current.plannedEnd as TicketAlertSnapshot['plannedEnd']),
+      assignedToIds: mergedAssignedToIds,
+      plannedStart: mergedPlannedStart,
+      plannedEnd: mergedPlannedEnd,
       externalized: Boolean(updated.externalized ?? current.externalized),
       externalStatus:
         (updated.externalStatus ?? current.externalStatus) as TicketAlertSnapshot['externalStatus'],
@@ -917,7 +982,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     }
 
-    if (planningTouched && planningChanged) {
+    if ((planningTouched && planningChanged) || autoReturnToPlanner) {
       try {
         const effectiveMachine =
           body.machine !== undefined ? String(body.machine).trim() : (current.machine || '')
@@ -928,6 +993,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         const syncedAssignedToIds =
           body.assignedToIds !== undefined
             ? body.assignedToIds
+            : updates.assignedToIds !== undefined
+              ? (updates.assignedToIds as string[])
             : Array.isArray(updated.assignedToIds)
               ? (updated.assignedToIds as string[])
               : Array.isArray(current.assignedToIds)
@@ -936,11 +1003,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         const syncedAssignedToNames =
           body.assignedToNames !== undefined
             ? body.assignedToNames
+            : updates.assignedToNames !== undefined
+              ? (updates.assignedToNames as string[])
             : Array.isArray(updated.assignedToNames)
               ? (updated.assignedToNames as string[])
               : Array.isArray(current.assignedToNames)
                 ? current.assignedToNames
                 : []
+        const syncedPlannedStart = autoReturnToPlanner ? null : nextPlannedStart
+        const syncedPlannedEnd = autoReturnToPlanner ? null : nextPlannedEnd
 
         const outlookCalendarEvents = await syncMaintenanceTicketOutlookCalendar({
           ticketId: id,
@@ -951,10 +1022,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           createdById: String(current.createdById || '').trim() || null,
           assignedToIds: syncedAssignedToIds,
           assignedToNames: syncedAssignedToNames,
-          plannedStart: nextPlannedStart,
-          plannedEnd: nextPlannedEnd,
+          plannedStart: syncedPlannedStart,
+          plannedEnd: syncedPlannedEnd,
           existingEvents: current.outlookCalendarEvents,
-          clearPlanning: previousHadPlanning && !nextHasPlanning,
+          clearPlanning: autoReturnToPlanner || (previousHadPlanning && !nextHasPlanning),
         })
 
         await ref.set({ outlookCalendarEvents }, { merge: true })

@@ -141,6 +141,7 @@ export const COLORS_STAGE: Record<string, string> = {
 export const MAINTENANCE_STATUS_BADGES: Record<string, string> = {
   nou: 'bg-teal-100 text-teal-800',
   assignat: 'bg-sky-100 text-sky-800',
+  reassignat: 'bg-orange-100 text-orange-800',
   en_curs: 'bg-amber-100 text-amber-800',
   espera: 'bg-slate-100 text-slate-700',
   fet: 'bg-emerald-100 text-emerald-800',

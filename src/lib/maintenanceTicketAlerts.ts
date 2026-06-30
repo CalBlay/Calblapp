@@ -31,6 +31,7 @@ const normalizeStatus = (value?: string | null) => {
     .trim()
     .toLowerCase()
   if (v === 'assignat') return 'assignat'
+  if (v === 'reassignat') return 'reassignat'
   if (v === 'en_curs' || v === 'en curs') return 'en_curs'
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'

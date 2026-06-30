@@ -33,6 +33,7 @@ type Props = {
   onOpen: (ticket: Ticket) => void
   onToggleExpanded: (id: string) => void
   onValidate: (ticket: Ticket) => Promise<void>
+  onReassign: (ticket: Ticket) => void
 }
 
 function TicketHistory({ ticket }: { ticket: Ticket }) {
@@ -78,7 +79,7 @@ function TicketHistory({ ticket }: { ticket: Ticket }) {
             </div>
             <div>
               <div className="font-medium text-slate-500">Observacions</div>
-              <div>{item.note || '-'}</div>
+              <div className="text-[14px] leading-5 text-slate-700">{item.note || '-'}</div>
             </div>
             <div>
               <div className="font-medium text-slate-500">Data</div>
@@ -217,6 +218,7 @@ export default function SeguimentTicketRow({
   onOpen,
   onToggleExpanded,
   onValidate,
+  onReassign,
 }: Props) {
   const days = getDaysOpen(ticket.createdAt)
   const trackedMinutes = getTicketTrackedMinutes(ticket)
@@ -237,6 +239,8 @@ export default function SeguimentTicketRow({
     canValidateTickets &&
     validationSummary.pendingCap &&
     normalizeStatus(ticket.status) !== 'validat'
+  const canReassign =
+    normalizeStatus(ticket.status) === 'no_fet' || normalizeStatus(ticket.status) === 'reassignat'
   const title =
     ticket.description ||
     normalizeMachineLabel(ticket.machine, machineNameMap) ||
@@ -347,6 +351,18 @@ export default function SeguimentTicketRow({
                 validatingTicketId={validatingTicketId}
                 onValidate={onValidate}
               />
+              {canReassign ? (
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-full"
+                    onClick={() => onReassign(ticket)}
+                  >
+                    Reassignar ticket
+                  </Button>
+                </div>
+              ) : null}
               <TicketCompletionAttachments ticket={ticket} />
               <div>
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Historial</div>

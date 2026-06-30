@@ -5,6 +5,7 @@ import { Database } from 'lucide-react'
 import { typography } from '@/lib/typography'
 import type { MachineListStats, MachineRow, MachineView, SupplierRow } from '../types'
 import { STATUS_LABELS, formatDateTime, formatTrackedHours } from '../utils'
+import MachineLocationSearchInput from './MachineLocationSearchInput'
 
 function SummaryCard({
   title,
@@ -35,6 +36,7 @@ type Props = {
   loading: boolean
   saving: boolean
   filteredMachines: MachineRow[]
+  locationOptions: string[]
   suppliers: SupplierRow[]
   selectedMachine: MachineRow | null
   selectedMachineId: string | null
@@ -51,6 +53,7 @@ export default function MachinesPanel({
   loading,
   saving,
   filteredMachines,
+  locationOptions,
   suppliers,
   selectedMachine,
   selectedMachineId,
@@ -62,6 +65,11 @@ export default function MachinesPanel({
   onResetMachine,
   onSaveMachine,
 }: Props) {
+  const resolvedLocationOptions =
+    machineForm.location && !locationOptions.includes(machineForm.location)
+      ? [machineForm.location, ...locationOptions]
+      : locationOptions
+
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
       <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -198,11 +206,12 @@ export default function MachinesPanel({
               placeholder="Nom"
               className="h-11 rounded-2xl border border-slate-200 px-4"
             />
-            <input
+            <MachineLocationSearchInput
+              options={resolvedLocationOptions}
               value={machineForm.location}
-              onChange={(event) => onMachineFormChange((prev) => ({ ...prev, location: event.target.value }))}
-              placeholder="Ubicacio"
-              className="h-11 rounded-2xl border border-slate-200 px-4"
+              onChange={(location) =>
+                onMachineFormChange((prev) => ({ ...prev, location }))
+              }
             />
             <div className="grid gap-3 sm:grid-cols-2">
               <input

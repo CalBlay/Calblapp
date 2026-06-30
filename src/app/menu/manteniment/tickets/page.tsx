@@ -66,6 +66,7 @@ const normalizeDept = (raw?: string) =>
 const STATUS_LABELS: Record<TicketStatus, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
+  reassignat: 'Reassignat',
   en_curs: 'En curs',
   espera: 'Espera',
   fet: 'Fet',
@@ -84,6 +85,7 @@ const PRIORITY_LABELS: Record<TicketPriority, string> = {
 const statusBadgeClasses: Record<TicketStatus, string> = {
   nou: 'bg-emerald-100 text-emerald-800',
   assignat: 'bg-blue-100 text-blue-800',
+  reassignat: 'bg-orange-100 text-orange-800',
   en_curs: 'bg-amber-100 text-amber-800',
   espera: 'bg-slate-100 text-slate-700',
   fet: 'bg-green-100 text-green-800',
@@ -162,10 +164,15 @@ export default function MaintenanceTicketsPage() {
     filters,
     setFilters,
     locations: catalogLocations,
+    centers: catalogCenters,
     machines,
     showCreate,
     setShowCreate,
     openCreate,
+    createCenter,
+    setCreateCenter,
+    centerQuery,
+    setCenterQuery,
     createLocation,
     setCreateLocation,
     createMachine,
@@ -174,6 +181,8 @@ export default function MaintenanceTicketsPage() {
     setLocationQuery,
     machineQuery,
     setMachineQuery,
+    showCenterList,
+    setShowCenterList,
     showLocationList,
     setShowLocationList,
     showMachineList,
@@ -258,15 +267,15 @@ export default function MaintenanceTicketsPage() {
       .toLowerCase()
       .trim()
 
-  const createLocations = useMemo(() => {
-    if (!isRestaurantOpsDepartment(department)) return catalogLocations
+  const createCenters = useMemo(() => {
+    if (!isRestaurantOpsDepartment(department)) return catalogCenters
     const restaurantKeys = new Set(
       OPS_CHANNEL_LOCATIONS.filter((entry) => entry.source === 'restaurants').map((entry) =>
         normalizeLocationKey(entry.location)
       )
     )
-    return catalogLocations.filter((loc) => restaurantKeys.has(normalizeLocationKey(loc)))
-  }, [catalogLocations, department])
+    return catalogCenters.filter((center) => restaurantKeys.has(normalizeLocationKey(center.name)))
+  }, [catalogCenters, department])
 
   useEffect(() => {
     setContent(
@@ -314,6 +323,7 @@ export default function MaintenanceTicketsPage() {
                 <option value="en_curs">{STATUS_LABELS.en_curs}</option>
                 <option value="espera">{STATUS_LABELS.espera}</option>
                 <option value="fet">{STATUS_LABELS.fet}</option>
+                <option value="reassignat">{STATUS_LABELS.reassignat}</option>
                 <option value="no_fet">{STATUS_LABELS.no_fet}</option>
                 <option value="resolut">{STATUS_LABELS.resolut}</option>
                 {canValidate ? <option value="validat">{STATUS_LABELS.validat}</option> : null}
@@ -692,15 +702,21 @@ export default function MaintenanceTicketsPage() {
         )}
 
         {showCreate && (
-          <CreateTicketModal
-            locations={createLocations}
+        <CreateTicketModal
+            centers={createCenters}
             machines={machines}
             createPriority={createPriority}
             setCreatePriority={setCreatePriority}
+            centerQuery={centerQuery}
+            setCenterQuery={setCenterQuery}
+            createCenter={createCenter}
+            setCreateCenter={setCreateCenter}
             locationQuery={locationQuery}
             setLocationQuery={setLocationQuery}
             createLocation={createLocation}
             setCreateLocation={setCreateLocation}
+            showCenterList={showCenterList}
+            setShowCenterList={setShowCenterList}
             machineQuery={machineQuery}
             setMachineQuery={setMachineQuery}
             createMachine={createMachine}

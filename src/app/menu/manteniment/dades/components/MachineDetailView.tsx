@@ -5,6 +5,7 @@ import { maintenanceStatusBadge } from '@/lib/colors'
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
 import type { MachineRow, MachineTimelineItem, MachineView, MachineViewTab, SupplierRow } from '../types'
 import { STATUS_LABELS, formatDateTime, formatTrackedHours, getDaysOpen, getLastMovementAt, getPlannedMinutes, getTrackedMinutes } from '../utils'
+import MachineLocationSearchInput from './MachineLocationSearchInput'
 
 function SummaryCard({
   title,
@@ -41,6 +42,7 @@ type Props = {
   machineTickets: Ticket[]
   machineTimeline: MachineTimelineItem[]
   machineStats: MachineStats
+  locationOptions: string[]
   suppliers: SupplierRow[]
   saving: boolean
   onMachineViewTabChange: (tab: MachineViewTab) => void
@@ -56,6 +58,7 @@ export default function MachineDetailView({
   machineTickets,
   machineTimeline,
   machineStats,
+  locationOptions,
   suppliers,
   saving,
   onMachineViewTabChange,
@@ -63,6 +66,11 @@ export default function MachineDetailView({
   onResetMachine,
   onSaveMachine,
 }: Props) {
+  const resolvedLocationOptions =
+    machineForm.location && !locationOptions.includes(machineForm.location)
+      ? [machineForm.location, ...locationOptions]
+      : locationOptions
+
   if (!selectedMachine) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-sm text-slate-500">
@@ -326,11 +334,10 @@ export default function MachineDetailView({
               placeholder="Nom"
               className="h-11 rounded-2xl border border-slate-200 px-4"
             />
-            <input
+            <MachineLocationSearchInput
+              options={resolvedLocationOptions}
               value={machineForm.location}
-              onChange={(e) => onMachineFormChange((prev) => ({ ...prev, location: e.target.value }))}
-              placeholder="Ubicacio"
-              className="h-11 rounded-2xl border border-slate-200 px-4"
+              onChange={(location) => onMachineFormChange((prev) => ({ ...prev, location }))}
             />
             <div className="grid gap-3 sm:grid-cols-2">
               <input

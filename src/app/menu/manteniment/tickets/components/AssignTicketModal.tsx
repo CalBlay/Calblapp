@@ -215,7 +215,8 @@ export default function AssignTicketModal({
   const isValidated = ticket.status === 'validat'
   const validationSummary = getMaintenanceTicketValidationSummary(ticket)
   const canCapValidateTicket = canCapValidate?.(ticket) ?? canValidate
-  const isPlanningStage = ticket.status === 'nou' || ticket.status === 'no_fet'
+  const isPlanningStage =
+    ticket.status === 'nou' || ticket.status === 'no_fet' || ticket.status === 'reassignat'
   const isAssignedStage = ticket.status === 'assignat'
   const machineLabel = isDeco ? 'Material' : 'Maquinaria'
   const machinePlaceholder = isDeco ? 'Selecciona material' : 'Selecciona maquinaria'

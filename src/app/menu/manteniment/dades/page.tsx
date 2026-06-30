@@ -32,6 +32,7 @@ import {
   type SupplierRow,
 } from './types'
 import { parseFetchJson } from '@/lib/parseFetchJson'
+import { buildControlledMaintenanceLocations } from '@/lib/maintenanceLocationCatalog'
 
 export default function MaintenanceDataPage() {
   const { setContent } = useFilters()
@@ -68,16 +69,20 @@ export default function MaintenanceDataPage() {
         fetch('/api/maintenance/data/suppliers', { cache: 'no-store' }),
         fetch('/api/maintenance/tickets?ticketType=maquinaria&limit=300', { cache: 'no-store' }),
       ])
+      const centersRes = await fetch('/api/maintenance/data/centers', { cache: 'no-store' })
       const machinesJson = await parseFetchJson(machinesRes, { machines: [] as MachineRow[] })
       const suppliersJson = await parseFetchJson(suppliersRes, { suppliers: [] as SupplierRow[] })
       const ticketsJson = await parseFetchJson(ticketsRes, { tickets: [] as Ticket[] })
+      const centersJson = await parseFetchJson(centersRes, { centers: [] as CenterRow[] })
       const nextMachines = Array.isArray(machinesJson?.machines) ? machinesJson.machines : []
       const nextSuppliers = Array.isArray(suppliersJson?.suppliers) ? suppliersJson.suppliers : []
       const nextTickets = Array.isArray(ticketsJson?.tickets) ? ticketsJson.tickets : []
+      const nextCenters = Array.isArray(centersJson?.centers) ? centersJson.centers : []
 
       setMachines(nextMachines)
       setSuppliers(nextSuppliers)
       setTickets(nextTickets)
+      setCenters(nextCenters)
       setLoadedTabs((current) => ({ ...current, machines: true, suppliers: true }))
 
       setSelectedMachineId((current) => {
@@ -177,6 +182,11 @@ export default function MaintenanceDataPage() {
         .includes(q)
     )
   }, [machineSearch, machines])
+
+  const machineLocationOptions = useMemo(
+    () => buildControlledMaintenanceLocations(centers),
+    [centers]
+  )
 
   const filteredSuppliers = useMemo(() => {
     const q = supplierSearch.trim().toLowerCase()
@@ -280,6 +290,10 @@ export default function MaintenanceDataPage() {
   const saveMachine = async () => {
     setSaving(true)
     try {
+      if (!machineForm.location.trim()) {
+        window.alert('Cal seleccionar una ubicacio valida per la maquina.')
+        return
+      }
       const selectedSupplier = suppliers.find((item) => item.id === machineForm.supplierId)
       const payload = {
         ...machineForm,
@@ -363,7 +377,7 @@ export default function MaintenanceDataPage() {
 
   return (
     <MaintenancePermissionGate path="/menu/manteniment/dades">
-      <div className="mx-auto w-full max-w-7xl space-y-4 p-4">
+      <div className="mx-auto w-full max-w-none space-y-4 p-4 lg:px-6 xl:px-8">
         <ModuleHeader title="Manteniment" subtitle="Dades" mainHref="/menu/manteniment" />
 
         {tab !== 'preventives' && tab !== 'centers' ? (
@@ -535,6 +549,7 @@ export default function MaintenanceDataPage() {
             loading={loading}
             saving={saving}
             filteredMachines={filteredMachines}
+            locationOptions={machineLocationOptions}
             suppliers={suppliers}
             selectedMachine={selectedMachine}
             selectedMachineId={selectedMachineId}
@@ -585,9 +600,19 @@ export default function MaintenanceDataPage() {
               loading={loading}
               tipusFilter={centerTipusFilter}
               onTipusFilterChange={setCenterTipusFilter}
-              onSaved={(id, travelMinutes) => {
+              onSaved={(id, patch) => {
                 setCenters((prev) =>
-                  prev.map((row) => (row.id === id ? { ...row, travelMinutes } : row))
+                  prev.map((row) =>
+                    row.id === id
+                      ? {
+                          ...row,
+                          travelMinutes: patch.travelMinutes,
+                          ...(patch.internalLocations !== undefined
+                            ? { internalLocations: patch.internalLocations }
+                            : {}),
+                        }
+                      : row
+                  )
                 )
               }}
             />

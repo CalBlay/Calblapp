@@ -73,6 +73,7 @@ type InternalWorkItem = {
 const STATUS_LABELS: Record<string, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
+  reassignat: 'Reassignat',
   en_curs: 'En curs',
   espera: 'Espera',
   fet: 'Fet',

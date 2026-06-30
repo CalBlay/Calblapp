@@ -18,6 +18,7 @@ export type CenterRow = {
   code: string
   tipus: string
   travelMinutes: number
+  internalLocations?: string[]
 }
 
 export type SupplierRow = {

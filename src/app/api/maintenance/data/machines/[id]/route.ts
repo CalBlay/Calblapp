@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import {
+  buildControlledMaintenanceLocations,
+  sanitizeMaintenanceInternalLocations,
+} from '@/lib/maintenanceLocationCatalog'
 import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
@@ -12,6 +16,20 @@ const buildLabel = (code?: string, name?: string) => {
   const cleanName = String(name || '').trim()
   if (cleanCode && cleanName) return `${cleanCode} · ${cleanName}`
   return cleanCode || cleanName
+}
+
+async function loadAllowedLocations() {
+  const snap = await db.collection('finques').get()
+  return snap.docs.map((doc) => {
+    const data = doc.data() || {}
+    return {
+      id: doc.id,
+      name: String(data.nom || data.name || '').trim(),
+      code: String(data.codi || data.code || '').trim(),
+      tipus: String(data.tipus || '').trim().toLowerCase(),
+      internalLocations: sanitizeMaintenanceInternalLocations(data.maintenanceInternalLocations),
+    }
+  })
 }
 
 export async function PATCH(
@@ -35,12 +53,25 @@ export async function PATCH(
       body?.code !== undefined ? String(body.code || '').trim() : String(current.code || '').trim()
     const name =
       body?.name !== undefined ? String(body.name || '').trim() : String(current.name || '').trim()
+    const location =
+      body?.location !== undefined
+        ? String(body.location || '').trim()
+        : String(current.location || '').trim()
+
+    if (!location) {
+      return NextResponse.json({ error: 'Cal seleccionar una ubicacio valida' }, { status: 400 })
+    }
+
+    const allowedLocations = buildControlledMaintenanceLocations(await loadAllowedLocations())
+    if (!allowedLocations.includes(location)) {
+      return NextResponse.json({ error: 'La ubicacio seleccionada no es valida' }, { status: 400 })
+    }
 
     await ref.set(
       {
         ...(body?.code !== undefined ? { code } : {}),
         ...(body?.name !== undefined ? { name } : {}),
-        ...(body?.location !== undefined ? { location: String(body.location || '').trim() } : {}),
+        ...(body?.location !== undefined ? { location } : {}),
         ...(body?.brand !== undefined ? { brand: String(body.brand || '').trim() } : {}),
         ...(body?.model !== undefined ? { model: String(body.model || '').trim() } : {}),
         ...(body?.serialNumber !== undefined

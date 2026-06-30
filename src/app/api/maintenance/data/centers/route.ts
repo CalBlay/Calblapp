@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeMaintenanceLocationKey } from '@/lib/maintenanceCenterTravel'
-import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
+import { sanitizeMaintenanceInternalLocations } from '@/lib/maintenanceLocationCatalog'
+import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -20,7 +21,7 @@ const normalizeTipus = (raw?: unknown) => {
 }
 
 export async function GET(req: Request) {
-  const auth = await requireMaintenanceDataAccess()
+  const auth = await requireMaintenanceTicketApiView()
   if (!auth.ok) return auth.res
 
   try {
@@ -35,6 +36,7 @@ export async function GET(req: Request) {
         const name = String(data.nom || data.name || '').trim()
         const code = String(data.codi || data.code || doc.id || '').trim()
         const tipus = normalizeTipus(data.tipus ?? data.code)
+        const internalLocations = sanitizeMaintenanceInternalLocations(data.maintenanceInternalLocations)
         const travelMinutes = Math.max(
           0,
           Math.round(Number(data.maintenanceTravelMinutes ?? data.travelMinutes ?? 0) || 0)
@@ -45,8 +47,11 @@ export async function GET(req: Request) {
           code,
           tipus,
           travelMinutes,
+          internalLocations,
           searchable: normalizeMaintenanceLocationKey(
-            [name, code, String(data.searchable || '')].filter(Boolean).join(' ')
+            [name, code, ...internalLocations, String(data.searchable || '')]
+              .filter(Boolean)
+              .join(' ')
           ),
         }
       })

@@ -36,12 +36,16 @@ export function computeHistoryWorkMinutes(history?: WorkHistoryEntry[] | null) {
   const entries = Array.isArray(history)
     ? history.slice().sort((a, b) => (parseHistoryAtMs(a.at) || 0) - (parseHistoryAtMs(b.at) || 0))
     : []
+  const closedSegmentsSeen = new Set<string>()
   let openStart: Date | null = null
   let totalMs = 0
   for (const entry of entries) {
     const start = parseHistoryTime(entry.at, entry.startTime)
     const end = parseHistoryTime(entry.at, entry.endTime)
     if (start && end) {
+      const key = `${parseHistoryAtMs(entry.at) || 0}|${entry.startTime || ''}|${entry.endTime || ''}|${entry.byId || ''}`
+      if (closedSegmentsSeen.has(key)) continue
+      closedSegmentsSeen.add(key)
       const diff = end.getTime() - start.getTime()
       if (diff > 0) totalMs += diff
       openStart = null

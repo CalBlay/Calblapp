@@ -74,6 +74,7 @@ const STATUS_LABELS = {
   espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
+  reassignat: 'Reassignat',
   resolut: 'Resolt',
   validat: 'Validat',
 } as const

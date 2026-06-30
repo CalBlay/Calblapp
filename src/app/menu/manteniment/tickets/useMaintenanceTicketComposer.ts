@@ -4,7 +4,6 @@ import { compressRasterImageForUpload, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/
 import { compressVideoForUpload } from '@/lib/media/compressVideoForUpload'
 import {
   resolveManualTicketRouting,
-  requiresMaintenanceTicketWorkerName,
   type ManualTicketRouting,
 } from '@/lib/maintenanceTicketCreators'
 import {
@@ -21,6 +20,7 @@ import type { TicketPriority } from './types'
 type Params = {
   refreshTickets?: () => Promise<void>
   /** Valors per defecte en obrir el modal (p. ex. Cuina central). */
+  defaultCenter?: string
   defaultLocation?: string
   defaultMachine?: string
   /** Força encaminament cuina central encara que el departament de sessió sigui admin. */
@@ -29,7 +29,15 @@ type Params = {
 
 type SessionUser = {
   department?: string | null
+  name?: string | null
 }
+
+const normalizeComparableValue = (value?: string | null) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
 
 export type PendingTicketAttachment = {
   file: File
@@ -39,6 +47,7 @@ export type PendingTicketAttachment = {
 
 export function useMaintenanceTicketComposer({
   refreshTickets = async () => {},
+  defaultCenter = '',
   defaultLocation = '',
   defaultMachine = '',
   routingOverride,
@@ -46,10 +55,13 @@ export function useMaintenanceTicketComposer({
   const { data: session } = useSession()
   const sessionUser = (session?.user || {}) as SessionUser
   const [showCreate, setShowCreate] = useState(false)
+  const [createCenter, setCreateCenter] = useState('')
   const [createLocation, setCreateLocation] = useState('')
   const [createMachine, setCreateMachine] = useState('')
+  const [centerQuery, setCenterQuery] = useState('')
   const [locationQuery, setLocationQuery] = useState('')
   const [machineQuery, setMachineQuery] = useState('')
+  const [showCenterList, setShowCenterList] = useState(false)
   const [showLocationList, setShowLocationList] = useState(false)
   const [showMachineList, setShowMachineList] = useState(false)
   const [createDescription, setCreateDescription] = useState('')
@@ -62,14 +74,20 @@ export function useMaintenanceTicketComposer({
   const [formError, setFormError] = useState<string | null>(null)
   const attachmentsRef = useRef<PendingTicketAttachment[]>([])
 
-  const needsWorkerName = useMemo(
-    () =>
-      requiresMaintenanceTicketWorkerName({
-        department: sessionUser.department,
-        location: createLocation.trim() || locationQuery.trim(),
-      }),
-    [sessionUser.department, createLocation, locationQuery]
-  )
+  const needsWorkerName = true
+  const suggestedWorkerName = useMemo(() => {
+    const sessionName = String(sessionUser.name || '').trim()
+    const centerName = createCenter.trim() || centerQuery.trim()
+    if (!sessionName) return ''
+    if (centerName && normalizeComparableValue(sessionName) === normalizeComparableValue(centerName)) {
+      return ''
+    }
+    return sessionName
+  }, [sessionUser.name, createCenter, centerQuery])
+
+  useEffect(() => {
+    setCenterQuery(createCenter)
+  }, [createCenter])
 
   useEffect(() => {
     setLocationQuery(createLocation)
@@ -78,6 +96,12 @@ export function useMaintenanceTicketComposer({
   useEffect(() => {
     setMachineQuery(createMachine)
   }, [createMachine])
+
+  useEffect(() => {
+    if (createWorkerName.trim()) return
+    if (!suggestedWorkerName) return
+    setCreateWorkerName(suggestedWorkerName)
+  }, [createWorkerName, suggestedWorkerName])
 
   useEffect(() => {
     attachmentsRef.current = createAttachments
@@ -89,26 +113,38 @@ export function useMaintenanceTicketComposer({
     }
   }, [])
 
-  const applyDefaults = (preset?: { location?: string; machine?: string }) => {
+  const applyDefaults = (preset?: { center?: string; location?: string; machine?: string }) => {
+    const center = preset?.center ?? defaultCenter
     const loc = preset?.location ?? defaultLocation
     const mac = preset?.machine ?? defaultMachine
+    const sessionName = String(sessionUser.name || '').trim()
+    const nextWorkerName =
+      sessionName && normalizeComparableValue(sessionName) !== normalizeComparableValue(center)
+        ? sessionName
+        : ''
+    setCreateCenter(center)
     setCreateLocation(loc)
     setCreateMachine(mac)
+    setCenterQuery(center)
     setLocationQuery(loc)
     setMachineQuery(mac)
+    setCreateWorkerName(nextWorkerName)
   }
 
-  const openCreate = (preset?: { location?: string; machine?: string }) => {
+  const openCreate = (preset?: { center?: string; location?: string; machine?: string }) => {
     applyDefaults(preset)
     setShowCreate(true)
   }
 
   const resetCreateState = () => {
     setShowCreate(false)
+    setCreateCenter('')
     setCreateLocation('')
     setCreateMachine('')
+    setCenterQuery('')
     setLocationQuery('')
     setMachineQuery('')
+    setShowCenterList(false)
     setShowLocationList(false)
     setShowMachineList(false)
     setCreateDescription('')
@@ -227,6 +263,9 @@ export function useMaintenanceTicketComposer({
   const getEffectiveMachine = () => createMachine.trim() || machineQuery.trim()
 
   const validateCreateForm = () => {
+    if (!createCenter.trim()) {
+      return 'Selecciona un centre.'
+    }
     if (!createLocation.trim()) {
       return 'Selecciona una ubicacio.'
     }
@@ -236,7 +275,7 @@ export function useMaintenanceTicketComposer({
     if (!createDescription.trim()) {
       return 'La descripcio es obligatoria.'
     }
-    if (needsWorkerName && !createWorkerName.trim()) {
+    if (!createWorkerName.trim()) {
       return 'Indica el nom del treballador que reporta el ticket.'
     }
     if (createAttachments.length < 1) {
@@ -265,13 +304,14 @@ export function useMaintenanceTicketComposer({
         routingOverride ||
         resolveManualTicketRouting({
           department: sessionUser.department,
-          location: createLocation.trim(),
+          location: createCenter.trim(),
         })
       const res = await fetch('/api/maintenance/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          location: createLocation.trim(),
+          location: createCenter.trim(),
+          workLocation: createLocation.trim() || null,
           machine: getEffectiveMachine(),
           operatorTitle: getEffectiveMachine(),
           description: createDescription.trim(),
@@ -301,16 +341,21 @@ export function useMaintenanceTicketComposer({
   }
 
   const canCreateTicket =
+    Boolean(createCenter.trim()) &&
     Boolean(createLocation.trim()) &&
     Boolean(getEffectiveMachine()) &&
     Boolean(createDescription.trim()) &&
-    (!needsWorkerName || Boolean(createWorkerName.trim())) &&
+    Boolean(createWorkerName.trim()) &&
     createAttachments.length >= 1 &&
     createAttachments.length <= MAX_TICKET_ATTACHMENTS
 
   return {
     showCreate,
     setShowCreate,
+    createCenter,
+    setCreateCenter,
+    centerQuery,
+    setCenterQuery,
     createLocation,
     setCreateLocation,
     createMachine,
@@ -319,6 +364,8 @@ export function useMaintenanceTicketComposer({
     setLocationQuery,
     machineQuery,
     setMachineQuery,
+    showCenterList,
+    setShowCenterList,
     showLocationList,
     setShowLocationList,
     showMachineList,

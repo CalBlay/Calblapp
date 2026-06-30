@@ -122,12 +122,13 @@ export function useMaintenanceTickets() {
   const [detailsDescription, setDetailsDescription] = useState('')
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
 
-  const { locations, machines, maintenanceUsers, furgonetes } = useMaintenanceTicketCatalog()
+  const { locations, centers, machines, maintenanceUsers, furgonetes } = useMaintenanceTicketCatalog()
 
   const defaultCreateLocation = useMemo(
     () => resolveDefaultTicketLocationFromUserName(sessionUser.name, locations) || '',
     [locations, sessionUser.name]
   )
+  const defaultCreateCenter = defaultCreateLocation
 
   const fetchTickets = useCallback(
     async (opts?: { append?: boolean; cursorCreatedAt?: number }) => {
@@ -190,6 +191,10 @@ export function useMaintenanceTickets() {
   const {
     showCreate,
     setShowCreate,
+    createCenter,
+    setCreateCenter,
+    centerQuery,
+    setCenterQuery,
     createLocation,
     setCreateLocation,
     createMachine,
@@ -198,6 +203,8 @@ export function useMaintenanceTickets() {
     setLocationQuery,
     machineQuery,
     setMachineQuery,
+    showCenterList,
+    setShowCenterList,
     showLocationList,
     setShowLocationList,
     showMachineList,
@@ -223,7 +230,8 @@ export function useMaintenanceTickets() {
     openCreate,
   } = useMaintenanceTicketComposer({
     refreshTickets: () => fetchTickets(),
-    defaultLocation: defaultCreateLocation,
+    defaultCenter: defaultCreateCenter,
+    defaultLocation: '',
   })
 
   useEffect(() => {
@@ -751,7 +759,12 @@ export function useMaintenanceTickets() {
       (ticket) =>
         !ticket.externalized &&
         (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
-        (ticket.status === 'nou' || ticket.status === 'no_fet' || ticket.status === 'assignat')
+        (
+          ticket.status === 'nou' ||
+          ticket.status === 'no_fet' ||
+          ticket.status === 'reassignat' ||
+          ticket.status === 'assignat'
+        )
     )
     const plannerQueue = inRange.filter(
       (ticket) =>
@@ -893,10 +906,15 @@ export function useMaintenanceTickets() {
     filters,
     setFilters,
     locations,
+    centers,
     machines,
     showCreate,
     setShowCreate,
     openCreate,
+    createCenter,
+    setCreateCenter,
+    centerQuery,
+    setCenterQuery,
     createLocation,
     setCreateLocation,
     createMachine,
@@ -905,6 +923,8 @@ export function useMaintenanceTickets() {
     setLocationQuery,
     machineQuery,
     setMachineQuery,
+    showCenterList,
+    setShowCenterList,
     showLocationList,
     setShowLocationList,
     showMachineList,

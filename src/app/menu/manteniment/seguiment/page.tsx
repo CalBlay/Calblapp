@@ -59,6 +59,11 @@ const STATUS_FILTER_STYLES: Record<
     dot: 'bg-sky-500',
     label: 'Assignat',
   },
+  reassignat: {
+    active: 'bg-orange-100 text-orange-800 border-orange-200',
+    dot: 'bg-orange-500',
+    label: 'Reassignat',
+  },
   en_curs: {
     active: 'bg-amber-100 text-amber-800 border-amber-200',
     dot: 'bg-amber-500',
@@ -473,6 +478,7 @@ export default function MaintenanceSeguimentPage() {
                               canValidateTickets={canValidateTickets}
                               validatingTicketId={validatingTicketId}
                               onOpen={setOpenedTicket}
+                              onReassign={setOpenedTicket}
                               onToggleExpanded={(id) =>
                                 setExpandedId((prev) => (prev === id ? null : id))
                               }

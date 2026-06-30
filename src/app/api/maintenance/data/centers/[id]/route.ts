@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { combineTravelParts } from '@/lib/maintenanceCenterTravel'
+import { sanitizeMaintenanceInternalLocations } from '@/lib/maintenanceLocationCatalog'
 import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
@@ -10,6 +11,7 @@ type PatchBody = {
   travelMinutes?: number
   travelHours?: number
   travelMinutesPart?: number
+  internalLocations?: string[]
 }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -43,15 +45,25 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ error: 'Centre no trobat' }, { status: 404 })
     }
 
-    await ref.set(
-      {
-        maintenanceTravelMinutes: travelMinutes,
-        maintenanceTravelUpdatedAt: Date.now(),
-      },
-      { merge: true }
-    )
+    const patch: Record<string, unknown> = {
+      maintenanceTravelMinutes: travelMinutes,
+      maintenanceTravelUpdatedAt: Date.now(),
+    }
+    if (body.internalLocations !== undefined) {
+      patch.maintenanceInternalLocations = sanitizeMaintenanceInternalLocations(body.internalLocations)
+    }
 
-    return NextResponse.json({ ok: true, id, travelMinutes })
+    await ref.set(patch, { merge: true })
+
+    return NextResponse.json({
+      ok: true,
+      id,
+      travelMinutes,
+      internalLocations:
+        body.internalLocations !== undefined
+          ? sanitizeMaintenanceInternalLocations(body.internalLocations)
+          : undefined,
+    })
   } catch (error) {
     console.error('[maintenance/data/centers/[id]] PATCH error', error)
     return NextResponse.json({ error: 'Error desant temps de desplaçament' }, { status: 500 })

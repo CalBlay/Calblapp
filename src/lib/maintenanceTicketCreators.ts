@@ -109,6 +109,7 @@ export function requiresMaintenanceTicketWorkerName(params: {
   location?: string | null
 }): boolean {
   const location = String(params.location || '').trim()
+  if (isCuinaCentralDepartment(params.department) || isCuinaCentralLocation(location)) return true
   if (isRestaurantOpsDepartment(params.department)) return true
   if (!location) return false
   const routing = resolveManualTicketRouting({
@@ -157,7 +158,7 @@ export function getExternalReporterTicketBucket(ticket: {
   if (ticket.externalized) return 'externalitzat'
 
   const status = normalizeTicketStatusKey(ticket.status)
-  if (status === 'nou' || status === 'no_fet') return 'nou'
+  if (status === 'nou' || status === 'no_fet' || status === 'reassignat') return 'nou'
   if (status === 'assignat' || status === 'en_curs' || status === 'espera') return 'assignat'
   if (status === 'fet' || status === 'resolut' || status === 'validat') return 'fet'
   return 'nou'

@@ -198,6 +198,12 @@ export const MODULES: ModuleDef[] = [
         roles: ['admin','direccio','cap'],
         departments: ['manteniment','logistica'],
       },
+      {
+        label: 'Informes',
+        path: '/menu/manteniment/informes',
+        roles: ['admin','direccio','cap'],
+        departments: ['manteniment','logistica'],
+      },
     ],
   },
 

@@ -7,6 +7,7 @@ export type TabKey = 'tickets' | 'preventius'
 export type MaintenanceStatus =
   | 'nou'
   | 'assignat'
+  | 'reassignat'
   | 'en_curs'
   | 'espera'
   | 'fet'

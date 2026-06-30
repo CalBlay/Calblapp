@@ -13,7 +13,7 @@ type CentersPanelProps = {
   loading: boolean
   tipusFilter: 'all' | 'propi' | 'extern'
   onTipusFilterChange: (value: 'all' | 'propi' | 'extern') => void
-  onSaved: (id: string, travelMinutes: number) => void
+  onSaved: (id: string, patch: { travelMinutes: number; internalLocations?: string[] }) => void
 }
 
 function draftFromMinutes(total: number): TravelDraft {
@@ -30,6 +30,7 @@ export default function CentersPanel({
   onSaved,
 }: CentersPanelProps) {
   const [drafts, setDrafts] = useState<Record<string, TravelDraft>>({})
+  const [locationDrafts, setLocationDrafts] = useState<Record<string, string>>({})
   const [savingId, setSavingId] = useState<string | null>(null)
   const [errorById, setErrorById] = useState<Record<string, string>>({})
 
@@ -39,6 +40,14 @@ export default function CentersPanel({
       next[row.id] = draftFromMinutes(row.travelMinutes)
     }
     setDrafts(next)
+  }, [centers])
+
+  useEffect(() => {
+    const next: Record<string, string> = {}
+    for (const row of centers) {
+      next[row.id] = (row.internalLocations || []).join('\n')
+    }
+    setLocationDrafts(next)
   }, [centers])
 
   const tipusCounts = useMemo(() => {
@@ -74,7 +83,7 @@ export default function CentersPanel({
           const json = (await res.json().catch(() => ({}))) as { error?: string }
           throw new Error(json.error || 'No s ha pogut desar')
         }
-        onSaved(row.id, travelMinutes)
+        onSaved(row.id, { travelMinutes })
       } catch (err) {
         setErrorById((prev) => ({
           ...prev,
@@ -86,6 +95,53 @@ export default function CentersPanel({
       }
     },
     [drafts, onSaved]
+  )
+
+  const saveLocations = useCallback(
+    async (row: CenterRow) => {
+      const currentDraft = drafts[row.id] ?? draftFromMinutes(row.travelMinutes)
+      const internalLocations = String(locationDrafts[row.id] || '')
+        .split('\n')
+        .map((item) => item.trim())
+        .filter(Boolean)
+
+      setSavingId(row.id)
+      setErrorById((prev) => {
+        const copy = { ...prev }
+        delete copy[row.id]
+        return copy
+      })
+
+      try {
+        const res = await fetch(`/api/maintenance/data/centers/${encodeURIComponent(row.id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            travelHours: Number(currentDraft.hours) || 0,
+            travelMinutesPart: Number(currentDraft.minutes) || 0,
+            internalLocations,
+          }),
+        })
+        if (!res.ok) {
+          const json = (await res.json().catch(() => ({}))) as { error?: string }
+          throw new Error(json.error || 'No s han pogut desar les ubicacions')
+        }
+        onSaved(row.id, { travelMinutes: row.travelMinutes, internalLocations })
+      } catch (err) {
+        setErrorById((prev) => ({
+          ...prev,
+          [row.id]:
+            err instanceof Error ? err.message : 'Error desant ubicacions internes',
+        }))
+        setLocationDrafts((prev) => ({
+          ...prev,
+          [row.id]: (row.internalLocations || []).join('\n'),
+        }))
+      } finally {
+        setSavingId(null)
+      }
+    },
+    [drafts, locationDrafts, onSaved]
   )
 
   const updateDraft = (id: string, patch: Partial<TravelDraft>) => {
@@ -101,8 +157,7 @@ export default function CentersPanel({
         <div>
           <div className={typography('sectionTitle')}>Centres (finques)</div>
           <p className="mt-1 text-sm text-slate-500">
-            Temps de desplaçament anada des de la base. Els informes poden sumar-lo a la durada
-            registrada al tancar un ticket (anada + tornada).
+            Temps de desplacament d&apos;anada des de la base i ubicacions internes del centre.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -136,19 +191,20 @@ export default function CentersPanel({
               <th className="px-3 py-2">Centre</th>
               <th className="px-3 py-2">Codi</th>
               <th className="px-3 py-2">Tipus</th>
-              <th className="px-3 py-2">Temps desplaçament (anada)</th>
+              <th className="px-3 py-2">Temps desplacament (anada)</th>
+              <th className="px-3 py-2">Ubicacions internes</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={4} className="px-3 py-8 text-slate-500">
+                <td colSpan={5} className="px-3 py-8 text-slate-500">
                   Carregant centres...
                 </td>
               </tr>
             ) : centers.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-3 py-8 text-slate-500">
+                <td colSpan={5} className="px-3 py-8 text-slate-500">
                   Cap centre coincideix amb els filtres.
                 </td>
               </tr>
@@ -160,7 +216,7 @@ export default function CentersPanel({
                 return (
                   <tr key={row.id} className="border-b border-slate-100 last:border-0">
                     <td className="px-3 py-3 font-medium text-slate-900">{row.name}</td>
-                    <td className="px-3 py-3 text-slate-600">{row.code || '—'}</td>
+                    <td className="px-3 py-3 text-slate-600">{row.code || '-'}</td>
                     <td className="px-3 py-3">
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -178,7 +234,7 @@ export default function CentersPanel({
                             : row.tipus}
                       </span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 align-top">
                       <div className="flex flex-wrap items-center gap-2">
                         <label className="flex items-center gap-1 text-slate-600">
                           <input
@@ -191,7 +247,7 @@ export default function CentersPanel({
                             onChange={(e) => updateDraft(row.id, { hours: e.target.value })}
                             onBlur={() => void saveRow(row)}
                             className="h-9 w-14 rounded-lg border border-slate-200 px-2 text-center"
-                            aria-label={`Hores desplaçament ${row.name}`}
+                            aria-label={`Hores desplacament ${row.name}`}
                           />
                           <span className="text-xs">h</span>
                         </label>
@@ -206,14 +262,37 @@ export default function CentersPanel({
                             onChange={(e) => updateDraft(row.id, { minutes: e.target.value })}
                             onBlur={() => void saveRow(row)}
                             className="h-9 w-14 rounded-lg border border-slate-200 px-2 text-center"
-                            aria-label={`Minuts desplaçament ${row.name}`}
+                            aria-label={`Minuts desplacament ${row.name}`}
                           />
                           <span className="text-xs">min</span>
                         </label>
-                        {isSaving ? (
-                          <span className="text-xs text-slate-400">Desant...</span>
-                        ) : null}
+                        {isSaving ? <span className="text-xs text-slate-400">Desant...</span> : null}
                         {err ? <span className="text-xs text-rose-600">{err}</span> : null}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="space-y-2">
+                        <textarea
+                          value={locationDrafts[row.id] ?? ''}
+                          onChange={(e) =>
+                            setLocationDrafts((prev) => ({ ...prev, [row.id]: e.target.value }))
+                          }
+                          onBlur={() => void saveLocations(row)}
+                          disabled={isSaving}
+                          rows={4}
+                          placeholder="Una ubicacio per linia"
+                          className="w-full min-w-[16rem] rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                        />
+                        <div className="flex flex-wrap gap-1.5">
+                          {(row.internalLocations || []).map((location) => (
+                            <span
+                              key={location}
+                              className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-800"
+                            >
+                              {location}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </td>
                   </tr>

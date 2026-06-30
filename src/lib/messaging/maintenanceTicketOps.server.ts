@@ -159,7 +159,7 @@ export function isOpsActiveMaintenanceTicket(ticket: MaintenanceTicketOpsRecord)
     .toLowerCase()
   if (CLOSED_TICKET_STATUSES.has(status)) return false
 
-  return status === 'nou' || status === 'no_fet' || status === 'assignat'
+  return status === 'nou' || status === 'no_fet' || status === 'reassignat' || status === 'assignat'
 }
 
 async function buildMaintenanceTicketOpsRoom(params: {

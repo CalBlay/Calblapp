@@ -13,6 +13,7 @@ import type {
 export const STATUSES: MaintenanceStatus[] = [
   'nou',
   'assignat',
+  'reassignat',
   'en_curs',
   'espera',
   'fet',
@@ -24,6 +25,7 @@ export const STATUSES: MaintenanceStatus[] = [
 export const STATUS_LABELS: Record<MaintenanceStatus, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
+  reassignat: 'Reassignat',
   en_curs: 'En curs',
   espera: 'En espera',
   fet: 'Fet',
@@ -61,6 +63,7 @@ export const normalizeStatus = (value?: string | null): MaintenanceStatus => {
   const raw = String(value || 'assignat').trim().toLowerCase()
   if (raw === 'nou') return 'nou'
   if (raw === 'assignat' || raw === 'pendent') return 'assignat'
+  if (raw === 'reassignat') return 'reassignat'
   if (raw === 'en_curs' || raw === 'en curs') return 'en_curs'
   if (raw === 'espera') return 'espera'
   if (raw === 'fet') return 'fet'
@@ -106,12 +109,16 @@ export const getTrackedMinutes = (history?: WorkHistoryEntry[]) => {
             (parseDate(a.at)?.getTime() || 0) - (parseDate(b.at)?.getTime() || 0)
         )
     : []
+  const closedSegmentsSeen = new Set<string>()
   let openStart: Date | null = null
   let total = 0
   entries.forEach((entry) => {
     const start = parseHistoryTime(entry.at, entry.startTime)
     const end = parseHistoryTime(entry.at, entry.endTime)
     if (start && end) {
+      const key = `${parseDate(entry.at)?.getTime() || 0}|${entry.startTime || ''}|${entry.endTime || ''}|${entry.byName || ''}`
+      if (closedSegmentsSeen.has(key)) return
+      closedSegmentsSeen.add(key)
       const diff = end.getTime() - start.getTime()
       if (diff > 0) total += diff
       openStart = null

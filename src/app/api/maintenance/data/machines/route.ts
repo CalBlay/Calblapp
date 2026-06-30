@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import {
+  buildControlledMaintenanceLocations,
+  sanitizeMaintenanceInternalLocations,
+} from '@/lib/maintenanceLocationCatalog'
 import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
@@ -12,6 +16,20 @@ const buildLabel = (code?: string, name?: string) => {
   const cleanName = String(name || '').trim()
   if (cleanCode && cleanName) return `${cleanCode} · ${cleanName}`
   return cleanCode || cleanName
+}
+
+async function loadAllowedLocations() {
+  const snap = await db.collection('finques').get()
+  return snap.docs.map((doc) => {
+    const data = doc.data() || {}
+    return {
+      id: doc.id,
+      name: String(data.nom || data.name || '').trim(),
+      code: String(data.codi || data.code || '').trim(),
+      tipus: String(data.tipus || '').trim().toLowerCase(),
+      internalLocations: sanitizeMaintenanceInternalLocations(data.maintenanceInternalLocations),
+    }
+  })
 }
 
 export async function GET() {
@@ -53,9 +71,18 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}))
     const code = String(body?.code || '').trim()
     const name = String(body?.name || '').trim()
+    const location = String(body?.location || '').trim()
 
     if (!code && !name) {
       return NextResponse.json({ error: 'Cal informar codi o nom' }, { status: 400 })
+    }
+    if (!location) {
+      return NextResponse.json({ error: 'Cal seleccionar una ubicacio valida' }, { status: 400 })
+    }
+
+    const allowedLocations = buildControlledMaintenanceLocations(await loadAllowedLocations())
+    if (!allowedLocations.includes(location)) {
+      return NextResponse.json({ error: 'La ubicacio seleccionada no es valida' }, { status: 400 })
     }
 
     const now = Date.now()
@@ -63,7 +90,7 @@ export async function POST(req: Request) {
       code,
       name,
       label: buildLabel(code, name),
-      location: String(body?.location || '').trim(),
+      location,
       brand: String(body?.brand || '').trim(),
       model: String(body?.model || '').trim(),
       serialNumber: String(body?.serialNumber || '').trim(),

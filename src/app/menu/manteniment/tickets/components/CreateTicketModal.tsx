@@ -1,3 +1,5 @@
+'use client'
+
 import { useMemo } from 'react'
 import Image from 'next/image'
 import { matchesMaintenanceTicketLocation } from '@/lib/maintenanceTicketCreators'
@@ -7,29 +9,36 @@ import {
 } from '@/lib/media/ticketAttachments'
 import type { PendingTicketAttachment } from '../useMaintenanceTicketComposer'
 import type { MachineItem, TicketPriority } from '../types'
+import type { CenterRow } from '@/app/menu/manteniment/dades/types'
 
 export type TicketAttachmentPreview = Pick<PendingTicketAttachment, 'preview' | 'kind'>
 
 type Props = {
-  locations: string[]
+  centers: CenterRow[]
   machines: MachineItem[]
   createPriority: TicketPriority
   setCreatePriority: (value: TicketPriority) => void
+  centerQuery: string
+  setCenterQuery: (value: string) => void
+  createCenter: string
+  setCreateCenter: (value: string) => void
   locationQuery: string
   setLocationQuery: (value: string) => void
   createLocation: string
   setCreateLocation: (value: string) => void
+  createWorkerName?: string
+  setCreateWorkerName?: (value: string) => void
+  showCenterList: boolean
+  setShowCenterList: (value: boolean) => void
+  showLocationList: boolean
+  setShowLocationList: (value: boolean) => void
   machineQuery: string
   setMachineQuery: (value: string) => void
   createMachine: string
   setCreateMachine: (value: string) => void
   createDescription: string
   setCreateDescription: (value: string) => void
-  createWorkerName?: string
-  setCreateWorkerName?: (value: string) => void
   needsWorkerName?: boolean
-  showLocationList: boolean
-  setShowLocationList: (value: boolean) => void
   showMachineList: boolean
   setShowMachineList: (value: boolean) => void
   priorityLabels: Record<TicketPriority, string>
@@ -45,40 +54,40 @@ type Props = {
   attachmentError?: string | null
   attachmentCompressing?: boolean
   formError: string | null
-  /** @deprecated */
   onImageChange?: (files: FileList | null) => void | Promise<void>
-  /** @deprecated */
   imagePreviews?: string[]
-  /** @deprecated */
   imageCount?: number
-  /** @deprecated */
   maxImages?: number
-  /** @deprecated */
   onRemoveImage?: (index: number) => void
-  /** @deprecated */
   imageError?: string | null
 }
 
 export default function CreateTicketModal({
-  locations,
+  centers,
   machines,
   createPriority,
   setCreatePriority,
+  centerQuery,
+  setCenterQuery,
+  createCenter: _createCenter,
+  setCreateCenter,
   locationQuery,
   setLocationQuery,
   createLocation: _createLocation,
   setCreateLocation,
+  createWorkerName = '',
+  setCreateWorkerName,
+  showCenterList,
+  setShowCenterList,
+  showLocationList,
+  setShowLocationList,
   machineQuery,
   setMachineQuery,
   createMachine: _createMachine,
   setCreateMachine,
   createDescription,
   setCreateDescription,
-  createWorkerName = '',
-  setCreateWorkerName,
   needsWorkerName = false,
-  showLocationList,
-  setShowLocationList,
   showMachineList,
   setShowMachineList,
   priorityLabels,
@@ -103,7 +112,7 @@ export default function CreateTicketModal({
 }: Props) {
   const handleFileChange = onAttachmentChange || onImageChange || (async () => {})
   const previews: TicketAttachmentPreview[] =
-    (attachmentPreviews && attachmentPreviews.length > 0)
+    attachmentPreviews && attachmentPreviews.length > 0
       ? attachmentPreviews
       : (imagePreviews || []).map((preview) => ({ preview, kind: 'image' as const }))
   const count = attachmentCount || imageCount || 0
@@ -111,17 +120,47 @@ export default function CreateTicketModal({
   const removeAt = onRemoveAttachment || onRemoveImage || (() => {})
   const fileError = attachmentError ?? imageError ?? null
   const videoLimitLabel = formatTicketAttachmentLimitMb(DEFAULT_MAX_VIDEO_UPLOAD_BYTES)
+  const effectiveCenter = (_createCenter || centerQuery).trim()
   const effectiveLocation = (_createLocation || locationQuery).trim()
+  const effectiveMachineLocation = effectiveLocation || effectiveCenter
   const machineQueryNorm = machineQuery.trim().toLowerCase()
+
+  const filteredCenters = useMemo(
+    () =>
+      centers.filter((center) =>
+        center.name.toLowerCase().includes(centerQuery.toLowerCase())
+      ),
+    [centers, centerQuery]
+  )
+
+  const selectedCenter = useMemo(
+    () =>
+      centers.find((center) => center.name.trim().toLowerCase() === effectiveCenter.toLowerCase()) ||
+      null,
+    [centers, effectiveCenter]
+  )
+
+  const centerLocations = useMemo(
+    () => (selectedCenter?.internalLocations || []).filter(Boolean),
+    [selectedCenter]
+  )
+
+  const filteredLocations = useMemo(
+    () =>
+      centerLocations.filter((location) =>
+        location.toLowerCase().includes(locationQuery.toLowerCase())
+      ),
+    [centerLocations, locationQuery]
+  )
 
   const locationMachines = useMemo(
     () =>
-      effectiveLocation
+      effectiveMachineLocation
         ? machines.filter((machine) =>
-            matchesMaintenanceTicketLocation(machine.location, effectiveLocation)
+            matchesMaintenanceTicketLocation(machine.location, effectiveMachineLocation)
           )
         : [],
-    [effectiveLocation, machines]
+    [effectiveMachineLocation, machines]
   )
 
   const filteredMachines = useMemo(
@@ -144,6 +183,7 @@ export default function CreateTicketModal({
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 md:items-center md:p-4"
       onClick={() => {
+        setShowCenterList(false)
         setShowLocationList(false)
         setShowMachineList(false)
       }}
@@ -198,15 +238,91 @@ export default function CreateTicketModal({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="relative">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Ubicacio *
+                Centre *
               </label>
               <div className="relative">
                 <input
                   className="h-12 w-full rounded-2xl border px-4 pr-10 text-base"
-                  placeholder="Cerca ubicacio..."
+                  placeholder="Cerca centre..."
+                  value={centerQuery}
+                  required
+                  onFocus={() => setShowCenterList(true)}
+                  onChange={(e) => {
+                    setCenterQuery(e.target.value)
+                    setCreateCenter('')
+                    setLocationQuery('')
+                    setCreateLocation('')
+                    setShowCenterList(true)
+                    setShowLocationList(false)
+                    clearMachine()
+                  }}
+                />
+                {centerQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCenterQuery('')
+                      setCreateCenter('')
+                      setLocationQuery('')
+                      setCreateLocation('')
+                      setShowCenterList(false)
+                      setShowLocationList(false)
+                      clearMachine()
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-base text-gray-400 hover:text-gray-600"
+                    aria-label="Esborrar"
+                  >
+                    x
+                  </button>
+                ) : null}
+              </div>
+              {showCenterList ? (
+                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow-lg">
+                  {filteredCenters.map((center) => (
+                    <button
+                      key={center.id}
+                      type="button"
+                      onClick={() => {
+                        setCreateCenter(center.name)
+                        setCenterQuery(center.name)
+                        setLocationQuery('')
+                        setCreateLocation('')
+                        setShowCenterList(false)
+                        setShowLocationList(false)
+                        clearMachine()
+                      }}
+                      className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
+                    >
+                      {center.name}
+                    </button>
+                  ))}
+                  {filteredCenters.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="relative">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Ubicacio *
+              </label>
+              <div className="relative">
+                <input
+                  className="h-12 w-full rounded-2xl border px-4 pr-10 text-base disabled:bg-slate-50"
+                  placeholder={
+                    !effectiveCenter
+                      ? 'Primer selecciona un centre...'
+                      : centerLocations.length > 0
+                        ? 'Cerca ubicacio...'
+                        : 'Aquest centre no te ubicacions configurades...'
+                  }
                   value={locationQuery}
                   required
-                  onFocus={() => setShowLocationList(true)}
+                  disabled={!effectiveCenter || centerLocations.length === 0}
+                  onFocus={() => {
+                    if (effectiveCenter) setShowLocationList(true)
+                  }}
                   onChange={(e) => {
                     setLocationQuery(e.target.value)
                     setCreateLocation('')
@@ -232,32 +348,29 @@ export default function CreateTicketModal({
               </div>
               {showLocationList ? (
                 <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow-lg">
-                  {locations
-                    .filter((location) => location.toLowerCase().includes(locationQuery.toLowerCase()))
-                    .map((location) => (
-                      <button
-                        key={location}
-                        type="button"
-                        onClick={() => {
-                          setCreateLocation(location)
-                          setLocationQuery(location)
-                          setShowLocationList(false)
-                          clearMachine()
-                        }}
-                        className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
-                      >
-                        {location}
-                      </button>
-                    ))}
-                  {locations.filter((location) => location.toLowerCase().includes(locationQuery.toLowerCase()))
-                    .length === 0 ? (
+                  {filteredLocations.map((location) => (
+                    <button
+                      key={location}
+                      type="button"
+                      onClick={() => {
+                        setCreateLocation(location)
+                        setLocationQuery(location)
+                        setShowLocationList(false)
+                        clearMachine()
+                      }}
+                      className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
+                    >
+                      {location}
+                    </button>
+                  ))}
+                  {filteredLocations.length === 0 ? (
                     <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>
                   ) : null}
                 </div>
               ) : null}
             </div>
 
-            <div className="relative">
+            <div className="relative md:col-span-2">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Maquinaria *
               </label>
@@ -265,15 +378,15 @@ export default function CreateTicketModal({
                 <input
                   className="h-12 w-full rounded-2xl border px-4 pr-10 text-base disabled:bg-slate-50"
                   placeholder={
-                    effectiveLocation
+                    effectiveMachineLocation
                       ? 'Escriu o filtra maquinaria d aquesta ubicacio...'
-                      : 'Primer selecciona una ubicacio...'
+                      : 'Primer selecciona centre i ubicacio...'
                   }
                   value={machineQuery}
                   required
-                  disabled={!effectiveLocation}
+                  disabled={!effectiveMachineLocation}
                   onFocus={() => {
-                    if (effectiveLocation) setShowMachineList(true)
+                    if (effectiveMachineLocation) setShowMachineList(true)
                   }}
                   onChange={(e) => {
                     setMachineQuery(e.target.value)
@@ -297,7 +410,7 @@ export default function CreateTicketModal({
                   </button>
                 ) : null}
               </div>
-              {showMachineList && effectiveLocation ? (
+              {showMachineList && effectiveMachineLocation ? (
                 <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow-lg">
                   {filteredMachines.map((machine) => (
                     <button
@@ -325,7 +438,7 @@ export default function CreateTicketModal({
               {machines.length === 0 ? (
                 <div className="mt-1 text-xs text-amber-600">No s&apos;ha pogut carregar la maquinaria.</div>
               ) : null}
-              {effectiveLocation && locationMachines.length > 0 ? (
+              {effectiveMachineLocation && locationMachines.length > 0 ? (
                 <div className="mt-1 text-xs text-slate-500">
                   {locationMachines.length} maquina{locationMachines.length === 1 ? '' : 's'} a aquesta ubicacio
                 </div>
@@ -333,24 +446,22 @@ export default function CreateTicketModal({
             </div>
           </div>
 
-          {needsWorkerName ? (
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Nom treballador *
-              </label>
-              <input
-                className="h-12 w-full rounded-2xl border px-4 text-base"
-                placeholder="Qui reporta la incidència?"
-                value={createWorkerName}
-                required
-                autoComplete="name"
-                onChange={(e) => setCreateWorkerName?.(e.target.value)}
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                Indica el nom de la persona de restaurant perquè manteniment sàpiga a qui dirigir-se.
-              </p>
-            </div>
-          ) : null}
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Nom treballador *
+            </label>
+            <input
+              className="h-12 w-full rounded-2xl border px-4 text-base"
+              placeholder="Qui reporta la incidencia?"
+              value={createWorkerName}
+              required
+              autoComplete="name"
+              onChange={(e) => setCreateWorkerName?.(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Indica la persona concreta que reporta el ticket, encara que el compte sigui generic del centre.
+            </p>
+          </div>
 
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -368,8 +479,7 @@ export default function CreateTicketModal({
           <div className="space-y-3">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-slate-700">
-                Fotos i videos *{' '}
-                <span className="font-normal text-slate-500">(min. 1, max. {maxFiles})</span>
+                Fotos i videos * <span className="font-normal text-slate-500">(min. 1, max. {maxFiles})</span>
               </label>
               <div className="grid grid-cols-3 gap-2">
                 <label className="flex min-h-[48px] cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 text-sm font-medium">
@@ -419,72 +529,62 @@ export default function CreateTicketModal({
                 <span>
                   {count}/{maxFiles}
                 </span>
-                {fileError ? <span className="text-red-600">{fileError}</span> : null}
-                {attachmentCompressing ? <span>Comprimint video…</span> : null}
+                {attachmentCompressing ? <span>Comprimint...</span> : null}
               </div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Cal adjuntar com a minim una imatge o un video. Les fotos es comprimeixen automaticament (max. 1 MB). Els videos es redueixen al navegador (objectiu ~5 MB, max. 2 min).
+              </div>
+              <p className="text-xs text-slate-500">Limit de video comprimit: {videoLimitLabel}.</p>
+              {fileError ? <p className="text-sm text-rose-600">{fileError}</p> : null}
             </div>
 
             {previews.length > 0 ? (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-3 gap-2">
                 {previews.map((item, index) => (
-                  <div key={`${item.preview}-${index}`} className="relative overflow-hidden rounded-2xl border">
+                  <div key={`${item.preview}-${index}`} className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                     {item.kind === 'video' ? (
-                      <video
-                        src={item.preview}
-                        controls
-                        playsInline
-                        preload="metadata"
-                        className="h-28 w-full bg-black object-contain"
-                      />
+                      <video src={item.preview} className="h-28 w-full object-cover" controls muted />
                     ) : (
                       <Image
                         src={item.preview}
-                        alt={`Previsualitzacio ${index + 1}`}
-                        width={448}
-                        height={112}
+                        alt={`Adjunt ${index + 1}`}
+                        width={240}
+                        height={180}
                         className="h-28 w-full object-cover"
-                        unoptimized
                       />
                     )}
                     <button
                       type="button"
                       onClick={() => removeAt(index)}
-                      className="absolute right-1 top-1 rounded-full bg-black/60 px-2 py-1 text-xs text-white"
+                      className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm text-white"
+                      aria-label={`Eliminar adjunt ${index + 1}`}
                     >
-                      X
+                      x
                     </button>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-800">
-                Cal adjuntar com a minim una imatge o un video. Les fotos es comprimeixen
-                automaticament (max. 1 MB). Els videos es redueixen al navegador (objectiu ~
-                {videoLimitLabel}, max. 2 min).
-              </div>
-            )}
+            ) : null}
           </div>
 
-          {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
-        </div>
+          {formError ? <p className="text-sm text-rose-600">{formError}</p> : null}
 
-        <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-6">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-[48px] rounded-full border px-5 text-sm font-medium"
-          >
-            Cancel.lar
-          </button>
-          <button
-            type="button"
-            onClick={onCreate}
-            disabled={createBusy || attachmentCompressing || !canCreate}
-            className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {createBusy ? 'Desant...' : 'Crear ticket'}
-          </button>
+          <div className="sticky bottom-0 mt-auto flex gap-3 border-t border-slate-100 bg-white py-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-[48px] flex-1 rounded-full border border-slate-300 px-4 text-sm font-medium"
+            >
+              Cancel.lar
+            </button>
+            <button
+              type="button"
+              onClick={onCreate}
+              disabled={!canCreate || createBusy || attachmentCompressing}
+              className="min-h-[48px] flex-1 rounded-full bg-emerald-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {createBusy ? 'Creant...' : 'Crear ticket'}
+            </button>
           </div>
         </div>
       </div>

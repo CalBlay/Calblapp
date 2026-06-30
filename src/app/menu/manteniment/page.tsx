@@ -7,6 +7,7 @@ import {
   CalendarCheck2,
   ClipboardList,
   Database,
+  BarChart3,
 } from 'lucide-react'
 import { MAINTENANCE_TICKETS_INBOX_PERM } from '@/lib/maintenanceTicketsPermissions'
 import ModuleHeader from '@/components/layout/ModuleHeader'
@@ -22,6 +23,7 @@ export default function MantenimentIndexPage() {
   const canViewJourney = canViewPath('/menu/manteniment/preventius/fulls')
   const canViewData = canViewPath('/menu/manteniment/dades')
   const canViewSeguiment = canViewPath('/menu/manteniment/seguiment')
+  const canViewReports = canViewPath('/menu/manteniment/informes')
   const canManageTicketInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
   const { count: assignedTicketsCount } = useMaintenanceAssignedCount()
 
@@ -126,6 +128,23 @@ export default function MantenimentIndexPage() {
                 <div>
                   <div className="text-base font-semibold text-gray-900">Seguiment</div>
                   <div className="text-xs text-gray-500">Consulta d'estat</div>
+                </div>
+              </div>
+            </Link>
+          )}
+
+          {canViewReports && (
+            <Link
+              href="/menu/manteniment/informes"
+              className="border rounded-2xl p-5 hover:shadow-sm bg-gradient-to-br from-violet-50 to-fuchsia-100"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white shadow flex items-center justify-center text-violet-600">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-base font-semibold text-gray-900">Informes</div>
+                  <div className="text-xs text-gray-500">KPIs i informes a mida</div>
                 </div>
               </div>
             </Link>

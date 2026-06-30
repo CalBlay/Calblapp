@@ -65,6 +65,7 @@ type PreventiuHistoryRecord = {
 const normalizePreventiuStatus = (value?: string) => {
   const v = String(value || '').trim().toLowerCase()
   if (v === 'assignat' || v === 'pendent') return 'assignat'
+  if (v === 'reassignat') return 'reassignat'
   if (v === 'en_curs' || v === 'en curs') return 'en_curs'
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
@@ -78,6 +79,7 @@ const statusLabel = (value?: string) => {
   if (status === 'en_curs') return 'En curs'
   if (status === 'espera') return 'Espera'
   if (status === 'fet') return 'Fet'
+  if (status === 'reassignat') return 'Reassignat'
   if (status === 'validat') return 'Validat'
   if (status === 'no_fet') return 'No fet'
   return 'Assignat'

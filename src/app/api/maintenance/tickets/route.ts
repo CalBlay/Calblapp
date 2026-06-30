@@ -14,7 +14,7 @@ import {
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { resolveOpsChannelByLocationName } from '@/lib/opsMessagingChannels'
-import { resolveManualTicketRouting, requiresMaintenanceTicketWorkerName } from '@/lib/maintenanceTicketCreators'
+import { resolveManualTicketRouting } from '@/lib/maintenanceTicketCreators'
 import { getMaintenanceDateRangeMs } from '@/lib/maintenanceDateFilter'
 
 export const runtime = 'nodejs'
@@ -35,6 +35,7 @@ type TicketImagePayload = {
 
 type TicketPayload = {
   location?: string
+  workLocation?: string | null
   machine?: string
   description?: string
   operatorTitle?: string | null
@@ -85,6 +86,7 @@ const normalizePriority = (value?: string) => {
 const normalizeStatus = (value?: string) => {
   const v = (value || '').trim().toLowerCase()
   if (v === 'assignat') return 'assignat'
+  if (v === 'reassignat') return 'reassignat'
   if (v === 'en_curs' || v === 'en curs') return 'en_curs'
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
@@ -396,6 +398,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as TicketPayload
     const location = (body.location || '').trim()
+    const workLocation = String(body.workLocation || '').trim() || null
     const machine = (body.machine || '').trim()
     const description = (body.description || '').trim()
     const workerName = String(body.workerName || '').trim()
@@ -417,10 +420,7 @@ export async function POST(req: Request) {
     const intakeChannel = manualRouting
       ? manualRouting.intakeChannel
       : normalizeIntakeChannel(body.intakeChannel, body.source)
-    const requiresWorkerName = requiresMaintenanceTicketWorkerName({
-      department: user.department,
-      location,
-    })
+    const requiresWorkerName = !isWhatsBlapp && !isIncidencia
     const sourceChannelId =
       String(body.sourceChannelId || '').trim() || opsChannel?.channelId || null
     const images = normalizeTicketImages(body)
@@ -465,7 +465,7 @@ export async function POST(req: Request) {
       ticketCode,
       incidentNumber: incidentNumber || null,
       location,
-      workLocation: null,
+      workLocation,
       machine: machine || '',
       description,
       operatorTitle: String(body.operatorTitle || body.machine || '').trim() || null,

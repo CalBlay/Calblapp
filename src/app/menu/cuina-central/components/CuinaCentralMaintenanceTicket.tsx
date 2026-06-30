@@ -16,14 +16,14 @@ import CreateTicketModal from '@/app/menu/manteniment/tickets/components/CreateT
 import { useMaintenanceTicketCatalog } from '@/app/menu/manteniment/tickets/useMaintenanceTicketCatalog'
 import { useMaintenanceTicketComposer } from '@/app/menu/manteniment/tickets/useMaintenanceTicketComposer'
 import type { TicketPriority } from '@/app/menu/manteniment/tickets/types'
+import type { CenterRow } from '@/app/menu/manteniment/dades/types'
 import type { CuinaCentralMachine } from '@/lib/cuina-central/types'
 import {
-  CUINA_CENTRAL_TICKET_LOCATION,
   CUINA_CENTRAL_TICKET_ROUTING,
-  ensureCuinaCentralLocation,
   machineLabel,
   mergeTicketMachines,
 } from '@/lib/cuina-central/maintenanceTicket'
+import { normalizeMaintenanceLocationKey } from '@/lib/maintenanceCenterTravel'
 
 const PRIORITY_LABELS: Record<TicketPriority, string> = {
   urgent: 'Urgent',
@@ -59,28 +59,49 @@ export function CuinaCentralMaintenanceTicketProvider({
   children,
   cuinaCentralMachines = [],
 }: ProviderProps) {
-  const { locations: catalogLocations, machines: maintenanceMachines } =
+  const { machines: maintenanceMachines } =
     useMaintenanceTicketCatalog()
+  const [centers, setCenters] = useState<CenterRow[]>([])
 
   const composer = useMaintenanceTicketComposer({
-    defaultLocation: CUINA_CENTRAL_TICKET_LOCATION,
+    defaultCenter: 'Cuina Central',
     routingOverride: CUINA_CENTRAL_TICKET_ROUTING,
   })
 
-  const locations = useMemo(
-    () => ensureCuinaCentralLocation(catalogLocations),
-    [catalogLocations]
-  )
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/maintenance/data/centers', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : { centers: [] }))
+      .then((json) => {
+        if (cancelled) return
+        setCenters(Array.isArray(json?.centers) ? json.centers : [])
+      })
+      .catch(() => {
+        if (cancelled) return
+        setCenters([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const machines = useMemo(
     () => mergeTicketMachines(maintenanceMachines, cuinaCentralMachines),
     [maintenanceMachines, cuinaCentralMachines]
   )
 
+  const cuinaCentralCenters = useMemo(() => {
+    const targetKey = normalizeMaintenanceLocationKey('Cuina Central')
+    return centers.filter(
+      (center) => normalizeMaintenanceLocationKey(center.name) === targetKey
+    )
+  }, [centers])
+
   const openCreateTicket = useCallback(
     (preset?: OpenPreset) => {
       composer.openCreate({
-        location: preset?.location || CUINA_CENTRAL_TICKET_LOCATION,
+        center: 'Cuina Central',
+        location: preset?.location || '',
         machine: preset?.machine || '',
       })
     },
@@ -89,9 +110,13 @@ export function CuinaCentralMaintenanceTicketProvider({
 
   const openForMachine = useCallback(
     (machine: Pick<CuinaCentralMachine, 'code' | 'name'>) => {
-      openCreateTicket({ machine: machineLabel(machine) })
+      const full = cuinaCentralMachines.find((item) => item.code === machine.code && item.name === machine.name)
+      openCreateTicket({
+        location: String(full?.location || '').trim(),
+        machine: machineLabel(machine),
+      })
     },
-    [openCreateTicket]
+    [cuinaCentralMachines, openCreateTicket]
   )
 
   const attachmentPreviews = composer.createAttachments.map((item) => ({
@@ -104,20 +129,29 @@ export function CuinaCentralMaintenanceTicketProvider({
       {children}
       {composer.showCreate ? (
         <CreateTicketModal
-          locations={locations}
+          centers={cuinaCentralCenters}
           machines={machines}
           createPriority={composer.createPriority}
           setCreatePriority={composer.setCreatePriority}
+          centerQuery={composer.centerQuery}
+          setCenterQuery={composer.setCenterQuery}
+          createCenter={composer.createCenter}
+          setCreateCenter={composer.setCreateCenter}
           locationQuery={composer.locationQuery}
           setLocationQuery={composer.setLocationQuery}
           createLocation={composer.createLocation}
           setCreateLocation={composer.setCreateLocation}
+          showCenterList={composer.showCenterList}
+          setShowCenterList={composer.setShowCenterList}
           machineQuery={composer.machineQuery}
           setMachineQuery={composer.setMachineQuery}
           createMachine={composer.createMachine}
           setCreateMachine={composer.setCreateMachine}
           createDescription={composer.createDescription}
           setCreateDescription={composer.setCreateDescription}
+          createWorkerName={composer.createWorkerName}
+          setCreateWorkerName={composer.setCreateWorkerName}
+          needsWorkerName={composer.needsWorkerName}
           showLocationList={composer.showLocationList}
           setShowLocationList={composer.setShowLocationList}
           showMachineList={composer.showMachineList}

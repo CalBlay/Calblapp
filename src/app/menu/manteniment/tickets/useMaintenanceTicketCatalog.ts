@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTransports } from '@/hooks/useTransports'
 import { normalizeRole } from '@/lib/roles'
 import type { MachineItem, TransportItem, UserItem } from './types'
+import type { CenterRow } from '@/app/menu/manteniment/dades/types'
 
 const normalizeDept = (raw?: string) =>
   (raw || '')
@@ -13,6 +14,7 @@ const normalizeDept = (raw?: string) =>
 
 export function useMaintenanceTicketCatalog() {
   const [locations, setLocations] = useState<string[]>([])
+  const [centers, setCenters] = useState<CenterRow[]>([])
   const [machines, setMachines] = useState<MachineItem[]>([])
   const [users, setUsers] = useState<UserItem[]>([])
   const { data: transports } = useTransports()
@@ -22,14 +24,16 @@ export function useMaintenanceTicketCatalog() {
 
     const load = async () => {
       try {
-        const [locationsRes, usersRes, machinesRes] = await Promise.all([
+        const [locationsRes, centersRes, usersRes, machinesRes] = await Promise.all([
           fetch('/api/spaces/internal', { cache: 'no-store' }),
+          fetch('/api/maintenance/data/centers', { cache: 'no-store' }),
           fetch('/api/personnel?department=manteniment', { cache: 'no-store' }),
           fetch('/api/maintenance/machines', { cache: 'no-store' }),
         ])
 
-        const [locationsJson, usersJson, machinesJson] = await Promise.all([
+        const [locationsJson, centersJson, usersJson, machinesJson] = await Promise.all([
           locationsRes.ok ? locationsRes.json() : { locations: [] },
+          centersRes.ok ? centersRes.json() : { centers: [] },
           usersRes.ok ? usersRes.json() : { data: [] },
           machinesRes.ok ? machinesRes.json() : { machines: [] },
         ])
@@ -37,11 +41,13 @@ export function useMaintenanceTicketCatalog() {
         if (cancelled) return
 
         setLocations(Array.isArray(locationsJson?.locations) ? locationsJson.locations : [])
+        setCenters(Array.isArray(centersJson?.centers) ? centersJson.centers : [])
         setUsers(Array.isArray(usersJson?.data) ? usersJson.data : [])
         setMachines(Array.isArray(machinesJson?.machines) ? machinesJson.machines : [])
       } catch {
         if (cancelled) return
         setLocations([])
+        setCenters([])
         setUsers([])
         setMachines([])
       }
@@ -73,6 +79,7 @@ export function useMaintenanceTicketCatalog() {
 
   return {
     locations,
+    centers,
     machines,
     maintenanceUsers,
     furgonetes,

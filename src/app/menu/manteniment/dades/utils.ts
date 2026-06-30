@@ -6,6 +6,7 @@ import type { MachineRow, MachineTimelineItem, MachineView } from './types'
 export const STATUS_LABELS: Record<string, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
+  reassignat: 'Reassignat',
   en_curs: 'En curs',
   espera: 'En espera',
   fet: 'Fet',
