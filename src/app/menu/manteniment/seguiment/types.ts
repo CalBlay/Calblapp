@@ -17,7 +17,7 @@ export type MaintenanceStatus =
 export type WorkHistoryEntry = {
   status?: string | null
   at?: number | string | null
-  byName?: string
+  byName?: string | null
   startTime?: string | null
   endTime?: string | null
   note?: string | null
@@ -42,7 +42,7 @@ export type Preventiu = {
   history: Array<{
     status: MaintenanceStatus
     at: number
-    byName?: string
+    byName?: string | null
     startTime?: string | null
     endTime?: string | null
     note?: string | null

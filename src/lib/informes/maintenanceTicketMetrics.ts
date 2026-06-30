@@ -1,4 +1,9 @@
-/** Càlcul de minuts de treball a partir de `statusHistory` (segments inici/fi). */
+import {
+  computeOperatorWorkLogMinutes,
+  computeWorkLogMinutes,
+  workLogsInvolveOperator,
+  type MaintenanceWorkLogEntry,
+} from '@/lib/maintenanceWorkLogs'
 
 export type WorkHistoryEntry = {
   at?: number | string | null
@@ -27,7 +32,6 @@ function parseHistoryTime(at?: number | string | null, time?: string | null): Da
   return next
 }
 
-/** Minuts registrats amb parells inici/fi (inclou preventius amb `at` + hora). */
 export function computeHistoryWorkMinutes(history?: WorkHistoryEntry[] | null) {
   const entries = Array.isArray(history)
     ? history.slice().sort((a, b) => (parseHistoryAtMs(a.at) || 0) - (parseHistoryAtMs(b.at) || 0))
@@ -68,15 +72,24 @@ export function getMinutesFromTimeRange(start?: string | null, end?: string | nu
 
 export type StatusHistoryEntry = WorkHistoryEntry
 
-export function computeTicketWorkMinutes(history?: StatusHistoryEntry[] | null) {
+export function computeTicketWorkMinutes(
+  history?: StatusHistoryEntry[] | null,
+  workLogs?: MaintenanceWorkLogEntry[] | null
+) {
+  if (Array.isArray(workLogs) && workLogs.length > 0) {
+    return computeWorkLogMinutes(workLogs)
+  }
   return computeHistoryWorkMinutes(history)
 }
 
-/** Minuts de treball atribuïts a un operari (segments amb el seu `byId`). */
 export function computeOperatorWorkMinutes(
   history: StatusHistoryEntry[] | null | undefined,
-  operatorId: string
+  operatorId: string,
+  workLogs?: MaintenanceWorkLogEntry[] | null | undefined
 ) {
+  if (Array.isArray(workLogs) && workLogs.length > 0) {
+    return computeOperatorWorkLogMinutes(workLogs, operatorId)
+  }
   const id = String(operatorId || '').trim()
   if (!id || !Array.isArray(history)) return 0
   const operatorHistory = history.filter((item) => String(item.byId || '').trim() === id)
@@ -86,24 +99,28 @@ export function computeOperatorWorkMinutes(
 export function ticketInvolvesOperator(
   assigneeIds: string[],
   history: StatusHistoryEntry[] | null | undefined,
-  operatorId: string
+  operatorId: string,
+  workLogs?: MaintenanceWorkLogEntry[] | null | undefined
 ) {
   const id = String(operatorId || '').trim()
   if (!id) return true
   if (assigneeIds.includes(id)) return true
+  if (Array.isArray(workLogs) && workLogs.length > 0) {
+    return workLogsInvolveOperator(workLogs, operatorId)
+  }
   if (!Array.isArray(history)) return false
   return history.some((item) => String(item.byId || '').trim() === id)
 }
 
-/** Minuts de treball per informe: si hi ha filtre d'operari, només els seus segments (o tot el ticket si està assignat). */
 export function resolveTicketWorkMinutesForReport(
   history: StatusHistoryEntry[] | null | undefined,
   assigneeIds: string[],
-  operatorId?: string
+  operatorId?: string,
+  workLogs?: MaintenanceWorkLogEntry[] | null | undefined
 ) {
-  const total = computeTicketWorkMinutes(history)
+  const total = computeTicketWorkMinutes(history, workLogs)
   if (!operatorId) return total
-  const operatorMinutes = computeOperatorWorkMinutes(history, operatorId)
+  const operatorMinutes = computeOperatorWorkMinutes(history, operatorId, workLogs)
   if (operatorMinutes > 0) return operatorMinutes
   if (assigneeIds.includes(operatorId)) return total
   return 0
@@ -112,9 +129,10 @@ export function resolveTicketWorkMinutesForReport(
 export function workInvolvesOperator(
   workerIds: string[],
   history: StatusHistoryEntry[] | null | undefined,
-  operatorId: string
+  operatorId: string,
+  workLogs?: MaintenanceWorkLogEntry[] | null | undefined
 ) {
-  return ticketInvolvesOperator(workerIds, history, operatorId)
+  return ticketInvolvesOperator(workerIds, history, operatorId, workLogs)
 }
 
 export function resolvePreventiuWorkMinutesForReport(

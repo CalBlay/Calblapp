@@ -8,6 +8,7 @@ import {
   workInvolvesOperator,
   type StatusHistoryEntry,
 } from '@/lib/informes/maintenanceTicketMetrics'
+import type { MaintenanceWorkLogEntry } from '@/lib/maintenanceWorkLogs'
 import type {
   MaintenanceAssigneeRow,
   MaintenanceKpiCard,
@@ -46,6 +47,7 @@ type TicketRecord = Record<string, unknown> & {
   assignedToNames?: string[]
   assignedToIds?: string[]
   statusHistory?: StatusHistoryEntry[]
+  workLogs?: MaintenanceWorkLogEntry[]
 }
 
 type InternalWorkItem = {
@@ -62,6 +64,7 @@ type InternalWorkItem = {
   workerIds: string[]
   workerNames: string[]
   statusHistory: StatusHistoryEntry[]
+  workLogs?: MaintenanceWorkLogEntry[]
   rawWorkMinutes: number
   plannedMinutes: number
   externalized: boolean
@@ -255,6 +258,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       workerIds: assigneeIds,
       workerNames: assigneeNames,
       statusHistory: Array.isArray(data.statusHistory) ? data.statusHistory : [],
+      workLogs: Array.isArray(data.workLogs) ? (data.workLogs as MaintenanceWorkLogEntry[]) : [],
       rawWorkMinutes: 0,
       plannedMinutes: 0,
       externalized: Boolean(data.externalized),
@@ -289,7 +293,12 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
   const withMetrics = inWindow.map((item) => {
     const workMinutesRaw =
       item.kind === 'ticket'
-        ? resolveTicketWorkMinutesForReport(item.statusHistory, item.workerIds, operatorId || undefined)
+        ? resolveTicketWorkMinutesForReport(
+            item.statusHistory,
+            item.workerIds,
+            operatorId || undefined,
+            item.workLogs
+          )
         : resolvePreventiuWorkMinutesForReport(
             item.statusHistory,
             item.workerIds,
@@ -318,7 +327,10 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       if (item.kind !== 'ticket') return false
       if (item.category !== normalizeText(params.ticketType)) return false
     }
-    if (operatorId && !workInvolvesOperator(item.workerIds, item.statusHistory, operatorId)) {
+    if (
+      operatorId &&
+      !workInvolvesOperator(item.workerIds, item.statusHistory, operatorId, item.workLogs)
+    ) {
       return false
     }
     if (operatorId && item.workMinutes <= 0 && item.travelMinutes <= 0) return false

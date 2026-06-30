@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
+import { Search, X } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import ExportMenu from '@/components/export/ExportMenu'
 import { useTransports } from '@/hooks/useTransports'
@@ -45,7 +46,11 @@ export default function PreventiusFullsPage() {
 
   const role = normalizeRole(sessionUser.role || '')
   const userId = String(sessionUser.id || '').trim()
-  const canFilterByWorker = canViewPath('/menu/manteniment/preventius/planificador')
+  const canFilterByWorker =
+    role === 'admin' ||
+    role === 'direccio' ||
+    role === 'cap' ||
+    canViewPath('/menu/manteniment/preventius')
 
   const queryStart = (searchParams?.get('start') || '').trim()
   const queryEnd = (searchParams?.get('end') || '').trim()
@@ -113,6 +118,7 @@ export default function PreventiusFullsPage() {
     workData.statusFilter !== 'all'
       ? getStatusLabel(workData.statusFilter, workData.statusFilter)
       : null
+  const searchChip = workData.searchQuery.trim() || null
 
   return (
     <MaintenancePermissionGate path="/menu/manteniment/preventius/fulls">
@@ -138,6 +144,28 @@ export default function PreventiusFullsPage() {
           ]}
           onModeChange={(value) => setMode(value as typeof filters.mode)}
           onOpenFilters={() => undefined}
+          centerSlot={
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={workData.searchQuery}
+                onChange={(e) => workData.setSearchQuery(e.target.value)}
+                placeholder="Codi, titol, ubicacio, maquina, vehicle o operari"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-10 text-sm text-slate-900 placeholder:text-slate-400"
+              />
+              {workData.searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => workData.setSearchQuery('')}
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                  aria-label="Netejar cerca"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+          }
         />
 
         <JourneyKindFilter
@@ -145,6 +173,7 @@ export default function PreventiusFullsPage() {
           onChange={workData.setKindFilter}
           workerChip={workerChip}
           statusChip={statusChip}
+          searchChip={searchChip}
         />
 
         <div

@@ -1,4 +1,5 @@
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
+import { computeWorkLogMinutes } from '@/lib/maintenanceWorkLogs'
 import { formatDateTimeValue, parseDateValue } from '@/lib/date-format'
 import type { MachineRow, MachineTimelineItem, MachineView } from './types'
 
@@ -46,7 +47,12 @@ export const getMinutesFromRange = (start?: string | null, end?: string | null) 
 }
 
 export const getTrackedMinutes = (ticket: Ticket) =>
-  (ticket.statusHistory || []).reduce((total, item) => total + getMinutesFromRange(item.startTime, item.endTime), 0)
+  ticket.workLogs?.length
+    ? computeWorkLogMinutes(ticket.workLogs)
+    : (ticket.statusHistory || []).reduce(
+        (total, item) => total + getMinutesFromRange(item.startTime, item.endTime),
+        0
+      )
 
 export const getPlannedMinutes = (ticket: Ticket) => {
   const plannedStart = parseDate(ticket.plannedStart)

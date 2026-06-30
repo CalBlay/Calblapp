@@ -30,10 +30,15 @@ import {
 } from '@/lib/maintenanceTicketAlerts'
 import {
   applyStatusHistoryUpdate,
+  getOpenSegmentStart,
   validateJourneyStatusPayload,
   type JourneyStatus,
   type StatusHistoryEntry,
 } from '@/lib/maintenanceJourneyStatus'
+import {
+  applyWorkLogUpdate,
+  type MaintenanceWorkLogEntry,
+} from '@/lib/maintenanceWorkLogs'
 import {
   syncMaintenanceTicketOutlookCalendar,
   type MaintenanceTicketOutlookEventRef,
@@ -121,6 +126,7 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   plannedEnd?: number | string | null
   outlookCalendarEvents?: Record<string, MaintenanceTicketOutlookEventRef>
   statusHistory?: StatusHistoryEntry[]
+  workLogs?: MaintenanceWorkLogEntry[]
   imageUrls?: string[] | null
   completionAttachments?: Array<{
     url?: string | null
@@ -627,6 +633,28 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           userName: user.name || '',
         }
       )
+
+      if (role === 'treballador' && !canManageTickets) {
+        const workLogs = Array.isArray(current.workLogs)
+          ? (current.workLogs as MaintenanceWorkLogEntry[])
+          : []
+        const fallbackOpenStartTime =
+          currentStatus === 'en_curs' ? getOpenSegmentStart(history, 'en_curs') : ''
+        updates.workLogs = applyWorkLogUpdate(
+          workLogs,
+          currentStatus as JourneyStatus,
+          nextStatus as JourneyStatus,
+          {
+            at: Date.now(),
+            closeSegmentEndTime: closeEnd,
+            newSegmentStartTime: newStart,
+            fallbackOpenStartTime,
+            note: body.statusNote ?? null,
+            userId: user.id,
+            userName: user.name || '',
+          }
+        )
+      }
 
       if (Array.isArray(body.completionImages) && body.completionImages.length > 0) {
         const { newAttachments, merged } = buildMergedCompletionAttachments()

@@ -7,6 +7,7 @@ type Props = {
   onChange: (value: KindFilter) => void
   workerChip?: string | null
   statusChip?: string | null
+  searchChip?: string | null
 }
 
 const OPTIONS: Array<{ value: KindFilter; label: string }> = [
@@ -15,7 +16,13 @@ const OPTIONS: Array<{ value: KindFilter; label: string }> = [
   { value: 'all', label: 'Tots' },
 ]
 
-export default function JourneyKindFilter({ value, onChange, workerChip, statusChip }: Props) {
+export default function JourneyKindFilter({
+  value,
+  onChange,
+  workerChip,
+  statusChip,
+  searchChip,
+}: Props) {
   return (
     <div className="flex flex-wrap gap-2">
       <div className="inline-flex w-full max-w-full rounded-full border border-slate-200 bg-white p-1 sm:w-auto">
@@ -45,6 +52,11 @@ export default function JourneyKindFilter({ value, onChange, workerChip, statusC
       {statusChip ? (
         <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
           {statusChip}
+        </span>
+      ) : null}
+      {searchChip ? (
+        <span className="max-w-full truncate rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700">
+          {searchChip}
         </span>
       ) : null}
     </div>

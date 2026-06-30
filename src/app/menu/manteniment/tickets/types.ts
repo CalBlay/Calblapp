@@ -121,6 +121,16 @@ export type Ticket = {
     endTime?: string | null
     note?: string | null
   }>
+  workLogs?: Array<{
+    at: number
+    byId?: string | null
+    byName?: string | null
+    startTime?: string | null
+    endTime?: string | null
+    note?: string | null
+    sourceStatus?: string | null
+    closedByStatus?: string | null
+  }>
 }
 
 export type UserItem = {

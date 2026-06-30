@@ -14,8 +14,17 @@ type GroupParams = {
   kindFilter: 'all' | 'preventiu' | 'ticket'
   workerFilter: string
   statusFilter: string
+  searchQuery: string
   canFilterByWorker: boolean
   role: string
+}
+
+function normalizeText(value?: string | null) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
 }
 
 export function filterItemsByDateRange(
@@ -38,10 +47,12 @@ export function groupWorkItems({
   kindFilter,
   workerFilter,
   statusFilter,
+  searchQuery,
   canFilterByWorker,
   role,
 }: GroupParams): Array<[string, WorkItem[]]> {
   const workerNeedle = workerFilter.toLowerCase()
+  const searchNeedle = normalizeText(searchQuery)
   const filteredByDate = filterItemsByDateRange(filters, plannedItems, ticketItems)
 
   const items = filteredByDate.filter((item) => {
@@ -63,8 +74,22 @@ export function groupWorkItems({
     const matchesWorkerStatus =
       role === 'treballador' ? WORKER_VISIBLE_JOURNEY_STATUSES.has(itemStatus) : true
     const matchesStatus = statusFilter === 'all' ? true : itemStatus === statusFilter
+    const matchesSearch =
+      !searchNeedle ||
+      normalizeText(
+        [
+          item.title,
+          item.location,
+          item.machine,
+          item.worker,
+          item.vehiclePlate,
+          item.kind === 'ticket' ? (item as TicketJourneyItem).code : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
+      ).includes(searchNeedle)
 
-    return matchesKind && matchesWorker && matchesWorkerStatus && matchesStatus
+    return matchesKind && matchesWorker && matchesWorkerStatus && matchesStatus && matchesSearch
   })
 
   const map = new Map<string, WorkItem[]>()

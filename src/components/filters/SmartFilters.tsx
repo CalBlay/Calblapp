@@ -104,6 +104,25 @@ const unaccent = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '
 const normDept = (s?: string) => unaccent((s || '').toLowerCase().trim())
 const normStr = (s?: string) => unaccent(String(s ?? '').toLowerCase().trim())
 
+const inferModeFromRange = (startStr: string, endStr: string, fallback: Mode): Mode => {
+  const start = parseISO(startStr)
+  const end = parseISO(endStr)
+
+  if (!isValid(start) || !isValid(end)) return fallback
+  if (startStr === endStr) return 'day'
+
+  if (toIso(startOfYear(start)) === startStr && toIso(endOfYear(start)) === endStr) return 'year'
+  if (toIso(startOfMonth(start)) === startStr && toIso(endOfMonth(start)) === endStr) return 'month'
+  if (
+    toIso(startOfWeek(start, { weekStartsOn: 1 })) === startStr &&
+    toIso(endOfWeek(start, { weekStartsOn: 1 })) === endStr
+  ) {
+    return 'week'
+  }
+
+  return 'range'
+}
+
 const DEPT_LABELS: Record<string, string> = {
   logistica: 'Logística',
   serveis: 'Serveis',
@@ -176,27 +195,7 @@ useEffect(() => {
   setRangeStartStr(initialStart)
   setRangeEndStr(initialEnd)
 
-  if (initialStart === initialEnd || modeDefault === 'day') {
-    setMode('day')
-    return
-  }
-
-  if (modeDefault === 'range') {
-    setMode('range')
-    return
-  }
-
-  if (modeDefault === 'month') {
-    setMode('month')
-    return
-  }
-
-  if (modeDefault === 'year') {
-    setMode('year')
-    return
-  }
-
-  setMode('week')
+  setMode(inferModeFromRange(initialStart, initialEnd, modeDefault))
 }, [initialStart, initialEnd, modeDefault])
 
 
@@ -292,6 +291,13 @@ useEffect(() => {
     [monthStart]
   )
   const yearLabel = useMemo(() => format(yearStart, 'yyyy', { locale: es }), [yearStart])
+  const yearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear()
+    const anchorYear = anchor.getFullYear()
+    const minYear = Math.min(currentYear, anchorYear) - 5
+    const maxYear = Math.max(currentYear, anchorYear) + 5
+    return Array.from({ length: maxYear - minYear + 1 }, (_, index) => String(minYear + index))
+  }, [anchor])
   const headerLabel = useMemo(() => {
     if (mode === 'week') return weekLabel
     if (mode === 'month') return monthLabel
@@ -469,6 +475,12 @@ if (key !== lastPayloadRef.current) {
       </span>
     )}
 
+    {mode === 'year' && (
+      <span className="whitespace-nowrap px-0.5 text-sm font-semibold text-slate-800">
+        {yearLabel}
+      </span>
+    )}
+
     <Button
       size="icon"
       variant="ghost"
@@ -535,7 +547,7 @@ if (key !== lastPayloadRef.current) {
   </Popover>
 )}
 
-    {mode === 'range' && (
+{mode === 'range' && (
   <Popover open={openRange} onOpenChange={setOpenRange}>
     <PopoverTrigger asChild>
       <Button
@@ -594,6 +606,28 @@ if (key !== lastPayloadRef.current) {
       </div>
     </PopoverContent>
   </Popover>
+)}
+
+{mode === 'year' && (
+  <Select
+    value={yearLabel}
+    onValueChange={(value) => {
+      const nextYear = Number(value)
+      if (!Number.isFinite(nextYear)) return
+      setAnchor(new Date(nextYear, anchor.getMonth(), anchor.getDate()))
+    }}
+  >
+    <SelectTrigger className={cn(corporateFilterChipClass, 'min-w-[92px] whitespace-nowrap')}>
+      <SelectValue placeholder="Any" />
+    </SelectTrigger>
+    <SelectContent>
+      {yearOptions.map((option) => (
+        <SelectItem key={option} value={option}>
+          {option}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
 )}
 
   </div>

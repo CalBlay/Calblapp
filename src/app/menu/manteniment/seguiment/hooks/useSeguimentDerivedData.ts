@@ -8,6 +8,7 @@ import {
   getDaysOpen,
   getPlannedMinutes,
   getTrackedMinutes,
+  getTicketTrackedMinutes,
   normalizeStatus,
   parseDate,
   parseDateFromParts,
@@ -21,7 +22,7 @@ type Params = {
   machines: MachineItem[]
   dateMode: 'all' | 'planned'
   dateRange: { start: string; end: string }
-  statusFilter: string
+  statusFilter: MaintenanceStatus[]
   workerFilter: string
   locationFilter: string
   externalFilter: 'all' | 'internal' | 'external'
@@ -46,12 +47,13 @@ export function useSeguimentDerivedData({
   applyDateMatch,
 }: Params) {
   const normalizedSearch = search.trim().toLowerCase()
+  const hasStatusFilter = statusFilter.length > 0
 
   const ticketRows = useMemo(
     () =>
       tickets
         .filter((ticket) => {
-          if (statusFilter !== 'all' && normalizeStatus(ticket.status) !== statusFilter) return false
+          if (hasStatusFilter && !statusFilter.includes(normalizeStatus(ticket.status))) return false
           if (externalFilter === 'external' && !ticket.externalized) return false
           if (externalFilter === 'internal' && ticket.externalized) return false
           if (workerFilter !== 'all' && !(ticket.assignedToNames || []).includes(workerFilter)) {
@@ -97,6 +99,7 @@ export function useSeguimentDerivedData({
     [
       applyDateMatch,
       externalFilter,
+      hasStatusFilter,
       locationFilter,
       normalizedSearch,
       pendingValidationOnly,
@@ -111,7 +114,7 @@ export function useSeguimentDerivedData({
     () =>
       preventius
         .filter((item) => {
-          if (statusFilter !== 'all' && item.status !== statusFilter) return false
+          if (hasStatusFilter && !statusFilter.includes(item.status)) return false
           if (workerFilter !== 'all' && !item.workerNames.includes(workerFilter)) return false
           if (locationFilter !== 'all' && item.location !== locationFilter) return false
           if (pendingValidationOnly && item.status !== 'fet') return false
@@ -134,6 +137,7 @@ export function useSeguimentDerivedData({
         ),
     [
       applyDateMatch,
+      hasStatusFilter,
       locationFilter,
       normalizedSearch,
       pendingValidationOnly,
@@ -181,7 +185,7 @@ export function useSeguimentDerivedData({
   const totalTrackedMinutes = useMemo(
     () =>
       tab === 'tickets'
-        ? ticketRows.reduce((sum, row) => sum + getTrackedMinutes(row.statusHistory), 0)
+        ? ticketRows.reduce((sum, row) => sum + getTicketTrackedMinutes(row), 0)
         : preventiuRows.reduce((sum, row) => sum + getTrackedMinutes(row.history), 0),
     [preventiuRows, tab, ticketRows]
   )

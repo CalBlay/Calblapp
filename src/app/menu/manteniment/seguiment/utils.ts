@@ -127,6 +127,9 @@ export const getTrackedMinutes = (history?: WorkHistoryEntry[]) => {
   return Math.round(total / 60000)
 }
 
+export const getTicketTrackedMinutes = (ticket: Ticket) =>
+  getTrackedMinutes(ticket.workLogs?.length ? ticket.workLogs : ticket.statusHistory)
+
 const hoursNumberFormatter = new Intl.NumberFormat('ca-ES', {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,

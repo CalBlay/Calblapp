@@ -10,12 +10,12 @@ import type { Ticket } from '@/app/menu/manteniment/tickets/types'
 import { type MaintenanceStatus } from '../types'
 import {
   formatDateTime,
+  getTicketTrackedMinutes,
   formatTrackedHours,
   getDaysBadge,
   getDaysOpen,
   getPlannedMinutes,
   getTicketCompletionAttachments,
-  getTrackedMinutes,
   isMediaAttachment,
   normalizeMachineLabel,
   normalizeStatus,
@@ -219,7 +219,7 @@ export default function SeguimentTicketRow({
   onValidate,
 }: Props) {
   const days = getDaysOpen(ticket.createdAt)
-  const trackedMinutes = getTrackedMinutes(ticket.statusHistory)
+  const trackedMinutes = getTicketTrackedMinutes(ticket)
   const plannedMinutes = getPlannedMinutes(
     parseDate(ticket.plannedStart) ? format(parseDate(ticket.plannedStart) as Date, 'HH:mm') : null,
     parseDate(ticket.plannedEnd) ? format(parseDate(ticket.plannedEnd) as Date, 'HH:mm') : null,
@@ -237,68 +237,91 @@ export default function SeguimentTicketRow({
     canValidateTickets &&
     validationSummary.pendingCap &&
     normalizeStatus(ticket.status) !== 'validat'
+  const title =
+    ticket.description ||
+    normalizeMachineLabel(ticket.machine, machineNameMap) ||
+    ticket.location ||
+    ticket.ticketCode ||
+    ticket.id
+  const detailsDescription =
+    String(ticket.description || '').trim() &&
+    String(ticket.description || '').trim() !== String(title).trim()
+      ? String(ticket.description || '').trim()
+      : ''
+  const codeLabel = ticket.ticketCode || ticket.incidentNumber || `#${ticket.id}`
+  const operatorLabel = (ticket.assignedToNames || []).join(', ') || '-'
 
   return (
-    <article className="px-4 py-4">
-      <div className="space-y-3">
-        <div className="flex items-start justify-between gap-3">
+    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:bg-slate-50/40">
+      <div className="space-y-1.5">
+        <div className="flex items-start justify-between gap-2 px-3 py-2.5">
           <div className="min-w-0 flex-1 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                {codeLabel}
+              </span>
               <button
                 type="button"
                 onClick={() => onOpen(ticket)}
-                className="text-left text-base font-semibold text-slate-900 hover:underline"
+                className="min-w-0 text-left text-[15px] font-semibold leading-5 text-slate-900 hover:underline"
               >
-                {ticket.description ||
-                  normalizeMachineLabel(ticket.machine, machineNameMap) ||
-                  ticket.location ||
-                  ticket.ticketCode ||
-                  ticket.id}
+                <span className="line-clamp-1">{title}</span>
               </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
               <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${maintenanceStatusBadge(ticket.status)}`}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${maintenanceStatusBadge(ticket.status)}`}
               >
                 {STATUS_LABELS[normalizeStatus(ticket.status)]}
               </span>
               {days !== null ? (
-                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getDaysBadge(days)}`}>
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${getDaysBadge(days)}`}>
                   {days} dies
                 </span>
               ) : null}
               {validationSummary.pendingCap ? (
-                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
                   Pendent de validar
                 </span>
               ) : null}
               {ticket.externalized ? (
-                <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-800">
+                <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[11px] font-semibold text-indigo-800">
                   Proveidor
                 </span>
               ) : null}
               <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${PRIORITY_BADGES[ticket.priority || 'normal'] || PRIORITY_BADGES.normal}`}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${PRIORITY_BADGES[ticket.priority || 'normal'] || PRIORITY_BADGES.normal}`}
               >
                 {ticket.priority || 'normal'}
               </span>
             </div>
 
-            <div className="grid gap-2 text-sm text-slate-500 md:grid-cols-2 xl:grid-cols-7">
-              <InfoCard label="Ubicacio" value={ticket.location || '-'} />
-              <InfoCard label="Maquina" value={normalizeMachineLabel(ticket.machine, machineNameMap)} />
-              <InfoCard label="Operari" value={(ticket.assignedToNames || []).join(', ') || '-'} />
-              <InfoCard label="Hores planificades" value={formatTrackedHours(plannedMinutes)} />
-              <InfoCard label="Hores reals" value={formatTrackedHours(trackedMinutes)} />
-              <InfoCard label="Ultim moviment" value={formatDateTime(lastMovement)} />
-              <InfoCard label="Data alta" value={formatDateTime(ticket.createdAt)} />
+            <div className="line-clamp-1 text-[11px] text-slate-500">
+              <span>Ubicacio: {ticket.location || '-'}</span>
+              <span className="mx-1.5 text-slate-300">·</span>
+              <span>Maquina: {normalizeMachineLabel(ticket.machine, machineNameMap)}</span>
+              <span className="mx-1.5 text-slate-300">·</span>
+              <span>Operari: {operatorLabel}</span>
+              <span className="mx-1.5 text-slate-300">·</span>
+              <span>Planificat: {formatTrackedHours(plannedMinutes)}</span>
+              <span className="mx-1.5 text-slate-300">·</span>
+              <span>Real: {formatTrackedHours(trackedMinutes)}</span>
+              <span className="mx-1.5 text-slate-300">·</span>
+              <span>Ultim moviment: {formatDateTime(lastMovement)}</span>
             </div>
+
+            {detailsDescription ? (
+              <p className="line-clamp-1 text-[13px] text-slate-600">{detailsDescription}</p>
+            ) : null}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {canDirectValidate ? (
               <Button
                 type="button"
                 variant="default"
-                className="rounded-full"
+                className="h-8 rounded-full px-3 text-xs"
                 disabled={validatingTicketId === ticket.id}
                 onClick={() => void onValidate(ticket)}
               >
@@ -308,7 +331,7 @@ export default function SeguimentTicketRow({
             <button
               type="button"
               onClick={() => onToggleExpanded(ticket.id)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50"
             >
               {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
@@ -316,30 +339,23 @@ export default function SeguimentTicketRow({
         </div>
 
         {expanded ? (
-          <div className="space-y-4 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
-            <TicketValidationBox
-              ticket={ticket}
-              canValidateTickets={canValidateTickets}
-              validatingTicketId={validatingTicketId}
-              onValidate={onValidate}
-            />
-            <TicketCompletionAttachments ticket={ticket} />
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Historial</div>
-              <TicketHistory ticket={ticket} />
+          <div className="border-t border-slate-200 bg-slate-50/50 px-3 py-3 text-sm text-slate-600">
+            <div className="space-y-4">
+              <TicketValidationBox
+                ticket={ticket}
+                canValidateTickets={canValidateTickets}
+                validatingTicketId={validatingTicketId}
+                onValidate={onValidate}
+              />
+              <TicketCompletionAttachments ticket={ticket} />
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Historial</div>
+                <TicketHistory ticket={ticket} />
+              </div>
             </div>
           </div>
         ) : null}
       </div>
     </article>
-  )
-}
-
-function InfoCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-slate-50 px-3 py-2">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="mt-1 text-slate-700">{value}</div>
-    </div>
   )
 }

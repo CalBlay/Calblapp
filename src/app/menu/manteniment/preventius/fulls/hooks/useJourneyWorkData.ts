@@ -24,6 +24,7 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
   const [kindFilter, setKindFilter] = useState<'all' | 'preventiu' | 'ticket'>('all')
   const [workerFilter, setWorkerFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     let active = true
@@ -72,6 +73,7 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
         kindFilter,
         workerFilter,
         statusFilter,
+        searchQuery,
         canFilterByWorker,
         role,
       }),
@@ -82,6 +84,7 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
       kindFilter,
       workerFilter,
       statusFilter,
+      searchQuery,
       canFilterByWorker,
       role,
     ]
@@ -96,6 +99,8 @@ export function useJourneyWorkData({ filters, role, userId, canFilterByWorker, r
     setWorkerFilter,
     statusFilter,
     setStatusFilter,
+    searchQuery,
+    setSearchQuery,
     workerOptions,
     statusOptions,
     grouped,

@@ -2,14 +2,13 @@
 
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import type { UserItem } from '@/app/menu/manteniment/tickets/types'
-import type { TabKey } from '../types'
-import { STATUSES, STATUS_LABELS } from '../utils'
+import type { MaintenanceStatus, TabKey } from '../types'
 
 type Props = {
   tab: TabKey
   dateMode: 'all' | 'planned'
   externalFilter: 'all' | 'internal' | 'external'
-  statusFilter: string
+  statusFilter: MaintenanceStatus[]
   workerFilter: string
   locationFilter: string
   pendingValidationOnly: boolean
@@ -18,7 +17,7 @@ type Props = {
   users: UserItem[]
   onDateModeChange: (value: 'all' | 'planned') => void
   onExternalFilterChange: (value: 'all' | 'internal' | 'external') => void
-  onStatusFilterChange: (value: string) => void
+  onStatusFilterChange: (value: MaintenanceStatus[]) => void
   onWorkerFilterChange: (value: string) => void
   onLocationFilterChange: (value: string) => void
   onPendingValidationOnlyChange: (value: boolean) => void
@@ -30,7 +29,6 @@ export default function SeguimentSidebarFilters({
   tab,
   dateMode,
   externalFilter,
-  statusFilter,
   workerFilter,
   locationFilter,
   pendingValidationOnly,
@@ -39,7 +37,6 @@ export default function SeguimentSidebarFilters({
   users,
   onDateModeChange,
   onExternalFilterChange,
-  onStatusFilterChange,
   onWorkerFilterChange,
   onLocationFilterChange,
   onPendingValidationOnlyChange,
@@ -55,22 +52,6 @@ export default function SeguimentSidebarFilters({
           onChange={(e) => onDateModeChange(e.target.checked ? 'planned' : 'all')}
         />
         Aplicar filtre de dates
-      </label>
-
-      <label className="space-y-2 text-sm text-slate-700">
-        <span className="font-medium">Estat</span>
-        <select
-          value={statusFilter}
-          onChange={(e) => onStatusFilterChange(e.target.value)}
-          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-        >
-          <option value="all">Tots</option>
-          {STATUSES.map((status) => (
-            <option key={status} value={status}>
-              {STATUS_LABELS[status]}
-            </option>
-          ))}
-        </select>
       </label>
 
       {tab === 'tickets' ? (

@@ -1,12 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { format } from 'date-fns'
+import { eachDayOfInterval, format, parseISO } from 'date-fns'
+import { ca } from 'date-fns/locale'
 import { useSession } from 'next-auth/react'
-import { X } from 'lucide-react'
+import { AlertTriangle, Calendar, X } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useFilters } from '@/context/FiltersContext'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
+import FilterButton from '@/components/ui/filter-button'
 import {
   CorporateActiveFilterChip,
   CorporateFilterSearch,
@@ -34,8 +36,60 @@ import type { MaintenanceStatus, TabKey } from './types'
 import { useSeguimentActions } from './hooks/useSeguimentActions'
 import { useSeguimentData } from './hooks/useSeguimentData'
 import { useSeguimentDerivedData } from './hooks/useSeguimentDerivedData'
-import { parseDate, STATUS_LABELS } from './utils'
+import { parseDate, parseDateFromParts, STATUSES, STATUS_LABELS } from './utils'
 import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
+
+function formatDayLabel(day: string) {
+  const parsed = parseISO(day)
+  if (Number.isNaN(parsed.getTime())) return day
+  return format(parsed, 'dd/MM/yyyy', { locale: ca })
+}
+
+const STATUS_FILTER_STYLES: Record<
+  MaintenanceStatus,
+  { active: string; dot: string; label: string }
+> = {
+  nou: {
+    active: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    dot: 'bg-emerald-500',
+    label: 'Nou',
+  },
+  assignat: {
+    active: 'bg-sky-100 text-sky-800 border-sky-200',
+    dot: 'bg-sky-500',
+    label: 'Assignat',
+  },
+  en_curs: {
+    active: 'bg-amber-100 text-amber-800 border-amber-200',
+    dot: 'bg-amber-500',
+    label: 'En curs',
+  },
+  espera: {
+    active: 'bg-slate-200 text-slate-800 border-slate-300',
+    dot: 'bg-slate-500',
+    label: 'Espera',
+  },
+  fet: {
+    active: 'bg-green-100 text-green-800 border-green-200',
+    dot: 'bg-green-500',
+    label: 'Fet',
+  },
+  no_fet: {
+    active: 'bg-rose-100 text-rose-800 border-rose-200',
+    dot: 'bg-rose-500',
+    label: 'No fet',
+  },
+  resolut: {
+    active: 'bg-teal-100 text-teal-800 border-teal-200',
+    dot: 'bg-teal-500',
+    label: 'Resolt',
+  },
+  validat: {
+    active: 'bg-violet-100 text-violet-800 border-violet-200',
+    dot: 'bg-violet-500',
+    label: 'Validat',
+  },
+}
 
 export default function MaintenanceSeguimentPage() {
   const { data: session } = useSession()
@@ -60,7 +114,7 @@ export default function MaintenanceSeguimentPage() {
   const [tab, setTab] = useState<TabKey>('tickets')
   const [dateMode, setDateMode] = useState<MaintenanceDateFilterMode>('planned')
   const [externalFilter, setExternalFilter] = useState<'all' | 'internal' | 'external'>('all')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<MaintenanceStatus[]>([])
   const [workerFilter, setWorkerFilter] = useState<string>('all')
   const [locationFilter, setLocationFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
@@ -104,7 +158,7 @@ export default function MaintenanceSeguimentPage() {
         onStalledOnlyChange={setStalledOnly}
         onReset={() => {
           setDateMode('planned')
-          setStatusFilter('all')
+          setStatusFilter([])
           setExternalFilter('all')
           setWorkerFilter('all')
           setLocationFilter('all')
@@ -180,6 +234,44 @@ export default function MaintenanceSeguimentPage() {
     setTickets,
   })
 
+  const toggleStatusFilter = useCallback((status: MaintenanceStatus) => {
+    setStatusFilter((current) =>
+      current.includes(status) ? current.filter((item) => item !== status) : [...current, status]
+    )
+  }, [])
+
+  const daySections = useMemo(() => {
+    const map = new Map<string, typeof currentRows>()
+    currentRows.forEach((row) => {
+      const date =
+        tab === 'tickets'
+          ? parseDate((row as Ticket).plannedStart || null)
+          : parseDateFromParts(row.plannedDate, row.plannedStart)
+      if (!date) return
+      const key = format(date, 'yyyy-MM-dd')
+      const list = map.get(key) || []
+      list.push(row)
+      map.set(key, list)
+    })
+
+    const days = eachDayOfInterval({
+      start: parseISO(dateRange.start),
+      end: parseISO(dateRange.end),
+    })
+
+    return days
+      .map((day) => {
+        const key = format(day, 'yyyy-MM-dd')
+        const items = map.get(key) || []
+        return {
+          day: key,
+          items,
+          count: items.length,
+        }
+      })
+      .filter((section) => section.count > 0)
+  }, [currentRows, dateRange.end, dateRange.start, tab])
+
   return (
     <MaintenancePermissionGate path="/menu/manteniment/seguiment">
       <div className="flex w-full max-w-none flex-col gap-5 p-4 pb-8">
@@ -190,22 +282,25 @@ export default function MaintenanceSeguimentPage() {
             className="border-0 bg-transparent px-0 py-0 shadow-none"
             bodyClassName="flex-col items-stretch gap-0 xl:flex-row xl:flex-wrap xl:items-center"
             leftSlot={
-              <SmartFilters
-                modeDefault="week"
-                modeOptions={['week', 'month', 'year', 'day', 'range']}
-                resetSignal={dateResetSignal}
-                role="Treballador"
-                showDepartment={false}
-                showWorker={false}
-                showLocation={false}
-                showStatus={false}
-                compact
-                onChange={(f: SmartFiltersChange) =>
-                  f.start && f.end ? setDateRange({ start: f.start, end: f.end }) : null
-                }
-                initialStart={dateRange.start}
-                initialEnd={dateRange.end}
-              />
+              <>
+                <FilterButton />
+                <SmartFilters
+                  modeDefault="week"
+                  modeOptions={['week', 'month', 'year', 'day', 'range']}
+                  resetSignal={dateResetSignal}
+                  role="Treballador"
+                  showDepartment={false}
+                  showWorker={false}
+                  showLocation={false}
+                  showStatus={false}
+                  compact
+                  onChange={(f: SmartFiltersChange) =>
+                    f.start && f.end ? setDateRange({ start: f.start, end: f.end }) : null
+                  }
+                  initialStart={dateRange.start}
+                  initialEnd={dateRange.end}
+                />
+              </>
             }
             centerSlot={
               <div className="relative min-w-[260px]">
@@ -232,29 +327,50 @@ export default function MaintenanceSeguimentPage() {
             }
             rightSlot={
               <div className="flex flex-wrap items-center gap-2 xl:ml-auto">
-                {(['tickets', 'preventius'] as TabKey[]).map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => {
-                      setTab(item)
-                      setExpandedId(null)
-                    }}
-                    className={corporateFilterBadgeClass(tab === item)}
-                  >
-                    {item === 'tickets' ? 'Tickets' : 'Preventius'}
-                  </button>
-                ))}
+                <div className="flex flex-wrap items-center gap-2">
+                  {(['tickets', 'preventius'] as TabKey[]).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => {
+                        setTab(item)
+                        setExpandedId(null)
+                      }}
+                      className={corporateFilterBadgeClass(tab === item)}
+                    >
+                      {item === 'tickets' ? 'Tickets' : 'Preventius'}
+                    </button>
+                  ))}
+                </div>
+                <div className="h-6 w-px bg-slate-200" />
+                <div className="flex flex-wrap items-center gap-2">
+                  {STATUSES.map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => toggleStatusFilter(status)}
+                      className={[
+                        'rounded-full px-3 py-2 text-xs font-semibold border inline-flex items-center gap-2',
+                        statusFilter.includes(status)
+                          ? STATUS_FILTER_STYLES[status].active
+                          : 'bg-white text-gray-700 border-gray-200',
+                      ].join(' ')}
+                      title={`Filtrar per estat ${STATUS_FILTER_STYLES[status].label}`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${STATUS_FILTER_STYLES[status].dot}`} />
+                      {STATUS_FILTER_STYLES[status].label}
+                    </button>
+                  ))}
+                </div>
               </div>
             }
-            onOpenFilters={() => undefined}
             bottomSlot={
               <CorporateFiltersActiveRow>
-                {statusFilter !== 'all' ? (
-                  <CorporateActiveFilterChip>
-                    {STATUS_LABELS[statusFilter as MaintenanceStatus]}
+                {statusFilter.map((status) => (
+                  <CorporateActiveFilterChip key={status}>
+                    {STATUS_LABELS[status]}
                   </CorporateActiveFilterChip>
-                ) : null}
+                ))}
                 {workerFilter !== 'all' ? (
                   <CorporateActiveFilterChip>{workerFilter}</CorporateActiveFilterChip>
                 ) : null}
@@ -316,43 +432,71 @@ export default function MaintenanceSeguimentPage() {
               </div>
             </div>
 
-            <div className="divide-y divide-slate-100">
+            <div className="space-y-6 p-3 sm:space-y-7 sm:p-4 lg:space-y-6 lg:p-4">
               {currentRows.length === 0 ? (
-                <div className="px-4 py-8 text-sm text-slate-500">
+                <div className="rounded-xl border border-dashed border-slate-200 px-4 py-7 text-sm text-slate-500">
                   No hi ha registres amb aquests filtres.
                 </div>
               ) : null}
 
-              {tab === 'tickets'
-                ? ticketRows.map((ticket) => (
-                    <SeguimentTicketRow
-                      key={ticket.id}
-                      ticket={ticket}
-                      expanded={expandedId === ticket.id}
-                      machineNameMap={machineNameMap}
-                      canValidateTickets={canValidateTickets}
-                      validatingTicketId={validatingTicketId}
-                      onOpen={setOpenedTicket}
-                      onToggleExpanded={(id) =>
-                        setExpandedId((prev) => (prev === id ? null : id))
-                      }
-                      onValidate={handleCapValidateTicket}
-                    />
-                  ))
-                : preventiuRows.map((item) => (
-                    <SeguimentPreventiuRow
-                      key={item.id}
-                      item={item}
-                      expanded={expandedId === item.id}
-                      canValidatePreventius={canValidatePreventius}
-                      validatingPreventiuId={validatingPreventiuId}
-                      onOpen={openPreventiu}
-                      onToggleExpanded={(id) =>
-                        setExpandedId((prev) => (prev === id ? null : id))
-                      }
-                      onValidate={handleValidatePreventiu}
-                    />
-                  ))}
+              {daySections.map((section) => (
+                <section
+                  key={section.day}
+                  className="rounded-xl border border-slate-200/80 bg-slate-50/45 p-2.5 sm:p-3"
+                >
+                  <header className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2">
+                    <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold leading-tight text-slate-800">
+                      {formatDayLabel(section.day)}
+                      <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-700">
+                        <Calendar className="h-3 w-3" aria-hidden />
+                        {tab === 'tickets' ? 'Tickets' : 'Preventius'}
+                      </span>
+                    </h2>
+
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-1 text-[11px] font-semibold text-rose-700">
+                      <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                      {section.count} {section.count === 1 ? 'registre' : 'registres'}
+                    </span>
+                  </header>
+
+                  <div className="grid grid-cols-1 gap-2 xl:grid-cols-2 2xl:grid-cols-3">
+                    {tab === 'tickets'
+                      ? (section.items as Ticket[]).map((ticket) => (
+                          <div
+                            key={ticket.id}
+                            className={expandedId === ticket.id ? 'xl:col-span-2 2xl:col-span-3' : ''}
+                          >
+                            <SeguimentTicketRow
+                              ticket={ticket}
+                              expanded={expandedId === ticket.id}
+                              machineNameMap={machineNameMap}
+                              canValidateTickets={canValidateTickets}
+                              validatingTicketId={validatingTicketId}
+                              onOpen={setOpenedTicket}
+                              onToggleExpanded={(id) =>
+                                setExpandedId((prev) => (prev === id ? null : id))
+                              }
+                              onValidate={handleCapValidateTicket}
+                            />
+                          </div>
+                        ))
+                      : section.items.map((item) => (
+                          <SeguimentPreventiuRow
+                            key={item.id}
+                            item={item}
+                            expanded={expandedId === item.id}
+                            canValidatePreventius={canValidatePreventius}
+                            validatingPreventiuId={validatingPreventiuId}
+                            onOpen={openPreventiu}
+                            onToggleExpanded={(id) =>
+                              setExpandedId((prev) => (prev === id ? null : id))
+                            }
+                            onValidate={handleValidatePreventiu}
+                          />
+                        ))}
+                  </div>
+                </section>
+              ))}
             </div>
           </section>
         ) : null}

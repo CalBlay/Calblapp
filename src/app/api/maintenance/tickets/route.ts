@@ -519,6 +519,7 @@ export async function POST(req: Request) {
           byName: user.name || '',
         },
       ],
+      workLogs: [],
     })
 
     await notifyForNewMaintenanceTicket({
