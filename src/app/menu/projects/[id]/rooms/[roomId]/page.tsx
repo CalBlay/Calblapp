@@ -867,7 +867,7 @@ export default function ProjectRoomDetailPage() {
 
               <div className="mt-3 grid gap-3 rounded-2xl bg-slate-50 px-4 py-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.35fr)]">
                 <Link
-                  href={`/menu/projects/${params?.id}?tab=overview`}
+                  href={`/menu/projects/${params?.id}?tab=tracking`}
                   className="min-w-0 rounded-xl px-1 py-1 transition hover:bg-white/70"
                 >
                   <div className="text-[11px] uppercase tracking-wide text-slate-400">Projecte</div>
@@ -984,7 +984,7 @@ export default function ProjectRoomDetailPage() {
               <div className="space-y-4 xl:min-h-0 xl:overflow-auto">
                 <section className="space-y-4 rounded-[24px] border border-slate-200 bg-white p-6">
                   <Link
-                    href={`/menu/projects/${params?.id}?tab=documents`}
+                  href={`/menu/projects/${params?.id}?tab=tracking`}
                     className="flex items-center gap-2 text-sm font-semibold text-slate-900 hover:text-violet-700"
                   >
                     <FileText className="h-4 w-4 text-slate-500" />

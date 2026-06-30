@@ -6,20 +6,11 @@ import {
   CalendarDays,
   ChevronDown,
   FileText,
-  MessagesSquare,
-  MoreHorizontal,
   Plus,
   Save,
   Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -34,10 +25,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { colorByDepartment } from '@/lib/colors'
 import { cn } from '@/lib/utils'
 import {
-  BLOCK_WORKSPACE_BADGE_LABEL,
-  BLOCK_WORKSPACE_OPEN_LABEL,
-} from './project-room-ui'
-import {
   BLOCK_STATUS_OPTIONS,
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
@@ -50,6 +37,7 @@ import {
 import {
   projectCardMetaClass,
   projectCardTitleClass,
+  projectBlockCardClass,
   projectEmptyStateClass,
   projectModuleShellClass,
   projectSectionHeaderBarClass,
@@ -183,10 +171,24 @@ export default function ProjectBlocksTab({
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const end = new Date(target.getFullYear(), target.getMonth(), target.getDate())
     const diff = Math.round((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-    if (diff < 0) return `Retard ${Math.abs(diff)} dies`
-    if (diff === 0) return 'Venc avui'
-    if (diff === 1) return 'Falta 1 dia'
-    return `Falten ${diff} dies`
+    if (diff < 0) return `Vençut fa ${Math.abs(diff)} dies`
+    if (diff === 0) return 'Venç avui'
+    if (diff === 1) return 'Queda 1 dia'
+    return `Queden ${diff} dies`
+  }
+
+  const getDeadlineTextTone = (value?: string) => {
+    const raw = String(value || '').trim()
+    if (!raw) return 'text-slate-500'
+    const target = new Date(`${raw}T00:00:00`)
+    if (Number.isNaN(target.getTime())) return 'text-slate-500'
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const end = new Date(target.getFullYear(), target.getMonth(), target.getDate())
+    const diff = Math.round((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    if (diff < 0) return 'text-rose-700'
+    if (diff <= 3) return 'text-amber-800'
+    return 'text-emerald-700'
   }
 
   const getAvailableDepartments = (block: ProjectBlock) => {
@@ -262,8 +264,9 @@ export default function ProjectBlocksTab({
                     <Input
                       value={blockDraft.name}
                       onChange={(event) =>
-                        onSetBlockDraft((current) => ({ ...current, name: event.target.value }))
+                        onSetBlockDraft((current) => ({ ...current, name: event.target.value.slice(0, 28) }))
                       }
+                      maxLength={28}
                       placeholder="Ex: Pla d'obra"
                     />
                   </div>
@@ -427,7 +430,7 @@ export default function ProjectBlocksTab({
               Encara no hi ha blocs. Crea el primer front de treball del projecte.
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2 xl:grid-cols-3">
             {project.blocks.map((block) => {
               const canEditCurrentBlock = canEditBlock(block)
               const canConvokeCurrentBlockMeeting = canConvokeBlockMeeting(block)
@@ -445,21 +448,25 @@ export default function ProjectBlocksTab({
               const taskTotal = block.tasks.length
               const meetingCount = (block.meetings || []).length
               const taskProgressPct = taskTotal > 0 ? Math.round((taskDone / taskTotal) * 100) : 0
+              const blockDepartments = getBlockDepartments(block)
+              const deadlineHint = getDeadlineHint(block.deadline)
+              const deadlineTextTone = getDeadlineTextTone(block.deadline)
+              const statusLabel =
+                BLOCK_STATUS_OPTIONS.find((option) => option.value === block.status)?.label || 'En curs'
+              const dependencyName =
+                project.blocks.find((item) => item.id === block.dependsOn)?.name || 'Bloc anterior'
               const taskSublineParts: string[] = []
               if (taskPending > 0) taskSublineParts.push(`${taskPending} pendents`)
               if (taskInProgress > 0) taskSublineParts.push(`${taskInProgress} en curs`)
               if (meetingCount > 0) taskSublineParts.push(`${meetingCount} reunions`)
-              const showBlockActionsMenu =
-                canAccessCurrentBlockRoom ||
-                (canConvokeCurrentBlockMeeting && Boolean(onOpenBlockMeeting)) ||
-                canEditCurrentBlock
               return (
               <div
                 key={block.id}
                 id={`project-block-${block.id}`}
                 className={cn(
-                  'group relative flex flex-col overflow-hidden rounded-[22px] border border-violet-100/80 bg-white shadow-md transition duration-200',
-                  isExpanded ? 'col-span-full border-violet-200 ring-1 ring-violet-200' : 'hover:-translate-y-1 hover:shadow-lg'
+                  isExpanded
+                    ? 'group relative col-span-full self-auto flex flex-col overflow-hidden rounded-[24px] border border-violet-200 bg-white shadow-[0_18px_44px_-22px_rgba(109,40,217,0.28)] ring-1 ring-violet-200'
+                    : cn(projectBlockCardClass, 'self-start')
                 )}
               >
                 <div className={`h-1.5 w-full shrink-0 ${blockStatusAccentClass(block.status)}`} />
@@ -469,114 +476,138 @@ export default function ProjectBlocksTab({
                     isExpanded && canEditCurrentBlock ? 'rounded-[18px] bg-violet-50/50 px-2 py-1' : ''
                   }`}
                 >
-                  <div className="min-w-0 pl-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className={`min-w-0 flex-1 ${projectCardTitleClass}`}>
-                        {block.name || 'Bloc sense nom'}
-                      </div>
-                      <span className="shrink-0 pt-0.5 text-sm font-semibold text-slate-700">
-                        {formatProjectDate(block.deadline) || 'Sense data'}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-[15px] text-slate-800">
-                      {block.owner || 'Sense responsable'}
-                    </div>
-                    {block.summary ? (
-                      <div className="mt-1 line-clamp-1 text-[15px] text-slate-800">
-                        {block.summary}
-                      </div>
-                    ) : null}
-                    <div
-                      className={`mt-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-6 ${projectCardMetaClass}`}
-                    >
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                        {getBlockDepartments(block).length > 0 ? (
-                          getBlockDepartments(block).map((department) => (
-                            <span
-                              key={`${block.id}-summary-${department}`}
-                              className={cn(
-                                colorByDepartment(department),
-                                'rounded-md border-0 px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ring-slate-200/75'
-                              )}
-                            >
-                              {department}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-sm text-slate-500">Sense departament</span>
-                        )}
-                      </div>
-                      <div className="flex min-w-0 shrink-0 flex-col gap-1 md:max-w-[min(100%,20rem)] md:items-end">
-                        <div className="flex w-full items-center gap-2 md:w-auto md:justify-end">
-                          <div
-                            className="h-1.5 min-w-[4.5rem] flex-1 overflow-hidden rounded-full bg-slate-200/90 md:flex-initial md:w-28"
-                            title={
-                              taskTotal > 0
-                                ? `${taskDone} de ${taskTotal} tasques fetes`
-                                : 'Sense tasques en aquest bloc'
-                            }
-                          >
-                            <div
-                              className="h-full rounded-full bg-emerald-500/90 transition-[width]"
-                              style={{ width: taskTotal > 0 ? `${taskProgressPct}%` : '0%' }}
-                            />
-                          </div>
-                          <span className="shrink-0 text-xs font-medium tabular-nums text-slate-600">
-                            {taskTotal > 0 ? (
-                              <>
-                                {taskDone}/{taskTotal} fetes
-                              </>
+                  <div className="min-w-0 flex-1">
+                    <div className="space-y-4 pl-2">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                            {canAccessCurrentBlockRoom ? (
+                              <button
+                                type="button"
+                                className={cn(
+                                  projectCardTitleClass,
+                                  'text-[1.28rem] leading-8 text-violet-700 hover:underline'
+                                )}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  router.push(blockRoomHref)
+                                }}
+                              >
+                                {block.name || 'Bloc sense nom'}
+                              </button>
                             ) : (
-                              <>Sense tasques</>
+                              <div className={cn(projectCardTitleClass, 'text-[1.28rem] leading-8 text-violet-700')}>
+                                {block.name || 'Bloc sense nom'}
+                              </div>
                             )}
-                          </span>
+                            <span className={cn('rounded-full px-2.5 py-1 text-[11px] font-semibold', blockStatusTone(block.status))}>
+                              {statusLabel}
+                            </span>
+                            {canConvokeCurrentBlockMeeting && onOpenBlockMeeting ? (
+                              <button
+                                type="button"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-violet-700 transition hover:bg-violet-100"
+                                aria-label="Convocar reunió"
+                                title="Convocar reunió"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  onOpenBlockMeeting(block.id)
+                                }}
+                              >
+                                <CalendarDays className="h-3.5 w-3.5" />
+                              </button>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
+                            <span>{block.owner || 'Sense responsable'}</span>
+                            <span className="text-slate-300">·</span>
+                            <span className="font-medium text-slate-800">{formatProjectDate(block.deadline)}</span>
+                            {block.deadline ? (
+                              <span className={cn('font-medium', deadlineTextTone)}>{deadlineHint}</span>
+                            ) : null}
+                          </div>
                         </div>
-                        {taskSublineParts.length > 0 ? (
-                          <p className="text-xs leading-snug text-slate-500">{taskSublineParts.join(' · ')}</p>
+                      </div>
+
+                      <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                          <span className="font-semibold text-slate-800">Departaments implicats:</span>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {blockDepartments.length > 0 ? (
+                              blockDepartments.map((department) => (
+                                <span
+                                  key={`${block.id}-dept-${department}`}
+                                  className={cn(
+                                    colorByDepartment(department),
+                                    'rounded-full px-3 py-1 text-xs font-semibold'
+                                  )}
+                                >
+                                  {department}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-sm text-slate-500">Sense departament</span>
+                            )}
+                          </div>
+                        </div>
+                        {block.dependsOn ? (
+                          <div className="sm:col-span-2">
+                            <span className="font-semibold text-slate-800">Depèn de:</span>{' '}
+                            {dependencyName}
+                          </div>
                         ) : null}
                       </div>
-                    </div>
-                    {block.dependsOn ? (
-                      <div className="mt-2">
-                        <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
-                          Depen de:{' '}
-                          {project.blocks.find((item) => item.id === block.dependsOn)?.name || 'Bloc anterior'}
-                        </span>
+
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                          <span className="font-semibold text-slate-800">Tasques</span>
+                          <span className="text-slate-500">
+                            {taskTotal > 0 ? `${taskDone}/${taskTotal} fetes` : 'Sense tasques'}
+                          </span>
+                        </div>
+                        <div
+                          className="h-2 overflow-hidden rounded-full bg-slate-200"
+                          title={
+                            taskTotal > 0
+                              ? `${taskDone} de ${taskTotal} tasques fetes`
+                              : 'Sense tasques en aquest bloc'
+                          }
+                        >
+                          <div
+                            className="h-full rounded-full bg-sky-500 transition-[width]"
+                            style={{ width: taskTotal > 0 ? `${taskProgressPct}%` : '0%' }}
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+                          <span>{taskPending} pendents</span>
+                          <span>{taskInProgress} en curs</span>
+                          <span>{meetingCount} reunions</span>
+                          <span>{taskSublineParts.length > 0 ? taskSublineParts.join(' · ') : 'Sense activitat'}</span>
+                        </div>
                       </div>
-                    ) : null}
+
+                    </div>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
-                    {canAccessCurrentBlockRoom && !isExpanded ? (
+                    {canEditCurrentBlock ? (
                       <Button
                         type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mr-1 hidden h-8 gap-1.5 border-violet-200 bg-violet-50/80 text-violet-800 hover:bg-violet-100 sm:inline-flex"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-full text-slate-300 hover:text-slate-500"
                         onClick={(event) => {
                           event.stopPropagation()
-                          router.push(blockRoomHref)
+                          event.preventDefault()
+                          onRemoveBlock(block.id)
                         }}
+                        aria-label="Eliminar bloc"
+                        title="Eliminar bloc"
                       >
-                        <MessagesSquare className="h-3.5 w-3.5" />
-                        {BLOCK_WORKSPACE_OPEN_LABEL}
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     ) : null}
-                    {canAccessCurrentBlockRoom ? (
-                      <span className="mr-1 hidden rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 sm:inline">
-                        {BLOCK_WORKSPACE_BADGE_LABEL}
-                        {unreadByBlockId[block.id] ? (
-                          <span className="ml-1 rounded-full bg-violet-600 px-1.5 py-0.5 text-[9px] text-white">
-                            {unreadByBlockId[block.id]}
-                          </span>
-                        ) : null}
-                      </span>
-                    ) : null}
-                    <span
-                      className={`mr-1 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium sm:px-2.5 sm:py-1 sm:text-xs ${blockStatusTone(block.status)}`}
-                    >
-                      {BLOCK_STATUS_OPTIONS.find((option) => option.value === block.status)?.label || 'En curs'}
-                    </span>
                     {canEditCurrentBlock ? (
                       <Button
                         type="button"
@@ -616,65 +647,6 @@ export default function ProjectBlocksTab({
                         />
                       </Button>
                     )}
-                    {showBlockActionsMenu ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-9 w-9 rounded-full text-slate-500 opacity-80 hover:opacity-100"
-                            aria-label="Més accions del bloc"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                            }}
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-52" onClick={(e) => e.stopPropagation()}>
-                          {canAccessCurrentBlockRoom ? (
-                            <DropdownMenuItem
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                router.push(blockRoomHref)
-                              }}
-                            >
-                              <MessagesSquare className="h-4 w-4" />
-                              {BLOCK_WORKSPACE_OPEN_LABEL}
-                            </DropdownMenuItem>
-                          ) : null}
-                          {canConvokeCurrentBlockMeeting && onOpenBlockMeeting ? (
-                            <DropdownMenuItem
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                onOpenBlockMeeting(block.id)
-                              }}
-                            >
-                              <CalendarDays className="h-4 w-4" />
-                              Convocar reunió
-                            </DropdownMenuItem>
-                          ) : null}
-                          {canEditCurrentBlock ? (
-                            <>
-                              {canAccessCurrentBlockRoom || (canConvokeCurrentBlockMeeting && onOpenBlockMeeting) ? (
-                                <DropdownMenuSeparator />
-                              ) : null}
-                              <DropdownMenuItem
-                                variant="destructive"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  onRemoveBlock(block.id)
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Eliminar bloc
-                              </DropdownMenuItem>
-                            </>
-                          ) : null}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : null}
                   </div>
                 </div>
 
@@ -686,7 +658,8 @@ export default function ProjectBlocksTab({
                           <Label>Nom</Label>
                           <Input
                             value={block.name}
-                            onChange={(event) => onSetBlockField(block.id, 'name', event.target.value)}
+                            onChange={(event) => onSetBlockField(block.id, 'name', event.target.value.slice(0, 28))}
+                            maxLength={28}
                           />
                         </div>
                         <div className="space-y-2">

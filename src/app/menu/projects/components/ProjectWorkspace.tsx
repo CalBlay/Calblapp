@@ -65,15 +65,7 @@ const ProjectPlanningTab = dynamic(() => import('./ProjectPlanningTab'), {
   loading: tabLoadingFallback,
 })
 
-const ProjectDocumentsTab = dynamic(() => import('./ProjectDocumentsTab'), {
-  loading: tabLoadingFallback,
-})
-
 const ProjectTrackingTab = dynamic(() => import('./ProjectTrackingTab'), {
-  loading: tabLoadingFallback,
-})
-
-const ProjectOverviewTab = dynamic(() => import('./ProjectOverviewTab'), {
   loading: tabLoadingFallback,
 })
 
@@ -107,7 +99,7 @@ export default function ProjectWorkspace({
   const sessionUserEmail = String(session?.user?.email || '').trim()
   const sessionRole = normalizeRole(String(session?.user?.role || '').trim())
   const sessionDepartment = normalizeDepartment(String(session?.user?.department || '').trim())
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab ?? 'overview')
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab ?? 'tracking')
   const [project, setProject] = useState<ProjectData>(initialProject)
   const meetingActaUser = useMemo(
     () => ({
@@ -189,8 +181,12 @@ export default function ProjectWorkspace({
 
   const applyTabChange = useCallback(
     (tab: WorkspaceTab) => {
-      setActiveTab(tab)
-      router.replace(`/menu/projects/${projectId}?tab=${tab}`, { scroll: false })
+      const nextTab =
+        tab === 'overview' || tab === 'documents'
+          ? 'tracking'
+          : tab
+      setActiveTab(nextTab)
+      router.replace(`/menu/projects/${projectId}?tab=${nextTab}`, { scroll: false })
     },
     [projectId, router]
   )
@@ -244,7 +240,7 @@ export default function ProjectWorkspace({
     if (!visibleTabs.includes(activeTab)) {
       const nextTab = visibleTabs.includes(preferredWorkspaceTab)
         ? preferredWorkspaceTab
-        : visibleTabs[0] || 'tasks'
+        : visibleTabs[0] || 'tracking'
       applyTabChange(nextTab)
     }
   }, [activeTab, applyTabChange, preferredWorkspaceTab, sessionStatus, visibleTabs])
@@ -506,6 +502,15 @@ export default function ProjectWorkspace({
         coordinationActivityLoading={coordinationActivityLoading}
         onOpenCoordination={() => setCoordinationOpen(true)}
         autosaveStatus={autosaveStatus}
+        canEditLaunchDate={Boolean(canManageProject)}
+        dirtyLaunchDate={dirtyOverview}
+        savingLaunchDate={savingOverview}
+        onLaunchDateChange={(value) =>
+          setProject((current) => ({ ...current, launchDate: value }))
+        }
+        onSaveLaunchDate={() => {
+          void saveOverview()
+        }}
       />
 
       {coordinationOpen ? (
@@ -577,45 +582,6 @@ export default function ProjectWorkspace({
             kickoffMinutesDraft={project.kickoff.minutes || ''}
             onOpenTaskMeeting={openTaskMeeting}
           />
-        ) : activeTab === 'overview' && canViewOverview ? (
-          <ProjectOverviewTab
-            project={project}
-            availableDepartments={availableDepartments}
-            ownerOptions={ownerOptions}
-            pendingFile={pendingFile}
-            blockDraft={blockDraft}
-            dirtyOverview={dirtyOverview}
-            savingOverview={savingOverview}
-            showBlockComposer={showBlockComposer}
-            onSave={saveOverview}
-            onProjectChange={setProject}
-            onPendingFileChange={setPendingFile}
-            onSetBlockDraftName={(value) =>
-              setBlockDraft((current) => ({ ...current, name: value }))
-            }
-            onToggleBlockComposer={() =>
-              setShowBlockComposer((current) => {
-                if (current) setBlockDraft(createBlockDraft())
-                return !current
-              })
-            }
-            onCreateBlock={createBlock}
-            onSetBlockName={(blockId, value) => setBlockField(blockId, 'name', value)}
-            onAddDepartmentToBlock={addDepartmentToBlock}
-            onRemoveDepartmentFromBlock={removeDepartmentFromBlock}
-            onRemoveBlock={removeBlock}
-            onRemoveDocument={removeDocument}
-            showKickoffSection
-            manualKickoffEmail={manualKickoffEmail}
-            kickoffReady={kickoffReady}
-            sendingKickoff={sendingKickoff}
-            onKickoffFieldChange={setKickoffField}
-            onManualKickoffEmailChange={setManualKickoffEmail}
-            onAddManualKickoffEmail={addManualKickoffEmail}
-            onSendKickoff={sendKickoff}
-            onReopenKickoff={reopenKickoff}
-            onRemoveKickoffAttendee={removeKickoffAttendee}
-          />
         ) : (
           <section className="rounded-2xl border border-violet-100 bg-white shadow-sm">
             <div className="p-4 sm:p-5">
@@ -679,40 +645,9 @@ export default function ProjectWorkspace({
             />
           ) : null}
 
-          {activeTab === 'documents' ? (
-            <ProjectDocumentsTab
-              project={project}
-              savingOverview={savingOverview}
-              pendingDocumentFile={pendingDocumentFile}
-              documentDraft={documentDraft}
-              onSave={saveDocuments}
-              onPendingFileChange={setPendingDocumentFile}
-              onDocumentDraftChange={setDocumentDraft}
-              onRemoveDocument={removeDocument}
-              onRemoveKickoffMinutes={removeKickoffMinutes}
-            />
-          ) : null}
-
               {activeTab === 'tracking' ? (
                 <ProjectTrackingTab
                   project={project}
-                  onResolveAlert={(target) => {
-                    if (target.tab === 'blocks') {
-                      applyTabChange('blocks')
-                      setEditingBlockId(target.blockId)
-                      setEditingTaskKey(null)
-                      return
-                    }
-                    applyTabChange('tasks')
-                    setEditingTaskKey(
-                      target.taskId ? `${target.blockId}:${target.taskId}` : null
-                    )
-                  }}
-                  onOpenBlock={(blockId) => {
-                    applyTabChange('blocks')
-                    setEditingBlockId(blockId)
-                    setEditingTaskKey(null)
-                  }}
                 />
               ) : null}
             </div>

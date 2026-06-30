@@ -254,7 +254,7 @@ export default function ProjectPlanningTab({
         status: 'done',
         start: projectCreatedAt,
         end: projectCreatedAt,
-        href: `/menu/projects/${projectId}?tab=overview`,
+        href: `/menu/projects/${projectId}?tab=tracking`,
       },
       projectStartDate
         ? {
@@ -265,7 +265,7 @@ export default function ProjectPlanningTab({
             status: 'done',
             start: projectStartDate,
             end: projectStartDate,
-            href: `/menu/projects/${projectId}?tab=overview`,
+            href: `/menu/projects/${projectId}?tab=tracking`,
           }
         : null,
       kickoffDate
@@ -297,7 +297,7 @@ export default function ProjectPlanningTab({
             status: project.phase === 'closed' ? 'done' : 'in_progress',
             start: projectLaunchDate,
             end: projectLaunchDate,
-            href: `/menu/projects/${projectId}?tab=overview`,
+            href: `/menu/projects/${projectId}?tab=tracking`,
           }
         : null,
     ].filter(Boolean) as PlanningItem[]

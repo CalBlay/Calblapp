@@ -505,9 +505,17 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
       })
     })
 
-    const userNotificationsRefs = (
-      await db.collectionGroup('notifications').where('projectId', '==', id).get()
-    ).docs.map((doc) => doc.ref)
+    let userNotificationsRefs: Array<FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>> = []
+    try {
+      userNotificationsRefs = (
+        await db.collectionGroup('notifications').where('projectId', '==', id).get()
+      ).docs.map((doc) => doc.ref)
+    } catch (err) {
+      console.warn('[projects] notifications cleanup skipped while deleting project', {
+        projectId: id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
 
     await deleteDocsInChunks([
       ...messageReadRefs,

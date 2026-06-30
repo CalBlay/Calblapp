@@ -1,7 +1,6 @@
 import {
   Blocks,
   CalendarRange,
-  FileText,
   FolderOpen,
   LayoutDashboard,
   TimerReset,
@@ -42,12 +41,10 @@ export const workspaceTabs: Array<{
   label: string
   icon: typeof LayoutDashboard
 }> = [
-  { id: 'overview', label: 'Fitxa del projecte', icon: LayoutDashboard },
+  { id: 'tracking', label: 'Resum Projecte', icon: FolderOpen },
   { id: 'blocks', label: 'Blocs', icon: Blocks },
   { id: 'tasks', label: 'Tasques', icon: TimerReset },
   { id: 'planning', label: 'Planificació', icon: CalendarRange },
-  { id: 'tracking', label: 'Seguiment', icon: FolderOpen },
-  { id: 'documents', label: 'Documents', icon: FileText },
 ]
 
 export const createBlockDraft = () => ({

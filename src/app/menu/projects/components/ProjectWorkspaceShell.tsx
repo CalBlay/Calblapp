@@ -1,13 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { CalendarPlus, FolderKanban, MessageSquare, Trash2 } from 'lucide-react'
+import { CalendarClock, CalendarPlus, FolderKanban, MessageSquare, TimerReset, Trash2, UserRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { type ProjectParticipationKind } from '@/lib/projectParticipation'
 import { formatProjectDate, phaseLabel, type ProjectData } from './project-shared'
 import { type WorkspaceTab, workspaceTabs } from './project-workspace-helpers'
-import ProjectMissionStrip from './ProjectMissionStrip'
+import ProjectSummaryStrip, { projectDaysRunningLabel, projectDeadlineStatus } from './ProjectSummaryStrip'
 import { GENERAL_ROOM_LABEL } from './project-room-ui'
 import type { WorkspaceAutosaveStatus } from './useProjectWorkspaceAutosave'
 
@@ -29,6 +29,11 @@ type Props = {
   coordinationActivityLoading?: boolean
   onOpenCoordination?: () => void
   autosaveStatus?: WorkspaceAutosaveStatus
+  canEditLaunchDate?: boolean
+  dirtyLaunchDate?: boolean
+  savingLaunchDate?: boolean
+  onLaunchDateChange?: (value: string) => void
+  onSaveLaunchDate?: () => void
 }
 
 export default function ProjectWorkspaceShell({
@@ -48,41 +53,22 @@ export default function ProjectWorkspaceShell({
   coordinationActivityLoading = false,
   onOpenCoordination,
   autosaveStatus = 'idle',
+  canEditLaunchDate = false,
+  dirtyLaunchDate = false,
+  savingLaunchDate = false,
+  onLaunchDateChange,
+  onSaveLaunchDate,
 }: Props) {
-  const launchDateRaw = String(project.launchDate || '').trim()
-  const launchDate = launchDateRaw
-    ? new Date(launchDateRaw.length === 10 ? `${launchDateRaw}T00:00:00` : launchDateRaw)
-    : null
-  const today = new Date()
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-  const launchStart =
-    launchDate && !Number.isNaN(launchDate.getTime())
-      ? new Date(launchDate.getFullYear(), launchDate.getMonth(), launchDate.getDate())
-      : null
-  const daysToLaunch = launchStart
-    ? Math.round((launchStart.getTime() - todayStart.getTime()) / 86400000)
-    : null
-
   const tabs = visibleTabs?.length
     ? visibleTabs
         .map((tabId) => workspaceTabs.find((tab) => tab.id === tabId))
         .filter((tab): tab is (typeof workspaceTabs)[number] => Boolean(tab))
     : workspaceTabs
 
-  const metaParts = [
-    phaseLabel(project.phase),
-    participationLabel,
-    project.launchDate ? `Arrencada ${formatProjectDate(project.launchDate)}` : null,
-  ].filter(Boolean)
-
-  const delayLabel =
-    daysToLaunch !== null
-      ? daysToLaunch > 0
-        ? `Falten ${daysToLaunch}d`
-        : daysToLaunch === 0
-          ? 'Avui'
-          : `Retard ${Math.abs(daysToLaunch)}d`
-      : null
+  const metaParts = [phaseLabel(project.phase), participationLabel].filter(Boolean)
+  const owner = String(project.owner || '').trim() || 'Sense responsable'
+  const daysRunning = projectDaysRunningLabel(project.createdAt)
+  const deadlineStatus = projectDeadlineStatus(project.launchDate)
 
   const autosaveLabel =
     autosaveStatus === 'pending'
@@ -103,8 +89,8 @@ export default function ProjectWorkspaceShell({
         : 'Canal general al dia'
 
   return (
-    <div className="w-full border-b border-violet-200/80 bg-gradient-to-r from-violet-200/70 via-fuchsia-100/60 to-violet-50 shadow-[0_8px_24px_-16px_rgba(109,40,217,0.35)]">
-      <div className="px-4 py-3">
+    <div className="w-full border-b border-violet-200/80 bg-gradient-to-r from-violet-200/65 via-fuchsia-100/55 to-violet-50 shadow-[0_8px_24px_-16px_rgba(109,40,217,0.35)]">
+      <div className="px-4 py-3.5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2.5">
             <FolderKanban className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
@@ -121,6 +107,23 @@ export default function ProjectWorkspaceShell({
               {metaParts.length > 0 ? (
                 <p className="mt-1 text-xs text-slate-600">{metaParts.join(' · ')}</p>
               ) : null}
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-slate-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <UserRound className="h-3.5 w-3.5 text-violet-600" />
+                  <span className="truncate">{owner}</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <TimerReset className="h-3.5 w-3.5 text-violet-600" />
+                  <span>{daysRunning}</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarClock className="h-3.5 w-3.5 text-violet-600" />
+                  <span>{formatProjectDate(project.launchDate)}</span>
+                </span>
+                <span className={cn('inline-flex items-center gap-1 text-[12px] font-medium', deadlineStatus.tone)}>
+                  <span>{deadlineStatus.label}</span>
+                </span>
+              </div>
             </div>
           </div>
 
@@ -160,36 +163,35 @@ export default function ProjectWorkspaceShell({
             {canConvokeProjectMeeting && onCreateMeeting ? (
               <Button
                 type="button"
-                size="sm"
+                size="icon"
+                title="Reunió d'arrencada"
+                aria-label="Reunió d'arrencada"
                 onClick={onCreateMeeting}
-                className="h-8 shrink-0 gap-1.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 px-2.5 text-white shadow-sm shadow-violet-300/40 hover:from-violet-700 hover:to-fuchsia-700"
+                className="h-8 w-8 shrink-0 border border-violet-200 bg-white/90 text-violet-700 shadow-sm shadow-violet-200/30 hover:bg-violet-50 hover:text-violet-800"
               >
                 <CalendarPlus className="h-3.5 w-3.5" />
-                <span className="hidden text-xs font-medium sm:inline">Reunió d'arrencada</span>
               </Button>
             ) : null}
             {canDelete ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onDelete}
-              disabled={deleting}
-              title="Eliminar el projecte sencer i tot el contingut associat"
-              className="h-8 shrink-0 gap-1.5 border-red-200 bg-white/80 px-2.5 text-red-700 hover:bg-red-50 hover:text-red-800"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span className="hidden text-xs font-medium sm:inline">
-                {deleting ? 'Eliminant...' : 'Eliminar projecte'}
-              </span>
-            </Button>
-          ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={onDelete}
+                disabled={deleting}
+                title={deleting ? 'Eliminant projecte...' : 'Eliminar projecte'}
+                aria-label={deleting ? 'Eliminant projecte' : 'Eliminar projecte'}
+                className="h-8 w-8 shrink-0 border-red-200 bg-white/85 text-red-600 hover:bg-red-50 hover:text-red-700"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
           <div
-            className="inline-flex flex-wrap rounded-xl border border-white/90 bg-white/75 p-1 shadow-md shadow-violet-200/30"
+            className="inline-flex flex-wrap rounded-2xl border border-white/95 bg-white/88 p-1.5 shadow-lg shadow-violet-200/35"
             role="tablist"
             aria-label="Seccions del projecte"
           >
@@ -205,7 +207,7 @@ export default function ProjectWorkspaceShell({
                   aria-selected={isActive}
                   onClick={() => onTabChange(tab.id)}
                   className={cn(
-                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition',
+                    'inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium transition',
                     isActive
                       ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm shadow-violet-300/40'
                       : 'text-slate-600 hover:bg-white/90 hover:text-violet-800'
@@ -217,25 +219,20 @@ export default function ProjectWorkspaceShell({
               )
             })}
           </div>
+        </div>
 
-          {delayLabel ? (
-            <span
-              className={cn(
-                'shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold',
-                daysToLaunch !== null && daysToLaunch < 0
-                  ? 'bg-red-100 text-red-700'
-                  : daysToLaunch === 0
-                    ? 'bg-amber-100 text-amber-800'
-                    : 'bg-white/70 text-slate-600'
-              )}
-            >
-              {delayLabel}
-            </span>
-          ) : null}
+        <div className="mt-3">
+          <ProjectSummaryStrip
+            project={project}
+            compact
+            canEditLaunchDate={canEditLaunchDate}
+            dirtyLaunchDate={dirtyLaunchDate}
+            savingLaunchDate={savingLaunchDate}
+            onLaunchDateChange={onLaunchDateChange}
+            onSaveLaunchDate={onSaveLaunchDate}
+          />
         </div>
       </div>
-
-      <ProjectMissionStrip context={project.context} strategy={project.strategy} />
     </div>
   )
 }

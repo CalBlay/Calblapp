@@ -43,7 +43,6 @@ export function useProjectVisibility({
   const canDeleteProject = sessionRole === 'admin' || isProjectSponsor
   const hasFullProjectVisibility =
     sessionRole === 'admin' || sessionRole === 'direccio' || isProjectSponsor || isProjectOwner
-  const canViewOverview = sessionRole === 'admin' || isProjectSponsor || isProjectOwner
   const canCreateOrRemoveBlocks = canManageProject
   const isBlockResponsible = useMemo(
     () =>
@@ -64,14 +63,10 @@ export function useProjectVisibility({
     [project.blocks, sessionUserName]
   )
   const isBlockResponsibleOnly = isBlockResponsible && !hasFullProjectVisibility
-  const blockResponsibleTabs = useMemo<WorkspaceTab[]>(
-    () => ['tasks', 'blocks', 'planning', 'documents'],
+  const sharedWorkspaceTabs = useMemo<WorkspaceTab[]>(
+    () => ['tracking', 'blocks', 'tasks', 'planning'],
     []
   )
-  const limitedParticipantTabs = useMemo<WorkspaceTab[]>(() => {
-    if (isTaskResponsible) return ['tasks', 'planning', 'documents']
-    return ['planning']
-  }, [isTaskResponsible])
   const participation = useMemo(
     () =>
       resolveUserProjectParticipation(
@@ -87,13 +82,12 @@ export function useProjectVisibility({
     [project, sessionDepartment, sessionRole, sessionUserId, sessionUserName]
   )
   const preferredWorkspaceTab = useMemo<WorkspaceTab>(() => {
-    if (isProjectOwner || isProjectSponsor) return 'tasks'
-    if (isBlockResponsibleOnly) return 'tasks'
-    if (isTaskResponsible) return 'tasks'
-    if (hasFullProjectVisibility) return canViewOverview ? 'overview' : 'blocks'
-    return 'planning'
+    if (isProjectOwner || isProjectSponsor) return 'tracking'
+    if (isBlockResponsibleOnly) return 'tracking'
+    if (isTaskResponsible) return 'tracking'
+    if (hasFullProjectVisibility) return 'tracking'
+    return 'tracking'
   }, [
-    canViewOverview,
     hasFullProjectVisibility,
     isBlockResponsibleOnly,
     isProjectOwner,
@@ -107,28 +101,11 @@ export function useProjectVisibility({
         return workspaceTabs.map((tab) => tab.id)
       }
 
-      if (hasFullProjectVisibility) {
-        return workspaceTabs
-          .map((tab) => tab.id)
-          .filter((tabId) => {
-            if (tabId === 'overview') return canViewOverview
-            return true
-          })
-      }
-
-      if (isBlockResponsibleOnly) {
-        return blockResponsibleTabs
-      }
-
-      return limitedParticipantTabs
+      return sharedWorkspaceTabs
     },
     [
-      blockResponsibleTabs,
-      canViewOverview,
-      hasFullProjectVisibility,
-      isBlockResponsibleOnly,
-      limitedParticipantTabs,
       sessionStatus,
+      sharedWorkspaceTabs,
     ]
   )
 
@@ -298,8 +275,8 @@ export function useProjectVisibility({
     canManageSpecificTask,
     canMoveSpecificTask,
     canSaveTasks,
-    canViewOverview,
-    hasExpandedWorkspaceTabs: hasFullProjectVisibility || isBlockResponsibleOnly,
+    canViewOverview: true,
+    hasExpandedWorkspaceTabs: true,
     hasFullProjectVisibility,
     isBlockResponsibleOnly,
     isBlockResponsible,

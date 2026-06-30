@@ -219,7 +219,7 @@ export async function POST(req: Request) {
 
     const payload = {
       name: clean(form.get('name')),
-      sponsor: clean(form.get('sponsor')),
+      sponsor: clean(form.get('sponsor')) || String(auth.user.name || '').trim(),
       owner,
       ownerUserId: ownerUser?.id || '',
       context: clean(form.get('context')),

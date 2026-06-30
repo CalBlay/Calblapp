@@ -15,7 +15,14 @@ import {
   getBlockDepartments,
   type ProjectData,
 } from './project-shared'
-import { projectCardMetaClass, projectCardTitleClass, projectEmptyStateClass, projectModuleShellClass, projectPanelClass, projectSectionTitleClass } from './project-ui'
+import {
+  projectCardMetaClass,
+  projectCardTitleClass,
+  projectEmptyStateClass,
+  projectModuleShellClass,
+  projectPanelClass,
+  projectSectionTitleClass,
+} from './project-ui'
 
 export type TrackingAlertTarget = {
   tab: 'blocks' | 'tasks'
@@ -263,7 +270,7 @@ export default function ProjectTrackingTab({ project, onResolveAlert, onOpenBloc
     })),
     ...overdueTasks.map((task) => ({
       key: `task-overdue-${task.id}`,
-      title: `Tasca vencuda: ${task.title}`,
+      title: `Tasca vençuda: ${task.title}`,
       detail: `Bloc ${task.blockName} · ${formatProjectDate(task.deadline)}`,
       tone: 'amber' as const,
       actionLabel: 'Obrir tasca',
