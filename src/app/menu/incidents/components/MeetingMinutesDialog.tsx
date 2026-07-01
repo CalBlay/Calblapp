@@ -42,6 +42,8 @@ type Props = {
   defaultFilters: MeetingMinutesFilters
   generatedByLabel?: string
   onSessionStatusChange?: (status: 'draft' | 'finalized' | null) => void
+  sessionId?: string | null
+  initialSession?: IncidentMeetingSession | null
 }
 
 function RecullFiltersPanel({
@@ -91,6 +93,8 @@ export default function MeetingMinutesDialog({
   defaultFilters,
   generatedByLabel,
   onSessionStatusChange,
+  sessionId,
+  initialSession,
 }: Props) {
   const notesRef = useRef<HTMLTextAreaElement>(null)
   const [session, setSession] = useState<IncidentMeetingSession | null>(null)
@@ -106,6 +110,7 @@ export default function MeetingMinutesDialog({
   const [sending, setSending] = useState(false)
   const [closureTab, setClosureTab] = useState('notes')
   const [phase, setPhase] = useState<'meeting' | 'closure'>('meeting')
+  const historyMode = Boolean(sessionId)
 
   const isFinalized = session?.status === 'finalized'
   const showClosure = phase === 'closure' || isFinalized
@@ -153,7 +158,10 @@ export default function MeetingMinutesDialog({
   const loadSession = useCallback(async () => {
     setLoadingSession(true)
     try {
-      const res = await fetch('/api/incidents/meeting-minutes', { cache: 'no-store' })
+      const params = new URLSearchParams()
+      if (sessionId) params.set('id', sessionId)
+      const url = `/api/incidents/meeting-minutes${params.toString() ? `?${params.toString()}` : ''}`
+      const res = await fetch(url, { cache: 'no-store' })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(String(json?.error || 'Error carregant acta'))
       applySession(json.session || null)
@@ -170,7 +178,7 @@ export default function MeetingMinutesDialog({
     } finally {
       setLoadingSession(false)
     }
-  }, [applySession, defaultFilters, onSessionStatusChange])
+  }, [applySession, defaultFilters, onSessionStatusChange, sessionId])
 
   const loadIncidents = useCallback(async (nextFilters: MeetingMinutesFilters) => {
     const from = String(nextFilters.from || '').trim()
@@ -196,11 +204,14 @@ export default function MeetingMinutesDialog({
 
   useEffect(() => {
     if (!open) return
+    if (initialSession && sessionId && initialSession.id === sessionId) {
+      applySession(initialSession)
+    }
     void loadSession()
     void loadMeetingAttendees()
     // Només en obrir el diàleg — evita recarregar després de finalitzar i esborrar l’estat.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, initialSession, sessionId, loadMeetingAttendees, loadSession, applySession])
 
   useEffect(() => {
     if (!coreAttendees.length) {
@@ -325,7 +336,8 @@ export default function MeetingMinutesDialog({
         const json = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(String(json?.error || 'Error desant'))
       }
-      await startNextMeetingCycle()
+      if (historyMode) onOpenChange(false)
+      else await startNextMeetingCycle()
     } catch (e) {
       toast({
         title: 'Error tancant acta',
@@ -343,7 +355,7 @@ export default function MeetingMinutesDialog({
       onOpenChange(false)
       return
     }
-    if (session?.status === 'finalized') {
+    if (session?.status === 'finalized' && !historyMode) {
       await completeFinalizedActaAndClose()
       return
     }
@@ -431,6 +443,7 @@ export default function MeetingMinutesDialog({
   }
 
   const startNewActa = async () => {
+    if (historyMode) return
     setSaving(true)
     try {
       const next = await createNewDraftSession()
@@ -496,7 +509,8 @@ export default function MeetingMinutesDialog({
         title: 'Acta enviada',
         description: `Correu enviat a ${json.recipients ?? 0} destinataris.`,
       })
-      await startNextMeetingCycle()
+      if (historyMode) await loadSession()
+      else await startNextMeetingCycle()
     } catch (e) {
       toast({
         title: 'Error enviant correu',
@@ -851,11 +865,13 @@ export default function MeetingMinutesDialog({
                   disabled={saving || sending}
                   onClick={() => void exitDialog()}
                 >
-                  Sortir al tauler
+                  {historyMode ? 'Tancar' : 'Sortir al tauler'}
                 </Button>
-                <Button type="button" variant="ghost" disabled={saving} onClick={() => void startNewActa()}>
-                  Nova acta
-                </Button>
+                {!historyMode ? (
+                  <Button type="button" variant="ghost" disabled={saving} onClick={() => void startNewActa()}>
+                    Nova acta
+                  </Button>
+                ) : null}
                 <Button type="button" variant="outline" disabled={saving} onClick={() => void reopenActa()}>
                   <RotateCcw className="mr-2 h-4 w-4" />
                   Reobrir reunió

@@ -30,9 +30,11 @@ import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 import {
   INCIDENTS_ACTION,
+  INCIDENTS_CATEGORY_EDIT_PERM,
   INCIDENTS_COMMAND_BOARD_PERM,
   INCIDENTS_MEETING_MINUTES_PERM,
   INCIDENTS_QUADRE_PATH,
+  INCIDENTS_TYPOLOGIES_MANAGE_PERM,
   INCIDENTS_UI_PATH,
   incidentsActionBaseAccess,
 } from '@/lib/incidentsPermissions'
@@ -376,6 +378,22 @@ export async function GET() {
     incidentsActionBaseAccess(accessUser, incidentsActionBase, INCIDENTS_ACTION.COMMAND_BOARD)
   ) {
     actions[INCIDENTS_COMMAND_BOARD_PERM] = true
+  }
+
+  if (
+    effectFor(assignment, INCIDENTS_CATEGORY_EDIT_PERM) === 'allow' &&
+    incidentsActionBase.canViewIncidents &&
+    incidentsActionBase.canEditIncidents
+  ) {
+    actions[INCIDENTS_CATEGORY_EDIT_PERM] = true
+  }
+
+  if (
+    effectFor(assignment, INCIDENTS_TYPOLOGIES_MANAGE_PERM) === 'allow' &&
+    incidentsActionBase.canViewIncidents &&
+    incidentsActionBase.canEditIncidents
+  ) {
+    actions[INCIDENTS_TYPOLOGIES_MANAGE_PERM] = true
   }
 
   if (

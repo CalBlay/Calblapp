@@ -5,7 +5,7 @@ import React, { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
-import { AlertTriangle, FileText } from 'lucide-react'
+import { AlertTriangle, Clock3, FileText } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import {
@@ -25,8 +25,10 @@ import IncidentsTable from './components/IncidentsTable'
 import IncidentsLnFilterBadges from './components/IncidentsLnFilterBadges'
 import { incidentMatchesLnFilter } from '@/lib/incidentLn'
 import {
+  INCIDENTS_CATEGORY_EDIT_PERM,
   INCIDENTS_COMMAND_BOARD_PERM,
   INCIDENTS_MEETING_MINUTES_PERM,
+  INCIDENTS_TYPOLOGIES_MANAGE_PERM,
   INCIDENTS_QUADRE_PATH,
 } from '@/lib/incidentsPermissions'
 import FilterButton from '@/components/ui/filter-button'
@@ -35,9 +37,9 @@ import { useFilters } from '@/context/FiltersContext'
 import ExportMenu from '@/components/export/ExportMenu'
 import { Button } from '@/components/ui/button'
 import MeetingMinutesDialog from './components/MeetingMinutesDialog'
+import MeetingMinutesHistoryDialog from './components/MeetingMinutesHistoryDialog'
 import {
   canDeleteIncident,
-  canManageIncidentCategories,
   normalizeIncidentStatus,
 } from '@/lib/incidentPolicy'
 import { normalizeDept } from '@/lib/accessControl'
@@ -98,12 +100,18 @@ export default function IncidentsPage() {
   )
   const isMarketingUser = MARKETING_DEPARTMENTS.has(normalizeDept(accessUser.department || ''))
   const actaAuthorLabel = sessionUser?.name?.trim() || sessionUser?.email?.trim()
-  const canEditTipologies = canManageIncidentCategories(accessUser)
   const { ready: uiPermsReady, hasAction } = useUiPermissions()
   const canSeeQuadre = uiPermsReady && hasAction(INCIDENTS_COMMAND_BOARD_PERM)
   const canMeetingMinutes = uiPermsReady && hasAction(INCIDENTS_MEETING_MINUTES_PERM)
+  const canEditIncidentCategory = uiPermsReady && hasAction(INCIDENTS_CATEGORY_EDIT_PERM)
+  const canEditTipologies = uiPermsReady && hasAction(INCIDENTS_TYPOLOGIES_MANAGE_PERM)
   const [meetingMinutesOpen, setMeetingMinutesOpen] = useState(false)
+  const [meetingMinutesHistoryOpen, setMeetingMinutesHistoryOpen] = useState(false)
   const [meetingActaStatus, setMeetingActaStatus] = useState<'draft' | 'finalized' | null>(null)
+  const [activeMeetingSessionId, setActiveMeetingSessionId] = useState<string | null>(null)
+  const [selectedMeetingSessionId, setSelectedMeetingSessionId] = useState<string | null>(null)
+  const [selectedMeetingSession, setSelectedMeetingSession] = useState<import('@/lib/incidentMeetingSession').IncidentMeetingSession | null>(null)
+  const [incidentCategoryOptions, setIncidentCategoryOptions] = useState<Array<{ id: string; label: string }>>([])
   const initialRange = useMemo(() => thisWeekRange(), [])
 
   useEffect(() => {
@@ -112,10 +120,57 @@ export default function IncidentsPage() {
       .then((r) => r.json())
       .then((json) => {
         const status = json?.session?.status
+        const sessionId = String(json?.session?.id || '').trim()
         setMeetingActaStatus(status === 'finalized' ? 'finalized' : status === 'draft' ? 'draft' : null)
+        setActiveMeetingSessionId(sessionId || null)
       })
-      .catch(() => setMeetingActaStatus(null))
-  }, [canMeetingMinutes, meetingMinutesOpen])
+      .catch(() => {
+        setMeetingActaStatus(null)
+        setActiveMeetingSessionId(null)
+      })
+  }, [canMeetingMinutes, meetingMinutesHistoryOpen, meetingMinutesOpen, selectedMeetingSessionId])
+
+  useEffect(() => {
+    if (!canEditIncidentCategory) {
+      setIncidentCategoryOptions([])
+      return
+    }
+    void fetch('/api/incidents/categories', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((json) => {
+        const rows = Array.isArray(json?.categories) ? json.categories : []
+        setIncidentCategoryOptions(
+          rows
+            .filter((row: { active?: boolean }) => row.active !== false)
+            .map((row: { id?: string; label?: string }) => ({
+              id: String(row.id || '').trim(),
+              label: String(row.label || row.id || '').trim(),
+            }))
+            .filter((row: { id: string; label: string }) => row.id && row.label)
+        )
+      })
+      .catch(() => setIncidentCategoryOptions([]))
+  }, [canEditIncidentCategory])
+
+  const handleMeetingMinutesOpenChange = (next: boolean) => {
+    setMeetingMinutesOpen(next)
+    if (!next) {
+      setSelectedMeetingSessionId(null)
+      setSelectedMeetingSession(null)
+    }
+  }
+
+  const openActiveMeetingMinutes = () => {
+    setSelectedMeetingSessionId(null)
+    setSelectedMeetingSession(null)
+    setMeetingMinutesOpen(true)
+  }
+
+  const openMeetingSessionFromHistory = (session: import('@/lib/incidentMeetingSession').IncidentMeetingSession) => {
+    setSelectedMeetingSession(session)
+    setSelectedMeetingSessionId(session.id)
+    setMeetingMinutesOpen(true)
+  }
   const [dateResetSignal, setDateResetSignal] = useState(0)
   const [defaultFiltersReady, setDefaultFiltersReady] = useState(false)
   const [marketingDefaultSuppressed, setMarketingDefaultSuppressed] = useState(false)
@@ -527,13 +582,14 @@ export default function IncidentsPage() {
               </Link>
             ) : null}
             {canMeetingMinutes ? (
+              <>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 className="whitespace-nowrap gap-1.5"
                 disabled={loading}
-                onClick={() => setMeetingMinutesOpen(true)}
+                onClick={openActiveMeetingMinutes}
               >
                 <FileText className="h-4 w-4 shrink-0" aria-hidden />
                 {meetingActaStatus === 'draft'
@@ -542,6 +598,17 @@ export default function IncidentsPage() {
                   ? 'Tancar acta'
                   : 'Acta reunió'}
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="whitespace-nowrap gap-1.5"
+                onClick={() => setMeetingMinutesHistoryOpen(true)}
+              >
+                <Clock3 className="h-4 w-4 shrink-0" aria-hidden />
+                Historial actes
+              </Button>
+              </>
             ) : null}
             <ExportMenu items={exportItems} />
           </div>
@@ -549,13 +616,23 @@ export default function IncidentsPage() {
       />
 
       {canMeetingMinutes ? (
-        <MeetingMinutesDialog
-          open={meetingMinutesOpen}
-          onOpenChange={setMeetingMinutesOpen}
-          defaultFilters={{ ...filters, categoryLabel: effectiveCategoryLabel }}
-          generatedByLabel={actaAuthorLabel}
-          onSessionStatusChange={setMeetingActaStatus}
-        />
+        <>
+          <MeetingMinutesDialog
+            open={meetingMinutesOpen}
+            onOpenChange={handleMeetingMinutesOpenChange}
+            defaultFilters={{ ...filters, categoryLabel: effectiveCategoryLabel }}
+            generatedByLabel={actaAuthorLabel}
+            onSessionStatusChange={selectedMeetingSessionId ? undefined : setMeetingActaStatus}
+            sessionId={selectedMeetingSessionId}
+            initialSession={selectedMeetingSession}
+          />
+          <MeetingMinutesHistoryDialog
+            open={meetingMinutesHistoryOpen}
+            onOpenChange={setMeetingMinutesHistoryOpen}
+            onPickSession={openMeetingSessionFromHistory}
+            activeSessionId={activeMeetingSessionId}
+          />
+        </>
       ) : null}
 
       <div className={`px-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${typography('bodyMd')}`}>
@@ -611,6 +688,8 @@ export default function IncidentsPage() {
             onUpdate={updateIncident}
             onDelete={handleDeleteIncident}
             canDeleteIncident={canDeleteRow}
+            canEditCategory={canEditIncidentCategory}
+            categoryOptions={incidentCategoryOptions}
           />
         </div>
       )}

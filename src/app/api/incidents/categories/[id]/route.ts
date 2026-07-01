@@ -1,11 +1,9 @@
 export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
-import { canManageIncidentCategories } from '@/lib/incidentPolicy'
+import { requireIncidentsTypologiesManage } from '@/lib/server/incidentsApiAuth'
 import { DEFAULT_INCIDENT_CATEGORIES } from '@/lib/incidentTypology'
 import type { DocumentData } from 'firebase-admin/firestore'
 
@@ -40,12 +38,8 @@ function mergeOneCategory(
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canManageIncidentCategories(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsTypologiesManage()
+    if (!auth.ok) return auth.res
 
     const { id: rawId } = await ctx.params
     const id = String(rawId || '').trim()

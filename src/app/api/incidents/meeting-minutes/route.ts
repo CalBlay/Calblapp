@@ -77,6 +77,16 @@ async function loadLatestDraft(): Promise<IncidentMeetingSession | null> {
   return pickLatestDoc(snap.docs)
 }
 
+async function loadMeetingHistory(limit = 50): Promise<IncidentMeetingSession[]> {
+  const safeLimit = Math.max(1, Math.min(limit, 200))
+  const snap = await firestoreAdmin
+    .collection(COLLECTION)
+    .orderBy('updatedAt', 'desc')
+    .limit(safeLimit)
+    .get()
+  return snap.docs.map((doc) => serializeMeetingSession(doc.id, doc.data() as Record<string, unknown>))
+}
+
 /** Esborrany actiu o, si no n’hi ha, l’última acta finalitzada (pendent de tancament/enviament). */
 async function loadActiveSession(): Promise<IncidentMeetingSession | null> {
   const draft = await loadLatestDraft()
@@ -95,6 +105,13 @@ export async function GET(req: Request) {
     if (!auth.ok) return auth.res
 
     const { searchParams } = new URL(req.url)
+    const wantsHistory = searchParams.get('history') === '1'
+    if (wantsHistory) {
+      const limit = Number.parseInt(String(searchParams.get('limit') || '50'), 10)
+      const sessions = await loadMeetingHistory(Number.isFinite(limit) ? limit : 50)
+      return NextResponse.json({ sessions }, { status: 200 })
+    }
+
     const id = String(searchParams.get('id') || '').trim()
     const raw = id ? await loadSessionById(id) : await loadActiveSession()
     const session = raw

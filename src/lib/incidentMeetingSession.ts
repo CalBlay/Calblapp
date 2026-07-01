@@ -49,6 +49,8 @@ export type IncidentMeetingSession = {
   attendees: IncidentMeetingAttendee[]
   createdAt: string
   updatedAt: string
+  createdById?: string | null
+  createdByName?: string | null
   finalizedAt?: string | null
   finalizedById?: string | null
   finalizedByName?: string | null
@@ -151,6 +153,8 @@ export function serializeMeetingSession(
     attendees: attendees as IncidentMeetingAttendee[],
     createdAt: String(data.createdAt || ''),
     updatedAt: String(data.updatedAt || ''),
+    createdById: data.createdById ? String(data.createdById) : null,
+    createdByName: data.createdByName ? String(data.createdByName) : null,
     finalizedAt: data.finalizedAt ? String(data.finalizedAt) : null,
     finalizedById: data.finalizedById ? String(data.finalizedById) : null,
     finalizedByName: data.finalizedByName ? String(data.finalizedByName) : null,

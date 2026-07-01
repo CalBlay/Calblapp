@@ -8,7 +8,12 @@ import {
   PREPARATION_WAREHOUSE_PERMISSION_KEYS,
 } from '@/lib/logistics/preparationPermissions'
 import { PREPARATION_WAREHOUSE_LABELS } from '@/lib/logistics/preparationWarehouses'
-import { INCIDENTS_COMMAND_BOARD_PERM, INCIDENTS_MEETING_MINUTES_PERM } from '@/lib/incidentsPermissions'
+import {
+  INCIDENTS_CATEGORY_EDIT_PERM,
+  INCIDENTS_COMMAND_BOARD_PERM,
+  INCIDENTS_MEETING_MINUTES_PERM,
+  INCIDENTS_TYPOLOGIES_MANAGE_PERM,
+} from '@/lib/incidentsPermissions'
 import {
   MAINTENANCE_TICKETS_DELETE_PERM,
   MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
@@ -250,6 +255,14 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
       {
         key: INCIDENTS_MEETING_MINUTES_PERM,
         label: 'Acta reunió',
+      },
+      {
+        key: INCIDENTS_CATEGORY_EDIT_PERM,
+        label: 'Editar categoria incidència',
+      },
+      {
+        key: INCIDENTS_TYPOLOGIES_MANAGE_PERM,
+        label: 'Gestionar tipologies',
       },
     ],
   },

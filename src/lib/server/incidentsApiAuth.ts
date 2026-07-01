@@ -3,8 +3,10 @@ import { canPostIncident } from '@/lib/incidentPolicy'
 import { requireAuth, type AuthFailure, type AuthSuccess } from '@/lib/server/apiAuth'
 import { canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
 import {
+  INCIDENTS_CATEGORY_EDIT_PERM,
   INCIDENTS_COMMAND_BOARD_PERM,
   INCIDENTS_MEETING_MINUTES_PERM,
+  INCIDENTS_TYPOLOGIES_MANAGE_PERM,
   INCIDENTS_QUADRE_PATH,
   INCIDENTS_UI_PATH,
 } from '@/lib/incidentsPermissions'
@@ -82,6 +84,46 @@ export async function requireIncidentCategoriesRead(): Promise<AuthSuccess | Aut
     auth.user as Parameters<typeof accessUserFromAuth>[0]
   )
   if (!canView && !canPostIncident(auth.user)) {
+    return { ok: false, res: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
+  }
+  return auth
+}
+
+export async function requireIncidentsCategoryEdit(): Promise<AuthSuccess | AuthFailure> {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth
+
+  const accessUser = accessUserFromAuth(auth.user)
+  const userId = String(accessUser.id || '').trim()
+  if (!userId) {
+    return { ok: false, res: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
+  }
+
+  const granted = await isUiPermissionGranted({
+    user: { ...accessUser, id: userId },
+    permission: INCIDENTS_CATEGORY_EDIT_PERM,
+  })
+  if (!granted) {
+    return { ok: false, res: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
+  }
+  return auth
+}
+
+export async function requireIncidentsTypologiesManage(): Promise<AuthSuccess | AuthFailure> {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth
+
+  const accessUser = accessUserFromAuth(auth.user)
+  const userId = String(accessUser.id || '').trim()
+  if (!userId) {
+    return { ok: false, res: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
+  }
+
+  const granted = await isUiPermissionGranted({
+    user: { ...accessUser, id: userId },
+    permission: INCIDENTS_TYPOLOGIES_MANAGE_PERM,
+  })
+  if (!granted) {
     return { ok: false, res: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
   }
   return auth

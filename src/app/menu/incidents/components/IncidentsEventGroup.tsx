@@ -16,6 +16,7 @@ type IncidentEditValues = {
   description?: string
   originDepartment?: string
   priority?: string
+  categoryId?: string
 }
 
 type WindowWithEventModal = Window & { openEventModal?: (code: string) => void }
@@ -26,6 +27,8 @@ interface Props {
   onDelete: (inc: Incident) => void
   onOpenImages: (inc: Incident) => void
   canDeleteIncident: (inc: Incident) => boolean
+  canEditCategory: boolean
+  categoryOptions: Array<{ id: string; label: string }>
 }
 
 export default function IncidentsEventGroup({
@@ -34,6 +37,8 @@ export default function IncidentsEventGroup({
   onDelete,
   onOpenImages,
   canDeleteIncident,
+  canEditCategory,
+  categoryOptions,
 }: Props) {
   const [expandedOpsId, setExpandedOpsId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -66,6 +71,7 @@ export default function IncidentsEventGroup({
       description: row.description,
       originDepartment: row.originDepartment || '',
       priority: row.priority || row.importance || '',
+      categoryId: row.category?.id || '',
     })
   }, [])
 
@@ -146,6 +152,8 @@ export default function IncidentsEventGroup({
                 onIncidentPatch={onUpdate}
                 openImages={onOpenImages}
                 canDelete={canDeleteIncident(inc)}
+                canEditCategory={canEditCategory}
+                categoryOptions={categoryOptions}
                 editValues={editValues}
                 setEditValues={setEditValues}
               />
@@ -185,6 +193,8 @@ export default function IncidentsEventGroup({
                     onIncidentPatch={onUpdate}
                     openImages={onOpenImages}
                     canDelete={canDeleteIncident(inc)}
+                    canEditCategory={canEditCategory}
+                    categoryOptions={categoryOptions}
                     editValues={editValues}
                     setEditValues={setEditValues}
                   />

@@ -32,16 +32,19 @@ interface Props {
   onIncidentPatch: (id: string, d: Partial<Incident>) => Promise<unknown>
   openImages: (row: Incident) => void
   canDelete: boolean
+  canEditCategory: boolean
+  categoryOptions: Array<{ id: string; label: string }>
   onDelete: (row: Incident) => void
   editValues: {
     description?: string
     originDepartment?: string
     priority?: string
+    categoryId?: string
   }
   setEditValues: (
     updater: (
-      prev: { description?: string; originDepartment?: string; priority?: string }
-    ) => { description?: string; originDepartment?: string; priority?: string }
+      prev: { description?: string; originDepartment?: string; priority?: string; categoryId?: string }
+    ) => { description?: string; originDepartment?: string; priority?: string; categoryId?: string }
   ) => void
 }
 
@@ -55,6 +58,8 @@ function IncidentsRow({
   onIncidentPatch,
   openImages,
   canDelete,
+  canEditCategory,
+  categoryOptions,
   onDelete,
   editValues,
   setEditValues,
@@ -228,8 +233,29 @@ function IncidentsRow({
         )}
       </td>
 
-      <td className={cellTrunc}>
-        {inc.category?.label || inc.category?.id || '—'}
+      <td className={cellTrunc} onClick={(e) => e.stopPropagation()}>
+        {isEditing && canEditCategory ? (
+          <Select
+            value={editValues.categoryId || inc.category?.id || ''}
+            onValueChange={(val) => {
+              setEditValues((v) => ({ ...v, categoryId: val }))
+              const selected = categoryOptions.find((option) => option.id === val)
+              if (!selected) return
+              void applyPatch(inc.id, { category: { id: selected.id, label: selected.label } })
+            }}
+          >
+            <SelectTrigger onClick={(e) => e.stopPropagation()}><SelectValue placeholder="Categoria" /></SelectTrigger>
+            <SelectContent>
+              {categoryOptions.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          inc.category?.label || inc.category?.id || '—'
+        )}
       </td>
 
       {/* Origen */}

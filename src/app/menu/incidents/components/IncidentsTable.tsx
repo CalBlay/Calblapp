@@ -17,6 +17,8 @@ interface Props {
   onUpdate: (id: string, data: Partial<Incident>) => Promise<unknown>
   onDelete: (incident: Incident) => void
   canDeleteIncident: (incident: Incident) => boolean
+  canEditCategory: boolean
+  categoryOptions: Array<{ id: string; label: string }>
 }
 
 function formatDayLabel(day: string) {
@@ -40,6 +42,8 @@ export default function IncidentsTable({
   onUpdate,
   onDelete,
   canDeleteIncident,
+  canEditCategory,
+  categoryOptions,
 }: Props) {
   const [imagesIncident, setImagesIncident] = useState<Incident | null>(null)
 
@@ -83,6 +87,8 @@ export default function IncidentsTable({
                   onDelete={onDelete}
                   onOpenImages={setImagesIncident}
                   canDeleteIncident={canDeleteIncident}
+                  canEditCategory={canEditCategory}
+                  categoryOptions={categoryOptions}
                 />
               ))}
             </div>

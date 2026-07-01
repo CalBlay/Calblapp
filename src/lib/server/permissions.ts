@@ -36,9 +36,11 @@ import {
 import { normalizeRole } from '@/lib/roles'
 import {
   INCIDENTS_ACTION,
+  INCIDENTS_CATEGORY_EDIT_PERM,
   INCIDENTS_COMMAND_BOARD_PERM,
   INCIDENTS_MEETING_MINUTES_PERM,
   INCIDENTS_QUADRE_PATH,
+  INCIDENTS_TYPOLOGIES_MANAGE_PERM,
   INCIDENTS_UI_PATH,
   incidentsActionBaseAccess,
 } from '@/lib/incidentsPermissions'
@@ -297,6 +299,24 @@ export async function isUiPermissionGranted(params: {
       )
       if (eff !== 'allow') return false
       return incidentsActionBaseAccess(params.user, base, INCIDENTS_ACTION.COMMAND_BOARD)
+    }
+
+    if (parsed.action === INCIDENTS_ACTION.CATEGORY_EDIT) {
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        INCIDENTS_CATEGORY_EDIT_PERM
+      )
+      if (eff !== 'allow') return false
+      return base.canViewIncidents && base.canEditIncidents
+    }
+
+    if (parsed.action === INCIDENTS_ACTION.TYPOLOGIES_MANAGE) {
+      const eff = await getClientOverrideEffectForPermission(
+        params.user.id,
+        INCIDENTS_TYPOLOGIES_MANAGE_PERM
+      )
+      if (eff !== 'allow') return false
+      return base.canViewIncidents && base.canEditIncidents
     }
   }
 

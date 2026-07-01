@@ -6,7 +6,7 @@ import { firestoreAdmin, storageAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
 import { deleteMediaIndexByPath } from '@/lib/media/storageMediaIndex'
 import { canDeleteIncident, normalizeIncidentStatus } from '@/lib/incidentPolicy'
-import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
+import { requireIncidentsCategoryEdit, requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
 
 function normalizeTimestamp(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -32,6 +32,7 @@ const PATCHABLE = new Set([
   'priority',
   'status',
   'resolutionNote',
+  'category',
 ])
 
 async function buildIncidentImagePayload(
@@ -133,6 +134,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (!incidentId) return NextResponse.json({ error: 'Id invalid' }, { status: 400 })
 
     const payload = (await req.json()) as Record<string, unknown>
+    const wantsCategoryEdit = 'category' in payload
+    if (wantsCategoryEdit) {
+      const catAuth = await requireIncidentsCategoryEdit()
+      if (!catAuth.ok) return catAuth.res
+    }
 
     const docRef = firestoreAdmin.collection('incidents').doc(incidentId)
     const snap = await docRef.get()
@@ -170,6 +176,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
       if (key === 'resolutionNote' && typeof val === 'string') {
         cleaned.resolutionNote = val.trim()
+        hasPatch = true
+      }
+      if (key === 'category' && val && typeof val === 'object') {
+        const category = val as { id?: unknown; label?: unknown }
+        const id = String(category.id || '').trim()
+        const label = String(category.label || '').trim()
+        if (!id || !label) {
+          return NextResponse.json({ error: 'Categoria no vàlida' }, { status: 400 })
+        }
+        cleaned.category = { id, label }
         hasPatch = true
       }
     }
