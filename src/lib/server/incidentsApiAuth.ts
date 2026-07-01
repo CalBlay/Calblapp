@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { canPostIncident } from '@/lib/incidentPolicy'
 import { requireAuth, type AuthFailure, type AuthSuccess } from '@/lib/server/apiAuth'
-import { canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
+import { canEditUiPath, canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
 import {
   INCIDENTS_CATEGORY_EDIT_PERM,
   INCIDENTS_COMMAND_BOARD_PERM,
@@ -40,6 +40,15 @@ export async function canViewIncidentsModule(
     canViewIncidentsCommandBoard(user),
   ])
   return canBoard || canQuadre
+}
+
+export async function canEditIncidentsModule(
+  user: Parameters<typeof accessUserFromAuth>[0]
+): Promise<boolean> {
+  const accessUser = accessUserFromAuth(user)
+  const userId = String(accessUser.id || '').trim()
+  if (!userId) return false
+  return canEditUiPath({ user: { ...accessUser, id: userId }, path: INCIDENTS_UI_PATH })
 }
 
 export async function requireIncidentsModuleView(): Promise<AuthSuccess | AuthFailure> {

@@ -7,14 +7,17 @@ import { format, parseISO } from 'date-fns'
 import { ca } from 'date-fns/locale'
 import IncidentsEventGroup from './IncidentsEventGroup'
 import IncidentImagesDialog from './IncidentImagesDialog'
-import { Incident } from '@/hooks/useIncidents'
+import { Incident, type IncidentAction } from '@/hooks/useIncidents'
 import { groupIncidentsByDayAndEvent, type IncidentDaySort } from '@/lib/incidentsMeetingMinutes'
 
 interface Props {
   incidents: Incident[]
+  actionsByIncident: Record<string, IncidentAction[]>
   /** Amb rang de dates: primer dia del període a dalt; sense dates: proximitat a avui. */
   daySort?: IncidentDaySort
   onUpdate: (id: string, data: Partial<Incident>) => Promise<unknown>
+  onLocalPatch: (id: string, data: Partial<Incident>) => void
+  onActionsLocalPatch: (id: string, actions: IncidentAction[]) => void
   onDelete: (incident: Incident) => void
   canDeleteIncident: (incident: Incident) => boolean
   canEditCategory: boolean
@@ -38,8 +41,11 @@ function formatIncidentCountLabel(count: number) {
 
 export default function IncidentsTable({
   incidents,
+  actionsByIncident,
   daySort = 'chronological',
   onUpdate,
+  onLocalPatch,
+  onActionsLocalPatch,
   onDelete,
   canDeleteIncident,
   canEditCategory,
@@ -83,7 +89,10 @@ export default function IncidentsTable({
                 <IncidentsEventGroup
                   key={`${day}-${event.eventId || event.rows[0]?.eventId || i}`}
                   event={event}
+                  actionsByIncident={actionsByIncident}
                   onUpdate={onUpdate}
+                  onLocalPatch={onLocalPatch}
+                  onActionsLocalPatch={onActionsLocalPatch}
                   onDelete={onDelete}
                   onOpenImages={setImagesIncident}
                   canDeleteIncident={canDeleteIncident}

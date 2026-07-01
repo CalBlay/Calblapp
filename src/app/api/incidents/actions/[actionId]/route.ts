@@ -4,7 +4,10 @@ import { NextResponse } from 'next/server'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
 import { normalizeIncidentActionStatus } from '@/lib/incidentPolicy'
-import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
+import {
+  canEditIncidentsModule,
+  requireIncidentsModuleView,
+} from '@/lib/server/incidentsApiAuth'
 
 function tsToIso(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -13,6 +16,14 @@ function tsToIso(ts: unknown): string {
   if (typeof ts === 'number' && Number.isFinite(ts)) return new Date(ts).toISOString()
   if (typeof ts === 'string') return ts
   return ''
+}
+
+function normalizeComparableText(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: string }> }) {
@@ -42,6 +53,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
 
     const now = admin.firestore.Timestamp.now()
     const patch: Record<string, unknown> = { updatedAt: now }
+    const storedAssignedToName = String(snap.get('assignedToName') || '').trim()
 
     if (typeof body.title === 'string') {
       const t = body.title.trim()
@@ -64,6 +76,18 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
     }
 
     if (typeof body.status === 'string') {
+      const canEditModule = await canEditIncidentsModule(auth.user)
+      const assignedNorm = normalizeComparableText(storedAssignedToName)
+      const userCandidates = [
+        normalizeComparableText(user.name),
+        normalizeComparableText(user.email),
+      ].filter(Boolean)
+      const isAssignedUser = assignedNorm.length > 0 && userCandidates.includes(assignedNorm)
+
+      if (!canEditModule && !isAssignedUser) {
+        return NextResponse.json({ error: 'Sense permisos per canviar l estat' }, { status: 403 })
+      }
+
       const next = normalizeIncidentActionStatus(body.status)
       patch.status = next
       const prevStatus = normalizeIncidentActionStatus(String(snap.get('status') || 'open'))

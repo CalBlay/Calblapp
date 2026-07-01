@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,37 +12,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Incident } from '@/hooks/useIncidents'
+import { Incident, type IncidentAction } from '@/hooks/useIncidents'
+import { formatDateString } from '@/lib/formatDate'
 import { INCIDENT_ORIGIN_DEPARTMENTS } from '@/lib/incidentOriginDepartments'
 import { INCIDENT_ACTION_STATUS, type IncidentActionStatus } from '@/lib/incidentPolicy'
+import { INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 
-export type IncidentActionRow = {
-  id: string
-  title: string
-  description: string
+export type IncidentActionRow = IncidentAction & {
   status: IncidentActionStatus
-  assignedToName: string
-  department: string
-  dueAt: string
-  createdAt: string
-  closedAt: string
-  closedByName: string
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  obert: 'Obert',
-  en_curs: 'En curs',
-  resolt: 'Resolt',
-  tancat: 'Tancat',
 }
 
 const ACTION_STATUS_LABELS: Record<IncidentActionStatus, string> = {
   open: 'Oberta',
   in_progress: 'En curs',
   done: 'Feta',
-  cancelled: 'Cancel·lada',
+  cancelled: 'Cancel.lada',
 }
 
 const CAP_NONE = '__cap_none__'
@@ -49,6 +37,43 @@ const DEPT_NONE = '__dept_none__'
 
 const ctrl =
   'h-8 rounded-md border border-slate-200 bg-white text-slate-800 text-sm shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/35 focus-visible:border-amber-300/60 hover:border-slate-300 disabled:opacity-50'
+
+function summarizeLocalActions(actions: IncidentActionRow[]) {
+  const openCount = actions.filter((a) => a.status === 'open' || a.status === 'in_progress').length
+  return {
+    hasActions: actions.length > 0,
+    actionsCount: actions.length,
+    openActionsCount: openCount,
+  }
+}
+
+function applyActionPatchLocally(
+  action: IncidentActionRow,
+  body: Record<string, unknown>
+): IncidentActionRow {
+  const next = { ...action }
+
+  if (typeof body.title === 'string') next.title = body.title.trim()
+  if (typeof body.description === 'string') next.description = body.description.trim()
+  if (typeof body.department === 'string') next.department = body.department.trim()
+  if (typeof body.assignedToName === 'string') next.assignedToName = body.assignedToName.trim()
+  if (typeof body.status === 'string') next.status = body.status as IncidentActionStatus
+
+  if (body.dueAt !== undefined) {
+    if (body.dueAt === null || body.dueAt === '') next.dueAt = ''
+    else if (typeof body.dueAt === 'string') next.dueAt = body.dueAt
+  }
+
+  return next
+}
+
+function normalizeComparableText(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+}
 
 function useCapsForDepartment(department: string | undefined | null) {
   const [caps, setCaps] = useState<{ id: string; name: string }[]>([])
@@ -88,44 +113,24 @@ function departmentOptionsWithLegacy(current?: string) {
   return [...s].sort((a, b) => a.localeCompare(b, 'ca'))
 }
 
-function IncidentWorkflowStatusSelect({
-  value,
-  onValueChange,
-}: {
-  value: string
-  onValueChange: (v: string) => void
-}) {
-  return (
-    <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger
-        id="incident-status"
-        className={cn(ctrl, 'w-[8.5rem] px-2 font-medium')}
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent className="rounded-xl border-slate-200 shadow-lg">
-        {Object.entries(STATUS_LABELS).map(([k, label]) => (
-          <SelectItem key={k} value={k}>
-            {label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
-
 function ActionRowStatusSelect({
   value,
   onValueChange,
+  disabled = false,
 }: {
   value: IncidentActionStatus
   onValueChange: (v: IncidentActionStatus) => void
+  disabled?: boolean
 }) {
   return (
-    <Select value={value} onValueChange={(v) => onValueChange(v as IncidentActionStatus)}>
+    <Select
+      value={value}
+      onValueChange={(v) => onValueChange(v as IncidentActionStatus)}
+      disabled={disabled}
+    >
       <SelectTrigger
-        className={cn(ctrl, 'h-8 w-[6.5rem] px-2 text-xs font-medium shrink-0')}
-        title="Estat acció"
+        className={cn(ctrl, 'h-8 w-[7rem] px-2 text-xs font-medium shrink-0')}
+        title="Estat accio"
       >
         <SelectValue />
       </SelectTrigger>
@@ -143,6 +148,9 @@ function ActionRowStatusSelect({
 interface Props {
   incident: Incident
   onIncidentPatch: (id: string, data: Partial<Incident>) => Promise<unknown>
+  onIncidentLocalPatch?: (id: string, data: Partial<Incident>) => void
+  initialActions?: IncidentActionRow[]
+  onIncidentActionsLocalPatch?: (id: string, actions: IncidentActionRow[]) => void
 }
 
 function ActionRowDeptAssignInline({
@@ -158,7 +166,7 @@ function ActionRowDeptAssignInline({
   const { caps, loading } = useCapsForDepartment(deptStored || undefined)
 
   const assigneeSelectItems = useMemo(() => {
-    const items: { value: string; label: string }[] = [{ value: CAP_NONE, label: '—' }]
+    const items: { value: string; label: string }[] = [{ value: CAP_NONE, label: '-' }]
     const seen = new Set<string>([CAP_NONE])
     const currentName = (action.assignedToName || '').trim()
     if (currentName && !caps.some((c) => c.name === currentName)) {
@@ -177,64 +185,79 @@ function ActionRowDeptAssignInline({
   const assigneeValue = (action.assignedToName || '').trim() || CAP_NONE
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-      <Select
-        value={deptOpts.includes(deptStored) ? deptStored : deptSelectValue}
-        onValueChange={(v) => {
-          const nextDept = v === DEPT_NONE ? '' : v
-          const prev = (action.department || '').trim()
-          void patchAction(action.id, {
-            department: nextDept,
-            assignedToName: nextDept === prev ? action.assignedToName : '',
-          })
-        }}
-      >
-        <SelectTrigger
-          className={cn(ctrl, 'h-8 w-[7.25rem] px-2 text-xs font-medium')}
-          title="Departament acció"
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="min-w-[8rem]">
+        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          Departament
+        </span>
+        <Select
+          value={deptOpts.includes(deptStored) ? deptStored : deptSelectValue}
+          onValueChange={(v) => {
+            const nextDept = v === DEPT_NONE ? '' : v
+            const prev = (action.department || '').trim()
+            void patchAction(action.id, {
+              department: nextDept,
+              assignedToName: nextDept === prev ? action.assignedToName : '',
+            })
+          }}
         >
-          <SelectValue placeholder="Dept" />
-        </SelectTrigger>
-        <SelectContent className="rounded-xl border-slate-200 shadow-lg">
-          <SelectItem value={DEPT_NONE}>—</SelectItem>
-          {deptOpts.map((d) => (
-            <SelectItem key={d} value={d}>
-              {d}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select
-        value={assigneeSelectItems.some((x) => x.value === assigneeValue) ? assigneeValue : CAP_NONE}
-        onValueChange={(v) =>
-          void patchAction(action.id, { assignedToName: v === CAP_NONE ? '' : v })
-        }
-        disabled={!deptStored || loading}
-      >
-        <SelectTrigger
-          className={cn(ctrl, 'h-8 w-[9.5rem] px-2 text-xs font-medium')}
-          title="Cap assignat"
+          <SelectTrigger
+            className={cn(ctrl, 'h-8 w-full px-2 text-xs font-medium')}
+            title="Departament accio"
+          >
+            <SelectValue placeholder="Dept" />
+          </SelectTrigger>
+          <SelectContent className="rounded-xl border-slate-200 shadow-lg">
+            <SelectItem value={DEPT_NONE}>-</SelectItem>
+            {deptOpts.map((d) => (
+              <SelectItem key={d} value={d}>
+                {d}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="min-w-[11rem]">
+        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          Assignat a
+        </span>
+        <Select
+          value={assigneeSelectItems.some((x) => x.value === assigneeValue) ? assigneeValue : CAP_NONE}
+          onValueChange={(v) =>
+            void patchAction(action.id, { assignedToName: v === CAP_NONE ? '' : v })
+          }
+          disabled={!deptStored || loading}
         >
-          <SelectValue placeholder={loading ? '…' : 'Cap'} />
-        </SelectTrigger>
-        <SelectContent className="rounded-xl border-slate-200 shadow-lg">
-          {assigneeSelectItems.map((x) => (
-            <SelectItem key={x.value} value={x.value}>
-              {x.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+          <SelectTrigger
+            className={cn(ctrl, 'h-8 w-full px-2 text-xs font-medium')}
+            title="Cap assignat"
+          >
+            <SelectValue placeholder={loading ? '...' : 'Cap'} />
+          </SelectTrigger>
+          <SelectContent className="rounded-xl border-slate-200 shadow-lg">
+            {assigneeSelectItems.map((x) => (
+              <SelectItem key={x.value} value={x.value}>
+                {x.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   )
 }
 
-export default function IncidentOperationsPanel({ incident, onIncidentPatch }: Props) {
+export default function IncidentOperationsPanel({
+  incident,
+  onIncidentLocalPatch,
+  initialActions,
+  onIncidentActionsLocalPatch,
+}: Props) {
+  const { data: session } = useSession()
+  const sessionUser = session?.user as { name?: string; email?: string; id?: string } | undefined
+  const { ready: permsReady, canEditPath } = useUiPermissions()
   const [actions, setActions] = useState<IncidentActionRow[]>([])
   const [loadingActions, setLoadingActions] = useState(false)
-  const [status, setStatus] = useState('obert')
-  const [resolutionNote, setResolutionNote] = useState('')
-  const [savingIncident, setSavingIncident] = useState(false)
   const [error, setError] = useState('')
 
   const [newTitle, setNewTitle] = useState('')
@@ -249,7 +272,7 @@ export default function IncidentOperationsPanel({ incident, onIncidentPatch }: P
   )
 
   const newAssigneeItems = useMemo(() => {
-    const items: { value: string; label: string }[] = [{ value: CAP_NONE, label: '—' }]
+    const items: { value: string; label: string }[] = [{ value: CAP_NONE, label: '-' }]
     const seen = new Set<string>([CAP_NONE])
     for (const c of newFormCaps) {
       if (!seen.has(c.name)) {
@@ -270,52 +293,35 @@ export default function IncidentOperationsPanel({ incident, onIncidentPatch }: P
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(String(json?.error || 'Error carregant accions'))
-      setActions(Array.isArray(json.actions) ? json.actions : [])
+      const nextActions = Array.isArray(json.actions) ? json.actions : []
+      setActions(nextActions)
+      onIncidentActionsLocalPatch?.(incident.id, nextActions)
+      onIncidentLocalPatch?.(incident.id, summarizeLocalActions(nextActions))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error carregant accions')
       setActions([])
     } finally {
       setLoadingActions(false)
     }
-  }, [incident?.id])
+  }, [incident?.id, onIncidentActionsLocalPatch, onIncidentLocalPatch])
 
   useEffect(() => {
-    const raw = (incident.status || 'obert')
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .toLowerCase()
-      .trim()
-    const allowed = ['obert', 'en_curs', 'resolt', 'tancat'] as const
-    setStatus((allowed as readonly string[]).includes(raw) ? raw : 'obert')
-    setResolutionNote(incident.resolutionNote || '')
     setNewTitle('')
     setNewDescription('')
     setNewAssignee('')
     setNewDept((incident.department || '').trim() || INCIDENT_ORIGIN_DEPARTMENTS[0])
     setNewDue('')
-    void loadActions()
-  }, [incident, loadActions])
+    if (initialActions) {
+      setActions(initialActions)
+      setLoadingActions(false)
+    } else {
+      void loadActions()
+    }
+  }, [incident, initialActions, loadActions])
 
   useEffect(() => {
     setNewAssignee('')
   }, [newDept])
-
-  const saveIncidentFields = async () => {
-    if (!incident?.id) return
-    setSavingIncident(true)
-    setError('')
-    try {
-      const result = await onIncidentPatch(incident.id, {
-        status,
-        resolutionNote,
-      })
-      if (result === null) setError('No s ha pogut desar')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error desant')
-    } finally {
-      setSavingIncident(false)
-    }
-  }
 
   const createAction = async () => {
     if (!incident?.id || !newTitle.trim()) return
@@ -336,12 +342,22 @@ export default function IncidentOperationsPanel({ incident, onIncidentPatch }: P
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(String(json?.error || 'Error creant accio'))
+      const createdAction = json?.action as IncidentActionRow | undefined
       setNewTitle('')
       setNewDescription('')
       setNewAssignee('')
       setNewDept((incident.department || '').trim() || INCIDENT_ORIGIN_DEPARTMENTS[0])
       setNewDue('')
-      await loadActions()
+      if (createdAction) {
+        const nextActions = [...actions, createdAction].sort((a, b) =>
+          (a.createdAt || '').localeCompare(b.createdAt || '')
+        )
+        setActions(nextActions)
+        onIncidentActionsLocalPatch?.(incident.id, nextActions)
+        onIncidentLocalPatch?.(incident.id, summarizeLocalActions(nextActions))
+      } else {
+        await loadActions()
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error creant accio')
     } finally {
@@ -351,6 +367,15 @@ export default function IncidentOperationsPanel({ incident, onIncidentPatch }: P
 
   const patchAction = async (actionId: string, body: Record<string, unknown>) => {
     setError('')
+    const previousActions = actions
+    const optimisticActions = previousActions
+      .map((action) => (action.id === actionId ? applyActionPatchLocally(action, body) : action))
+      .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
+
+    setActions(optimisticActions)
+    onIncidentActionsLocalPatch?.(incident.id, optimisticActions)
+    onIncidentLocalPatch?.(incident.id, summarizeLocalActions(optimisticActions))
+
     try {
       const res = await fetch(`/api/incidents/actions/${actionId}`, {
         method: 'PATCH',
@@ -359,8 +384,21 @@ export default function IncidentOperationsPanel({ incident, onIncidentPatch }: P
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(String(json?.error || 'Error actualitzant accio'))
-      await loadActions()
+      const updatedAction = json?.action as IncidentActionRow | undefined
+      if (updatedAction) {
+        const nextActions = actions
+          .map((action) => (action.id === actionId ? updatedAction : action))
+          .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
+        setActions(nextActions)
+        onIncidentActionsLocalPatch?.(incident.id, nextActions)
+        onIncidentLocalPatch?.(incident.id, summarizeLocalActions(nextActions))
+      } else {
+        await loadActions()
+      }
     } catch (e) {
+      setActions(previousActions)
+      onIncidentActionsLocalPatch?.(incident.id, previousActions)
+      onIncidentLocalPatch?.(incident.id, summarizeLocalActions(previousActions))
       setError(e instanceof Error ? e.message : 'Error actualitzant accio')
     }
   }
@@ -368,6 +406,22 @@ export default function IncidentOperationsPanel({ incident, onIncidentPatch }: P
   const openActionsCount = useMemo(
     () => actions.filter((a) => a.status === 'open' || a.status === 'in_progress').length,
     [actions]
+  )
+
+  const canEditIncidentsModule = !permsReady || canEditPath(INCIDENTS_UI_PATH)
+
+  const canChangeActionStatus = useCallback(
+    (action: IncidentActionRow) => {
+      if (canEditIncidentsModule) return true
+      const assignedNorm = normalizeComparableText(action.assignedToName)
+      if (!assignedNorm) return false
+      const userCandidates = [
+        normalizeComparableText(sessionUser?.name),
+        normalizeComparableText(sessionUser?.email),
+      ].filter(Boolean)
+      return userCandidates.includes(assignedNorm)
+    },
+    [canEditIncidentsModule, sessionUser?.email, sessionUser?.name]
   )
 
   return (
@@ -382,137 +436,164 @@ export default function IncidentOperationsPanel({ incident, onIncidentPatch }: P
         </div>
       ) : null}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-2.5 sm:p-3">
-        {/* Fila 1: estat + nota + desar */}
-        <div className="flex flex-wrap items-center gap-2">
-          <IncidentWorkflowStatusSelect value={status} onValueChange={setStatus} />
-          <textarea
-            id={`incident-nota-${incident.id}`}
-            rows={1}
-            className={cn(
-              ctrl,
-              'min-h-8 flex-1 resize-y px-2.5 py-1.5 leading-snug placeholder:text-slate-400 min-w-[10rem]'
-            )}
-            value={resolutionNote}
-            onChange={(e) => setResolutionNote(e.target.value)}
-            placeholder="Nota reunió, acords…"
-          />
-          <Button
-            type="button"
-            size="sm"
-            className="h-8 shrink-0 bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700"
-            disabled={savingIncident}
-            onClick={() => void saveIncidentFields()}
-          >
-            {savingIncident ? '…' : 'Desar'}
-          </Button>
-          {actions.length > 0 ? (
-            <span className="inline-flex shrink-0 items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-bold text-violet-800">
-              {actions.length} {actions.length === 1 ? 'acció' : 'accions'}
-              {openActionsCount > 0 ? ` · ${openActionsCount} pendent${openActionsCount === 1 ? '' : 's'}` : ''}
+      <div className="rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+        <section className="rounded-xl border border-slate-200 bg-slate-50/40 p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">Accions creades</h4>
+            <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">
+              {actions.length} total
             </span>
+          </div>
+
+          {loadingActions ? <p className="text-xs text-slate-400">Carregant accions...</p> : null}
+
+          {!loadingActions && actions.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-4 text-sm text-slate-500">
+              Encara no hi ha cap accio creada.
+            </div>
           ) : null}
-        </div>
 
-        {/* Fila 2: nova acció */}
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
-          <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-            + Acció
-          </span>
-          <Input
-            aria-label="Títol nova acció"
-            placeholder="Títol *"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            className={cn(ctrl, 'min-w-[7rem] flex-1 max-w-[11rem] px-2')}
-          />
-          <Input
-            placeholder="Descripció"
-            value={newDescription}
-            onChange={(e) => setNewDescription(e.target.value)}
-            className={cn(ctrl, 'min-w-[6rem] flex-1 max-w-[14rem] px-2')}
-          />
-          <Select value={newDept} onValueChange={setNewDept}>
-            <SelectTrigger className={cn(ctrl, 'w-[6.5rem] px-2 text-xs')} title="Departament">
-              <SelectValue placeholder="Dept" />
-            </SelectTrigger>
-            <SelectContent className="rounded-lg border-slate-200 shadow-lg">
-              {INCIDENT_ORIGIN_DEPARTMENTS.map((d) => (
-                <SelectItem key={d} value={d}>
-                  {d}
-                </SelectItem>
+          {!loadingActions && actions.length > 0 ? (
+            <ul className="space-y-2">
+              {actions.map((a) => (
+                <li key={a.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_150px_130px_minmax(260px,340px)] xl:items-end">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900">{a.title}</p>
+                      {a.description ? (
+                        <p className="mt-1 truncate text-xs leading-relaxed text-slate-500" title={a.description}>
+                          {a.description}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-slate-400">Sense descripcio</p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Data limit</div>
+                      {a.dueAt ? (
+                        <span className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 text-[11px] font-medium text-slate-600">
+                          {formatDateString(a.dueAt) ?? a.dueAt.slice(0, 10)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex h-8 items-center text-xs text-slate-400">Sense data</span>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Estat</div>
+                      <ActionRowStatusSelect
+                        value={a.status}
+                        disabled={!canChangeActionStatus(a)}
+                        onValueChange={(v) => void patchAction(a.id, { status: v })}
+                      />
+                    </div>
+                    <div>
+                      <ActionRowDeptAssignInline action={a} patchAction={patchAction} />
+                    </div>
+                  </div>
+                </li>
               ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={newAssignee || CAP_NONE}
-            onValueChange={(v) => setNewAssignee(v === CAP_NONE ? '' : v)}
-            disabled={!newDept.trim() || newFormCapsLoading}
-          >
-            <SelectTrigger className={cn(ctrl, 'w-[8rem] px-2 text-xs')} title="Cap">
-              <SelectValue placeholder={newFormCapsLoading ? '…' : 'Cap'} />
-            </SelectTrigger>
-            <SelectContent className="rounded-lg border-slate-200 shadow-lg">
-              {newAssigneeItems.map((x) => (
-                <SelectItem key={x.value} value={x.value}>
-                  {x.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            type="date"
-            value={newDue}
-            onChange={(e) => setNewDue(e.target.value)}
-            className={cn(ctrl, 'w-[8.5rem] shrink-0 px-2')}
-            title="Termini"
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-8 shrink-0 border-amber-300 px-2.5 text-xs font-semibold text-amber-900 hover:bg-amber-50"
-            disabled={creating || !newTitle.trim()}
-            onClick={() => void createAction()}
-          >
-            {creating ? '…' : 'Afegir'}
-          </Button>
-        </div>
+            </ul>
+          ) : null}
+        </section>
 
-        {/* Accions existents: només si n'hi ha */}
-        {loadingActions ? (
-          <p className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-400">Carregant accions…</p>
-        ) : null}
+        <section className="mt-3 rounded-[24px] border border-amber-200 bg-amber-50/60 p-4 shadow-sm">
+          <div className="mb-4 border-b border-amber-100 pb-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="text-base font-semibold text-amber-900">Nova accio</div>
+              <div className="text-sm font-medium text-slate-500">
+                {actions.length} {actions.length === 1 ? 'accio creada' : 'accions creades'}
+                {openActionsCount > 0 ? ` · ${openActionsCount} pendent${openActionsCount === 1 ? '' : 's'}` : ''}
+              </div>
+            </div>
+          </div>
 
-        {!loadingActions && actions.length > 0 ? (
-          <ul className="mt-2 space-y-1 border-t border-slate-100 pt-2">
-            {actions.map((a) => (
-              <li
-                key={a.id}
-                className="flex flex-wrap items-center gap-1.5 rounded-md border border-slate-100 bg-slate-50/60 px-2 py-1.5"
-              >
-                <div className="min-w-0 flex-1 basis-[8rem]">
-                  <span className="block truncate text-xs font-semibold text-slate-900">{a.title}</span>
-                  {a.description ? (
-                    <span className="block truncate text-[11px] text-slate-500" title={a.description}>
-                      {a.description}
-                    </span>
-                  ) : null}
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_320px]">
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_180px_180px_170px]">
+                <div className="space-y-2">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Titol</div>
+                  <Input
+                    aria-label="Titol nova accio"
+                    placeholder="Titol de l'accio *"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    className={cn(ctrl, 'w-full bg-white px-2')}
+                  />
                 </div>
-                <ActionRowStatusSelect
-                  value={a.status}
-                  onValueChange={(v) => void patchAction(a.id, { status: v })}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Departament</div>
+                  <Select value={newDept} onValueChange={setNewDept}>
+                    <SelectTrigger className="bg-white text-slate-700">
+                      <SelectValue placeholder="Dept" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-lg border-slate-200 shadow-lg">
+                      {INCIDENT_ORIGIN_DEPARTMENTS.map((d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Assignat a</div>
+                  <Select
+                    value={newAssignee || CAP_NONE}
+                    onValueChange={(v) => setNewAssignee(v === CAP_NONE ? '' : v)}
+                    disabled={!newDept.trim() || newFormCapsLoading}
+                  >
+                    <SelectTrigger className="bg-white text-slate-700">
+                      <SelectValue placeholder={newFormCapsLoading ? '...' : 'Cap'} />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-lg border-slate-200 shadow-lg">
+                      {newAssigneeItems.map((x) => (
+                        <SelectItem key={x.value} value={x.value}>
+                          {x.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Data limit</div>
+                  <Input
+                    type="date"
+                    value={newDue}
+                    onChange={(e) => setNewDue(e.target.value)}
+                    className="bg-white text-slate-700"
+                    title="Termini"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Descripcio</div>
+                <textarea
+                  rows={5}
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="Descriu que s'ha de fer"
+                  className={cn(
+                    'min-h-[148px] w-full resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/35 focus-visible:border-amber-300/60'
+                  )}
                 />
-                {a.dueAt ? (
-                  <span className="shrink-0 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-slate-600">
-                    {a.dueAt.slice(0, 10)}
-                  </span>
-                ) : null}
-                <ActionRowDeptAssignInline action={a} patchAction={patchAction} />
-              </li>
-            ))}
-          </ul>
-        ) : null}
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-[20px] bg-white/85 p-4">
+              <div className="flex justify-end pt-2">
+                <Button
+                  type="button"
+                  onClick={() => void createAction()}
+                  disabled={creating || !newTitle.trim()}
+                  className="w-full bg-amber-600 text-white hover:bg-amber-700 disabled:bg-amber-300"
+                >
+                  {creating ? 'Creant...' : 'Afegir accio'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   )

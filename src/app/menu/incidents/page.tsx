@@ -190,7 +190,18 @@ export default function IncidentsPage() {
       ? MARKETING_DEFAULT_CATEGORY_FILTER
       : filters.categoryLabel
 
-  const { incidents, rawIncidents, loading, isRefreshing, error, updateIncident, deleteIncident } = useIncidents({
+  const {
+    incidents,
+    rawIncidents,
+    actionsByIncident,
+    loading,
+    isRefreshing,
+    error,
+    updateIncident,
+    deleteIncident,
+    patchIncidentLocal,
+    patchIncidentActionsLocal,
+  } = useIncidents({
     ...filters,
     categoryLabel: effectiveCategoryLabel,
     limit: 800,
@@ -684,8 +695,11 @@ export default function IncidentsPage() {
         <div id="incidencies-print-root" className="w-full">
           <IncidentsTable
             incidents={visibleIncidents}
+            actionsByIncident={actionsByIncident}
             daySort={filters.dateMode === 'event' ? 'chronological' : 'proximity'}
             onUpdate={updateIncident}
+            onLocalPatch={patchIncidentLocal}
+            onActionsLocalPatch={patchIncidentActionsLocal}
             onDelete={handleDeleteIncident}
             canDeleteIncident={canDeleteRow}
             canEditCategory={canEditIncidentCategory}

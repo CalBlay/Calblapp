@@ -9,7 +9,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { Incident } from '@/hooks/useIncidents'
+import { Incident, type IncidentAction } from '@/hooks/useIncidents'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
 import { Camera, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
@@ -30,6 +30,9 @@ interface Props {
   opsExpanded: boolean
   onToggleOps: (row: Incident) => void
   onIncidentPatch: (id: string, d: Partial<Incident>) => Promise<unknown>
+  onIncidentLocalPatch: (id: string, d: Partial<Incident>) => void
+  initialActions?: IncidentAction[]
+  onIncidentActionsLocalPatch: (id: string, actions: IncidentAction[]) => void
   openImages: (row: Incident) => void
   canDelete: boolean
   canEditCategory: boolean
@@ -56,6 +59,9 @@ function IncidentsRow({
   opsExpanded,
   onToggleOps,
   onIncidentPatch,
+  onIncidentLocalPatch,
+  initialActions,
+  onIncidentActionsLocalPatch,
   openImages,
   canDelete,
   canEditCategory,
@@ -99,7 +105,7 @@ function IncidentsRow({
       ? 'Tancat'
       : 'Obert'
 
-  const colCount = 12
+  const colCount = 13
 
   return (
     <>
@@ -233,7 +239,16 @@ function IncidentsRow({
         )}
       </td>
 
-      <td className={cellTrunc} onClick={(e) => e.stopPropagation()}>
+      <td
+        className={cellTrunc}
+        onClick={(e) => {
+          if (isEditing) {
+            e.stopPropagation()
+            return
+          }
+          beginEdit(inc)
+        }}
+      >
         {isEditing && canEditCategory ? (
           <Select
             value={editValues.categoryId || inc.category?.id || ''}
@@ -255,6 +270,16 @@ function IncidentsRow({
           </Select>
         ) : (
           inc.category?.label || inc.category?.id || '—'
+        )}
+      </td>
+
+      <td className={cell} onClick={(e) => e.stopPropagation()}>
+        {inc.actionsCount ? (
+          <span className="inline-flex min-w-10 items-center justify-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800">
+            {inc.actionsCount}
+          </span>
+        ) : (
+          <span className={cn(typography('bodyXs'), 'text-slate-300')}>—</span>
         )}
       </td>
 
@@ -328,7 +353,13 @@ function IncidentsRow({
       {opsExpanded ? (
         <tr className="border-b last:border-0 bg-gradient-to-b from-amber-50/25 to-slate-50/40">
           <td colSpan={colCount} className="border-t border-slate-200 bg-slate-50/50 px-3 py-2">
-            <IncidentOperationsPanel incident={inc} onIncidentPatch={onIncidentPatch} />
+            <IncidentOperationsPanel
+              incident={inc}
+              onIncidentPatch={onIncidentPatch}
+              onIncidentLocalPatch={onIncidentLocalPatch}
+              initialActions={initialActions}
+              onIncidentActionsLocalPatch={onIncidentActionsLocalPatch}
+            />
           </td>
         </tr>
       ) : null}

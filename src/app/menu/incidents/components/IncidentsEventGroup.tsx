@@ -5,7 +5,7 @@ import IncidentsRow from './IncidentsRow'
 import IncidentsMobileCard from './IncidentsMobileCard'
 import IncidentsEventHeader from './IncidentsEventHeader'
 import type { GroupedIncidentEvent } from '@/lib/incidentsMeetingMinutes'
-import { Incident } from '@/hooks/useIncidents'
+import { Incident, type IncidentAction } from '@/hooks/useIncidents'
 import { getIncidentEventGroupMeta, getEventBlockVisualStyle } from '@/lib/incidentEventGroupMeta'
 import FincaModal from '@/components/spaces/FincaModal'
 import UserEventInfoModal from '@/components/incidents/UserEventInfoModal'
@@ -23,7 +23,10 @@ type WindowWithEventModal = Window & { openEventModal?: (code: string) => void }
 
 interface Props {
   event: GroupedIncidentEvent
+  actionsByIncident: Record<string, IncidentAction[]>
   onUpdate: (id: string, d: Partial<Incident>) => Promise<unknown>
+  onLocalPatch: (id: string, d: Partial<Incident>) => void
+  onActionsLocalPatch: (id: string, actions: IncidentAction[]) => void
   onDelete: (inc: Incident) => void
   onOpenImages: (inc: Incident) => void
   canDeleteIncident: (inc: Incident) => boolean
@@ -33,7 +36,10 @@ interface Props {
 
 export default function IncidentsEventGroup({
   event,
+  actionsByIncident,
   onUpdate,
+  onLocalPatch,
+  onActionsLocalPatch,
   onDelete,
   onOpenImages,
   canDeleteIncident,
@@ -48,6 +54,16 @@ export default function IncidentsEventGroup({
   const [selectedEventCode, setSelectedEventCode] = useState<string | null>(null)
 
   const groupMeta = useMemo(() => getIncidentEventGroupMeta(event.rows), [event.rows])
+  const actionSummary = useMemo(() => {
+    let actionCount = 0
+    let incidentsWithActionsCount = 0
+    for (const row of event.rows) {
+      const count = Number(row.actionsCount || 0)
+      actionCount += count
+      if (count > 0) incidentsWithActionsCount += 1
+    }
+    return { actionCount, incidentsWithActionsCount }
+  }, [event.rows])
   const [expanded, setExpanded] = useState(false)
   const blockVisual = useMemo(
     () => getEventBlockVisualStyle(groupMeta, expanded),
@@ -116,6 +132,8 @@ export default function IncidentsEventGroup({
         service={event.serviceType ?? ''}
         pax={Number(event.pax ?? 0)}
         count={event.rows.length}
+        actionCount={actionSummary.actionCount}
+        incidentsWithActionsCount={actionSummary.incidentsWithActionsCount}
         openCount={groupMeta.openCount}
         urgentCount={groupMeta.urgentCount}
         allResolved={groupMeta.allResolved}
@@ -150,6 +168,9 @@ export default function IncidentsEventGroup({
                 opsExpanded={expandedOpsId === inc.id}
                 onToggleOps={toggleOps}
                 onIncidentPatch={onUpdate}
+                onIncidentLocalPatch={onLocalPatch}
+                initialActions={actionsByIncident[inc.id]}
+                onIncidentActionsLocalPatch={onActionsLocalPatch}
                 openImages={onOpenImages}
                 canDelete={canDeleteIncident(inc)}
                 canEditCategory={canEditCategory}
@@ -161,7 +182,7 @@ export default function IncidentsEventGroup({
           </div>
 
           <div className="hidden overflow-x-auto md:block">
-            <table className={cn('w-full min-w-[1140px] table-fixed', typography('bodySm'))}>
+            <table className={cn('w-full min-w-[1200px] table-fixed', typography('bodySm'))}>
               <thead>
                 <tr className="border-b border-slate-200 bg-white text-slate-600">
                   <th className={cn('w-12 p-2 text-left font-semibold', typography('bodySm'))}>Seg.</th>
@@ -173,6 +194,7 @@ export default function IncidentsEventGroup({
                   <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Estat</th>
                   <th className={cn('w-auto p-2 text-left font-semibold', typography('bodySm'))}>Incidència</th>
                   <th className={cn('w-36 p-2 text-left font-semibold', typography('bodySm'))}>Categoria</th>
+                  <th className={cn('w-24 p-2 text-left font-semibold', typography('bodySm'))}>Accio</th>
                   <th className={cn('w-32 p-2 text-left font-semibold', typography('bodySm'))}>Origen</th>
                   <th className={cn('w-28 p-2 text-left font-semibold', typography('bodySm'))}>Prioritat</th>
                   <th className={cn('w-14 p-2 text-left font-semibold', typography('bodySm'))}>Del.</th>
@@ -191,6 +213,9 @@ export default function IncidentsEventGroup({
                     opsExpanded={expandedOpsId === inc.id}
                     onToggleOps={toggleOps}
                     onIncidentPatch={onUpdate}
+                    onIncidentLocalPatch={onLocalPatch}
+                    initialActions={actionsByIncident[inc.id]}
+                    onIncidentActionsLocalPatch={onActionsLocalPatch}
                     openImages={onOpenImages}
                     canDelete={canDeleteIncident(inc)}
                     canEditCategory={canEditCategory}

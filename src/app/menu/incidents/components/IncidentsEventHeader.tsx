@@ -14,6 +14,8 @@ interface Props {
   service: string
   pax: number
   count: number
+  actionCount?: number
+  incidentsWithActionsCount?: number
   openCount: number
   urgentCount: number
   allResolved: boolean
@@ -42,6 +44,8 @@ export default function IncidentsEventHeader({
   service,
   pax,
   count,
+  actionCount = 0,
+  incidentsWithActionsCount = 0,
   openCount,
   urgentCount,
   allResolved,
@@ -146,6 +150,12 @@ export default function IncidentsEventHeader({
           <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm">
             {count === 1 ? '1 inc.' : `${count} inc.`}
           </span>
+
+          {actionCount > 0 ? (
+            <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">
+              {actionCount === 1 ? '1 acció' : `${actionCount} accions`}
+            </span>
+          ) : null}
 
           {allResolved ? (
             <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">

@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { Incident } from '@/hooks/useIncidents'
+import type { Incident, IncidentAction } from '@/hooks/useIncidents'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -26,6 +26,9 @@ interface Props {
   opsExpanded: boolean
   onToggleOps: (row: Incident) => void
   onIncidentPatch: (id: string, d: Partial<Incident>) => Promise<unknown>
+  onIncidentLocalPatch: (id: string, d: Partial<Incident>) => void
+  initialActions?: IncidentAction[]
+  onIncidentActionsLocalPatch: (id: string, actions: IncidentAction[]) => void
   openImages: (row: Incident) => void
   canDelete: boolean
   canEditCategory: boolean
@@ -52,6 +55,9 @@ export default function IncidentsMobileCard({
   opsExpanded,
   onToggleOps,
   onIncidentPatch,
+  onIncidentLocalPatch,
+  initialActions,
+  onIncidentActionsLocalPatch,
   openImages,
   canDelete,
   canEditCategory,
@@ -120,6 +126,11 @@ export default function IncidentsMobileCard({
           >
             {opsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
+          {inc.actionsCount ? (
+            <span className={cn(typography('bodyXs'), 'rounded-full bg-violet-100 px-2 py-0.5 font-semibold text-violet-700')}>
+              {inc.actionsCount} acc.
+            </span>
+          ) : null}
           {inc.hasImages ? (
             <Button
               type="button"
@@ -293,7 +304,13 @@ export default function IncidentsMobileCard({
 
       {opsExpanded ? (
         <div className="border-t border-slate-200 bg-slate-50/50 px-3 py-2">
-          <IncidentOperationsPanel incident={inc} onIncidentPatch={onIncidentPatch} />
+          <IncidentOperationsPanel
+            incident={inc}
+            onIncidentPatch={onIncidentPatch}
+            onIncidentLocalPatch={onIncidentLocalPatch}
+            initialActions={initialActions}
+            onIncidentActionsLocalPatch={onIncidentActionsLocalPatch}
+          />
         </div>
       ) : null}
     </article>
