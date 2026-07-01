@@ -128,7 +128,13 @@ export function useMaintenanceTickets() {
     () => resolveDefaultTicketLocationFromUserName(sessionUser.name, locations) || '',
     [locations, sessionUser.name]
   )
-  const defaultCreateCenter = defaultCreateLocation
+  const defaultCreateCenter = useMemo(() => {
+    const centerNames = centers.map((center) => center.name).filter(Boolean)
+    return (
+      resolveDefaultTicketLocationFromUserName(sessionUser.name, centerNames) ||
+      defaultCreateLocation
+    )
+  }, [centers, defaultCreateLocation, sessionUser.name])
 
   const fetchTickets = useCallback(
     async (opts?: { append?: boolean; cursorCreatedAt?: number }) => {

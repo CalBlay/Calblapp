@@ -149,6 +149,26 @@ function uniqueLabeledOptions(
     .map((value) => ({ value, label: labelFor(value) }))
 }
 
+function resolveAssigneeNamesForAggregation(
+  item: InternalWorkItem,
+  operatorId: string,
+  personnelOptions: MaintenanceSelectOption[]
+): string[] {
+  if (!operatorId) {
+    return item.workerNames.length ? item.workerNames : ['Sense assignar']
+  }
+
+  const matchedNames = item.workerIds
+    .map((id, index) => (id === operatorId ? item.workerNames[index] || '' : ''))
+    .map((name) => String(name || '').trim())
+    .filter(Boolean)
+
+  if (matchedNames.length > 0) return matchedNames
+
+  const fallback = personnelOptions.find((option) => option.value === operatorId)?.label?.trim() || ''
+  return fallback ? [fallback] : ['Sense assignar']
+}
+
 function resolveWindow(params: BuildParams): { fromMs: number; toMs: number; context: MaintenanceReportContext } {
   const now = Date.now()
   if (params.mode === 'rolling') {
@@ -411,7 +431,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     locRow.totalMinutes += item.totalMinutes
     locationMap.set(locKey, locRow)
 
-    const names = item.workerNames.length ? item.workerNames : ['Sense assignar']
+    const names = resolveAssigneeNamesForAggregation(item, operatorId, personnelOperators)
     for (const name of names) {
       const row = assigneeMap.get(name) || {
         name,

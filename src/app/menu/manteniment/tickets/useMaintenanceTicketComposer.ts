@@ -23,6 +23,7 @@ type Params = {
   defaultCenter?: string
   defaultLocation?: string
   defaultMachine?: string
+  requireLocation?: boolean
   /** Força encaminament cuina central encara que el departament de sessió sigui admin. */
   routingOverride?: ManualTicketRouting
 }
@@ -50,6 +51,7 @@ export function useMaintenanceTicketComposer({
   defaultCenter = '',
   defaultLocation = '',
   defaultMachine = '',
+  requireLocation = true,
   routingOverride,
 }: Params) {
   const { data: session } = useSession()
@@ -266,7 +268,7 @@ export function useMaintenanceTicketComposer({
     if (!createCenter.trim()) {
       return 'Selecciona un centre.'
     }
-    if (!createLocation.trim()) {
+    if (requireLocation && !createLocation.trim()) {
       return 'Selecciona una ubicacio.'
     }
     if (!getEffectiveMachine()) {
@@ -342,7 +344,7 @@ export function useMaintenanceTicketComposer({
 
   const canCreateTicket =
     Boolean(createCenter.trim()) &&
-    Boolean(createLocation.trim()) &&
+    (!requireLocation || Boolean(createLocation.trim())) &&
     Boolean(getEffectiveMachine()) &&
     Boolean(createDescription.trim()) &&
     Boolean(createWorkerName.trim()) &&

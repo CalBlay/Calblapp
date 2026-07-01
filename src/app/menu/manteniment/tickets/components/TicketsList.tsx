@@ -272,7 +272,7 @@ export default function TicketsList({
             </header>
 
             {!isCollapsed ? (
-              <div className="space-y-2">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {section.items.map((ticket) => {
                   const expanded = expandedId === ticket.id
                   const codeLabel = codeLabelById.get(ticket.id) || 'TIC'
@@ -304,7 +304,7 @@ export default function TicketsList({
                   return (
                     <article
                       key={ticket.id}
-                      className={`overflow-hidden rounded-2xl border shadow-sm transition hover:shadow-md ${
+                      className={`flex h-full flex-col overflow-hidden rounded-2xl border shadow-sm transition hover:shadow-md ${
                         isStale ? STALE_TICKET_CARD_CLASS : sectionStyle.card
                       }`}
                     >
@@ -439,7 +439,7 @@ export default function TicketsList({
                       </div>
 
                       {expanded ? (
-                        <div className={`border-t px-4 py-4 ${sectionStyle.expanded}`}>
+                        <div className={`mt-auto border-t px-4 py-4 ${sectionStyle.expanded}`}>
                           <div className="space-y-4">
                             <div className="space-y-2">
                               <div className={typography('eyebrow')}>Context</div>

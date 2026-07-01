@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import Image from 'next/image'
 import { matchesMaintenanceTicketLocation } from '@/lib/maintenanceTicketCreators'
 import {
@@ -144,6 +144,14 @@ export default function CreateTicketModal({
     () => (selectedCenter?.internalLocations || []).filter(Boolean),
     [selectedCenter]
   )
+  const canSkipLocation = Boolean(effectiveCenter) && centerLocations.length === 0
+
+  useEffect(() => {
+    if (!canSkipLocation) return
+    if (effectiveLocation) return
+    setCreateLocation(effectiveCenter)
+    setLocationQuery(effectiveCenter)
+  }, [canSkipLocation, effectiveCenter, effectiveLocation, setCreateLocation, setLocationQuery])
 
   const filteredLocations = useMemo(
     () =>
@@ -172,6 +180,8 @@ export default function CreateTicketModal({
         : locationMachines,
     [locationMachines, machineQueryNorm]
   )
+  const shouldShowMachineDropdown =
+    showMachineList && effectiveMachineLocation && locationMachines.length > 0
 
   const clearMachine = () => {
     setMachineQuery('')
@@ -285,8 +295,13 @@ export default function CreateTicketModal({
                       onClick={() => {
                         setCreateCenter(center.name)
                         setCenterQuery(center.name)
-                        setLocationQuery('')
-                        setCreateLocation('')
+                        if ((center.internalLocations || []).filter(Boolean).length === 0) {
+                          setLocationQuery(center.name)
+                          setCreateLocation(center.name)
+                        } else {
+                          setLocationQuery('')
+                          setCreateLocation('')
+                        }
                         setShowCenterList(false)
                         setShowLocationList(false)
                         clearMachine()
@@ -305,7 +320,7 @@ export default function CreateTicketModal({
 
             <div className="relative">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Ubicacio *
+                {canSkipLocation ? 'Ubicacio' : 'Ubicacio *'}
               </label>
               <div className="relative">
                 <input
@@ -315,10 +330,10 @@ export default function CreateTicketModal({
                       ? 'Primer selecciona un centre...'
                       : centerLocations.length > 0
                         ? 'Cerca ubicacio...'
-                        : 'Aquest centre no te ubicacions configurades...'
+                        : 'Aquest centre no te ubicacions configurades. Es fara servir el centre.'
                   }
                   value={locationQuery}
-                  required
+                  required={!canSkipLocation}
                   disabled={!effectiveCenter || centerLocations.length === 0}
                   onFocus={() => {
                     if (effectiveCenter) setShowLocationList(true)
@@ -346,6 +361,12 @@ export default function CreateTicketModal({
                   </button>
                 ) : null}
               </div>
+              {canSkipLocation ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  Aquest centre no te ubicacions internes. El ticket es creara amb el centre
+                  seleccionat.
+                </p>
+              ) : null}
               {showLocationList ? (
                 <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow-lg">
                   {filteredLocations.map((location) => (
@@ -379,19 +400,19 @@ export default function CreateTicketModal({
                   className="h-12 w-full rounded-2xl border px-4 pr-10 text-base disabled:bg-slate-50"
                   placeholder={
                     effectiveMachineLocation
-                      ? 'Escriu o filtra maquinaria d aquesta ubicacio...'
+                      ? 'Selecciona una maquina del llistat o escriu text lliure...'
                       : 'Primer selecciona centre i ubicacio...'
                   }
                   value={machineQuery}
                   required
                   disabled={!effectiveMachineLocation}
                   onFocus={() => {
-                    if (effectiveMachineLocation) setShowMachineList(true)
+                    if (effectiveMachineLocation && locationMachines.length > 0) setShowMachineList(true)
                   }}
                   onChange={(e) => {
                     setMachineQuery(e.target.value)
                     setCreateMachine('')
-                    setShowMachineList(true)
+                    setShowMachineList(locationMachines.length > 0)
                   }}
                   onBlur={() => {
                     if (!_createMachine && machineQuery.trim()) {
@@ -410,7 +431,10 @@ export default function CreateTicketModal({
                   </button>
                 ) : null}
               </div>
-              {showMachineList && effectiveMachineLocation ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Pots seleccionar una maquina del llistat o escriure el nom manualment.
+              </p>
+              {shouldShowMachineDropdown ? (
                 <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow-lg">
                   {filteredMachines.map((machine) => (
                     <button
@@ -428,11 +452,15 @@ export default function CreateTicketModal({
                   ))}
                   {filteredMachines.length === 0 ? (
                     <div className="px-4 py-3 text-sm text-gray-500">
-                      {locationMachines.length === 0
-                        ? 'No hi ha maquinaria registrada per aquesta ubicacio. Pots escriure el nom manualment.'
-                        : 'Sense resultats. Pots escriure el nom de la maquinaria al camp.'}
+                      Sense resultats. Pots escriure el nom de la maquinaria al camp.
                     </div>
                   ) : null}
+                </div>
+              ) : null}
+              {effectiveMachineLocation && locationMachines.length === 0 ? (
+                <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-gray-500">
+                  No hi ha maquinaria registrada per aquesta ubicacio. Pots escriure el nom
+                  manualment.
                 </div>
               ) : null}
               {machines.length === 0 ? (

@@ -63,6 +63,9 @@ const normalizeDept = (raw?: string) =>
     .toLowerCase()
     .trim()
 
+const stripRestaurantPrefix = (value: string) =>
+  value.replace(/^(restaurant|restauracio)\s+/i, '').trim()
+
 const STATUS_LABELS: Record<TicketStatus, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
@@ -271,10 +274,12 @@ export default function MaintenanceTicketsPage() {
     if (!isRestaurantOpsDepartment(department)) return catalogCenters
     const restaurantKeys = new Set(
       OPS_CHANNEL_LOCATIONS.filter((entry) => entry.source === 'restaurants').map((entry) =>
-        normalizeLocationKey(entry.location)
+        normalizeLocationKey(stripRestaurantPrefix(entry.location))
       )
     )
-    return catalogCenters.filter((center) => restaurantKeys.has(normalizeLocationKey(center.name)))
+    return catalogCenters.filter((center) =>
+      restaurantKeys.has(normalizeLocationKey(stripRestaurantPrefix(center.name)))
+    )
   }, [catalogCenters, department])
 
   useEffect(() => {
