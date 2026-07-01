@@ -15,6 +15,7 @@ type Props = {
   title: string
   count: number
   children: ReactNode
+  headerActions?: ReactNode
   footer?: ReactNode
   align?: 'start' | 'center' | 'end'
   className?: string
@@ -24,6 +25,7 @@ export default function ModuleNotificationsBell({
   title,
   count,
   children,
+  headerActions,
   footer,
   align = 'end',
   className,
@@ -56,10 +58,15 @@ export default function ModuleNotificationsBell({
       >
         <ModuleNotificationsBellContext.Provider value={() => setOpen(false)}>
           <div className="border-b border-gray-100 px-4 py-3">
-            <h3 className="text-sm font-bold text-gray-900">{title}</h3>
-            <p className="text-xs text-gray-500">
-              {count} {count === 1 ? 'pendent' : 'pendents'}
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">{title}</h3>
+                <p className="text-xs text-gray-500">
+                  {count} {count === 1 ? 'pendent' : 'pendents'}
+                </p>
+              </div>
+              {headerActions ? <div className="shrink-0">{headerActions}</div> : null}
+            </div>
           </div>
           <div className="max-h-[min(60vh,24rem)] space-y-1 overflow-y-auto p-2">{children}</div>
           {footer ? (

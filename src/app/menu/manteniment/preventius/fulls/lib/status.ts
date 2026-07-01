@@ -27,6 +27,24 @@ export const WORKER_VISIBLE_JOURNEY_STATUSES = new Set<MaintenanceStatus>([
   'fet',
 ])
 
+export const WORKER_JOURNEY_FILTER_STATUSES: MaintenanceStatus[] = [
+  'assignat',
+  'en_curs',
+  'espera',
+  'fet',
+  'no_fet',
+]
+
+export const MANAGER_JOURNEY_FILTER_STATUSES: MaintenanceStatus[] = [
+  'nou',
+  'assignat',
+  'en_curs',
+  'espera',
+  'fet',
+  'no_fet',
+  'validat',
+]
+
 export const PROGRESS_VISIBLE_STATUSES = new Set<MaintenanceStatus>([
   'en_curs',
   'espera',

@@ -55,6 +55,7 @@ function normalizeLocationRow(row: MaintenanceLocationRow): MaintenanceLocationR
   return {
     ...row,
     tickets: Number(row.tickets) || 0,
+    externalizedTickets: Number(row.externalizedTickets) || 0,
     preventius: Number(row.preventius) || 0,
     workMinutes: Number(row.workMinutes) || 0,
     travelMinutes: Number(row.travelMinutes) || 0,
@@ -66,6 +67,7 @@ function normalizeAssigneeRow(row: MaintenanceAssigneeRow): MaintenanceAssigneeR
   return {
     ...row,
     tickets: Number(row.tickets) || 0,
+    externalizedTickets: Number(row.externalizedTickets) || 0,
     preventius: Number(row.preventius) || 0,
     workMinutes: Number(row.workMinutes) || 0,
     totalMinutes: Number(row.totalMinutes) || 0,
@@ -96,6 +98,7 @@ export function normalizeMaintenanceOverview(
       priorities: [],
       locations: [],
       ticketTypes: [],
+      interventionTypes: [],
       assignees: [],
     },
   }

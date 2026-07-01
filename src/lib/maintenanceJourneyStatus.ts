@@ -28,7 +28,8 @@ export const needsStartOnNextStatus = (status: JourneyStatus) =>
 
 export const needsCompletionPhotos = (status: JourneyStatus) => status === 'fet'
 
-export const needsNoteOnNextStatus = (status: JourneyStatus) => status === 'no_fet'
+export const needsNoteOnNextStatus = (status: JourneyStatus) =>
+  status === 'no_fet' || status === 'espera'
 
 export function getOpenSegmentStart(
   history: StatusHistoryEntry[] | undefined,
@@ -130,8 +131,10 @@ export function validateJourneyStatusPayload(params: {
     if (count < 1) return 'Cal adjuntar com a minim un fitxer o foto (maxim 3).'
   }
 
-  if (nextStatus === 'no_fet' && !note) {
-    return 'Cal indicar el motiu en observacions.'
+  if ((nextStatus === 'no_fet' || nextStatus === 'espera') && !note) {
+    return nextStatus === 'espera'
+      ? 'Cal indicar el motiu de la pausa en observacions.'
+      : 'Cal indicar el motiu en observacions.'
   }
 
   return null

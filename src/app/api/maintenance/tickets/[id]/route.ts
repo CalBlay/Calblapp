@@ -444,6 +444,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     }
 
+    const isReopeningValidatedTicket =
+      currentStatus === 'validat' && (nextStatus === 'fet' || nextStatus === 'resolut')
+
     if (nextStatus) updates.status = nextStatus
     if (body.workflowStage !== undefined) {
       updates.workflowStage = normalizeWorkflowStage(body.workflowStage)
@@ -476,6 +479,23 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
     if (body.resolvedByArea !== undefined) {
       updates.resolvedByArea = String(body.resolvedByArea || '').trim() || null
+    }
+
+    if (isReopeningValidatedTicket) {
+      updates.creatorValidatedAt = null
+      updates.creatorValidatedById = null
+      updates.creatorValidatedByName = null
+      updates.capValidatedAt = null
+      updates.capValidatedById = null
+      updates.capValidatedByName = null
+      updates.resolvedAt = null
+      updates.resolvedById = null
+      updates.resolvedByName = null
+      updates.workflowStage = current.externalized
+        ? 'externalized'
+        : Array.isArray(current.assignedToIds) && current.assignedToIds.length > 0
+          ? 'planned_internal'
+          : 'planner_queue'
     }
 
     const planningTouched =
@@ -597,7 +617,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         espera: ['en_curs', 'fet', 'no_fet'],
       }
       const nextAllowed = allowed[currentStatus] || []
-      if (!nextAllowed.includes(nextStatus)) {
+      const sameStatusContinuation =
+        nextStatus === currentStatus && (currentStatus === 'en_curs' || currentStatus === 'espera')
+      if (!sameStatusContinuation && !nextAllowed.includes(nextStatus)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
     }

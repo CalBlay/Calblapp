@@ -16,6 +16,7 @@ export type MaintenanceReportContext =
       priority?: string
       location?: string
       ticketType?: string
+      interventionType?: string
       assigneeId?: string
       operatorId?: string
     }
@@ -49,6 +50,7 @@ export type MaintenanceMonthSeriesRow = {
 export type MaintenanceLocationRow = {
   location: string
   tickets: number
+  externalizedTickets: number
   preventius: number
   workMinutes: number
   travelMinutes: number
@@ -58,6 +60,7 @@ export type MaintenanceLocationRow = {
 export type MaintenanceAssigneeRow = {
   name: string
   tickets: number
+  externalizedTickets: number
   preventius: number
   workMinutes: number
   totalMinutes: number
@@ -103,6 +106,7 @@ export type MaintenanceOverview = {
     priorities: MaintenanceSelectOption[]
     locations: MaintenanceSelectOption[]
     ticketTypes: MaintenanceSelectOption[]
+    interventionTypes: MaintenanceSelectOption[]
     assignees: MaintenanceSelectOption[]
   }
 }

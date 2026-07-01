@@ -9,6 +9,7 @@ import ExportMenu from '@/components/export/ExportMenu'
 import { useTransports } from '@/hooks/useTransports'
 import { normalizeRole } from '@/lib/roles'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
+import MaintenanceNotificationsBell from '@/app/menu/manteniment/components/MaintenanceNotificationsBell'
 import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
 import MaintenancePermissionGate from '../../components/MaintenancePermissionGate'
 import type { JourneyStatus } from '@/lib/maintenanceJourneyStatus'
@@ -21,7 +22,11 @@ import { useJourneySelectedTicket } from './hooks/useJourneySelectedTicket'
 import { useJourneyWorkData } from './hooks/useJourneyWorkData'
 import { buildExportRows, exportJourneyExcel, exportJourneyPdfTable } from './lib/export'
 import { openPreventiuFitxa } from './lib/navigation'
-import { getAllowedNextStatuses, getStatusLabel } from './lib/status'
+import {
+  getAllowedNextStatuses,
+  MANAGER_JOURNEY_FILTER_STATUSES,
+  WORKER_JOURNEY_FILTER_STATUSES,
+} from './lib/status'
 import type { MaintenanceStatus } from './lib/types'
 
 type SessionUser = {
@@ -74,10 +79,7 @@ export default function PreventiusFullsPage() {
     canFilterByWorker,
     workerFilter: workData.workerFilter,
     setWorkerFilter: workData.setWorkerFilter,
-    statusFilter: workData.statusFilter,
-    setStatusFilter: workData.setStatusFilter,
     workerOptions: workData.workerOptions,
-    statusOptions: workData.statusOptions,
   })
 
   const transportById = useMemo(
@@ -108,16 +110,19 @@ export default function PreventiusFullsPage() {
   const allowedNext = (status: MaintenanceStatus) =>
     getAllowedNextStatuses(status, role) as JourneyStatus[]
 
+  const visibleStatusOptions =
+    workData.statusOptions.length > 0
+      ? workData.statusOptions
+      : role === 'treballador'
+        ? WORKER_JOURNEY_FILTER_STATUSES
+        : MANAGER_JOURNEY_FILTER_STATUSES
+
   const workerChip =
     canFilterByWorker && workData.workerFilter !== 'all'
       ? workData.workerOptions.find((w) => w.toLowerCase() === workData.workerFilter) ||
         workData.workerFilter
       : null
 
-  const statusChip =
-    workData.statusFilter !== 'all'
-      ? getStatusLabel(workData.statusFilter, workData.statusFilter)
-      : null
   const searchChip = workData.searchQuery.trim() || null
 
   return (
@@ -129,7 +134,12 @@ export default function PreventiusFullsPage() {
           title="Manteniment"
           subtitle="Jornada"
           mainHref="/menu/manteniment"
-          actions={<ExportMenu items={exportItems} />}
+          actions={
+            <div className="flex items-center gap-2">
+              <MaintenanceNotificationsBell />
+              <ExportMenu items={exportItems} />
+            </div>
+          }
         />
 
         <MaintenanceToolbar
@@ -143,7 +153,7 @@ export default function PreventiusFullsPage() {
             { value: 'month', label: 'Mes' },
           ]}
           onModeChange={(value) => setMode(value as typeof filters.mode)}
-          onOpenFilters={() => undefined}
+          onOpenFilters={canFilterByWorker ? () => undefined : undefined}
           centerSlot={
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -172,7 +182,9 @@ export default function PreventiusFullsPage() {
           value={workData.kindFilter}
           onChange={workData.setKindFilter}
           workerChip={workerChip}
-          statusChip={statusChip}
+          statusValue={workData.statusFilter}
+          onStatusChange={workData.setStatusFilter}
+          statusOptions={visibleStatusOptions}
           searchChip={searchChip}
         />
 

@@ -30,6 +30,7 @@ type BuildParams = {
   priority?: string
   location?: string
   ticketType?: string
+  interventionType?: string
   assigneeId?: string
   operatorId?: string
 }
@@ -174,6 +175,7 @@ function resolveWindow(params: BuildParams): { fromMs: number; toMs: number; con
         priority: params.priority || undefined,
         location: params.location || undefined,
         ticketType: params.ticketType || undefined,
+        interventionType: params.interventionType || undefined,
         assigneeId: operatorId || undefined,
         operatorId: operatorId || undefined,
       },
@@ -324,6 +326,12 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     if (params.status && item.status !== normalizeText(params.status)) return false
     if (params.priority && item.priority !== normalizeText(params.priority)) return false
     if (params.location && item.location !== params.location) return false
+    if (params.interventionType) {
+      const type = normalizeText(params.interventionType)
+      if (type === 'preventiu' && item.kind !== 'preventiu') return false
+      if (type === 'ticket_internal' && (item.kind !== 'ticket' || item.externalized)) return false
+      if (type === 'ticket_externalized' && (item.kind !== 'ticket' || !item.externalized)) return false
+    }
     if (params.ticketType) {
       if (item.kind !== 'ticket') return false
       if (item.category !== normalizeText(params.ticketType)) return false
@@ -389,6 +397,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     const locRow = locationMap.get(locKey) || {
       location: locKey,
       tickets: 0,
+      externalizedTickets: 0,
       preventius: 0,
       workMinutes: 0,
       travelMinutes: 0,
@@ -396,6 +405,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     }
     if (item.kind === 'ticket') locRow.tickets += 1
     else locRow.preventius += 1
+    if (item.kind === 'ticket' && item.externalized) locRow.externalizedTickets += 1
     locRow.workMinutes += item.workMinutes
     locRow.travelMinutes += item.travelMinutes
     locRow.totalMinutes += item.totalMinutes
@@ -406,12 +416,14 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       const row = assigneeMap.get(name) || {
         name,
         tickets: 0,
+        externalizedTickets: 0,
         preventius: 0,
         workMinutes: 0,
         totalMinutes: 0,
       }
       if (item.kind === 'ticket') row.tickets += 1
       else row.preventius += 1
+      if (item.kind === 'ticket' && item.externalized) row.externalizedTickets += 1
       row.workMinutes += item.workMinutes
       row.totalMinutes += item.totalMinutes
       assigneeMap.set(name, row)
@@ -462,6 +474,11 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       label: 'Tickets',
       value: ticketCount,
       hint: 'Incidències al període',
+    },
+    {
+      label: 'Tickets interns',
+      value: ticketCount - externalizedCount,
+      hint: 'Gestionats internament',
     },
     {
       label: 'Preventius',
@@ -532,6 +549,11 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       optionSource.map((t) => t.priority),
       (value) => PRIORITY_LABELS[value] || value
     ),
+    interventionTypes: [
+      { value: 'ticket_internal', label: 'Tickets interns' },
+      { value: 'ticket_externalized', label: 'Tickets externalitzats' },
+      { value: 'preventiu', label: 'Preventius' },
+    ],
     locations: uniqueLabeledOptions(
       optionSource.map((t) => t.location).filter(Boolean),
       (value) => value

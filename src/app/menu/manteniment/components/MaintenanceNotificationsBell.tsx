@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
+import { CheckCheck } from 'lucide-react'
 import { getAblyClient } from '@/lib/ablyClient'
 import ModuleNotificationsBell, {
   useCloseModuleNotificationsBell,
 } from '@/components/layout/ModuleNotificationsBell'
 import NotificationListItem from '@/components/layout/NotificationListItem'
-import { markNotificationRead } from '@/lib/notifications/markRead'
+import { markAllNotificationsRead, markNotificationRead } from '@/lib/notifications/markRead'
 
 type MaintenanceNotification = {
   id: string
@@ -223,8 +224,28 @@ export default function MaintenanceNotificationsBell() {
     await mutate()
   }
 
+  const markAll = async () => {
+    for (const type of MAINTENANCE_NOTIFICATION_TYPES) {
+      await markAllNotificationsRead(type)
+    }
+    await mutate()
+  }
+
   return (
-    <ModuleNotificationsBell title="Avisos de manteniment" count={notifications.length}>
+    <ModuleNotificationsBell
+      title="Avisos de manteniment"
+      count={notifications.length}
+      headerActions={
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
+          onClick={() => void markAll()}
+        >
+          <CheckCheck className="h-3.5 w-3.5" />
+          Marcar tot
+        </button>
+      }
+    >
       <MaintenanceNotificationItems notifications={notifications} onDismiss={dismiss} />
     </ModuleNotificationsBell>
   )

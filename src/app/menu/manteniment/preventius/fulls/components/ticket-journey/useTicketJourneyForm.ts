@@ -1,8 +1,9 @@
 'use client'
 
 import { format } from 'date-fns'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
+  applyStatusHistoryUpdate,
   getOpenSegmentStart,
   needsClosePreviousSegment,
   needsStartOnNextStatus,
@@ -23,8 +24,11 @@ type Params = {
 }
 
 export function useTicketJourneyForm({ ticket, onSaved }: Params) {
-  const currentStatus = ticket.status as JourneyStatus
-  const statusHistory = ticket.statusHistory as StatusHistoryEntry[] | undefined
+  const initialStatus = ticket.status as JourneyStatus
+  const [currentStatus, setCurrentStatus] = useState<JourneyStatus>(initialStatus)
+  const [statusHistory, setStatusHistory] = useState<StatusHistoryEntry[]>(
+    Array.isArray(ticket.statusHistory) ? (ticket.statusHistory as StatusHistoryEntry[]) : []
+  )
 
   const [nextStatus, setNextStatus] = useState<JourneyStatus | undefined>()
   const [horaInici, setHoraInici] = useState('')
@@ -32,6 +36,7 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
   const [note, setNote] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [autoStarting, setAutoStarting] = useState(false)
 
   const {
     images,
@@ -65,6 +70,77 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     [horaFi, horaInici, imageCount, nextStatus, note]
   )
 
+  useEffect(() => {
+    setCurrentStatus(initialStatus)
+    setStatusHistory(Array.isArray(ticket.statusHistory) ? (ticket.statusHistory as StatusHistoryEntry[]) : [])
+    setNextStatus(undefined)
+    setHoraInici('')
+    setHoraFi('')
+    setNote('')
+    clearImages()
+    setFormError(null)
+    setBusy(false)
+    setAutoStarting(false)
+  }, [clearImages, initialStatus, ticket.id, ticket.statusHistory])
+
+  useEffect(() => {
+    if (currentStatus !== 'assignat' && currentStatus !== 'reassignat') return
+
+    let cancelled = false
+    const startTime = defaultTime()
+
+    const autoStart = async () => {
+      try {
+        setAutoStarting(true)
+        setFormError(null)
+
+        const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'en_curs',
+            statusStartTime: startTime,
+          }),
+        })
+
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}))
+          throw new Error(String(json?.error || 'No s ha pogut iniciar el ticket'))
+        }
+
+        if (cancelled) return
+
+        setCurrentStatus('en_curs')
+        setHoraInici(startTime)
+        setHoraFi(startTime)
+        setStatusHistory((prev) =>
+          applyStatusHistoryUpdate(
+            Array.isArray(prev) ? prev : [],
+            currentStatus,
+            'en_curs',
+            {
+              newSegmentStartTime: startTime,
+              note: null,
+              userId: '',
+              userName: '',
+            }
+          )
+        )
+      } catch (err) {
+        if (cancelled) return
+        setFormError(err instanceof Error ? err.message : 'No s ha pogut iniciar el ticket')
+      } finally {
+        if (!cancelled) setAutoStarting(false)
+      }
+    }
+
+    void autoStart()
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentStatus, ticket.id])
+
   const handleSelectStatus = (status: JourneyStatus) => {
     const now = defaultTime()
     const openStart =
@@ -95,22 +171,20 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
   }
 
   const handleSave = async () => {
-    if (!nextStatus) {
-      setFormError('Selecciona un estat.')
-      return
-    }
+    const effectiveStatus = nextStatus || currentStatus
 
     const closesPrevious = needsClosePreviousSegment(currentStatus)
-    const startsSegment = needsStartOnNextStatus(nextStatus) || nextStatus === 'fet'
-    const terminalEnd = nextStatus === 'fet' || nextStatus === 'no_fet' || nextStatus === 'validat'
+    const startsSegment = needsStartOnNextStatus(effectiveStatus) || effectiveStatus === 'fet'
+    const terminalEnd =
+      effectiveStatus === 'fet' || effectiveStatus === 'no_fet' || effectiveStatus === 'validat'
 
     const closeSegmentEndTime = closesPrevious || terminalEnd ? horaFi : undefined
     const newSegmentStartTime = startsSegment || terminalEnd ? horaInici : undefined
-    const newSegmentEndTime = nextStatus === 'fet' ? horaFi : terminalEnd ? horaFi : undefined
+    const newSegmentEndTime = effectiveStatus === 'fet' ? horaFi : terminalEnd ? horaFi : undefined
 
     const validationError = validateJourneyStatusPayload({
       currentStatus,
-      nextStatus,
+      nextStatus: effectiveStatus,
       closeSegmentEndTime,
       newSegmentStartTime,
       newSegmentEndTime,
@@ -131,7 +205,7 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          status: nextStatus,
+          status: effectiveStatus,
           statusStartTime: newSegmentStartTime || null,
           statusEndTime: closeSegmentEndTime || null,
           newSegmentEndTime: newSegmentEndTime || null,
@@ -161,6 +235,7 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     note,
     formError,
     busy,
+    autoStarting,
     showPhotos,
     existingImages,
     existingCompletionAttachments,

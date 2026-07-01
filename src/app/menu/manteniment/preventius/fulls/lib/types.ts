@@ -62,8 +62,11 @@ export type JourneyTicket = {
   ticketCode?: string | null
   incidentNumber?: string | null
   location?: string
+  workLocation?: string | null
   machine?: string
   description?: string
+  createdByName?: string | null
+  workerName?: string | null
   priority?: 'urgent' | 'alta' | 'normal' | 'baixa'
   status: MaintenanceStatus
   assignedToNames?: string[]

@@ -1243,7 +1243,9 @@ export default function PreventiusPlanificadorPage() {
                     <button
                       key={status}
                       type="button"
-                      onClick={() => setTicketsStatusFilter(status)}
+                      onClick={() =>
+                        setTicketsStatusFilter((current) => (current === status ? 'all' : status))
+                      }
                       className={[
                         'rounded-full px-3 py-2 text-xs font-semibold border inline-flex items-center gap-2',
                         ticketsStatusFilter === status

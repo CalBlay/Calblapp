@@ -57,6 +57,12 @@ export default function TicketJourneyStatusFields({
   onRemoveImage,
 }: Props) {
   const atLimit = imageCount >= maxCompletionImages
+  const notePlaceholder =
+    nextStatus === 'no_fet'
+      ? 'Motiu obligatori'
+      : nextStatus === 'espera'
+        ? 'Explica el motiu de la pausa'
+        : 'Opcional'
 
   return (
     <div className="space-y-4">
@@ -88,7 +94,7 @@ export default function TicketJourneyStatusFields({
           rows={4}
           value={note}
           onChange={(e) => onNoteChange(e.target.value)}
-          placeholder={nextStatus === 'no_fet' ? 'Motiu obligatori' : 'Opcional'}
+          placeholder={notePlaceholder}
         />
       </label>
 
