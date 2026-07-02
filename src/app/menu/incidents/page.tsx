@@ -4,6 +4,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { AlertTriangle, Clock3, FileText } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
@@ -27,6 +28,7 @@ import { incidentMatchesLnFilter } from '@/lib/incidentLn'
 import {
   INCIDENTS_CATEGORY_EDIT_PERM,
   INCIDENTS_COMMAND_BOARD_PERM,
+  INCIDENTS_ACCIONS_PATH,
   INCIDENTS_MEETING_MINUTES_PERM,
   INCIDENTS_TYPOLOGIES_MANAGE_PERM,
   INCIDENTS_QUADRE_PATH,
@@ -38,6 +40,7 @@ import ExportMenu from '@/components/export/ExportMenu'
 import { Button } from '@/components/ui/button'
 import MeetingMinutesDialog from './components/MeetingMinutesDialog'
 import MeetingMinutesHistoryDialog from './components/MeetingMinutesHistoryDialog'
+import IncidentNotificationsBell from './components/IncidentNotificationsBell'
 import {
   canDeleteIncident,
   normalizeIncidentStatus,
@@ -79,6 +82,7 @@ function incidentStatusDisplayLabel(raw?: string | null) {
 }
 
 export default function IncidentsPage() {
+  const searchParams = useSearchParams()
   const { data: session, status: sessionStatus } = useSession()
   const sessionUser = session?.user as {
     id?: string
@@ -189,6 +193,23 @@ export default function IncidentsPage() {
     isMarketingUser && !marketingDefaultSuppressed && filters.categoryLabel === 'all'
       ? MARKETING_DEFAULT_CATEGORY_FILTER
       : filters.categoryLabel
+
+  const deepLinkIncidentId = searchParams.get('incidentId')?.trim() || ''
+  const shouldExpandOps = searchParams.get('ops') === '1'
+
+  useEffect(() => {
+    if (searchParams.get('dateMode') !== 'all') return
+    setFilters((prev) =>
+      prev.dateMode === 'all'
+        ? prev
+        : {
+            ...prev,
+            dateMode: 'all',
+            from: undefined,
+            to: undefined,
+          }
+    )
+  }, [searchParams])
 
   const {
     incidents,
@@ -576,6 +597,13 @@ export default function IncidentsPage() {
         subtitle="Tauler de treball setmanal"
         actions={
           <div className="flex flex-wrap items-center gap-2 justify-end">
+            <IncidentNotificationsBell />
+            <Link
+              href={INCIDENTS_ACCIONS_PATH}
+              className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
+            >
+              Les meves accions
+            </Link>
             {canSeeQuadre ? (
               <Link
                 href={INCIDENTS_QUADRE_PATH}
@@ -697,6 +725,7 @@ export default function IncidentsPage() {
             incidents={visibleIncidents}
             actionsByIncident={actionsByIncident}
             daySort={filters.dateMode === 'event' ? 'chronological' : 'proximity'}
+            expandIncidentId={shouldExpandOps ? deepLinkIncidentId : undefined}
             onUpdate={updateIncident}
             onLocalPatch={patchIncidentLocal}
             onActionsLocalPatch={patchIncidentActionsLocal}

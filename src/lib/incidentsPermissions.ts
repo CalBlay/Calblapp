@@ -3,6 +3,7 @@ import { isProductionWorker, type AccessUser } from '@/lib/accessControl'
 
 export const INCIDENTS_UI_PATH = '/menu/incidents'
 export const INCIDENTS_QUADRE_PATH = '/menu/incidents/quadre'
+export const INCIDENTS_ACCIONS_PATH = '/menu/incidents/accions'
 
 export const INCIDENTS_ACTION = {
   MEETING_MINUTES: 'meeting-minutes',

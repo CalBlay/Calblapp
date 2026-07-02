@@ -3,6 +3,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import {
   canManageAllMaintenanceTickets,
   canManageMaintenanceTicketInbox,
+  canViewQualitatCuinaCentralMaintenanceTickets,
 } from '@/lib/server/maintenanceTicketsAccess'
 import {
   MAINTENANCE_TICKETS_PATH,
@@ -15,6 +16,11 @@ import {
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { resolveOpsChannelByLocationName } from '@/lib/opsMessagingChannels'
 import { resolveManualTicketRouting } from '@/lib/maintenanceTicketCreators'
+import {
+  fetchQualitatCuinaCentralTicketDocs,
+  getCuinaCentralUserIds,
+  isQualitatVisibleCuinaCentralTicket,
+} from '@/lib/server/qualitatCuinaCentralTickets'
 import { getMaintenanceDateRangeMs } from '@/lib/maintenanceDateFilter'
 
 export const runtime = 'nodejs'
@@ -269,6 +275,10 @@ export async function GET(req: Request) {
 
   const canViewAllTickets =
     (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
+  const canViewQualitatCuinaCentral = canViewQualitatCuinaCentralMaintenanceTickets(user)
+  const cuinaCentralUserIds = canViewQualitatCuinaCentral
+    ? new Set(await getCuinaCentralUserIds())
+    : null
 
   try {
     let ref: FirebaseFirestore.Query = db.collection('maintenanceTickets')
@@ -280,9 +290,11 @@ export async function GET(req: Request) {
       ref = ref.where('ticketType', '==', 'deco')
     }
 
+    const qualitatScopedQuery = canViewQualitatCuinaCentral && !canViewAllTickets
+
     if (assignedToId && canViewAllTickets) {
       ref = ref.where('assignedToIds', 'array-contains', assignedToId)
-    } else if (!canViewAllTickets && !assignedToId && user.id) {
+    } else if (!qualitatScopedQuery && !canViewAllTickets && !assignedToId && user.id) {
       ref = ref.where('createdById', '==', user.id)
     }
 
@@ -307,22 +319,54 @@ export async function GET(req: Request) {
       })
 
     let rawTickets: MaintenanceTicketRecord[] = []
-    try {
-      let orderedRef = ref.orderBy('createdAt', 'desc')
-      if (cursorCreatedAt > 0) orderedRef = orderedRef.startAfter(cursorCreatedAt)
-      const snap = await orderedRef.limit(Math.max(limit + 1, 100)).get()
-      rawTickets = mapTickets(snap)
-    } catch (queryErr: unknown) {
-      const message = queryErr instanceof Error ? queryErr.message : ''
-      const needsIndex = message.toLowerCase().includes('index')
-      if (!needsIndex) throw queryErr
-      let orderedFallbackRef = fallbackRef.orderBy('createdAt', 'desc')
-      if (cursorCreatedAt > 0) orderedFallbackRef = orderedFallbackRef.startAfter(cursorCreatedAt)
-      const fallbackSnap = await orderedFallbackRef.limit(Math.max(limit + 1, 500)).get()
-      rawTickets = mapTickets(fallbackSnap)
+    if (qualitatScopedQuery) {
+      const docs = await fetchQualitatCuinaCentralTicketDocs({
+        baseRef: ref,
+        cuinaCentralUserIds: Array.from(cuinaCentralUserIds || []),
+        viewerUserId: user.id,
+        limit,
+      })
+      rawTickets = docs.map((doc) => {
+        const data = doc.data() as MaintenanceTicketRecord
+        const createdAtSource = data.createdAt
+        const createdAt =
+          createdAtSource && typeof createdAtSource === 'object' && typeof createdAtSource.toDate === 'function'
+            ? createdAtSource.toDate().toISOString()
+            : data.createdAt || ''
+        return {
+          id: doc.id,
+          ...data,
+          status: normalizeStatus(data.status),
+          priority: normalizePriority(data.priority),
+          ticketType: (data.ticketType || 'maquinaria').toString().toLowerCase(),
+          externalized: hasExternalizationTrace(data),
+          createdAt,
+        }
+      })
+    } else {
+      try {
+        let orderedRef = ref.orderBy('createdAt', 'desc')
+        if (cursorCreatedAt > 0) orderedRef = orderedRef.startAfter(cursorCreatedAt)
+        const snap = await orderedRef.limit(Math.max(limit + 1, 100)).get()
+        rawTickets = mapTickets(snap)
+      } catch (queryErr: unknown) {
+        const message = queryErr instanceof Error ? queryErr.message : ''
+        const needsIndex = message.toLowerCase().includes('index')
+        if (!needsIndex) throw queryErr
+        let orderedFallbackRef = fallbackRef.orderBy('createdAt', 'desc')
+        if (cursorCreatedAt > 0) orderedFallbackRef = orderedFallbackRef.startAfter(cursorCreatedAt)
+        const fallbackSnap = await orderedFallbackRef.limit(Math.max(limit + 1, 500)).get()
+        rawTickets = mapTickets(fallbackSnap)
+      }
     }
 
     let tickets = rawTickets
+
+    if (qualitatScopedQuery && cuinaCentralUserIds) {
+      tickets = tickets.filter((ticket) =>
+        isQualitatVisibleCuinaCentralTicket(ticket, cuinaCentralUserIds, user.id)
+      )
+    }
 
     if (code) {
       tickets = tickets.filter((t) => {

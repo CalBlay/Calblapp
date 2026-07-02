@@ -5,7 +5,7 @@ import {
   ROBA_SUBMODULE_ROLES,
   robaVisibleSubmodulePaths,
 } from '@/lib/robaPersonalPermissions'
-import { isMaintenanceTicketCreatorDepartment } from '@/lib/maintenanceTicketCreators'
+import { isMaintenanceTicketCreatorDepartment, isQualitatDepartment } from '@/lib/maintenanceTicketCreators'
 
 /** Tipus d’usuari mínim */
 export interface AccessUser {
@@ -74,6 +74,15 @@ export function isExternalMaintenanceTicketReporter(user?: AccessUser): boolean 
   if (canManageMaintenanceTickets(user)) return false
   const dept = normalizeDept(user.department)
   return dept !== 'logistica' && dept !== 'manteniment'
+}
+
+/** Qualitat: consulta de tickets de manteniment de Cuina Central (només lectura). */
+export function isQualitatCuinaCentralTicketViewer(user?: AccessUser): boolean {
+  if (!user) return false
+  const role = normalizeRole(user.role)
+  if (role === 'admin' || role === 'direccio') return false
+  if (canManageMaintenanceTickets(user)) return false
+  return isQualitatDepartment(user.department)
 }
 
 /** Pot veure i gestionar tots els tickets (admin/cap manteniment). Logística: permís inbox. */
@@ -184,7 +193,7 @@ export const MODULES: ModuleDef[] = [
         label: 'Tickets',
         path: '/menu/manteniment/tickets',
         roles: ['admin','direccio','cap','usuari','treballador'],
-        departments: ['manteniment','logistica','cuina central','serveis'],
+        departments: ['manteniment','logistica','cuina central','serveis','qualitat'],
       },
       {
         label: 'Dades',
@@ -224,6 +233,12 @@ export const MODULES: ModuleDef[] = [
     roles: ['admin', 'direccio', 'cap', 'usuari', 'comercial'],
     departments: ['produccio', 'logistica', 'cuina', 'serveis', 'marqueting', 'marketing'],
     submodules: [
+      {
+        label: 'Les meves accions',
+        path: '/menu/incidents/accions',
+        roles: ['admin', 'direccio', 'cap', 'usuari', 'comercial', 'treballador'],
+        departments: ['produccio', 'logistica', 'cuina', 'serveis', 'marqueting', 'marketing'],
+      },
       {
         label: 'Quadre',
         path: '/menu/incidents/quadre',
@@ -470,7 +485,7 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
 
       if (mod.path === '/menu/manteniment') {
         if (
-          isMaintenanceTicketCreatorDepartment(dept) &&
+          (isMaintenanceTicketCreatorDepartment(dept) || isQualitatDepartment(dept)) &&
           (role === 'usuari' || role === 'treballador' || role === 'cap')
         ) {
           return true
@@ -525,7 +540,9 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
       }
 
       if (
-        (isMaintenanceTicketCreatorDepartment(dept) || isLogisticsMaintenanceTicketsManager(user)) &&
+        (isMaintenanceTicketCreatorDepartment(dept) ||
+          isLogisticsMaintenanceTicketsManager(user) ||
+          isQualitatDepartment(dept)) &&
         mod.path === '/menu/manteniment'
       ) {
         return {
@@ -536,7 +553,10 @@ export function getVisibleModules(user: AccessUser): ModuleDef[] {
 
       const visibleSubmodules = mod.submodules.filter(sub => {
         if (isProductionOperationalWorker && mod.path === '/menu/incidents') {
-          return sub.path === '/menu/incidents/quadre'
+          return (
+            sub.path === '/menu/incidents/quadre' ||
+            sub.path === '/menu/incidents/accions'
+          )
         }
 
         if (isProductionOperationalWorker && mod.path === '/menu/spaces') {

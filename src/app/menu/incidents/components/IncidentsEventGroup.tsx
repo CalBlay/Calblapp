@@ -24,6 +24,7 @@ type WindowWithEventModal = Window & { openEventModal?: (code: string) => void }
 interface Props {
   event: GroupedIncidentEvent
   actionsByIncident: Record<string, IncidentAction[]>
+  expandIncidentId?: string
   onUpdate: (id: string, d: Partial<Incident>) => Promise<unknown>
   onLocalPatch: (id: string, d: Partial<Incident>) => void
   onActionsLocalPatch: (id: string, actions: IncidentAction[]) => void
@@ -37,6 +38,7 @@ interface Props {
 export default function IncidentsEventGroup({
   event,
   actionsByIncident,
+  expandIncidentId,
   onUpdate,
   onLocalPatch,
   onActionsLocalPatch,
@@ -80,6 +82,19 @@ export default function IncidentsEventGroup({
       delete w.openEventModal
     }
   }, [])
+
+  useEffect(() => {
+    const id = String(expandIncidentId || '').trim()
+    if (!id || !event.rows.some((row) => row.id === id)) return
+    setExpandedOpsId(id)
+    setExpanded(true)
+    window.requestAnimationFrame(() => {
+      document.getElementById(`incident-row-${id}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    })
+  }, [expandIncidentId, event.rows])
 
   const beginEdit = useCallback((row: Incident) => {
     setEditingId(row.id)

@@ -6,6 +6,7 @@ import {
   canManageMaintenanceTicketInbox,
   canReopenMaintenanceTickets,
   canValidateMaintenanceTickets,
+  canViewQualitatCuinaCentralMaintenanceTickets,
 } from '@/lib/server/maintenanceTicketsAccess'
 import { clearStaleMaintenanceTicketNotifications } from '@/lib/maintenanceNotifications'
 import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
@@ -23,6 +24,10 @@ import {
   canCreatorValidateMaintenanceTicket,
   maintenanceTicketRequiresCreatorValidation,
 } from '@/lib/maintenanceTicketValidation'
+import {
+  getCuinaCentralUserIds,
+  isQualitatVisibleCuinaCentralTicket,
+} from '@/lib/server/qualitatCuinaCentralTickets'
 import {
   normalizeTicketWorkflowStage,
   type TicketAlertSnapshot,
@@ -211,6 +216,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const data = snap.data() as MaintenanceTicketRecord
     const canViewAllTickets =
       (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
+    const canViewQualitatCuinaCentral = canViewQualitatCuinaCentralMaintenanceTickets(user)
+    const cuinaCentralUserIds = canViewQualitatCuinaCentral
+      ? new Set(await getCuinaCentralUserIds())
+      : null
 
     const assignedIds = Array.isArray(data.assignedToIds) ? data.assignedToIds.map(String) : []
     const assignedNames = Array.isArray(data.assignedToNames)
@@ -221,7 +230,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       assignedIds.includes(String(user.id || '')) ||
       (!!sessionName && assignedNames.includes(sessionName))
 
-    if (!canViewAllTickets && data.createdById !== user.id && !canViewAssignedTicket) {
+    const canViewQualitatTicket =
+      canViewQualitatCuinaCentral &&
+      cuinaCentralUserIds &&
+      isQualitatVisibleCuinaCentralTicket(data, cuinaCentralUserIds, user.id)
+
+    if (
+      !canViewAllTickets &&
+      data.createdById !== user.id &&
+      !canViewAssignedTicket &&
+      !canViewQualitatTicket
+    ) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

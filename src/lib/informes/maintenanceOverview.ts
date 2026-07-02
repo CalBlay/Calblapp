@@ -71,6 +71,7 @@ export type MaintenanceWorkReportRow = {
   kind: 'ticket' | 'preventiu'
   code: string
   createdAt: string
+  lastActivityAt?: string
   location: string
   machine: string
   status: string

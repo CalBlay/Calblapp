@@ -110,6 +110,7 @@ function IncidentsRow({
   return (
     <>
       <tr
+        id={`incident-row-${inc.id}`}
         className={cn(
           'border-b hover:bg-slate-50',
           !opsExpanded && 'last:border-0'

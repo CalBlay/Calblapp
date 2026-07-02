@@ -57,11 +57,13 @@ type InternalWorkItem = {
   code: string
   eventAtMs: number
   createdAt: string
+  lastActivityAt?: string
   location: string
   machine: string
   status: string
   priority: string
   category: string
+  originalWorkerIds?: string[]
   workerIds: string[]
   workerNames: string[]
   statusHistory: StatusHistoryEntry[]
@@ -121,6 +123,10 @@ function toYmd(ms: number): string {
   return `${y}-${m}-${day}`
 }
 
+function toIsoOrEmpty(ms: number): string {
+  return ms > 0 ? new Date(ms).toISOString() : ''
+}
+
 function ymdToMsStart(ymd: string): number {
   const [y, m, d] = ymd.split('-').map(Number)
   return new Date(y, m - 1, d, 0, 0, 0, 0).getTime()
@@ -166,6 +172,65 @@ function resolveAssigneeNamesForAggregation(
 
   const fallback = personnelOptions.find((option) => option.value === operatorId)?.label?.trim() || ''
   return fallback ? [fallback] : ['Sense assignar']
+}
+
+function parseEntryAtMs(entry?: { at?: number | string | null } | null): number {
+  if (!entry) return 0
+  const raw = entry.at
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw < 1e12 ? raw * 1000 : raw
+  if (typeof raw === 'string') {
+    const parsed = Date.parse(raw)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 0
+}
+
+function resolveOperatorDisplayName(
+  item: InternalWorkItem,
+  operatorId: string,
+  personnelOptions: MaintenanceSelectOption[]
+): string {
+  const index = item.workerIds.findIndex((id) => id === operatorId)
+  const fromItem = index >= 0 ? String(item.workerNames[index] || '').trim() : ''
+  if (fromItem) return fromItem
+  return personnelOptions.find((option) => option.value === operatorId)?.label?.trim() || operatorId
+}
+
+function applyOperatorProjection(
+  item: InternalWorkItem,
+  operatorId: string,
+  personnelOptions: MaintenanceSelectOption[]
+): InternalWorkItem {
+  if (!operatorId) return item
+
+  const operatorName = resolveOperatorDisplayName(item, operatorId, personnelOptions)
+  const lastStatusEntry = item.statusHistory
+    .filter((entry) => String(entry?.byId || '').trim() === operatorId)
+    .map((entry) => ({
+      status: normalizeText((entry as StatusHistoryEntry & { status?: string }).status) || item.status,
+      atMs: parseEntryAtMs(entry),
+    }))
+    .sort((a, b) => a.atMs - b.atMs)
+    .at(-1)
+
+  const lastWorkLogAtMs = Array.isArray(item.workLogs)
+    ? item.workLogs
+        .filter((entry) => String(entry?.byId || '').trim() === operatorId)
+        .map((entry) => parseEntryAtMs(entry))
+        .reduce((max, value) => (value > max ? value : max), 0)
+    : 0
+
+  const operatorActivityAtMs = Math.max(lastStatusEntry?.atMs || 0, lastWorkLogAtMs)
+  const lastActivityAtMs = operatorActivityAtMs > 0 ? operatorActivityAtMs : item.eventAtMs
+
+  return {
+    ...item,
+    eventAtMs: lastActivityAtMs,
+    lastActivityAt: toIsoOrEmpty(lastActivityAtMs),
+    status: lastStatusEntry?.status || item.status,
+    workerIds: operatorName ? [operatorId] : item.workerIds,
+    workerNames: operatorName ? [operatorName] : item.workerNames,
+  }
 }
 
 function resolveWindow(params: BuildParams): { fromMs: number; toMs: number; context: MaintenanceReportContext } {
@@ -214,6 +279,7 @@ function toReportRow(item: InternalWorkItem & {
     kind: item.kind,
     code: item.code,
     createdAt: item.createdAt,
+    lastActivityAt: item.lastActivityAt || item.createdAt,
     location: item.location,
     machine: item.machine,
     status: STATUS_LABELS[item.status] || item.status,
@@ -277,6 +343,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       status: normalizeText(data.status) || 'nou',
       priority: normalizeText(data.priority) || 'normal',
       category: normalizeText(data.ticketType) || 'maquinaria',
+      originalWorkerIds: assigneeIds,
       workerIds: assigneeIds,
       workerNames: assigneeNames,
       statusHistory: Array.isArray(data.statusHistory) ? data.statusHistory : [],
@@ -299,6 +366,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       status: preventiu.status,
       priority: preventiu.priority,
       category: 'preventiu',
+      originalWorkerIds: preventiu.workerIds,
       workerIds: preventiu.workerIds,
       workerNames: preventiu.workerNames,
       statusHistory: preventiu.statusHistory,
@@ -313,27 +381,28 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
   const inWindow = allItems.filter((item) => item.eventAtMs >= fromMs && item.eventAtMs <= toMs)
 
   const withMetrics = inWindow.map((item) => {
+    const scopedItem = applyOperatorProjection(item, operatorId, personnelOperators)
     const workMinutesRaw =
-      item.kind === 'ticket'
+      scopedItem.kind === 'ticket'
         ? resolveTicketWorkMinutesForReport(
-            item.statusHistory,
-            item.workerIds,
+            scopedItem.statusHistory,
+            scopedItem.workerIds,
             operatorId || undefined,
-            item.workLogs
+            scopedItem.workLogs
           )
         : resolvePreventiuWorkMinutesForReport(
-            item.statusHistory,
-            item.workerIds,
-            item.plannedMinutes,
+            scopedItem.statusHistory,
+            scopedItem.workerIds,
+            scopedItem.plannedMinutes,
             operatorId || undefined
           )
     const travelBreakdown = addMaintenanceTravelToWorkMinutes(
       workMinutesRaw,
-      item.location,
+      scopedItem.location,
       travelIndex
     )
     return {
-      ...item,
+      ...scopedItem,
       workMinutes: travelBreakdown.workMinutes,
       travelMinutes: travelBreakdown.travelMinutes,
       totalMinutes: travelBreakdown.totalMinutes,
@@ -357,7 +426,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     }
     if (
       operatorId &&
-      !workInvolvesOperator(item.workerIds, item.statusHistory, operatorId, item.workLogs)
+      !workInvolvesOperator(item.originalWorkerIds || item.workerIds, item.statusHistory, operatorId, item.workLogs)
     ) {
       return false
     }

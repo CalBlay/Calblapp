@@ -96,6 +96,7 @@ export default function IncidentsMobileCard({
 
   return (
     <article
+      id={`incident-row-${inc.id}`}
       className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
       onClick={() => !isEditing && beginEdit(inc)}
     >

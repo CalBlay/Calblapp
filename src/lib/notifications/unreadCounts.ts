@@ -47,7 +47,9 @@ export function bucketForNotificationType(type: string): BucketKey | null {
   ) {
     return 'maintenance'
   }
-  if (normalized === 'incident_marketing_9xx_new') return 'incidents'
+  if (normalized === 'incident_marketing_9xx_new' || normalized === 'incident_action_assigned') {
+    return 'incidents'
+  }
   return null
 }
 

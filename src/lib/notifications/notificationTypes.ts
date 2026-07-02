@@ -21,4 +21,7 @@ export const MAINTENANCE_NOTIFICATION_TYPES = [
   'maintenance_ticket_external_stale',
 ] as const
 
-export const INCIDENT_NOTIFICATION_TYPES = ['incident_marketing_9xx_new'] as const
+export const INCIDENT_NOTIFICATION_TYPES = [
+  'incident_marketing_9xx_new',
+  'incident_action_assigned',
+] as const

@@ -48,6 +48,19 @@ function formatMinutes(minutes: number) {
   return `${h} h ${m} min`
 }
 
+function formatDateTime(value?: string) {
+  if (!value) return '—'
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed)) return value
+  return new Date(parsed).toLocaleString('ca-ES', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export function MaintenanceInformesPanel() {
   const [tab, setTab] = useState<'kpis' | 'custom'>('kpis')
   const [days, setDays] = useState('30')
@@ -196,6 +209,7 @@ export function MaintenanceInformesPanel() {
         Tipus: row.kind === 'preventiu' ? 'Preventiu' : 'Ticket',
         Codi: row.code,
         Creat: row.createdAt,
+        Ultim: row.lastActivityAt || '',
         Ubicacio: row.location,
         Maquina: row.machine || '—',
         Estat: row.status,
@@ -310,7 +324,7 @@ export function MaintenanceInformesPanel() {
 
       {tab === 'custom' ? (
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-2">
               <Label htmlFor="custom-from">Data inici</Label>
               <Input
@@ -424,7 +438,7 @@ export function MaintenanceInformesPanel() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2 xl:col-span-2">
+            <div className="space-y-2">
               <Label htmlFor="custom-assignee">Operari</Label>
               <Select
                 value={customAssigneeId || '__all__'}
@@ -559,6 +573,7 @@ export function MaintenanceInformesPanel() {
                   <TableRow>
                     <TableHead>Tipus</TableHead>
                     <TableHead>Codi</TableHead>
+                    <TableHead>Data últim</TableHead>
                     <TableHead>Ubicació</TableHead>
                     <TableHead>Estat</TableHead>
                     <TableHead>Prioritat</TableHead>
@@ -580,6 +595,7 @@ export function MaintenanceInformesPanel() {
                               : 'Ticket intern'}
                         </TableCell>
                         <TableCell className="font-medium">{row.code}</TableCell>
+                        <TableCell>{formatDateTime(row.lastActivityAt)}</TableCell>
                         <TableCell>{row.location || '—'}</TableCell>
                         <TableCell>{row.status}</TableCell>
                         <TableCell>{row.priority}</TableCell>
@@ -591,7 +607,7 @@ export function MaintenanceInformesPanel() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
                         Cap intervenció al període.
                       </TableCell>
                     </TableRow>

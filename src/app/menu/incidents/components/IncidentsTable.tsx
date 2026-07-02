@@ -15,6 +15,7 @@ interface Props {
   actionsByIncident: Record<string, IncidentAction[]>
   /** Amb rang de dates: primer dia del període a dalt; sense dates: proximitat a avui. */
   daySort?: IncidentDaySort
+  expandIncidentId?: string
   onUpdate: (id: string, data: Partial<Incident>) => Promise<unknown>
   onLocalPatch: (id: string, data: Partial<Incident>) => void
   onActionsLocalPatch: (id: string, actions: IncidentAction[]) => void
@@ -43,6 +44,7 @@ export default function IncidentsTable({
   incidents,
   actionsByIncident,
   daySort = 'chronological',
+  expandIncidentId,
   onUpdate,
   onLocalPatch,
   onActionsLocalPatch,
@@ -90,6 +92,7 @@ export default function IncidentsTable({
                   key={`${day}-${event.eventId || event.rows[0]?.eventId || i}`}
                   event={event}
                   actionsByIncident={actionsByIncident}
+                  expandIncidentId={expandIncidentId}
                   onUpdate={onUpdate}
                   onLocalPatch={onLocalPatch}
                   onActionsLocalPatch={onActionsLocalPatch}

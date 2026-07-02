@@ -5,6 +5,7 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
 import { normalizeIncidentActionStatus } from '@/lib/incidentPolicy'
 import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
+import { handleIncidentActionAssigneeSideEffects } from '@/lib/incidentActionNotifications'
 
 function tsToIso(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -69,6 +70,7 @@ export async function POST(req: Request) {
       incidentId?: string
       title?: string
       description?: string
+      assignedToId?: string
       assignedToName?: string
       department?: string
       dueAt?: string | null
@@ -84,6 +86,8 @@ export async function POST(req: Request) {
     if (!incSnap.exists) {
       return NextResponse.json({ error: 'Incidencia no trobada' }, { status: 404 })
     }
+    const incData = incSnap.data() as Record<string, unknown>
+    const incidentNumber = String(incData.incidentNumber || '').trim() || null
 
     const now = admin.firestore.Timestamp.now()
     const dueRaw = body.dueAt ? Date.parse(body.dueAt) : NaN
@@ -91,13 +95,16 @@ export async function POST(req: Request) {
       Number.isFinite(dueRaw) && dueRaw > 0 ? admin.firestore.Timestamp.fromMillis(dueRaw) : null
 
     const createdByName = (user.name || user.email || '').trim() || 'Usuari'
+    const assignedToId = String(body.assignedToId || '').trim()
+    const assignedToName = String(body.assignedToName || '').trim()
 
     const docRef = await firestoreAdmin.collection('incident_actions').add({
       incidentId,
       title,
       description: String(body.description || '').trim(),
       status: 'open',
-      assignedToName: String(body.assignedToName || '').trim(),
+      assignedToId,
+      assignedToName,
       department: String(body.department || '').trim(),
       dueAt,
       createdAt: now,
@@ -106,7 +113,38 @@ export async function POST(req: Request) {
       updatedAt: now,
       closedAt: null,
       closedByName: '',
+      outlookEventId: '',
+      outlookAssigneeEmail: '',
     })
+
+    const dueAtIso = dueAt ? dueAt.toDate().toISOString() : null
+    if (assignedToId || assignedToName) {
+      try {
+        const outlook = await handleIncidentActionAssigneeSideEffects({
+          actionId: docRef.id,
+          incidentId,
+          incidentNumber,
+          actionTitle: title,
+          assignedToId,
+          assignedToName,
+          dueAtIso,
+          department: String(body.department || '').trim(),
+          createdById: user.id,
+          notifyAssignment: true,
+        })
+        if (outlook.outlookEventId || outlook.outlookEmail) {
+          await docRef.set(
+            {
+              outlookEventId: outlook.outlookEventId || '',
+              outlookAssigneeEmail: outlook.outlookEmail || '',
+            },
+            { merge: true }
+          )
+        }
+      } catch (err) {
+        console.error('[incidents/actions POST] assignee side effects error', err)
+      }
+    }
 
     const created = await docRef.get()
     const d = created.data() as Record<string, unknown>

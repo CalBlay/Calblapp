@@ -26,7 +26,12 @@ function maintenanceTicketPushUrl(ticketId?: string | null) {
 /** URL de destí per tipus de notificació in-app (deep link push). */
 export function defaultPushUrlForNotificationType(
   type: string,
-  extras?: { ticketId?: string | null; projectId?: string | null; reservationId?: string | null }
+  extras?: {
+    ticketId?: string | null
+    projectId?: string | null
+    reservationId?: string | null
+    incidentId?: string | null
+  }
 ): string {
   switch (String(type || '').trim()) {
     case 'user_request':
@@ -51,7 +56,10 @@ export function defaultPushUrlForNotificationType(
     case 'maintenance_ticket_external_stale':
       return maintenanceTicketPushUrl(extras?.ticketId)
     case 'incident_marketing_9xx_new':
-      return '/menu/incidents'
+    case 'incident_action_assigned':
+      return extras?.incidentId
+        ? `/menu/incidents?incidentId=${encodeURIComponent(String(extras.incidentId))}`
+        : '/menu/incidents'
     case 'event_extras_registered':
       return '/menu/events'
     case 'event_comanda_warehouse':

@@ -27,6 +27,7 @@ function normalizeEntry(row: LegacyRow): MaintenanceWorkReportRow {
     kind,
     code: String(row.code || row.ticketCode || row.id || '').trim(),
     createdAt: String(row.createdAt || ''),
+    lastActivityAt: String(row.lastActivityAt || ''),
     location: String(row.location || ''),
     machine: String(row.machine || ''),
     status: String(row.status || ''),

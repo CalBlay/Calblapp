@@ -30,7 +30,9 @@ import {
 import {
   isCuinaCentralDepartment,
   isMaintenanceTicketCreatorOnlyUser,
+  canCreateMaintenanceTicketsAsReporter,
 } from '@/lib/maintenanceTicketCreators'
+import { isQualitatCuinaCentralTicketViewer } from '@/lib/accessControl'
 import { markTicketSeen } from '@/lib/maintenanceSeen'
 import { formatDateTimeValue } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
@@ -130,10 +132,13 @@ export default function MaintenanceTicketsPage() {
   const sessionUser = (session?.user || {}) as SessionUser
   const department = normalizeDept(sessionUser.department || '')
   const isOwnTicketsOnly = isMaintenanceTicketCreatorOnlyUser(sessionUser)
+  const isQualitatViewer = isQualitatCuinaCentralTicketViewer(sessionUser)
+  const canCreateNewTicket = canCreateMaintenanceTicketsAsReporter(sessionUser)
   const canManageInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
   const canDeleteAnyTicket = hasAction(MAINTENANCE_TICKETS_DELETE_PERM)
   const canManageAllTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM)
-  const canSeeMaintenanceBell = canManageAllTickets || canManageInbox || isPathAllowed('/menu/manteniment/tickets')
+  const canSeeMaintenanceBell =
+    canManageAllTickets || canManageInbox || canCreateNewTicket || isPathAllowed('/menu/manteniment/tickets')
   const canManageInboxTickets = canManageInbox
 
   const formatDateTime = (value?: number | string | null) => formatDateTimeValue(value, '')
@@ -495,7 +500,7 @@ export default function MaintenanceTicketsPage() {
           subtitle="Tickets"
           mainHref="/menu/manteniment"
           actions={
-            canViewPlanner || (canManageAllTickets || isOwnTicketsOnly) || canSeeMaintenanceBell ? (
+            canViewPlanner || (canManageAllTickets || canCreateNewTicket) || canSeeMaintenanceBell ? (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {canSeeMaintenanceBell ? <MaintenanceNotificationsBell /> : null}
                 {canViewPlanner ? (
@@ -507,7 +512,7 @@ export default function MaintenanceTicketsPage() {
                     Planificador
                   </Link>
                 ) : null}
-                {canManageAllTickets || isOwnTicketsOnly ? (
+                {canManageAllTickets || canCreateNewTicket ? (
                   <button
                     type="button"
                     className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
@@ -526,6 +531,13 @@ export default function MaintenanceTicketsPage() {
             {isCuinaCentralDepartment(department)
               ? 'Veus nomes els teus tickets. En crear-ne un de nou, es deriva al planificador de manteniment i aqui en pots seguir l evolucio.'
               : 'Veus nomes els teus tickets. Els nous entren a la safata de tickets de manteniment i aqui en pots seguir l evolucio.'}
+          </div>
+        ) : null}
+
+        {isQualitatViewer ? (
+          <div className="rounded-2xl border border-teal-200 bg-teal-50/80 px-4 py-3 text-sm text-teal-950">
+            Consulta tots els tickets de manteniment de Cuina Central i en pots crear de nous. Rebràs
+            notificacions dels teus tickets.
           </div>
         ) : null}
 

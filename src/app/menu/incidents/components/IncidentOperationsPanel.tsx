@@ -335,6 +335,10 @@ export default function IncidentOperationsPanel({
           incidentId: incident.id,
           title: newTitle.trim(),
           description: newDescription.trim(),
+          assignedToId:
+            newAssignee && newAssignee !== CAP_NONE
+              ? newFormCaps.find((c) => c.name === newAssignee)?.id || ''
+              : '',
           assignedToName: newAssignee && newAssignee !== CAP_NONE ? newAssignee : '',
           department: newDept.trim(),
           dueAt: newDue ? `${newDue}T12:00:00` : null,

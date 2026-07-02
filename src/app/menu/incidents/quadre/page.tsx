@@ -47,6 +47,7 @@ import {
 import { formatDateString } from '@/lib/formatDate'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import IncidentNotificationsBell from '../components/IncidentNotificationsBell'
 
 const IncidentsQuadreCharts = dynamic(
   () => import('./IncidentsQuadreCharts'),
@@ -515,14 +516,17 @@ export default function IncidentsQuadrePage() {
         subtitle="Indicadors segons data d’esdeveniment (mateix criteri que el tauler setmanal)"
         mainHref={canSeeBoard ? INCIDENTS_UI_PATH : undefined}
         actions={
-          canSeeBoard ? (
-            <Link
-              href={INCIDENTS_UI_PATH}
-              className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
-            >
-              Tauler de treball
-            </Link>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2 justify-end">
+            <IncidentNotificationsBell />
+            {canSeeBoard ? (
+              <Link
+                href={INCIDENTS_UI_PATH}
+                className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
+              >
+                Tauler de treball
+              </Link>
+            ) : null}
+          </div>
         }
       />
 

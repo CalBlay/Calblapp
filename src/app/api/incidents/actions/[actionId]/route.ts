@@ -8,6 +8,7 @@ import {
   canEditIncidentsModule,
   requireIncidentsModuleView,
 } from '@/lib/server/incidentsApiAuth'
+import { handleIncidentActionAssigneeSideEffects } from '@/lib/incidentActionNotifications'
 
 function tsToIso(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -40,6 +41,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
       title?: string
       description?: string
       status?: string
+      assignedToId?: string
       assignedToName?: string
       department?: string
       dueAt?: string | null
@@ -54,6 +56,17 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
     const now = admin.firestore.Timestamp.now()
     const patch: Record<string, unknown> = { updatedAt: now }
     const storedAssignedToName = String(snap.get('assignedToName') || '').trim()
+    const storedAssignedToId = String(snap.get('assignedToId') || '').trim()
+    const storedDueAt = snap.get('dueAt') as FirebaseFirestore.Timestamp | null | undefined
+    const storedOutlookEventId = String(snap.get('outlookEventId') || '').trim()
+    const storedOutlookEmail = String(snap.get('outlookAssigneeEmail') || '').trim()
+    const incidentId = String(snap.get('incidentId') || '').trim()
+    const actionTitle = String(snap.get('title') || '').trim()
+    const storedDepartment = String(snap.get('department') || '').trim()
+    const createdById = String(snap.get('createdById') || '').trim()
+
+    let assigneeChanged = false
+    let dueChanged = false
 
     if (typeof body.title === 'string') {
       const t = body.title.trim()
@@ -61,10 +74,20 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
       patch.title = t
     }
     if (typeof body.description === 'string') patch.description = body.description.trim()
-    if (typeof body.assignedToName === 'string') patch.assignedToName = body.assignedToName.trim()
+    if (typeof body.assignedToId === 'string') {
+      const nextId = body.assignedToId.trim()
+      if (nextId !== storedAssignedToId) assigneeChanged = true
+      patch.assignedToId = nextId
+    }
+    if (typeof body.assignedToName === 'string') {
+      const nextName = body.assignedToName.trim()
+      if (nextName !== storedAssignedToName) assigneeChanged = true
+      patch.assignedToName = nextName
+    }
     if (typeof body.department === 'string') patch.department = body.department.trim()
 
     if (body.dueAt !== undefined) {
+      dueChanged = true
       if (body.dueAt === null || body.dueAt === '') {
         patch.dueAt = null
       } else {
@@ -102,6 +125,52 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
     }
 
     await ref.set(patch, { merge: true })
+
+    if (assigneeChanged || dueChanged) {
+      const updatedSnap = await ref.get()
+      const d = updatedSnap.data() as Record<string, unknown>
+      const nextAssignedToId = String(d.assignedToId || '').trim()
+      const nextAssignedToName = String(d.assignedToName || '').trim()
+      const nextDepartment = String(d.department || storedDepartment).trim()
+      const nextTitle = String(d.title || actionTitle).trim()
+      const nextDueAt = d.dueAt as FirebaseFirestore.Timestamp | null | undefined
+      const nextDueIso = nextDueAt ? nextDueAt.toDate().toISOString() : null
+
+      let incidentNumber: string | null = null
+      if (incidentId) {
+        const incSnap = await firestoreAdmin.collection('incidents').doc(incidentId).get()
+        if (incSnap.exists) {
+          incidentNumber = String(incSnap.get('incidentNumber') || '').trim() || null
+        }
+      }
+
+      try {
+        const outlook = await handleIncidentActionAssigneeSideEffects({
+          actionId: id,
+          incidentId,
+          incidentNumber,
+          actionTitle: nextTitle,
+          assignedToId: nextAssignedToId,
+          assignedToName: nextAssignedToName,
+          dueAtIso: nextDueIso,
+          department: nextDepartment,
+          createdById,
+          previousOutlookEventId: storedOutlookEventId,
+          previousOutlookEmail: storedOutlookEmail,
+          notifyAssignment: assigneeChanged && !!(nextAssignedToId || nextAssignedToName),
+        })
+        await ref.set(
+          {
+            outlookEventId: outlook.outlookEventId || '',
+            outlookAssigneeEmail: outlook.outlookEmail || '',
+          },
+          { merge: true }
+        )
+      } catch (err) {
+        console.error('[incidents/actions PATCH] assignee side effects error', err)
+      }
+    }
+
     const updated = await ref.get()
     const d = updated.data() as Record<string, unknown>
 

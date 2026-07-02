@@ -122,6 +122,22 @@ export function isCuinaCentralLocation(raw?: string | null) {
   return loc === 'cuina central' || loc.replace(/\s+/g, '') === 'cuinacentral'
 }
 
+export function isQualitatDepartment(raw?: string | null) {
+  const dept = normalizeDept(raw)
+  return dept === 'qualitat'
+}
+
+export function isCuinaCentralMaintenanceTicket(ticket: {
+  location?: string | null
+  source?: string | null
+  intakeChannel?: string | null
+}) {
+  if (isCuinaCentralLocation(ticket.location)) return true
+  const source = String(ticket.source || '').trim()
+  const intake = String(ticket.intakeChannel || '').trim()
+  return source === 'manual_cuina_central' || intake === 'manual_cuina_central'
+}
+
 /** Personal de restaurant (OPS) que crea tickets al mòdul Tickets. */
 export function isRestaurantOpsDepartment(raw?: string | null) {
   const dept = normalizeDept(raw)
@@ -136,13 +152,31 @@ export function isMaintenanceTicketCreatorDepartment(raw?: string | null) {
   return isCuinaCentralDepartment(raw) || isRestaurantOpsDepartment(raw)
 }
 
+/** Pot crear tickets des del mòdul (Cuina Central, Serveis, Qualitat). */
+export function canCreateMaintenanceTicketsAsReporter(user: {
+  role?: string | null
+  department?: string | null
+}) {
+  const role = normalizeRole(user.role || '')
+  const dept = normalizeDept(user.department || '')
+  if (role === 'admin' || role === 'direccio') return false
+  if (role === 'cap' && isMaintenanceCapDepartment(dept)) return false
+  return isMaintenanceTicketCreatorDepartment(dept) || isQualitatDepartment(dept)
+}
+
 /** Cal indicar qui reporta el ticket (comptes genèrics de restaurant). */
 export function requiresMaintenanceTicketWorkerName(params: {
   department?: string | null
   location?: string | null
 }): boolean {
   const location = String(params.location || '').trim()
-  if (isCuinaCentralDepartment(params.department) || isCuinaCentralLocation(location)) return true
+  if (
+    isCuinaCentralDepartment(params.department) ||
+    isQualitatDepartment(params.department) ||
+    isCuinaCentralLocation(location)
+  ) {
+    return true
+  }
   if (isRestaurantOpsDepartment(params.department)) return true
   if (!location) return false
   const routing = resolveManualTicketRouting({
@@ -230,7 +264,7 @@ export function resolveManualTicketRouting(params: {
 }): ManualTicketRouting {
   const location = String(params.location || '').trim()
 
-  if (isCuinaCentralDepartment(params.department) || isCuinaCentralLocation(params.location)) {
+  if (isCuinaCentralDepartment(params.department) || isQualitatDepartment(params.department) || isCuinaCentralLocation(params.location)) {
     return {
       source: 'manual_cuina_central',
       intakeChannel: 'manual_cuina_central',

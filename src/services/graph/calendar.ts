@@ -107,6 +107,14 @@ type CreateTaskDeadlineEventInput = {
   deadline: string
 }
 
+type CreateIncidentActionDeadlineEventInput = {
+  assigneeEmail: string
+  actionTitle: string
+  incidentNumber?: string | null
+  deadline: string
+  department?: string | null
+}
+
 type SendProjectMissedActivityEmailInput = {
   senderEmail: string
   recipient: ProjectRecipient
@@ -888,6 +896,59 @@ export async function createTaskDeadlineCalendarEvent(input: CreateTaskDeadlineE
   }
 }
 
+export async function createIncidentActionDeadlineCalendarEvent(
+  input: CreateIncidentActionDeadlineEventInput
+): Promise<{ id: string; webLink: string }> {
+  const deadline = String(input.deadline || '').trim()
+  const assigneeEmail = String(input.assigneeEmail || '').trim()
+  if (!deadline || !assigneeEmail) {
+    return { id: '', webLink: '' }
+  }
+
+  const incidentLabel = String(input.incidentNumber || '').trim() || 'Incidència'
+  const accessToken = await getAccessToken()
+  const endDate = addOneDay(deadline)
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        subject: `Acció incidència · ${input.actionTitle || 'Acció'} · ${incidentLabel}`,
+        body: {
+          contentType: 'HTML',
+          content: buildIncidentActionDeadlineEventHtml(input),
+        },
+        start: {
+          dateTime: `${deadline}T00:00:00`,
+          timeZone: 'Europe/Madrid',
+        },
+        end: {
+          dateTime: `${endDate}T00:00:00`,
+          timeZone: 'Europe/Madrid',
+        },
+        isAllDay: true,
+        isReminderOn: true,
+      }),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`No s'ha pogut crear l'acció d'incidència al calendari: ${response.status} ${text}`)
+  }
+
+  const data = (await response.json()) as GraphEventResponse
+  return {
+    id: data.id || '',
+    webLink: data.webLink || '',
+  }
+}
+
 export async function sendProjectMissedActivityEmail(input: SendProjectMissedActivityEmailInput) {
   const recipientEmail = String(input.recipient.email || '').trim()
   const senderEmail = String(input.senderEmail || '').trim()
@@ -1350,6 +1411,16 @@ function buildTaskDeadlineEventHtml(projectName: string, blockName: string, task
     <p><strong>Projecte:</strong> ${escapeHtml(projectName || 'Projecte')}</p>
     <p><strong>Bloc:</strong> ${escapeHtml(blockName || 'Bloc')}</p>
     <p><strong>Data limit:</strong> ${escapeHtml(formatBarcelonaDate(deadline))}</p>
+  `
+}
+
+function buildIncidentActionDeadlineEventHtml(input: CreateIncidentActionDeadlineEventInput) {
+  const dept = String(input.department || '').trim()
+  return `
+    <p>Data limit de l'acció <strong>${escapeHtml(input.actionTitle || 'Acció')}</strong> d'incidència.</p>
+    <p><strong>Incidència:</strong> ${escapeHtml(String(input.incidentNumber || '').trim() || '—')}</p>
+    ${dept ? `<p><strong>Departament:</strong> ${escapeHtml(dept)}</p>` : ''}
+    <p><strong>Data limit:</strong> ${escapeHtml(formatBarcelonaDate(input.deadline))}</p>
   `
 }
 

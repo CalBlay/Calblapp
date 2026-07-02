@@ -189,7 +189,12 @@ function MaintenanceNotificationItems({
   )
 }
 
-export default function MaintenanceNotificationsBell() {
+export default function MaintenanceNotificationsBell({
+  showWhenEmpty = true,
+}: {
+  /** Mantenir visible la campaneta encara sense avisos pendents (creadors de tickets). */
+  showWhenEmpty?: boolean
+}) {
   const { data: session } = useSession()
   const userId = String((session?.user as { id?: string })?.id || '').trim()
   const { data, mutate } = useSWR(userId ? '/api/notifications?mode=list' : null, fetcher)
@@ -235,6 +240,8 @@ export default function MaintenanceNotificationsBell() {
     <ModuleNotificationsBell
       title="Avisos de manteniment"
       count={notifications.length}
+      showWhenEmpty={showWhenEmpty}
+      emptyMessage="Cap avís de manteniment pendent"
       headerActions={
         <button
           type="button"
