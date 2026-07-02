@@ -7,6 +7,7 @@ import {
   deriveBlockStatus,
   formatProjectCost,
   sumTaskCosts,
+  applyDependencyLocksToBlocks,
   type ProjectBlock,
   type ProjectData,
   type ProjectDocument,
@@ -173,22 +174,27 @@ export function useProjectBlocksTasksActions({
       documents: [],
     }
 
-    setProject((current) => ({
-      ...current,
-      blocks: current.blocks.map((blockItem) =>
+    setProject((current) => {
+      const updatedBlocks = current.blocks.map((blockItem) =>
         blockItem.id === blockId
-          ? (() => {
-              const nextTasks = [...blockItem.tasks, nextTask]
-              return {
-                ...blockItem,
-                budget: formatProjectCost(sumTaskCosts(nextTasks)),
-                tasks: nextTasks,
-                status: deriveBlockStatus({ ...blockItem, tasks: nextTasks }),
-              }
-            })()
+          ? {
+              ...blockItem,
+              tasks: [...blockItem.tasks, nextTask],
+            }
           : blockItem
-      ),
-    }))
+      )
+
+      const lockedBlocks = applyDependencyLocksToBlocks(updatedBlocks).map((blockItem) => ({
+        ...blockItem,
+        budget: formatProjectCost(sumTaskCosts(blockItem.tasks || [])),
+        status: deriveBlockStatus(blockItem),
+      }))
+
+      return {
+        ...current,
+        blocks: lockedBlocks,
+      }
+    })
     onBlocksDirty()
     setTaskDraft(createTaskDraft())
     setShowTaskComposer(false)
@@ -197,12 +203,12 @@ export function useProjectBlocksTasksActions({
 
   const setTaskField = useCallback(
     <K extends keyof ProjectTask>(blockId: string, taskId: string, field: K, value: ProjectTask[K]) => {
-      setProject((current) => ({
-        ...current,
-        blocks: current.blocks.map((block) =>
+      setProject((current) => {
+        const updatedBlocks = current.blocks.map((block) =>
           block.id === blockId
-            ? (() => {
-                const nextTasks = block.tasks.map((task) =>
+            ? {
+                ...block,
+                tasks: block.tasks.map((task) =>
                   task.id === taskId
                     ? {
                         ...task,
@@ -212,17 +218,22 @@ export function useProjectBlocksTasksActions({
                             : value,
                       }
                     : task
-                )
-                return {
-                  ...block,
-                  budget: formatProjectCost(sumTaskCosts(nextTasks)),
-                  tasks: nextTasks,
-                  status: deriveBlockStatus({ ...block, tasks: nextTasks }),
-                }
-              })()
+                ),
+              }
             : block
-        ),
-      }))
+        )
+
+        const lockedBlocks = applyDependencyLocksToBlocks(updatedBlocks).map((block) => ({
+          ...block,
+          budget: formatProjectCost(sumTaskCosts(block.tasks || [])),
+          status: deriveBlockStatus(block),
+        }))
+
+        return {
+          ...current,
+          blocks: lockedBlocks,
+        }
+      })
       onBlocksDirty()
     },
     [onBlocksDirty, setProject]

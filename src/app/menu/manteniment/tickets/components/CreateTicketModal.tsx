@@ -87,7 +87,7 @@ export default function CreateTicketModal({
   setCreateMachine,
   createDescription,
   setCreateDescription,
-  needsWorkerName = false,
+  needsWorkerName: _needsWorkerName = false,
   showMachineList,
   setShowMachineList,
   priorityLabels,

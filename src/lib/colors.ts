@@ -81,6 +81,33 @@ const DEPARTMENT_BADGE_PALETTE = [
   'bg-cyan-200 border border-cyan-500 text-cyan-950 shadow-sm',
 ] as const
 
+const DEPARTMENT_DOT_PALETTE = [
+  'bg-sky-500',
+  'bg-orange-500',
+  'bg-violet-500',
+  'bg-amber-500',
+  'bg-pink-500',
+  'bg-emerald-500',
+  'bg-rose-500',
+  'bg-fuchsia-500',
+  'bg-cyan-500',
+  'bg-blue-500',
+  'bg-red-500',
+  'bg-lime-500',
+  'bg-teal-500',
+  'bg-green-500',
+  'bg-indigo-500',
+  'bg-yellow-500',
+  'bg-purple-500',
+  'bg-stone-500',
+  'bg-slate-500',
+  'bg-sky-600',
+  'bg-orange-600',
+  'bg-emerald-600',
+  'bg-rose-600',
+  'bg-cyan-600',
+] as const
+
 const departmentColorIndex = (key: string) => {
   let hash = 0
   for (let i = 0; i < key.length; i += 1) {
@@ -161,6 +188,12 @@ export const colorByDepartment = (departmentRaw?: string): string => {
   const key = normalizeDepartmentLabel(departmentRaw)
   if (!key) return 'bg-gray-50 border border-gray-200 text-gray-700'
   return DEPARTMENT_BADGE_PALETTE[departmentColorIndex(key)]
+}
+
+export const dotByDepartment = (departmentRaw?: string): string => {
+  const key = normalizeDepartmentLabel(departmentRaw)
+  if (!key) return 'bg-slate-400'
+  return DEPARTMENT_DOT_PALETTE[departmentColorIndex(key)]
 }
 
 export const colorByStage = (stage?: string): string => {

@@ -10,9 +10,11 @@ import {
   userHasGlobalProjectListAccess,
   userParticipatesInProject,
 } from '@/lib/projectParticipation'
-import { deriveProjectPhase } from '@/app/menu/projects/components/project-shared'
 import {
-  canTaskAdvanceFromPending,
+  applyDependencyLocksToBlocks,
+  canChangeTaskStatus,
+  deriveBlockStatus,
+  deriveProjectPhase,
   getTaskDependencyMeta,
   normalizeTaskWorkflowStatus,
 } from '@/app/menu/projects/components/project-shared'
@@ -742,13 +744,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const nextBlocksForValidation = (
       Array.isArray(payload.blocks) ? payload.blocks : currentData.blocks || []
     ) as ProjectBlock[]
+
+    if (Array.isArray(payload.blocks)) {
+      payload.blocks = applyDependencyLocksToBlocks(nextBlocksForValidation).map((block) => ({
+        ...block,
+        status: deriveBlockStatus(block),
+      }))
+    }
+
+    const lockedBlocksForValidation = (
+      Array.isArray(payload.blocks) ? payload.blocks : nextBlocksForValidation
+    ) as ProjectBlock[]
     const currentTasksById = new Map(
       (currentBlocks as ProjectBlock[]).flatMap((block) =>
         (block.tasks || []).map((task) => [String(task.id || '').trim(), task] as const)
       )
     )
 
-    for (const block of nextBlocksForValidation) {
+    for (const block of lockedBlocksForValidation) {
       for (const task of Array.isArray(block.tasks) ? block.tasks : []) {
         const taskId = String(task?.id || '').trim()
         if (!taskId) continue
@@ -756,13 +769,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const previousStatus = normalizeTaskWorkflowStatus(previousTask?.status)
         const nextStatus = normalizeTaskWorkflowStatus(task?.status)
 
-        if (previousStatus === 'pending' && nextStatus !== 'pending' && !canTaskAdvanceFromPending(task, nextBlocksForValidation)) {
-          const dependency = getTaskDependencyMeta(nextBlocksForValidation, task)
+        if (previousStatus !== nextStatus && !canChangeTaskStatus(task, nextStatus, lockedBlocksForValidation)) {
+          const dependency = getTaskDependencyMeta(lockedBlocksForValidation, task)
           const taskName = String(task?.title || 'Tasca').trim()
           const dependencyName = String(dependency?.dependencyTask.title || 'la tasca prèvia').trim()
           return NextResponse.json(
             {
-              error: `La tasca "${taskName}" no pot sortir de pendent fins que "${dependencyName}" estigui feta.`,
+              error: `La tasca "${taskName}" no es pot moure fins que "${dependencyName}" estigui feta.`,
             },
             { status: 400 }
           )

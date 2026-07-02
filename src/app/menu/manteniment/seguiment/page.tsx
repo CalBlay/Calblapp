@@ -196,8 +196,8 @@ export default function MaintenanceSeguimentPage() {
   )
 
   const {
-    ticketRows,
-    preventiuRows,
+    ticketRows: _ticketRows,
+    preventiuRows: _preventiuRows,
     currentRows,
     statusCounts,
     summaryStatuses,

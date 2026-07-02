@@ -1,15 +1,10 @@
-﻿'use client'
+'use client'
 
 import { useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   CalendarDays,
-  ChevronDown,
   FileText,
-  MessagesSquare,
-  Paperclip,
   Save,
-  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import FilterButton from '@/components/ui/filter-button'
@@ -24,9 +19,7 @@ import {
 } from '@/lib/corporate-filters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { toast } from '@/components/ui/use-toast'
-import { Input } from '@/components/ui/input'
 import { useFilters } from '@/context/FiltersContext'
-import { colorByDepartment } from '@/lib/colors'
 import { cn } from '@/lib/utils'
 import {
   Select,
@@ -38,17 +31,16 @@ import {
 import {
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
-  canTaskAdvanceFromPending,
-  formatProjectDate,
+  canChangeTaskStatus,
   getTaskDependencyMeta,
   getPreLaunchDeadline,
-  type ProjectDocument,
+  normalizeTaskWorkflowStatus,
   type ProjectBlock,
   type ProjectSprint,
   type ProjectTask,
 } from './project-shared'
 import ProjectTaskQuickComposer from './ProjectTaskQuickComposer'
-import ProjectTaskDependencyPicker from './ProjectTaskDependencyPicker'
+import ProjectTaskCard from './ProjectTaskCard'
 import VirtualizedKanbanColumn from './VirtualizedKanbanColumn'
 import { projectEmptyStateClass } from './project-ui'
 import { type ResponsibleOption } from './project-workspace-helpers'
@@ -113,9 +105,6 @@ type Props = {
   onOpenTaskMeeting?: (blockId: string, taskId: string) => void
 }
 
-const documentName = (document?: ProjectDocument) =>
-  String(document?.name || document?.label || 'Document').trim()
-
 const statusColumnTheme: Record<string, { header: string; column: string; badge: string }> = {
   pending: {
     header: 'border-sky-300 bg-sky-200/90',
@@ -137,39 +126,6 @@ const statusColumnTheme: Record<string, { header: string; column: string; badge:
     column: 'bg-emerald-50/90',
     badge: 'bg-white text-slate-700 shadow-sm',
   },
-}
-
-const priorityTintClass = (priority?: string) => {
-  switch (priority) {
-    case 'low':
-      return 'bg-slate-500/70'
-    case 'high':
-      return 'bg-amber-500/80'
-    case 'critical':
-      return 'bg-rose-600/85'
-    case 'normal':
-    default:
-      return 'bg-violet-500/75'
-  }
-}
-
-const taskDayDiffFromToday = (value?: string | null) => {
-  const raw = String(value || '').trim()
-  if (!raw) return null
-  const target = new Date(raw.length === 10 ? `${raw}T00:00:00` : raw)
-  if (Number.isNaN(target.getTime())) return null
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const end = new Date(target.getFullYear(), target.getMonth(), target.getDate())
-  return Math.round((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-}
-
-const taskDeadlineAccentClass = (daysLeft: number | null, status?: string) => {
-  if (status === 'done' || daysLeft === null) return 'text-slate-700'
-  if (daysLeft < 0) return 'text-rose-700'
-  if (daysLeft <= 3) return 'text-rose-700'
-  if (daysLeft <= 7) return 'text-amber-800'
-  return 'text-slate-700'
 }
 
 export default function ProjectTasksTab({
@@ -208,7 +164,6 @@ export default function ProjectTasksTab({
   onOpenTaskMeeting,
 }: Props) {
   void onResetTaskDraft
-  const router = useRouter()
   const { setContent, setOpen } = useFilters()
   const [draggingTaskKey, setDraggingTaskKey] = useState<string | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
@@ -252,8 +207,7 @@ export default function ProjectTasksTab({
     if (!dependency) return
     toast({
       title: 'Tasca bloquejada per dependència',
-      description: `No pots començar "${task.title || 'aquesta tasca'}" fins que "${dependency.dependencyTask.title || 'la tasca prèvia'}" estigui feta.`,
-      variant: 'destructive',
+      description: `No pots moure "${task.title || 'aquesta tasca'}" fins que "${dependency.dependencyTask.title || 'la tasca prèvia'}" estigui feta.`,
     })
   }
 
@@ -278,10 +232,16 @@ export default function ProjectTasksTab({
       return
     }
 
-    if (
-      isLeavingPending &&
-      !canTaskAdvanceFromPending(currentEntry.task, projectBlocks)
-    ) {
+    const currentStatus = normalizeTaskWorkflowStatus(currentTask?.status)
+    const nextStatus = normalizeTaskWorkflowStatus(status)
+
+    if (currentStatus === nextStatus) {
+      setDragOverStatus(null)
+      setDraggingTaskKey(null)
+      return
+    }
+
+    if (!canChangeTaskStatus(currentEntry.task, status, projectBlocks)) {
       showDependencyBlockedToast(currentEntry.task)
       setDragOverStatus(null)
       setDraggingTaskKey(null)
@@ -543,7 +503,7 @@ export default function ProjectTasksTab({
                         className="mt-4"
                         items={columnTasks}
                         getItemKey={(entry) => entry.taskKey}
-                        estimateSize={editingTaskKey ? 320 : 196}
+                        estimateSize={editingTaskKey ? 440 : 210}
                         renderItem={({ block, task, taskKey }) => {
                           const roomId = roomIdByBlockId.get(block.id) || `room-block-${block.id}`
                           const roomHref = `/menu/projects/${projectId}/rooms/${roomId}`
@@ -553,377 +513,57 @@ export default function ProjectTasksTab({
                           const canMoveCurrentTask = canMoveTask(block, task)
                           const canExpandCurrentTask = canAccessOpsCurrentTask
                           const isObserverTask = !canAccessOpsCurrentTask
-                          const taskDaysLeft = taskDayDiffFromToday(task.deadline)
-                          const docCount = (task.documents || []).length
-                          const meetingCount = (task.meetings || []).length
                           const dependencyMeta = dependencyMetaByTaskId.get(task.id) || null
-                          const taskMetaParts: string[] = []
-                          if (dependencyMeta) {
-                            taskMetaParts.push(
-                              dependencyMeta.isResolved
-                                ? `Dependència feta: ${formatProjectDate(dependencyMeta.dependencyTask.deadline)}`
-                                : `Dependència fins ${formatProjectDate(dependencyMeta.dependencyTask.deadline)}`
-                            )
-                          }
-                          if (docCount > 0) taskMetaParts.push(`${docCount} doc${docCount === 1 ? '' : 's'}`)
-                          if (meetingCount > 0) {
-                            taskMetaParts.push(`${meetingCount} reunió${meetingCount === 1 ? '' : 's'}`)
-                          }
-                          if (isObserverTask) taskMetaParts.push('Observador')
-                          if (canMoveCurrentTask) taskMetaParts.push('Arrossega per moure')
                           return (
-                          <div
-                            key={taskKey}
-                            id={`project-task-${taskKey}`}
-                            draggable={canMoveCurrentTask}
-                            onDragStart={() => {
-                              if (!canMoveCurrentTask) return
-                              setDraggingTaskKey(taskKey)
-                            }}
-                            onDragEnd={() => {
-                              setDraggingTaskKey(null)
-                              setDragOverStatus(null)
-                            }}
-                            className={`group relative rounded-[18px] border p-4 shadow-sm transition ${
-                              draggingTaskKey === taskKey
-                                ? 'cursor-grabbing opacity-60'
-                                : canAccessOpsCurrentTask
-                                  ? 'border-slate-200 bg-white hover:border-violet-300 hover:shadow-md'
-                                  : 'border-slate-200 bg-slate-50/90 cursor-default opacity-70 saturate-[0.85]'
-                            }`}
-                          >
-                            <span
-                              className={`absolute left-0 top-5 h-12 w-1 rounded-r-full ${priorityTintClass(task.priority)}`}
-                              aria-hidden="true"
+                            <ProjectTaskCard
+                              key={taskKey}
+                              id={`project-task-${taskKey}`}
+                              taskKey={taskKey}
+                              task={task}
+                              block={block}
+                              isExpanded={editingTaskKey === taskKey}
+                              isDragging={draggingTaskKey === taskKey}
+                              draggable
+                              canManage={canManageCurrentTask}
+                              canExpand={canExpandCurrentTask}
+                              canAccessOps={canAccessOpsCurrentTask}
+                              canMove={canMoveCurrentTask}
+                              canConvokeMeeting={canConvokeCurrentTaskMeeting}
+                              isObserver={isObserverTask}
+                              dependencyMeta={dependencyMeta}
+                              projectBlocks={projectBlocks}
+                              taskResponsibleOptions={taskResponsibleOptions}
+                              maxDeadline={maxDeadline}
+                              titleHref={canAccessOpsCurrentTask ? roomHref : undefined}
+                              blockHref={canAccessOpsCurrentTask ? roomHref : undefined}
+                              blockLinkTitle={BLOCK_WORKSPACE_OPEN_LABEL}
+                              onToggleExpand={() => {
+                                onSetEditingTaskKey((current) => (current === taskKey ? null : taskKey))
+                              }}
+                              onDragStart={() => setDraggingTaskKey(taskKey)}
+                              onDragEnd={() => {
+                                setDraggingTaskKey(null)
+                                setDragOverStatus(null)
+                              }}
+                              onRemove={() => onRemoveTask(block.id, task.id)}
+                              onOpenMeeting={
+                                onOpenTaskMeeting
+                                  ? () => onOpenTaskMeeting(block.id, task.id)
+                                  : undefined
+                              }
+                              onAttachDocument={(file) => onAttachTaskDocument(block.id, task.id, file)}
+                              onAttachClick={() => fileInputsRef.current[taskKey]?.click()}
+                              onRemoveDocument={(documentId) =>
+                                onRemoveTaskDocument(block.id, task.id, documentId)
+                              }
+                              fileInputRef={(node) => {
+                                fileInputsRef.current[taskKey] = node
+                              }}
+                              onSetField={(field, value) => {
+                                onSetTaskField(block.id, task.id, field, value)
+                              }}
                             />
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 pl-2">
-                                <div className="flex items-start justify-between gap-3">
-                                  {canAccessOpsCurrentTask ? (
-                                    <button
-                                      type="button"
-                                      className={cn(
-                                        'min-w-0 flex-1 text-left text-[15px] font-semibold leading-5 hover:underline',
-                                        isObserverTask ? 'text-slate-700 hover:text-violet-700' : 'text-slate-900 hover:text-violet-700'
-                                      )}
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        router.push(roomHref)
-                                      }}
-                                      title={BLOCK_WORKSPACE_OPEN_LABEL}
-                                    >
-                                      {task.title}
-                                    </button>
-                                  ) : (
-                                    <div className={`min-w-0 flex-1 text-[15px] font-semibold leading-5 ${isObserverTask ? 'text-slate-700' : 'text-slate-900'}`}>
-                                      {task.title}
-                                    </div>
-                                  )}
-                                  <span
-                                    className={`shrink-0 pt-0.5 text-sm font-semibold ${
-                                      isObserverTask
-                                        ? 'text-slate-500'
-                                        : taskDeadlineAccentClass(taskDaysLeft, task.status)
-                                    }`}
-                                  >
-                                    {task.deadline ? formatProjectDate(task.deadline) : 'Sense deadline'}
-                                  </span>
-                                </div>
-                                <div className={`mt-1 text-[15px] ${isObserverTask ? 'text-slate-500' : 'text-slate-800'}`}>
-                                  {task.owner || 'Sense responsable'}
-                                </div>
-                                {task.description ? (
-                                  <div className={`mt-1 line-clamp-1 text-[15px] ${isObserverTask ? 'text-slate-500' : 'text-slate-800'}`}>
-                                    {task.description}
-                                  </div>
-                                ) : null}
-                                {dependencyMetaByTaskId.get(task.id) && !dependencyMetaByTaskId.get(task.id)?.isResolved ? (
-                                  <div className="mt-2 inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-medium text-amber-800">
-                                    Esperant "{dependencyMetaByTaskId.get(task.id)?.dependencyTask.title || 'tasca prèvia'}"
-                                  </div>
-                                ) : null}
-                              </div>
-
-                              <div className="flex shrink-0 items-start gap-0.5">
-                                {canAccessOpsCurrentTask ? (
-                                  <input
-                                    ref={(node) => {
-                                      fileInputsRef.current[taskKey] = node
-                                    }}
-                                    type="file"
-                                    className="hidden"
-                                    onChange={(event) => {
-                                      if (!canAccessOpsCurrentTask) return
-                                      const file = event.target.files?.[0]
-                                      if (!file) return
-                                      onAttachTaskDocument(block.id, task.id, file)
-                                      event.currentTarget.value = ''
-                                    }}
-                                  />
-                                ) : null}
-                                {canExpandCurrentTask ? (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 rounded-full text-slate-600"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      onSetEditingTaskKey((current) => (current === taskKey ? null : taskKey))
-                                    }}
-                                    aria-label={editingTaskKey === taskKey ? 'Plegar edicio' : 'Desplegar edicio'}
-                                  >
-                                    <ChevronDown
-                                      className={`h-4 w-4 transition-transform ${
-                                        editingTaskKey === taskKey ? 'rotate-180' : ''
-                                      }`}
-                                    />
-                                  </Button>
-                                ) : null}
-                                {canConvokeCurrentTaskMeeting && onOpenTaskMeeting ? (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 rounded-full text-slate-500 hover:text-violet-700"
-                                    aria-label="Convocar reunió"
-                                    title="Convocar reunió"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      onOpenTaskMeeting(block.id, task.id)
-                                    }}
-                                  >
-                                    <CalendarDays className="h-4 w-4" />
-                                  </Button>
-                                ) : null}
-                                {canAccessOpsCurrentTask ? (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 rounded-full text-slate-500 hover:text-violet-700"
-                                    aria-label="Adjuntar document"
-                                    title="Adjuntar document"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      fileInputsRef.current[taskKey]?.click()
-                                    }}
-                                  >
-                                    <Paperclip className="h-4 w-4" />
-                                  </Button>
-                                ) : null}
-                                {canManageCurrentTask ? (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 rounded-full text-slate-400 hover:text-rose-600"
-                                    aria-label="Eliminar tasca"
-                                    title="Eliminar tasca"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      onRemoveTask(block.id, task.id)
-                                    }}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            <div className="mt-3 space-y-1.5 pl-2">
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                {canAccessOpsCurrentTask ? (
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      router.push(roomHref)
-                                    }}
-                                    className={cn(
-                                      'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition hover:text-violet-700',
-                                      isObserverTask
-                                        ? 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-violet-50'
-                                        : 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200/75 hover:bg-violet-50'
-                                    )}
-                                    title={BLOCK_WORKSPACE_OPEN_LABEL}
-                                    aria-label={BLOCK_WORKSPACE_OPEN_LABEL}
-                                  >
-                                    <MessagesSquare className="h-3 w-3" />
-                                    <span>{block.name}</span>
-                                  </button>
-                                ) : (
-                                  <span
-                                    className={cn(
-                                      'rounded-md px-2 py-0.5 text-[11px] font-medium',
-                                      isObserverTask
-                                        ? 'bg-white text-slate-500 ring-1 ring-slate-200'
-                                        : 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200/75'
-                                    )}
-                                  >
-                                    {block.name}
-                                  </span>
-                                )}
-                                {task.department ? (
-                                  <span
-                                    className={cn(
-                                      isObserverTask
-                                        ? 'rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200'
-                                        : cn(
-                                            colorByDepartment(task.department),
-                                            'rounded-md border-0 px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ring-slate-200/75'
-                                          )
-                                    )}
-                                  >
-                                    {task.department}
-                                  </span>
-                                ) : null}
-                              </div>
-                              <p
-                                className={`text-xs leading-snug ${isObserverTask ? 'text-slate-400' : 'text-slate-500'}`}
-                              >
-                                {taskMetaParts.join(' · ')}
-                              </p>
-                            </div>
-
-                            {editingTaskKey !== taskKey ? (
-                              <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                                <div
-                                  className="h-full rounded-full bg-slate-400"
-                                  style={{ width: `${Math.max(percent, 8)}%` }}
-                                />
-                              </div>
-                            ) : null}
-
-                            {editingTaskKey === taskKey && canExpandCurrentTask ? (
-                              <div className="mt-4 space-y-3 pt-3">
-                                <div
-                                  className={cn(
-                                    'grid gap-3',
-                                    canManageCurrentTask
-                                      ? 'sm:grid-cols-[130px_170px_minmax(0,1fr)]'
-                                      : 'sm:grid-cols-2'
-                                  )}
-                                >
-                                  <div className="min-w-0">
-                                    <Select
-                                      value={task.priority || 'normal'}
-                                      onValueChange={(value) => {
-                                        onSetTaskField(block.id, task.id, 'priority', value)
-                                      }}
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Nivell" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {TASK_PRIORITY_OPTIONS.slice(0, 3).map((option) => (
-                                          <SelectItem key={`${task.id}-priority-${option.value}`} value={option.value}>
-                                            {option.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div className="min-w-0">
-                                    <Input
-                                      type="date"
-                                      value={task.deadline}
-                                      aria-label="Data limit"
-                                      max={getPreLaunchDeadline(block.deadline) || maxDeadline || undefined}
-                                      onChange={(event) => {
-                                        onSetTaskField(block.id, task.id, 'deadline', event.target.value)
-                                      }}
-                                    />
-                                  </div>
-                                  {canManageCurrentTask ? (
-                                    <div className="min-w-0">
-                                      <Input
-                                        value={task.cost || ''}
-                                        placeholder="Cost"
-                                        onChange={(event) => {
-                                          onSetTaskField(block.id, task.id, 'cost', event.target.value)
-                                        }}
-                                      />
-                                    </div>
-                                  ) : null}
-                                </div>
-                                {canManageCurrentTask ? (
-                                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                    <div className="min-w-0 sm:col-span-2">
-                                      <ProjectTaskDependencyPicker
-                                        blocks={projectBlocks}
-                                        dependsOn={task.dependsOn || ''}
-                                        excludeTaskId={task.id}
-                                        idPrefix={`${task.id}-depends`}
-                                        onDependsOnChange={(value) => {
-                                          if (value === task.id) return
-                                          onSetTaskField(block.id, task.id, 'dependsOn', value)
-                                        }}
-                                      />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <Select
-                                        value={task.owner || 'none'}
-                                        onValueChange={(value) => {
-                                          onSetTaskField(block.id, task.id, 'owner', value === 'none' ? '' : value)
-                                        }}
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="Responsable" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="none">Sense responsable</SelectItem>
-                                          {taskResponsibleOptions(
-                                            task.department || block.departments?.[0] || block.department || '',
-                                            block.id
-                                          ).map((option) => (
-                                            <SelectItem key={`${option.id}-${option.name}`} value={option.name}>
-                                              {option.name}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                  </div>
-                                ) : null}
-
-                                {(task.documents || []).length > 0 ? (
-                                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                                    <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
-                                      Documents
-                                    </div>
-                                    <div className="space-y-2">
-                                      {(task.documents || []).map((document) => (
-                                        <div key={document?.id || documentName(document)} className="flex items-center justify-between gap-3 text-sm">
-                                          <button
-                                            type="button"
-                                            className="truncate text-left text-slate-700 hover:text-violet-700"
-                                            onClick={() => {
-                                              if (document?.url) window.open(document.url, '_blank', 'noopener,noreferrer')
-                                            }}
-                                          >
-                                            {documentName(document)}
-                                          </button>
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7 rounded-full text-red-600 hover:bg-red-50 hover:text-red-700"
-                                            onClick={() => {
-                                              if (document?.id) onRemoveTaskDocument(block.id, task.id, document.id)
-                                            }}
-                                          >
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                          </Button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        )
+                          )
                         }}
                       />
                     )}

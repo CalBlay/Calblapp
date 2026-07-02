@@ -1,4 +1,4 @@
-import { EMPTY_KICKOFF, deriveProjectPhase, type ProjectData } from './project-shared'
+import { EMPTY_KICKOFF, applyDependencyLocksToBlocks, deriveBlockStatus, deriveProjectPhase, type ProjectData } from './project-shared'
 
 export type ProjectApiResponse = {
   id: string
@@ -67,54 +67,61 @@ export function normalizeProjectResponse(data: ProjectApiResponse): ProjectData 
               : 'planned',
         }))
       : [],
-    blocks: Array.isArray(data.blocks)
-      ? data.blocks.map((block) => ({
-          id: block.id || `block-${Date.now()}`,
-          name: block.name || '',
-          summary: block.summary || '',
-          department: block.department || '',
-          departments: Array.isArray((block as { departments?: string[] }).departments)
-            ? ((block as { departments?: string[] }).departments || []).map(String)
-            : block.department
-              ? [String(block.department)]
+    blocks: (() => {
+      const mappedBlocks = Array.isArray(data.blocks)
+        ? data.blocks.map((block) => ({
+            id: block.id || `block-${Date.now()}`,
+            name: block.name || '',
+            summary: block.summary || '',
+            department: block.department || '',
+            departments: Array.isArray((block as { departments?: string[] }).departments)
+              ? ((block as { departments?: string[] }).departments || []).map(String)
+              : block.department
+                ? [String(block.department)]
+                : [],
+            owner: block.owner || '',
+            deadline: block.deadline || '',
+            budget: String(block.budget || ''),
+            dependsOn: block.dependsOn || '',
+            status: block.status || 'pending',
+            tasks: Array.isArray((block as { tasks?: ProjectData['blocks'][number]['tasks'] }).tasks)
+              ? ((block as { tasks?: ProjectData['blocks'][number]['tasks'] }).tasks || []).map(
+                  (task) => ({
+                    id: task.id || `task-${Date.now()}`,
+                    title: task.title || '',
+                    description: task.description || '',
+                    department: task.department || '',
+                    owner: task.owner || '',
+                    deadline: task.deadline || '',
+                    dependsOn: task.dependsOn || '',
+                    sprintId: task.sprintId || '',
+                    storyPoints: task.storyPoints || '3',
+                    cost: task.cost || '',
+                    priority: task.priority || 'normal',
+                    status: task.status || 'pending',
+                    documents: Array.isArray(task.documents)
+                      ? task.documents.map((item, index) => ({
+                          id: item?.id || `task-doc-${index}-${Date.now()}`,
+                          category: item?.category || 'other',
+                          label: item?.label || item?.name || '',
+                          name: item?.name || '',
+                          path: item?.path || '',
+                          url: item?.url || '',
+                          size: item?.size || 0,
+                          type: item?.type || '',
+                        }))
+                      : [],
+                  })
+                )
               : [],
-          owner: block.owner || '',
-          deadline: block.deadline || '',
-          budget: String(block.budget || ''),
-          dependsOn: block.dependsOn || '',
-          status: block.status || 'pending',
-          tasks: Array.isArray((block as { tasks?: ProjectData['blocks'][number]['tasks'] }).tasks)
-            ? ((block as { tasks?: ProjectData['blocks'][number]['tasks'] }).tasks || []).map(
-                (task) => ({
-                  id: task.id || `task-${Date.now()}`,
-                  title: task.title || '',
-                  description: task.description || '',
-                  department: task.department || '',
-                  owner: task.owner || '',
-                  deadline: task.deadline || '',
-                  dependsOn: task.dependsOn || '',
-                  sprintId: task.sprintId || '',
-                  storyPoints: task.storyPoints || '3',
-                  cost: task.cost || '',
-                  priority: task.priority || 'normal',
-                  status: task.status || 'pending',
-                  documents: Array.isArray(task.documents)
-                    ? task.documents.map((item, index) => ({
-                        id: item?.id || `task-doc-${index}-${Date.now()}`,
-                        category: item?.category || 'other',
-                        label: item?.label || item?.name || '',
-                        name: item?.name || '',
-                        path: item?.path || '',
-                        url: item?.url || '',
-                        size: item?.size || 0,
-                        type: item?.type || '',
-                      }))
-                    : [],
-                })
-              )
-            : [],
-        }))
-      : [],
+          }))
+        : []
+
+      return applyDependencyLocksToBlocks(mappedBlocks).map((block) => ({
+        ...block,
+        status: deriveBlockStatus(block),
+      }))
+    })(),
     rooms: Array.isArray(data.rooms)
       ? data.rooms.map((room) => ({
           id: room.id || `room-${Date.now()}`,

@@ -318,6 +318,51 @@ export const canTaskAdvanceFromPending = (
   return !dependency || dependency.isResolved
 }
 
+export const hasUnresolvedTaskDependency = (
+  task: Pick<ProjectTask, 'dependsOn'>,
+  blocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>
+) => !canTaskAdvanceFromPending(task, blocks)
+
+export const canChangeTaskStatus = (
+  task: Pick<ProjectTask, 'dependsOn' | 'status'>,
+  nextStatus: string,
+  blocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>
+) => {
+  const next = normalizeTaskWorkflowStatus(nextStatus)
+  if (hasUnresolvedTaskDependency(task, blocks)) {
+    return next === 'blocked'
+  }
+  return true
+}
+
+export const resolveTaskStatusWithDependencies = (
+  task: ProjectTask,
+  blocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>
+): ProjectTask => {
+  const status = normalizeTaskWorkflowStatus(task.status)
+  if (status === 'done') return task
+
+  if (hasUnresolvedTaskDependency(task, blocks)) {
+    return status === 'blocked' ? task : { ...task, status: 'blocked' }
+  }
+
+  if (status === 'blocked') {
+    return { ...task, status: 'pending' }
+  }
+
+  return task
+}
+
+export const applyDependencyLocksToBlocks = <T extends Pick<ProjectBlock, 'id' | 'tasks'>>(
+  blocks: T[]
+): T[] =>
+  blocks.map((block) => ({
+    ...block,
+    tasks: (Array.isArray(block.tasks) ? block.tasks : []).map((task) =>
+      resolveTaskStatusWithDependencies(task as ProjectTask, blocks)
+    ),
+  }))
+
 export type ProjectTaskDependencyOption = {
   id: string
   label: string

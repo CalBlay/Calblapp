@@ -50,7 +50,10 @@ export default function PissarraPage() {
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
-  const searchParamsSafe = searchParams ?? new URLSearchParams()
+  const searchParamsSafe = useMemo(
+    () => searchParams ?? new URLSearchParams(),
+    [searchParams]
+  )
 
   const role = normalizeRole(session?.user?.role || 'treballador')
   const dept = (session?.user?.department || '').toLowerCase()

@@ -240,7 +240,7 @@ export function useMaintenanceTickets() {
     refreshTickets: () => fetchTickets(),
     defaultCenter: defaultCreateCenter,
     defaultWorkerName: defaultCreateWorkerName,
-    defaultLocation: '',
+    defaultLocation: defaultCreateLocation,
   })
 
   useEffect(() => {

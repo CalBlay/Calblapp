@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { ChevronDown, FileText, Paperclip, Plus, Save } from 'lucide-react'
+import { FileText, Paperclip, Plus, Save } from 'lucide-react'
 import ChannelChatHeader from '@/components/messaging/ChannelChatHeader'
 import ChannelParticipantsPanel from '@/components/messaging/ChannelParticipantsPanel'
 import { Button } from '@/components/ui/button'
@@ -34,11 +34,10 @@ import {
   getBlockDepartments,
   getPreLaunchDeadline,
   getPrimaryBlockDepartment,
-  TASK_PRIORITY_OPTIONS,
-  TASK_STATUS_OPTIONS,
+  getTaskDependencyMeta,
   type ProjectData,
 } from '../../../components/project-shared'
-import { priorityBadgeClass, taskStatusBadgeClass } from '../../../components/project-workspace-helpers'
+import ProjectTaskCard from '../../../components/ProjectTaskCard'
 
 import type { InviteUserOption } from '@/lib/messaging/userSearch'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
@@ -256,10 +255,15 @@ export default function ProjectRoomDetailPage() {
     documentsView === 'initial'
       ? inheritedInitialDocuments
       : [...inheritedOperationalDocuments, ...taskDocuments, ...roomDocuments]
-  const statusLabel = (value?: string) =>
-    TASK_STATUS_OPTIONS.find((option) => option.value === value)?.label || value || 'Pendent'
-  const priorityLabel = (value?: string) =>
-    TASK_PRIORITY_OPTIONS.find((option) => option.value === value)?.label || value || 'Normal'
+  const dependencyMetaByTaskId = useMemo(
+    () =>
+      new Map(
+        linkedTasks.map(
+          (task) => [task.id, getTaskDependencyMeta(project?.blocks || [], task)] as const
+        )
+      ),
+    [linkedTasks, project?.blocks]
+  )
   const dayDiffFromToday = (value?: string | null) => {
     const raw = String(value || '').trim()
     if (!raw) return null
@@ -270,23 +274,7 @@ export default function ProjectRoomDetailPage() {
     const end = new Date(target.getFullYear(), target.getMonth(), target.getDate())
     return Math.round((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
   }
-  const deadlineBadgeClass = (daysLeft: number | null, status?: string) => {
-    if (status === 'done') return 'bg-emerald-100 text-emerald-700'
-    if (daysLeft === null) return 'bg-slate-100 text-slate-700'
-    if (daysLeft < 0) return 'bg-rose-100 text-rose-700'
-    if (daysLeft <= 3) return 'bg-rose-100 text-rose-700'
-    if (daysLeft <= 7) return 'bg-amber-100 text-amber-800'
-    return 'bg-emerald-100 text-emerald-700'
-  }
-  const deadlineBadgeLabel = (daysLeft: number | null, status?: string) => {
-    if (status === 'done') return 'Feta en termini'
-    if (daysLeft === null) return 'Sense data'
-    if (daysLeft < 0) return `Retard ${Math.abs(daysLeft)} dies`
-    if (daysLeft === 0) return 'Venc avui'
-    if (daysLeft === 1) return 'Falta 1 dia'
-    return `Falten ${daysLeft} dies`
-  }
-  const blockDaysLeft = dayDiffFromToday(currentBlock?.deadline)
+  const _blockDaysLeft = dayDiffFromToday(currentBlock?.deadline)
   const generalRoom = useMemo(
     () => project?.rooms?.find((item) => item.kind === 'general') || null,
     [project?.rooms]
@@ -387,7 +375,23 @@ export default function ProjectRoomDetailPage() {
     return Array.from(byName.values())
   }, [currentBlock, project?.owner, project?.sponsor, users])
 
-  const persistRoom = async (
+  const updateRoomLocal = useCallback((updater: (currentRoom: ResolvedRoom) => ResolvedRoom) => {
+    setProject((current) => {
+      if (!current) return current
+      const exists = (current.rooms || []).some((item) => item.id === params?.roomId)
+      const targetRoom = (current.rooms || []).find((item) => item.id === params?.roomId) || fallbackRoom
+      if (!targetRoom) return current
+      const updated = updater(targetRoom)
+      return {
+        ...current,
+        rooms: exists
+          ? (current.rooms || []).map((item) => (item.id === params?.roomId ? updated : item))
+          : [...(current.rooms || []), updated],
+      }
+    })
+  }, [fallbackRoom, params?.roomId])
+
+  const persistRoom = useCallback(async (
     nextRoom: ResolvedRoom,
     nextTasks?: typeof linkedTasks
   ) => {
@@ -414,23 +418,7 @@ export default function ProjectRoomDetailPage() {
     } finally {
       setSaving(false)
     }
-  }
-
-  const updateRoomLocal = useCallback((updater: (currentRoom: ResolvedRoom) => ResolvedRoom) => {
-    setProject((current) => {
-      if (!current) return current
-      const exists = (current.rooms || []).some((item) => item.id === params?.roomId)
-      const targetRoom = (current.rooms || []).find((item) => item.id === params?.roomId) || fallbackRoom
-      if (!targetRoom) return current
-      const updated = updater(targetRoom)
-      return {
-        ...current,
-        rooms: exists
-          ? (current.rooms || []).map((item) => (item.id === params?.roomId ? updated : item))
-          : [...(current.rooms || []), updated],
-      }
-    })
-  }, [fallbackRoom, params?.roomId])
+  }, [params?.id, params?.roomId, updateRoomLocal])
 
   useEffect(() => {
     if (!params?.id || !params?.roomId || !currentRoom || currentRoom.opsChannelId) return
@@ -461,7 +449,7 @@ export default function ProjectRoomDetailPage() {
     }
   }, [currentRoom, params?.id, params?.roomId, updateRoomLocal])
 
-  const updateBlockTasksLocal = (tasks: NonNullable<typeof linkedBlock>['tasks']) => {
+  const updateBlockTasksLocal = useCallback((tasks: NonNullable<typeof linkedBlock>['tasks']) => {
     setProject((current) => {
       if (!current || !currentRoom?.blockId) return current
       return {
@@ -471,7 +459,7 @@ export default function ProjectRoomDetailPage() {
         ),
       }
     })
-  }
+  }, [currentRoom?.blockId])
 
   const addParticipantFromInvite = async (user: InviteUserOption) => {
     if (!currentRoom || !user.name) return
@@ -680,14 +668,14 @@ export default function ProjectRoomDetailPage() {
       )
       updateBlockTasksLocal(nextTasks)
     },
-    [currentBlock]
+    [currentBlock, updateBlockTasksLocal]
   )
 
   const saveLinkedTasks = useCallback(async () => {
     if (!currentRoom || !currentBlock) return
     await persistRoom(currentRoom, currentBlock.tasks || [])
     toast({ title: 'Tasca actualitzada' })
-  }, [currentBlock, currentRoom])
+  }, [currentBlock, currentRoom, persistRoom])
 
   const closeHashTaskModal = () => {
     setHashTaskDraft(null)
@@ -974,135 +962,39 @@ export default function ProjectRoomDetailPage() {
                   </div>
                 ) : null}
 
-                {linkedTasks.length > 0 ? (
+                {linkedTasks.length > 0 && currentBlock ? (
                   <div className="space-y-2">
                     {linkedTasks.map((task) => (
-                      (() => {
-                        const daysLeft = dayDiffFromToday(task.deadline)
-                        const isEditingLinkedTask = editingLinkedTaskId === task.id
-                        return (
-                      <div
+                      <ProjectTaskCard
                         key={task.id}
-                        className={`rounded-2xl border px-4 py-3 ${
-                          task.status !== 'done' && daysLeft !== null && daysLeft < 0
-                            ? 'border-rose-200 bg-rose-50/70'
-                            : 'border-slate-200'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <Link
-                            href={`/menu/projects/${params?.id}?tab=tasks&blockId=${encodeURIComponent(currentBlock?.id || '')}&taskId=${encodeURIComponent(task.id)}`}
-                            className="text-sm font-medium text-slate-900 hover:text-violet-700 hover:underline"
-                          >
-                            {task.title}
-                          </Link>
-                          {canManageLinkedTasks ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 rounded-full text-slate-500"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setEditingLinkedTaskId((current) => (current === task.id ? null : task.id))
-                              }}
-                              aria-label={isEditingLinkedTask ? 'Plegar edició' : 'Editar tasca'}
-                              title={isEditingLinkedTask ? 'Plegar edició' : 'Editar tasca'}
-                            >
-                              <ChevronDown className={`h-4 w-4 transition-transform ${isEditingLinkedTask ? 'rotate-180' : ''}`} />
-                            </Button>
-                          ) : null}
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <span className={`rounded-full px-2.5 py-1 font-medium ${colorByDepartment(task.department || getPrimaryBlockDepartment(currentBlock || { department: '', departments: [] }) || '')}`}>
-                            {task.department || getPrimaryBlockDepartment(currentBlock || { department: '', departments: [] }) || 'Sense departament'}
-                          </span>
-                          <span>{task.owner || 'Sense responsable'}</span>
-                          <span>·</span>
-                          <span>{formatProjectDate(task.deadline)}</span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                          <span className={`rounded-full px-3 py-1 ${taskStatusBadgeClass(task.status)}`}>
-                            {statusLabel(task.status)}
-                          </span>
-                          <span className={`rounded-full px-3 py-1 ${priorityBadgeClass(task.priority)}`}>
-                            {priorityLabel(task.priority)}
-                          </span>
-                          <span className={`rounded-full px-3 py-1 ${deadlineBadgeClass(daysLeft, task.status)}`}>
-                            {deadlineBadgeLabel(daysLeft, task.status)}
-                          </span>
-                        </div>
-                        {isEditingLinkedTask ? (
-                          <div className="mt-3 space-y-3 rounded-xl border border-slate-200 bg-white/80 p-3">
-                            <Input
-                              value={task.title || ''}
-                              maxLength={28}
-                              onChange={(event) => updateLinkedTaskField(task.id, 'title', event.target.value.slice(0, 28))}
-                              placeholder="Nom de la tasca"
-                            />
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <Select
-                                value={task.owner || 'none'}
-                                onValueChange={(value) => updateLinkedTaskField(task.id, 'owner', value === 'none' ? '' : value)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Sense responsable" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="none">Sense responsable</SelectItem>
-                                  {roomTaskResponsibleOptions.map((option) => (
-                                    <SelectItem key={`${task.id}-owner-${option.id}`} value={option.name}>
-                                      {option.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-
-                              <Input
-                                type="date"
-                                value={task.deadline || ''}
-                                max={getPreLaunchDeadline(currentBlock?.deadline) || getPreLaunchDeadline(project?.launchDate) || undefined}
-                                onChange={(event) =>
-                                  updateLinkedTaskField(
-                                    task.id,
-                                    'deadline',
-                                    clampProjectDeadline(event.target.value, currentBlock?.deadline || project?.launchDate)
-                                  )
-                                }
-                              />
-
-                              <Select
-                                value={task.status || 'pending'}
-                                onValueChange={(value) => updateLinkedTaskField(task.id, 'status', value)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Estat" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {TASK_STATUS_OPTIONS.map((option) => (
-                                    <SelectItem key={`${task.id}-status-${option.value}`} value={option.value}>
-                                      {option.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-
-                              <Select
-                                value={task.priority || 'normal'}
-                                onValueChange={(value) => updateLinkedTaskField(task.id, 'priority', value)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Prioritat" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {TASK_PRIORITY_OPTIONS.map((option) => (
-                                    <SelectItem key={`${task.id}-priority-${option.value}`} value={option.value}>
-                                      {option.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                        task={task}
+                        block={currentBlock}
+                        showBlockName={false}
+                        titleHref={`/menu/projects/${params?.id}?tab=tasks&blockId=${encodeURIComponent(currentBlock.id)}&taskId=${encodeURIComponent(task.id)}`}
+                        isExpanded={editingLinkedTaskId === task.id}
+                        canExpand={canManageLinkedTasks}
+                        canManage={canManageLinkedTasks}
+                        canAccessOps={canManageLinkedTasks}
+                        dependencyMeta={dependencyMetaByTaskId.get(task.id) || null}
+                        projectBlocks={project?.blocks || []}
+                        maxDeadline={getPreLaunchDeadline(project?.launchDate) || undefined}
+                        taskResponsibleOptions={() =>
+                          roomTaskResponsibleOptions.map((option) => ({
+                            id: option.id,
+                            name: option.name,
+                            role: '',
+                            email: '',
+                            department: '',
+                          }))
+                        }
+                        onToggleExpand={() => {
+                          setEditingLinkedTaskId((current) => (current === task.id ? null : task.id))
+                        }}
+                        onSetField={(field, value) => {
+                          updateLinkedTaskField(task.id, field, value)
+                        }}
+                        expandedFooter={
+                          canManageLinkedTasks ? (
                             <div className="flex justify-end">
                               <Button
                                 type="button"
@@ -1117,14 +1009,12 @@ export default function ProjectRoomDetailPage() {
                                 Guardar canvis
                               </Button>
                             </div>
-                          </div>
-                        ) : null}
-                      </div>
-                        )
-                      })()
+                          ) : null
+                        }
+                      />
                     ))}
                   </div>
-                ) : (
+                ) : linkedTasks.length > 0 ? null : (
                   <div className="text-sm text-slate-500">Aquesta sala encara no te tasques vinculades.</div>
                 )}
 

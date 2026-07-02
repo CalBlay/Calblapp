@@ -34,10 +34,11 @@ import {
   getPreLaunchDeadline,
   getTaskDependencyHint,
   summarizeBlockTasks,
+  type ProjectBlock,
   type ProjectData,
+  type ProjectTask,
 } from './project-shared'
 import {
-  projectCardMetaClass,
   projectCardTitleClass,
   projectBlockCardClass,
   projectEmptyStateClass,
@@ -99,11 +100,11 @@ type Props = {
   onResetTaskDraft: () => void
   onSetTaskDraftField: <K extends keyof TaskDraft>(field: K, value: TaskDraft[K]) => void
   onAddTaskToBlock: (blockId: string) => void
-  onSetTaskField: <K extends keyof ProjectBlock['tasks'][number]>(
+  onSetTaskField: <K extends keyof ProjectTask>(
     blockId: string,
     taskId: string,
     field: K,
-    value: ProjectBlock['tasks'][number][K]
+    value: ProjectTask[K]
   ) => void
   onRemoveTask: (blockId: string, taskId: string) => void
   departmentResponsibleOptions: (department?: string | string[]) => ResponsibleOption[]
