@@ -18,7 +18,6 @@ export const STATUSES: MaintenanceStatus[] = [
   'espera',
   'fet',
   'no_fet',
-  'resolut',
   'validat',
 ]
 
@@ -30,7 +29,6 @@ export const STATUS_LABELS: Record<MaintenanceStatus, string> = {
   espera: 'En espera',
   fet: 'Fet',
   no_fet: 'No fet',
-  resolut: 'Resolt',
   validat: 'Validat',
 }
 
@@ -68,7 +66,7 @@ export const normalizeStatus = (value?: string | null): MaintenanceStatus => {
   if (raw === 'espera') return 'espera'
   if (raw === 'fet') return 'fet'
   if (raw === 'no_fet' || raw === 'no fet') return 'no_fet'
-  if (raw === 'resolut') return 'resolut'
+  if (raw === 'resolut') return 'fet'
   if (raw === 'validat') return 'validat'
   return 'assignat'
 }

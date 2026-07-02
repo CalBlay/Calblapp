@@ -12,7 +12,6 @@ export type MaintenanceStatus =
   | 'espera'
   | 'fet'
   | 'no_fet'
-  | 'resolut'
   | 'validat'
 
 export type WorkHistoryEntry = {

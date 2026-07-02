@@ -12,6 +12,7 @@ import {
 import {
   getExternalReporterTicketBucket,
   matchesExternalReporterTicketBucket,
+  resolveDefaultTicketCenterFromUserName,
   resolveDefaultTicketLocationFromUserName,
   type ExternalReporterTicketBucket,
 } from '@/lib/maintenanceTicketCreators'
@@ -130,11 +131,12 @@ export function useMaintenanceTickets() {
   )
   const defaultCreateCenter = useMemo(() => {
     const centerNames = centers.map((center) => center.name).filter(Boolean)
-    return (
-      resolveDefaultTicketLocationFromUserName(sessionUser.name, centerNames) ||
-      defaultCreateLocation
-    )
-  }, [centers, defaultCreateLocation, sessionUser.name])
+    return resolveDefaultTicketCenterFromUserName(sessionUser.name, centerNames) || ''
+  }, [centers, sessionUser.name])
+  const defaultCreateWorkerName = useMemo(() => {
+    if (defaultCreateCenter) return ''
+    return String(sessionUser.name || '').trim()
+  }, [defaultCreateCenter, sessionUser.name])
 
   const fetchTickets = useCallback(
     async (opts?: { append?: boolean; cursorCreatedAt?: number }) => {
@@ -237,6 +239,7 @@ export function useMaintenanceTickets() {
   } = useMaintenanceTicketComposer({
     refreshTickets: () => fetchTickets(),
     defaultCenter: defaultCreateCenter,
+    defaultWorkerName: defaultCreateWorkerName,
     defaultLocation: '',
   })
 
@@ -381,7 +384,7 @@ export function useMaintenanceTickets() {
           ? {
               ...prev,
               creatorValidatedAt: Date.now(),
-              status: prev.capValidatedAt ? 'validat' : 'resolut',
+              status: prev.capValidatedAt ? 'validat' : 'fet',
             }
           : prev
       )
@@ -685,7 +688,7 @@ export function useMaintenanceTickets() {
               resolvedByArea: payload.area,
               resolutionCategory: payload.category.trim() || null,
               resolutionNote: payload.note.trim() || null,
-              status: 'resolut',
+              status: 'fet',
             }
           : prev
       )
@@ -777,7 +780,7 @@ export function useMaintenanceTickets() {
         !ticket.externalized &&
         (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' &&
         ticket.status !== 'validat' &&
-        ticket.status !== 'resolut'
+        ticket.status !== 'fet'
     )
 
     const sections = [
@@ -807,8 +810,8 @@ export function useMaintenanceTickets() {
       {
         key: 'validation',
         title: 'Pendents de validar',
-        note: 'Tickets fets o resolts pendents de revisio final',
-        items: inRange.filter((ticket) => !ticket.externalized && (ticket.status === 'fet' || ticket.status === 'resolut')),
+        note: 'Tickets fets pendents de revisio final',
+        items: inRange.filter((ticket) => !ticket.externalized && ticket.status === 'fet'),
       },
       {
         key: 'external',
@@ -823,7 +826,6 @@ export function useMaintenanceTickets() {
         items: inRange.filter(
           (ticket) =>
             ticket.status === 'validat' ||
-            ticket.status === 'resolut' ||
             ticket.workflowStage === 'resolved_admin' ||
             ticket.workflowStage === 'resolved_planner' ||
             ticket.workflowStage === 'closed'
@@ -887,7 +889,7 @@ export function useMaintenanceTickets() {
           (ticket.status === 'assignat' || ticket.status === 'en_curs' || ticket.status === 'espera')
       ).length,
       pendingValidation: tickets.filter(
-        (ticket) => inRange(ticket) && !ticket.externalized && (ticket.status === 'fet' || ticket.status === 'resolut')
+        (ticket) => inRange(ticket) && !ticket.externalized && ticket.status === 'fet'
       ).length,
       externalized: tickets.filter((ticket) => inRange(ticket) && ticket.externalized).length,
     }

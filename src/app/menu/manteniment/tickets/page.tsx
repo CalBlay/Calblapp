@@ -23,7 +23,6 @@ import {
   MAINTENANCE_TICKETS_INBOX_PERM,
   MAINTENANCE_TICKETS_MANAGE_PERM,
 } from '@/lib/maintenanceTicketsPermissions'
-import { canUserDeleteMaintenanceTicket } from '@/lib/maintenanceTicketDeletePolicy'
 import {
   getCurrentMaintenanceWeekRange,
   type MaintenanceDateFilterMode,
@@ -31,9 +30,7 @@ import {
 import {
   isCuinaCentralDepartment,
   isMaintenanceTicketCreatorOnlyUser,
-  isRestaurantOpsDepartment,
 } from '@/lib/maintenanceTicketCreators'
-import { OPS_CHANNEL_LOCATIONS } from '@/lib/opsMessagingChannels'
 import { markTicketSeen } from '@/lib/maintenanceSeen'
 import { formatDateTimeValue } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
@@ -63,9 +60,6 @@ const normalizeDept = (raw?: string) =>
     .toLowerCase()
     .trim()
 
-const stripRestaurantPrefix = (value: string) =>
-  value.replace(/^(restaurant|restauracio)\s+/i, '').trim()
-
 const STATUS_LABELS: Record<TicketStatus, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
@@ -74,7 +68,6 @@ const STATUS_LABELS: Record<TicketStatus, string> = {
   espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
-  resolut: 'Resolt',
   validat: 'Validat',
 }
 
@@ -93,7 +86,6 @@ const statusBadgeClasses: Record<TicketStatus, string> = {
   espera: 'bg-slate-100 text-slate-700',
   fet: 'bg-green-100 text-green-800',
   no_fet: 'bg-rose-100 text-rose-700',
-  resolut: 'bg-teal-100 text-teal-800',
   validat: 'bg-purple-100 text-purple-800',
 }
 
@@ -141,7 +133,7 @@ export default function MaintenanceTicketsPage() {
   const canManageInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
   const canDeleteAnyTicket = hasAction(MAINTENANCE_TICKETS_DELETE_PERM)
   const canManageAllTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM)
-  const canSeeMaintenanceBell = canManageAllTickets || canManageInbox
+  const canSeeMaintenanceBell = canManageAllTickets || canManageInbox || isPathAllowed('/menu/manteniment/tickets')
   const canManageInboxTickets = canManageInbox
 
   const formatDateTime = (value?: number | string | null) => formatDateTimeValue(value, '')
@@ -263,24 +255,7 @@ export default function MaintenanceTicketsPage() {
     [setFilters]
   )
 
-  const normalizeLocationKey = (value: string) =>
-    value
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .toLowerCase()
-      .trim()
-
-  const createCenters = useMemo(() => {
-    if (!isRestaurantOpsDepartment(department)) return catalogCenters
-    const restaurantKeys = new Set(
-      OPS_CHANNEL_LOCATIONS.filter((entry) => entry.source === 'restaurants').map((entry) =>
-        normalizeLocationKey(stripRestaurantPrefix(entry.location))
-      )
-    )
-    return catalogCenters.filter((center) =>
-      restaurantKeys.has(normalizeLocationKey(stripRestaurantPrefix(center.name)))
-    )
-  }, [catalogCenters, department])
+  const createCenters = catalogCenters
 
   useEffect(() => {
     setContent(
@@ -330,7 +305,6 @@ export default function MaintenanceTicketsPage() {
                 <option value="fet">{STATUS_LABELS.fet}</option>
                 <option value="reassignat">{STATUS_LABELS.reassignat}</option>
                 <option value="no_fet">{STATUS_LABELS.no_fet}</option>
-                <option value="resolut">{STATUS_LABELS.resolut}</option>
                 {canValidate ? <option value="validat">{STATUS_LABELS.validat}</option> : null}
               </select>
             </label>
@@ -466,7 +440,7 @@ export default function MaintenanceTicketsPage() {
       !ticket.externalized &&
       (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
       ticket.status !== 'validat' &&
-      ticket.status !== 'resolut',
+      ticket.status !== 'fet',
     [canManageInboxTickets]
   )
 
@@ -476,14 +450,11 @@ export default function MaintenanceTicketsPage() {
       !ticket.externalized &&
       (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
       ticket.status !== 'validat' &&
-      ticket.status !== 'resolut',
+      ticket.status !== 'fet',
     [canManageInboxTickets]
   )
 
-  const canDeleteTicket = useCallback(
-    (ticket: Ticket) => canDeleteAnyTicket || canUserDeleteMaintenanceTicket(ticket, userId),
-    [canDeleteAnyTicket, userId]
-  )
+  const canDeleteTicket = useCallback(() => canDeleteAnyTicket, [canDeleteAnyTicket])
 
   const canShowTicketOps = useCallback(
     (ticket: Ticket) => {

@@ -89,7 +89,8 @@ const normalizePreventiuStatus = (value?: string | null): MaintenanceStatus => {
   if (raw === 'espera') return 'espera'
   if (raw === 'fet') return 'fet'
   if (raw === 'no fet' || raw === 'no_fet') return 'no_fet'
-  if (raw === 'resolut' || raw === 'validat') return 'validat'
+  if (raw === 'resolut') return 'fet'
+  if (raw === 'validat') return 'validat'
   return 'assignat'
 }
 

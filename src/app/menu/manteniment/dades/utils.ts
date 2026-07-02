@@ -12,7 +12,6 @@ export const STATUS_LABELS: Record<string, string> = {
   fet: 'Fet',
   no_fet: 'No fet',
   validat: 'Validat',
-  resolut: 'Validat',
 }
 
 export const normalizeText = (value?: string | null) =>

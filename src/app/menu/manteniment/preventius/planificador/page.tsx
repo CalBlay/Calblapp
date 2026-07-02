@@ -14,7 +14,7 @@ import {
   startOfWeek,
 } from 'date-fns'
 import { ca } from 'date-fns/locale'
-import { AlertTriangle, ChevronDown, ChevronUp, Ticket } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp, Search, Ticket, X } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
@@ -44,6 +44,68 @@ const TIME_COL_WIDTH = 80
 const DAY_COUNT = 6
 const MONTH_DAY_COUNT = 7
 type PlannerTypeFilter = 'preventius' | 'tickets' | 'externalized'
+
+function toMillis(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 1e12 ? value * 1000 : value
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const asNumber = Number(trimmed)
+    if (Number.isFinite(asNumber)) {
+      return asNumber < 1e12 ? asNumber * 1000 : asNumber
+    }
+    const parsed = new Date(trimmed).getTime()
+    return Number.isNaN(parsed) ? null : parsed
+  }
+  if (value && typeof value === 'object') {
+    const dateLike = value as {
+      toDate?: () => Date
+      seconds?: number
+      nanoseconds?: number
+      _seconds?: number
+      _nanoseconds?: number
+    }
+    if (typeof dateLike.toDate === 'function') {
+      const parsed = dateLike.toDate().getTime()
+      return Number.isNaN(parsed) ? null : parsed
+    }
+    const seconds =
+      typeof dateLike.seconds === 'number'
+        ? dateLike.seconds
+        : typeof dateLike._seconds === 'number'
+          ? dateLike._seconds
+          : null
+    if (seconds !== null) {
+      const nanos =
+        typeof dateLike.nanoseconds === 'number'
+          ? dateLike.nanoseconds
+          : typeof dateLike._nanoseconds === 'number'
+            ? dateLike._nanoseconds
+            : 0
+      return seconds * 1000 + Math.floor(nanos / 1_000_000)
+    }
+  }
+  return null
+}
+
+function isExternalizedLike(ticket?: {
+  externalized?: boolean | null
+  workflowStage?: string | null
+  externalSentAt?: unknown
+  supplierName?: string | null
+  supplierEmail?: string | null
+  externalizationHistory?: unknown[]
+}) {
+  if (!ticket) return false
+  if (ticket.externalized) return true
+  if (String(ticket.workflowStage || '').trim() === 'externalized') return true
+  if (toMillis(ticket.externalSentAt)) return true
+  if (String(ticket.supplierName || '').trim()) return true
+  if (String(ticket.supplierEmail || '').trim()) return true
+  return Array.isArray(ticket.externalizationHistory) && ticket.externalizationHistory.length > 0
+}
 
 const TICKET_STATUS_FILTER_STYLES: Record<
   'all' | 'nou' | 'assignat' | 'reassignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat',
@@ -106,7 +168,7 @@ function normalizePlannerTicketStatus(value?: string | null) {
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut') return 'resolut'
+  if (v === 'resolut') return 'fet'
   if (v === 'validat') return 'validat'
   return 'nou'
 }
@@ -133,18 +195,27 @@ export default function PreventiusPlanificadorPage() {
     'today' | 'days_1_2' | 'days_3_7' | 'days_8_plus' | null
   >(null)
   const [ticketsStatusFilter, setTicketsStatusFilter] = useState<
-    'all' | 'nou' | 'assignat' | 'reassignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'resolut' | 'validat'
+    'all' | 'nou' | 'assignat' | 'reassignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
   >('all')
   const [showLegend, setShowLegend] = useState(false)
   const [showScheduledInSidebar, setShowScheduledInSidebar] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [draft, setDraft] = useState<PlannerDraft | null>(null)
   const [selectedMonthDayKey, setSelectedMonthDayKey] = useState<string | null>(null)
+  const [plannerSearch, setPlannerSearch] = useState('')
 
   const togglePlannerViewFilter = (filter: PlannerTypeFilter) => {
     setPlannerViewFilters((current) =>
       current.includes(filter) ? current.filter((item) => item !== filter) : [...current, filter]
     )
+  }
+
+  const handleTabChange = (nextTab: 'preventius' | 'tickets' | 'externalized') => {
+    setTab(nextTab)
+    setShowScheduledInSidebar(false)
+    if (!isMonthMode) {
+      setPlannerViewFilters([nextTab])
+    }
   }
 
   const setFilters = (partial: Partial<FiltersState>) =>
@@ -224,33 +295,150 @@ export default function PreventiusPlanificadorPage() {
     [isMonthMode, plannerViewFilters, tab]
   )
 
-  const hasPlannerTypeFilter = effectivePlannerViewFilters.length > 0
-
-  const kindFilteredScheduledItems = useMemo(() => {
-    if (!hasPlannerTypeFilter) return scheduledItems
-    return scheduledItems.filter((item) => {
-      const isExternalizedTicket = item.kind === 'ticket' && item.workflowStage === 'externalized'
-      const matchesPreventius = effectivePlannerViewFilters.includes('preventius') && item.kind === 'preventiu'
-      const matchesTickets =
-        effectivePlannerViewFilters.includes('tickets') && item.kind === 'ticket' && !isExternalizedTicket
-      const matchesExternalized = effectivePlannerViewFilters.includes('externalized') && isExternalizedTicket
-      return matchesPreventius || matchesTickets || matchesExternalized
-    })
-  }, [effectivePlannerViewFilters, hasPlannerTypeFilter, scheduledItems])
-
-  const ticketStatusFilteredScheduledItems = useMemo(() => {
-    if (!effectivePlannerViewFilters.includes('tickets') || ticketsStatusFilter === 'all') return kindFilteredScheduledItems
-    return kindFilteredScheduledItems.filter((item) => {
-      if (item.kind !== 'ticket' || item.workflowStage === 'externalized') return true
-      if (item.workflowStage === 'externalized') return false
-      return normalizePlannerTicketStatus(item.status) === ticketsStatusFilter
-    })
-  }, [effectivePlannerViewFilters, kindFilteredScheduledItems, ticketsStatusFilter])
-
   const filteredExternalizedTickets = useMemo(() => {
     if (tab !== 'tickets' && tab !== 'externalized') return []
     return externalizedTickets
   }, [externalizedTickets, tab])
+
+  const fallbackTicketScheduledItems = useMemo(() => {
+    const entries = Object.entries(ticketById || {})
+    if (entries.length === 0) return [] as ScheduledItem[]
+
+    return entries
+      .map(([ticketId, ticket]) => {
+        const plannedStartMs = toMillis(ticket.plannedStart)
+        const plannedEndMs = toMillis(ticket.plannedEnd)
+        if (plannedStartMs && plannedEndMs) {
+          const startDate = new Date(plannedStartMs)
+          const endDate = new Date(plannedEndMs)
+          const date = format(startDate, 'yyyy-MM-dd')
+          const dayIndex = days.findIndex((day) => format(day, 'yyyy-MM-dd') === date)
+          if (dayIndex < 0) return null
+          const code = String(ticket.ticketCode || ticket.incidentNumber || ticketId)
+          const title = String(
+            ticket.operatorTitle ||
+              ticket.description ||
+              ticket.machine ||
+              ticket.workLocation ||
+              ticket.location ||
+              code
+          ).trim()
+          const isExternal = isExternalizedLike(ticket)
+          return {
+            id: `fallback-ticket-${ticketId}`,
+            kind: 'ticket' as const,
+            title: `${code} - ${title}`.trim(),
+            workers: Array.isArray(ticket.assignedToNames) ? ticket.assignedToNames.map(String) : [],
+            workersCount: Array.isArray(ticket.assignedToNames) ? ticket.assignedToNames.length || 1 : 1,
+            dayIndex,
+            start: format(startDate, 'HH:mm'),
+            end: format(endDate, 'HH:mm'),
+            minutes: Math.max(30, Number(ticket.estimatedMinutes || 60)),
+            priority: ticket.priority || 'normal',
+            location: String(ticket.workLocation || ticket.location || ''),
+            machine: String(ticket.machine || ''),
+            createdAt: (ticket.createdAt as string | number | null) || null,
+            templateId: null,
+            ticketId,
+            status: ticket.status,
+            workflowStage: isExternal ? 'externalized' : String(ticket.workflowStage || 'planned_internal'),
+          }
+        }
+
+        const isExternal = isExternalizedLike(ticket)
+        if (isExternal) {
+          const followUpAt = toMillis(ticket.externalSentAt) ?? toMillis(ticket.createdAt)
+          if (!followUpAt) return null
+          const followUpDate = new Date(followUpAt)
+          const date = format(followUpDate, 'yyyy-MM-dd')
+          const firstDay = format(days[0], 'yyyy-MM-dd')
+          const lastDay = format(days[days.length - 1], 'yyyy-MM-dd')
+          if (date < firstDay || date > lastDay) return null
+          const dayIndex = days.findIndex((day) => format(day, 'yyyy-MM-dd') === date)
+          if (dayIndex < 0) return null
+          const startMinutes = Math.min(
+            Math.max(followUpDate.getHours() * 60 + followUpDate.getMinutes(), 8 * 60),
+            17 * 60 + 30
+          )
+          const endMinutes = Math.min(startMinutes + 30, 18 * 60)
+          const code = String(ticket.ticketCode || ticket.incidentNumber || ticketId)
+          const title = String(
+            ticket.operatorTitle ||
+              ticket.description ||
+              ticket.machine ||
+              ticket.workLocation ||
+              ticket.location ||
+              code
+          ).trim()
+          return {
+            id: `fallback-externalized-${ticketId}`,
+            kind: 'ticket' as const,
+            title: `${code} - ${title}`.trim(),
+            workers: Array.isArray(ticket.assignedToNames) ? ticket.assignedToNames.map(String) : [],
+            workersCount: Array.isArray(ticket.assignedToNames) ? ticket.assignedToNames.length || 1 : 1,
+            dayIndex,
+            start: timeFromMinutes(startMinutes),
+            end: timeFromMinutes(endMinutes),
+            minutes: Math.max(30, Number(ticket.estimatedMinutes || 30)),
+            priority: ticket.priority || 'normal',
+            location: String(ticket.workLocation || ticket.location || ''),
+            machine: String(ticket.machine || ''),
+            createdAt: (ticket.externalSentAt as string | number | null) || ticket.createdAt || null,
+            templateId: null,
+            ticketId,
+            status: ticket.status,
+            workflowStage: 'externalized',
+          }
+        }
+
+        return null
+      })
+      .filter(Boolean) as ScheduledItem[]
+  }, [days, ticketById])
+
+  const mergedScheduledItems = useMemo(() => {
+    const byTicketId = new Set(
+      scheduledItems
+        .filter((item) => item.kind === 'ticket')
+        .map((item) => String(item.ticketId || item.id || ''))
+        .filter(Boolean)
+    )
+    const ticketFallbacks = fallbackTicketScheduledItems.filter(
+      (item) => !byTicketId.has(String(item.ticketId || item.id || ''))
+    )
+    return [...scheduledItems, ...ticketFallbacks]
+  }, [fallbackTicketScheduledItems, scheduledItems])
+
+  const hasPlannerTypeFilter = effectivePlannerViewFilters.length > 0
+  const showsTicketContent =
+    tab === 'tickets' ||
+    tab === 'externalized' ||
+    effectivePlannerViewFilters.includes('tickets') ||
+    effectivePlannerViewFilters.includes('externalized')
+
+  const kindFilteredScheduledItems = useMemo(() => {
+    if (!hasPlannerTypeFilter) return mergedScheduledItems
+    return mergedScheduledItems.filter((item) => {
+      const isExternalizedTicket = item.kind === 'ticket' && item.workflowStage === 'externalized'
+      const matchesPreventius =
+        effectivePlannerViewFilters.includes('preventius') && item.kind === 'preventiu'
+      const matchesTickets =
+        effectivePlannerViewFilters.includes('tickets') &&
+        item.kind === 'ticket' &&
+        !isExternalizedTicket
+      const matchesExternalized =
+        effectivePlannerViewFilters.includes('externalized') && isExternalizedTicket
+      return matchesPreventius || matchesTickets || matchesExternalized
+    })
+  }, [effectivePlannerViewFilters, hasPlannerTypeFilter, mergedScheduledItems])
+
+  const ticketStatusFilteredScheduledItems = useMemo(() => {
+    if (!showsTicketContent || ticketsStatusFilter === 'all') return kindFilteredScheduledItems
+    return kindFilteredScheduledItems.filter((item) => {
+      if (item.kind !== 'ticket') return true
+      return normalizePlannerTicketStatus(item.status) === ticketsStatusFilter
+    })
+  }, [kindFilteredScheduledItems, showsTicketContent, ticketsStatusFilter])
 
   const filteredScheduledItems = useMemo(() => {
     if (!selectedWorker || selectedWorker === '__all__') return ticketStatusFilteredScheduledItems
@@ -260,9 +448,53 @@ export default function PreventiusPlanificadorPage() {
     )
   }, [selectedWorker, ticketStatusFilteredScheduledItems])
 
+  const normalizedPlannerSearch = useMemo(() => normalizeName(plannerSearch), [plannerSearch])
+
+  const searchMatchedScheduledItems = useMemo(() => {
+    if (!normalizedPlannerSearch) return []
+    return scheduledItems
+      .filter((item) => {
+        const haystack = [
+          item.title,
+          item.location,
+          item.machine,
+          item.workers.join(' '),
+          item.ticketId,
+          item.templateId,
+        ]
+          .map((value) => normalizeName(String(value || '')))
+          .join(' ')
+        return haystack.includes(normalizedPlannerSearch)
+      })
+      .sort((a, b) => {
+        const aExact = normalizeName(a.title).startsWith(normalizedPlannerSearch) ? 1 : 0
+        const bExact = normalizeName(b.title).startsWith(normalizedPlannerSearch) ? 1 : 0
+        if (aExact !== bExact) return bExact - aExact
+        if (a.dayIndex !== b.dayIndex) return a.dayIndex - b.dayIndex
+        return minutesFromTime(a.start) - minutesFromTime(b.start)
+      })
+  }, [mergedScheduledItems, normalizedPlannerSearch])
+
+  const calendarScheduledItems = useMemo(
+    () => (normalizedPlannerSearch ? searchMatchedScheduledItems : filteredScheduledItems),
+    [filteredScheduledItems, normalizedPlannerSearch, searchMatchedScheduledItems]
+  )
+
+  const plannerSearchResults = useMemo(
+    () =>
+      searchMatchedScheduledItems.slice(0, 8).map((item) => ({
+        item,
+        dateLabel:
+          days[item.dayIndex] != null
+            ? format(days[item.dayIndex], 'EEE dd/MM', { locale: ca })
+            : `Dia ${item.dayIndex + 1}`,
+      })),
+    [days, searchMatchedScheduledItems]
+  )
+
   const scheduledItemsByDay = useMemo(() => {
     const grouped = new Map<number, ScheduledItem[]>()
-    filteredScheduledItems.forEach((item) => {
+    calendarScheduledItems.forEach((item) => {
       const list = grouped.get(item.dayIndex) || []
       list.push(item)
       grouped.set(item.dayIndex, list)
@@ -274,7 +506,7 @@ export default function PreventiusPlanificadorPage() {
       )
     })
     return grouped
-  }, [filteredScheduledItems])
+  }, [calendarScheduledItems])
 
   const monthWeeks = useMemo(() => {
     if (!isMonthMode) return []
@@ -751,6 +983,77 @@ export default function PreventiusPlanificadorPage() {
           modeOptions={['week', 'month']}
         />
 
+        <div className="rounded-2xl border bg-white p-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="relative w-full max-w-xl">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={plannerSearch}
+                onChange={(e) => setPlannerSearch(e.target.value)}
+                placeholder="Buscar codi, ticket, preventiu, ubicacio o maquina..."
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-11 text-sm text-slate-800 outline-none transition focus:border-slate-400"
+              />
+              {plannerSearch.trim() ? (
+                <button
+                  type="button"
+                  onClick={() => setPlannerSearch('')}
+                  className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Netejar cerca"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+
+            <div className="text-xs text-slate-500 lg:pt-3">
+              {normalizedPlannerSearch
+                ? `${searchMatchedScheduledItems.length} coincidencies al planificador del periode actual`
+                : 'Cerca transversal dins la graella actual, sense dependre de pestanya ni estat'}
+            </div>
+          </div>
+
+          {normalizedPlannerSearch ? (
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
+              {plannerSearchResults.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-slate-500">
+                  No hi ha cap coincidencia dins el periode carregat al planificador.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {plannerSearchResults.map(({ item, dateLabel }) => (
+                    <button
+                      key={`search-${item.id}`}
+                      type="button"
+                      onClick={() => handleEdit(item)}
+                      className="flex w-full flex-col gap-1 rounded-xl border border-white bg-white px-3 py-2 text-left transition hover:border-slate-200 hover:bg-slate-50 lg:flex-row lg:items-center lg:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-900">
+                          {item.title}
+                        </div>
+                        <div className="truncate text-xs text-slate-500">
+                          {item.location || item.machine || (item.kind === 'ticket' ? 'Ticket' : 'Preventiu')}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                        <span className="rounded-full bg-slate-100 px-2 py-1">{dateLabel}</span>
+                        <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-800">
+                          {item.start} - {item.end}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                  {searchMatchedScheduledItems.length > plannerSearchResults.length ? (
+                    <div className="px-3 pt-1 text-xs text-slate-500">
+                      Mostrant les primeres {plannerSearchResults.length} coincidencies.
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+
         {isMonthMode ? (
           <div className="space-y-3">
             <MaintenanceToolbar
@@ -758,7 +1061,7 @@ export default function PreventiusPlanificadorPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setTab('preventius')}
+                    onClick={() => handleTabChange('preventius')}
                     className={[
                       'rounded-full px-4 py-2 text-xs font-semibold border',
                       tab === 'preventius'
@@ -770,7 +1073,7 @@ export default function PreventiusPlanificadorPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setTab('tickets')}
+                    onClick={() => handleTabChange('tickets')}
                     className={[
                       'rounded-full px-4 py-2 text-xs font-semibold border',
                       tab === 'tickets'
@@ -782,7 +1085,7 @@ export default function PreventiusPlanificadorPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setTab('externalized')}
+                    onClick={() => handleTabChange('externalized')}
                     className={[
                       'rounded-full px-4 py-2 text-xs font-semibold border',
                       tab === 'externalized'
@@ -995,7 +1298,7 @@ export default function PreventiusPlanificadorPage() {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setTab('preventius')}
+              onClick={() => handleTabChange('preventius')}
               className={[
                 'min-h-[44px] rounded-full px-4 text-sm font-semibold border',
                 tab === 'preventius'
@@ -1007,7 +1310,7 @@ export default function PreventiusPlanificadorPage() {
             </button>
             <button
               type="button"
-              onClick={() => setTab('tickets')}
+              onClick={() => handleTabChange('tickets')}
               className={[
                 'min-h-[44px] rounded-full px-4 text-sm font-semibold border',
                 tab === 'tickets'
@@ -1019,7 +1322,7 @@ export default function PreventiusPlanificadorPage() {
             </button>
             <button
               type="button"
-              onClick={() => setTab('externalized')}
+              onClick={() => handleTabChange('externalized')}
               className={[
                 'min-h-[44px] rounded-full px-4 text-sm font-semibold border',
                 tab === 'externalized'
@@ -1121,7 +1424,7 @@ export default function PreventiusPlanificadorPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setTab('preventius')}
+              onClick={() => handleTabChange('preventius')}
               className={[
                 'rounded-full px-4 py-2 text-xs font-semibold border',
                 tab === 'preventius'
@@ -1133,7 +1436,7 @@ export default function PreventiusPlanificadorPage() {
             </button>
             <button
               type="button"
-              onClick={() => setTab('tickets')}
+              onClick={() => handleTabChange('tickets')}
               className={[
                 'rounded-full px-4 py-2 text-xs font-semibold border',
                 tab === 'tickets'
@@ -1145,7 +1448,7 @@ export default function PreventiusPlanificadorPage() {
             </button>
             <button
               type="button"
-              onClick={() => setTab('externalized')}
+              onClick={() => handleTabChange('externalized')}
               className={[
                 'rounded-full px-4 py-2 text-xs font-semibold border',
                 tab === 'externalized'

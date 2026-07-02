@@ -60,7 +60,8 @@ export const normalizeMaintenanceStatus = (status?: string | null): MaintenanceS
   if (key === 'espera') return 'espera'
   if (key === 'fet') return 'fet'
   if (key === 'no fet' || key === 'no_fet') return 'no_fet'
-  if (key === 'resolut' || key === 'validat') return 'validat'
+  if (key === 'resolut') return 'fet'
+  if (key === 'validat') return 'validat'
   return 'assignat'
 }
 

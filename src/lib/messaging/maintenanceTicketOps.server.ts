@@ -145,7 +145,7 @@ function creatorSidebarLabel(ticket: MaintenanceTicketOpsRecord) {
   return String(ticket.createdByName || ticket.location || 'Creador').trim() || 'Creador'
 }
 
-const CLOSED_TICKET_STATUSES = new Set(['validat', 'resolut'])
+const CLOSED_TICKET_STATUSES = new Set(['validat', 'fet'])
 
 /** Tickets Ops actius: nous a safata, sense planificar ni resoldre. */
 export function isOpsActiveMaintenanceTicket(ticket: MaintenanceTicketOpsRecord): boolean {

@@ -79,7 +79,7 @@ export default function ResolutionCategoriesPanel({
           <input
             value={categoryForm.name}
             onChange={(e) => onCategoryFormChange((prev) => ({ ...prev, name: e.target.value }))}
-            placeholder="Ex.: Consulta resolta"
+            placeholder="Ex.: Consulta tancada"
             className="h-11 rounded-2xl border px-4"
           />
           <label className="flex items-center gap-2 text-sm text-slate-700">

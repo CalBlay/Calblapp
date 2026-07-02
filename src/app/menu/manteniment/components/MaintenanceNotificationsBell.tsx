@@ -141,7 +141,7 @@ function MaintenanceNotificationItems({
         const ticket = (json?.ticket || null) as MaintenanceTicketResponse | null
         const validationAt = Array.isArray(ticket?.statusHistory)
           ? [...ticket.statusHistory]
-              .filter((item) => item?.status === 'validat' || item?.status === 'resolut')
+              .filter((item) => item?.status === 'validat' || item?.status === 'fet')
               .sort((a, b) => Number(b?.at || 0) - Number(a?.at || 0))[0]?.at
           : null
         const baseDate =

@@ -79,7 +79,6 @@ const STATUS_LABELS: Record<string, string> = {
   espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
-  resolut: 'Resolt',
   validat: 'Validat',
 }
 
@@ -90,7 +89,7 @@ const PRIORITY_LABELS: Record<string, string> = {
   baixa: 'Baixa',
 }
 
-const CLOSED_STATUSES = new Set(['validat', 'resolut', 'fet'])
+const CLOSED_STATUSES = new Set(['validat', 'fet'])
 
 function normalizeText(value?: string | null) {
   return String(value || '')
@@ -508,12 +507,12 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     {
       label: 'Oberts',
       value: openCount,
-      hint: 'Encara no tancats (fet/resolt/validat)',
+      hint: 'Encara no tancats (fet/validat)',
     },
     {
       label: 'Tancats',
       value: closedCount,
-      hint: 'Estat fet, resolt o validat',
+      hint: 'Estat fet o validat',
     },
     {
       label: 'Externalitzats',

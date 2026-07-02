@@ -69,7 +69,8 @@ const normalizePreventiuStatus = (value?: string) => {
   if (v === 'en_curs' || v === 'en curs') return 'en_curs'
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
-  if (v === 'validat' || v === 'resolut') return 'validat'
+  if (v === 'resolut') return 'fet'
+  if (v === 'validat') return 'validat'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
   return 'assignat'
 }

@@ -5,7 +5,7 @@ const normalizeStatus = (value?: string | null) => {
     .trim()
     .toLowerCase()
   if (v === 'fet') return 'fet'
-  if (v === 'resolut') return 'resolut'
+  if (v === 'resolut') return 'fet'
   if (v === 'validat') return 'validat'
   return v || 'nou'
 }
@@ -38,7 +38,7 @@ export function maintenanceTicketRequiresCreatorValidation(
 
 export function isMaintenanceTicketPendingValidation(ticket: MaintenanceTicketValidationSnapshot): boolean {
   const status = normalizeStatus(ticket.status)
-  return status === 'resolut' || status === 'fet'
+  return status === 'fet'
 }
 
 export function canCreatorValidateMaintenanceTicket(

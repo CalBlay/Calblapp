@@ -83,6 +83,62 @@ type PlannedApiItem = {
   lastProgress?: number | string | null
 }
 
+function isPlannerExternalizedTicket(ticket: PlannerTicketLike) {
+  if (Boolean(ticket.externalized)) return true
+  if (String(ticket.workflowStage || '').trim() === 'externalized') return true
+  if (toMillis(ticket.externalSentAt)) return true
+  if (String(ticket.supplierName || '').trim()) return true
+  if (String(ticket.supplierEmail || '').trim()) return true
+  return (
+    Array.isArray(ticket.externalizationHistory) && ticket.externalizationHistory.length > 0
+  )
+}
+
+function toMillis(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 1e12 ? value * 1000 : value
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const asNumber = Number(trimmed)
+    if (Number.isFinite(asNumber)) {
+      return asNumber < 1e12 ? asNumber * 1000 : asNumber
+    }
+    const parsed = new Date(trimmed).getTime()
+    return Number.isNaN(parsed) ? null : parsed
+  }
+  if (value && typeof value === 'object') {
+    const dateLike = value as {
+      toDate?: () => Date
+      seconds?: number
+      nanoseconds?: number
+      _seconds?: number
+      _nanoseconds?: number
+    }
+    if (typeof dateLike.toDate === 'function') {
+      const parsed = dateLike.toDate().getTime()
+      return Number.isNaN(parsed) ? null : parsed
+    }
+    const seconds =
+      typeof dateLike.seconds === 'number'
+        ? dateLike.seconds
+        : typeof dateLike._seconds === 'number'
+          ? dateLike._seconds
+          : null
+    if (seconds !== null) {
+      const nanos =
+        typeof dateLike.nanoseconds === 'number'
+          ? dateLike.nanoseconds
+          : typeof dateLike._nanoseconds === 'number'
+            ? dateLike._nanoseconds
+            : 0
+      return seconds * 1000 + Math.floor(nanos / 1_000_000)
+    }
+  }
+  return null
+}
+
 function normalizePlannerTicketStatus(value?: unknown) {
   const v = String(value || '')
     .trim()
@@ -93,14 +149,14 @@ function normalizePlannerTicketStatus(value?: unknown) {
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut') return 'resolut'
+  if (v === 'resolut') return 'fet'
   if (v === 'validat') return 'validat'
   return 'nou'
 }
 
 function mapPendingTickets(list: PlannerTicketLike[]) {
   return list
-    .filter((t) => !t.externalized)
+    .filter((t) => !isPlannerExternalizedTicket(t))
     .filter((t) => String(t.workflowStage || 'tickets_inbox') === 'planner_queue')
     .filter((t) => !t.plannedStart && !t.plannedEnd)
     .filter((t) => ['nou', 'no_fet', 'reassignat'].includes(normalizePlannerTicketStatus(t.status)))
@@ -129,7 +185,7 @@ function mapPendingTickets(list: PlannerTicketLike[]) {
 
 function mapExternalizedTickets(list: PlannerTicketLike[]) {
   return list
-    .filter((t) => Boolean(t.externalized) || String(t.workflowStage || '') === 'externalized')
+    .filter((t) => isPlannerExternalizedTicket(t))
     .map((t) => {
       const code = t.ticketCode || t.incidentNumber || 'TIC'
       const title = t.operatorTitle || t.description || t.machine || t.location || ''
@@ -162,10 +218,11 @@ function mapExternalizedCalendarTickets(
   endStr: string
 ) {
   return ticketList
-    .filter((t) => Boolean(t.externalized) || String(t.workflowStage || '') === 'externalized')
+    .filter((t) => isPlannerExternalizedTicket(t))
+    .filter((t) => !t.plannedStart || !t.plannedEnd)
     .map((t) => {
-      const followUpAt = Number(t.externalSentAt || t.createdAt || 0)
-      if (!Number.isFinite(followUpAt) || followUpAt <= 0) return null
+      const followUpAt = toMillis(t.externalSentAt) ?? toMillis(t.createdAt)
+      if (!followUpAt || followUpAt <= 0) return null
       const followUpDate = new Date(followUpAt)
       const date = format(followUpDate, 'yyyy-MM-dd')
       if (date < startStr || date > endStr) return null
@@ -211,6 +268,18 @@ function buildTicketLookup(list: PlannerTicketLike[]) {
   }, {})
 }
 
+function mergeTicketLists(...lists: PlannerTicketLike[][]): PlannerTicketLike[] {
+  const byId = new Map<string, PlannerTicketLike>()
+  for (const list of lists) {
+    for (const ticket of list) {
+      const id = String(ticket.id || '')
+      if (!id) continue
+      byId.set(id, ticket)
+    }
+  }
+  return Array.from(byId.values())
+}
+
 function mapPlannedTickets(
   ticketList: PlannerTicketLike[],
   weekStart: Date,
@@ -219,19 +288,13 @@ function mapPlannedTickets(
   endStr: string
 ) {
   return ticketList
-    .filter((t) => !t.externalized)
-    .filter((t) => {
-      const workflowStage = String(t.workflowStage || 'planner_queue')
-      const normalizedStatus = normalizePlannerTicketStatus(t.status)
-      return (
-        ['planner_queue', 'planned_internal'].includes(workflowStage) ||
-        normalizedStatus === 'validat'
-      )
-    })
     .filter((t) => t.plannedStart && t.plannedEnd)
     .map((t) => {
-      const start = new Date(Number(t.plannedStart))
-      const end = new Date(Number(t.plannedEnd))
+      const startMs = toMillis(t.plannedStart)
+      const endMs = toMillis(t.plannedEnd)
+      if (!startMs || !endMs) return null
+      const start = new Date(startMs)
+      const end = new Date(endMs)
       const date = format(start, 'yyyy-MM-dd')
       if (date < startStr || date > endStr) return null
       const dayIndex = Math.round((parseISO(date).getTime() - weekStart.getTime()) / 86400000)
@@ -256,7 +319,9 @@ function mapPlannedTickets(
         templateId: null,
         ticketId: String(t.id || ''),
         status: normalizePlannerTicketStatus(t.status),
-        workflowStage: String(t.workflowStage || 'planned_internal'),
+        workflowStage: isPlannerExternalizedTicket(t)
+          ? 'externalized'
+          : String(t.workflowStage || 'planned_internal'),
       }
     })
     .filter(Boolean) as ScheduledItem[]
@@ -315,7 +380,7 @@ export default function usePlannerData({
   const [plannedPreventiuTemplateIds, setPlannedPreventiuTemplateIds] = useState<string[]>([])
   const [externalizedTickets, setExternalizedTickets] = useState<TicketCard[]>([])
 
-  const loadTicketsData = useCallback(async () => {
+  const loadTicketsData = useCallback(async (weekRange?: { start: string; end: string }) => {
     if (!canViewTickets) {
       return {
         list: [] as PlannerTicketLike[],
@@ -324,9 +389,26 @@ export default function usePlannerData({
         externalized: [] as TicketCard[],
       }
     }
-    const res = await fetch('/api/maintenance/tickets?ticketType=maquinaria', { cache: 'no-store' })
-    const json = res.ok ? await res.json() : { tickets: [] }
-    const list: PlannerTicketLike[] = Array.isArray(json?.tickets) ? json.tickets : []
+    const requests: Promise<Response>[] = [
+      fetch('/api/maintenance/tickets?limit=1000', { cache: 'no-store' }),
+    ]
+    if (weekRange?.start && weekRange?.end) {
+      requests.push(
+        fetch(
+          `/api/maintenance/tickets?start=${encodeURIComponent(weekRange.start)}&end=${encodeURIComponent(weekRange.end)}&dateMode=planned&limit=500`,
+          { cache: 'no-store' }
+        )
+      )
+    }
+    const responses = await Promise.all(requests)
+    const baseJson = responses[0].ok ? await responses[0].json() : { tickets: [] }
+    const plannedJson =
+      responses[1] && responses[1].ok ? await responses[1].json() : { tickets: [] }
+    const baseList: PlannerTicketLike[] = Array.isArray(baseJson?.tickets) ? baseJson.tickets : []
+    const plannedList: PlannerTicketLike[] = Array.isArray(plannedJson?.tickets)
+      ? plannedJson.tickets
+      : []
+    const list = mergeTicketLists(baseList, plannedList)
     return {
       list,
       lookup: buildTicketLookup(list),
@@ -384,8 +466,9 @@ export default function usePlannerData({
       if (b.ageDays !== a.ageDays) return b.ageDays - a.ageDays
       return a.code.localeCompare(b.code)
     })
-    if (ticketsAgeFilter == null) return base
-    return base.filter((ticket) => ticket.ageBucket === ticketsAgeFilter)
+    return ticketsAgeFilter == null
+      ? base
+      : base.filter((ticket) => ticket.ageBucket === ticketsAgeFilter)
   }, [realTickets, ticketsAgeFilter])
 
   const filteredExternalizedTickets = useMemo(() => {
@@ -395,8 +478,28 @@ export default function usePlannerData({
       if (b.ageDays !== a.ageDays) return b.ageDays - a.ageDays
       return a.code.localeCompare(b.code)
     })
-    if (ticketsAgeFilter == null) return base
-    return base.filter((ticket) => ticket.ageBucket === ticketsAgeFilter)
+    const ageFiltered =
+      ticketsAgeFilter == null
+        ? base
+        : base.filter((ticket) => ticket.ageBucket === ticketsAgeFilter)
+    return ageFiltered.sort((a, b) => {
+      const statusWeight = (value?: string) => {
+        const status = normalizePlannerTicketStatus(value)
+        if (status === 'validat') return 0
+        if (status === 'fet') return 1
+        if (status === 'espera') return 2
+        if (status === 'en_curs') return 3
+        if (status === 'assignat') return 4
+        if (status === 'reassignat') return 5
+        if (status === 'nou') return 6
+        if (status === 'no_fet') return 7
+        return 9
+      }
+      const statusDiff = statusWeight(a.status) - statusWeight(b.status)
+      if (statusDiff !== 0) return statusDiff
+      if (b.ageDays !== a.ageDays) return b.ageDays - a.ageDays
+      return a.code.localeCompare(b.code)
+    })
   }, [externalizedTickets, ticketsAgeFilter])
 
   const visibleItems = useMemo(() => {
@@ -431,6 +534,8 @@ export default function usePlannerData({
   }, [])
 
   useEffect(() => {
+    const startStr = format(weekStart, 'yyyy-MM-dd')
+    const endStr = format(addDays(weekStart, dayCount - 1), 'yyyy-MM-dd')
     const loadMasterData = async () => {
       try {
         const [templatesRes, locationsRes, machinesRes, usersRes, ticketsData] = await Promise.all([
@@ -438,7 +543,7 @@ export default function usePlannerData({
           fetch('/api/spaces/internal', { cache: 'no-store' }),
           fetch('/api/maintenance/machines', { cache: 'no-store' }),
           fetch('/api/personnel?department=manteniment', { cache: 'no-store' }),
-          loadTicketsData(),
+          loadTicketsData({ start: startStr, end: endStr }),
         ])
 
         const templatesJson = templatesRes.ok ? await templatesRes.json() : { templates: [] }
@@ -492,7 +597,7 @@ export default function usePlannerData({
       }
     }
     void loadMasterData()
-  }, [loadTicketsData])
+  }, [dayCount, loadTicketsData, weekStart])
 
   const resolveWorkerIds = useCallback(
     (names: string[]) => {
@@ -528,7 +633,7 @@ export default function usePlannerData({
           `/api/maintenance/preventius/planned?start=${encodeURIComponent(plannedStartStr)}&end=${encodeURIComponent(endStr)}`,
           { cache: 'no-store' }
         ),
-        loadTicketsData(),
+        loadTicketsData({ start: startStr, end: endStr }),
       ])
 
       const plannedJson = plannedRes.ok ? await plannedRes.json() : { items: [] }

@@ -131,9 +131,7 @@ export default function PlantillaDetailPage() {
         if (!res.ok) return
         const json = await res.json()
         const list = Array.isArray(json?.records) ? json.records : []
-        const resolved = list.find(
-          (r: CompletedRecord) => r.status === 'validat' || r.status === 'resolut'
-        )
+        const resolved = list.find((r: CompletedRecord) => r.status === 'validat' || r.status === 'fet')
         if (resolved?.completedAt) {
           const date = new Date(resolved.completedAt)
           const yyyy = date.getFullYear()

@@ -136,7 +136,7 @@ export async function notifyTicketCreator(params: {
   await createNotifications([uid], payload)
 }
 
-/** Gestor ha resolt directament: el creador ha de validar. */
+/** Gestor ha tancat directament el ticket: el creador ha de validar. */
 export async function notifyTicketResolvedForCreator(params: {
   uid?: string | null
   payload: NotificationPayload

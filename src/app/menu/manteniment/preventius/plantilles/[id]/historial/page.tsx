@@ -51,7 +51,6 @@ const STATUS_LABELS: Record<string, string> = {
   espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
-  resolut: 'Validat',
   validat: 'Validat',
 }
 
@@ -143,7 +142,7 @@ export default function PlantillaHistorialPage() {
   }, [id])
 
   const validatedCount = useMemo(
-    () => records.filter((record) => ['validat', 'resolut'].includes(String(record.status || ''))).length,
+    () => records.filter((record) => ['validat', 'fet'].includes(String(record.status || ''))).length,
     [records]
   )
 

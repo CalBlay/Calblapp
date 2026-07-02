@@ -483,7 +483,7 @@ export default function CreateTicketModal({
               placeholder="Qui reporta la incidencia?"
               value={createWorkerName}
               required
-              autoComplete="name"
+              autoComplete="off"
               onChange={(e) => setCreateWorkerName?.(e.target.value)}
             />
             <p className="mt-1 text-xs text-slate-500">

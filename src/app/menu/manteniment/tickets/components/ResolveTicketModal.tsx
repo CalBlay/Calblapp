@@ -104,7 +104,7 @@ export default function ResolveTicketModal({ ticket, busy = false, onClose, onSu
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               list="maintenance-resolution-categories"
-              placeholder="Ex.: consulta resolta, ajust intern, incidència menor..."
+              placeholder="Ex.: consulta tancada, ajust intern, incidència menor..."
               className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm text-slate-900"
             />
             {categoryOptions.length > 0 ? (
@@ -117,7 +117,7 @@ export default function ResolveTicketModal({ ticket, busy = false, onClose, onSu
           </label>
 
           <label className="block space-y-2 text-sm text-slate-700">
-            <span className="font-medium">Com s'ha resolt</span>
+            <span className="font-medium">Com s'ha tancat</span>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}

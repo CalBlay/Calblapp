@@ -84,11 +84,6 @@ const STATUS_FILTER_STYLES: Record<
     dot: 'bg-rose-500',
     label: 'No fet',
   },
-  resolut: {
-    active: 'bg-teal-100 text-teal-800 border-teal-200',
-    dot: 'bg-teal-500',
-    label: 'Resolt',
-  },
   validat: {
     active: 'bg-violet-100 text-violet-800 border-violet-200',
     dot: 'bg-violet-500',

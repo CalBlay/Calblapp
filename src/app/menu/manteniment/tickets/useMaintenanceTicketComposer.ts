@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { compressRasterImageForUpload, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
 import { compressVideoForUpload } from '@/lib/media/compressVideoForUpload'
@@ -21,6 +21,7 @@ type Params = {
   refreshTickets?: () => Promise<void>
   /** Valors per defecte en obrir el modal (p. ex. Cuina central). */
   defaultCenter?: string
+  defaultWorkerName?: string
   defaultLocation?: string
   defaultMachine?: string
   requireLocation?: boolean
@@ -30,15 +31,7 @@ type Params = {
 
 type SessionUser = {
   department?: string | null
-  name?: string | null
 }
-
-const normalizeComparableValue = (value?: string | null) =>
-  String(value || '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
 
 export type PendingTicketAttachment = {
   file: File
@@ -49,6 +42,7 @@ export type PendingTicketAttachment = {
 export function useMaintenanceTicketComposer({
   refreshTickets = async () => {},
   defaultCenter = '',
+  defaultWorkerName = '',
   defaultLocation = '',
   defaultMachine = '',
   requireLocation = true,
@@ -77,15 +71,6 @@ export function useMaintenanceTicketComposer({
   const attachmentsRef = useRef<PendingTicketAttachment[]>([])
 
   const needsWorkerName = true
-  const suggestedWorkerName = useMemo(() => {
-    const sessionName = String(sessionUser.name || '').trim()
-    const centerName = createCenter.trim() || centerQuery.trim()
-    if (!sessionName) return ''
-    if (centerName && normalizeComparableValue(sessionName) === normalizeComparableValue(centerName)) {
-      return ''
-    }
-    return sessionName
-  }, [sessionUser.name, createCenter, centerQuery])
 
   useEffect(() => {
     setCenterQuery(createCenter)
@@ -100,10 +85,20 @@ export function useMaintenanceTicketComposer({
   }, [createMachine])
 
   useEffect(() => {
-    if (createWorkerName.trim()) return
-    if (!suggestedWorkerName) return
-    setCreateWorkerName(suggestedWorkerName)
-  }, [createWorkerName, suggestedWorkerName])
+    if (!showCreate) return
+    if (createCenter.trim() || centerQuery.trim()) return
+    if (!defaultCenter.trim()) return
+
+    setCreateCenter(defaultCenter)
+    setCenterQuery(defaultCenter)
+  }, [
+    centerQuery,
+    createCenter,
+    defaultCenter,
+    setCreateCenter,
+    setCenterQuery,
+    showCreate,
+  ])
 
   useEffect(() => {
     attachmentsRef.current = createAttachments
@@ -119,18 +114,13 @@ export function useMaintenanceTicketComposer({
     const center = preset?.center ?? defaultCenter
     const loc = preset?.location ?? defaultLocation
     const mac = preset?.machine ?? defaultMachine
-    const sessionName = String(sessionUser.name || '').trim()
-    const nextWorkerName =
-      sessionName && normalizeComparableValue(sessionName) !== normalizeComparableValue(center)
-        ? sessionName
-        : ''
     setCreateCenter(center)
     setCreateLocation(loc)
     setCreateMachine(mac)
     setCenterQuery(center)
     setLocationQuery(loc)
     setMachineQuery(mac)
-    setCreateWorkerName(nextWorkerName)
+    setCreateWorkerName(center ? '' : defaultWorkerName)
   }
 
   const openCreate = (preset?: { center?: string; location?: string; machine?: string }) => {

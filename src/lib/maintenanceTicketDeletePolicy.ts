@@ -9,7 +9,7 @@ const normalizeStatus = (value?: string | null) => {
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut') return 'resolut'
+  if (v === 'resolut') return 'fet'
   if (v === 'validat') return 'validat'
   return 'nou'
 }
@@ -26,10 +26,10 @@ export type MaintenanceTicketDeleteSnapshot = {
   externalized?: boolean
 }
 
-/** Ticket tancat o resolt per manteniment / administració. */
+/** Ticket tancat per manteniment o administracio. */
 export function isMaintenanceTicketResolved(ticket: MaintenanceTicketDeleteSnapshot): boolean {
   const status = normalizeStatus(ticket.status)
-  if (['resolut', 'validat', 'fet', 'no_fet'].includes(status)) return true
+  if (['validat', 'fet', 'no_fet'].includes(status)) return true
 
   const stage = normalizeTicketWorkflowStage(ticket.workflowStage)
   return stage === 'resolved_admin' || stage === 'resolved_planner' || stage === 'closed'
@@ -50,7 +50,7 @@ export function isMaintenanceTicketPlanned(ticket: MaintenanceTicketDeleteSnapsh
   return false
 }
 
-/** El creador pot eliminar mentre el ticket encara no s'ha resolt ni planificat. */
+/** El creador pot eliminar mentre el ticket encara no s'ha tancat ni planificat. */
 export function canCreatorDeleteMaintenanceTicket(ticket: MaintenanceTicketDeleteSnapshot): boolean {
   return !isMaintenanceTicketResolved(ticket) && !isMaintenanceTicketPlanned(ticket)
 }

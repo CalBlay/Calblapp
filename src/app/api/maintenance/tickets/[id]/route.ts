@@ -7,7 +7,6 @@ import {
   canReopenMaintenanceTickets,
   canValidateMaintenanceTickets,
 } from '@/lib/server/maintenanceTicketsAccess'
-import { canUserDeleteMaintenanceTicket } from '@/lib/maintenanceTicketDeletePolicy'
 import { clearStaleMaintenanceTicketNotifications } from '@/lib/maintenanceNotifications'
 import { requireMaintenanceTicketApiView } from '@/lib/server/maintenanceApiAuth'
 import {
@@ -57,7 +56,7 @@ type SessionUser = {
 }
 
 type UpdatePayload = {
-  status?: 'nou' | 'assignat' | 'reassignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
+  status?: 'nou' | 'assignat' | 'reassignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
   workflowStage?:
     | 'tickets_inbox'
     | 'planner_queue'
@@ -157,7 +156,7 @@ const normalizeStatus = (value?: string) => {
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut') return 'resolut'
+  if (v === 'resolut') return 'fet'
   if (v === 'validat') return 'validat'
   return 'nou'
 }
@@ -342,7 +341,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       const notifyBase = {
         ticketId: id,
         ticketCode,
-        status: 'resolut' as const,
+        status: 'fet' as const,
         priority: current.priority || null,
         location: current.location || null,
         machine: current.machine || null,
@@ -363,7 +362,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
       if (current.capValidatedAt) {
         creatorUpdates.status = 'validat'
-        creatorUpdates.workflowStage = 'closed'
+        creatorUpdates.workflowStage = current.externalized ? 'externalized' : 'closed'
         creatorUpdates.resolvedAt = now
         creatorUpdates.resolvedById = user.id
         creatorUpdates.resolvedByName = user.name || ''
@@ -426,7 +425,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     if (currentStatus === 'validat') {
       const onlyReopenRequest =
-        (nextStatus === 'fet' || nextStatus === 'resolut') &&
+        nextStatus === 'fet' &&
         !wantsDataEdit &&
         body.statusStartTime === undefined &&
         body.statusEndTime === undefined &&
@@ -445,7 +444,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     const isReopeningValidatedTicket =
-      currentStatus === 'validat' && (nextStatus === 'fet' || nextStatus === 'resolut')
+      currentStatus === 'validat' && nextStatus === 'fet'
 
     if (nextStatus) updates.status = nextStatus
     if (body.workflowStage !== undefined) {
@@ -578,12 +577,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
 
       const requiresCreatorValidation = maintenanceTicketRequiresCreatorValidation(current)
-      if (
-        currentStatus !== 'fet' &&
-        currentStatus !== 'resolut' &&
-        !requiresCreatorValidation
-      ) {
-        return NextResponse.json({ error: 'Nomes es pot validar des de Fet o Resolt' }, { status: 400 })
+      if (currentStatus !== 'fet' && !requiresCreatorValidation) {
+        return NextResponse.json({ error: 'Nomes es pot validar des de Fet' }, { status: 400 })
       }
 
       const now = Date.now()
@@ -593,8 +588,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
       const creatorAlreadyValidated = Boolean(current.creatorValidatedAt)
       if (requiresCreatorValidation && !creatorAlreadyValidated) {
-        nextStatus = 'resolut'
-        updates.status = 'resolut'
+        nextStatus = 'fet'
+        updates.status = 'fet'
       } else {
         nextStatus = 'validat'
         updates.status = 'validat'
@@ -760,8 +755,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       updates.resolvedAt = Date.now()
       updates.resolvedById = user.id
       updates.resolvedByName = user.name || ''
-      updates.status = 'resolut'
-      nextStatus = 'resolut'
+      updates.status = 'fet'
+      nextStatus = 'fet'
       updates.creatorValidatedAt = null
       updates.creatorValidatedById = null
       updates.creatorValidatedByName = null
@@ -781,7 +776,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         updates.completionAttachments = buildMergedCompletionAttachments().merged
       }
       updates.statusHistory = admin.firestore.FieldValue.arrayUnion({
-        status: 'resolut',
+        status: 'fet',
         at: Date.now(),
         byId: user.id,
         byName: user.name || '',
@@ -860,7 +855,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         uid: current.createdById || null,
         payload: {
           type: 'maintenance_ticket_resolved',
-          title: 'Ticket resolt',
+          title: 'Ticket fet',
           body: buildTicketBody({
             machine: effectiveMachine,
             location: effectiveLocation,
@@ -868,7 +863,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           }),
           ticketId: id,
           ticketCode,
-          status: 'resolut',
+          status: 'fet',
           priority: updates.priority ? String(updates.priority) : current.priority || null,
           location: effectiveLocation,
           machine: effectiveMachine,
@@ -1080,15 +1075,8 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     const data = snap.data() as MaintenanceTicketRecord
     const canDeleteAsManager = await canDeleteMaintenanceTickets(user)
 
-    if (!canDeleteAsManager && !canUserDeleteMaintenanceTicket(data, user.id)) {
-      const isCreator = String(data.createdById || '').trim() === String(user.id || '').trim()
-      if (!isCreator) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-      return NextResponse.json(
-        { error: 'No es pot eliminar un ticket resolt o ja planificat' },
-        { status: 400 }
-      )
+    if (!canDeleteAsManager) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     await ref.delete()

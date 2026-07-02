@@ -13,7 +13,6 @@ import {
   MAINTENANCE_TICKETS_REOPEN_PERM,
   MAINTENANCE_TICKETS_VALIDATE_PERM,
 } from '@/lib/maintenanceTicketsPermissions'
-import { canUserDeleteMaintenanceTicket } from '@/lib/maintenanceTicketDeletePolicy'
 import { normalizeRole } from '@/lib/roles'
 import AssignTicketModal from '@/app/menu/manteniment/tickets/components/AssignTicketModal'
 import type {
@@ -75,7 +74,6 @@ const STATUS_LABELS = {
   fet: 'Fet',
   no_fet: 'No fet',
   reassignat: 'Reassignat',
-  resolut: 'Resolt',
   validat: 'Validat',
 } as const
 
@@ -124,9 +122,7 @@ export default function PlannerTicketModal({
   const [detailsMachine, setDetailsMachine] = useState('')
   const [detailsDescription, setDetailsDescription] = useState('')
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
-  const canDeleteSelectedTicket =
-    canManagePlannerTickets &&
-    (canDeleteAnyTicket || canUserDeleteMaintenanceTicket(selected || initialTicket || {}, sessionUser.id))
+  const canDeleteSelectedTicket = canDeleteAnyTicket
   const { data: transports } = useTransports()
 
   const maintenanceUsers = useMemo(
@@ -274,7 +270,7 @@ export default function PlannerTicketModal({
   }
 
   const handleDeleteTicket = useCallback(async () => {
-    if (!canManagePlannerTickets) return
+    if (!canDeleteAnyTicket) return
     const currentTicketId = String(selected?.id || ticketId || '').trim()
     if (!currentTicketId) return
     if (!window.confirm('Estas segur que vols eliminar el ticket?')) return
@@ -288,7 +284,7 @@ export default function PlannerTicketModal({
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "No s'ha pogut eliminar el ticket")
     }
-  }, [canManagePlannerTickets, onClose, onRefresh, selected?.id, ticketId])
+  }, [canDeleteAnyTicket, onClose, onRefresh, selected?.id, ticketId])
 
   const handleUnplanTicket = useCallback(async () => {
     if (!canManagePlannerTickets || !onDeletePlanned) return

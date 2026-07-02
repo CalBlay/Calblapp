@@ -7,7 +7,6 @@ export type JourneyStatus =
   | 'fet'
   | 'no_fet'
   | 'validat'
-  | 'resolut'
 
 export type StatusHistoryEntry = {
   status?: string

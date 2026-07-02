@@ -72,7 +72,22 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   createdAt?: string | number | { toDate?: () => Date }
   plannedStart?: string | number | null
   assignedAt?: string | number | null
+  externalized?: boolean
+  workflowStage?: string | null
+  externalSentAt?: string | number | { toDate?: () => Date } | null
+  supplierName?: string | null
+  supplierEmail?: string | null
+  externalizationHistory?: unknown[]
   statusHistory?: Array<{ status?: string; at?: string | number | { toDate?: () => Date } | null }>
+}
+
+const hasExternalizationTrace = (ticket: MaintenanceTicketRecord) => {
+  if (ticket.externalized === true) return true
+  if (String(ticket.workflowStage || '').trim() === 'externalized') return true
+  if (ticket.externalSentAt != null && String(ticket.externalSentAt).trim() !== '') return true
+  if (String(ticket.supplierName || '').trim()) return true
+  if (String(ticket.supplierEmail || '').trim()) return true
+  return Array.isArray(ticket.externalizationHistory) && ticket.externalizationHistory.length > 0
 }
 
 const normalizePriority = (value?: string) => {
@@ -91,7 +106,7 @@ const normalizeStatus = (value?: string) => {
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut') return 'resolut'
+  if (v === 'resolut') return 'fet'
   if (v === 'validat') return 'validat'
   return 'nou'
 }
@@ -286,6 +301,7 @@ export async function GET(req: Request) {
           status: normalizeStatus(data.status),
           priority: normalizePriority(data.priority),
           ticketType: (data.ticketType || 'maquinaria').toString().toLowerCase(),
+          externalized: hasExternalizationTrace(data),
           createdAt,
         }
       })

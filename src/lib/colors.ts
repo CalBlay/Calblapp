@@ -146,7 +146,6 @@ export const MAINTENANCE_STATUS_BADGES: Record<string, string> = {
   espera: 'bg-slate-100 text-slate-700',
   fet: 'bg-emerald-100 text-emerald-800',
   no_fet: 'bg-rose-100 text-rose-700',
-  resolut: 'bg-violet-100 text-violet-800',
   validat: 'bg-violet-100 text-violet-800',
 }
 

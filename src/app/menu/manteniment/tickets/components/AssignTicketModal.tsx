@@ -659,7 +659,7 @@ export default function AssignTicketModal({
             ) : null}
           </section>
 
-          {(ticket.externalized || ticket.status === 'fet' || ticket.status === 'resolut') && (
+          {(ticket.externalized || ticket.status === 'fet') && (
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-wrap items-center gap-2">
                 {ticket.externalized ? (
@@ -675,7 +675,7 @@ export default function AssignTicketModal({
               </div>
 
               {((ticket.externalized && ticket.status === 'espera' && canValidate) ||
-                ((ticket.status === 'fet' || ticket.status === 'resolut') && canCapValidateTicket)) ? (
+                (ticket.status === 'fet' && canCapValidateTicket)) ? (
                 <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -823,7 +823,7 @@ export default function AssignTicketModal({
                 </div>
               ) : null}
 
-              {(ticket.status === 'fet' || ticket.status === 'resolut') &&
+              {ticket.status === 'fet' &&
               canCapValidateTicket &&
               (!validationSummary.requiresCreatorValidation ||
                 validationSummary.pendingCap ||

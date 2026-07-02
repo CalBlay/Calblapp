@@ -164,7 +164,7 @@ const getExternalReporterStatusSummary = (
   if (bucket === 'fet') {
     const validation = getMaintenanceTicketValidationSummary(ticket)
     const resolvedAt = (ticket.statusHistory || [])
-      .filter((entry) => entry.status === 'resolut' || entry.status === 'validat')
+      .filter((entry) => entry.status === 'fet' || entry.status === 'validat')
       .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]?.at
     if (ticket.status === 'validat') {
       return resolvedAt ? `Validat: ${formatDateTime(resolvedAt)}` : 'Validat'

@@ -245,7 +245,7 @@ export default function MaintenanceDataPage() {
 
       current.total += 1
       if (ticket.status === 'fet') current.pendingValidation += 1
-      if (!['fet', 'no_fet', 'validat', 'resolut'].includes(String(ticket.status || ''))) {
+      if (!['fet', 'no_fet', 'validat'].includes(String(ticket.status || ''))) {
         current.openCount += 1
         if (!current.openStatus) current.openStatus = String(ticket.status || '') || null
       }

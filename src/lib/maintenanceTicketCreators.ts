@@ -14,8 +14,39 @@ const normalizeLocationKey = (value: string) =>
     .toLowerCase()
     .trim()
 
+const normalizeExactNameKey = (value: string) =>
+  normalizeLocationKey(value).replace(/\s+/g, ' ')
+
 const compactLocationKey = (value: string) =>
   normalizeLocationKey(stripLocationPrefixes(value)).replace(/[^a-z0-9]/g, '')
+
+const exactLocationKeysMatch = (left: string, right: string) => {
+  const leftNorm = normalizeLocationKey(stripLocationPrefixes(left))
+  const rightNorm = normalizeLocationKey(stripLocationPrefixes(right))
+  const leftCompact = compactLocationKey(left)
+  const rightCompact = compactLocationKey(right)
+
+  if (!leftNorm || !rightNorm || !leftCompact || !rightCompact) return false
+  return leftNorm === rightNorm || leftCompact === rightCompact
+}
+
+const locationKeysMatch = (left: string, right: string) => {
+  const leftNorm = normalizeLocationKey(stripLocationPrefixes(left))
+  const rightNorm = normalizeLocationKey(stripLocationPrefixes(right))
+  const leftCompact = compactLocationKey(left)
+  const rightCompact = compactLocationKey(right)
+
+  if (!leftNorm || !rightNorm || !leftCompact || !rightCompact) return false
+
+  return (
+    leftNorm === rightNorm ||
+    leftCompact === rightCompact ||
+    leftNorm.includes(rightNorm) ||
+    rightNorm.includes(leftNorm) ||
+    leftCompact.includes(rightCompact) ||
+    rightCompact.includes(leftCompact)
+  )
+}
 
 /** Compara ubicacions de ticket i maquinaria (accent/case/prefix tolerant). */
 export function matchesMaintenanceTicketLocation(
@@ -45,36 +76,38 @@ export function resolveDefaultTicketLocationFromUserName(
   if (!userNorm && !userCompact) return null
 
   const catalogMatch = locations.find((location) => {
-    const locNorm = normalizeLocationKey(stripLocationPrefixes(location))
-    const locCompact = compactLocationKey(location)
-    return (
-      (userNorm && locNorm === userNorm) ||
-      (userCompact && locCompact === userCompact)
-    )
+    return locationKeysMatch(location, rawUser)
   })
   if (catalogMatch) return catalogMatch
 
   const opsMatch = OPS_CHANNEL_LOCATIONS.find((entry) => {
-    const locNorm = normalizeLocationKey(entry.location)
-    const locCompact = compactLocationKey(entry.location)
-    return (
-      (userNorm && locNorm === userNorm) ||
-      (userCompact && locCompact === userCompact)
-    )
+    return locationKeysMatch(entry.location, rawUser)
   })
   if (!opsMatch) return null
 
-  const opsNorm = normalizeLocationKey(opsMatch.location)
-  const opsCompact = compactLocationKey(opsMatch.location)
   return (
     locations.find((location) => {
-      const locNorm = normalizeLocationKey(stripLocationPrefixes(location))
-      const locCompact = compactLocationKey(location)
-      return (
-        (opsNorm && locNorm === opsNorm) ||
-        (opsCompact && locCompact === opsCompact)
-      )
+      return locationKeysMatch(location, opsMatch.location)
     }) || opsMatch.location
+  )
+}
+
+/**
+ * Resol el centre per defecte a partir del nom canònic de `finques`.
+ * Aquí no fem servir àlies OPS ni coincidències parcials: ha de casar
+ * amb el catàleg de centres tal com surt a Manteniment > Dades > Centres.
+ */
+export function resolveDefaultTicketCenterFromUserName(
+  userName: string | null | undefined,
+  centerNames: string[]
+): string | null {
+  const rawUser = String(userName || '').trim()
+  if (!rawUser || centerNames.length === 0) return null
+  const userKey = normalizeExactNameKey(rawUser)
+  if (!userKey) return null
+
+  return (
+    centerNames.find((centerName) => normalizeExactNameKey(centerName) === userKey) || null
   )
 }
 
@@ -160,7 +193,7 @@ export function getExternalReporterTicketBucket(ticket: {
   const status = normalizeTicketStatusKey(ticket.status)
   if (status === 'nou' || status === 'no_fet' || status === 'reassignat') return 'nou'
   if (status === 'assignat' || status === 'en_curs' || status === 'espera') return 'assignat'
-  if (status === 'fet' || status === 'resolut' || status === 'validat') return 'fet'
+  if (status === 'fet' || status === 'validat') return 'fet'
   return 'nou'
 }
 
