@@ -23,26 +23,30 @@ import {
   type ProjectData,
 } from './project-shared'
 import {
-  projectBlockCardAccentClass,
-  projectBlockCardClass,
   projectCardMetaClass,
   projectCardTitleClass,
-  projectEmptyIconClass,
-  projectEmptyShellClass,
   projectEmptyStateClass,
-  projectIconBoxClass,
-  projectMetaStripClass,
-  projectModuleShellClass,
   projectOverviewChipClass,
   projectOverviewInputClass,
   projectOverviewLabelClass,
   projectOverviewMetaClass,
-  projectOverviewSectionLabelClass,
   projectOverviewSectionSubtitleClass,
   projectOverviewSectionTitleClass,
   projectOverviewSelectClass,
-  projectPanelClass,
   projectPrimaryButtonClass,
+  projectTrackingCardAccentClass,
+  projectTrackingCardClass,
+  projectTrackingIconBoxClass,
+  projectTrackingKpiCardClass,
+  projectTrackingKpiLabelClass,
+  projectTrackingMetaBarClass,
+  projectTrackingPanelClass,
+  projectTrackingProgressFillClass,
+  projectTrackingProgressFillTasksClass,
+  projectTrackingProgressTrackClass,
+  projectTrackingShellClass,
+  projectTrackingStatusBadgeClass,
+  projectTrackingTagClass,
 } from './project-ui'
 import { taskDayDiffFromToday } from './project-task-card-ui'
 import { type ResponsibleOption } from './project-workspace-helpers'
@@ -112,18 +116,18 @@ const taskStatusLabel = (value: string) => {
 }
 
 const blockStatusClass = (value: string) => {
-  if (value === 'done') return 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200'
-  if (value === 'blocked') return 'bg-rose-100 text-rose-700 ring-1 ring-rose-200'
-  if (value === 'overdue') return 'bg-amber-100 text-amber-800 ring-1 ring-amber-200'
-  if (value === 'in_progress') return 'bg-amber-100 text-amber-800 ring-1 ring-amber-200'
-  return 'bg-sky-100 text-sky-800 ring-1 ring-sky-200'
+  if (value === 'done') return 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+  if (value === 'blocked') return 'border border-rose-200 bg-rose-50 text-rose-800'
+  if (value === 'overdue') return 'border border-amber-200 bg-amber-50 text-amber-900'
+  if (value === 'in_progress') return 'border border-sky-200 bg-sky-50 text-sky-800'
+  return 'border border-slate-200 bg-slate-50 text-slate-700'
 }
 
 const taskStatusClass = (value: string) => {
-  if (value === 'done') return 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200'
-  if (value === 'blocked') return 'bg-rose-100 text-rose-700 ring-1 ring-rose-200'
-  if (value === 'in_progress') return 'bg-amber-100 text-amber-800 ring-1 ring-amber-200'
-  return 'bg-sky-100 text-sky-800 ring-1 ring-sky-200'
+  if (value === 'done') return 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+  if (value === 'blocked') return 'border border-rose-200 bg-rose-50 text-rose-800'
+  if (value === 'in_progress') return 'border border-sky-200 bg-sky-50 text-sky-800'
+  return 'border border-slate-200 bg-slate-50 text-slate-700'
 }
 
 function SectionHeader({
@@ -151,13 +155,13 @@ function SectionHeader({
   )
 
   return (
-    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="mb-4 flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex min-w-0 flex-1 items-start gap-2">
         {collapsible ? (
           <button
             type="button"
             onClick={onToggle}
-            className="mt-1 shrink-0 rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+            className="mt-1 shrink-0 rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
             aria-label={expanded ? 'Plegar secció' : 'Desplegar secció'}
             aria-expanded={expanded}
           >
@@ -165,7 +169,7 @@ function SectionHeader({
           </button>
         ) : null}
         <div className="flex min-w-0 flex-1 items-start gap-3">
-          <div className={cn(projectIconBoxClass, 'h-10 w-10')}>{icon}</div>
+          <div className={cn(projectTrackingIconBoxClass, 'h-9 w-9')}>{icon}</div>
           <div className="min-w-0">
             {collapsible ? (
               <button type="button" onClick={onToggle} className="w-full text-left">
@@ -196,16 +200,16 @@ function TrackingAlertRow({
   return (
     <div
       className={cn(
-        'flex items-start gap-2.5 rounded-xl border px-3 py-2.5 shadow-sm transition',
-        alert.tone === 'rose'
-          ? 'border-rose-200/80 bg-rose-50/80'
-          : 'border-amber-200/80 bg-amber-50/80'
+        'flex items-start gap-3 px-4 py-3 sm:px-5',
+        'border-b border-slate-200 last:border-b-0',
+        'border-l-[3px] bg-white',
+        alert.tone === 'rose' ? 'border-l-rose-500' : 'border-l-amber-500'
       )}
     >
       <div
         className={cn(
-          'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
-          alert.tone === 'rose' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'
+          'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm',
+          alert.tone === 'rose' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-800'
         )}
       >
         <AlertTriangle className="h-3.5 w-3.5" />
@@ -218,12 +222,12 @@ function TrackingAlertRow({
             className="group w-full min-w-0 text-left"
             onClick={() => onResolve?.(alert.target)}
           >
-            <div className="text-sm font-semibold leading-snug text-slate-900 group-hover:text-violet-700 group-hover:underline">
+            <div className="text-sm font-medium leading-snug text-slate-900 group-hover:text-violet-800">
               {alert.title}
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              {alert.detail ? <span className="text-xs text-slate-600">{alert.detail}</span> : null}
-              <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700">
+              {alert.detail ? <span className="text-xs text-slate-500">{alert.detail}</span> : null}
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-violet-700">
                 {alert.actionLabel}
                 <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
               </span>
@@ -231,8 +235,8 @@ function TrackingAlertRow({
           </button>
         ) : (
           <>
-            <div className="text-sm font-semibold text-slate-900">{alert.title}</div>
-            {alert.detail ? <p className="mt-0.5 text-xs text-slate-600">{alert.detail}</p> : null}
+            <div className="text-sm font-medium text-slate-900">{alert.title}</div>
+            {alert.detail ? <p className="mt-0.5 text-xs text-slate-500">{alert.detail}</p> : null}
           </>
         )}
       </div>
@@ -258,53 +262,46 @@ function BlockTrackingCard({
 
   const content = (
     <>
-      <span className={projectBlockCardAccentClass} aria-hidden />
-      <div className="pl-2">
+      <span className={projectTrackingCardAccentClass} aria-hidden />
+      <div className="pl-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div
               className={cn(
                 projectCardTitleClass,
-                onOpen && 'group-hover:text-violet-700 group-hover:underline'
+                'text-sm',
+                onOpen && 'group-hover:text-violet-800'
               )}
             >
               {block.name}
             </div>
-            <div className={cn(projectCardMetaClass, 'overview-body-copy mt-1')}>
+            <div className={cn(projectCardMetaClass, 'overview-body-copy mt-1 text-xs')}>
               {block.owner || 'Sense responsable'} · {formatProjectDate(block.deadline)}
             </div>
           </div>
-          <span
-            className={cn(
-              'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold',
-              blockStatusClass(block.status)
-            )}
-          >
+          <span className={cn(projectTrackingStatusBadgeClass, blockStatusClass(block.status))}>
             {blockStatusLabel(block.status)}
           </span>
         </div>
 
-        <div className="mt-3">
-          <div className="mb-1 flex items-center justify-between gap-2 text-xs text-slate-500">
+        <div className="mt-2.5">
+          <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
             <span>
               {doneTasks}/{blockTasks.length} tasques
             </span>
-            <span className="font-semibold text-slate-700">{progress}%</span>
+            <span className="font-semibold tabular-nums text-slate-700">{progress}%</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500"
-              style={{ width: `${progress}%` }}
-            />
+          <div className={projectTrackingProgressTrackClass}>
+            <div className={projectTrackingProgressFillClass} style={{ width: `${progress}%` }} />
           </div>
         </div>
 
-        <div className="mt-2 flex min-h-[28px] flex-wrap gap-1.5">
+        <div className="mt-2 flex min-h-[24px] flex-wrap gap-1">
           {departments.map((department) => (
             <span
               key={`${block.id}-${department}`}
               className={cn(
-                'inline-flex max-w-full items-center rounded-full px-2.5 py-1',
+                projectTrackingTagClass,
                 projectOverviewChipClass,
                 colorByDepartment(department)
               )}
@@ -313,11 +310,11 @@ function BlockTrackingCard({
             </span>
           ))}
           {overdueBlockTasks > 0 ? (
-            <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-medium text-rose-700 ring-1 ring-rose-200">
+            <span className={cn(projectTrackingTagClass, 'border border-rose-200 bg-rose-50 text-rose-700')}>
               {overdueBlockTasks} vencudes
             </span>
           ) : (
-            <span className="inline-flex items-center rounded-full border border-dashed border-slate-200 px-2.5 py-1 text-[11px] text-slate-400">
+            <span className={cn(projectTrackingTagClass, 'border border-slate-200 text-slate-500')}>
               {deadlineHint(deadlineCountdown)}
             </span>
           )}
@@ -331,14 +328,14 @@ function BlockTrackingCard({
       <button
         type="button"
         onClick={() => onOpen(block.id)}
-        className={cn(projectBlockCardClass, 'group w-full text-left')}
+        className={cn(projectTrackingCardClass, 'group w-full text-left')}
       >
         {content}
       </button>
     )
   }
 
-  return <div className={projectBlockCardClass}>{content}</div>
+  return <div className={projectTrackingCardClass}>{content}</div>
 }
 
 function TaskTrackingCard({ task }: { task: FlatTask }) {
@@ -353,35 +350,30 @@ function TaskTrackingCard({ task }: { task: FlatTask }) {
           : 'Normal'
 
   return (
-    <div className={projectBlockCardClass}>
-      <span className={projectBlockCardAccentClass} aria-hidden />
-      <div className="pl-2">
+    <div className={projectTrackingCardClass}>
+      <span className={projectTrackingCardAccentClass} aria-hidden />
+      <div className="pl-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className={projectCardTitleClass}>{task.title}</div>
-            <div className={cn(projectCardMetaClass, 'overview-body-copy mt-1')}>
+            <div className={cn(projectCardTitleClass, 'text-sm')}>{task.title}</div>
+            <div className={cn(projectCardMetaClass, 'overview-body-copy mt-1 text-xs')}>
               {task.blockName} · {task.owner || 'Sense responsable'}
             </div>
           </div>
-          <span
-            className={cn(
-              'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold',
-              taskStatusClass(task.status)
-            )}
-          >
+          <span className={cn(projectTrackingStatusBadgeClass, taskStatusClass(task.status))}>
             {taskStatusLabel(task.status)}
           </span>
         </div>
 
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mt-2 flex flex-wrap gap-1">
           <span
             className={cn(
-              'inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium ring-1',
+              projectTrackingTagClass,
               task.priority === 'critical'
-                ? 'bg-rose-100 text-rose-700 ring-rose-200'
+                ? 'border border-rose-200 bg-rose-50 text-rose-700'
                 : task.priority === 'high'
-                  ? 'bg-amber-100 text-amber-800 ring-amber-200'
-                  : 'bg-violet-100 text-violet-700 ring-violet-200'
+                  ? 'border border-amber-200 bg-amber-50 text-amber-800'
+                  : 'border border-violet-200 bg-violet-50 text-violet-700'
             )}
           >
             {priorityLabel}
@@ -389,7 +381,7 @@ function TaskTrackingCard({ task }: { task: FlatTask }) {
           {task.department ? (
             <span
               className={cn(
-                'inline-flex max-w-full items-center rounded-full px-2.5 py-1',
+                projectTrackingTagClass,
                 projectOverviewChipClass,
                 colorByDepartment(task.department)
               )}
@@ -399,7 +391,8 @@ function TaskTrackingCard({ task }: { task: FlatTask }) {
           ) : null}
           <span
             className={cn(
-              'inline-flex items-center rounded-full border border-dashed px-2.5 py-1 text-[11px]',
+              projectTrackingTagClass,
+              'border',
               taskDeadline !== null && taskDeadline < 0 && task.status !== 'done'
                 ? 'border-rose-200 bg-rose-50 text-rose-700'
                 : 'border-slate-200 text-slate-500'
@@ -510,7 +503,7 @@ export default function ProjectTrackingTab({
   const tasksProgress = toPercent(completedTasks, allTasks.length)
 
   return (
-    <div className="w-full min-w-0 space-y-8 md:space-y-10">
+    <div className="w-full min-w-0 space-y-6 md:space-y-8">
       {canManageProject ? (
         <section>
           <SectionHeader
@@ -536,8 +529,8 @@ export default function ProjectTrackingTab({
           />
 
           {detailsExpanded ? (
-            <div className={projectPanelClass}>
-              <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4 lg:p-6">
+            <div className={projectTrackingPanelClass}>
+              <div className="grid gap-4 border-b border-slate-200 bg-slate-50/50 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4 lg:p-6">
                 <div className="space-y-2">
                   <Label htmlFor="tracking-project-owner" className={projectOverviewLabelClass}>
                     Responsable del projecte
@@ -619,22 +612,22 @@ export default function ProjectTrackingTab({
         <SectionHeader
           icon={<FolderKanban className="h-4 w-4" />}
           title="Resum del projecte"
-          subtitle="Indicadors clau de progrés, dates i incidències pendents."
+          subtitle="Indicadors clau de progrés, terminis i incidències."
         />
 
-        <div className={projectModuleShellClass}>
-          <div className={cn(projectMetaStripClass, 'px-4 py-3 sm:px-5 lg:px-6')}>
-            <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500', projectOverviewMetaClass)}>
+        <div className={projectTrackingShellClass}>
+          <div className={projectTrackingMetaBarClass}>
+            <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-600', projectOverviewMetaClass)}>
               <span>
-                <span className="font-semibold text-slate-700">{completedBlocks}</span>/{project.blocks.length} blocs
+                <span className="font-semibold tabular-nums text-slate-900">{completedBlocks}</span>/{project.blocks.length} blocs
               </span>
               <span className="text-slate-300">·</span>
               <span>
-                <span className="font-semibold text-slate-700">{completedTasks}</span>/{allTasks.length} tasques
+                <span className="font-semibold tabular-nums text-slate-900">{completedTasks}</span>/{allTasks.length} tasques
               </span>
               <span className="text-slate-300">·</span>
               <span>
-                Arrencada <span className="font-semibold text-slate-700">{formatProjectDate(project.launchDate)}</span>
+                Arrencada <span className="font-semibold text-slate-900">{formatProjectDate(project.launchDate)}</span>
               </span>
               <span className="hidden text-slate-300 sm:inline">·</span>
               <span className="hidden sm:inline">
@@ -648,37 +641,31 @@ export default function ProjectTrackingTab({
               </span>
             </div>
 
-            <div className="mt-3 grid gap-3 border-t border-violet-100/70 pt-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-xl border border-violet-100/60 bg-white/80 px-3 py-2.5">
-                <div className={projectOverviewSectionLabelClass}>Progrés blocs</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">{blocksProgress}%</div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500"
-                    style={{ width: `${blocksProgress}%` }}
-                  />
+            <div className="mt-3 grid divide-y divide-slate-200 border border-slate-200 sm:mt-4 sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+              <div className={projectTrackingKpiCardClass}>
+                <div className={projectTrackingKpiLabelClass}>Progrés blocs</div>
+                <div className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{blocksProgress}%</div>
+                <div className={cn(projectTrackingProgressTrackClass, 'mt-2')}>
+                  <div className={projectTrackingProgressFillClass} style={{ width: `${blocksProgress}%` }} />
                 </div>
               </div>
-              <div className="rounded-xl border border-violet-100/60 bg-white/80 px-3 py-2.5">
-                <div className={projectOverviewSectionLabelClass}>Progrés tasques</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">{tasksProgress}%</div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500"
-                    style={{ width: `${tasksProgress}%` }}
-                  />
+              <div className={projectTrackingKpiCardClass}>
+                <div className={projectTrackingKpiLabelClass}>Progrés tasques</div>
+                <div className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{tasksProgress}%</div>
+                <div className={cn(projectTrackingProgressTrackClass, 'mt-2')}>
+                  <div className={projectTrackingProgressFillTasksClass} style={{ width: `${tasksProgress}%` }} />
                 </div>
               </div>
-              <div className="rounded-xl border border-violet-100/60 bg-white/80 px-3 py-2.5">
-                <div className={projectOverviewSectionLabelClass}>Assignacions pendents</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">{pendingAssignments}</div>
+              <div className={projectTrackingKpiCardClass}>
+                <div className={projectTrackingKpiLabelClass}>Assignacions pendents</div>
+                <div className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{pendingAssignments}</div>
                 <div className="mt-1 text-xs text-slate-500">
                   {blocksWithoutOwner.length} blocs · {tasksWithoutOwner.length} tasques
                 </div>
               </div>
-              <div className="rounded-xl border border-violet-100/60 bg-white/80 px-3 py-2.5">
-                <div className={projectOverviewSectionLabelClass}>Alertes obertes</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">{alerts.length}</div>
+              <div className={projectTrackingKpiCardClass}>
+                <div className={projectTrackingKpiLabelClass}>Alertes obertes</div>
+                <div className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{alerts.length}</div>
                 <div className="mt-1 text-xs text-slate-500">
                   {alerts.length > 0 ? 'Requereixen acció' : 'Cap incidència pendent'}
                 </div>
@@ -692,16 +679,16 @@ export default function ProjectTrackingTab({
         <SectionHeader
           icon={<Layers className="h-4 w-4" />}
           title="Seguiment de blocs"
-          subtitle="Vista resum de cada bloc i del seu progrés, amb el mateix criteri visual que l'estructura del projecte."
+          subtitle="Estat i progrés de cada bloc del projecte."
           collapsible
           expanded={blocksExpanded}
           onToggle={() => setBlocksExpanded((current) => !current)}
         />
 
         {blocksExpanded ? (
-          <div className={projectModuleShellClass}>
-            <div className={cn(projectMetaStripClass, 'px-4 py-3 sm:px-5 lg:px-6')}>
-              <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500', projectOverviewMetaClass)}>
+          <div className={projectTrackingShellClass}>
+            <div className={projectTrackingMetaBarClass}>
+              <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-600', projectOverviewMetaClass)}>
                 <span>
                   <span className="font-semibold text-slate-700">{project.blocks.length}</span> bloc
                   {project.blocks.length === 1 ? '' : 's'}
@@ -719,21 +706,21 @@ export default function ProjectTrackingTab({
               </div>
             </div>
 
-            <div className="space-y-4 p-4 sm:p-5 lg:p-6">
+            <div className="p-4 sm:p-5 lg:p-6">
               {project.blocks.length > 0 ? (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                   {project.blocks.map((block) => (
                     <BlockTrackingCard key={block.id} block={block} onOpen={onOpenBlock} />
                   ))}
                 </div>
               ) : (
-                <div className={projectEmptyShellClass}>
-                  <div className={projectEmptyIconClass}>
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
+                  <div className={cn(projectTrackingIconBoxClass, 'h-10 w-10')}>
                     <Layers className="h-5 w-5" />
                   </div>
-                  <p className="overview-body-copy mt-4 font-medium text-slate-700">Encara no hi ha blocs</p>
+                  <p className="overview-body-copy mt-3 font-medium text-slate-700">Encara no hi ha blocs</p>
                   <p className={cn('overview-body-copy mt-1 max-w-sm', projectEmptyStateClass)}>
-                    Quan s&apos;afegeixin blocs al projecte, els veuràs aquí amb el mateix format que a la creació.
+                    Quan s&apos;afegeixin blocs al projecte, apareixeran aquí amb el seu estat i progrés.
                   </p>
                 </div>
               )}
@@ -746,16 +733,16 @@ export default function ProjectTrackingTab({
         <SectionHeader
           icon={<ListTodo className="h-4 w-4" />}
           title="Seguiment de tasques"
-          subtitle="Resum ràpid de les tasques obertes i del seu estat actual."
+          subtitle="Resum de l'estat de les tasques del projecte."
           collapsible
           expanded={tasksExpanded}
           onToggle={() => setTasksExpanded((current) => !current)}
         />
 
         {tasksExpanded ? (
-          <div className={projectModuleShellClass}>
-            <div className={cn(projectMetaStripClass, 'px-4 py-3 sm:px-5 lg:px-6')}>
-              <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500', projectOverviewMetaClass)}>
+          <div className={projectTrackingShellClass}>
+            <div className={projectTrackingMetaBarClass}>
+              <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-600', projectOverviewMetaClass)}>
                 <span>
                   <span className="font-semibold text-slate-700">{allTasks.length}</span> tasca
                   {allTasks.length === 1 ? '' : 's'}
@@ -771,21 +758,21 @@ export default function ProjectTrackingTab({
               </div>
             </div>
 
-            <div className="space-y-4 p-4 sm:p-5 lg:p-6">
+            <div className="p-4 sm:p-5 lg:p-6">
               {allTasks.length > 0 ? (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                   {allTasks.map((task) => (
                     <TaskTrackingCard key={`${task.blockId}:${task.id}`} task={task} />
                   ))}
                 </div>
               ) : (
-                <div className={projectEmptyShellClass}>
-                  <div className={projectEmptyIconClass}>
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
+                  <div className={cn(projectTrackingIconBoxClass, 'h-10 w-10')}>
                     <ListTodo className="h-5 w-5" />
                   </div>
-                  <p className="overview-body-copy mt-4 font-medium text-slate-700">Encara no hi ha tasques</p>
+                  <p className="overview-body-copy mt-3 font-medium text-slate-700">Encara no hi ha tasques</p>
                   <p className={cn('overview-body-copy mt-1 max-w-sm', projectEmptyStateClass)}>
-                    Les tasques del projecte apareixeran aquí en targetes compactes.
+                    Les tasques del projecte apareixeran aquí amb el seu estat i terminis.
                   </p>
                 </div>
               )}
@@ -805,8 +792,10 @@ export default function ProjectTrackingTab({
           action={
             <span
               className={cn(
-                'rounded-full px-3 py-1 text-xs font-bold',
-                alerts.length > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'
+                'rounded px-2.5 py-1 text-xs font-semibold',
+                alerts.length > 0
+                  ? 'border border-amber-200 bg-amber-50 text-amber-900'
+                  : 'border border-emerald-200 bg-emerald-50 text-emerald-800'
               )}
             >
               {alerts.length > 0 ? `${alerts.length} obertes` : 'Tot en ordre'}
@@ -815,15 +804,15 @@ export default function ProjectTrackingTab({
         />
 
         {alertsExpanded ? (
-          <div className={projectPanelClass}>
-            <div className="space-y-2 p-4 sm:p-5 lg:p-6">
+          <div className={projectTrackingPanelClass}>
+            <div className="divide-y divide-slate-200">
               {alerts.length > 0 ? (
                 alerts.map((alert) => (
                   <TrackingAlertRow key={alert.key} alert={alert} onResolve={onResolveAlert} />
                 ))
               ) : (
-                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
-                  <CheckCircle2 className="h-5 w-5 shrink-0" />
+                <div className="flex items-center gap-3 border-l-[3px] border-l-emerald-500 px-4 py-4 text-sm text-slate-700 sm:px-5">
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
                   No hi ha alertes obertes. El seguiment del projecte està al dia.
                 </div>
               )}

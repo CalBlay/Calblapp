@@ -353,7 +353,7 @@ export const resolveTaskStatusWithDependencies = (
   return task
 }
 
-export const applyDependencyLocksToBlocks = <T extends Pick<ProjectBlock, 'id' | 'tasks'>>(
+export const applyDependencyLocksToBlocks = <T extends Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>(
   blocks: T[]
 ): T[] =>
   blocks.map((block) => ({

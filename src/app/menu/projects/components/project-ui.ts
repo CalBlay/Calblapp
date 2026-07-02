@@ -89,3 +89,51 @@ export const projectOverviewBlockTitleClass =
   'h-10 border-0 bg-transparent px-0 font-semibold text-slate-900 shadow-none focus-visible:ring-0'
 export const projectOverviewSectionLabelClass =
   'overview-body-copy font-semibold uppercase tracking-[0.12em] text-violet-600/80'
+
+/** Resum / seguiment: contenidor principal (més pla i corporatiu que el shell general). */
+export const projectTrackingShellClass =
+  'overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm'
+
+/** Barra de metadades del resum executiu. */
+export const projectTrackingMetaBarClass =
+  'border-b border-slate-200 bg-slate-50/80 px-4 py-3 sm:px-5 lg:px-6'
+
+/** Targeta KPI del resum (sense gradients ni ombres pronunciades). */
+export const projectTrackingKpiCardClass =
+  'border border-slate-200 bg-white px-3 py-2.5 sm:px-4 sm:py-3'
+
+/** Etiqueta de KPI / mètrica. */
+export const projectTrackingKpiLabelClass =
+  'text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500'
+
+/** Icona de secció del resum (marca violeta, sense gradient). */
+export const projectTrackingIconBoxClass =
+  'flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-violet-200 bg-violet-50 text-violet-700'
+
+/** Targeta de bloc/tasca al resum executiu. */
+export const projectTrackingCardClass =
+  'group relative flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white px-3.5 py-3 transition-colors hover:border-violet-300 hover:bg-slate-50/50 sm:px-4 sm:py-3.5'
+
+export const projectTrackingCardAccentClass =
+  'pointer-events-none absolute inset-y-0 left-0 w-0.5 bg-violet-500'
+
+/** Barra de progrés del CURRENT tracking cards. */
+export const projectTrackingProgressTrackClass = 'h-1 overflow-hidden rounded-sm bg-slate-200'
+export const projectTrackingProgressFillClass = 'h-full rounded-sm bg-violet-600'
+export const projectTrackingProgressFillTasksClass = 'h-full rounded-sm bg-emerald-600'
+
+/** Panell secundari del resum (formulari, alertes). */
+export const projectTrackingPanelClass =
+  'overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm'
+
+/** Fila d'alerta del resum. */
+export const projectTrackingAlertRowClass =
+  'flex items-start gap-3 border border-slate-200 bg-white px-3 py-2.5 sm:px-4 sm:py-3'
+
+/** Badge d'estat compacte (resum executiu). */
+export const projectTrackingStatusBadgeClass =
+  'shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold leading-none'
+
+/** Etiqueta secundària (departament, prioritat). */
+export const projectTrackingTagClass =
+  'inline-flex max-w-full items-center rounded px-2 py-0.5 text-[11px] font-medium'

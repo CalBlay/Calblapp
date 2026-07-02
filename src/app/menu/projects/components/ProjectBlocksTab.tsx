@@ -214,7 +214,7 @@ export default function ProjectBlocksTab({
   canEditBlock = () => false,
   canConvokeBlockMeeting = () => false,
   canAccessBlockRoom = () => false,
-  unreadByBlockId = {},
+  unreadByBlockId: _unreadByBlockId = {},
   canEditBlockOwner = false,
   onOpenBlockMeeting,
 }: Props) {

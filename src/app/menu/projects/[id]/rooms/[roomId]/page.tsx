@@ -198,7 +198,10 @@ export default function ProjectRoomDetailPage() {
   const currentBlock =
     linkedBlock ||
     (fallbackRoom ? project?.blocks?.find((block) => block.id === fallbackRoom.blockId) || null : null)
-  const linkedTasks = currentBlock?.tasks || []
+  const linkedTasks = useMemo(
+    () => currentBlock?.tasks || [],
+    [currentBlock?.tasks]
+  )
   const roomResponsibleName = currentBlock?.owner || project?.owner || ''
   const normalizeText = (value?: string | null) =>
     String(value || '')

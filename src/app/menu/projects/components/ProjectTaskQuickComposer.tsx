@@ -45,7 +45,7 @@ type Props = {
 
 export default function ProjectTaskQuickComposer({
   blockId = 'none',
-  blockName = '',
+  blockName: _blockName = '',
   blocks = [],
   description,
   department,

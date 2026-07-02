@@ -151,7 +151,6 @@ export default function ProjectWorkspace({
     canMoveSpecificTask,
     canManageProject,
     canSaveTasks,
-    canViewOverview,
     canConvokeBlockMeeting,
     canConvokeMeetings,
     canConvokeProjectMeeting,
@@ -355,8 +354,6 @@ export default function ProjectWorkspace({
     resetTaskDraft,
     openQuickTaskComposer,
     resetBlockDraft,
-    addDepartmentToBlock,
-    removeDepartmentFromBlock,
   } = useProjectBlocksTasksActions({
     project,
     blockDraft,
@@ -429,7 +426,6 @@ export default function ProjectWorkspace({
 
   const {
     handleDeleteProject,
-    removeDocument,
     removeKickoffMinutes,
     saveBlocks,
     saveDocuments,

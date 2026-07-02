@@ -2,7 +2,6 @@
 
 import { useRef, useState } from 'react'
 import {
-  CalendarDays,
   FileText,
   Save,
 } from 'lucide-react'
@@ -131,7 +130,7 @@ const statusColumnTheme: Record<string, { header: string; column: string; badge:
 export default function ProjectTasksTab({
   projectId,
   projectBlocks,
-  projectSprints,
+  projectSprints: _projectSprints,
   projectRooms,
   allTasks,
   taskDraft,
@@ -160,7 +159,7 @@ export default function ProjectTasksTab({
   onOpenMeetingMinutes,
   kickoffMinutesStatus = 'open',
   kickoffMinutesDraft = '',
-  onCreateSprint,
+  onCreateSprint: _onCreateSprint,
   onOpenTaskMeeting,
 }: Props) {
   void onResetTaskDraft
