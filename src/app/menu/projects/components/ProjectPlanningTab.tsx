@@ -23,7 +23,12 @@ import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
 import { colorByDepartment } from '@/lib/colors'
 import { cn } from '@/lib/utils'
-import { formatProjectDate, getBlockDepartments, type ProjectData } from './project-shared'
+import {
+  formatProjectDate,
+  getBlockDepartments,
+  getTaskDependencyMeta,
+  type ProjectData,
+} from './project-shared'
 import {
   canOpenMeetingActaForScope,
   canOpenMeetingActaInBlocks,
@@ -339,6 +344,29 @@ export default function ProjectPlanningTab({
       })
     })
 
+    const dependencyMilestones = project.blocks.flatMap((block) =>
+      (block.tasks || []).flatMap((task) => {
+        const dependency = getTaskDependencyMeta(project.blocks, task)
+        const dependencyDeadline = parseDate(dependency?.dependencyTask.deadline)
+        if (!dependency || !dependencyDeadline) return []
+
+        return [
+          {
+            id: `dependency-${task.id}-${dependency.dependencyTask.id}`,
+            kind: 'milestone' as const,
+            title: `Dependència · ${dependency.dependencyTask.title || 'Tasca prèvia'}`,
+            subtitle: `Per iniciar: ${task.title || 'Tasca'} · ${dependency.dependencyBlock.name || block.name || 'Bloc'}`,
+            department: task.department || getBlockDepartments(block)[0] || '',
+            owner: task.owner || '',
+            status: dependency.dependencyTask.status || 'pending',
+            start: dependencyDeadline,
+            end: dependencyDeadline,
+            href: `/menu/projects/${projectId}?tab=tasks`,
+          },
+        ]
+      })
+    )
+
     const meetings = project.blocks.flatMap((block) => {
       const blockMeetings = (block.meetings || []).map((meeting) => {
         const meetingStart = parseDate(meeting.date)
@@ -406,7 +434,7 @@ export default function ProjectPlanningTab({
       return [...blockMeetings, ...taskMeetings].filter(Boolean)
     }) as PlanningItem[]
 
-    return [...milestones, ...meetings, ...blocks, ...tasks]
+    return [...milestones, ...dependencyMilestones, ...meetings, ...blocks, ...tasks]
   }, [project, projectCreatedAt, projectId])
 
   const departments = useMemo(

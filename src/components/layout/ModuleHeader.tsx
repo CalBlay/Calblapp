@@ -6,12 +6,20 @@ import { usePathname } from 'next/navigation'
 interface Props {
   title?: string | React.ReactNode
   subtitle?: string
+  breadcrumbSubtitle?: string
   icon?: React.ReactNode
   actions?: React.ReactNode
   mainHref?: string
 }
 
-export default function ModuleHeader({ title, subtitle, icon, actions, mainHref }: Props) {
+export default function ModuleHeader({
+  title,
+  subtitle,
+  breadcrumbSubtitle,
+  icon,
+  actions,
+  mainHref,
+}: Props) {
   const pathname = usePathname() ?? ''
 
   // Exemple: /menu/spaces/reserves Ã¢â€ â€™ ['','menu','spaces','reserves']
@@ -45,7 +53,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
 
   // Traducció Ã¢â‚¬Å“mòdul Ã¢â€ â€™ nom visibleÃ¢â‚¬Â
   const moduleLabels: Record<string, string> = {
-    projects: 'Projectes',
+    projects: 'OpsiaProjects',
     spaces: 'Espais',
     torns: 'Torns',
     quadrants: 'Quadrants',
@@ -95,7 +103,7 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
   }
 
   const subKey = subLabels[subsubmodule] ? subsubmodule : submodule
-  const subLabel = subtitle || subLabels[subKey] || ''
+  const subLabel = breadcrumbSubtitle || subtitle || subLabels[subKey] || ''
   const subHref =
     subLabel && subKey === subsubmodule && submodule && subsubmodule
       ? `/menu/${moduleKey}/${submodule}/${subsubmodule}`

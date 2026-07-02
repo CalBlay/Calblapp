@@ -45,7 +45,7 @@ export default function IncidentsEventHeader({
   pax,
   count,
   actionCount = 0,
-  incidentsWithActionsCount = 0,
+  incidentsWithActionsCount: _incidentsWithActionsCount = 0,
   openCount,
   urgentCount,
   allResolved,

@@ -270,6 +270,7 @@ export function useProjectVisibility({
     canConvokeTaskMeeting,
     canCreateOrRemoveBlocks,
     canDeleteProject,
+    canEditProjectData: isProjectOwner,
     canEditSpecificBlock,
     canManageProject,
     canManageSpecificTask,

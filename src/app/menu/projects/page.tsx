@@ -212,19 +212,23 @@ export default function ProjectsPage() {
     return diff >= 0 ? diff : null
   }
 
-  const filterSummary = useMemo(() => {
-    const scopeLabel =
+  const scopeLabel = useMemo(
+    () =>
       participationScope === 'all' && canViewAllProjects
         ? 'Tots els projectes'
-        : 'Els meus projectes'
+        : 'Els meus projectes',
+    [canViewAllProjects, participationScope]
+  )
+
+  const filterSummary = useMemo(() => {
     const departmentLabel =
       departmentFilter === ALL_DEPARTMENTS_VALUE
         ? 'Tots els departaments'
         : departmentOptions.find((option) => option.value === departmentFilter)?.label || departmentFilter
     const ownerLabel =
       ownerFilter === ALL_OWNERS_VALUE ? 'Tots els responsables' : ownerFilter
-    return `${scopeLabel} · ${departmentLabel} · ${ownerLabel}`
-  }, [canViewAllProjects, departmentFilter, departmentOptions, ownerFilter, participationScope])
+    return `${departmentLabel} · ${ownerLabel}`
+  }, [departmentFilter, departmentOptions, ownerFilter])
 
   const totalProjectPages = Math.max(1, Math.ceil(totalProjects / PROJECTS_PER_PAGE))
 
@@ -265,7 +269,8 @@ export default function ProjectsPage() {
       <div className="cmd-app flex w-full max-w-none flex-col">
         <ModuleHeader
           icon={<FolderKanban className="h-6 w-6 text-violet-600" />}
-          title="Projectes"
+          title="OpsiaProjects"
+          breadcrumbSubtitle={scopeLabel}
           subtitle={filterSummary}
           actions={
             <>

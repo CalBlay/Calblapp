@@ -145,6 +145,7 @@ export default function ProjectWorkspace({
     canAccessSpecificTaskOps,
     canCreateOrRemoveBlocks,
     canDeleteProject,
+    canEditProjectData,
     canEditSpecificBlock,
     canManageSpecificTask,
     canMoveSpecificTask,
@@ -534,7 +535,7 @@ export default function ProjectWorkspace({
         coordinationActivityLoading={coordinationActivityLoading}
         onOpenCoordination={() => setCoordinationOpen(true)}
         autosaveStatus={autosaveStatus}
-        canEditLaunchDate={Boolean(canManageProject)}
+        canEditLaunchDate={Boolean(canEditProjectData)}
         dirtyLaunchDate={dirtyOverview}
         savingLaunchDate={savingOverview}
         onLaunchDateChange={(value) =>
@@ -681,7 +682,7 @@ export default function ProjectWorkspace({
                 <ProjectTrackingTab
                   project={project}
                   ownerOptions={ownerOptions}
-                  canManageProject={Boolean(canManageProject)}
+                  canManageProject={Boolean(canEditProjectData)}
                   savingOverview={savingOverview}
                   dirtyOverview={dirtyOverview}
                   onProjectChange={setProject}

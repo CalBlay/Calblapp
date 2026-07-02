@@ -4,6 +4,7 @@ export const PROJECT_NOTIFICATION_TYPES = [
   'project_assignment',
   'project_block_assignment',
   'project_task_assignment',
+  'project_task_dependency_unlocked',
 ] as const
 
 export const LOGISTICS_NOTIFICATION_TYPES = [

@@ -1,11 +1,12 @@
 'use client'
 
-import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   FolderKanban,
   Save,
   UserRound,
@@ -367,128 +368,147 @@ export default function ProjectTrackingTab({
     if (left.tone !== right.tone) return left.tone === 'rose' ? -1 : 1
     return left.title.localeCompare(right.title, 'ca')
   })
+  const [projectDataExpanded, setProjectDataExpanded] = useState(false)
 
   return (
     <section className={cn(projectModuleShellClass, 'space-y-5 p-5')}>
-      <section className={cn(projectPanelClass, 'p-4 sm:p-5')}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className={projectSectionTitleClass}>Dades del projecte</div>
-            <p className="mt-1 text-sm text-slate-500">
-              Edita responsable, inici, arrencada i data limit des d aqui.
-            </p>
-          </div>
-          {canManageProject ? (
-            <Button
+      {canManageProject ? (
+        <section className={cn(projectPanelClass, 'p-4 sm:p-5')}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
               type="button"
-              onClick={onSaveOverview}
-              disabled={!dirtyOverview || savingOverview}
-              className="gap-2"
+              onClick={() => setProjectDataExpanded((current) => !current)}
+              className="flex min-w-0 flex-1 items-start gap-3 text-left"
+              aria-label={projectDataExpanded ? 'Plegar dades del projecte' : 'Desplegar dades del projecte'}
+              aria-expanded={projectDataExpanded}
             >
-              <Save className="h-4 w-4" />
-              {savingOverview ? 'Guardant...' : 'Guardar dades'}
-            </Button>
-          ) : null}
-        </div>
-
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="space-y-2">
-            <Label htmlFor="tracking-project-owner" className={projectOverviewLabelClass}>
-              Responsable del projecte
-            </Label>
-            {canManageProject ? (
-              <select
-                id="tracking-project-owner"
-                value={project.owner || ''}
-                onChange={(event) =>
-                  onProjectChange?.((current) => ({ ...current, owner: event.target.value }))
-                }
-                className={projectOverviewSelectClass}
+              <ChevronDown
+                className={cn(
+                  'mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform',
+                  projectDataExpanded && 'rotate-180'
+                )}
+              />
+              <div>
+                <div className={projectSectionTitleClass}>Dades del projecte</div>
+                <p className="mt-1 text-sm text-slate-500">
+                  Edita responsable, inici, arrencada i data limit des d aqui.
+                </p>
+              </div>
+            </button>
+            {projectDataExpanded ? (
+              <Button
+                type="button"
+                onClick={onSaveOverview}
+                disabled={!dirtyOverview || savingOverview}
+                className="gap-2"
               >
-                <option value="">Selecciona responsable</option>
-                {ownerOptions.map((option) => (
-                  <option key={`${option.id}-${option.name}`} value={option.name}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="flex h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
-                {project.owner || 'Sense responsable'}
-              </div>
-            )}
+                <Save className="h-4 w-4" />
+                {savingOverview ? 'Guardant...' : 'Guardar dades'}
+              </Button>
+            ) : null}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="tracking-project-start" className={projectOverviewLabelClass}>
-              Data d inici
-            </Label>
-            {canManageProject ? (
-              <Input
-                id="tracking-project-start"
-                type="date"
-                value={project.startDate || ''}
-                onChange={(event) =>
-                  onProjectChange?.((current) => ({ ...current, startDate: event.target.value }))
-                }
-                className={projectOverviewInputClass}
-              />
-            ) : (
-              <div className="flex h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
-                {formatProjectDate(project.startDate)}
+          {projectDataExpanded ? (
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-2">
+                <Label htmlFor="tracking-project-owner" className={projectOverviewLabelClass}>
+                  Responsable del projecte
+                </Label>
+                {canManageProject ? (
+                  <select
+                    id="tracking-project-owner"
+                    value={project.owner || ''}
+                    onChange={(event) =>
+                      onProjectChange?.((current) => ({ ...current, owner: event.target.value }))
+                    }
+                    className={projectOverviewSelectClass}
+                  >
+                    <option value="">Selecciona responsable</option>
+                    {ownerOptions.map((option) => (
+                      <option key={`${option.id}-${option.name}`} value={option.name}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="flex h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
+                    {project.owner || 'Sense responsable'}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="tracking-project-kickoff" className={projectOverviewLabelClass}>
-              Arrencada
-            </Label>
-            {canManageProject ? (
-              <Input
-                id="tracking-project-kickoff"
-                type="date"
-                value={project.kickoff.date || ''}
-                onChange={(event) =>
-                  onProjectChange?.((current) => ({
-                    ...current,
-                    kickoff: {
-                      ...current.kickoff,
-                      date: event.target.value,
-                    },
-                  }))
-                }
-                className={projectOverviewInputClass}
-              />
-            ) : (
-              <div className="flex h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
-                {formatProjectDate(project.kickoff.date)}
+              <div className="space-y-2">
+                <Label htmlFor="tracking-project-start" className={projectOverviewLabelClass}>
+                  Data d inici
+                </Label>
+                {canManageProject ? (
+                  <Input
+                    id="tracking-project-start"
+                    type="date"
+                    value={project.startDate || ''}
+                    onChange={(event) =>
+                      onProjectChange?.((current) => ({ ...current, startDate: event.target.value }))
+                    }
+                    className={projectOverviewInputClass}
+                  />
+                ) : (
+                  <div className="flex h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
+                    {formatProjectDate(project.startDate)}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="tracking-project-deadline" className={projectOverviewLabelClass}>
-              Deadline del projecte
-            </Label>
-            {canManageProject ? (
-              <Input
-                id="tracking-project-deadline"
-                type="date"
-                value={project.launchDate || ''}
-                onChange={(event) =>
-                  onProjectChange?.((current) => ({ ...current, launchDate: event.target.value }))
-                }
-                className={projectOverviewInputClass}
-              />
-            ) : (
-              <div className="flex h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
-                {formatProjectDate(project.launchDate)}
+              <div className="space-y-2">
+                <Label htmlFor="tracking-project-kickoff" className={projectOverviewLabelClass}>
+                  Arrencada
+                </Label>
+                {canManageProject ? (
+                  <Input
+                    id="tracking-project-kickoff"
+                    type="date"
+                    value={project.kickoff.date || ''}
+                    onChange={(event) =>
+                      onProjectChange?.((current) => ({
+                        ...current,
+                        kickoff: {
+                          ...current.kickoff,
+                          date: event.target.value,
+                        },
+                      }))
+                    }
+                    className={projectOverviewInputClass}
+                  />
+                ) : (
+                  <div className="flex h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
+                    {formatProjectDate(project.kickoff.date)}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-      </section>
+
+              <div className="space-y-2">
+                <Label htmlFor="tracking-project-deadline" className={projectOverviewLabelClass}>
+                  Deadline del projecte
+                </Label>
+                {canManageProject ? (
+                  <Input
+                    id="tracking-project-deadline"
+                    type="date"
+                    value={project.launchDate || ''}
+                    onChange={(event) =>
+                      onProjectChange?.((current) => ({ ...current, launchDate: event.target.value }))
+                    }
+                    className={projectOverviewInputClass}
+                  />
+                ) : (
+                  <div className="flex h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
+                    {formatProjectDate(project.launchDate)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard

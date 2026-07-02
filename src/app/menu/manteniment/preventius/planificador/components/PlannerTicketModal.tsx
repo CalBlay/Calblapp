@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { differenceInCalendarDays, parseISO } from 'date-fns'
-import { useSession } from 'next-auth/react'
 import { useTransports } from '@/hooks/useTransports'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { formatDateTimeValue } from '@/lib/date-format'
@@ -23,12 +22,6 @@ import type {
   UserItem,
 } from '@/app/menu/manteniment/tickets/types'
 import { minutesFromTime, normalizeName, timeFromMinutes } from '../utils'
-
-type SessionUser = {
-  id?: string
-  role?: string
-  department?: string
-}
 
 type Props = {
   ticketId: string
@@ -94,9 +87,7 @@ export default function PlannerTicketModal({
   onClose,
   onRefresh,
 }: Props) {
-  const { data: session } = useSession()
   const { hasAction } = useUiPermissions()
-  const sessionUser = (session?.user || {}) as SessionUser
   const canManagePlannerTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM)
   const canDeleteAnyTicket = hasAction(MAINTENANCE_TICKETS_DELETE_PERM)
   const canValidate = canManagePlannerTickets && hasAction(MAINTENANCE_TICKETS_VALIDATE_PERM)

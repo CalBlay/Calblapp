@@ -30,8 +30,10 @@ import {
   TASK_STATUS_OPTIONS,
   formatProjectDate,
   getBlockDepartments,
+  getBlockStatusExplanation,
   getPreLaunchDeadline,
-  type ProjectBlock,
+  getTaskDependencyHint,
+  summarizeBlockTasks,
   type ProjectData,
 } from './project-shared'
 import {
@@ -48,7 +50,8 @@ import {
 } from './project-ui'
 import ProjectTaskQuickComposer from './ProjectTaskQuickComposer'
 import ProjectTaskCoreFields from './ProjectTaskCoreFields'
-import { type ResponsibleOption } from './project-workspace-helpers'
+import ProjectTaskDependencyPicker, { PROJECT_TASK_ROW_GRID_CLASS } from './ProjectTaskDependencyPicker'
+import { type ResponsibleOption, taskStatusBadgeClass } from './project-workspace-helpers'
 
 type BlockDraft = {
   name: string
@@ -119,6 +122,64 @@ type Props = {
 const blockStatusTone = (status: string) => projectStatusToneClass(status)
 
 const blockStatusAccentClass = (status?: string) => projectStatusAccentClass(status)
+
+type BlockTaskSummaryProps = {
+  taskPending: number
+  taskInProgress: number
+  taskBlocked: number
+  taskDone: number
+  taskTotal: number
+  meetingCount: number
+}
+
+function BlockTaskSummary({
+  taskPending,
+  taskInProgress,
+  taskBlocked,
+  taskDone,
+  taskTotal,
+  meetingCount,
+}: BlockTaskSummaryProps) {
+  const taskProgressPct = taskTotal > 0 ? Math.round((taskDone / taskTotal) * 100) : 0
+  const statItems = [
+    { label: 'Pendents', value: taskPending, className: 'border-amber-100 bg-amber-50 text-amber-900' },
+    { label: 'Bloc', value: taskBlocked, className: 'border-rose-100 bg-rose-50 text-rose-900' },
+    { label: 'En curs', value: taskInProgress, className: 'border-sky-100 bg-sky-50 text-sky-900' },
+    { label: 'Fetes', value: taskDone, className: 'border-emerald-100 bg-emerald-50 text-emerald-900' },
+    { label: 'Reunions', value: meetingCount, className: 'border-violet-100 bg-violet-50 text-violet-900' },
+  ]
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <span className="font-semibold text-slate-800">Resum de tasques</span>
+        <span className="text-slate-500">
+          {taskTotal > 0 ? `${taskDone}/${taskTotal} fetes` : 'Cap tasca creada'}
+        </span>
+      </div>
+      <div
+        className="h-1.5 overflow-hidden rounded-full bg-slate-200"
+        title={taskTotal > 0 ? `${taskDone} de ${taskTotal} tasques fetes` : 'Sense tasques en aquest bloc'}
+      >
+        <div
+          className="h-full rounded-full bg-sky-500 transition-[width]"
+          style={{ width: taskTotal > 0 ? `${taskProgressPct}%` : '0%' }}
+        />
+      </div>
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
+        {statItems.map((item) => (
+          <div
+            key={item.label}
+            className={cn('rounded-lg border px-2 py-1.5 text-center', item.className)}
+          >
+            <div className="text-base font-semibold tabular-nums leading-none">{item.value}</div>
+            <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wide opacity-80">{item.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export default function ProjectBlocksTab({
   projectId,
@@ -442,23 +503,23 @@ export default function ProjectBlocksTab({
                 project.rooms.find((room) => room.kind === 'block' && room.blockId === block.id)?.id ||
                 `room-block-${block.id}`
               const blockRoomHref = `/menu/projects/${projectId}/rooms/${blockRoomId}`
-              const taskPending = block.tasks.filter((task) => task.status === 'pending').length
-              const taskInProgress = block.tasks.filter((task) => task.status === 'in_progress').length
-              const taskDone = block.tasks.filter((task) => task.status === 'done').length
-              const taskTotal = block.tasks.length
-              const meetingCount = (block.meetings || []).length
-              const taskProgressPct = taskTotal > 0 ? Math.round((taskDone / taskTotal) * 100) : 0
+              const taskSummary = summarizeBlockTasks(block)
+              const {
+                taskPending,
+                taskInProgress,
+                taskBlocked,
+                taskDone,
+                taskTotal,
+                meetingCount,
+              } = taskSummary
               const blockDepartments = getBlockDepartments(block)
               const deadlineHint = getDeadlineHint(block.deadline)
               const deadlineTextTone = getDeadlineTextTone(block.deadline)
               const statusLabel =
                 BLOCK_STATUS_OPTIONS.find((option) => option.value === block.status)?.label || 'En curs'
+              const blockStatusExplanation = getBlockStatusExplanation(block, project.blocks)
               const dependencyName =
                 project.blocks.find((item) => item.id === block.dependsOn)?.name || 'Bloc anterior'
-              const taskSublineParts: string[] = []
-              if (taskPending > 0) taskSublineParts.push(`${taskPending} pendents`)
-              if (taskInProgress > 0) taskSublineParts.push(`${taskInProgress} en curs`)
-              if (meetingCount > 0) taskSublineParts.push(`${meetingCount} reunions`)
               return (
               <div
                 key={block.id}
@@ -503,6 +564,11 @@ export default function ProjectBlocksTab({
                             <span className={cn('rounded-full px-2.5 py-1 text-[11px] font-semibold', blockStatusTone(block.status))}>
                               {statusLabel}
                             </span>
+                            {blockStatusExplanation ? (
+                              <span className="w-full text-xs font-medium text-rose-700 sm:w-auto">
+                                {blockStatusExplanation}
+                              </span>
+                            ) : null}
                             {canConvokeCurrentBlockMeeting && onOpenBlockMeeting ? (
                               <button
                                 type="button"
@@ -559,33 +625,14 @@ export default function ProjectBlocksTab({
                         ) : null}
                       </div>
 
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                          <span className="font-semibold text-slate-800">Tasques</span>
-                          <span className="text-slate-500">
-                            {taskTotal > 0 ? `${taskDone}/${taskTotal} fetes` : 'Sense tasques'}
-                          </span>
-                        </div>
-                        <div
-                          className="h-2 overflow-hidden rounded-full bg-slate-200"
-                          title={
-                            taskTotal > 0
-                              ? `${taskDone} de ${taskTotal} tasques fetes`
-                              : 'Sense tasques en aquest bloc'
-                          }
-                        >
-                          <div
-                            className="h-full rounded-full bg-sky-500 transition-[width]"
-                            style={{ width: taskTotal > 0 ? `${taskProgressPct}%` : '0%' }}
-                          />
-                        </div>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
-                          <span>{taskPending} pendents</span>
-                          <span>{taskInProgress} en curs</span>
-                          <span>{meetingCount} reunions</span>
-                          <span>{taskSublineParts.length > 0 ? taskSublineParts.join(' · ') : 'Sense activitat'}</span>
-                        </div>
-                      </div>
+                      <BlockTaskSummary
+                        taskPending={taskPending}
+                        taskInProgress={taskInProgress}
+                        taskBlocked={taskBlocked}
+                        taskDone={taskDone}
+                        taskTotal={taskTotal}
+                        meetingCount={meetingCount}
+                      />
 
                     </div>
                   </div>
@@ -651,8 +698,15 @@ export default function ProjectBlocksTab({
                 </div>
 
                 {editingBlockId === block.id && canEditCurrentBlock ? (
-                  <>
-                    <div className="space-y-4">
+                  <div className="space-y-4 border-t border-slate-200 pt-4">
+                    <section className="rounded-[20px] border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
+                      <div className="mb-4 border-b border-slate-200/80 pb-3">
+                        <h4 className="text-sm font-semibold text-slate-900">Dades del bloc</h4>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Informació general del front de treball: nom, terminis, departaments i descripció.
+                        </p>
+                      </div>
+                      <div className="space-y-4">
                       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,0.9fr)_160px_minmax(0,1.6fr)_180px]">
                         <div className="space-y-2">
                           <Label>Nom</Label>
@@ -806,32 +860,26 @@ export default function ProjectBlocksTab({
                           />
                         </div>
                       </div>
+                      </div>
+                    </section>
 
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-2 text-left"
-                          onClick={() =>
-                            setShowTasksByBlock((current) => ({
-                              ...current,
-                              [block.id]: !(current[block.id] ?? true),
-                            }))
-                          }
-                        >
-                          <Label className="cursor-pointer">Tasques</Label>
-                          <ChevronDown
-                            className={`h-4 w-4 text-slate-500 transition-transform ${
-                              tasksExpanded ? 'rotate-0' : '-rotate-90'
-                            }`}
-                          />
-                        </button>
+                    <section className="rounded-[20px] border border-violet-200/80 bg-violet-50/35 p-4 sm:p-5">
+                      <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-violet-200/70 pb-3">
+                        <div>
+                          <h4 className="text-sm font-semibold text-violet-900">Tasques del bloc</h4>
+                          <p className="mt-1 text-xs text-violet-800/70">
+                            Accions concretes assignades a persones i departaments dins aquest bloc.
+                          </p>
+                        </div>
                         <div className="flex items-center gap-2">
+                          <span className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-xs font-medium text-violet-800">
+                            {taskTotal} {taskTotal === 1 ? 'tasca' : 'tasques'}
+                          </span>
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 rounded-full border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 hover:text-violet-800"
+                            className="h-8 w-8 rounded-full border border-violet-200 bg-white text-violet-700 hover:bg-violet-100 hover:text-violet-800"
                             onClick={() => {
                               setShowTasksByBlock((current) => ({
                                 ...current,
@@ -856,16 +904,45 @@ export default function ProjectBlocksTab({
                         </div>
                       </div>
 
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 text-left"
+                          onClick={() =>
+                            setShowTasksByBlock((current) => ({
+                              ...current,
+                              [block.id]: !(current[block.id] ?? true),
+                            }))
+                          }
+                        >
+                          <span className="text-xs font-semibold uppercase tracking-wide text-violet-800/80">
+                            Llista de tasques
+                          </span>
+                          <ChevronDown
+                            className={`h-4 w-4 text-violet-700/70 transition-transform ${
+                              tasksExpanded ? 'rotate-0' : '-rotate-90'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
                         {tasksExpanded ? (
                           <>
                             {block.tasks.length === 0 ? null : (
                               <div className="space-y-2">
-                                {block.tasks.map((task) => (
+                                {block.tasks.map((task) => {
+                                  const taskStatus =
+                                    TASK_STATUS_OPTIONS.find((option) => option.value === task.status)?.label ||
+                                    'Pendent'
+                                  const dependencyHint = getTaskDependencyHint(project.blocks, task)
+
+                                  return (
                                   <div
                                     key={task.id}
-                                    className="rounded-2xl bg-white px-4 py-3"
+                                    className="rounded-2xl border border-violet-100/80 bg-white px-4 py-3 shadow-sm"
                                   >
-                                <div className="grid gap-3 lg:grid-cols-[20ch_170px_170px_150px_130px_auto]">
+                                <div className={PROJECT_TASK_ROW_GRID_CLASS}>
                                   <div className="min-w-0">
                                     <Input
                                       value={task.title}
@@ -876,6 +953,19 @@ export default function ProjectBlocksTab({
                                       maxLength={20}
                                       className="h-10 w-[20ch]"
                                     />
+                                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                                      <span
+                                        className={cn(
+                                          'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                                          taskStatusBadgeClass(task.status)
+                                        )}
+                                      >
+                                        {taskStatus}
+                                      </span>
+                                      {dependencyHint ? (
+                                        <span className="text-[11px] font-medium text-rose-700">{dependencyHint}</span>
+                                      ) : null}
+                                    </div>
                                   </div>
                                   <ProjectTaskCoreFields
                                     block={block}
@@ -896,6 +986,16 @@ export default function ProjectBlocksTab({
                                       onSetTaskField(block.id, task.id, 'priority', value)
                                     }
                                   />
+                                  <ProjectTaskDependencyPicker
+                                    blocks={project.blocks}
+                                    dependsOn={task.dependsOn || ''}
+                                    excludeTaskId={task.id}
+                                    idPrefix={`${task.id}-depends`}
+                                    onDependsOnChange={(value) => {
+                                      if (value === task.id) return
+                                      onSetTaskField(block.id, task.id, 'dependsOn', value)
+                                    }}
+                                  />
                                     <Button
                                       type="button"
                                       variant="ghost"
@@ -907,7 +1007,8 @@ export default function ProjectBlocksTab({
                                     </Button>
                                 </div>
                                   </div>
-                                ))}
+                                  )
+                                })}
                               </div>
                             )}
 
@@ -921,10 +1022,7 @@ export default function ProjectBlocksTab({
                                 deadline={taskDraft.deadline}
                                 priority={taskDraft.priority || 'normal'}
                                 dependsOn={taskDraft.dependsOn || ''}
-                                dependencyOptions={block.tasks.map((task) => ({
-                                  id: task.id,
-                                  label: `${task.title || 'Tasca'} (${task.status || 'pending'})`,
-                                }))}
+                                dependencyBlocks={project.blocks}
                                 departments={getBlockDepartments(block)}
                                 responsibleOptions={departmentResponsibleOptions(getBlockDepartments(block)).map((option) => ({
                                   id: option.id,
@@ -947,13 +1045,16 @@ export default function ProjectBlocksTab({
                           </div>
                         )}
                       </div>
-                    </div>
-
-                  </>
+                    </section>
+                  </div>
                 ) : null}
 
                 {isViewingReadonly ? (
-                  <div className="space-y-4">
+                  <div className="space-y-4 border-t border-slate-200 pt-4">
+                    <section className="rounded-[20px] border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
+                      <div className="mb-4 border-b border-slate-200/80 pb-3">
+                        <h4 className="text-sm font-semibold text-slate-900">Dades del bloc</h4>
+                      </div>
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_160px_180px]">
                       <div className="space-y-2">
                         <Label>Descripcio</Label>
@@ -974,9 +1075,12 @@ export default function ProjectBlocksTab({
                         </div>
                       </div>
                     </div>
+                    </section>
 
-                    <div className="space-y-3">
-                      <Label>Tasques</Label>
+                    <section className="rounded-[20px] border border-violet-200/80 bg-violet-50/35 p-4 sm:p-5">
+                      <div className="mb-4 border-b border-violet-200/70 pb-3">
+                        <h4 className="text-sm font-semibold text-violet-900">Tasques del bloc</h4>
+                      </div>
                       {block.tasks.length === 0 ? (
                         <div className={`rounded-2xl bg-white/80 px-4 py-4 ${projectEmptyStateClass}`}>
                           Encara no hi ha tasques en aquest bloc.
@@ -1012,7 +1116,7 @@ export default function ProjectBlocksTab({
                           ))}
                         </div>
                       )}
-                    </div>
+                    </section>
                   </div>
                 ) : null}
 

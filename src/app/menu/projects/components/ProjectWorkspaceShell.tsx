@@ -97,7 +97,7 @@ export default function ProjectWorkspaceShell({
             <div className="min-w-0">
               <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 text-sm">
                 <Link href="/menu/projects" className="font-semibold text-slate-700 hover:underline">
-                  Projectes
+                  OpsiaProjects
                 </Link>
                 <span className="text-slate-400">/</span>
                 <span className="truncate font-bold text-slate-900">

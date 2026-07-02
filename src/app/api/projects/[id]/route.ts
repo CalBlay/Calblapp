@@ -12,6 +12,11 @@ import {
 } from '@/lib/projectParticipation'
 import { deriveProjectPhase } from '@/app/menu/projects/components/project-shared'
 import {
+  canTaskAdvanceFromPending,
+  getTaskDependencyMeta,
+  normalizeTaskWorkflowStatus,
+} from '@/app/menu/projects/components/project-shared'
+import {
   archiveProjectRoomOpsChannel,
   syncProjectRoomsWithChangedParticipants,
   type ProjectBlockLike,
@@ -409,6 +414,59 @@ async function notifyTaskOwnerAssignment(params: {
   }
 }
 
+async function notifyTaskDependencyUnlocked(params: {
+  userId: string
+  projectId: string
+  blockId: string
+  taskId: string
+  projectName: string
+  blockName: string
+  taskName: string
+  dependencyTaskName: string
+}) {
+  const { userId, projectId, blockId, taskId, projectName, blockName, taskName, dependencyTaskName } = params
+  const title = 'Ja pots començar una tasca'
+  const body = `La dependència "${dependencyTaskName || 'tasca prèvia'}" ja està feta. Ja pots començar "${taskName || 'la teva tasca'}".`
+  const now = Date.now()
+
+  await db.collection('users').doc(userId).collection('notifications').add({
+    title,
+    body,
+    createdAt: now,
+    read: false,
+    type: 'project_task_dependency_unlocked',
+    projectId,
+    blockId,
+    taskId,
+    projectName,
+    blockName,
+    taskName,
+    dependencyTaskName,
+  })
+  await incrementUserUnreadCount(userId, 'project_task_dependency_unlocked', 1)
+
+  if (hasAblyApiKey()) {
+    try {
+      const rest = getAblyRest()
+      await rest.channels.get(`user:${userId}:notifications`).publish('created', {
+        type: 'project_task_dependency_unlocked',
+        projectId,
+        blockId,
+        taskId,
+        createdAt: now,
+      })
+    } catch (err) {
+      console.error('[projects] task dependency unlocked Ably publish error', err)
+    }
+  }
+
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: `/menu/projects/${projectId}?tab=tasks`,
+  })
+}
+
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
@@ -681,6 +739,37 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       blocks: (Array.isArray(payload.blocks) ? payload.blocks : currentData.blocks || []) as ProjectBlock[],
     })
 
+    const nextBlocksForValidation = (
+      Array.isArray(payload.blocks) ? payload.blocks : currentData.blocks || []
+    ) as ProjectBlock[]
+    const currentTasksById = new Map(
+      (currentBlocks as ProjectBlock[]).flatMap((block) =>
+        (block.tasks || []).map((task) => [String(task.id || '').trim(), task] as const)
+      )
+    )
+
+    for (const block of nextBlocksForValidation) {
+      for (const task of Array.isArray(block.tasks) ? block.tasks : []) {
+        const taskId = String(task?.id || '').trim()
+        if (!taskId) continue
+        const previousTask = currentTasksById.get(taskId)
+        const previousStatus = normalizeTaskWorkflowStatus(previousTask?.status)
+        const nextStatus = normalizeTaskWorkflowStatus(task?.status)
+
+        if (previousStatus === 'pending' && nextStatus !== 'pending' && !canTaskAdvanceFromPending(task, nextBlocksForValidation)) {
+          const dependency = getTaskDependencyMeta(nextBlocksForValidation, task)
+          const taskName = String(task?.title || 'Tasca').trim()
+          const dependencyName = String(dependency?.dependencyTask.title || 'la tasca prèvia').trim()
+          return NextResponse.json(
+            {
+              error: `La tasca "${taskName}" no pot sortir de pendent fins que "${dependencyName}" estigui feta.`,
+            },
+            { status: 400 }
+          )
+        }
+      }
+    }
+
     const nextRooms = Array.isArray(payload.rooms)
       ? (payload.rooms as Record<string, unknown>[])
       : currentRooms
@@ -795,6 +884,50 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         })
       })
 
+      const taskDependencyUnlockedNotifications = nextBlocks.flatMap((block) => {
+        const previousBlock = currentBlocksById.get(String(block.id || '').trim())
+        const previousTasksById = new Map(
+          (Array.isArray(previousBlock?.tasks) ? previousBlock.tasks : [])
+            .map((task) => [String(task?.id || '').trim(), task] as const)
+            .filter(([taskId]) => Boolean(taskId))
+        )
+
+        return (Array.isArray(block.tasks) ? block.tasks : []).flatMap((task) => {
+          const taskId = String(task?.id || '').trim()
+          if (!taskId) return []
+
+          const previousTask = previousTasksById.get(taskId)
+          const previousStatus = normalizeTaskWorkflowStatus(previousTask?.status)
+          const nextStatus = normalizeTaskWorkflowStatus(String(task?.status || ''))
+
+          if (previousStatus === 'done' || nextStatus !== 'done') return []
+
+          return nextBlocks.flatMap((dependentBlock) =>
+            (Array.isArray(dependentBlock.tasks) ? dependentBlock.tasks : []).map(async (dependentTask) => {
+              if (String(dependentTask?.dependsOn || '').trim() !== taskId) return null
+              if (normalizeTaskWorkflowStatus(String(dependentTask?.status || '')) === 'done') return null
+
+              const dependentOwner = String(dependentTask?.owner || '').trim()
+              if (!dependentOwner) return null
+
+              const assignedUser = await userResolver.findByName(dependentOwner)
+              if (!assignedUser?.id) return null
+
+              return notifyTaskDependencyUnlocked({
+                userId: assignedUser.id,
+                projectId: id,
+                blockId: String(dependentBlock.id || '').trim(),
+                taskId: String(dependentTask?.id || '').trim(),
+                projectName,
+                blockName: String(dependentBlock.name || '').trim() || 'Bloc',
+                taskName: String(dependentTask?.title || '').trim() || 'Tasca',
+                dependencyTaskName: String(task?.title || '').trim() || 'Tasca',
+              })
+            })
+          )
+        })
+      })
+
       await Promise.allSettled([
         ...(removedRooms.length > 0
           ? removedRooms.map((room) =>
@@ -832,6 +965,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           : []),
         ...blockAssignmentNotifications,
         ...taskAssignmentNotifications,
+        ...taskDependencyUnlockedNotifications,
         syncProjectRoomsWithChangedParticipants({
           projectId: id,
           project: {

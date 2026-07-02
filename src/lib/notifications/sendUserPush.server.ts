@@ -43,6 +43,7 @@ export function defaultPushUrlForNotificationType(
     case 'project_assignment':
     case 'project_block_assignment':
     case 'project_task_assignment':
+    case 'project_task_dependency_unlocked':
     case 'project_room_task_assignment':
       return extras?.projectId
         ? `/menu/projects/${encodeURIComponent(String(extras.projectId))}`

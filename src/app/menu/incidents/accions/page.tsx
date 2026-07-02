@@ -133,7 +133,7 @@ export default function IncidentActionsMinePage() {
       void load()
     }, search.trim() ? 250 : 0)
     return () => window.clearTimeout(timer)
-  }, [status, session, uiPermsReady, canSeeBoard, load, search])
+  }, [status, session, uiPermsReady, canSeeAccions, load, search])
 
   const tableRows = useMemo(
     () =>

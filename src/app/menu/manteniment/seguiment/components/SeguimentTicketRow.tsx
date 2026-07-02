@@ -7,7 +7,6 @@ import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
 import { maintenanceStatusBadge } from '@/lib/colors'
 import { getMaintenanceTicketValidationSummary } from '@/lib/maintenanceTicketValidation'
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
-import { type MaintenanceStatus } from '../types'
 import {
   formatDateTime,
   getTicketTrackedMinutes,

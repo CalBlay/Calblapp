@@ -1091,7 +1091,6 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    const data = snap.data() as MaintenanceTicketRecord
     const canDeleteAsManager = await canDeleteMaintenanceTickets(user)
 
     if (!canDeleteAsManager) {

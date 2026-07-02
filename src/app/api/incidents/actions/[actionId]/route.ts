@@ -57,7 +57,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
     const patch: Record<string, unknown> = { updatedAt: now }
     const storedAssignedToName = String(snap.get('assignedToName') || '').trim()
     const storedAssignedToId = String(snap.get('assignedToId') || '').trim()
-    const storedDueAt = snap.get('dueAt') as FirebaseFirestore.Timestamp | null | undefined
     const storedOutlookEventId = String(snap.get('outlookEventId') || '').trim()
     const storedOutlookEmail = String(snap.get('outlookAssigneeEmail') || '').trim()
     const incidentId = String(snap.get('incidentId') || '').trim()

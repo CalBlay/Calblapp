@@ -473,7 +473,7 @@ export default function PreventiusPlanificadorPage() {
         if (a.dayIndex !== b.dayIndex) return a.dayIndex - b.dayIndex
         return minutesFromTime(a.start) - minutesFromTime(b.start)
       })
-  }, [mergedScheduledItems, normalizedPlannerSearch])
+  }, [mergedScheduledItems, normalizedPlannerSearch, scheduledItems])
 
   const calendarScheduledItems = useMemo(
     () => (normalizedPlannerSearch ? searchMatchedScheduledItems : filteredScheduledItems),

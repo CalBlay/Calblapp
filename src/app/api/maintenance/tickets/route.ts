@@ -75,6 +75,10 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   status?: string
   priority?: string
   ticketType?: string
+  location?: string | null
+  source?: string | null
+  intakeChannel?: string | null
+  createdById?: string | null
   createdAt?: string | number | { toDate?: () => Date }
   plannedStart?: string | number | null
   assignedAt?: string | number | null

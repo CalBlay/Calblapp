@@ -27,7 +27,8 @@ export function bucketForNotificationType(type: string): BucketKey | null {
   if (
     normalized === 'project_assignment' ||
     normalized === 'project_block_assignment' ||
-    normalized === 'project_task_assignment'
+    normalized === 'project_task_assignment' ||
+    normalized === 'project_task_dependency_unlocked'
   ) {
     return 'projects'
   }

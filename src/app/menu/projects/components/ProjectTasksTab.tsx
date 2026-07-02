@@ -23,6 +23,7 @@ import {
   corporateFilterFieldClass,
 } from '@/lib/corporate-filters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
+import { toast } from '@/components/ui/use-toast'
 import { Input } from '@/components/ui/input'
 import { useFilters } from '@/context/FiltersContext'
 import { colorByDepartment } from '@/lib/colors'
@@ -37,7 +38,9 @@ import {
 import {
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
+  canTaskAdvanceFromPending,
   formatProjectDate,
+  getTaskDependencyMeta,
   getPreLaunchDeadline,
   type ProjectDocument,
   type ProjectBlock,
@@ -45,6 +48,7 @@ import {
   type ProjectTask,
 } from './project-shared'
 import ProjectTaskQuickComposer from './ProjectTaskQuickComposer'
+import ProjectTaskDependencyPicker from './ProjectTaskDependencyPicker'
 import VirtualizedKanbanColumn from './VirtualizedKanbanColumn'
 import { projectEmptyStateClass } from './project-ui'
 import { type ResponsibleOption } from './project-workspace-helpers'
@@ -238,13 +242,20 @@ export default function ProjectTasksTab({
   )
   const dirtyTasks = dirtyBlocks || hasPendingTaskDraft
   const totalFilteredTasks = filteredTasks.length
-  const draftDependencyOptions = projectBlocks
-    .find((block) => block.id === taskDraft.blockId)
-    ?.tasks.filter((task) => task.id !== taskDraft.dependsOn)
-    .map((task) => ({
-      id: task.id,
-      label: `${task.title || 'Tasca'} (${task.status || 'pending'})`,
-    })) || []
+
+  const dependencyMetaByTaskId = new Map(
+    allTasks.map(({ task }) => [task.id, getTaskDependencyMeta(projectBlocks, task)] as const)
+  )
+
+  const showDependencyBlockedToast = (task: ProjectTask) => {
+    const dependency = getTaskDependencyMeta(projectBlocks, task)
+    if (!dependency) return
+    toast({
+      title: 'Tasca bloquejada per dependència',
+      description: `No pots començar "${task.title || 'aquesta tasca'}" fins que "${dependency.dependencyTask.title || 'la tasca prèvia'}" estigui feta.`,
+      variant: 'destructive',
+    })
+  }
 
   const moveTaskToStatus = (blockId: string, taskId: string, status: string) => {
     const currentEntry = allTasks.find((item) => item.block.id === blockId && item.task.id === taskId)
@@ -262,6 +273,16 @@ export default function ProjectTasksTab({
     const canLeavePending = !isLeavingPending || hasOwnerAndDeadline || canMoveTask(currentEntry.block, currentEntry.task)
 
     if (!canLeavePending) {
+      setDragOverStatus(null)
+      setDraggingTaskKey(null)
+      return
+    }
+
+    if (
+      isLeavingPending &&
+      !canTaskAdvanceFromPending(currentEntry.task, projectBlocks)
+    ) {
+      showDependencyBlockedToast(currentEntry.task)
       setDragOverStatus(null)
       setDraggingTaskKey(null)
       return
@@ -424,7 +445,7 @@ export default function ProjectTasksTab({
               deadline={taskDraft.deadline}
               priority={taskDraft.priority || 'normal'}
               dependsOn={taskDraft.dependsOn || ''}
-              dependencyOptions={draftDependencyOptions}
+              dependencyBlocks={projectBlocks}
               departments={projectBlocks.find((block) => block.id === taskDraft.blockId)?.departments || []}
               responsibleOptions={taskResponsibleOptions(
                 taskDraft.department ||
@@ -535,8 +556,15 @@ export default function ProjectTasksTab({
                           const taskDaysLeft = taskDayDiffFromToday(task.deadline)
                           const docCount = (task.documents || []).length
                           const meetingCount = (task.meetings || []).length
+                          const dependencyMeta = dependencyMetaByTaskId.get(task.id) || null
                           const taskMetaParts: string[] = []
-                          if (task.dependsOn) taskMetaParts.push('Depen de 1 tasca')
+                          if (dependencyMeta) {
+                            taskMetaParts.push(
+                              dependencyMeta.isResolved
+                                ? `Dependència feta: ${formatProjectDate(dependencyMeta.dependencyTask.deadline)}`
+                                : `Dependència fins ${formatProjectDate(dependencyMeta.dependencyTask.deadline)}`
+                            )
+                          }
                           if (docCount > 0) taskMetaParts.push(`${docCount} doc${docCount === 1 ? '' : 's'}`)
                           if (meetingCount > 0) {
                             taskMetaParts.push(`${meetingCount} reunió${meetingCount === 1 ? '' : 's'}`)
@@ -607,6 +635,11 @@ export default function ProjectTasksTab({
                                 {task.description ? (
                                   <div className={`mt-1 line-clamp-1 text-[15px] ${isObserverTask ? 'text-slate-500' : 'text-slate-800'}`}>
                                     {task.description}
+                                  </div>
+                                ) : null}
+                                {dependencyMetaByTaskId.get(task.id) && !dependencyMetaByTaskId.get(task.id)?.isResolved ? (
+                                  <div className="mt-2 inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-medium text-amber-800">
+                                    Esperant "{dependencyMetaByTaskId.get(task.id)?.dependencyTask.title || 'tasca prèvia'}"
                                   </div>
                                 ) : null}
                               </div>
@@ -816,32 +849,17 @@ export default function ProjectTasksTab({
                                 </div>
                                 {canManageCurrentTask ? (
                                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                    <div className="min-w-0">
-                                      <Select
-                                        value={task.dependsOn || 'none'}
-                                        onValueChange={(value) => {
-                                          const nextValue = value === 'none' ? '' : value
-                                          if (nextValue === task.id) return
-                                          onSetTaskField(block.id, task.id, 'dependsOn', nextValue)
+                                    <div className="min-w-0 sm:col-span-2">
+                                      <ProjectTaskDependencyPicker
+                                        blocks={projectBlocks}
+                                        dependsOn={task.dependsOn || ''}
+                                        excludeTaskId={task.id}
+                                        idPrefix={`${task.id}-depends`}
+                                        onDependsOnChange={(value) => {
+                                          if (value === task.id) return
+                                          onSetTaskField(block.id, task.id, 'dependsOn', value)
                                         }}
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="Depen de" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="none">Sense dependencia</SelectItem>
-                                          {block.tasks
-                                            .filter((candidate) => candidate.id !== task.id)
-                                            .map((candidate) => (
-                                              <SelectItem
-                                                key={`${task.id}-depends-${candidate.id}`}
-                                                value={candidate.id}
-                                              >
-                                                {(candidate.title || 'Tasca').slice(0, 44)}
-                                              </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                      </Select>
+                                      />
                                     </div>
                                     <div className="min-w-0">
                                       <Select

@@ -47,7 +47,7 @@ type Props = {
 export default function PlannerSidebar({
   tab,
   visibleItems,
-  externalizedItems = [],
+  externalizedItems: _externalizedItems = [],
   scheduledItems,
   dayLabels,
   showScheduledInSidebar,

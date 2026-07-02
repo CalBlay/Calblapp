@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import { format } from 'date-fns'
 import type { MachineItem, Ticket } from '@/app/menu/manteniment/tickets/types'
 import type { MaintenanceStatus, Preventiu, SeguimentRow, TabKey } from '../types'

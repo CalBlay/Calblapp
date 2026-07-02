@@ -21,7 +21,10 @@ import { BarChart3, Truck } from 'lucide-react'
 
 export default function PreparationDashboardPage() {
   const searchParams = useSearchParams()
-  const searchParamsSafe = searchParams ?? new URLSearchParams()
+  const searchParamsSafe = useMemo(
+    () => searchParams ?? new URLSearchParams(),
+    [searchParams]
+  )
   const { data: session } = useSession()
   const role = (session?.user?.role || '').toLowerCase()
 
