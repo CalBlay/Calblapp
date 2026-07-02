@@ -89,11 +89,11 @@ export default function ProjectWorkspaceShell({
         : 'Canal general al dia'
 
   return (
-    <div className="w-full border-b border-violet-200/80 bg-gradient-to-r from-violet-200/65 via-fuchsia-100/55 to-violet-50 shadow-[0_8px_24px_-16px_rgba(109,40,217,0.35)]">
-      <div className="px-4 py-3.5">
+    <div className="sticky top-0 z-30 w-full border-b border-violet-200/80 bg-gradient-to-r from-violet-200/65 via-fuchsia-100/55 to-violet-50 shadow-[0_8px_20px_-16px_rgba(109,40,217,0.35)] backdrop-blur-sm">
+      <div className="px-4 py-2.5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2.5">
-            <FolderKanban className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
+            <FolderKanban className="mt-0.5 h-4.5 w-4.5 shrink-0 text-violet-600" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 text-sm">
                 <Link href="/menu/projects" className="font-semibold text-slate-700 hover:underline">
@@ -107,20 +107,20 @@ export default function ProjectWorkspaceShell({
               {metaParts.length > 0 ? (
                 <p className="mt-1 text-xs text-slate-600">{metaParts.join(' · ')}</p>
               ) : null}
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-slate-500">
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
                 <span className="inline-flex items-center gap-1.5">
-                  <UserRound className="h-3.5 w-3.5 text-violet-600" />
+                  <UserRound className="h-3 w-3 text-violet-600" />
                   <span className="truncate">{owner}</span>
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <TimerReset className="h-3.5 w-3.5 text-violet-600" />
+                  <TimerReset className="h-3 w-3 text-violet-600" />
                   <span>{daysRunning}</span>
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <CalendarClock className="h-3.5 w-3.5 text-violet-600" />
+                  <CalendarClock className="h-3 w-3 text-violet-600" />
                   <span>{formatProjectDate(project.launchDate)}</span>
                 </span>
-                <span className={cn('inline-flex items-center gap-1 text-[12px] font-medium', deadlineStatus.tone)}>
+                <span className={cn('inline-flex items-center gap-1 text-[11px] font-medium', deadlineStatus.tone)}>
                   <span>{deadlineStatus.label}</span>
                 </span>
               </div>
@@ -138,7 +138,7 @@ export default function ProjectWorkspaceShell({
                 variant="outline"
                 title={`${GENERAL_ROOM_LABEL} · ${coordinationIndicatorLabel}`}
                 onClick={onOpenCoordination}
-                className="relative h-8 w-8 shrink-0 border-violet-200 bg-white/90 text-violet-800 hover:bg-violet-50"
+                className="relative h-7 w-7 shrink-0 border-violet-200 bg-white/90 text-violet-800 hover:bg-violet-50"
               >
                 <MessageSquare className="h-3.5 w-3.5" />
                 {!coordinationActivityLoading ? (
@@ -167,7 +167,7 @@ export default function ProjectWorkspaceShell({
                 title="Reunió d'arrencada"
                 aria-label="Reunió d'arrencada"
                 onClick={onCreateMeeting}
-                className="h-8 w-8 shrink-0 border border-violet-200 bg-white/90 text-violet-700 shadow-sm shadow-violet-200/30 hover:bg-violet-50 hover:text-violet-800"
+                className="h-7 w-7 shrink-0 border border-violet-200 bg-white/90 text-violet-700 shadow-sm shadow-violet-200/30 hover:bg-violet-50 hover:text-violet-800"
               >
                 <CalendarPlus className="h-3.5 w-3.5" />
               </Button>
@@ -181,7 +181,7 @@ export default function ProjectWorkspaceShell({
                 disabled={deleting}
                 title={deleting ? 'Eliminant projecte...' : 'Eliminar projecte'}
                 aria-label={deleting ? 'Eliminant projecte' : 'Eliminar projecte'}
-                className="h-8 w-8 shrink-0 border-red-200 bg-white/85 text-red-600 hover:bg-red-50 hover:text-red-700"
+                className="h-7 w-7 shrink-0 border-red-200 bg-white/85 text-red-600 hover:bg-red-50 hover:text-red-700"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -189,9 +189,9 @@ export default function ProjectWorkspaceShell({
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
           <div
-            className="inline-flex flex-wrap rounded-2xl border border-white/95 bg-white/88 p-1.5 shadow-lg shadow-violet-200/35"
+            className="inline-flex flex-wrap rounded-2xl border border-white/95 bg-white/88 p-1 shadow-md shadow-violet-200/30"
             role="tablist"
             aria-label="Seccions del projecte"
           >
@@ -207,7 +207,7 @@ export default function ProjectWorkspaceShell({
                   aria-selected={isActive}
                   onClick={() => onTabChange(tab.id)}
                   className={cn(
-                    'inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium transition',
+                    'inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium transition',
                     isActive
                       ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm shadow-violet-300/40'
                       : 'text-slate-600 hover:bg-white/90 hover:text-violet-800'
@@ -221,7 +221,7 @@ export default function ProjectWorkspaceShell({
           </div>
         </div>
 
-        <div className="mt-3">
+        <div className="mt-2">
           <ProjectSummaryStrip
             project={project}
             compact

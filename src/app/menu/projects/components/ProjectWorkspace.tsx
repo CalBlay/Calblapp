@@ -45,6 +45,7 @@ type Props = {
   initialProject: ProjectData
   initialUsersCatalog?: ResponsibleOption[]
   initialTab?: WorkspaceTab
+  initialTaskTarget?: { blockId: string; taskId: string }
 }
 
 const tabLoadingFallback = () => (
@@ -91,6 +92,7 @@ export default function ProjectWorkspace({
   initialProject,
   initialUsersCatalog,
   initialTab,
+  initialTaskTarget,
 }: Props) {
   const router = useRouter()
   const { data: session, status: sessionStatus } = useSession()
@@ -230,9 +232,11 @@ export default function ProjectWorkspace({
   )
 
   const appliedInitialNavigation = useRef(false)
+  const appliedInitialTaskTarget = useRef(false)
 
   useEffect(() => {
     appliedInitialNavigation.current = false
+    appliedInitialTaskTarget.current = false
   }, [projectId])
 
   useEffect(() => {
@@ -261,6 +265,34 @@ export default function ProjectWorkspace({
       applyTabChange(visibleTabs[0])
     }
   }, [applyTabChange, initialTab, preferredWorkspaceTab, projectId, sessionStatus, visibleTabs])
+
+  useEffect(() => {
+    if (sessionStatus === 'loading') return
+    if (appliedInitialTaskTarget.current) return
+    if (!initialTaskTarget) return
+    if (!visibleTabs.includes('tasks')) {
+      appliedInitialTaskTarget.current = true
+      return
+    }
+
+    const nextTaskKey = `${initialTaskTarget.blockId}:${initialTaskTarget.taskId}`
+    if (activeTab !== 'tasks') {
+      applyTabChange('tasks')
+      return
+    }
+
+    appliedInitialTaskTarget.current = true
+    setEditingTaskKey(nextTaskKey)
+    setEditingBlockId(null)
+    scrollToProjectTarget(`project-task-${nextTaskKey}`)
+  }, [
+    activeTab,
+    applyTabChange,
+    initialTaskTarget,
+    scrollToProjectTarget,
+    sessionStatus,
+    visibleTabs,
+  ])
 
   const maxDeadline = useMemo(() => getPreLaunchDeadline(project.launchDate), [project.launchDate])
   const {
@@ -648,6 +680,14 @@ export default function ProjectWorkspace({
               {activeTab === 'tracking' ? (
                 <ProjectTrackingTab
                   project={project}
+                  ownerOptions={ownerOptions}
+                  canManageProject={Boolean(canManageProject)}
+                  savingOverview={savingOverview}
+                  dirtyOverview={dirtyOverview}
+                  onProjectChange={setProject}
+                  onSaveOverview={() => {
+                    void saveOverview()
+                  }}
                 />
               ) : null}
             </div>

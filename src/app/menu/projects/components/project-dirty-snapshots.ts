@@ -7,6 +7,7 @@ export type OverviewDirtySnapshot = {
   context: string
   strategy: string
   startDate: string
+  kickoffDate: string
   launchDate: string
   departments: string[]
   blocks: Array<{
@@ -168,6 +169,7 @@ export const captureOverviewDirtySnapshot = (source: ProjectData): OverviewDirty
   context: source.context,
   strategy: source.strategy,
   startDate: source.startDate,
+  kickoffDate: source.kickoff.date || '',
   launchDate: source.launchDate,
   departments: sortedStrings(source.departments),
   blocks: source.blocks.map((block) => ({
@@ -243,6 +245,7 @@ export const overviewSnapshotsDiffer = (
     left.context !== right.context ||
     left.strategy !== right.strategy ||
     left.startDate !== right.startDate ||
+    left.kickoffDate !== right.kickoffDate ||
     left.launchDate !== right.launchDate ||
     left.documentId !== right.documentId ||
     left.documentUrl !== right.documentUrl ||

@@ -111,21 +111,15 @@ export default function ProjectSummaryStrip({
 
   if (compact) {
     return (
-      <article className={cn(projectPanelClass, 'rounded-[24px] px-5 py-4 sm:px-6')}>
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">
-            <FileText className="h-4.5 w-4.5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-700">
-                Objectius del projecte
-              </span>
-            </div>
-            <p className="mt-2 max-w-5xl text-sm font-medium leading-6 text-slate-800 sm:text-[15px]">
-              {summary}
-            </p>
-          </div>
+      <article className={cn(projectPanelClass, 'rounded-[20px] px-4 py-2.5 sm:px-5')}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-700">
+            <FileText className="h-3.5 w-3.5" />
+            Objectius del projecte
+          </span>
+          <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
+            {summary}
+          </p>
         </div>
       </article>
     )

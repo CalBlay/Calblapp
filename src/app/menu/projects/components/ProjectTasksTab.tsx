@@ -7,30 +7,20 @@ import {
   ChevronDown,
   FileText,
   MessagesSquare,
-  MoreHorizontal,
   Paperclip,
   Save,
   Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import FilterButton from '@/components/ui/filter-button'
 import { BLOCK_WORKSPACE_OPEN_LABEL } from './project-room-ui'
 import {
   CorporateFilterField,
-  CorporateFilterInput,
   CorporateFiltersShell,
 } from '@/components/layout/corporate-filters'
 import {
   corporateFilterChipClass,
   corporateFilterFieldClass,
-  corporateFilterLabelClass,
 } from '@/lib/corporate-filters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { Input } from '@/components/ui/input'
@@ -45,7 +35,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  SCRUM_STORY_POINT_OPTIONS,
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
   formatProjectDate,
@@ -219,11 +208,9 @@ export default function ProjectTasksTab({
   const { setContent, setOpen } = useFilters()
   const [draggingTaskKey, setDraggingTaskKey] = useState<string | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
-  const [blockFilter, setBlockFilter] = useState<string>('all')
+  const [blockFilter, setBlockFilter] = useState<string[]>([])
   const [levelFilter, setLevelFilter] = useState<string>('all')
   const [ownerFilter, setOwnerFilter] = useState<string>('all')
-  const [sprintFilter, setSprintFilter] = useState<string>('all')
-  const [newSprintName, setNewSprintName] = useState('')
   const fileInputsRef = useRef<Record<string, HTMLInputElement | null>>({})
   const hasPendingTaskDraft =
     showTaskComposer &&
@@ -238,15 +225,10 @@ export default function ProjectTasksTab({
     )
   ).sort((left, right) => left.localeCompare(right))
   const filteredTasks = allTasks.filter(({ block, task }) => {
-    const matchesBlock = blockFilter === 'all' || block.id === blockFilter
+    const matchesBlock = blockFilter.length === 0 || blockFilter.includes(block.id)
     const matchesLevel = levelFilter === 'all' || (task.priority || 'normal') === levelFilter
     const matchesOwner = ownerFilter === 'all' || String(task.owner || '').trim() === ownerFilter
-    const matchesSprint =
-      sprintFilter === 'all' ||
-      (sprintFilter === 'backlog'
-        ? !String(task.sprintId || '').trim()
-        : String(task.sprintId || '').trim() === sprintFilter)
-    return matchesBlock && matchesLevel && matchesOwner && matchesSprint
+    return matchesBlock && matchesLevel && matchesOwner
   })
   const draggingTask = filteredTasks.find(({ taskKey }) => taskKey === draggingTaskKey)
   const roomIdByBlockId = new Map(
@@ -290,24 +272,17 @@ export default function ProjectTasksTab({
     setDraggingTaskKey(null)
   }
 
+  const toggleBlockFilter = (blockId: string) => {
+    setBlockFilter((current) =>
+      current.includes(blockId)
+        ? current.filter((id) => id !== blockId)
+        : [...current, blockId]
+    )
+  }
+
   const openFiltersPanel = () => {
     setContent(
       <div className="p-4 space-y-4">
-        <CorporateFilterField label="Bloc">
-          <Select value={blockFilter} onValueChange={setBlockFilter}>
-            <SelectTrigger className={corporateFilterFieldClass}>
-              <SelectValue placeholder="Tots els blocs" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tots els blocs</SelectItem>
-              {projectBlocks.map((block) => (
-                <SelectItem key={`filter-block-${block.id}`} value={block.id}>
-                  {block.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CorporateFilterField>
         <CorporateFilterField label="Nivell">
           <Select value={levelFilter} onValueChange={setLevelFilter}>
             <SelectTrigger className={corporateFilterFieldClass}>
@@ -318,22 +293,6 @@ export default function ProjectTasksTab({
               {TASK_PRIORITY_OPTIONS.slice(0, 3).map((option) => (
                 <SelectItem key={`filter-priority-${option.value}`} value={option.value}>
                   {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CorporateFilterField>
-        <CorporateFilterField label="Sprint">
-          <Select value={sprintFilter} onValueChange={setSprintFilter}>
-            <SelectTrigger className={corporateFilterFieldClass}>
-              <SelectValue placeholder="Tots els sprints" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tots els sprints</SelectItem>
-              <SelectItem value="backlog">Backlog</SelectItem>
-              {projectSprints.map((sprint) => (
-                <SelectItem key={`filter-sprint-${sprint.id}`} value={sprint.id}>
-                  {sprint.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -357,10 +316,9 @@ export default function ProjectTasksTab({
         <div className="flex justify-end pt-2">
           <ResetFilterButton
             onClick={() => {
-              setBlockFilter('all')
+              setBlockFilter([])
               setLevelFilter('all')
               setOwnerFilter('all')
-              setSprintFilter('all')
             }}
           />
         </div>
@@ -369,16 +327,8 @@ export default function ProjectTasksTab({
     setOpen(true)
   }
 
-  const handleCreateSprint = () => {
-    if (!canCreateTasks) return
-    const nextName = newSprintName.trim()
-    if (!nextName) return
-    onCreateSprint(nextName)
-    setNewSprintName('')
-  }
-
   const hasActiveFilters =
-    blockFilter !== 'all' || levelFilter !== 'all' || ownerFilter !== 'all' || sprintFilter !== 'all'
+    blockFilter.length > 0 || levelFilter !== 'all' || ownerFilter !== 'all'
 
   return (
     <div className="space-y-2">
@@ -387,33 +337,27 @@ export default function ProjectTasksTab({
         variant="toolbar"
         className="border-slate-200"
         bodyClassName={cn(
-          'flex-wrap gap-y-2 py-2.5 sm:flex-nowrap',
-          canCreateTasks ? 'justify-between' : 'justify-end'
+          'flex-wrap gap-2 py-2.5',
+          'justify-between'
         )}
       >
-        {canCreateTasks ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={cn(corporateFilterLabelClass, 'shrink-0')}>Sprint</span>
-            <CorporateFilterInput
-              className="w-[200px] sm:w-[220px]"
-              value={newSprintName}
-              onChange={(event) => setNewSprintName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') handleCreateSprint()
-              }}
-              placeholder="Sprint 12"
-            />
-            <Button
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          {projectBlocks.map((block) => (
+            <button
+              key={`tasks-block-chip-${block.id}`}
               type="button"
-              variant="outline"
-              className={cn(corporateFilterChipClass, 'shrink-0')}
-              onClick={handleCreateSprint}
-              disabled={!newSprintName.trim()}
+              onClick={() => toggleBlockFilter(block.id)}
+              className={cn(
+                'rounded-full px-3 py-1.5 text-sm font-medium transition',
+                blockFilter.includes(block.id)
+                  ? 'bg-violet-600 text-white shadow-sm shadow-violet-200'
+                  : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-violet-50 hover:text-violet-700'
+              )}
             >
-              Crear
-            </Button>
-          </div>
-        ) : null}
+              {block.name}
+            </button>
+          ))}
+        </div>
 
         <div className="flex items-center gap-2 sm:ml-auto">
           {canOpenMeetingMinutes && onOpenMeetingMinutes ? (
@@ -479,9 +423,6 @@ export default function ProjectTasksTab({
               owner={taskDraft.owner}
               deadline={taskDraft.deadline}
               priority={taskDraft.priority || 'normal'}
-              sprintId={taskDraft.sprintId || ''}
-              storyPoints={taskDraft.storyPoints || '3'}
-              sprintOptions={projectSprints.map((sprint) => ({ id: sprint.id, name: sprint.name }))}
               dependsOn={taskDraft.dependsOn || ''}
               dependencyOptions={draftDependencyOptions}
               departments={projectBlocks.find((block) => block.id === taskDraft.blockId)?.departments || []}
@@ -510,8 +451,6 @@ export default function ProjectTasksTab({
               onOwnerChange={(value) => onSetTaskDraftField('owner', value)}
               onDeadlineChange={(value) => onSetTaskDraftField('deadline', value)}
               onPriorityChange={(value) => onSetTaskDraftField('priority', value)}
-              onSprintChange={(value) => onSetTaskDraftField('sprintId', value)}
-              onStoryPointsChange={(value) => onSetTaskDraftField('storyPoints', value)}
               onDependsOnChange={(value) => onSetTaskDraftField('dependsOn', value)}
               onSubmit={() => {
                 if (taskDraft.blockId && taskDraft.blockId !== 'none') onAddTaskToBlock(taskDraft.blockId)
@@ -594,12 +533,9 @@ export default function ProjectTasksTab({
                           const canExpandCurrentTask = canAccessOpsCurrentTask
                           const isObserverTask = !canAccessOpsCurrentTask
                           const taskDaysLeft = taskDayDiffFromToday(task.deadline)
-                          const sprintLabel =
-                            projectSprints.find((item) => item.id === task.sprintId)?.name || 'Backlog'
-                          const spLabel = `${(task.storyPoints || '3').trim() || '3'} SP`
                           const docCount = (task.documents || []).length
                           const meetingCount = (task.meetings || []).length
-                          const taskMetaParts: string[] = [`${sprintLabel} · ${spLabel}`]
+                          const taskMetaParts: string[] = []
                           if (task.dependsOn) taskMetaParts.push('Depen de 1 tasca')
                           if (docCount > 0) taskMetaParts.push(`${docCount} doc${docCount === 1 ? '' : 's'}`)
                           if (meetingCount > 0) {
@@ -607,15 +543,6 @@ export default function ProjectTasksTab({
                           }
                           if (isObserverTask) taskMetaParts.push('Observador')
                           if (canMoveCurrentTask) taskMetaParts.push('Arrossega per moure')
-                          const showTaskActionsMenu =
-                            canAccessOpsCurrentTask ||
-                            canManageCurrentTask ||
-                            (canConvokeCurrentTaskMeeting && Boolean(onOpenTaskMeeting))
-                          const taskMenuHasDestructive = canManageCurrentTask
-                          const taskMenuHasNonDestructive =
-                            canAccessOpsCurrentTask ||
-                            (canConvokeCurrentTaskMeeting && Boolean(onOpenTaskMeeting))
-
                           return (
                           <div
                             key={taskKey}
@@ -644,9 +571,26 @@ export default function ProjectTasksTab({
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 pl-2">
                                 <div className="flex items-start justify-between gap-3">
-                                  <div className={`min-w-0 flex-1 text-[15px] font-semibold leading-5 ${isObserverTask ? 'text-slate-700' : 'text-slate-900'}`}>
-                                    {task.title}
-                                  </div>
+                                  {canAccessOpsCurrentTask ? (
+                                    <button
+                                      type="button"
+                                      className={cn(
+                                        'min-w-0 flex-1 text-left text-[15px] font-semibold leading-5 hover:underline',
+                                        isObserverTask ? 'text-slate-700 hover:text-violet-700' : 'text-slate-900 hover:text-violet-700'
+                                      )}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        router.push(roomHref)
+                                      }}
+                                      title={BLOCK_WORKSPACE_OPEN_LABEL}
+                                    >
+                                      {task.title}
+                                    </button>
+                                  ) : (
+                                    <div className={`min-w-0 flex-1 text-[15px] font-semibold leading-5 ${isObserverTask ? 'text-slate-700' : 'text-slate-900'}`}>
+                                      {task.title}
+                                    </div>
+                                  )}
                                   <span
                                     className={`shrink-0 pt-0.5 text-sm font-semibold ${
                                       isObserverTask
@@ -703,93 +647,90 @@ export default function ProjectTasksTab({
                                     />
                                   </Button>
                                 ) : null}
-                                {showTaskActionsMenu ? (
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 rounded-full text-slate-500 opacity-80 hover:opacity-100"
-                                        aria-label="Més accions de la tasca"
-                                        onClick={(event) => {
-                                          event.stopPropagation()
-                                        }}
-                                      >
-                                        <MoreHorizontal className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent
-                                      align="end"
-                                      className="w-52"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      {canAccessOpsCurrentTask ? (
-                                        <DropdownMenuItem
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            router.push(roomHref)
-                                          }}
-                                        >
-                                          <MessagesSquare className="h-4 w-4" />
-                                          {BLOCK_WORKSPACE_OPEN_LABEL}
-                                        </DropdownMenuItem>
-                                      ) : null}
-                                      {canConvokeCurrentTaskMeeting && onOpenTaskMeeting ? (
-                                        <DropdownMenuItem
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            onOpenTaskMeeting(block.id, task.id)
-                                          }}
-                                        >
-                                          <CalendarDays className="h-4 w-4" />
-                                          Convocar reunió
-                                        </DropdownMenuItem>
-                                      ) : null}
-                                      {canAccessOpsCurrentTask ? (
-                                        <DropdownMenuItem
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            fileInputsRef.current[taskKey]?.click()
-                                          }}
-                                        >
-                                          <Paperclip className="h-4 w-4" />
-                                          Adjuntar document
-                                        </DropdownMenuItem>
-                                      ) : null}
-                                      {taskMenuHasDestructive ? (
-                                        <>
-                                          {taskMenuHasNonDestructive ? <DropdownMenuSeparator /> : null}
-                                          <DropdownMenuItem
-                                            variant="destructive"
-                                            onClick={(event) => {
-                                              event.stopPropagation()
-                                              onRemoveTask(block.id, task.id)
-                                            }}
-                                          >
-                                            <Trash2 className="h-4 w-4" />
-                                            Eliminar tasca
-                                          </DropdownMenuItem>
-                                        </>
-                                      ) : null}
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
+                                {canConvokeCurrentTaskMeeting && onOpenTaskMeeting ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 rounded-full text-slate-500 hover:text-violet-700"
+                                    aria-label="Convocar reunió"
+                                    title="Convocar reunió"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      onOpenTaskMeeting(block.id, task.id)
+                                    }}
+                                  >
+                                    <CalendarDays className="h-4 w-4" />
+                                  </Button>
+                                ) : null}
+                                {canAccessOpsCurrentTask ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 rounded-full text-slate-500 hover:text-violet-700"
+                                    aria-label="Adjuntar document"
+                                    title="Adjuntar document"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      fileInputsRef.current[taskKey]?.click()
+                                    }}
+                                  >
+                                    <Paperclip className="h-4 w-4" />
+                                  </Button>
+                                ) : null}
+                                {canManageCurrentTask ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 rounded-full text-slate-400 hover:text-rose-600"
+                                    aria-label="Eliminar tasca"
+                                    title="Eliminar tasca"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      onRemoveTask(block.id, task.id)
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
                                 ) : null}
                               </div>
                             </div>
 
                             <div className="mt-3 space-y-1.5 pl-2">
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <span
-                                  className={cn(
-                                    'rounded-md px-2 py-0.5 text-[11px] font-medium',
-                                    isObserverTask
-                                      ? 'bg-white text-slate-500 ring-1 ring-slate-200'
-                                      : 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200/75'
-                                  )}
-                                >
-                                  {block.name}
-                                </span>
+                                {canAccessOpsCurrentTask ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      router.push(roomHref)
+                                    }}
+                                    className={cn(
+                                      'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition hover:text-violet-700',
+                                      isObserverTask
+                                        ? 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-violet-50'
+                                        : 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200/75 hover:bg-violet-50'
+                                    )}
+                                    title={BLOCK_WORKSPACE_OPEN_LABEL}
+                                    aria-label={BLOCK_WORKSPACE_OPEN_LABEL}
+                                  >
+                                    <MessagesSquare className="h-3 w-3" />
+                                    <span>{block.name}</span>
+                                  </button>
+                                ) : (
+                                  <span
+                                    className={cn(
+                                      'rounded-md px-2 py-0.5 text-[11px] font-medium',
+                                      isObserverTask
+                                        ? 'bg-white text-slate-500 ring-1 ring-slate-200'
+                                        : 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200/75'
+                                    )}
+                                  >
+                                    {block.name}
+                                  </span>
+                                )}
                                 {task.department ? (
                                   <span
                                     className={cn(
@@ -823,20 +764,6 @@ export default function ProjectTasksTab({
 
                             {editingTaskKey === taskKey && canExpandCurrentTask ? (
                               <div className="mt-4 space-y-3 pt-3">
-                                <div className="flex justify-end">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="gap-2 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      fileInputsRef.current[taskKey]?.click()
-                                    }}
-                                  >
-                                    <Paperclip className="h-4 w-4" />
-                                    Adjuntar document
-                                  </Button>
-                                </div>
                                 <div
                                   className={cn(
                                     'grid gap-3',
@@ -886,47 +813,6 @@ export default function ProjectTasksTab({
                                       />
                                     </div>
                                   ) : null}
-                                </div>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                  <div className="min-w-0">
-                                    <Select
-                                      value={task.sprintId || 'none'}
-                                      onValueChange={(value) => {
-                                        onSetTaskField(block.id, task.id, 'sprintId', value === 'none' ? '' : value)
-                                      }}
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Sprint" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="none">Backlog</SelectItem>
-                                        {projectSprints.map((sprint) => (
-                                          <SelectItem key={`${task.id}-sprint-${sprint.id}`} value={sprint.id}>
-                                            {sprint.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div className="min-w-0">
-                                    <Select
-                                      value={task.storyPoints || '3'}
-                                      onValueChange={(value) => {
-                                        onSetTaskField(block.id, task.id, 'storyPoints', value)
-                                      }}
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Story points" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {SCRUM_STORY_POINT_OPTIONS.map((option) => (
-                                          <SelectItem key={`${task.id}-points-${option.value}`} value={option.value}>
-                                            {option.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
                                 </div>
                                 {canManageCurrentTask ? (
                                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

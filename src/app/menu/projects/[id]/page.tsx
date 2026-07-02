@@ -7,7 +7,7 @@ import { parseWorkspaceTab } from '../components/project-workspace-helpers'
 
 type Props = {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ tab?: string }>
+  searchParams: Promise<{ tab?: string; blockId?: string; taskId?: string }>
 }
 
 export default async function ProjectDetailPage({ params, searchParams }: Props) {
@@ -19,6 +19,10 @@ export default async function ProjectDetailPage({ params, searchParams }: Props)
   const { id } = await params
   const query = await searchParams
   const initialTab = parseWorkspaceTab(query.tab)
+  const initialTaskTarget =
+    query.blockId && query.taskId
+      ? { blockId: String(query.blockId), taskId: String(query.taskId) }
+      : undefined
 
   const [project, usersCatalog] = await Promise.all([
     loadProjectDetail(id, session.user),
@@ -35,6 +39,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Props)
       initialProject={project}
       initialUsersCatalog={usersCatalog}
       initialTab={initialTab}
+      initialTaskTarget={initialTaskTarget}
     />
   )
 }

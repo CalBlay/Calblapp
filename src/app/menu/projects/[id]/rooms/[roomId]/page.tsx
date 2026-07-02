@@ -2,10 +2,9 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { FileText, Paperclip, Plus, Save } from 'lucide-react'
-import ModuleHeader from '@/components/layout/ModuleHeader'
+import { ChevronDown, FileText, Paperclip, Plus, Save } from 'lucide-react'
 import ChannelChatHeader from '@/components/messaging/ChannelChatHeader'
 import ChannelParticipantsPanel from '@/components/messaging/ChannelParticipantsPanel'
 import { Button } from '@/components/ui/button'
@@ -23,12 +22,12 @@ import { normalizeRole } from '@/lib/roles'
 import { RoleGuard } from '@/lib/withRoleGuard'
 import { PROJECT_MODULE_ROLES } from '../../../components/project-access'
 import {
-  BLOCK_WORKSPACE_LABEL,
   GENERAL_ROOM_LABEL,
 } from '../../../components/project-room-ui'
 import { colorByDepartment } from '@/lib/colors'
 import ProjectTaskQuickComposer from '../../../components/ProjectTaskQuickComposer'
 import ProjectRoomOpsChat from '../../../components/ProjectRoomOpsChat'
+import ProjectWorkspaceShell from '../../../components/ProjectWorkspaceShell'
 import {
   clampProjectDeadline,
   formatProjectDate,
@@ -77,6 +76,7 @@ const appendProjectDocument = (
 
 export default function ProjectRoomDetailPage() {
   const params = useParams<{ id: string; roomId: string }>()
+  const router = useRouter()
   const { data: session } = useSession()
   const sessionUser = (session?.user || {}) as SessionUser
   const sessionUserId = String(sessionUser.id || '').trim()
@@ -96,6 +96,7 @@ export default function ProjectRoomDetailPage() {
   const [participantsOpen, setParticipantsOpen] = useState(false)
   const [documentsView, setDocumentsView] = useState<'initial' | 'operational'>('initial')
   const [showTaskComposer, setShowTaskComposer] = useState(false)
+  const [editingLinkedTaskId, setEditingLinkedTaskId] = useState<string | null>(null)
   const [hashTaskDraft, setHashTaskDraft] = useState<{
     description: string
     deadline: string
@@ -222,6 +223,13 @@ export default function ProjectRoomDetailPage() {
       isProjectSponsor ||
       normalizeText(sessionUserName) === normalizeText(currentBlock?.owner || '')
     )
+  const canManageLinkedTasks =
+    !!currentBlock &&
+    (
+      sessionRole === 'admin' ||
+      isProjectOwner ||
+      normalizeText(sessionUserName) === normalizeText(currentBlock?.owner || '')
+    )
   const inheritedInitialDocuments = useMemo(
     () => (project?.documents || []).filter((item) => item && ['initial', 'kickoff'].includes(item.category || '')),
     [project?.documents]
@@ -278,8 +286,11 @@ export default function ProjectRoomDetailPage() {
     if (daysLeft === 1) return 'Falta 1 dia'
     return `Falten ${daysLeft} dies`
   }
-  const projectDaysLeft = dayDiffFromToday(project?.launchDate)
   const blockDaysLeft = dayDiffFromToday(currentBlock?.deadline)
+  const generalRoom = useMemo(
+    () => project?.rooms?.find((item) => item.kind === 'general') || null,
+    [project?.rooms]
+  )
 
   const participantOptions = useMemo(() => {
     if (!currentRoom) return users
@@ -657,6 +668,27 @@ export default function ProjectRoomDetailPage() {
     toast({ title: 'Tasca afegida a la sala' })
   }
 
+  const updateLinkedTaskField = useCallback(
+    <K extends keyof NonNullable<typeof linkedTasks>[number]>(
+      taskId: string,
+      field: K,
+      value: NonNullable<typeof linkedTasks>[number][K]
+    ) => {
+      if (!currentBlock) return
+      const nextTasks = (currentBlock.tasks || []).map((task) =>
+        task.id === taskId ? { ...task, [field]: value } : task
+      )
+      updateBlockTasksLocal(nextTasks)
+    },
+    [currentBlock]
+  )
+
+  const saveLinkedTasks = useCallback(async () => {
+    if (!currentRoom || !currentBlock) return
+    await persistRoom(currentRoom, currentBlock.tasks || [])
+    toast({ title: 'Tasca actualitzada' })
+  }, [currentBlock, currentRoom])
+
   const closeHashTaskModal = () => {
     setHashTaskDraft(null)
     hashTaskPromiseRef.current = null
@@ -730,27 +762,35 @@ export default function ProjectRoomDetailPage() {
 
   return (
     <RoleGuard allowedRoles={[...PROJECT_MODULE_ROLES]}>
-      <div className="flex min-h-[calc(100vh-72px)] w-full max-w-none flex-col gap-3 overflow-hidden p-3">
-        <ModuleHeader
-          title={BLOCK_WORKSPACE_LABEL}
-          subtitle={currentRoom?.name || 'Sala del bloc'}
-          mainHref={`/menu/projects/${params?.id}?tab=blocks`}
-        />
-
-        {error ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
+      <div className="flex min-h-[calc(100vh-72px)] w-full max-w-none flex-col gap-3 overflow-hidden">
+        {project ? (
+          <ProjectWorkspaceShell
+            project={project}
+            activeTab="blocks"
+            onTabChange={(tab) => router.push(`/menu/projects/${params?.id}?tab=${tab}`)}
+            canAccessGeneralRoom={Boolean(generalRoom)}
+            onOpenCoordination={() => {
+              if (generalRoom) router.push(`/menu/projects/${params?.id}/rooms/${generalRoom.id}`)
+            }}
+          />
         ) : null}
 
-        {!currentRoom && !error ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
-            Carregant sala...
-          </div>
-        ) : null}
+        <div className="flex flex-1 min-h-0 flex-col gap-3 p-3">
 
-        {currentRoom ? (
-          <div className="flex flex-1 min-h-0 flex-col space-y-4">
+          {error ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
+
+          {!currentRoom && !error ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
+              Carregant sala...
+            </div>
+          ) : null}
+
+          {currentRoom ? (
+            <div className="flex flex-1 min-h-0 flex-col space-y-4">
             <Dialog
               open={!!hashTaskDraft}
               onOpenChange={(open) => {
@@ -845,140 +885,262 @@ export default function ProjectRoomDetailPage() {
               </DialogContent>
             </Dialog>
 
-            <section className="rounded-[24px] border border-slate-200 bg-white px-5 py-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="text-lg font-semibold text-slate-900">{currentRoom.name}</div>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${
-                    currentRoom.kind === 'general'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : currentRoom.kind === 'block'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-violet-100 text-violet-700'
-                  }`}
-                >
-                  {currentRoom.kind === 'block'
-                      ? 'Sala del bloc'
-                      : currentRoom.kind === 'general'
-                        ? GENERAL_ROOM_LABEL
-                        : 'Sala manual'}
-                </span>
-              </div>
+            <section className="rounded-[20px] border border-slate-200 bg-white px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <div className="text-lg font-semibold text-slate-900">{currentRoom.name}</div>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${
+                      currentRoom.kind === 'general'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : currentRoom.kind === 'block'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-violet-100 text-violet-700'
+                    }`}
+                  >
+                    {currentRoom.kind === 'block'
+                        ? 'Sala del bloc'
+                        : currentRoom.kind === 'general'
+                          ? GENERAL_ROOM_LABEL
+                          : 'Sala manual'}
+                  </span>
 
-              <div className="mt-3 grid gap-3 rounded-2xl bg-slate-50 px-4 py-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.35fr)]">
-                <Link
-                  href={`/menu/projects/${params?.id}?tab=tracking`}
-                  className="min-w-0 rounded-xl px-1 py-1 transition hover:bg-white/70"
-                >
-                  <div className="text-[11px] uppercase tracking-wide text-slate-400">Projecte</div>
-                  <div className="mt-1 truncate text-sm font-medium text-slate-900 hover:text-violet-700">
-                    {project?.name || '-'}
-                  </div>
-                </Link>
-
-                <Link
-                  href={`/menu/projects/${params?.id}?tab=blocks`}
-                  className="min-w-0 rounded-xl px-1 py-1 transition hover:bg-white/70"
-                >
-                  <div className="text-[11px] uppercase tracking-wide text-slate-400">Bloc vinculat</div>
-                  <div className="mt-1 truncate text-sm font-medium text-slate-900 hover:text-violet-700">
-                    {currentRoom.kind === 'general'
-                      ? 'Coordinació transversal'
-                      : currentBlock?.name || 'Sense bloc'}
-                  </div>
-                </Link>
-
-                <div className="min-w-0 rounded-xl px-1 py-1">
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <div className="min-w-0">
-                      <div className="text-[11px] uppercase tracking-wide text-slate-400">Departaments</div>
-                      <div className="mt-1 truncate text-sm font-medium text-slate-900">
-                        {currentRoom.departments.length > 0
-                          ? currentRoom.departments.join(', ')
-                          : 'Sense departament'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-slate-400">Participants</div>
-                      <div className="mt-1 text-sm font-medium text-slate-900">
-                        {currentRoom.participants.length}
-                      </div>
-                    </div>
-                  </div>
+                  {currentRoom.departments.length > 0
+                    ? currentRoom.departments.map((department) => (
+                        <span
+                          key={`${currentRoom.id}-${department}`}
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${colorByDepartment(department)}`}
+                        >
+                          {department}
+                        </span>
+                      ))
+                    : null}
                 </div>
 
-                <div className="min-w-0 rounded-xl px-1 py-1">
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span className="text-[11px] uppercase tracking-wide text-slate-400">Projecte</span>
-                      <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs text-slate-700">
-                        {formatProjectDate(project?.launchDate)}
-                      </span>
-                      <span className={`rounded-full px-2.5 py-1 text-xs ${deadlineBadgeClass(projectDaysLeft)}`}>
-                        {deadlineBadgeLabel(projectDaysLeft)}
-                      </span>
-                    </div>
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span className="text-[11px] uppercase tracking-wide text-slate-400">Bloc</span>
-                      <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs text-slate-700">
-                        {formatProjectDate(currentBlock?.deadline)}
-                      </span>
-                      <span className={`rounded-full px-2.5 py-1 text-xs ${deadlineBadgeClass(blockDaysLeft)}`}>
-                        {deadlineBadgeLabel(blockDaysLeft)}
-                      </span>
-                    </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-wide text-slate-400">Responsable bloc</span>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
+                      {currentBlock?.owner || 'Sense responsable'}
+                    </span>
                   </div>
+                  <span className="text-[10px] uppercase tracking-wide text-slate-400">Data bloc</span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
+                    {formatProjectDate(currentBlock?.deadline)}
+                  </span>
                 </div>
               </div>
             </section>
 
-            <div className="grid gap-4 xl:flex-1 xl:min-h-0 xl:grid-cols-[1.15fr_0.62fr_0.78fr]">
-              <section className="flex min-h-[560px] flex-col rounded-[24px] border border-slate-200 bg-white xl:min-h-0">
-                <ChannelChatHeader
-                  channelTitle="Conversa"
-                  channelSubtitle={project?.name || undefined}
-                  avatarLabel={currentRoom?.name || 'Conversa'}
-                  participantsOpen={participantsOpen}
-                  onToggleParticipants={() => setParticipantsOpen((current) => !current)}
-                  canInvite
-                  inviteUsers={inviteUsers}
-                  inviteExcludeIds={inviteExcludeIds}
-                  onInvite={(user) => void addParticipantFromInvite(user)}
-                  inviteAdding={saving}
-                />
+            <div className="grid gap-4 xl:flex-1 xl:min-h-0 xl:grid-cols-[0.78fr_0.62fr_1.15fr]">
+              <section className="space-y-4 rounded-[24px] border border-slate-200 bg-white p-6 xl:min-h-0 xl:overflow-auto">
+                <div className="flex items-center gap-3">
+                  <Link
+                    href={`/menu/projects/${params?.id}?tab=tasks`}
+                    className="text-sm font-semibold text-slate-900 hover:text-violet-700"
+                  >
+                    Tasques vinculades
+                  </Link>
+                </div>
 
-                {participantsOpen ? (
-                  <ChannelParticipantsPanel
-                    members={participantMembers}
-                    canManage
-                    onRemove={(userId) => void removeParticipant(userId)}
+                {currentBlock && showTaskComposer ? (
+                  <ProjectTaskQuickComposer
+                    description={taskDraft.description}
+                    department={taskDraft.department}
+                    owner=""
+                    deadline={taskDraft.deadline}
+                    priority={taskDraft.priority || 'normal'}
+                    departments={getBlockDepartments(currentBlock)}
+                    responsibleOptions={users
+                      .filter((user) => roomTaskResponsibleOptions.some((option) => option.id === user.id))
+                      .map((user) => ({ id: user.id, name: user.name }))}
+                    maxDeadline={
+                      getPreLaunchDeadline(currentBlock.deadline) ||
+                      getPreLaunchDeadline(project?.launchDate) ||
+                      undefined
+                    }
+                    compact
+                    disabled={saving}
+                    onDescriptionChange={(value) => setTaskDraft((current) => ({ ...current, description: value }))}
+                    onDepartmentChange={(value) => setTaskDraft((current) => ({ ...current, department: value }))}
+                    onOwnerChange={() => {}}
+                    onDeadlineChange={(value) => setTaskDraft((current) => ({ ...current, deadline: value }))}
+                    onPriorityChange={(value) => setTaskDraft((current) => ({ ...current, priority: value }))}
+                    onSubmit={addTask}
                   />
+                ) : !currentBlock ? (
+                  <div className="text-sm text-slate-500">
+                    Aquesta sala no esta vinculada a cap bloc. No hi ha tasques automatiques.
+                  </div>
                 ) : null}
 
-                {currentRoom.opsChannelId ? (
-                  <ProjectRoomOpsChat
-                    channelId={currentRoom.opsChannelId}
-                    userId={sessionUserId}
-                    canCreateTaskFromHash={canCreateTaskFromChat}
-                    onCreateTaskFromHash={createTaskFromChat}
-                    onOperationalDocumentCreated={(document) => {
-                      updateRoomLocal((room) => ({
-                        ...room,
-                        documents: (room.documents || []).some(
-                          (item) =>
-                            (item?.id || item?.url || `${item?.name || ''}-${item?.label || ''}`) ===
-                            (document?.id || document?.url || `${document?.name || ''}-${document?.label || ''}`)
+                {linkedTasks.length > 0 ? (
+                  <div className="space-y-2">
+                    {linkedTasks.map((task) => (
+                      (() => {
+                        const daysLeft = dayDiffFromToday(task.deadline)
+                        const isEditingLinkedTask = editingLinkedTaskId === task.id
+                        return (
+                      <div
+                        key={task.id}
+                        className={`rounded-2xl border px-4 py-3 ${
+                          task.status !== 'done' && daysLeft !== null && daysLeft < 0
+                            ? 'border-rose-200 bg-rose-50/70'
+                            : 'border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <Link
+                            href={`/menu/projects/${params?.id}?tab=tasks&blockId=${encodeURIComponent(currentBlock?.id || '')}&taskId=${encodeURIComponent(task.id)}`}
+                            className="text-sm font-medium text-slate-900 hover:text-violet-700 hover:underline"
+                          >
+                            {task.title}
+                          </Link>
+                          {canManageLinkedTasks ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 rounded-full text-slate-500"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setEditingLinkedTaskId((current) => (current === task.id ? null : task.id))
+                              }}
+                              aria-label={isEditingLinkedTask ? 'Plegar edició' : 'Editar tasca'}
+                              title={isEditingLinkedTask ? 'Plegar edició' : 'Editar tasca'}
+                            >
+                              <ChevronDown className={`h-4 w-4 transition-transform ${isEditingLinkedTask ? 'rotate-180' : ''}`} />
+                            </Button>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span className={`rounded-full px-2.5 py-1 font-medium ${colorByDepartment(task.department || getPrimaryBlockDepartment(currentBlock || { department: '', departments: [] }) || '')}`}>
+                            {task.department || getPrimaryBlockDepartment(currentBlock || { department: '', departments: [] }) || 'Sense departament'}
+                          </span>
+                          <span>{task.owner || 'Sense responsable'}</span>
+                          <span>·</span>
+                          <span>{formatProjectDate(task.deadline)}</span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                          <span className={`rounded-full px-3 py-1 ${taskStatusBadgeClass(task.status)}`}>
+                            {statusLabel(task.status)}
+                          </span>
+                          <span className={`rounded-full px-3 py-1 ${priorityBadgeClass(task.priority)}`}>
+                            {priorityLabel(task.priority)}
+                          </span>
+                          <span className={`rounded-full px-3 py-1 ${deadlineBadgeClass(daysLeft, task.status)}`}>
+                            {deadlineBadgeLabel(daysLeft, task.status)}
+                          </span>
+                        </div>
+                        {isEditingLinkedTask ? (
+                          <div className="mt-3 space-y-3 rounded-xl border border-slate-200 bg-white/80 p-3">
+                            <Input
+                              value={task.title || ''}
+                              maxLength={28}
+                              onChange={(event) => updateLinkedTaskField(task.id, 'title', event.target.value.slice(0, 28))}
+                              placeholder="Nom de la tasca"
+                            />
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Select
+                                value={task.owner || 'none'}
+                                onValueChange={(value) => updateLinkedTaskField(task.id, 'owner', value === 'none' ? '' : value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Sense responsable" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Sense responsable</SelectItem>
+                                  {roomTaskResponsibleOptions.map((option) => (
+                                    <SelectItem key={`${task.id}-owner-${option.id}`} value={option.name}>
+                                      {option.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+
+                              <Input
+                                type="date"
+                                value={task.deadline || ''}
+                                max={getPreLaunchDeadline(currentBlock?.deadline) || getPreLaunchDeadline(project?.launchDate) || undefined}
+                                onChange={(event) =>
+                                  updateLinkedTaskField(
+                                    task.id,
+                                    'deadline',
+                                    clampProjectDeadline(event.target.value, currentBlock?.deadline || project?.launchDate)
+                                  )
+                                }
+                              />
+
+                              <Select
+                                value={task.status || 'pending'}
+                                onValueChange={(value) => updateLinkedTaskField(task.id, 'status', value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Estat" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {TASK_STATUS_OPTIONS.map((option) => (
+                                    <SelectItem key={`${task.id}-status-${option.value}`} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+
+                              <Select
+                                value={task.priority || 'normal'}
+                                onValueChange={(value) => updateLinkedTaskField(task.id, 'priority', value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Prioritat" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {TASK_PRIORITY_OPTIONS.map((option) => (
+                                    <SelectItem key={`${task.id}-priority-${option.value}`} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="flex justify-end">
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="bg-violet-600 text-white hover:bg-violet-700"
+                                onClick={async () => {
+                                  await saveLinkedTasks()
+                                  setEditingLinkedTaskId(null)
+                                }}
+                                disabled={saving}
+                              >
+                                Guardar canvis
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
                         )
-                          ? room.documents || []
-                          : [...(room.documents || []), document],
-                      }))
-                    }}
-                  />
-                ) : (
-                  <div className="flex-1 px-5 py-4 text-sm text-slate-500">
-                    Preparant la conversa d Ops per a aquesta sala...
+                      })()
+                    ))}
                   </div>
+                ) : (
+                  <div className="text-sm text-slate-500">Aquesta sala encara no te tasques vinculades.</div>
                 )}
+
+                {currentBlock ? (
+                  <div className="flex justify-end pt-1">
+                    <Button
+                      type="button"
+                      size="icon"
+                      className="rounded-full bg-blue-600 text-white hover:bg-blue-700"
+                      onClick={() => setShowTaskComposer((current) => !current)}
+                      title="Afegir tasca"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : null}
               </section>
 
               <div className="space-y-4 xl:min-h-0 xl:overflow-auto">
@@ -1090,105 +1252,59 @@ export default function ProjectRoomDetailPage() {
                   )}
                 </section>
               </div>
-              <section className="space-y-4 rounded-[24px] border border-slate-200 bg-white p-6 xl:min-h-0 xl:overflow-auto">
-                <div className="flex items-center justify-between gap-3">
-                  <Link
-                    href={`/menu/projects/${params?.id}?tab=tasks`}
-                    className="text-sm font-semibold text-slate-900 hover:text-violet-700"
-                  >
-                    Tasques vinculades
-                  </Link>
-                  {currentBlock ? (
-                    <Button
-                      type="button"
-                      size="icon"
-                      className="rounded-full bg-blue-600 text-white hover:bg-blue-700"
-                      onClick={() => setShowTaskComposer((current) => !current)}
-                      title="Afegir tasca"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  ) : null}
-                </div>
 
-                {currentBlock && showTaskComposer ? (
-                  <ProjectTaskQuickComposer
-                    description={taskDraft.description}
-                    department={taskDraft.department}
-                    owner=""
-                    deadline={taskDraft.deadline}
-                    priority={taskDraft.priority || 'normal'}
-                    departments={getBlockDepartments(currentBlock)}
-                    responsibleOptions={users
-                      .filter((user) => roomTaskResponsibleOptions.some((option) => option.id === user.id))
-                      .map((user) => ({ id: user.id, name: user.name }))}
-                    maxDeadline={
-                      getPreLaunchDeadline(currentBlock.deadline) ||
-                      getPreLaunchDeadline(project?.launchDate) ||
-                      undefined
-                    }
-                    compact
-                    disabled={saving}
-                    onDescriptionChange={(value) => setTaskDraft((current) => ({ ...current, description: value }))}
-                    onDepartmentChange={(value) => setTaskDraft((current) => ({ ...current, department: value }))}
-                    onOwnerChange={() => {}}
-                    onDeadlineChange={(value) => setTaskDraft((current) => ({ ...current, deadline: value }))}
-                    onPriorityChange={(value) => setTaskDraft((current) => ({ ...current, priority: value }))}
-                    onSubmit={addTask}
+              <section className="flex min-h-[560px] flex-col rounded-[24px] border border-slate-200 bg-white xl:min-h-0">
+                <ChannelChatHeader
+                  channelTitle="Conversa"
+                  channelSubtitle={project?.name || undefined}
+                  avatarLabel={currentRoom?.name || 'Conversa'}
+                  participantsOpen={participantsOpen}
+                  onToggleParticipants={() => setParticipantsOpen((current) => !current)}
+                  canInvite
+                  inviteUsers={inviteUsers}
+                  inviteExcludeIds={inviteExcludeIds}
+                  onInvite={(user) => void addParticipantFromInvite(user)}
+                  inviteAdding={saving}
+                />
+
+                {participantsOpen ? (
+                  <ChannelParticipantsPanel
+                    members={participantMembers}
+                    canManage
+                    onRemove={(userId) => void removeParticipant(userId)}
                   />
-                ) : !currentBlock ? (
-                  <div className="text-sm text-slate-500">
-                    Aquesta sala no esta vinculada a cap bloc. No hi ha tasques automatiques.
-                  </div>
                 ) : null}
 
-                {linkedTasks.length > 0 ? (
-                  <div className="space-y-2">
-                    {linkedTasks.map((task) => (
-                      (() => {
-                        const daysLeft = dayDiffFromToday(task.deadline)
-                        return (
-                      <div
-                        key={task.id}
-                        className={`rounded-2xl border px-4 py-3 ${
-                          task.status !== 'done' && daysLeft !== null && daysLeft < 0
-                            ? 'border-rose-200 bg-rose-50/70'
-                            : 'border-slate-200'
-                        }`}
-                      >
-                        <div className="text-sm font-medium text-slate-900">{task.title}</div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                          <span className={`rounded-full px-2.5 py-1 font-medium ${colorByDepartment(task.department || getPrimaryBlockDepartment(currentBlock || { department: '', departments: [] }) || '')}`}>
-                            {task.department || getPrimaryBlockDepartment(currentBlock || { department: '', departments: [] }) || 'Sense departament'}
-                          </span>
-                          <span>{task.owner || 'Sense responsable'}</span>
-                          <span>·</span>
-                          <span>{formatProjectDate(task.deadline)}</span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                          <span className={`rounded-full px-3 py-1 ${taskStatusBadgeClass(task.status)}`}>
-                            {statusLabel(task.status)}
-                          </span>
-                          <span className={`rounded-full px-3 py-1 ${priorityBadgeClass(task.priority)}`}>
-                            {priorityLabel(task.priority)}
-                          </span>
-                          <span className={`rounded-full px-3 py-1 ${deadlineBadgeClass(daysLeft, task.status)}`}>
-                            {deadlineBadgeLabel(daysLeft, task.status)}
-                          </span>
-                        </div>
-                      </div>
+                {currentRoom.opsChannelId ? (
+                  <ProjectRoomOpsChat
+                    channelId={currentRoom.opsChannelId}
+                    userId={sessionUserId}
+                    canCreateTaskFromHash={canCreateTaskFromChat}
+                    onCreateTaskFromHash={createTaskFromChat}
+                    onOperationalDocumentCreated={(document) => {
+                      updateRoomLocal((room) => ({
+                        ...room,
+                        documents: (room.documents || []).some(
+                          (item) =>
+                            (item?.id || item?.url || `${item?.name || ''}-${item?.label || ''}`) ===
+                            (document?.id || document?.url || `${document?.name || ''}-${document?.label || ''}`)
                         )
-                      })()
-                    ))}
-                  </div>
+                          ? room.documents || []
+                          : [...(room.documents || []), document],
+                      }))
+                    }}
+                  />
                 ) : (
-                  <div className="text-sm text-slate-500">Aquesta sala encara no te tasques vinculades.</div>
+                  <div className="flex-1 px-5 py-4 text-sm text-slate-500">
+                    Preparant la conversa d Ops per a aquesta sala...
+                  </div>
                 )}
               </section>
             </div>
 
-          </div>
-        ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
     </RoleGuard>
   )

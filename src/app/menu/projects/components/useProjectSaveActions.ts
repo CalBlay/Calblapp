@@ -68,7 +68,7 @@ export function useProjectSaveActions({
       const nextProject = ensureProjectRooms(project, userByName)
       setProject(nextProject)
       const storedDocument = await saveProject('Projecte guardat', nextProject, {
-        sections: ['overview', 'departments', 'rooms', 'documents'],
+        sections: ['overview', 'departments', 'rooms', 'documents', 'kickoff'],
       })
       const finalProject =
         storedDocument && pendingFile

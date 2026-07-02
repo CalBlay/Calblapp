@@ -11,6 +11,7 @@ type Props = {
   initialProject: ProjectData
   initialUsersCatalog: ResponsibleOption[]
   initialTab?: WorkspaceTab
+  initialTaskTarget?: { blockId: string; taskId: string }
 }
 
 export default function ProjectDetailShell({
@@ -18,6 +19,7 @@ export default function ProjectDetailShell({
   initialProject,
   initialUsersCatalog,
   initialTab,
+  initialTaskTarget,
 }: Props) {
   return (
     <RoleGuard allowedRoles={[...PROJECT_MODULE_ROLES]}>
@@ -27,6 +29,7 @@ export default function ProjectDetailShell({
           initialProject={initialProject}
           initialUsersCatalog={initialUsersCatalog}
           initialTab={initialTab}
+          initialTaskTarget={initialTaskTarget}
         />
       </div>
     </RoleGuard>

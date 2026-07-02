@@ -920,12 +920,6 @@ export default function ProjectBlocksTab({
                                 owner={taskDraft.owner}
                                 deadline={taskDraft.deadline}
                                 priority={taskDraft.priority || 'normal'}
-                                sprintId={taskDraft.sprintId || ''}
-                                storyPoints={taskDraft.storyPoints || '3'}
-                                sprintOptions={(project.sprints || []).map((sprint) => ({
-                                  id: sprint.id,
-                                  name: sprint.name,
-                                }))}
                                 dependsOn={taskDraft.dependsOn || ''}
                                 dependencyOptions={block.tasks.map((task) => ({
                                   id: task.id,
@@ -942,8 +936,6 @@ export default function ProjectBlocksTab({
                                 onOwnerChange={(value) => onSetTaskDraftField('owner', value)}
                                 onDeadlineChange={(value) => onSetTaskDraftField('deadline', value)}
                                 onPriorityChange={(value) => onSetTaskDraftField('priority', value)}
-                                onSprintChange={(value) => onSetTaskDraftField('sprintId', value)}
-                                onStoryPointsChange={(value) => onSetTaskDraftField('storyPoints', value)}
                                 onDependsOnChange={(value) => onSetTaskDraftField('dependsOn', value)}
                                 onSubmit={() => onAddTaskToBlock(block.id)}
                               />
