@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import type {
   LogisticsEventPrepRow,
@@ -8,6 +8,8 @@ import type {
 } from '@/lib/logistics/prepTypes'
 
 export type { LogisticsEventPrepRow, LogisticsWarehousePrepRow }
+
+const FETCH_TIMEOUT_MS = 45_000
 
 export function useLogisticsData(dateRange?: { start: string; end: string } | null) {
   const { data: session } = useSession()
@@ -22,25 +24,52 @@ export function useLogisticsData(dateRange?: { start: string; end: string } | nu
   const [events, setEvents] = useState<LogisticsEventPrepRow[]>([])
   const [warehouseTasks, setWarehouseTasks] = useState<LogisticsWarehousePrepRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const hadDataRef = useRef(false)
+  const requestIdRef = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
 
   const loadData = useCallback(async () => {
-    try {
-      setLoading(true)
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const requestId = ++requestIdRef.current
+    const timeoutId = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
+    const blocking = !hadDataRef.current
+    if (blocking) {
+      setLoading(true)
+      setIsRefreshing(false)
+    } else {
+      setIsRefreshing(true)
+      setLoading(false)
+    }
+    setError(null)
+
+    try {
       if (!dateRange?.start || !dateRange?.end) {
+        if (requestId !== requestIdRef.current) return
         setEvents([])
         setWarehouseTasks([])
+        hadDataRef.current = false
         return
       }
 
       const prepQuery = filterByPreparation ? '&filterByPreparation=1' : ''
       const url = `/api/logistics?start=${dateRange.start}&end=${dateRange.end}${prepQuery}`
-      const res = await fetch(url, { cache: 'no-store' })
+      const res = await fetch(url, { cache: 'no-store', signal: controller.signal })
+
+      if (requestId !== requestIdRef.current) return
 
       if (!res.ok) {
         console.error('Error API logistics:', await res.text())
-        setEvents([])
-        setWarehouseTasks([])
+        if (!hadDataRef.current) {
+          setEvents([])
+          setWarehouseTasks([])
+        }
+        setError('No s\'han pogut carregar les dades de logística.')
         return
       }
 
@@ -50,9 +79,14 @@ export function useLogisticsData(dateRange?: { start: string; end: string } | nu
         warehouseTasks?: LogisticsWarehousePrepRow[]
       }
 
+      if (requestId !== requestIdRef.current) return
+
       if (!ok || !data) {
-        setEvents([])
-        setWarehouseTasks([])
+        if (!hadDataRef.current) {
+          setEvents([])
+          setWarehouseTasks([])
+        }
+        setError('No s\'han pogut carregar les dades de logística.')
         return
       }
 
@@ -66,24 +100,40 @@ export function useLogisticsData(dateRange?: { start: string; end: string } | nu
           ? eventRows.filter((event) => event.PreparacioData && event.PreparacioHora)
           : eventRows
 
+      const nextWarehouseTasks = Array.isArray(warehouseData)
+        ? warehouseData.map((task) => ({ ...task, rowType: 'warehouse_comanda' as const }))
+        : []
+
       setEvents(visibleEvents)
-      setWarehouseTasks(
-        Array.isArray(warehouseData)
-          ? warehouseData.map((task) => ({ ...task, rowType: 'warehouse_comanda' as const }))
-          : []
-      )
+      setWarehouseTasks(nextWarehouseTasks)
+      hadDataRef.current = visibleEvents.length > 0 || nextWarehouseTasks.length > 0
     } catch (err) {
+      if (requestId !== requestIdRef.current) return
+      const isAbort = err instanceof DOMException && err.name === 'AbortError'
       console.error('Error carregant dades logistiques:', err)
-      setEvents([])
-      setWarehouseTasks([])
+      if (!hadDataRef.current) {
+        setEvents([])
+        setWarehouseTasks([])
+      }
+      setError(
+        isAbort
+          ? 'La càrrega ha trigat massa. Torna-ho a provar o redueix el rang de dates.'
+          : 'No s\'han pogut carregar les dades de logística.'
+      )
     } finally {
+      clearTimeout(timeoutId)
+      if (requestId !== requestIdRef.current) return
       setLoading(false)
+      setIsRefreshing(false)
     }
   }, [dateRange?.start, dateRange?.end, filterByPreparation, role])
 
   useEffect(() => {
     loadData()
+    return () => {
+      abortRef.current?.abort()
+    }
   }, [loadData])
 
-  return { events, warehouseTasks, loading, refresh: loadData }
+  return { events, warehouseTasks, loading, isRefreshing, error, refresh: loadData }
 }

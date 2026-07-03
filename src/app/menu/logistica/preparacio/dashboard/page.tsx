@@ -34,7 +34,8 @@ export default function PreparationDashboardPage() {
   const [filterMode, setFilterMode] = useState<PreparationFilterMode>(() =>
     parseFilterMode(searchParamsSafe.get('mode'))
   )
-  const { events, loading } = useLogisticsData(dateRange)
+  const { events, loading, isRefreshing, error } = useLogisticsData(dateRange)
+  const showBlockingLoader = loading && events.length === 0
 
   useEffect(() => {
     setDateRange(parseDateRangeFromSearch(searchParamsSafe, buildDefaultWeekRange()))
@@ -102,13 +103,23 @@ export default function PreparationDashboardPage() {
           </div>
 
           <div className="bg-slate-50/50 p-4 md:p-6">
-            {loading ? (
+            {error ? (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {error}
+              </div>
+            ) : null}
+            {showBlockingLoader ? (
               <div className="rounded-2xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
                 <Truck className="mx-auto mb-2 h-5 w-5 animate-pulse text-slate-400" />
                 Carregant dades del dashboard...
               </div>
             ) : (
-              <PreparationProgressDashboard rows={rows} dateRange={dateRange} />
+              <div className="space-y-3">
+                {isRefreshing ? (
+                  <p className="text-center text-xs text-slate-500">Actualitzant dades...</p>
+                ) : null}
+                <PreparationProgressDashboard rows={rows} dateRange={dateRange} />
+              </div>
             )}
           </div>
         </div>

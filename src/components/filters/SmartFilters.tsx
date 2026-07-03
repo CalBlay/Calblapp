@@ -173,11 +173,23 @@ export default function SmartFilters({
   const allowWorker = showWorker && (isCap || isAdminOrDireccio)
 
   /* ---------- State ---------- */
-  const [mode, setMode] = useState<Mode>(modeDefault)
-  const [anchor, setAnchor] = useState<Date>(new Date())
-  const [dayStr, setDayStr] = useState<string>(toIso(new Date()))
-  const [rangeStartStr, setRangeStartStr] = useState<string>('')
-  const [rangeEndStr, setRangeEndStr] = useState<string>('')
+  const [mode, setMode] = useState<Mode>(() =>
+    initialStart && initialEnd
+      ? inferModeFromRange(initialStart, initialEnd, modeDefault)
+      : modeDefault
+  )
+  const [anchor, setAnchor] = useState<Date>(() => {
+    if (initialStart) {
+      const parsed = parseISO(initialStart)
+      if (isValid(parsed)) return parsed
+    }
+    return new Date()
+  })
+  const [dayStr, setDayStr] = useState<string>(() =>
+    initialStart && isValid(parseISO(initialStart)) ? initialStart : toIso(new Date())
+  )
+  const [rangeStartStr, setRangeStartStr] = useState<string>(() => initialStart || '')
+  const [rangeEndStr, setRangeEndStr] = useState<string>(() => initialEnd || '')
 // 🔹 Sincronitza mode i dates quan venen controlades des de fora
 const lastExternalSyncRef = useRef<string>('')
 useEffect(() => {
