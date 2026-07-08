@@ -15,24 +15,169 @@ const normResponsibleKey = (value?: string | null) =>
     .toLowerCase()
     .trim()
 
-/** Reserva ids de persones per fila de rol; el conductor pot coincidir amb el responsable de la capçalera. */
-export function buildReservedForRoleLine(
-  baseReserved: Set<string>,
-  line: { role: string; personId?: string },
-  manualResponsibleId?: string
+export type RoleLineReservation = {
+  slotId?: string
+  role?: string
+  personId?: string
+  personName?: string
+}
+
+export function normalizeRoleLinePersonKey(value?: string): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+}
+
+/** Clau de reserva per persona (id preferent; nom si no hi ha id). */
+export function roleLinePersonReservationKey(line: {
+  personId?: string
+  personName?: string
+}): string {
+  const id = normalizeRoleLinePersonKey(line.personId)
+  if (id) return id
+  const name = normalizeRoleLinePersonKey(line.personName)
+  return name ? `name:${name}` : ''
+}
+
+export function roleLineHasAssignedPerson(line: RoleLineReservation): boolean {
+  return Boolean(roleLinePersonReservationKey(line))
+}
+
+/** Mateixa persona per id o per nom normalitzat (evita duplicats id vs nom). */
+export function linesShareSamePerson(
+  a: RoleLineReservation,
+  b: RoleLineReservation
+): boolean {
+  const aId = normalizeRoleLinePersonKey(a.personId)
+  const bId = normalizeRoleLinePersonKey(b.personId)
+  const aName = normalizeRoleLinePersonKey(a.personName)
+  const bName = normalizeRoleLinePersonKey(b.personName)
+  if (aId && bId && aId === bId) return true
+  if (aName && bName && aName === bName) return true
+  if (aId && bName && aId === bName) return true
+  if (aName && bId && aName === bId) return true
+  return false
+}
+
+/** Persones assignades a altres línies (excloent la fila actual per slotId, no per personId). */
+export function collectReservedPersonKeysFromLines(
+  lines: RoleLineReservation[],
+  excludeSlotId?: string
 ): Set<string> {
-  const normalize = (value?: string) => String(value || '').trim().toLowerCase()
-  const next = new Set([...baseReserved].filter((id) => id !== normalize(line.personId)))
-  const manualId = normalize(manualResponsibleId)
+  const reserved = new Set<string>()
+  for (const line of lines) {
+    if (excludeSlotId && line.slotId === excludeSlotId) continue
+    const id = normalizeRoleLinePersonKey(line.personId)
+    const name = normalizeRoleLinePersonKey(line.personName)
+    if (id) reserved.add(id)
+    if (name) reserved.add(`name:${name}`)
+  }
+  return reserved
+}
+
+/** Reserva persones per fila de rol; el responsable pot ser conductor en UNA línia, no en diverses. */
+export function buildReservedForRoleLine(
+  allLines: RoleLineReservation[],
+  currentLine: RoleLineReservation,
+  manualResponsibleId?: string,
+  additionalReservedKeys?: Iterable<string>
+): Set<string> {
+  const reserved = collectReservedPersonKeysFromLines(allLines, currentLine.slotId)
+  if (additionalReservedKeys) {
+    for (const key of additionalReservedKeys) {
+      const normalized = normalizeRoleLinePersonKey(key)
+      if (normalized) reserved.add(normalized)
+      else {
+        const nameKey = roleLinePersonReservationKey({ personName: key })
+        if (nameKey) reserved.add(nameKey)
+      }
+    }
+  }
+  const manualId = normalizeRoleLinePersonKey(manualResponsibleId)
   if (
     manualId &&
     manualId !== '__auto__' &&
     manualId !== '__manual_pick__' &&
-    (line.role === 'conductor' || line.role === 'responsable')
+    (currentLine.role === 'conductor' || currentLine.role === 'responsable')
   ) {
-    next.delete(manualId)
+    const manualPerson: RoleLineReservation = { personId: manualResponsibleId, personName: '' }
+    const anotherLineHasManual = allLines.some(
+      (line) =>
+        line.slotId !== currentLine.slotId &&
+        roleLineHasAssignedPerson(line) &&
+        linesShareSamePerson(line, manualPerson)
+    )
+    if (!anotherLineHasManual) {
+      reserved.delete(manualId)
+      reserved.delete(`name:${manualId}`)
+    }
   }
-  return next
+  return reserved
+}
+
+export function dedupeRoleLinePersonAssignments<T extends RoleLineReservation>(
+  lines: T[],
+  preferredSlotId?: string
+): T[] {
+  if (preferredSlotId) {
+    const preferredLine = lines.find((line) => line.slotId === preferredSlotId)
+    if (!preferredLine || !roleLineHasAssignedPerson(preferredLine)) {
+      return dedupeRoleLinePersonAssignments(lines)
+    }
+    return lines.map((line) => {
+      if (line.slotId === preferredSlotId) return line
+      if (!roleLineHasAssignedPerson(line)) return line
+      if (linesShareSamePerson(line, preferredLine)) {
+        return { ...line, personId: '', personName: '' }
+      }
+      return line
+    })
+  }
+
+  const kept: T[] = []
+  return lines.map((line) => {
+    if (!roleLineHasAssignedPerson(line)) {
+      kept.push(line)
+      return line
+    }
+    const duplicate = kept.some(
+      (other) => roleLineHasAssignedPerson(other) && linesShareSamePerson(line, other)
+    )
+    kept.push(line)
+    if (duplicate) return { ...line, personId: '', personName: '' }
+    return line
+  })
+}
+
+export function findDuplicateRoleLinePersonKeys(lines: RoleLineReservation[]): string[] {
+  const duplicates = new Set<string>()
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!roleLineHasAssignedPerson(lines[i])) continue
+    for (let j = i + 1; j < lines.length; j += 1) {
+      if (!roleLineHasAssignedPerson(lines[j])) continue
+      if (linesShareSamePerson(lines[i], lines[j])) {
+        const key =
+          roleLinePersonReservationKey(lines[i]) || roleLinePersonReservationKey(lines[j])
+        if (key) duplicates.add(key)
+      }
+    }
+  }
+  return [...duplicates]
+}
+
+export function isPersonReservedForRoleLine(
+  person: { id?: string; name?: string },
+  reserved: Set<string>
+): boolean {
+  const id = normalizeRoleLinePersonKey(person.id)
+  const name = normalizeRoleLinePersonKey(person.name)
+  if (id && reserved.has(id)) return true
+  if (name && reserved.has(`name:${name}`)) return true
+  if (name && reserved.has(name)) return true
+  if (id && reserved.has(`name:${id}`)) return true
+  return false
 }
 
 /** Llegeix responsable des del borrador (capçalera + grup; inclou conductor=responsable). */

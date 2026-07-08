@@ -123,7 +123,10 @@ export function resolvePersonnelAvailabilityParams(input: {
 
 async function fetchPersonnel(
   opts: Required<Pick<UseAvailablePersonnelOptions, 'departament' | 'startDate' | 'endDate' | 'startTime' | 'endTime'>> &
-    Pick<UseAvailablePersonnelOptions, 'excludeEventId' | 'vehicleType' | 'includeConflicts'>
+    Pick<
+      UseAvailablePersonnelOptions,
+      'excludeEventId' | 'vehicleType' | 'includeConflicts' | 'excludeIds' | 'excludeNames'
+    >
 ) {
   const resolved = resolvePersonnelAvailabilityParams(opts)
   const params = new URLSearchParams({
@@ -134,6 +137,14 @@ async function fetchPersonnel(
     endTime: resolved.endTime,
   })
   if (opts.excludeEventId) params.set('excludeEventId', opts.excludeEventId)
+  ;(opts.excludeIds || []).forEach((id) => {
+    const value = String(id || '').trim()
+    if (value) params.append('excludeId', value)
+  })
+  ;(opts.excludeNames || []).forEach((name) => {
+    const value = String(name || '').trim()
+    if (value) params.append('excludeName', value)
+  })
   const vt = String(opts.vehicleType || '').trim()
   if (vt) params.set('vehicleType', vt)
   if (opts.includeConflicts) params.set('includeConflicts', 'true')
@@ -161,7 +172,10 @@ function getCachedPayload(key: string) {
 async function loadPersonnel(
   key: string,
   opts: Required<Pick<UseAvailablePersonnelOptions, 'departament' | 'startDate' | 'endDate' | 'startTime' | 'endTime'>> &
-    Pick<UseAvailablePersonnelOptions, 'excludeEventId' | 'vehicleType' | 'includeConflicts'>
+    Pick<
+      UseAvailablePersonnelOptions,
+      'excludeEventId' | 'vehicleType' | 'includeConflicts' | 'excludeIds' | 'excludeNames'
+    >
 ) {
   const existing = personnelCache.get(key)
   if (existing?.promise) return existing.promise
@@ -201,6 +215,16 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
       startTime,
       endTime,
     })
+    const excludeIdsKey = [...(rawExcludeIds ?? [])]
+      .map((value) => normalize(value))
+      .filter(Boolean)
+      .sort()
+      .join(',')
+    const excludeNamesKey = [...(rawExcludeNames ?? [])]
+      .map((value) => normalize(value))
+      .filter(Boolean)
+      .sort()
+      .join(',')
     return [
       departament || '',
       resolved.startDate,
@@ -208,10 +232,23 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
       resolved.startTime,
       resolved.endTime,
       excludeEventId || '',
+      excludeIdsKey,
+      excludeNamesKey,
       vehicleType || '',
       includeConflicts ? 'with-conflicts' : 'available-only',
     ].join('|')
-  }, [departament, startDate, endDate, startTime, endTime, excludeEventId, vehicleType, includeConflicts])
+  }, [
+    departament,
+    startDate,
+    endDate,
+    startTime,
+    endTime,
+    excludeEventId,
+    rawExcludeIds,
+    rawExcludeNames,
+    vehicleType,
+    includeConflicts,
+  ])
 
   const resolvedParams = useMemo(
     () =>
@@ -271,6 +308,8 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
         startTime: resolvedParams.startTime,
         endTime: resolvedParams.endTime,
         excludeEventId,
+        excludeIds: rawExcludeIds,
+        excludeNames: rawExcludeNames,
         vehicleType,
         includeConflicts,
       })

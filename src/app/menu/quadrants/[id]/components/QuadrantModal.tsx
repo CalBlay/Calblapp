@@ -128,6 +128,7 @@ export function QuadrantEditor({
     buildServiceGroupsPayload,
     vehiclesPayload: _vehiclesPayload,
     buildLogisticaPhases,
+    validateLocalPersonAssignments,
     ettEntry,
     availableResponsables,
     availableConductors,
@@ -391,6 +392,7 @@ export function QuadrantEditor({
     servicePhaseEtt,
     vestimentModelChoice,
     buildLogisticaPhases,
+    validateLocalPersonAssignments,
     ettEntry,
     onSaved,
     keepOpenAfterSave: false,
@@ -629,6 +631,12 @@ export function QuadrantEditor({
               mode={mode}
               compact={layout === 'inline'}
               availableTreballadors={availableTreballadors}
+              department={department}
+              excludeEventId={
+                String(existingDraft?.id || '').trim() ||
+                String(event.id || '').trim().split('__')[0] ||
+                undefined
+              }
               togglePhaseVisibility={togglePhaseVisibility}
               updatePhaseForm={updatePhaseForm}
               updatePhaseSetting={updatePhaseSetting}

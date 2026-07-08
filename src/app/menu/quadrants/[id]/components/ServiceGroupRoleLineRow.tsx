@@ -1,5 +1,6 @@
 'use client'
 
+import { toast } from 'sonner'
 import { GraduationCap, Truck, User, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
@@ -10,6 +11,10 @@ import {
   type CrewMemberRef,
 } from '@/lib/driverCrewUtils'
 import { isResponsiblePerson } from '@/lib/personnelRoles'
+import {
+  isPersonReservedForRoleLine,
+  normalizeRoleLinePersonKey,
+} from '../lib/quadrantPayloadShared'
 
 type PersonOption = {
   id: string
@@ -93,12 +98,19 @@ export default function ServiceGroupRoleLineRow({
   allowedRoles = DEFAULT_ALLOWED_ROLES,
   hideRoleSelect = false,
 }: Props) {
-  const normalize = (value?: string) => String(value || '').trim().toLowerCase()
+  const normalize = normalizeRoleLinePersonKey
   const basePeople = peopleForRole(line.role, responsables, conductors, treballadors).filter((person) => {
     const pid = normalize(person.id)
     if (!pid) return false
     if (normalize(line.personId) === pid) return true
-    return !reservedPersonIds.has(pid)
+    if (
+      !line.personId &&
+      normalize(line.personName) &&
+      normalize(line.personName) === normalize(person.name)
+    ) {
+      return true
+    }
+    return !isPersonReservedForRoleLine(person, reservedPersonIds)
   })
   const useCrewOrdering =
     crewMembers.length > 0 && (line.role === 'treballador' || line.role === 'jamonero')
@@ -165,6 +177,16 @@ export default function ServiceGroupRoleLineRow({
             }
             const nextId = raw === '__auto__' ? '' : raw
             const selected = people.find((person) => person.id === nextId)
+            if (
+              nextId &&
+              isPersonReservedForRoleLine(
+                { id: nextId, name: selected?.name },
+                reservedPersonIds
+              )
+            ) {
+              toast.warning('Aquesta persona ja està assignada en una altra línia')
+              return
+            }
             onPatch({
               personId: nextId,
               personName: selected?.name || '',

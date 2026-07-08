@@ -11,11 +11,15 @@ import {
   VehicleAssignment,
   logisticPhaseOptions,
 } from '../phaseConfig'
-import { normalizeTransportType } from '@/lib/transportTypes'
+import { normalizeTransportType, normalizeTransportPlateKey } from '@/lib/transportTypes'
 import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
 import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
 import { hydrateLogisticPhaseFromDraft } from '../lib/hydrateLogisticPhasesFromDraft'
 import { extractDraftResponsible } from '../lib/quadrantPayloadShared'
+import {
+  ensureLogisticRoleLines,
+  syncLogisticPhaseFromRoleLines,
+} from '../lib/logisticPhaseRoleLines'
 
 const extractDate = (iso = '') => iso.split('T')[0] || ''
 
@@ -305,7 +309,13 @@ export function useLogisticsPhasesState({
       logisticPhaseOptions.reduce((acc, phase) => {
         const form = phaseForms[phase.key]
         if (Array.isArray(form?.roleLines) && form.roleLines.length > 0) {
-          acc[phase.key] = prev[phase.key] || []
+          const existing = prev[phase.key] || []
+          const { assignments: synced } = syncLogisticPhaseFromRoleLines(
+            form,
+            form.roleLines,
+            existing
+          )
+          acc[phase.key] = synced
           return acc
         }
 
@@ -331,15 +341,35 @@ export function useLogisticsPhasesState({
       const next = { ...prev }
       for (const phase of logisticPhaseOptions) {
         const updated = (prev[phase.key] || []).map((assignment) => {
-          if (assignment.vehicleId || !assignment.plate) return assignment
-          const matched = availableVehicles.find((vehicle) => vehicle.plate === assignment.plate)
-          if (!matched) return assignment
-          changed = true
-          return {
-            ...assignment,
-            vehicleId: matched.id,
-            vehicleType: assignment.vehicleType || matched.type || '',
+          let result = assignment
+
+          if (!assignment.vehicleId && assignment.plate) {
+            const plateKey = normalizeTransportPlateKey(assignment.plate)
+            const matched = availableVehicles.find(
+              (vehicle) => normalizeTransportPlateKey(vehicle.plate) === plateKey
+            )
+            if (matched) {
+              changed = true
+              result = {
+                ...result,
+                vehicleId: matched.id,
+                plate: result.plate || matched.plate || '',
+                vehicleType:
+                  normalizeTransportType(result.vehicleType || matched.type || '') ||
+                  result.vehicleType,
+              }
+            }
           }
+
+          if (assignment.vehicleId && !assignment.plate) {
+            const matched = availableVehicles.find((vehicle) => vehicle.id === assignment.vehicleId)
+            if (matched?.plate) {
+              changed = true
+              result = { ...result, plate: matched.plate }
+            }
+          }
+
+          return result
         })
         next[phase.key] = updated
       }
@@ -483,26 +513,37 @@ export function useLogisticsPhasesState({
 
   const buildVehiclesPayloadForPhase = useCallback(
     (phaseKey: LogisticPhaseKey) => {
+      const form = phaseForms[phaseKey]
       const assignments = phaseVehicleAssignments[phaseKey] || []
+      const conductorLines = ensureLogisticRoleLines(form, assignments).filter(
+        (line) => line.role === 'conductor'
+      )
+
       return assignments.flatMap((assignment) => {
+        const line = conductorLines.find((entry) => entry.slotId === assignment.slotId)
         const vehicleId = assignment.vehicleId || ''
         const matched = availableVehicles.find((vehicle) => vehicle.id === vehicleId)
         const vehicleType =
           normalizeVehicleType(assignment.vehicleType || matched?.type || '') ||
           normalizeVehicleType(matched?.type || '')
-        if (!vehicleType && !vehicleId && !assignment.conductorId) return []
+        const plate = assignment.plate || matched?.plate || ''
+        const conductorId =
+          assignment.conductorId || line?.personId || matched?.conductorId || null
+
+        if (!vehicleType && !vehicleId && !plate && !conductorId) return []
+
         return [
           {
             id: vehicleId,
-            plate: assignment.plate || matched?.plate || '',
+            plate,
             vehicleType,
-            conductorId: assignment.conductorId || matched?.conductorId || null,
+            conductorId,
             arrivalTime: assignment.arrivalTime || '',
           },
         ]
       })
     },
-    [phaseVehicleAssignments, availableVehicles]
+    [phaseVehicleAssignments, phaseForms, availableVehicles]
   )
 
   const buildVehiclesPayload = useCallback(

@@ -34,6 +34,10 @@ import {
   type DisplayItem,
 } from './draftsTableDisplayUtils'
 import { syncRowsWithDraftAndRoster } from './draftsRowSync'
+import {
+  filterVehiclePool,
+  getAssignedVehiclesExcludingRow,
+} from '@/lib/manualAssignModel'
 import { cn } from '@/lib/utils'
 
 type Vehicle = {
@@ -357,7 +361,10 @@ export default function DraftsTable({
     responsables: available.responsables,
     conductors: available.conductors,
     treballadors: available.treballadors,
-    vehicles,
+    vehicles:
+      editIdx === null
+        ? vehicles
+        : filterVehiclePool(vehicles, getAssignedVehiclesExcludingRow(rows, editIdx)),
   }
 
   // --- Callbacks (API routes)

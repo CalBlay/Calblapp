@@ -5,6 +5,7 @@ import { X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { typography } from '@/lib/typography'
+import { useAvailablePersonnel } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
 import {
   TRANSPORT_TYPE_OPTIONS,
   normalizeTransportType,
@@ -17,6 +18,8 @@ import {
   inferEndDateFromTimes,
   roleSelectValueFromRow,
   type RoleSelectValue,
+  filterPersonnelPool,
+  normalizeAssignPersonKey,
 } from '@/lib/manualAssignModel'
 
 type Vehicle = {
@@ -33,6 +36,9 @@ type Props = {
   conductors: PersonnelOption[]
   treballadors: PersonnelOption[]
   vehicles: Vehicle[]
+  excludeEventId?: string
+  excludeIds?: string[]
+  excludeNames?: string[]
   isLocked: boolean
   onPatch: (patch: Partial<Row>) => void
   onRoleChange: (value: RoleSelectValue) => void
@@ -56,6 +62,32 @@ const sortPeople = (people: PersonnelOption[]) =>
     return a.name.localeCompare(b.name, 'ca')
   })
 
+const ensureCurrentPerson = (people: PersonnelOption[], row: Row): PersonnelOption[] => {
+  const rowId = String(row.id || '').trim()
+  const rowName = String(row.name || '').trim()
+  if (!rowId && !rowName) return people
+
+  const exists = people.some((person) => {
+    const personId = String(person.id || '').trim()
+    const personName = String(person.name || '').trim()
+    return (rowId && personId === rowId) || (rowName && personName === rowName)
+  })
+  if (exists) return people
+
+  return [
+    {
+      id: rowId,
+      name: rowName,
+      role: row.role,
+      status: 'available',
+      isDriver: row.role === 'conductor',
+      isResponsible: row.role === 'responsable',
+      isJamonero: row.isJamonero === true,
+    },
+    ...people,
+  ]
+}
+
 const formatDateShort = (iso?: string) => {
   if (!iso) return '—'
   const parts = iso.split('-')
@@ -70,6 +102,9 @@ export default function ManualAssignRow({
   conductors,
   treballadors,
   vehicles,
+  excludeEventId,
+  excludeIds,
+  excludeNames,
   isLocked,
   onPatch,
   onRoleChange,
@@ -77,15 +112,52 @@ export default function ManualAssignRow({
 }: Props) {
   const config = getManualAssignDeptConfig(department)
   const roleValue = roleSelectValueFromRow(row)
+  const rowAvailabilityEnabled = Boolean(row.startDate && row.startTime && row.endTime)
+  const rowAvailability = useAvailablePersonnel({
+    departament: department,
+    startDate: row.startDate,
+    endDate: row.endDate || row.startDate,
+    startTime: row.startTime,
+    endTime: row.endTime,
+    excludeEventId,
+    excludeIds,
+    excludeNames,
+    vehicleType: row.role === 'conductor' ? row.vehicleType : undefined,
+    enabled: rowAvailabilityEnabled,
+  })
+
+  const assignedFromOtherRows = useMemo(
+    () => ({
+      ids: new Set((excludeIds ?? []).map((value) => normalizeAssignPersonKey(value))),
+      names: new Set((excludeNames ?? []).map((value) => normalizeAssignPersonKey(value))),
+    }),
+    [excludeIds, excludeNames]
+  )
+
+  const rowResponsables = filterPersonnelPool(
+    rowAvailabilityEnabled ? rowAvailability.responsables : responsables,
+    assignedFromOtherRows
+  )
+  const rowConductors = filterPersonnelPool(
+    rowAvailabilityEnabled ? rowAvailability.conductors : conductors,
+    assignedFromOtherRows
+  )
+  const rowTreballadors = filterPersonnelPool(
+    rowAvailabilityEnabled ? rowAvailability.treballadors : treballadors,
+    assignedFromOtherRows
+  )
 
   const people = useMemo(() => {
     if (roleValue === 'jamonero') {
-      return sortPeople(treballadors.filter((p) => p.isJamonero === true))
+      return ensureCurrentPerson(
+        sortPeople(rowTreballadors.filter((p) => p.isJamonero === true)),
+        row
+      )
     }
-    if (row.role === 'responsable') return sortPeople(responsables)
-    if (row.role === 'conductor') return sortPeople(conductors)
-    return sortPeople(treballadors)
-  }, [conductors, responsables, roleValue, row.role, treballadors])
+    if (row.role === 'responsable') return ensureCurrentPerson(sortPeople(rowResponsables), row)
+    if (row.role === 'conductor') return ensureCurrentPerson(sortPeople(rowConductors), row)
+    return ensureCurrentPerson(sortPeople(rowTreballadors), row)
+  }, [roleValue, row, rowConductors, rowResponsables, rowTreballadors])
 
   const filteredVehicles = useMemo(
     () =>

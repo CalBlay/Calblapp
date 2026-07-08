@@ -20,6 +20,7 @@ import {
   type DepartmentPersonLite,
 } from '@/lib/quadrantsPost/manualAssignments'
 import { enrichWithSurveyPreferences } from '@/lib/quadrantsPost/surveyPreferences'
+import { LOCAL_QUADRANT_PERSON_CONFLICT } from '@/lib/quadrantLocalAvailability'
 import {
   norm,
   normalizeJamoneroAssignment,
@@ -268,6 +269,11 @@ export function createWritePhaseDoc(deps: WritePhaseDocDeps) {
         phaseAssignBody,
         departmentPeople as DepartmentPersonLite[]
       )
+      if (built.meta.violations?.includes(LOCAL_QUADRANT_PERSON_CONFLICT)) {
+        throw new Error(
+          "Una persona no pot estar assignada en més d'una línia del mateix quadrant (mateix dia i horari)."
+        )
+      }
       res = built
     } else {
       const premisesData = await getPremisesData()

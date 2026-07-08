@@ -24,7 +24,8 @@ import {
   findAssignmentForLine,
   patchLogisticRoleLines,
 } from "../lib/logisticPhaseRoleLines"
-import { buildReservedForRoleLine } from "../lib/quadrantPayloadShared"
+import { buildReservedForRoleLine, dedupeRoleLinePersonAssignments } from "../lib/quadrantPayloadShared"
+import { validateNoLocalQuadrantPersonDuplicates } from "@/lib/quadrantLocalAvailability"
 import type { ResponsableAvailabilityOption } from "../hooks/useQuadrantFormState"
 import type { ComponentProps } from "react"
 
@@ -54,6 +55,8 @@ type Props = {
   updateEtt: (patch: Partial<ServicePhaseEttData>) => void
   mode?: "auto" | "semi" | "manual"
   compact?: boolean
+  department?: string
+  excludeEventId?: string
   logisticaTopBar?: LogisticaTopBarProps
 }
 
@@ -77,16 +80,26 @@ export default function LogisticsPhasePanel({
   updateEtt,
   mode = "semi",
   compact = false,
+  department,
+  excludeEventId,
   logisticaTopBar,
 }: Props) {
-  const normalize = (value?: string) => String(value || "").trim().toLowerCase()
-
   const assignedVehicleIds = new Set(
     Object.values(phaseVehicleAssignments)
       .flat()
       .map((assign) => assign.vehicleId)
       .filter(Boolean)
   )
+
+  const buildAssignedVehicleIdsForLine = (
+    currentVehicleId?: string
+  ): Set<string> => {
+    const reserved = new Set<string>()
+    for (const id of assignedVehicleIds) {
+      if (id && id !== currentVehicleId) reserved.add(id)
+    }
+    return reserved
+  }
 
   const availableVehicleCount = availableVehicles.filter((vehicle) => vehicle.available).length
 
@@ -116,27 +129,16 @@ export default function LogisticsPhasePanel({
           const roleLines = ensureLogisticRoleLines(form, assignments)
           const phaseArrivalTime =
             form?.arrivalTime || assignments[0]?.arrivalTime || roleLines[0]?.arrivalTime || ""
-          const reservedPersonIds = new Set<string>()
-
-          logisticPhaseOptions.forEach((otherPhase) => {
-            if (otherPhase.key === phase.key) return
-            ensureLogisticRoleLines(phaseForms[otherPhase.key], phaseVehicleAssignments[otherPhase.key] || []).forEach((line) => {
-              const pid = normalize(line.personId)
-              if (pid) reservedPersonIds.add(pid)
-            })
-          })
-          roleLines.forEach((line) => {
-            const pid = normalize(line.personId)
-            if (pid) reservedPersonIds.add(pid)
-          })
-          const manualRespId = normalize(logisticaTopBar?.manualResp)
-          if (
-            manualRespId &&
-            manualRespId !== "__auto__" &&
-            manualRespId !== "__manual_pick__"
-          ) {
-            reservedPersonIds.add(manualRespId)
-          }
+          const crossPhaseLines = logisticPhaseOptions
+            .filter((otherPhase) => otherPhase.key !== phase.key)
+            .flatMap((otherPhase) =>
+              ensureLogisticRoleLines(
+                phaseForms[otherPhase.key],
+                phaseVehicleAssignments[otherPhase.key] || []
+              )
+            )
+          const allReservationLines = [...crossPhaseLines, ...roleLines]
+          const localDuplicateMessage = validateNoLocalQuadrantPersonDuplicates(allReservationLines)
 
           const applyGroupDefaults = () => {
             const { formPatch, assignments: nextAssignments } = patchLogisticRoleLines(
@@ -164,9 +166,33 @@ export default function LogisticsPhasePanel({
             line: (typeof roleLines)[number],
             patch: Partial<VehicleAssignment>
           ) => {
+            const hasVehiclePatch =
+              "vehicleId" in patch || "plate" in patch || "vehicleType" in patch
+
+            if (!hasVehiclePatch && "conductorId" in patch) {
+              applyRoleLines((lines) =>
+                dedupeRoleLinePersonAssignments(
+                  lines.map((entry) =>
+                    entry.slotId === line.slotId
+                      ? {
+                          ...entry,
+                          personId: String(patch.conductorId || "").trim(),
+                          ...(patch.conductorId ? {} : { personName: "" }),
+                        }
+                      : entry
+                  ),
+                  line.slotId
+                )
+              )
+              return
+            }
+
             const idx = assignments.findIndex((entry) => entry.slotId === line.slotId)
             if (idx < 0) {
-              const next = [...assignments, { ...findAssignmentForLine(assignments, line), ...patch }]
+              const next = [
+                ...assignments,
+                { ...findAssignmentForLine(assignments, line), ...patch },
+              ]
               replacePhaseVehicleAssignments(phase.key, next)
               return
             }
@@ -187,6 +213,14 @@ export default function LogisticsPhasePanel({
             >
               {showPhaseContent ? (
                 <>
+                  {localDuplicateMessage ? (
+                    <div
+                      className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950"
+                      role="alert"
+                    >
+                      {localDuplicateMessage}
+                    </div>
+                  ) : null}
                   <div
                     className={cn(
                       "rounded-lg border border-slate-200 bg-white",
@@ -288,7 +322,7 @@ export default function LogisticsPhasePanel({
                     <div className={compact ? "space-y-1.5" : "space-y-2"}>
                       {roleLines.map((line) => {
                         const reservedForLine = buildReservedForRoleLine(
-                          reservedPersonIds,
+                          allReservationLines,
                           line,
                           logisticaTopBar?.manualResp
                         )
@@ -303,16 +337,21 @@ export default function LogisticsPhasePanel({
                             conductors={availableConductors}
                             treballadors={availableTreballadors}
                             reservedPersonIds={reservedForLine}
+                            department={department}
+                            excludeEventId={excludeEventId}
                             availableVehicles={availableVehicles}
-                            assignedVehicleIds={assignedVehicleIds}
+                            assignedVehicleIds={buildAssignedVehicleIdsForLine(
+                              lineAssignment.vehicleId
+                            )}
                             canRemove={roleLines.length > 1}
                             compact={compact}
                             onLinePatch={(patch) =>
-                              applyRoleLines((lines) =>
-                                lines.map((entry) =>
+                              applyRoleLines((lines) => {
+                                const next = lines.map((entry) =>
                                   entry.slotId === line.slotId ? { ...entry, ...patch } : entry
                                 )
-                              )
+                                return dedupeRoleLinePersonAssignments(next, line.slotId)
+                              })
                             }
                             onLineRemove={() =>
                               applyRoleLines((lines) =>

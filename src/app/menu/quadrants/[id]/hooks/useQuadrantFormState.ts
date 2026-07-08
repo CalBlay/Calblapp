@@ -26,7 +26,8 @@ import {
   mergeResponsibleCandidatePools,
   resolveManualResponsible,
 } from '../lib/quadrantPayloadShared'
-import { ensureLogisticRoleLines } from '../lib/logisticPhaseRoleLines'
+import { ensureLogisticRoleLines, collectAllLogisticaRoleLines } from '../lib/logisticPhaseRoleLines'
+import { validateNoLocalQuadrantPersonDuplicates } from '@/lib/quadrantLocalAvailability'
 import { isResponsiblePerson } from '@/lib/personnelRoles'
 
 const extractDate = (iso = '') => iso.split('T')[0] || ''
@@ -185,6 +186,7 @@ export interface QuadrantFormState {
   vehiclesPayload: LogisticPhasePayload['vehicles']
   buildVehiclesPayloadForPhase: (phaseKey: LogisticPhaseKey) => LogisticPhasePayload['vehicles']
   buildLogisticaPhases: () => LogisticPhasePayload[]
+  validateLocalPersonAssignments: () => string | null
   ettEntry: EttEntry | null
 }
 
@@ -543,6 +545,11 @@ export function useQuadrantFormState({
     ]
   )
 
+  const validateLocalPersonAssignments = useCallback((): string | null => {
+    const lines = collectAllLogisticaRoleLines(phaseForms, phaseVehicleAssignments)
+    return validateNoLocalQuadrantPersonDuplicates(lines)
+  }, [phaseForms, phaseVehicleAssignments])
+
   useEffect(() => {
     if (!modalOpen) return
 
@@ -704,6 +711,7 @@ export function useQuadrantFormState({
     vehiclesPayload,
     buildVehiclesPayloadForPhase,
     buildLogisticaPhases,
+    validateLocalPersonAssignments,
     ettEntry,
     availableResponsables,
     availableConductors,

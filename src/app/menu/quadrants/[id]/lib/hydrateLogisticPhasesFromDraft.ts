@@ -1,6 +1,7 @@
 import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
 import type { LogisticPhaseForm, LogisticPhaseKey, ServeiGroupRoleLine, VehicleAssignment } from '../phaseConfig'
 import { extractDraftResponsible } from './quadrantPayloadShared'
+import { normalizeTransportPlateKey, normalizeTransportType } from '@/lib/transportTypes'
 
 const normPerson = (value?: string | null) =>
   String(value || '')
@@ -57,6 +58,7 @@ export function hydrateLogisticPhaseFromDraft(
     const personName = String(conductor.name || '').trim()
     const personNorm = normPerson(personName || personId)
     if (!personNorm) return
+    if (conductorNorms.has(personNorm)) return
     conductorNorms.add(personNorm)
 
     const slotId = `conductor-${phaseKey}-${idx}`
@@ -73,9 +75,9 @@ export function hydrateLogisticPhaseFromDraft(
     })
     assignments.push({
       slotId,
-      vehicleType: String(conductor.vehicleType || ''),
+      vehicleType: normalizeTransportType(String(conductor.vehicleType || '')),
       vehicleId: '',
-      plate: String(conductor.plate || ''),
+      plate: String(conductor.plate || '').trim(),
       conductorId: personId || null,
       arrivalTime: String(conductor.arrivalTime || arrivalTime),
     })

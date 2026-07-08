@@ -11,11 +11,17 @@ import {
   createManualAssignGroup,
   createManualAssignRow,
   filterPersonnelPool,
+  filterVehiclePool,
   getAssignedPeopleExcludingRow,
+  getAssignedVehiclesExcludingRow,
+  isPersonAssignedElsewhere,
   getManualAssignDeptConfig,
   initManualAssignState,
+  normalizeAssignPersonKey,
+  normalizeAssignVehiclePlate,
   patchRowRole,
   patchRowSchedule,
+  validateEditorRowsNoDuplicatePeople,
   type RoleSelectValue,
 } from '@/lib/manualAssignModel'
 import type { EditorGroup } from '@/lib/quadrantsDraftEditor'
@@ -41,6 +47,98 @@ type Vehicle = {
 type Props = {
   draft: DraftInput
   onRefreshDrafts?: () => Promise<unknown>
+}
+
+function manualRowPersonKeys(row: Row): string[] {
+  if (row.isExternal) return []
+  const keys: string[] = []
+  const id = normalizeAssignPersonKey(row.id)
+  const name = normalizeAssignPersonKey(row.name)
+  if (id) keys.push(`id:${id}`)
+  if (name) keys.push(`name:${name}`)
+  return keys
+}
+
+function normalizeManualRows(rows: Row[]): Row[] {
+  const seenPeople = new Map<string, number>()
+  const seenVehicles = new Set<string>()
+  const nextRows = rows.map((row) => ({ ...row }))
+  let changed = false
+  const roleRank: Record<Role, number> = {
+    responsable: 3,
+    conductor: 2,
+    treballador: 1,
+  }
+
+  nextRows.forEach((row, index) => {
+    const personKeys = manualRowPersonKeys(row)
+    if (personKeys.length === 0) {
+      // skip person dedupe
+    } else {
+      let existingIndex: number | undefined
+      for (const key of personKeys) {
+        const hit = seenPeople.get(key)
+        if (hit !== undefined) {
+          existingIndex = hit
+          break
+        }
+      }
+
+      if (existingIndex !== undefined && existingIndex !== index) {
+        const existingRow = nextRows[existingIndex]
+        const existingRank = roleRank[existingRow.role] ?? 0
+        const currentRank = roleRank[row.role] ?? 0
+        const winnerIndex = currentRank > existingRank ? index : existingIndex
+        const loserIndex = winnerIndex === index ? existingIndex : index
+        const winnerRow = winnerIndex === index ? row : existingRow
+        const loserRow = loserIndex === index ? row : existingRow
+        const mergedIsDriver =
+          winnerRow.role === 'conductor' ||
+          loserRow.role === 'conductor' ||
+          winnerRow.isDriver === true ||
+          loserRow.isDriver === true
+
+        nextRows[winnerIndex] = {
+          ...nextRows[winnerIndex],
+          role: winnerRow.role,
+          isDriver: mergedIsDriver,
+          vehicleType: nextRows[winnerIndex].vehicleType || loserRow.vehicleType || '',
+          plate: nextRows[winnerIndex].plate || loserRow.plate || '',
+          arrivalTime: nextRows[winnerIndex].arrivalTime || loserRow.arrivalTime || '',
+        }
+
+        nextRows[loserIndex] = {
+          ...nextRows[loserIndex],
+          id: '',
+          name: '',
+          plate: '',
+          vehicleType: '',
+          arrivalTime: '',
+        }
+        if (winnerIndex === index) {
+          personKeys.forEach((key) => seenPeople.set(key, index))
+        }
+        changed = true
+        return
+      }
+
+      personKeys.forEach((key) => seenPeople.set(key, index))
+    }
+
+    const plateKey = normalizeAssignVehiclePlate(row.plate)
+    if (!plateKey) return
+    if (seenVehicles.has(plateKey)) {
+      nextRows[index] = {
+        ...nextRows[index],
+        plate: '',
+      }
+      changed = true
+      return
+    }
+    seenVehicles.add(plateKey)
+  })
+
+  return changed ? nextRows : rows
 }
 
 export default function ManualAssignSheet({ draft, onRefreshDrafts }: Props) {
@@ -89,7 +187,7 @@ export default function ManualAssignSheet({ draft, onRefreshDrafts }: Props) {
 
   useEffect(() => {
     const next = initManualAssignState({ ...draft, department })
-    setRows(next.rows)
+    setRows(normalizeManualRows(next.rows))
     setGroups(next.groups)
     setGlobalStartDate(next.globalStartDate)
     setGlobalStartTime(next.globalStartTime)
@@ -107,6 +205,10 @@ export default function ManualAssignSheet({ draft, onRefreshDrafts }: Props) {
       vestimentModel: next.vestimentModel,
     })
   }, [draft, department])
+
+  useEffect(() => {
+    setRows((prev) => normalizeManualRows(prev))
+  }, [rows])
 
   useEffect(() => {
     if (!config.isServeis) {
@@ -242,13 +344,44 @@ export default function ManualAssignSheet({ draft, onRefreshDrafts }: Props) {
   const defaultGroupId = config.usesGroups ? activeGroups[0]?.id || 'group-1' : undefined
 
   const patchRowAt = (index: number, patch: Partial<Row>) => {
+    let blockedDuplicatePerson = false
+    let blockedDuplicateVehicle = false
+
     setRows((prev) =>
       prev.map((row, i) => {
         if (i !== index) return row
         const schedulePatch = patchRowSchedule(row, patch)
-        return { ...row, ...patch, ...schedulePatch }
+        const nextRow = { ...row, ...patch, ...schedulePatch }
+
+        const assignedPeople = getAssignedPeopleExcludingRow(prev, index, roster)
+        const selectedPerson =
+          !nextRow.isExternal && (nextRow.id || nextRow.name)
+            ? { id: nextRow.id, name: nextRow.name }
+            : null
+
+        if (selectedPerson && isPersonAssignedElsewhere(selectedPerson, assignedPeople)) {
+          blockedDuplicatePerson = true
+          nextRow.id = ''
+          nextRow.name = ''
+        }
+
+        const assignedVehicles = getAssignedVehiclesExcludingRow(prev, index)
+        const normalizedPlate = normalizeAssignVehiclePlate(nextRow.plate)
+        if (normalizedPlate && assignedVehicles.has(normalizedPlate)) {
+          blockedDuplicateVehicle = true
+          nextRow.plate = ''
+        }
+
+        return nextRow
       })
     )
+
+    if (blockedDuplicatePerson) {
+      toast.warning('Aquest conductor o treballador ja està assignat en una altra línia')
+    }
+    if (blockedDuplicateVehicle) {
+      toast.warning('Aquest vehicle ja està assignat en una altra línia')
+    }
   }
 
   const changeRoleAt = (index: number, value: RoleSelectValue) => {
@@ -378,6 +511,12 @@ export default function ManualAssignSheet({ draft, onRefreshDrafts }: Props) {
       { applyMeetingPoint: false, applyStartDate: false }
     ).rows
 
+    const duplicateError = validateEditorRowsNoDuplicatePeople(rowsToSave)
+    if (duplicateError) {
+      toast.error(duplicateError)
+      return
+    }
+
     await saveDraftTable({
       draft: { ...draft, department },
       rows: rowsToSave,
@@ -433,6 +572,7 @@ export default function ManualAssignSheet({ draft, onRefreshDrafts }: Props) {
 
   const renderManualRow = (row: Row, index: number) => {
     const assigned = getAssignedPeopleExcludingRow(rows, index, roster)
+    const assignedVehicles = getAssignedVehiclesExcludingRow(rows, index)
     const filterPool = (pool: typeof available.responsables) =>
       filterPersonnelPool(pool, assigned)
 
@@ -444,7 +584,10 @@ export default function ManualAssignSheet({ draft, onRefreshDrafts }: Props) {
         responsables={filterPool(available.responsables)}
         conductors={filterPool(available.conductors)}
         treballadors={filterPool(available.treballadors)}
-        vehicles={vehicles}
+        vehicles={filterVehiclePool(vehicles, assignedVehicles)}
+        excludeEventId={draft.id}
+        excludeIds={rows.filter((_, i) => i !== index).map((item) => item?.id).filter(Boolean)}
+        excludeNames={rows.filter((_, i) => i !== index).map((item) => item?.name).filter(Boolean)}
         isLocked={isLocked}
         onPatch={(patch) => patchRowAt(index, patch)}
         onRoleChange={(value) => changeRoleAt(index, value)}

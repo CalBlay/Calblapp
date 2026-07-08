@@ -96,12 +96,26 @@ const personIsResponsible = (data: { role?: string; isResponsible?: boolean }) =
 
 const unaccent = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '')
 const norm = (v?: string | null) => unaccent(String(v ?? '').trim().toLowerCase())
+const cleanAvailabilityList = (
+  items: AvailEntry[],
+  excludeIds: Set<string>,
+  excludeNames: Set<string>
+) =>
+  items.filter((item) => {
+    const id = norm(item.id)
+    const name = norm(item.name)
+    if (id && excludeIds.has(id)) return false
+    if (name && excludeNames.has(name)) return false
+    return true
+  })
 
 const shouldCountQuadrantOccupancy = (doc: QuadrantOccupancyDoc) => {
   const status = norm(doc.status)
-  // Els drafts a la col·lecció principal poden quedar penjats després d'edicions
-  // o esborrats parcials i no haurien de bloquejar disponibilitat.
-  if (status === 'draft') return false
+  // Els quadrants confirmats i els esborranys actius han de bloquejar disponibilitat.
+  // Només ignorem estats clarament cancel·lats.
+  if (['cancelled', 'canceled', 'cancelat', 'cancelada', 'anullat', 'anulat'].includes(status)) {
+    return false
+  }
   return true
 }
 
@@ -203,6 +217,10 @@ export async function GET(request: NextRequest) {
   const excludeEventId = searchParams.get('excludeEventId')
   const excludeMaintenancePlannedId = searchParams.get('excludeMaintenancePlannedId')
   const excludeMaintenanceTicketId = searchParams.get('excludeMaintenanceTicketId')
+  const excludeIds = new Set(searchParams.getAll('excludeId').map((value) => norm(value)).filter(Boolean))
+  const excludeNames = new Set(
+    searchParams.getAll('excludeName').map((value) => norm(value)).filter(Boolean)
+  )
   const includeConflicts = ['1', 'true', 'yes'].includes(
     String(searchParams.get('includeConflicts') || '').toLowerCase()
   )
@@ -540,16 +558,20 @@ export async function GET(request: NextRequest) {
         a.status === b.status ? a.name.localeCompare(b.name) : a.status === 'available' ? -1 : 1
       )
 
+    const filteredResponsables = cleanAvailabilityList(sortEntries(responsables), excludeIds, excludeNames)
+    const filteredConductors = cleanAvailabilityList(sortEntries(conductors), excludeIds, excludeNames)
+    const filteredWorkers = cleanAvailabilityList(sortEntries(workers), excludeIds, excludeNames)
+
     return NextResponse.json({
       responsables: includeConflicts
-        ? sortEntries(responsables)
-        : sortEntries(responsables).filter((p) => p.status === 'available'),
+        ? filteredResponsables
+        : filteredResponsables.filter((p) => p.status === 'available'),
       conductors: includeConflicts
-        ? sortEntries(conductors)
-        : sortEntries(conductors).filter((p) => p.status === 'available'),
+        ? filteredConductors
+        : filteredConductors.filter((p) => p.status === 'available'),
       treballadors: includeConflicts
-        ? sortEntries(workers)
-        : sortEntries(workers).filter((p) => p.status === 'available'),
+        ? filteredWorkers
+        : filteredWorkers.filter((p) => p.status === 'available'),
     })
   } catch (err: unknown) {
     console.error('Error GET /api/personnel/available:', err)

@@ -27,6 +27,7 @@ import type { ResponsableAvailabilityOption } from "../hooks/useQuadrantFormStat
 import type { DriverCrewPremise } from "@/services/premises"
 import type { ComponentProps } from "react"
 import { getCrewMembersForDriver } from "@/lib/driverCrewUtils"
+import { buildReservedForRoleLine } from "../lib/quadrantPayloadShared"
 
 type ServeisTopBarProps = Omit<ComponentProps<typeof QuadrantTopBarServeis>, "embedded">
 
@@ -98,7 +99,6 @@ export default function ServicePhasePanel({
   updateEtt,
   serveisTopBar,
 }: Props) {
-  const normalize = (value?: string) => String(value || "").trim().toLowerCase()
   void meetingPoint
   void setManualResponsible
   void manualResponsibleId
@@ -149,10 +149,8 @@ export default function ServicePhasePanel({
                 <>
                   {groupsForPhase.map((group) => {
                     const roleLines = ensureGroupRoleLines(group)
-                    const reservedPersonIds = new Set(
-                      roleLines
-                        .map((line) => normalize(line.personId))
-                        .filter(Boolean)
+                    const allPhaseLines = groupsForPhase.flatMap((entry) =>
+                      ensureGroupRoleLines(entry)
                     )
                     const conductorLine = roleLines.find((line) => line.role === 'conductor')
                     const crewMembers = getCrewMembersForDriver(
@@ -244,8 +242,10 @@ export default function ServicePhasePanel({
 
                         <div className={compact ? 'space-y-1.5' : 'space-y-2'}>
                           {roleLines.map((line) => {
-                            const reservedForLine = new Set(
-                              [...reservedPersonIds].filter((id) => id !== normalize(line.personId))
+                            const reservedForLine = buildReservedForRoleLine(
+                              allPhaseLines,
+                              line,
+                              group.responsibleId || undefined
                             )
                             return (
                               <ServiceGroupRoleLineRow

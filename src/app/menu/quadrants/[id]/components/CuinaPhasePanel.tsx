@@ -115,24 +115,19 @@ export default function CuinaPhasePanel({
             {groups.map((group) => {
               const assignments = ensureCuinaVehicleAssignments(group)
               const roleLines = ensureCuinaRoleLines(group, assignments)
-              const reservedPersonIds = new Set<string>()
-              groups.forEach((other) => {
-                if (other.id === group.id) return
-                ensureCuinaRoleLines(other, ensureCuinaVehicleAssignments(other)).forEach((line) => {
-                  const pid = normalize(line.personId)
-                  if (pid) reservedPersonIds.add(pid)
-                })
-              })
-              roleLines.forEach((line) => {
-                const pid = normalize(line.personId)
-                if (pid) reservedPersonIds.add(pid)
-              })
+              const otherGroupLines = groups
+                .filter((other) => other.id !== group.id)
+                .flatMap((other) =>
+                  ensureCuinaRoleLines(other, ensureCuinaVehicleAssignments(other))
+                )
+              const allReservationLines = [...otherGroupLines, ...roleLines]
+              const additionalReservedKeys: string[] = []
               const manualRespId = normalize(cuinaTopBar?.manualResp)
               if (manualRespId && manualRespId !== '__auto__') {
-                reservedPersonIds.add(manualRespId)
+                additionalReservedKeys.push(manualRespId)
               }
               if (group.responsibleId) {
-                reservedPersonIds.add(normalize(group.responsibleId))
+                additionalReservedKeys.push(normalize(group.responsibleId))
               }
 
               const groupArrivalTime =
@@ -238,9 +233,10 @@ export default function CuinaPhasePanel({
                   <div className={compact ? 'space-y-1.5' : 'space-y-2'}>
                     {roleLines.map((line) => {
                       const reservedForLine = buildReservedForRoleLine(
-                        reservedPersonIds,
+                        allReservationLines,
                         line,
-                        cuinaTopBar?.manualResp || group.responsibleId
+                        cuinaTopBar?.manualResp || group.responsibleId,
+                        additionalReservedKeys
                       )
                       const lineAssignment = findCuinaAssignmentForLine(assignments, line)
                       const assignedVehicleIds = new Set(

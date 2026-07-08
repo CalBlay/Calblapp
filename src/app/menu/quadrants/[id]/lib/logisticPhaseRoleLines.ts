@@ -1,4 +1,20 @@
-import type { LogisticPhaseForm, ServeiGroupRoleLine, VehicleAssignment } from '../phaseConfig'
+import {
+  logisticPhaseOptions,
+  type LogisticPhaseForm,
+  type LogisticPhaseKey,
+  type ServeiGroupRoleLine,
+  type VehicleAssignment,
+} from '../phaseConfig'
+import { dedupeRoleLinePersonAssignments } from './quadrantPayloadShared'
+
+export function collectAllLogisticaRoleLines(
+  phaseForms: Record<LogisticPhaseKey, LogisticPhaseForm>,
+  phaseVehicleAssignments: Record<LogisticPhaseKey, VehicleAssignment[]>
+): ServeiGroupRoleLine[] {
+  return logisticPhaseOptions.flatMap((phase) =>
+    ensureLogisticRoleLines(phaseForms[phase.key], phaseVehicleAssignments[phase.key] || [])
+  )
+}
 
 const makeSlotId = () => `slot-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
@@ -66,10 +82,18 @@ export function ensureLogisticRoleLines(
   form: LogisticPhaseForm,
   assignments: VehicleAssignment[] = []
 ): ServeiGroupRoleLine[] {
+  const mergeConductorAssignment = (line: ServeiGroupRoleLine): ServeiGroupRoleLine => {
+    if (line.role !== 'conductor') return line
+    const assignment = assignments.find((entry) => entry.slotId === line.slotId)
+    const personId = String(line.personId || assignment?.conductorId || '').trim()
+    if (!personId || personId === line.personId) return line
+    return { ...line, personId }
+  }
+
   if (Array.isArray(form.roleLines) && form.roleLines.length > 0) {
-    return form.roleLines.filter(
-      (line) => line.role === 'conductor' || line.role === 'treballador'
-    )
+    return form.roleLines
+      .filter((line) => line.role === 'conductor' || line.role === 'treballador')
+      .map(mergeConductorAssignment)
   }
 
   const lines: ServeiGroupRoleLine[] = []
@@ -153,8 +177,8 @@ export function syncLogisticPhaseFromRoleLines(
   roleLines: ServeiGroupRoleLine[],
   existingAssignments: VehicleAssignment[]
 ): { formPatch: Partial<LogisticPhaseForm>; assignments: VehicleAssignment[] } {
-  const allowedLines = roleLines.filter(
-    (line) => line.role === 'conductor' || line.role === 'treballador'
+  const allowedLines = dedupeRoleLinePersonAssignments(
+    roleLines.filter((line) => line.role === 'conductor' || line.role === 'treballador')
   )
   const conductorLines = allowedLines.filter((line) => line.role === 'conductor')
   const workerLines = allowedLines.filter((line) => line.role === 'treballador')

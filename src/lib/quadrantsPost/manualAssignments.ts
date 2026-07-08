@@ -1,4 +1,5 @@
 import { norm } from '@/lib/quadrantsPost/utils'
+import { LOCAL_QUADRANT_PERSON_CONFLICT } from '@/lib/quadrantLocalAvailability'
 import type {
   JamoneroAssignmentNormalized,
   ServeisGroupInput,
@@ -405,6 +406,7 @@ export function buildLogisticaManualAssignmentOnly(
     vehicleType?: string
   }> = []
   const seenDriverNorm = new Set<string>()
+  const violations: string[] = []
   const vehicles = Array.isArray(phaseAssignBody.vehicles)
     ? (phaseAssignBody.vehicles as Array<{
         conductorId?: string | null
@@ -418,7 +420,12 @@ export function buildLogisticaManualAssignmentOnly(
     const p = findPerson(cid, null)
     if (!p?.name) continue
     const dn = norm(String(p.name))
-    if (seenDriverNorm.has(dn)) continue
+    if (seenDriverNorm.has(dn)) {
+      if (!violations.includes(LOCAL_QUADRANT_PERSON_CONFLICT)) {
+        violations.push(LOCAL_QUADRANT_PERSON_CONFLICT)
+      }
+      continue
+    }
     seenDriverNorm.add(dn)
     drivers.push({
       name: String(p.name),
@@ -433,7 +440,11 @@ export function buildLogisticaManualAssignmentOnly(
     const p = findPerson(manualDriverId, null)
     if (p?.name) {
       const dn = norm(String(p.name))
-      if (!seenDriverNorm.has(dn)) {
+      if (seenDriverNorm.has(dn)) {
+        if (!violations.includes(LOCAL_QUADRANT_PERSON_CONFLICT)) {
+          violations.push(LOCAL_QUADRANT_PERSON_CONFLICT)
+        }
+      } else {
         seenDriverNorm.add(dn)
         drivers.push({
           name: String(p.name),
@@ -487,6 +498,6 @@ export function buildLogisticaManualAssignmentOnly(
 
   return {
     assignment: { responsible, drivers, staff },
-    meta: { needsReview: false, violations: [], notes: [] },
+    meta: { needsReview: violations.length > 0, violations, notes: [] },
   }
 }

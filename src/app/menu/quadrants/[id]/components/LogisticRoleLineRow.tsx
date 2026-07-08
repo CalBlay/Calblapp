@@ -1,14 +1,22 @@
 'use client'
 
 import { useMemo } from 'react'
+import { toast } from 'sonner'
 import { Truck, User, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import {
   TRANSPORT_TYPE_LABELS,
   TRANSPORT_TYPE_OPTIONS,
+  normalizeTransportPlateKey,
   normalizeTransportType,
 } from '@/lib/transportTypes'
 import { canDriverHandleVehicleType, type DriverCapability } from '@/lib/driverCapabilities'
+import { filterPersonnelAfterLocalQuadrantCheck } from '@/lib/quadrantLocalAvailability'
+import { useAvailablePersonnel } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
+import {
+  isPersonReservedForRoleLine,
+  normalizeRoleLinePersonKey,
+} from '../lib/quadrantPayloadShared'
 import type { AvailableVehicle, ServeiGroupRoleLine, ServeiRoleKey, VehicleAssignment } from '../phaseConfig'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
 
@@ -30,6 +38,8 @@ type Props = {
   conductors: PersonOption[]
   treballadors: PersonOption[]
   reservedPersonIds: Set<string>
+  department?: string
+  excludeEventId?: string
   availableVehicles: AvailableVehicle[]
   assignedVehicleIds: Set<string>
   canRemove: boolean
@@ -55,6 +65,8 @@ export default function LogisticRoleLineRow({
   conductors,
   treballadors,
   reservedPersonIds,
+  department,
+  excludeEventId,
   availableVehicles,
   assignedVehicleIds,
   canRemove,
@@ -63,41 +75,83 @@ export default function LogisticRoleLineRow({
   onLineRemove,
   onAssignmentPatch,
 }: Props) {
-  const normalize = (value?: string) => String(value || '').trim().toLowerCase()
+  const normalize = normalizeRoleLinePersonKey
   const vehicleTypeNorm = normalizeTransportType(assignment.vehicleType)
   const isConductor = line.role === 'conductor'
   const fieldClass = compact ? 'h-8 text-xs' : 'h-9 text-sm'
+  const rowStartDate = line.serviceDate || line.startDate || ''
+  const rowEndDate = line.endDate || rowStartDate
+
+  const rowAvailabilityEnabled = Boolean(
+    department && rowStartDate && line.startTime && line.endTime
+  )
+
+  const rowAvailability = useAvailablePersonnel({
+    departament: department || '',
+    startDate: rowStartDate,
+    endDate: rowEndDate,
+    startTime: line.startTime,
+    endTime: line.endTime,
+    excludeEventId,
+    vehicleType: isConductor ? assignment.vehicleType : undefined,
+    includeConflicts: true,
+    enabled: rowAvailabilityEnabled,
+  })
+
+  const externalConductors = rowAvailabilityEnabled ? rowAvailability.conductors : conductors
+  const externalTreballadors = rowAvailabilityEnabled ? rowAvailability.treballadors : treballadors
 
   const peoplePool = useMemo(() => {
     const base = isConductor
-      ? conductors.filter(
+      ? externalConductors.filter(
           (person) =>
             person.id === line.personId ||
             canDriverHandleVehicleType(person as DriverCapability, vehicleTypeNorm || undefined)
         )
-      : treballadors
+      : externalTreballadors
 
-    return base.filter((person) => {
-      const pid = normalize(person.id)
-      if (!pid) return false
-      if (normalize(line.personId) === pid) return true
-      return !reservedPersonIds.has(pid)
+    return filterPersonnelAfterLocalQuadrantCheck(base, reservedPersonIds, {
+      personId: line.personId,
+      personName: line.personName,
     })
   }, [
-    conductors,
+    externalConductors,
+    externalTreballadors,
     isConductor,
     line.personId,
+    line.personName,
     reservedPersonIds,
-    treballadors,
     vehicleTypeNorm,
   ])
 
+  const savedPlateKey = normalizeTransportPlateKey(assignment.plate)
+  const vehicleMatchedByPlate = useMemo(
+    () =>
+      savedPlateKey
+        ? availableVehicles.find(
+            (vehicle) => normalizeTransportPlateKey(vehicle.plate) === savedPlateKey
+          ) ?? null
+        : null,
+    [availableVehicles, savedPlateKey]
+  )
+  const effectiveVehicleId = assignment.vehicleId || vehicleMatchedByPlate?.id || ''
+  const savedPlateSelectValue = savedPlateKey ? `__saved_plate__:${savedPlateKey}` : '__any__'
+  const plateSelectValue = effectiveVehicleId || (savedPlateKey ? savedPlateSelectValue : '__any__')
+
   const filteredVehicles = availableVehicles.filter((vehicle) => {
-    if (!vehicle.available) return false
-    if (normalizeTransportType(vehicle.type) !== vehicleTypeNorm) return false
     if (assignment.vehicleId && assignment.vehicleId === vehicle.id) return true
+    if (savedPlateKey && normalizeTransportPlateKey(vehicle.plate) === savedPlateKey) return true
+    if (!vehicle.available) return false
+    if (vehicleTypeNorm && normalizeTransportType(vehicle.type) !== vehicleTypeNorm) return false
     return !assignedVehicleIds.has(vehicle.id)
   })
+
+  const showSavedPlateFallback =
+    Boolean(savedPlateKey) &&
+    !effectiveVehicleId &&
+    !filteredVehicles.some(
+      (vehicle) => normalizeTransportPlateKey(vehicle.plate) === savedPlateKey
+    )
 
   const savedNameValue = line.personName && !line.personId ? `__slot__:${line.slotId}` : ''
   const personValue =
@@ -117,7 +171,7 @@ export default function LogisticRoleLineRow({
       plate: '',
     })
     if (line.personId) {
-      const stillValid = conductors.some(
+      const stillValid = externalConductors.some(
         (person) =>
           person.id === line.personId &&
           canDriverHandleVehicleType(
@@ -130,6 +184,7 @@ export default function LogisticRoleLineRow({
   }
 
   const handlePlateChange = (value: string) => {
+    if (value.startsWith('__saved_plate__:')) return
     if (value === '__any__') {
       onAssignmentPatch({ vehicleId: '', plate: '' })
       return
@@ -143,7 +198,7 @@ export default function LogisticRoleLineRow({
       conductorId: line.personId || chosen?.conductorId || null,
     })
     if (line.personId && nextType) {
-      const stillValid = conductors.some(
+      const stillValid = externalConductors.some(
         (person) =>
           person.id === line.personId &&
           canDriverHandleVehicleType(person as DriverCapability, nextType)
@@ -197,12 +252,15 @@ export default function LogisticRoleLineRow({
               ))}
             </select>
             <select
-              value={assignment.vehicleId || '__any__'}
+              value={plateSelectValue}
               onChange={(e) => handlePlateChange(e.target.value)}
               className={`${fieldClass} w-[9rem] shrink-0 rounded-md border border-slate-200 bg-white px-2 text-xs`}
               aria-label="Matrícula"
             >
               <option value="__any__">Sense matrícula</option>
+              {showSavedPlateFallback ? (
+                <option value={savedPlateSelectValue}>{assignment.plate}</option>
+              ) : null}
               {filteredVehicles.map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>
                   {vehicle.plate || '(sense matrícula)'}
@@ -228,13 +286,20 @@ export default function LogisticRoleLineRow({
             }
             const nextId = raw === '__auto__' ? '' : raw
             const selected = peoplePool.find((person) => person.id === nextId)
+            if (
+              nextId &&
+              isPersonReservedForRoleLine(
+                { id: nextId, name: selected?.name },
+                reservedPersonIds
+              )
+            ) {
+              toast.warning('Aquesta persona ja està assignada en una altra línia')
+              return
+            }
             onLinePatch({
               personId: nextId,
               personName: selected?.name || '',
             })
-            if (isConductor && nextId) {
-              onAssignmentPatch({ conductorId: nextId })
-            }
           }}
           className={`${fieldClass} min-w-[14rem] w-[16rem] shrink-0 rounded-md border border-slate-200 bg-white px-2`}
           aria-label="Persona"

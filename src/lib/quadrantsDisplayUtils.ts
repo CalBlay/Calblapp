@@ -202,16 +202,7 @@ export function countAssignedStaffFromPhases(phases: UnifiedEvent[]): number {
       | undefined
 
     if (draft) {
-      const workers = Array.isArray(draft.treballadors)
-        ? draft.treballadors.filter((entry) => {
-            const name = String((entry as { name?: string })?.name || '').trim()
-            return Boolean(name) && name !== 'Extra'
-          }).length
-        : 0
-      const drivers = Array.isArray(draft.conductors) ? draft.conductors.length : 0
-      const responsable =
-        String(draft.responsableId || draft.responsableName || '').trim() ? 1 : 0
-      const fromRoster = workers + drivers + responsable
+      const fromRoster = peopleFromPhase(phase).length
       if (fromRoster > 0) return sum + fromRoster
 
       const explicit = Number(draft.totalWorkers)

@@ -95,6 +95,7 @@ export type UseQuadrantSubmitParams = {
 
   // Logística
   buildLogisticaPhases: () => LogisticPhasePayload[]
+  validateLocalPersonAssignments?: () => string | null
   ettEntry: EttEntry | null
 
   // Callbacks
@@ -160,6 +161,7 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
         servicePhaseEtt,
         vestimentModelChoice,
         buildLogisticaPhases,
+        validateLocalPersonAssignments,
         ettEntry,
         onSaved,
         onOpenChange,
@@ -177,6 +179,16 @@ export function useQuadrantSubmit(params: UseQuadrantSubmitParams): UseQuadrantS
         availableResponsables,
         availableConductors
       )
+
+      if (department === 'logistica' && validateLocalPersonAssignments) {
+        const localDuplicateError = validateLocalPersonAssignments()
+        if (localDuplicateError) {
+          setLoading(false)
+          setError(localDuplicateError)
+          toast.error(localDuplicateError)
+          return
+        }
+      }
 
       // Bucle de submit + confirm reusable per qualsevol branca.
       const dispatchSubmissions = async ({

@@ -9,6 +9,7 @@ import {
   type EditorGroup as GroupInput,
   type EditorRow as RowInput,
 } from '@/lib/quadrantsDraftEditor'
+import { validateEditorRowsNoDuplicatePeople } from '@/lib/manualAssignModel'
 import { saveDraftByDepartment } from '@/lib/quadrantsDraftSaveAdapters'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
@@ -64,6 +65,11 @@ export async function POST(req: NextRequest) {
         { ok: false, error: 'Bad payload' },
         { status: 400 }
       )
+    }
+
+    const duplicateError = validateEditorRowsNoDuplicatePeople(rows)
+    if (duplicateError) {
+      return NextResponse.json({ ok: false, error: duplicateError }, { status: 409 })
     }
 
     const departmentKey = norm(department)

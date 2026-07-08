@@ -1,5 +1,6 @@
 import { toast } from 'sonner'
 import type { DraftInput, Row } from './types'
+import { validateEditorRowsNoDuplicatePeople } from '@/lib/manualAssignModel'
 
 type SaveResponse = {
   ok?: boolean
@@ -34,6 +35,12 @@ export async function saveDraftTable({
 }: SaveParams) {
   try {
     const cleaned = rows.filter((r) => r.name?.trim() !== '' || r.id?.trim() !== '')
+
+    const duplicateError = validateEditorRowsNoDuplicatePeople(cleaned)
+    if (duplicateError) {
+      toast.error(duplicateError)
+      return false
+    }
 
     const draftMeta = draft as DraftInput & {
       phaseType?: string

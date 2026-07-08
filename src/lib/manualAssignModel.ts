@@ -1,4 +1,5 @@
 import { addDays, format, parseISO } from 'date-fns'
+import { validateNoLocalQuadrantPersonDuplicates } from '@/lib/quadrantLocalAvailability'
 import { mapDraftToEditorModel } from '@/lib/quadrantsDraftAdapters'
 import {
   normalizeDepartmentKey,
@@ -60,6 +61,7 @@ export function normalizeAssignPersonKey(value?: string): string {
 }
 
 type AssignablePerson = { id?: string; name?: string }
+type AssignableVehicle = { plate?: string }
 
 export function getAssignedPeopleExcludingRow(
   rows: EditorRow[],
@@ -69,14 +71,6 @@ export function getAssignedPeopleExcludingRow(
   const ids = new Set<string>()
   const names = new Set<string>()
 
-  const rememberPerson = (person?: AssignablePerson | null) => {
-    if (!person) return
-    const id = normalizeAssignPersonKey(person.id)
-    const name = normalizeAssignPersonKey(person.name)
-    if (id) ids.add(id)
-    if (name) names.add(name)
-  }
-
   rows.forEach((row, index) => {
     if (index === excludeIndex) return
     const rowId = normalizeAssignPersonKey(row.id)
@@ -84,13 +78,18 @@ export function getAssignedPeopleExcludingRow(
     if (rowId) ids.add(rowId)
     if (rowName) names.add(rowName)
 
-    if (rowId) {
-      rememberPerson(roster.find((person) => normalizeAssignPersonKey(person.id) === rowId))
-    }
-    if (rowName && !rowId) {
-      rememberPerson(
-        roster.find((person) => normalizeAssignPersonKey(person.name) === rowName)
-      )
+    const rosterMatch =
+      rowId
+        ? roster.find((person) => normalizeAssignPersonKey(person.id) === rowId)
+        : rowName
+          ? roster.find((person) => normalizeAssignPersonKey(person.name) === rowName)
+          : undefined
+
+    if (rosterMatch) {
+      const matchId = normalizeAssignPersonKey(rosterMatch.id)
+      const matchName = normalizeAssignPersonKey(rosterMatch.name)
+      if (matchId) ids.add(matchId)
+      if (matchName) names.add(matchName)
     }
   })
 
@@ -108,11 +107,55 @@ export function isPersonAssignedElsewhere(
   return false
 }
 
+/** Pas 1 (local): valida que cap persona no es repeteixi entre files del mateix quadrant. */
+export function validateEditorRowsNoDuplicatePeople(rows: EditorRow[]): string | null {
+  const lines = rows
+    .filter((row) => !row.isExternal && (row.id || row.name))
+    .map((row, index) => ({
+      slotId: `row-${index}`,
+      personId: row.id,
+      personName: row.name,
+    }))
+  return validateNoLocalQuadrantPersonDuplicates(lines)
+}
+
 export function filterPersonnelPool<T extends AssignablePerson>(
   pool: T[],
   assigned: { ids: Set<string>; names: Set<string> }
 ): T[] {
   return pool.filter((person) => !isPersonAssignedElsewhere(person, assigned))
+}
+
+export function normalizeAssignVehiclePlate(value?: string): string {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '')
+}
+
+export function getAssignedVehiclesExcludingRow(
+  rows: EditorRow[],
+  excludeIndex: number
+): Set<string> {
+  const plates = new Set<string>()
+
+  rows.forEach((row, index) => {
+    if (index === excludeIndex) return
+    const plate = normalizeAssignVehiclePlate(row.plate)
+    if (plate) plates.add(plate)
+  })
+
+  return plates
+}
+
+export function filterVehiclePool<T extends AssignableVehicle>(
+  pool: T[],
+  assignedPlates: Set<string>
+): T[] {
+  return pool.filter((vehicle) => {
+    const plate = normalizeAssignVehiclePlate(vehicle.plate)
+    return !plate || !assignedPlates.has(plate)
+  })
 }
 
 export type ManualAssignState = {

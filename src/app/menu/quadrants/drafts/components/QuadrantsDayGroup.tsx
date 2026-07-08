@@ -14,10 +14,15 @@ interface Props {
 export default function QuadrantsDayGroup({ date, quadrants }: Props) {
   const totalQuadrants = quadrants.length
   const totalPeople = quadrants.reduce((sum, q) => {
-    const resp = q.responsableName ? 1 : 0
-    const conductors = q.conductors?.length || 0
-    const treballadors = q.treballadors?.length || 0
-    return sum + resp + conductors + treballadors
+    const people = new Set<string>()
+    const push = (raw?: string | null) => {
+      const key = String(raw || '').trim().toLowerCase()
+      if (key && key !== 'extra') people.add(key)
+    }
+    push(typeof q.responsableName === 'string' ? q.responsableName : null)
+    ;(q.conductors || []).forEach((person) => push(person?.name))
+    ;(q.treballadors || []).forEach((person) => push(person?.name))
+    return sum + people.size
   }, 0)
 
   return (
