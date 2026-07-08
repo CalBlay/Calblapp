@@ -101,7 +101,10 @@ export default function QuadrantsPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname() ?? ''
-  const searchParamsSafe = searchParams ?? new URLSearchParams()
+  const searchParamsSafe = useMemo(
+    () => searchParams ?? new URLSearchParams(),
+    [searchParams]
+  )
   const defaultWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
   const defaultWeekEnd = endOfWeek(new Date(), { weekStartsOn: 1 })
   const urlStart = parseIsoDateParam(searchParamsSafe.get('start'))

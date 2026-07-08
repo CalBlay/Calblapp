@@ -210,7 +210,6 @@ export default function MeetingMinutesDialog({
     void loadSession()
     void loadMeetingAttendees()
     // Només en obrir el diàleg — evita recarregar després de finalitzar i esborrar l’estat.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialSession, sessionId, loadMeetingAttendees, loadSession, applySession])
 
   useEffect(() => {

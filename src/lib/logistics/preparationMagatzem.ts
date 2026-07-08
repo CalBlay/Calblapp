@@ -1,7 +1,4 @@
-import {
-  PREPARATION_WAREHOUSE_CODES,
-  type PreparationWarehouseCode,
-} from '@/lib/logistics/preparationWarehouses'
+import { PREPARATION_WAREHOUSE_CODES } from '@/lib/logistics/preparationWarehouses'
 import type { PreparationWarehouseCompletion, PreparationWarehouseCompletionMap } from '@/lib/logistics/prepTypes'
 
 export function emptyPreparationWarehouseMap(): PreparationWarehouseCompletionMap {

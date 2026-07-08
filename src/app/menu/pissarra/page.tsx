@@ -143,7 +143,6 @@ export default function PissarraPage() {
     if (nextQs !== currentQs) {
       router.replace(`${pathname}?${nextQs}`)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [week.startISO, week.endISO, mode, lnFilter, commercialFilter, statusFilter, pathname, router, searchParamsSafe])
 
   const lnOptions = useMemo(

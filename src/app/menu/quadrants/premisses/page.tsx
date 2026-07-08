@@ -289,7 +289,6 @@ export default function QuadrantPremisesPage() {
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega premises quan canvia dept, no quan canvia people
   }, [status, department])
 
   useEffect(() => {

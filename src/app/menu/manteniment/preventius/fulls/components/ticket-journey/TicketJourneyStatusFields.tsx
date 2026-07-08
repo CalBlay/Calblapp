@@ -106,6 +106,12 @@ export default function TicketJourneyStatusFields({
               <p className="mt-0.5 text-xs text-slate-500">
                 Pots adjuntar fotos o fitxers. Maxim {maxCompletionImages}.
               </p>
+              {nextStatus === 'fet' ? (
+                <p className="mt-1 text-xs text-amber-700">
+                  Per marcar Fet cal pujar com a minim una foto o fitxer nou. Les fotos del ticket
+                  o adjunts d&apos;un operari anterior no compten.
+                </p>
+              ) : null}
             </div>
             <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
               {imageCount}/{maxCompletionImages}
@@ -115,7 +121,7 @@ export default function TicketJourneyStatusFields({
           {existingCompletionAttachments.length > 0 ? (
             <div className="space-y-2">
               <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Ja pujats
+                Ja pujats anteriorment
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {existingCompletionAttachments.map((item, index) => {

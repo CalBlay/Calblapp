@@ -1,7 +1,7 @@
 import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
 import type { LogisticPhaseForm, LogisticPhaseKey, ServeiGroupRoleLine, VehicleAssignment } from '../phaseConfig'
 import { extractDraftResponsible } from './quadrantPayloadShared'
-import { normalizeTransportPlateKey, normalizeTransportType } from '@/lib/transportTypes'
+import { normalizeTransportType } from '@/lib/transportTypes'
 
 const normPerson = (value?: string | null) =>
   String(value || '')

@@ -110,6 +110,8 @@ export default function CuinaGroupRoleLineRow({
     isConductor,
     isResponsable,
     line.personId,
+    line.personName,
+    normalize,
     reservedPersonIds,
     responsables,
     treballadors,

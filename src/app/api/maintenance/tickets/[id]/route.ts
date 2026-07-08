@@ -754,14 +754,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           newAttachments.length < 1
         ) {
           return NextResponse.json(
-            { error: 'Cal adjuntar com a minim un fitxer o foto en marcar Fet.' },
+            { error: "Cal adjuntar com a minim una foto o fitxer nou de l'operari per marcar Fet." },
             { status: 400 }
           )
         }
         updates.completionAttachments = merged
       } else if (nextStatus === 'fet' && role === 'treballador' && !canManageTickets) {
         return NextResponse.json(
-          { error: 'Cal adjuntar com a minim un fitxer o foto en marcar Fet.' },
+          { error: "Cal adjuntar com a minim una foto o fitxer nou de l'operari per marcar Fet." },
           { status: 400 }
         )
       }

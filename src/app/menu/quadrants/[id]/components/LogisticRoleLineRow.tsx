@@ -15,7 +15,6 @@ import { filterPersonnelAfterLocalQuadrantCheck } from '@/lib/quadrantLocalAvail
 import { useAvailablePersonnel } from '@/app/menu/quadrants/[id]/hooks/useAvailablePersonnel'
 import {
   isPersonReservedForRoleLine,
-  normalizeRoleLinePersonKey,
 } from '../lib/quadrantPayloadShared'
 import type { AvailableVehicle, ServeiGroupRoleLine, ServeiRoleKey, VehicleAssignment } from '../phaseConfig'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
@@ -75,12 +74,11 @@ export default function LogisticRoleLineRow({
   onLineRemove,
   onAssignmentPatch,
 }: Props) {
-  const normalize = normalizeRoleLinePersonKey
   const vehicleTypeNorm = normalizeTransportType(assignment.vehicleType)
   const isConductor = line.role === 'conductor'
   const fieldClass = compact ? 'h-8 text-xs' : 'h-9 text-sm'
-  const rowStartDate = line.serviceDate || line.startDate || ''
-  const rowEndDate = line.endDate || rowStartDate
+  const rowStartDate = line.serviceDate || ''
+  const rowEndDate = rowStartDate
 
   const rowAvailabilityEnabled = Boolean(
     department && rowStartDate && line.startTime && line.endTime

@@ -329,6 +329,8 @@ export function useAvailablePersonnel(opts: UseAvailablePersonnelOptions) {
     resolvedParams.startTime,
     resolvedParams.endTime,
     excludeEventId,
+    rawExcludeIds,
+    rawExcludeNames,
     vehicleType,
     includeConflicts,
   ])

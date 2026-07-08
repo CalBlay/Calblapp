@@ -33,6 +33,13 @@ export function resolveModuleMenuHref(
   mod: ModuleDef,
   uiMap: Record<string, boolean>
 ): string {
+  // Incidencies has its default weekly board at the parent route.
+  // If the parent screen is visible, prefer it instead of auto-entering
+  // the only visible submodule ("Les meves accions").
+  if (mod.path === '/menu/incidents' && uiMap[mod.path] === true) {
+    return mod.path
+  }
+
   const visibleSubs = (mod.submodules || []).filter((sub) => uiMap[sub.path] === true)
   if (visibleSubs.length === 1) {
     return visibleSubs[0].path

@@ -83,6 +83,10 @@ function incidentStatusDisplayLabel(raw?: string | null) {
 
 export default function IncidentsPage() {
   const searchParams = useSearchParams()
+  const searchParamsSafe = useMemo(
+    () => searchParams ?? new URLSearchParams(),
+    [searchParams]
+  )
   const { data: session, status: sessionStatus } = useSession()
   const sessionUser = session?.user as {
     id?: string
@@ -194,11 +198,11 @@ export default function IncidentsPage() {
       ? MARKETING_DEFAULT_CATEGORY_FILTER
       : filters.categoryLabel
 
-  const deepLinkIncidentId = searchParams.get('incidentId')?.trim() || ''
-  const shouldExpandOps = searchParams.get('ops') === '1'
+  const deepLinkIncidentId = searchParamsSafe.get('incidentId')?.trim() || ''
+  const shouldExpandOps = searchParamsSafe.get('ops') === '1'
 
   useEffect(() => {
-    if (searchParams.get('dateMode') !== 'all') return
+    if (searchParamsSafe.get('dateMode') !== 'all') return
     setFilters((prev) =>
       prev.dateMode === 'all'
         ? prev
@@ -209,7 +213,7 @@ export default function IncidentsPage() {
             to: undefined,
           }
     )
-  }, [searchParams])
+  }, [searchParamsSafe])
 
   const {
     incidents,

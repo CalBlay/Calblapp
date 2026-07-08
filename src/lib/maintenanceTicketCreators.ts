@@ -20,16 +20,6 @@ const normalizeExactNameKey = (value: string) =>
 const compactLocationKey = (value: string) =>
   normalizeLocationKey(stripLocationPrefixes(value)).replace(/[^a-z0-9]/g, '')
 
-const exactLocationKeysMatch = (left: string, right: string) => {
-  const leftNorm = normalizeLocationKey(stripLocationPrefixes(left))
-  const rightNorm = normalizeLocationKey(stripLocationPrefixes(right))
-  const leftCompact = compactLocationKey(left)
-  const rightCompact = compactLocationKey(right)
-
-  if (!leftNorm || !rightNorm || !leftCompact || !rightCompact) return false
-  return leftNorm === rightNorm || leftCompact === rightCompact
-}
-
 const locationKeysMatch = (left: string, right: string) => {
   const leftNorm = normalizeLocationKey(stripLocationPrefixes(left))
   const rightNorm = normalizeLocationKey(stripLocationPrefixes(right))

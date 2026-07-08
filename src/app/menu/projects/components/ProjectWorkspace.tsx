@@ -426,7 +426,6 @@ export default function ProjectWorkspace({
 
   const {
     handleDeleteProject,
-    removeKickoffMinutes,
     saveBlocks,
     saveDocuments,
     saveOverview,
