@@ -6,6 +6,7 @@ import { normalizeRole } from '@/lib/roles'
 export const runtime = 'nodejs'
 
 const EDIT_ROLES = new Set(['admin', 'direccio', 'cap'])
+const COLLECTIONS = ['logistics_preparation_services', 'stage_verd'] as const
 
 async function authContext(req: NextRequest) {
   const token = await getToken({ req })
@@ -32,10 +33,18 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
       return NextResponse.json({ ok: false, error: 'Falta ID' }, { status: 400 })
     }
 
-    const ref = db.collection('stage_verd').doc(trimmedId)
-    const snap = await ref.get()
-    if (!snap.exists) {
-      return NextResponse.json({ ok: false, error: 'No existeix l’esdeveniment' }, { status: 404 })
+    let ref: FirebaseFirestore.DocumentReference | null = null
+    for (const collectionName of COLLECTIONS) {
+      const candidate = db.collection(collectionName).doc(trimmedId)
+      const snap = await candidate.get()
+      if (snap.exists) {
+        ref = candidate
+        break
+      }
+    }
+
+    if (!ref) {
+      return NextResponse.json({ ok: false, error: 'No existeix la fila' }, { status: 404 })
     }
 
     await ref.delete()

@@ -2,6 +2,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ChangeEvent, DragEvent } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
@@ -31,7 +32,7 @@ import type { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import type { EditedMap } from '@/components/logistics/LogisticsGrid'
 import type { AllowedPreparationWarehouse } from '@/components/logistics/PreparationWarehouseToggles'
 import type { PreparationWarehouseCode } from '@/lib/logistics/preparationWarehouses'
-import { BarChart3, Truck } from 'lucide-react'
+import { BarChart3, FileSpreadsheet, Truck, Upload } from 'lucide-react'
 import { formatDateOnly, formatDayMonthValue } from '@/lib/date-format'
 
 interface PreparationExportRow {
@@ -39,10 +40,90 @@ interface PreparationExportRow {
   PreparacioHora: string
   CodiEvent: string
   Event: string
+  Servei: string
   Ubicacio: string
   Pax: string | number
   DataEvent: string
   HoraEvent: string
+  DataServei: string
+  HoraServei: string
+}
+
+type ImportedServiceRow = {
+  code: string
+  eventName: string
+  serviceName: string
+  serviceDate: string
+  serviceTime: string
+  location: string
+  pax: number
+}
+
+function normalizeHeaderKey(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function getRowValue(row: Record<string, unknown>, aliases: string[]) {
+  const entries = Object.entries(row)
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeHeaderKey(alias)
+    const match = entries.find(([key]) => normalizeHeaderKey(key) === normalizedAlias)
+    if (match) return match[1]
+  }
+  return ''
+}
+
+function normalizeExcelDateValue(value: unknown) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10)
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const excelEpoch = Date.UTC(1899, 11, 30)
+    const millis = Math.round(value * 24 * 60 * 60 * 1000)
+    const parsed = new Date(excelEpoch + millis)
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 10)
+    }
+  }
+
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+
+  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(raw)
+  if (slash) {
+    const [, dd, mm, yyyy] = slash
+    return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`
+  }
+
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toISOString().slice(0, 10)
+}
+
+function normalizeExcelTimeValue(value: unknown) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const minutes = Math.round(value * 24 * 60)
+    const hours = Math.floor(minutes / 60) % 24
+    const mins = minutes % 60
+    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
+  }
+
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  const match = /^(\d{1,2}):(\d{2})/.exec(raw)
+  if (!match) return ''
+  return `${match[1]!.padStart(2, '0')}:${match[2]}`
 }
 
 export default function LogisticsPage() {
@@ -79,6 +160,9 @@ export default function LogisticsPage() {
   const [manualRows, setManualRows] = useState<LogisticsEventPrepRow[]>([])
   const [locationOptions, setLocationOptions] = useState<string[]>([])
   const [allowedWarehouses, setAllowedWarehouses] = useState<AllowedPreparationWarehouse[]>([])
+  const [importing, setImporting] = useState(false)
+  const [importMessage, setImportMessage] = useState<string>('')
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let ignore = false
@@ -195,6 +279,142 @@ export default function LogisticsPage() {
     setUpdating(false)
   }
 
+  const parseImportedServicesFile = useCallback(async (file: File): Promise<ImportedServiceRow[]> => {
+    const buffer = await file.arrayBuffer()
+    const XLSX = await loadXlsx()
+    const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
+    const sheetName = workbook.SheetNames[0]
+    const sheet = workbook.Sheets[sheetName]
+    if (!sheet) return []
+
+    const matrix = XLSX.utils.sheet_to_json<(string | number | Date)[]>(sheet, {
+      header: 1,
+      defval: '',
+      raw: true,
+    })
+
+    const findColumnIndex = (headerRow: Array<string | number | Date>, aliases: string[]) => {
+      return headerRow.findIndex((cell) => {
+        const normalized = normalizeHeaderKey(String(cell ?? ''))
+        return aliases.some((alias) => normalizeHeaderKey(alias) === normalized)
+      })
+    }
+
+    const headerIndex = matrix.findIndex((row) => {
+      const normalizedCells = row.map((cell) => normalizeHeaderKey(String(cell ?? '')))
+      return (
+        normalizedCells.includes(normalizeHeaderKey('Servicio')) &&
+        normalizedCells.includes(normalizeHeaderKey('Código')) &&
+        normalizedCells.includes(normalizeHeaderKey('Estado Servicio'))
+      )
+    })
+
+    if (headerIndex === -1) return []
+
+    const headerRow = matrix[headerIndex] || []
+    const columnMap = {
+      status: findColumnIndex(headerRow, ['Estado Servicio', 'Estado del Servicio', 'Estado']),
+      serviceName: findColumnIndex(headerRow, ['Servicio', 'Servei', 'Service']),
+      code: findColumnIndex(headerRow, ['Código', 'Codigo', 'Codi', 'Code']),
+      serviceDate: findColumnIndex(headerRow, ['Fecha', 'Data', 'Date']),
+      eventName: findColumnIndex(headerRow, ['Evento', 'Esdeveniment', 'Event']),
+      serviceTime: findColumnIndex(headerRow, ['Hora', 'Hour']),
+      location: findColumnIndex(headerRow, ['Ubicación', 'Ubicacion', 'Ubicació', 'Location']),
+      pax: findColumnIndex(headerRow, ['Comensales', 'Comensals', 'Pax']),
+    }
+
+    const dataRows = matrix.slice(headerIndex + 1)
+
+    return dataRows
+      .map((row) => {
+        const getByIndex = (index: number) => (index >= 0 ? row[index] : '')
+
+        const status = String(getByIndex(columnMap.status) ?? '').trim().toLowerCase()
+        const serviceName = String(getByIndex(columnMap.serviceName) ?? '').trim()
+        if (status !== 'planned') return null
+        if (!serviceName || serviceName.startsWith('C ')) return null
+
+        const code = String(getByIndex(columnMap.code) ?? '').trim()
+        const serviceDate = normalizeExcelDateValue(getByIndex(columnMap.serviceDate))
+        if (!code || !serviceDate) return null
+
+        return {
+          code,
+          eventName: String(getByIndex(columnMap.eventName) ?? '').trim(),
+          serviceName,
+          serviceDate,
+          serviceTime: normalizeExcelTimeValue(getByIndex(columnMap.serviceTime)),
+          location: String(getByIndex(columnMap.location) ?? '').trim(),
+          pax: Number(getByIndex(columnMap.pax) ?? 0) || 0,
+        }
+      })
+      .filter((row): row is ImportedServiceRow => Boolean(row))
+  }, [])
+
+  const handleImportFile = useCallback(async (file: File) => {
+    setImporting(true)
+    setImportMessage('')
+
+    try {
+      const rowsToImport = await parseImportedServicesFile(file)
+      if (!rowsToImport.length) {
+        setImportMessage('No s han trobat serveis Planned valids per importar.')
+        return
+      }
+
+      const res = await fetch('/api/logistics/import-services', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: rowsToImport }),
+      })
+      const payload = (await res.json().catch(() => null)) as
+        | {
+            ok?: boolean
+            imported?: number
+            touchedCodes?: number
+            error?: string
+            receivedRows?: number
+            debug?: Record<string, unknown>
+          }
+        | null
+
+      if (!res.ok || !payload?.ok) {
+        const debugText = payload?.debug ? ` ${JSON.stringify(payload.debug)}` : ''
+        throw new Error((payload?.error || 'No s han pogut importar els serveis') + debugText)
+      }
+
+      await refresh()
+      setEdited({})
+      setManualRows([])
+      setImportMessage(
+        `Importacio completada: ${payload.imported || 0} serveis actualitzats en ${payload.touchedCodes || 0} codis.`
+      )
+    } catch (error) {
+      console.error('Error important serveis de logística:', error)
+      setImportMessage(
+        error instanceof Error ? error.message : 'No s han pogut importar els serveis.'
+      )
+    } finally {
+      setImporting(false)
+    }
+  }, [parseImportedServicesFile, refresh])
+
+  const handleFileInputChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      await handleImportFile(file)
+    }
+    event.target.value = ''
+  }, [handleImportFile])
+
+  const handleImportDrop = useCallback(async (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault()
+    const file = event.dataTransfer.files?.[0]
+    if (file) {
+      await handleImportFile(file)
+    }
+  }, [handleImportFile])
+
   const handleAddRow = useCallback(() => {
     const baseDate = dateRange?.start || new Date().toISOString().slice(0, 10)
     const draftId = `draft_${Date.now()}_${manualRows.length}`
@@ -203,6 +423,8 @@ export default function LogisticsPage() {
       {
         rowType: 'event',
         id: draftId,
+        sourceCollection: 'stage_verd',
+        planningMode: 'event',
         EventCode: '',
         NomEvent: '',
         Ubicacio: '',
@@ -210,6 +432,12 @@ export default function LogisticsPage() {
         DataInici: baseDate,
         DataVisual: baseDate,
         HoraInici: '',
+        EventDate: baseDate,
+        EventTime: '',
+        ServiceName: '',
+        ServiceDate: baseDate,
+        ServiceTime: '',
+        ParentEventId: draftId,
         PreparacioData: baseDate,
         PreparacioHora: '',
       },
@@ -296,6 +524,8 @@ export default function LogisticsPage() {
       const updates: Array<{
         id: string
         isNew?: boolean
+        sourceCollection?: 'stage_verd' | 'logistics_preparation_services'
+        planningMode?: 'event' | 'service'
         PreparacioData?: string
         PreparacioHora?: string
         EventCode?: string
@@ -316,6 +546,8 @@ export default function LogisticsPage() {
         const payload: {
           id: string
           isNew?: boolean
+          sourceCollection?: 'stage_verd' | 'logistics_preparation_services'
+          planningMode?: 'event' | 'service'
           PreparacioData?: string
           PreparacioHora?: string
           EventCode?: string
@@ -323,7 +555,12 @@ export default function LogisticsPage() {
           NumPax?: string
           Ubicacio?: string
           DataInici?: string
-        } = { id, isNew }
+        } = {
+          id,
+          isNew,
+          sourceCollection: original.sourceCollection,
+          planningMode: original.planningMode,
+        }
 
         const nextPreparacioData = rowEdit.PreparacioData ?? original.PreparacioData ?? ''
         const nextPreparacioHora = rowEdit.PreparacioHora ?? original.PreparacioHora ?? ''
@@ -400,10 +637,13 @@ export default function LogisticsPage() {
       PreparacioHora: ev.PreparacioHora || '',
       CodiEvent: ev.EventCode || '',
       Event: ev.NomEvent || '',
+      Servei: ev.ServiceName || '',
       Ubicacio: ev.Ubicacio || '',
       Pax: ev.NumPax ?? '',
-      DataEvent: formatDateOnly(ev.DataInici, ''),
-      HoraEvent: ev.HoraInici || '',
+      DataEvent: formatDateOnly(ev.EventDate || ev.DataInici, ''),
+      HoraEvent: ev.EventTime || ev.HoraInici || '',
+      DataServei: formatDateOnly(ev.ServiceDate || ev.DataInici, ''),
+      HoraServei: ev.ServiceTime || ev.HoraInici || '',
     }))
 
     const comandaRows = warehouseTasks.map((task) => ({
@@ -411,11 +651,14 @@ export default function LogisticsPage() {
       PreparacioHora: WAREHOUSE_PREP_VIEW_ROLE_LABELS[task.viewRole],
       CodiEvent: '',
       Event: `${task.eventTitle} · ${task.batchKind === 'revision' ? 'Reposició' : 'Comanda'}`,
+      Servei: '',
       Ubicacio: task.deliverySummary || formatDayMonthValue(task.deliveryDate, ''),
       Pax:
         EVENT_COMANDA_BATCH_STATUS_LABELS[normalizeEventComandaBatchStatus(task.batchStatus)],
       DataEvent: formatDayMonthValue(task.deliveryDate, ''),
       HoraEvent: String(task.lineCount),
+      DataServei: '',
+      HoraServei: '',
     }))
 
     return [...eventRows, ...comandaRows]
@@ -443,10 +686,13 @@ export default function LogisticsPage() {
       'PreparacioHora',
       'CodiEvent',
       'Event',
+      'Servei',
       'Ubicacio',
       'Pax',
       'DataEvent',
       'HoraEvent',
+      'DataServei',
+      'HoraServei',
     ]
 
     const header = cols.map((c) => `<th>${escapeHtml(c)}</th>`).join('')
@@ -507,7 +753,7 @@ export default function LogisticsPage() {
       <ModuleHeader
         icon={<Truck className="h-7 w-7 text-emerald-600" />}
         title="Preparació logística"
-        subtitle="Planificació de dates i hores de preparació dels esdeveniments"
+        subtitle="Planificació de dates i hores de preparació per serveis"
         actions={
           <div className="flex items-center gap-2">
             {isManager ? (
@@ -525,6 +771,41 @@ export default function LogisticsPage() {
           </div>
         }
       />
+
+      {isManager ? (
+        <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white p-4 shadow-sm">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={(event) => void handleFileInputChange(event)}
+          />
+          <label
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => void handleImportDrop(event)}
+            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-300 bg-white/80 px-4 py-6 text-center transition hover:border-emerald-400 hover:bg-emerald-50/60"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <div className="flex items-center gap-2 text-emerald-700">
+              <Upload className="h-5 w-5" />
+              <FileSpreadsheet className="h-5 w-5" />
+            </div>
+            <div className="text-sm font-semibold text-slate-800">
+              Arrossega l Excel de serveis o fes clic per importar-lo
+            </div>
+            <div className="text-xs text-slate-500">
+              Importa només serveis Planned i exclou automàticament els que comencen per C espai.
+            </div>
+            <div className="text-xs font-medium text-emerald-700">
+              {importing ? 'Important serveis...' : 'Actualitza la graella sense canviar el filtre actual'}
+            </div>
+          </label>
+          {importMessage ? (
+            <div className="mt-3 text-sm text-slate-700">{importMessage}</div>
+          ) : null}
+        </div>
+      ) : null}
 
       <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
         <LogisticsGrid

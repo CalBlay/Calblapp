@@ -32,10 +32,23 @@ type RawEvent = {
   PreparacioFetaPerNom?: string
   PreparacioFetaAt?: string
   PreparacioMagatzems?: Record<string, { userId?: string; userName?: string; at?: string }>
+  planningMode?: string
+  ParentEventId?: string
+  ParentEventCode?: string
+  ParentEventName?: string
+  ParentEventDate?: string
+  ParentEventTime?: string
+  ServiceName?: string
+  ServiceDate?: string
+  ServiceTime?: string
+  Servei?: string
+  sourceCollection?: string
 }
 
 type LogisticsEvent = {
   id: string
+  sourceCollection: 'stage_verd' | 'logistics_preparation_services'
+  planningMode: 'event' | 'service'
   EventCode: string
   NomEvent: string
   Ubicacio: string
@@ -43,6 +56,12 @@ type LogisticsEvent = {
   DataInici: string
   DataVisual: string
   HoraInici: string
+  EventDate: string
+  EventTime: string
+  ServiceName: string
+  ServiceDate: string
+  ServiceTime: string
+  ParentEventId: string
   PreparacioData: string
   PreparacioHora: string
   PreparacioFeta: boolean
@@ -146,6 +165,22 @@ async function queryByPreparationRange(start: string, end: string) {
     .get()
 }
 
+async function queryServiceRowsByStringRange(start: string, end: string) {
+  return db
+    .collection('logistics_preparation_services')
+    .where('DataInici', '>=', start)
+    .where('DataInici', '<=', end)
+    .get()
+}
+
+async function queryServiceRowsByPreparationRange(start: string, end: string) {
+  return db
+    .collection('logistics_preparation_services')
+    .where('PreparacioData', '>=', start)
+    .where('PreparacioData', '<=', end)
+    .get()
+}
+
 async function loadStageVerdRange(start: string, end: string, filterByPreparation: boolean) {
   if (filterByPreparation) {
     const preparationSnap = await Promise.allSettled([queryByPreparationRange(start, end)])
@@ -188,6 +223,37 @@ async function loadStageVerdRange(start: string, end: string, filterByPreparatio
   })
 }
 
+async function loadServiceRange(start: string, end: string, filterByPreparation: boolean) {
+  if (filterByPreparation) {
+    const preparationSnap = await Promise.allSettled([queryServiceRowsByPreparationRange(start, end)])
+    const docs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
+
+    if (preparationSnap[0].status === 'fulfilled') {
+      preparationSnap[0].value.forEach((doc) => docs.set(doc.id, doc))
+    }
+
+    if (docs.size > 0) return Array.from(docs.values())
+
+    const fullSnap = await db.collection('logistics_preparation_services').get()
+    return fullSnap.docs.filter((doc) => {
+      const row = doc.data() as RawEvent
+      return isPreparationDateInRange(row.PreparacioData, start, end)
+    })
+  }
+
+  const stringSnap = await Promise.allSettled([queryServiceRowsByStringRange(start, end)])
+  if (stringSnap[0].status === 'fulfilled' && stringSnap[0].value.size > 0) {
+    return stringSnap[0].value.docs
+  }
+
+  const fullSnap = await db.collection('logistics_preparation_services').get()
+  return fullSnap.docs.filter((doc) => {
+    const row = doc.data() as RawEvent
+    const iso = normalizeDataInici(row.DataInici)
+    return Boolean(iso) && iso >= start && iso <= end
+  })
+}
+
 function isPreparationDateInRange(preparacioData: string | undefined, start: string, end: string) {
   const value = String(preparacioData ?? '').trim()
   return Boolean(value) && isIsoDate(value) && value >= start && value <= end
@@ -212,13 +278,68 @@ export async function GET(req: NextRequest) {
 
     const startStr = String(start)
     const endStr = String(end)
-    const docs = await loadStageVerdRange(startStr, endStr, filterByPreparation)
+    const [stageDocs, serviceDocs] = await Promise.all([
+      loadStageVerdRange(startStr, endStr, filterByPreparation),
+      loadServiceRange(startStr, endStr, filterByPreparation),
+    ])
     const events: LogisticsEvent[] = []
+    const codesWithServices = new Set<string>()
 
-    docs.forEach((doc) => {
+    serviceDocs.forEach((doc) => {
+      const row = doc.data() as RawEvent
+      const eventCode = firstEventCode(row) || String(row.ParentEventCode ?? '').trim()
+      if (eventCode) codesWithServices.add(eventCode)
+    })
+
+    serviceDocs.forEach((doc) => {
+      const row = doc.data() as RawEvent
+      const eventCode = firstEventCode(row) || String(row.ParentEventCode ?? '').trim()
+      if (!eventCode) return
+
+      const dataIniciIso = normalizeDataInici(row.ServiceDate ?? row.DataInici)
+      const preparationMatches = isPreparationDateInRange(row.PreparacioData, startStr, endStr)
+      if (filterByPreparation) {
+        if (!preparationMatches) return
+      } else if (!dataIniciIso || dataIniciIso < startStr || dataIniciIso > endStr) {
+        return
+      }
+
+      const dataInici = parseDateOnly(dataIniciIso)
+      if (!dataInici) return
+
+      const horaServei = String(row.ServiceTime ?? row.HoraInici ?? '').trim()
+      events.push({
+        id: doc.id,
+        sourceCollection: 'logistics_preparation_services',
+        planningMode: 'service',
+        EventCode: eventCode,
+        NomEvent: formatEventName(row.ParentEventName ?? row.NomEvent ?? row.eventName ?? ''),
+        Ubicacio: String(row.Ubicacio ?? row.finca ?? '').trim(),
+        NumPax: Number(row.NumPax ?? row.numPax ?? row.Pax ?? 0) || 0,
+        DataInici: dataIniciIso,
+        DataVisual: dataIniciIso,
+        HoraInici: horaServei,
+        EventDate: normalizeDataInici(row.ParentEventDate ?? ''),
+        EventTime: String(row.ParentEventTime ?? '').trim(),
+        ServiceName: String(row.ServiceName ?? row.Servei ?? '').trim(),
+        ServiceDate: dataIniciIso,
+        ServiceTime: horaServei,
+        ParentEventId: String(row.ParentEventId ?? '').trim(),
+        PreparacioData: row.PreparacioData ?? '',
+        PreparacioHora: row.PreparacioHora ?? '',
+        PreparacioFeta: Boolean(row.PreparacioFeta),
+        PreparacioFetaPerUserId: String(row.PreparacioFetaPerUserId ?? '').trim(),
+        PreparacioFetaPerNom: String(row.PreparacioFetaPerNom ?? '').trim(),
+        PreparacioFetaAt: String(row.PreparacioFetaAt ?? '').trim(),
+        PreparacioMagatzems: normalizePreparationWarehouseMap(row.PreparacioMagatzems),
+      })
+    })
+
+    stageDocs.forEach((doc) => {
       const ev = doc.data() as RawEvent
       const eventCode = firstEventCode(ev)
       if (!eventCode) return
+      if (codesWithServices.has(eventCode)) return
 
       const dataIniciIso = normalizeDataInici(ev.DataInici)
       const preparationMatches = isPreparationDateInRange(ev.PreparacioData, startStr, endStr)
@@ -242,6 +363,8 @@ export async function GET(req: NextRequest) {
 
       events.push({
         id: doc.id,
+        sourceCollection: 'stage_verd',
+        planningMode: 'event',
         EventCode: eventCode,
         NomEvent: formatEventName(ev.NomEvent ?? ev.eventName ?? ''),
         Ubicacio: ev.Ubicacio ?? ev.finca ?? '',
@@ -249,6 +372,12 @@ export async function GET(req: NextRequest) {
         DataInici: dataIniciIso,
         DataVisual: dateToIso(dataVisual),
         HoraInici: horaInici,
+        EventDate: dataIniciIso,
+        EventTime: horaInici,
+        ServiceName: '',
+        ServiceDate: '',
+        ServiceTime: '',
+        ParentEventId: doc.id,
         PreparacioData: ev.PreparacioData ?? '',
         PreparacioHora: ev.PreparacioHora ?? '',
         PreparacioFeta: Boolean(ev.PreparacioFeta),

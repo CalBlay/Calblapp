@@ -9,6 +9,7 @@ import { normalizeRole } from '@/lib/roles'
 export const runtime = 'nodejs'
 
 const ALLOWED_ROLES = new Set(['admin', 'direccio', 'cap', 'treballador'])
+const COLLECTIONS = ['logistics_preparation_services', 'stage_verd'] as const
 
 async function authContext(req: NextRequest) {
   const token = await getToken({ req })
@@ -43,22 +44,32 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       | null
     const warehouseRaw = String(body?.warehouse || '').trim().toUpperCase()
     if (!isPreparationWarehouseCode(warehouseRaw)) {
-      return NextResponse.json({ ok: false, error: 'Magatzem no vàlid' }, { status: 400 })
+      return NextResponse.json({ ok: false, error: 'Magatzem no valid' }, { status: 400 })
     }
     const done = Boolean(body?.done)
 
     const allowedWarehouses = await listPreparationWarehousesForUser(auth.userId, auth.role)
     if (!allowedWarehouses.includes(warehouseRaw)) {
       return NextResponse.json(
-        { ok: false, error: 'No tens permís per aquest magatzem' },
+        { ok: false, error: 'No tens permis per aquest magatzem' },
         { status: 403 }
       )
     }
 
-    const docRef = db.collection('stage_verd').doc(trimmedId)
-    const snap = await docRef.get()
-    if (!snap.exists) {
-      return NextResponse.json({ ok: false, error: 'Línia no trobada' }, { status: 404 })
+    let docRef: FirebaseFirestore.DocumentReference | null = null
+    let snap: FirebaseFirestore.DocumentSnapshot | null = null
+    for (const collectionName of COLLECTIONS) {
+      const candidate = db.collection(collectionName).doc(trimmedId)
+      const candidateSnap = await candidate.get()
+      if (candidateSnap.exists) {
+        docRef = candidate
+        snap = candidateSnap
+        break
+      }
+    }
+
+    if (!docRef || !snap?.exists) {
+      return NextResponse.json({ ok: false, error: 'Linia no trobada' }, { status: 404 })
     }
 
     const currentMap = normalizePreparationWarehouseMap(snap.data()?.PreparacioMagatzems)
@@ -90,6 +101,6 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ ok: true, warehouses: nextMap })
   } catch (error) {
     console.error('[logistics/[id]/complete] PATCH error', error)
-    return NextResponse.json({ ok: false, error: 'Error actualitzant l’estat' }, { status: 500 })
+    return NextResponse.json({ ok: false, error: 'Error actualitzant l estat' }, { status: 500 })
   }
 }

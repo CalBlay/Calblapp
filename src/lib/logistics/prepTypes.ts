@@ -14,6 +14,8 @@ export type PreparationWarehouseCompletionMap = Partial<
 export type LogisticsEventPrepRow = {
   rowType: 'event'
   id: string
+  sourceCollection?: 'stage_verd' | 'logistics_preparation_services'
+  planningMode?: 'event' | 'service'
   EventCode: string
   NomEvent: string
   Ubicacio: string
@@ -21,6 +23,12 @@ export type LogisticsEventPrepRow = {
   DataInici: string
   DataVisual?: string
   HoraInici?: string
+  EventDate?: string
+  EventTime?: string
+  ServiceName?: string
+  ServiceDate?: string
+  ServiceTime?: string
+  ParentEventId?: string
   PreparacioData?: string
   PreparacioHora?: string
   /** @deprecated Usa PreparacioMagatzems */

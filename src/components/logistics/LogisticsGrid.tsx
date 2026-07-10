@@ -137,6 +137,14 @@ function buildDayGroups(
   })
 }
 
+function displayServiceName(row: LogisticsEventPrepRow) {
+  return row.ServiceName?.trim() || ''
+}
+
+function displayEventTime(row: LogisticsEventPrepRow) {
+  return row.EventTime?.trim() || row.HoraInici?.trim() || ''
+}
+
 export default function LogisticsGrid({
   rows,
   warehouseTasks,
@@ -428,8 +436,16 @@ function WorkerGroupedView({
                       >
                         {ev.NomEvent || 'Sense nom'}
                       </div>
+                      {displayServiceName(ev) ? (
+                        <div className="mt-1 text-xs font-semibold text-emerald-700">
+                          Servei: {displayServiceName(ev)}
+                        </div>
+                      ) : null}
                       <div className="mt-1 text-xs font-medium text-slate-500">
                         Codi: {ev.EventCode || '-'}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        Hora event: {displayEventTime(ev) || '--:--'} · Hora servei: {ev.ServiceTime || '--:--'}
                       </div>
                       <div className="mt-1 text-xs text-slate-600 line-clamp-2">
                         {ev.Ubicacio || 'Sense ubicació'}
@@ -455,11 +471,13 @@ function WorkerGroupedView({
                     <thead className="bg-slate-100 text-slate-700">
                       <tr>
                         <th className="w-24 px-3 py-2 text-left">Hora prep.</th>
+                        <th className="px-3 py-2 text-left">Servei</th>
                         <th className="w-28 px-3 py-2 text-left">Codi event</th>
                         <th className="px-3 py-2 text-left">Nom esdeveniment</th>
-                        <th className="w-16 px-3 py-2 text-left">Pax</th>
                         <th className="px-3 py-2 text-left">Ubicació</th>
-                        <th className="w-28 px-3 py-2 text-left">Data event</th>
+                        <th className="w-16 px-3 py-2 text-left">Pax</th>
+                        <th className="w-28 px-3 py-2 text-left">Data servei</th>
+                        <th className="w-24 px-3 py-2 text-left">Hora servei</th>
                         <th className="px-3 py-2 text-left">Magatzems</th>
                       </tr>
                     </thead>
@@ -476,6 +494,7 @@ function WorkerGroupedView({
                           )}
                         >
                           <td className="px-3 py-2 text-slate-700">{ev.PreparacioHora || '--:--'}</td>
+                          <td className="px-3 py-2 text-slate-700">{displayServiceName(ev) || '-'}</td>
                           <td className="px-3 py-2 text-slate-700">{ev.EventCode || '-'}</td>
                           <td
                             className={cn(
@@ -487,11 +506,12 @@ function WorkerGroupedView({
                           >
                             {ev.NomEvent || 'Sense nom'}
                           </td>
-                          <td className="px-3 py-2 text-slate-700">{ev.NumPax ?? '--'}</td>
                           <td className="px-3 py-2 text-slate-700">{ev.Ubicacio || 'Sense ubicació'}</td>
+                          <td className="px-3 py-2 text-slate-700">{ev.NumPax ?? '--'}</td>
                           <td className="px-3 py-2 text-slate-700">
-                            {ev.DataInici ? formatDayMonthValue(ev.DataInici, '--/--') : '--/--'}
+                            {ev.ServiceDate ? formatDayMonthValue(ev.ServiceDate, '--/--') : '--/--'}
                           </td>
+                          <td className="px-3 py-2 text-slate-700">{ev.ServiceTime || '--:--'}</td>
                           <td className="px-3 py-2">
                             <div className="mb-1 text-[10px] font-semibold text-slate-500">
                               {progress.pct}%
@@ -569,16 +589,18 @@ function EditableTable({
 
   return (
     <div className="overflow-x-auto scroll-smooth">
-      <table className="w-full min-w-[980px] border-collapse text-[10px] sm:text-xs xl:min-w-[1240px] 2xl:min-w-[1440px]">
+      <table className="w-full min-w-[1280px] border-collapse text-[10px] sm:text-xs xl:min-w-[1500px] 2xl:min-w-[1660px]">
         <thead>
           <tr className="bg-gray-100 text-left">
             <th className="sticky left-0 z-30 bg-white px-3 py-3 shadow-sm xl:px-4">Data preparació</th>
             <th className="px-3 py-3 xl:px-4">Hora preparació</th>
+            <th className="px-3 py-3 xl:px-4">Servei</th>
             <th className="px-3 py-3 xl:px-4">Codi event</th>
-            <th className="px-3 py-3 xl:px-4">Nom</th>
-            <th className="px-3 py-3 xl:px-4">Pax</th>
+            <th className="px-3 py-3 xl:px-4">Esdeveniment</th>
             <th className="px-3 py-3 xl:px-4">Ubicació</th>
-            <th className="px-3 py-3 xl:px-4">Data esdeveniment</th>
+            <th className="px-3 py-3 xl:px-4">Pax</th>
+            <th className="px-3 py-3 xl:px-4">Data servei</th>
+            <th className="px-3 py-3 xl:px-4">Hora servei</th>
             <th className="w-12 px-3 py-3 text-center xl:px-4"> </th>
           </tr>
         </thead>
@@ -586,7 +608,7 @@ function EditableTable({
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={8} className="py-6 text-center text-gray-400">
+              <td colSpan={12} className="py-6 text-center text-gray-400">
                 Carregant dades...
               </td>
             </tr>
@@ -599,6 +621,10 @@ function EditableTable({
               const pax = edited[ev.id]?.NumPax ?? (ev.NumPax != null ? String(ev.NumPax) : '')
               const ubicacio = edited[ev.id]?.Ubicacio ?? (ev.Ubicacio || '')
               const dataInici = edited[ev.id]?.DataInici ?? (ev.DataInici || '')
+              const eventDate = ev.EventDate || ev.DataInici || ''
+              const eventTime = displayEventTime(ev)
+              const serviceDate = ev.ServiceDate || ev.DataInici || ''
+              const serviceTime = ev.ServiceTime || ev.HoraInici || ''
               const rowIsNew = ev.id.startsWith('draft_')
               const rowLocations = ubicacio && !locationOptions.includes(ubicacio)
                 ? [ubicacio, ...locationOptions]
@@ -639,6 +665,9 @@ function EditableTable({
                   </td>
 
                   <td className="px-3 py-3 xl:px-4">
+                    <span>{displayServiceName(ev) || '-'}</span>
+                  </td>
+                  <td className="px-3 py-3 xl:px-4">
                     {isManager ? (
                       <input
                         type="text"
@@ -664,19 +693,6 @@ function EditableTable({
                   </td>
                   <td className="px-3 py-3 xl:px-4">
                     {isManager ? (
-                      <input
-                        type="number"
-                        min="0"
-                        value={pax}
-                        onChange={(e) => setField(ev.id, 'NumPax', e.target.value)}
-                        className="w-20 rounded border p-1 text-xs"
-                      />
-                    ) : (
-                      <span>{pax || '-'}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-3 xl:px-4">
-                    {isManager ? (
                       <select
                         value={ubicacio}
                         onChange={(e) => setField(ev.id, 'Ubicacio', e.target.value)}
@@ -696,14 +712,30 @@ function EditableTable({
                   <td className="px-3 py-3 xl:px-4">
                     {isManager ? (
                       <input
+                        type="number"
+                        min="0"
+                        value={pax}
+                        onChange={(e) => setField(ev.id, 'NumPax', e.target.value)}
+                        className="w-20 rounded border p-1 text-xs"
+                      />
+                    ) : (
+                      <span>{pax || '-'}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 xl:px-4">
+                    {isManager ? (
+                      <input
                         type="date"
                         value={dataInici}
                         onChange={(e) => setField(ev.id, 'DataInici', e.target.value)}
                         className="w-full rounded border p-1 text-xs"
                       />
                     ) : (
-                      <span>{formatDayMonthValue(dataInici, '--/--')}</span>
+                      <span>{formatDayMonthValue(serviceDate, '--/--')}</span>
                     )}
+                  </td>
+                  <td className="px-3 py-3 xl:px-4">
+                    <span>{serviceTime || '--:--'}</span>
                   </td>
                   <td className="px-3 py-3 text-center xl:px-4">
                     {isManager ? (
@@ -723,7 +755,7 @@ function EditableTable({
             })
           ) : !hasWarehouseTasks ? (
             <tr>
-              <td colSpan={8} className="py-6 text-center text-gray-400">
+              <td colSpan={12} className="py-6 text-center text-gray-400">
                 No hi ha dades disponibles.
               </td>
             </tr>

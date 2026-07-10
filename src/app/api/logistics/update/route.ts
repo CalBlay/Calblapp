@@ -12,6 +12,8 @@ const isTime = (value?: string | null) => /^([01]\d|2[0-3]):[0-5]\d$/.test(Strin
 type UpdateItem = {
   id: string
   isNew?: boolean
+  sourceCollection?: 'stage_verd' | 'logistics_preparation_services'
+  planningMode?: 'event' | 'service'
   PreparacioData?: string
   PreparacioHora?: string
   EventCode?: string
@@ -46,6 +48,12 @@ function normalizeUpdates(body: unknown): UpdateItem[] {
 
 function trimOrEmpty(value: unknown) {
   return String(value ?? '').trim()
+}
+
+function targetCollection(item: UpdateItem) {
+  return item.sourceCollection === 'logistics_preparation_services'
+    ? 'logistics_preparation_services'
+    : 'stage_verd'
 }
 
 export async function POST(req: NextRequest) {
@@ -98,10 +106,17 @@ export async function POST(req: NextRequest) {
         updateFields.code = value
         updateFields.codeConfirmed = value !== ''
         updateFields.codeSource = value !== '' ? 'manual' : ''
+        if (item.planningMode === 'service' || item.sourceCollection === 'logistics_preparation_services') {
+          updateFields.ParentEventCode = value
+        }
       }
 
       if (item.NomEvent !== undefined) {
-        updateFields.NomEvent = trimOrEmpty(item.NomEvent)
+        const value = trimOrEmpty(item.NomEvent)
+        updateFields.NomEvent = value
+        if (item.planningMode === 'service' || item.sourceCollection === 'logistics_preparation_services') {
+          updateFields.ParentEventName = value
+        }
       }
 
       if (item.Ubicacio !== undefined) {
@@ -118,6 +133,9 @@ export async function POST(req: NextRequest) {
         }
         updateFields.DataInici = value
         updateFields.DataFi = value
+        if (item.planningMode === 'service' || item.sourceCollection === 'logistics_preparation_services') {
+          updateFields.ServiceDate = value
+        }
       }
 
       if (item.NumPax !== undefined) {
@@ -177,7 +195,7 @@ export async function POST(req: NextRequest) {
         batch.set(db.collection('stage_verd').doc(createdId), payload)
       } else {
         updateFields.updatedAt = new Date().toISOString()
-        batch.update(db.collection('stage_verd').doc(id), updateFields)
+        batch.update(db.collection(targetCollection(item)).doc(id), updateFields)
       }
 
       applied += 1
