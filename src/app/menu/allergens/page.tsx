@@ -1,19 +1,10 @@
 'use client'
 
-import Link from 'next/link'
-import { MotionDiv } from '@/lib/lazyMotion'
-import ModuleHeader from '@/components/layout/ModuleHeader'
 import { ClipboardList, Search } from 'lucide-react'
+import ModuleHub, { type ModuleHubCard } from '@/components/layout/ModuleHub'
 import { MODULES } from '@/lib/accessControl'
 import { useMemo } from 'react'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
-
-type HubCardStyle = {
-  bg: string
-  text: string
-  border: string
-  Icon: typeof ClipboardList
-}
 
 export default function AllergensHubPage() {
   const { map: uiMap, data: uiPermData } = useUiPermissions()
@@ -25,70 +16,36 @@ export default function AllergensHubPage() {
     return allSubmodules.filter((s) => uiMap[s.path] !== false)
   }, [allergensModule, uiPermData, uiMap])
 
-  return (
-    <>
-      <ModuleHeader />
+  const cards: ModuleHubCard[] = allowedSubmodules.map((sub) => {
+    const key = sub.path.split('/').pop() || sub.path
 
-      <section className="w-full h-full flex flex-col items-center justify-center p-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl">
-          {allowedSubmodules.map(sub => {
-            const key = sub.path.split('/').pop() || sub.path
+    if (key === 'bbdd') {
+      return {
+        href: sub.path,
+        title: sub.label,
+        description: "Base de dades d'al·lèrgens",
+        icon: ClipboardList,
+        tone: 'amber',
+      }
+    }
 
-            const styleMap: Record<string, HubCardStyle> = {
-              bbdd: {
-                bg: 'bg-[#fff7e6]',
-                text: 'text-[#9a3412]',
-                border: 'border-[#fde2bd]',
-                Icon: ClipboardList,
-              },
-              buscador: {
-                bg: 'bg-[#fef3c7]',
-                text: 'text-[#92400e]',
-                border: 'border-[#fde68a]',
-                Icon: Search,
-              },
-            }
+    if (key === 'buscador') {
+      return {
+        href: sub.path,
+        title: sub.label,
+        description: 'Consulta ràpida de plats',
+        icon: Search,
+        tone: 'orange',
+      }
+    }
 
-            const styles = styleMap[key] ?? {
-              bg: 'bg-white',
-              text: 'text-slate-800',
-              border: 'border-slate-200',
-              Icon: ClipboardList,
-            }
-            const Icon = styles.Icon
+    return {
+      href: sub.path,
+      title: sub.label,
+      icon: ClipboardList,
+      tone: 'slate',
+    }
+  })
 
-            return (
-              <Link key={sub.path} href={sub.path}>
-                <MotionDiv
-                  whileTap={{ scale: 0.97 }}
-                  className={`
-                    w-full
-                    font-semibold
-                    rounded-xl
-                    p-5
-                    text-center
-                    shadow-sm
-                    border
-                    flex flex-col
-                    items-center
-                    gap-2
-                    ${styles.bg} ${styles.text} ${styles.border}
-                  `}
-                >
-                  <Icon className="w-7 h-7" />
-                  {sub.label}
-                </MotionDiv>
-              </Link>
-            )
-          })}
-
-          {!allowedSubmodules.length && (
-            <p className="text-sm text-gray-500 text-center col-span-full">
-              No tens accés a cap secció d'Al·lèrgens.
-            </p>
-          )}
-        </div>
-      </section>
-    </>
-  )
+  return <ModuleHub cards={cards} emptyMessage="No tens accés a cap secció d'Al·lèrgens." />
 }
