@@ -135,6 +135,7 @@ type SendMaintenanceSupplierEmailInput = {
   recipient: ProjectRecipient
   subject: string
   ticketCode: string
+  center?: string
   location: string
   machine?: string
   description: string
@@ -1454,12 +1455,15 @@ function buildMaintenanceSupplierEmailHtml(input: SendMaintenanceSupplierEmailIn
   const createdLabel = formatFlexibleBarcelonaDate(input.createdAt)
   const reference = String(input.reference || '').trim()
   const priority = String(input.priority || '').trim()
+  const center = String(input.center || '').trim()
+  const location = String(input.location || '').trim()
   const machine = String(input.machine || '').trim()
   const message = String(input.message || '').trim()
   const description = String(input.description || '').trim()
   const lines = [
     `<p style="margin:0 0 8px"><strong>Ticket:</strong> ${escapeHtml(input.ticketCode || 'TIC')}</p>`,
-    `<p style="margin:0 0 8px"><strong>Ubicacio:</strong> ${escapeHtml(input.location || '-')}</p>`,
+    `<p style="margin:0 0 8px"><strong>Centre:</strong> ${escapeHtml(center || '-')}</p>`,
+    `<p style="margin:0 0 8px"><strong>Ubicacio:</strong> ${escapeHtml(location || '-')}</p>`,
     machine ? `<p style="margin:0 0 8px"><strong>Maquinaria:</strong> ${escapeHtml(machine)}</p>` : '',
     `<p style="margin:0 0 8px"><strong>Prioritat:</strong> ${escapeHtml(priority || 'normal')}</p>`,
     createdLabel ? `<p style="margin:0 0 8px"><strong>Creat:</strong> ${escapeHtml(createdLabel)}</p>` : '',
