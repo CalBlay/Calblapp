@@ -178,17 +178,22 @@ export default function QuadrantsEventGroup({
     setExpanded(next)
 
     if (next) {
-      if (pendingPhases[0]) {
-        onExpandedIdChange(buildPendingExpandKey(pendingPhases[0]))
-        return
-      }
-
       const firstDraft = managedPhases.find((phase) => {
         const draft = phase.draft as { id?: string } | null | undefined
         return Boolean(draft?.id)
       })
       const draftId = (firstDraft?.draft as { id?: string } | undefined)?.id
-      onExpandedIdChange(draftId ?? null)
+      if (draftId) {
+        onExpandedIdChange(draftId)
+        return
+      }
+
+      if (pendingPhases[0]) {
+        onExpandedIdChange(buildPendingExpandKey(pendingPhases[0]))
+        return
+      }
+
+      onExpandedIdChange(null)
       return
     }
 

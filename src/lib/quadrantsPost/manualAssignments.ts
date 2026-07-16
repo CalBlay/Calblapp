@@ -457,10 +457,12 @@ export function buildLogisticaManualAssignmentOnly(
   }
 
   const tw = Number(phaseAssignBody.totalWorkers || 0)
-  const nd = Number(phaseAssignBody.numDrivers || 0)
-  const driverSlots = Math.max(nd, drivers.length)
-  const respDeduction = !skipResponsible && responsible ? 1 : 0
-  const staffCount = Math.max(tw - driverSlots - respDeduction, 0)
+  /**
+   * A Logistica, `totalWorkers` ja arriba com el nombre de files de `treballador`
+   * de la fase. Els conductors i el responsable es guarden a camps separats,
+   * aixi que no s'han de tornar a restar aqui o es perden treballadors en desar.
+   */
+  const staffCount = Math.max(tw, 0)
 
   const rawManualWorkers = Array.isArray(phaseAssignBody.manualWorkers)
     ? (
