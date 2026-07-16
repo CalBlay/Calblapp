@@ -201,6 +201,7 @@ export function formatTicketReporterDetail(ticket: {
 }
 
 export type ExternalReporterTicketBucket = 'nou' | 'assignat' | 'fet' | 'externalitzat'
+export type MaintenanceTicketScope = 'restaurants' | 'cuina_central' | 'centres_propis'
 
 const normalizeTicketStatusKey = (status?: string | null) =>
   String(status || 'nou')
@@ -228,6 +229,44 @@ export function matchesExternalReporterTicketBucket(
   const value = String(bucket || '__all__').trim()
   if (!value || value === '__all__') return true
   return getExternalReporterTicketBucket(ticket) === value
+}
+
+export function getMaintenanceTicketScope(ticket: {
+  location?: string | null
+  workLocation?: string | null
+  sourceEventLocation?: string | null
+  source?: string | null
+  intakeChannel?: string | null
+}): MaintenanceTicketScope {
+  if (isCuinaCentralMaintenanceTicket(ticket)) return 'cuina_central'
+
+  const intakeChannel = String(ticket.intakeChannel || '').trim().toLowerCase()
+  if (intakeChannel === 'restaurant') return 'restaurants'
+  if (intakeChannel === 'finca') return 'centres_propis'
+
+  const location =
+    String(ticket.location || '').trim() ||
+    String(ticket.workLocation || '').trim() ||
+    String(ticket.sourceEventLocation || '').trim()
+  const ops = resolveOpsChannelByLocationName(location)
+  if (ops?.source === 'restaurants') return 'restaurants'
+
+  return 'centres_propis'
+}
+
+export function matchesMaintenanceTicketScope(
+  ticket: {
+    location?: string | null
+    workLocation?: string | null
+    sourceEventLocation?: string | null
+    source?: string | null
+    intakeChannel?: string | null
+  },
+  scope?: string | null
+) {
+  const value = String(scope || '__all__').trim()
+  if (!value || value === '__all__') return true
+  return getMaintenanceTicketScope(ticket) === value
 }
 
 export function isMaintenanceTicketCreatorOnlyUser(user: {

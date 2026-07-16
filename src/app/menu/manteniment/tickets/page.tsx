@@ -31,6 +31,8 @@ import {
   isCuinaCentralDepartment,
   isMaintenanceTicketCreatorOnlyUser,
   canCreateMaintenanceTicketsAsReporter,
+  getMaintenanceTicketScope,
+  type MaintenanceTicketScope,
 } from '@/lib/maintenanceTicketCreators'
 import { isQualitatCuinaCentralTicketViewer } from '@/lib/accessControl'
 import { markTicketSeen } from '@/lib/maintenanceSeen'
@@ -106,6 +108,14 @@ const KPI_STYLES = {
   external: 'border-violet-200 bg-violet-50/70',
 } as const
 
+const INTERNAL_BUCKET_LABELS = {
+  inbox: 'Nous i reoberts',
+  planned: 'Planificats',
+  active: 'En curs / espera',
+  validation: 'Pendents validar',
+  external: 'Externalitzats',
+} as const
+
 const EXTERNAL_BUCKET_LABELS = {
   nou: 'Nous',
   assignat: 'Assignats',
@@ -119,6 +129,12 @@ const EXTERNAL_KPI_STYLES = {
   fet: KPI_STYLES.validation,
   externalitzat: KPI_STYLES.external,
 } as const
+
+const TICKET_SCOPE_LABELS: Record<MaintenanceTicketScope, string> = {
+  restaurants: 'Restaurants',
+  cuina_central: 'Cuina Central',
+  centres_propis: 'Centres Propis',
+}
 
 const MAINTENANCE_PLANNER_PATH = '/menu/manteniment/preventius/planificador'
 
@@ -260,6 +276,44 @@ export default function MaintenanceTicketsPage() {
     [setFilters]
   )
 
+  const toggleInternalBucket = useCallback(
+    (bucket: keyof typeof INTERNAL_BUCKET_LABELS) => {
+      setFilters((prev) => ({
+        ...prev,
+        ticketBucket: prev.ticketBucket === bucket ? '__all__' : bucket,
+      }))
+    },
+    [setFilters]
+  )
+
+  const ticketScopeSummary = useMemo(() => {
+    const counts: Record<MaintenanceTicketScope, number> = {
+      restaurants: 0,
+      cuina_central: 0,
+      centres_propis: 0,
+    }
+
+    tickets.forEach((ticket) => {
+      const inRange =
+        (filters.dateMode ?? 'planned') === 'all'
+          ? true
+          : (() => {
+              const from = filters.start || ''
+              const to = filters.end || ''
+              const targetRaw =
+                (filters.dateMode ?? 'planned') === 'planned' ? ticket.plannedStart : ticket.createdAt
+              const target = new Date(targetRaw || 0)
+              if (Number.isNaN(target.getTime())) return false
+              const day = target.toISOString().slice(0, 10)
+              return (!from || day >= from) && (!to || day <= to)
+            })()
+      if (!inRange) return
+      counts[getMaintenanceTicketScope(ticket)] += 1
+    })
+
+    return counts
+  }, [filters.dateMode, filters.end, filters.start, tickets])
+
   const createCenters = catalogCenters
 
   useEffect(() => {
@@ -328,7 +382,22 @@ export default function MaintenanceTicketsPage() {
               </select>
             </label>
             <label className="space-y-2 text-sm text-slate-700">
-              <span className="font-medium">Ubicació</span>
+              <span className="font-medium">Origen</span>
+              <select
+                value={filters.ticketScope ?? '__all__'}
+                onChange={(e) => setFilters((prev) => ({ ...prev, ticketScope: e.target.value }))}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Tots</option>
+                {(Object.keys(TICKET_SCOPE_LABELS) as MaintenanceTicketScope[]).map((scope) => (
+                  <option key={scope} value={scope}>
+                    {TICKET_SCOPE_LABELS[scope]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Ubicacio</span>
               <select
                 value={filters.location ?? '__all__'}
                 onChange={(e) => setFilters((prev) => ({ ...prev, location: e.target.value }))}
@@ -356,6 +425,7 @@ export default function MaintenanceTicketsPage() {
                 priority: '__all__',
                 location: '__all__',
                 ticketBucket: '__all__',
+                ticketScope: '__all__',
                 dateMode: 'planned' as const,
               }
               setFilters(next)
@@ -569,26 +639,62 @@ export default function MaintenanceTicketsPage() {
             }
             onOpenFilters={() => undefined}
             bottomSlot={
-              <CorporateFiltersActiveRow>
-                {isExternalReporter && filters.ticketBucket && filters.ticketBucket !== '__all__' ? (
-                  <CorporateActiveFilterChip>
-                    {EXTERNAL_BUCKET_LABELS[filters.ticketBucket as keyof typeof EXTERNAL_BUCKET_LABELS]}
-                  </CorporateActiveFilterChip>
+              <div className="flex flex-col gap-3">
+                {!isExternalReporter ? (
+                  <div className="flex flex-wrap gap-2">
+                    {(Object.keys(TICKET_SCOPE_LABELS) as MaintenanceTicketScope[]).map((scope) => {
+                      const active = (filters.ticketScope ?? '__all__') === scope
+                      return (
+                        <button
+                          key={scope}
+                          type="button"
+                          onClick={() =>
+                            setFilters((prev) => ({
+                              ...prev,
+                              ticketScope: prev.ticketScope === scope ? '__all__' : scope,
+                            }))
+                          }
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] transition ${
+                            active
+                              ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
+                              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                          }`}
+                        >
+                          <span>{TICKET_SCOPE_LABELS[scope]}</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] tracking-normal text-slate-700">
+                            {ticketScopeSummary[scope]}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 ) : null}
-                {!isExternalReporter && filters.status && filters.status !== '__all__' ? (
-                  <CorporateActiveFilterChip>
-                    {STATUS_LABELS[filters.status as TicketStatus]}
-                  </CorporateActiveFilterChip>
-                ) : null}
-                {!isExternalReporter && filters.priority && filters.priority !== '__all__' ? (
-                  <CorporateActiveFilterChip>
-                    {PRIORITY_LABELS[filters.priority as TicketPriority]}
-                  </CorporateActiveFilterChip>
-                ) : null}
-                {!isExternalReporter && filters.location && filters.location !== '__all__' ? (
-                  <CorporateActiveFilterChip>{filters.location}</CorporateActiveFilterChip>
-                ) : null}
-              </CorporateFiltersActiveRow>
+                <CorporateFiltersActiveRow>
+                  {isExternalReporter && filters.ticketBucket && filters.ticketBucket !== '__all__' ? (
+                    <CorporateActiveFilterChip>
+                      {EXTERNAL_BUCKET_LABELS[filters.ticketBucket as keyof typeof EXTERNAL_BUCKET_LABELS]}
+                    </CorporateActiveFilterChip>
+                  ) : null}
+                  {!isExternalReporter && filters.ticketBucket && filters.ticketBucket !== '__all__' ? (
+                    <CorporateActiveFilterChip>
+                      {INTERNAL_BUCKET_LABELS[filters.ticketBucket as keyof typeof INTERNAL_BUCKET_LABELS]}
+                    </CorporateActiveFilterChip>
+                  ) : null}
+                  {!isExternalReporter && filters.status && filters.status !== '__all__' ? (
+                    <CorporateActiveFilterChip>
+                      {STATUS_LABELS[filters.status as TicketStatus]}
+                    </CorporateActiveFilterChip>
+                  ) : null}
+                  {!isExternalReporter && filters.priority && filters.priority !== '__all__' ? (
+                    <CorporateActiveFilterChip>
+                      {PRIORITY_LABELS[filters.priority as TicketPriority]}
+                    </CorporateActiveFilterChip>
+                  ) : null}
+                  {!isExternalReporter && filters.location && filters.location !== '__all__' ? (
+                    <CorporateActiveFilterChip>{filters.location}</CorporateActiveFilterChip>
+                  ) : null}
+                </CorporateFiltersActiveRow>
+              </div>
             }
           />
         </CorporateFiltersShell>
@@ -621,26 +727,30 @@ export default function MaintenanceTicketsPage() {
           </section>
         ) : (
           <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.inbox}`}>
-              <div className={typography('eyebrow')}>Nous i reoberts</div>
-              <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.inbox}</div>
-            </div>
-            <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.planned}`}>
-              <div className={typography('eyebrow')}>Planificats</div>
-              <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.planned}</div>
-            </div>
-            <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.active}`}>
-              <div className={typography('eyebrow')}>En curs / espera</div>
-              <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.active}</div>
-            </div>
-            <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.validation}`}>
-              <div className={typography('eyebrow')}>Pendents validar</div>
-              <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.pendingValidation}</div>
-            </div>
-            <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.external}`}>
-              <div className={typography('eyebrow')}>Externalitzats</div>
-              <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.externalized}</div>
-            </div>
+            {(
+              [
+                { key: 'inbox', value: ticketSummary.inbox, style: KPI_STYLES.inbox },
+                { key: 'planned', value: ticketSummary.planned, style: KPI_STYLES.planned },
+                { key: 'active', value: ticketSummary.active, style: KPI_STYLES.active },
+                { key: 'validation', value: ticketSummary.pendingValidation, style: KPI_STYLES.validation },
+                { key: 'external', value: ticketSummary.externalized, style: KPI_STYLES.external },
+              ] as const
+            ).map((item) => {
+              const active = filters.ticketBucket === item.key
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => toggleInternalBucket(item.key)}
+                  className={`rounded-2xl border px-4 py-3 text-left transition ${item.style} ${
+                    active ? 'ring-2 ring-emerald-500 ring-offset-1' : 'hover:brightness-[0.98]'
+                  }`}
+                >
+                  <div className={typography('eyebrow')}>{INTERNAL_BUCKET_LABELS[item.key]}</div>
+                  <div className={`mt-2 ${typography('kpiValue')}`}>{item.value}</div>
+                </button>
+              )
+            })}
           </section>
         )}
 
@@ -833,3 +943,4 @@ export default function MaintenanceTicketsPage() {
       </MaintenancePermissionGate>
   )
 }
+

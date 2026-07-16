@@ -26,6 +26,7 @@ export type FiltersState = {
   status?: string
   priority?: string
   ticketBucket?: string
+  ticketScope?: string
 }
 
 type FilterKey = 'ln' | 'responsable' | 'commercial' | 'location'

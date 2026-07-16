@@ -11,6 +11,7 @@ import {
 } from '@/lib/accessControl'
 import {
   getExternalReporterTicketBucket,
+  matchesMaintenanceTicketScope,
   matchesExternalReporterTicketBucket,
   resolveDefaultTicketCenterFromUserName,
   resolveDefaultTicketLocationFromUserName,
@@ -46,6 +47,8 @@ type AvailabilityItem = {
   id: string
   name?: string
 }
+
+type InternalTicketBucket = 'inbox' | 'planned' | 'active' | 'validation' | 'external' | 'closed'
 
 const normalizeDept = (raw?: string) =>
   (raw || '')
@@ -96,6 +99,7 @@ export function useMaintenanceTickets() {
       priority: '__all__',
       location: '__all__',
       ticketBucket: '__all__',
+      ticketScope: '__all__',
     }
   }, [])
 
@@ -105,6 +109,7 @@ export function useMaintenanceTickets() {
   const locationFilter = filters.location ?? '__all__'
   const dateModeFilter = (filters.dateMode ?? 'planned') as MaintenanceDateFilterMode
   const ticketBucketFilter = filters.ticketBucket ?? '__all__'
+  const ticketScopeFilter = filters.ticketScope ?? '__all__'
 
   const [selected, setSelected] = useState<Ticket | null>(null)
   const [assignBusy, setAssignBusy] = useState(false)
@@ -712,7 +717,7 @@ export function useMaintenanceTickets() {
       .filter((ticket) =>
         isExternalReporter
           ? matchesExternalReporterTicketBucket(ticket, ticketBucketFilter)
-          : true
+          : matchesMaintenanceTicketScope(ticket, ticketScopeFilter)
       )
 
     const sortTickets = (list: Ticket[]) =>
@@ -783,7 +788,12 @@ export function useMaintenanceTickets() {
         ticket.status !== 'fet'
     )
 
-    const sections = [
+    const sections: Array<{
+      key: InternalTicketBucket
+      title: string
+      note: string
+      items: Ticket[]
+    }> = [
       {
         key: 'inbox',
         title: 'Nous i per decidir',
@@ -833,10 +843,15 @@ export function useMaintenanceTickets() {
       },
     ]
 
-    return sections
+    const filteredSections =
+      ticketBucketFilter !== '__all__'
+        ? sections.filter((section) => section.key === ticketBucketFilter)
+        : sections
+
+    return filteredSections
       .map((section) => ({ ...section, items: sortTickets(section.items) }))
       .filter((section) => section.items.length > 0)
-  }, [dateModeFilter, filters.end, filters.start, isExternalReporter, ticketBucketFilter, tickets])
+  }, [dateModeFilter, filters.end, filters.start, isExternalReporter, ticketBucketFilter, ticketScopeFilter, tickets])
 
   const externalReporterSummary = useMemo(() => {
     const inRange = (ticket: Ticket) =>
@@ -875,25 +890,37 @@ export function useMaintenanceTickets() {
       inbox: tickets.filter(
         (ticket) =>
           inRange(ticket) &&
+          matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
           !ticket.externalized &&
           (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox'
       ).length,
       planned: tickets.filter(
         (ticket) =>
-          inRange(ticket) && !ticket.externalized && (ticket.workflowStage || '') === 'planner_queue'
+          inRange(ticket) &&
+          matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
+          !ticket.externalized &&
+          (ticket.workflowStage || '') === 'planner_queue'
       ).length,
       active: tickets.filter(
         (ticket) =>
           inRange(ticket) &&
+          matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
           !ticket.externalized &&
           (ticket.status === 'assignat' || ticket.status === 'en_curs' || ticket.status === 'espera')
       ).length,
       pendingValidation: tickets.filter(
-        (ticket) => inRange(ticket) && !ticket.externalized && ticket.status === 'fet'
+        (ticket) =>
+          inRange(ticket) &&
+          matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
+          !ticket.externalized &&
+          ticket.status === 'fet'
       ).length,
-      externalized: tickets.filter((ticket) => inRange(ticket) && ticket.externalized).length,
+      externalized: tickets.filter(
+        (ticket) =>
+          inRange(ticket) && matchesMaintenanceTicketScope(ticket, ticketScopeFilter) && ticket.externalized
+      ).length,
     }
-  }, [dateModeFilter, filters.end, filters.start, tickets])
+  }, [dateModeFilter, filters.end, filters.start, ticketScopeFilter, tickets])
 
   return {
     role,
