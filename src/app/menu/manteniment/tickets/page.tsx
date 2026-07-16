@@ -106,6 +106,7 @@ const KPI_STYLES = {
   active: 'border-blue-200 bg-blue-50/70',
   validation: 'border-emerald-200 bg-emerald-50/70',
   external: 'border-violet-200 bg-violet-50/70',
+  closed: 'border-fuchsia-200 bg-fuchsia-50/70',
 } as const
 
 const INTERNAL_BUCKET_LABELS = {
@@ -114,6 +115,7 @@ const INTERNAL_BUCKET_LABELS = {
   active: 'En curs / espera',
   validation: 'Pendents validar',
   external: 'Externalitzats',
+  closed: 'Validats',
 } as const
 
 const EXTERNAL_BUCKET_LABELS = {
@@ -726,7 +728,7 @@ export default function MaintenanceTicketsPage() {
             )}
           </section>
         ) : (
-          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">
             {(
               [
                 { key: 'inbox', value: ticketSummary.inbox, style: KPI_STYLES.inbox },
@@ -734,6 +736,7 @@ export default function MaintenanceTicketsPage() {
                 { key: 'active', value: ticketSummary.active, style: KPI_STYLES.active },
                 { key: 'validation', value: ticketSummary.pendingValidation, style: KPI_STYLES.validation },
                 { key: 'external', value: ticketSummary.externalized, style: KPI_STYLES.external },
+                { key: 'closed', value: ticketSummary.closed, style: KPI_STYLES.closed },
               ] as const
             ).map((item) => {
               const active = filters.ticketBucket === item.key

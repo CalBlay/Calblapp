@@ -44,6 +44,8 @@ type TicketRecord = Record<string, unknown> & {
   priority?: string
   ticketType?: string
   createdAt?: string | number | { toDate?: () => Date }
+  plannedStart?: string | number | { toDate?: () => Date } | null
+  resolvedAt?: string | number | { toDate?: () => Date } | null
   externalized?: boolean
   assignedToNames?: string[]
   assignedToIds?: string[]
@@ -102,6 +104,22 @@ function normalizeText(value?: string | null) {
 }
 
 function parseCreatedAtMs(value: TicketRecord['createdAt']): number {
+  if (value && typeof value === 'object' && typeof value.toDate === 'function') {
+    return value.toDate().getTime()
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 1e12 ? value * 1000 : value
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 0
+}
+
+function parseAnyTimestampMs(
+  value?: string | number | { toDate?: () => Date } | null
+): number {
   if (value && typeof value === 'object' && typeof value.toDate === 'function') {
     return value.toDate().getTime()
   }
@@ -183,6 +201,26 @@ function parseEntryAtMs(entry?: { at?: number | string | null } | null): number 
     if (Number.isFinite(parsed)) return parsed
   }
   return 0
+}
+
+function resolveTicketLastActivityMs(data: TicketRecord): number {
+  const createdAtMs = parseCreatedAtMs(data.createdAt)
+  const plannedStartMs = parseAnyTimestampMs(data.plannedStart)
+  const resolvedAtMs = parseAnyTimestampMs(data.resolvedAt)
+  const latestStatusMs = Array.isArray(data.statusHistory)
+    ? data.statusHistory.reduce((max, entry) => {
+        const atMs = parseEntryAtMs(entry)
+        return atMs > max ? atMs : max
+      }, 0)
+    : 0
+  const latestWorkLogMs = Array.isArray(data.workLogs)
+    ? data.workLogs.reduce((max, entry) => {
+        const atMs = parseEntryAtMs(entry)
+        return atMs > max ? atMs : max
+      }, 0)
+    : 0
+
+  return Math.max(createdAtMs, plannedStartMs, resolvedAtMs, latestStatusMs, latestWorkLogMs)
 }
 
 function resolveOperatorDisplayName(
@@ -325,7 +363,8 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
 
   for (const doc of ticketSnap.docs) {
     const data = doc.data() as TicketRecord
-    const eventAtMs = parseCreatedAtMs(data.createdAt)
+    const createdAtMs = parseCreatedAtMs(data.createdAt)
+    const eventAtMs = resolveTicketLastActivityMs(data) || createdAtMs
     const assigneeNames = Array.isArray(data.assignedToNames)
       ? data.assignedToNames.map((n) => String(n || '').trim()).filter(Boolean)
       : []
@@ -337,7 +376,8 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       id: doc.id,
       code: String(data.ticketCode || data.incidentNumber || doc.id).trim(),
       eventAtMs,
-      createdAt: eventAtMs ? new Date(eventAtMs).toISOString() : '',
+      createdAt: createdAtMs ? new Date(createdAtMs).toISOString() : '',
+      lastActivityAt: eventAtMs ? new Date(eventAtMs).toISOString() : '',
       location: String(data.location || '').trim(),
       machine: String(data.machine || '').trim(),
       status: normalizeText(data.status) || 'nou',

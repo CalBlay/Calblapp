@@ -919,6 +919,17 @@ export function useMaintenanceTickets() {
         (ticket) =>
           inRange(ticket) && matchesMaintenanceTicketScope(ticket, ticketScopeFilter) && ticket.externalized
       ).length,
+      closed: tickets.filter(
+        (ticket) =>
+          inRange(ticket) &&
+          matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
+          (
+            ticket.status === 'validat' ||
+            ticket.workflowStage === 'resolved_admin' ||
+            ticket.workflowStage === 'resolved_planner' ||
+            ticket.workflowStage === 'closed'
+          )
+      ).length,
     }
   }, [dateModeFilter, filters.end, filters.start, ticketScopeFilter, tickets])
 

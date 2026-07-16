@@ -38,6 +38,7 @@ import { useSeguimentData } from './hooks/useSeguimentData'
 import { useSeguimentDerivedData } from './hooks/useSeguimentDerivedData'
 import { parseDate, parseDateFromParts, STATUSES, STATUS_LABELS } from './utils'
 import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
+import { typography } from '@/lib/typography'
 
 function formatDayLabel(day: string) {
   const parsed = parseISO(day)
@@ -344,13 +345,33 @@ export default function MaintenanceSeguimentPage() {
                 </div>
                 <div className="h-6 w-px bg-slate-200" />
                 <div className="flex flex-wrap items-center gap-2">
+                  {tab === 'tickets' ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExternalFilter((current) =>
+                          current === 'external' ? 'all' : 'external'
+                        )
+                      }
+                      className={[
+                        'rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] border inline-flex items-center gap-2',
+                        externalFilter === 'external'
+                          ? 'bg-violet-100 text-violet-800 border-violet-200'
+                          : 'bg-white text-gray-700 border-gray-200',
+                      ].join(' ')}
+                      title="Filtrar tickets externalitzats"
+                    >
+                      <span className="h-2 w-2 rounded-full bg-violet-500" />
+                      Externalitzats
+                    </button>
+                  ) : null}
                   {STATUSES.map((status) => (
                     <button
                       key={status}
                       type="button"
                       onClick={() => toggleStatusFilter(status)}
                       className={[
-                        'rounded-full px-3 py-2 text-xs font-semibold border inline-flex items-center gap-2',
+                        'rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] border inline-flex items-center gap-2',
                         statusFilter.includes(status)
                           ? STATUS_FILTER_STYLES[status].active
                           : 'bg-white text-gray-700 border-gray-200',
@@ -422,19 +443,19 @@ export default function MaintenanceSeguimentPage() {
         ) : null}
 
         {!loading && !error ? (
-          <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div>
-                <div className="text-sm font-semibold text-slate-900">
+                <div className={typography('sectionTitle')}>
                   {tab === 'tickets' ? 'Tickets' : 'Preventius'}
                 </div>
-                <div className="text-xs text-slate-500">{currentRows.length} resultats</div>
+                <div className={typography('bodyXs')}>{currentRows.length} resultats</div>
               </div>
             </div>
 
             <div className="space-y-6 p-3 sm:space-y-7 sm:p-4 lg:space-y-6 lg:p-4">
               {currentRows.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-200 px-4 py-7 text-sm text-slate-500">
+                <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-7 text-sm text-slate-500">
                   No hi ha registres amb aquests filtres.
                 </div>
               ) : null}
@@ -442,18 +463,18 @@ export default function MaintenanceSeguimentPage() {
               {daySections.map((section) => (
                 <section
                   key={section.day}
-                  className="rounded-xl border border-slate-200/80 bg-slate-50/45 p-2.5 sm:p-3"
+                  className="rounded-2xl border border-slate-200/80 bg-slate-50/45 p-2.5 sm:p-3"
                 >
-                  <header className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2">
-                    <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold leading-tight text-slate-800">
+                  <header className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                    <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold leading-tight text-slate-900">
                       {formatDayLabel(section.day)}
-                      <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-700">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
                         <Calendar className="h-3 w-3" aria-hidden />
                         {tab === 'tickets' ? 'Tickets' : 'Preventius'}
                       </span>
                     </h2>
 
-                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-1 text-[11px] font-semibold text-rose-700">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700">
                       <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
                       {section.count} {section.count === 1 ? 'registre' : 'registres'}
                     </span>
