@@ -6,6 +6,7 @@ import type { MachineItem, Ticket } from '@/app/menu/manteniment/tickets/types'
 import type { MaintenanceStatus, Preventiu, SeguimentRow, TabKey } from '../types'
 import {
   getDaysOpen,
+  getTicketLastMovementAt,
   getPlannedMinutes,
   getTrackedMinutes,
   getTicketTrackedMinutes,
@@ -79,21 +80,11 @@ export function useSeguimentDerivedData({
           ) {
             return false
           }
-          return applyDateMatch(ticket.plannedStart || null)
+          return applyDateMatch(getTicketLastMovementAt(ticket))
         })
         .sort((a, b) => {
-          const aTime =
-            parseDate(
-              (a.statusHistory || [])
-                .slice()
-                .sort((x, y) => Number(y.at || 0) - Number(x.at || 0))[0]?.at || a.createdAt
-            )?.getTime() || 0
-          const bTime =
-            parseDate(
-              (b.statusHistory || [])
-                .slice()
-                .sort((x, y) => Number(y.at || 0) - Number(x.at || 0))[0]?.at || b.createdAt
-            )?.getTime() || 0
+          const aTime = parseDate(getTicketLastMovementAt(a))?.getTime() || 0
+          const bTime = parseDate(getTicketLastMovementAt(b))?.getTime() || 0
           return bTime - aTime
         }),
     [

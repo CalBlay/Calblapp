@@ -22,7 +22,7 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
       ? ([form.currentStatus, ...options] as JourneyStatus[])
       : options
   const showWorkFieldsByDefault =
-    !form.autoStarting && !form.nextStatus && (form.currentStatus === 'en_curs' || form.currentStatus === 'espera')
+    !form.nextStatus && (form.currentStatus === 'en_curs' || form.currentStatus === 'espera')
   const canSaveWithoutChangingStage =
     form.currentStatus === 'en_curs' || form.currentStatus === 'espera'
   const title = ticket.ticketCode || ticket.incidentNumber || 'Ticket'
@@ -49,7 +49,7 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
         type="button"
         className="min-h-[48px] w-full rounded-full border border-slate-200 px-5 text-sm font-medium text-gray-600 sm:w-auto"
         onClick={handleClose}
-        disabled={form.busy || form.autoStarting}
+        disabled={form.busy}
       >
         Cancel·lar
       </button>
@@ -57,9 +57,9 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
         type="button"
         className="min-h-[48px] w-full rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
         onClick={() => void form.handleSave()}
-        disabled={form.busy || form.autoStarting || (!form.nextStatus && !canSaveWithoutChangingStage)}
+        disabled={form.busy || (!form.nextStatus && !canSaveWithoutChangingStage)}
       >
-        {form.autoStarting ? 'Iniciant...' : form.busy ? 'Guardant...' : 'Guardar'}
+        {form.busy ? 'Guardant...' : 'Guardar'}
       </button>
     </div>
   )
@@ -108,7 +108,7 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
           </div>
         ) : null}
 
-        {((form.nextStatus && !form.autoStarting) || showWorkFieldsByDefault) ? (
+        {(form.nextStatus || showWorkFieldsByDefault) ? (
           <TicketJourneyStatusFields
             nextStatus={form.nextStatus || form.currentStatus}
             horaInici={form.horaInici}
@@ -134,11 +134,7 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
           />
         ) : null}
 
-        {form.autoStarting ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Obrint ticket i passant-lo a En curs...
-          </div>
-        ) : effectiveOptions.length > 0 ? (
+        {effectiveOptions.length > 0 ? (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               {effectiveOptions.map((status) => {

@@ -55,7 +55,7 @@ function TicketHistory({ ticket }: { ticket: Ticket }) {
           key={`${item.status}-${item.at}-${index}`}
           className="rounded-xl border border-slate-200 bg-white px-3 py-2"
         >
-          <div className="grid gap-2 text-xs text-slate-600 md:grid-cols-[120px_140px_120px_minmax(0,1fr)_140px]">
+          <div className="grid gap-2 text-xs text-slate-600 md:grid-cols-[120px_140px_120px_minmax(0,1fr)_160px_160px]">
             <div>
               <div className="font-medium text-slate-500">Estat</div>
               <span
@@ -69,7 +69,7 @@ function TicketHistory({ ticket }: { ticket: Ticket }) {
               <div>{item.byName || '-'}</div>
             </div>
             <div>
-              <div className="font-medium text-slate-500">Hora</div>
+              <div className="font-medium text-slate-500">Hora tram</div>
               <div>
                 {item.startTime || item.endTime
                   ? `${item.startTime || '--:--'}-${item.endTime || '--:--'}`
@@ -81,8 +81,12 @@ function TicketHistory({ ticket }: { ticket: Ticket }) {
               <div className="text-[14px] leading-5 text-slate-700">{item.note || '-'}</div>
             </div>
             <div>
-              <div className="font-medium text-slate-500">Data</div>
+              <div className="font-medium text-slate-500">Registre real</div>
               <div>{formatDateTime(item.at)}</div>
+            </div>
+            <div>
+              <div className="font-medium text-slate-500">Dia tram</div>
+              <div>{parseDate(item.at) ? format(parseDate(item.at) as Date, 'dd/MM/yyyy') : '-'}</div>
             </div>
           </div>
         </div>

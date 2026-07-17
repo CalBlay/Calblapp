@@ -407,6 +407,9 @@ export default function PlannerSidebar({
                 <div className="mt-1 text-[11px] text-violet-800">
                   {item.location || '-'}{item.machine ? ` · ${item.machine}` : ''}
                 </div>
+                {item.supplierName ? (
+                  <div className="mt-1 text-[11px] font-medium text-violet-900">Proveidor: {item.supplierName}</div>
+                ) : null}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className="inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
                     {item.externalStatus === 'closed'
@@ -459,6 +462,9 @@ export default function PlannerSidebar({
               <div className="mt-1 text-[11px] text-violet-800">
                 {item.location || '-'}{item.machine ? ` · ${item.machine}` : ''}
               </div>
+              {item.supplierName ? (
+                <div className="mt-1 text-[11px] font-medium text-violet-900">Proveidor: {item.supplierName}</div>
+              ) : null}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
                   {item.externalStatus === 'closed'

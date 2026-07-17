@@ -19,6 +19,7 @@ export type TicketCard = {
   id: string
   code: string
   title: string
+  supplierName?: string | null
   priority: 'urgent' | 'alta' | 'normal' | 'baixa'
   minutes: number
   status?: string
@@ -36,6 +37,7 @@ export type ScheduledItem = {
   kind: 'preventiu' | 'ticket'
   title: string
   workers: string[]
+  supplierName?: string | null
   workersCount: number
   dayIndex: number
   start: string

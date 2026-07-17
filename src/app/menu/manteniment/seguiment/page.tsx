@@ -36,7 +36,7 @@ import type { MaintenanceStatus, TabKey } from './types'
 import { useSeguimentActions } from './hooks/useSeguimentActions'
 import { useSeguimentData } from './hooks/useSeguimentData'
 import { useSeguimentDerivedData } from './hooks/useSeguimentDerivedData'
-import { parseDate, parseDateFromParts, STATUSES, STATUS_LABELS } from './utils'
+import { getTicketLastMovementAt, parseDate, parseDateFromParts, STATUSES, STATUS_LABELS } from './utils'
 import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
 import { typography } from '@/lib/typography'
 
@@ -246,7 +246,7 @@ export default function MaintenanceSeguimentPage() {
     currentRows.forEach((row) => {
       const date =
         tab === 'tickets'
-          ? parseDate((row as Ticket).plannedStart || null)
+          ? parseDate(getTicketLastMovementAt(row as Ticket))
           : parseDateFromParts(row.plannedDate, row.plannedStart)
       if (!date) return
       const key = format(date, 'yyyy-MM-dd')

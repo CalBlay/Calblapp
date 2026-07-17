@@ -57,6 +57,13 @@ export const parseDateFromParts = (date?: string | null, time?: string | null) =
 export const formatDateTime = (value?: number | string | null) =>
   parseDate(value) ? format(parseDate(value) as Date, 'dd/MM/yyyy HH:mm') : '-'
 
+export const getTicketLastMovementAt = (ticket: Ticket) =>
+  (ticket.statusHistory || [])
+    .slice()
+    .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]?.at ||
+  ticket.assignedAt ||
+  ticket.createdAt
+
 export const normalizeStatus = (value?: string | null): MaintenanceStatus => {
   const raw = String(value || 'assignat').trim().toLowerCase()
   if (raw === 'nou') return 'nou'

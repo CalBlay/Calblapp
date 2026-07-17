@@ -71,7 +71,6 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
   const [note, setNote] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [autoStarting, setAutoStarting] = useState(false)
 
   const {
     images,
@@ -149,89 +148,26 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     clearImages()
     setFormError(null)
     setBusy(false)
-    setAutoStarting(false)
   }, [clearImages, initialStatus, ticket.id, ticket.statusHistory])
 
-  useEffect(() => {
-    if (currentStatus !== 'assignat' && currentStatus !== 'reassignat') return
-
-    let cancelled = false
-    const startTime = defaultTime()
-
-    const autoStart = async () => {
-      try {
-        setAutoStarting(true)
-        setFormError(null)
-
-        const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: 'en_curs',
-            statusStartTime: startTime,
-          }),
-        })
-
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}))
-          throw new Error(String(json?.error || 'No s ha pogut iniciar el ticket'))
-        }
-
-        if (cancelled) return
-
-        setCurrentStatus('en_curs')
-        setHoraInici(startTime)
-        setHoraFi(startTime)
-        setStatusHistory((prev) =>
-          applyStatusHistoryUpdate(
-            Array.isArray(prev) ? prev : [],
-            currentStatus,
-            'en_curs',
-            {
-              newSegmentStartTime: startTime,
-              note: null,
-              userId: '',
-              userName: '',
-            }
-          )
-        )
-      } catch (err) {
-        if (cancelled) return
-        setFormError(err instanceof Error ? err.message : 'No s ha pogut iniciar el ticket')
-      } finally {
-        if (!cancelled) setAutoStarting(false)
-      }
-    }
-
-    void autoStart()
-
-    return () => {
-      cancelled = true
-    }
-  }, [currentStatus, ticket.id])
-
   const handleSelectStatus = (status: JourneyStatus) => {
-    const now = defaultTime()
-    const openStart =
-      getOpenSegmentStart(statusHistory, 'en_curs') ||
-      getOpenSegmentStart(statusHistory, 'espera')
-
     setNextStatus(status)
     if (hasStaleOpenSegment) {
-      setHoraFi((prev) => (status === 'en_curs' ? '' : prev || now))
+      setHoraFi((prev) => (status === 'en_curs' ? '' : prev))
       setHoraInici((prev) =>
-        needsStartOnNextStatus(status) || status === 'fet' || status === 'no_fet' ? prev || now : ''
+        needsStartOnNextStatus(status) || status === 'fet' || status === 'no_fet' ? prev : ''
       )
       setPreviousSegmentEndTime((prev) => prev || '')
     } else {
-      setHoraFi((prev) => prev || now)
+      setHoraFi((prev) => prev)
       setHoraInici((prev) => {
-        if (prev) return prev
-        return status === 'fet'
-          ? openStart || now
-          : needsStartOnNextStatus(status)
-            ? now
-            : openStart || now
+        if (status === 'fet' || status === 'no_fet' || status === 'validat') {
+          return currentStatus === 'en_curs' || currentStatus === 'espera'
+            ? openSegment?.startTime || prev
+            : prev
+        }
+        if (needsStartOnNextStatus(status)) return prev
+        return prev
       })
     }
     setNote('')
@@ -304,6 +240,20 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
       return
     }
 
+    const previousSegmentCloseMinutes = timeToMinutes(closeSegmentEndTime)
+    if (
+      startsSegment &&
+      closesPrevious &&
+      startMinutes !== null &&
+      previousSegmentCloseMinutes !== null &&
+      startMinutes < previousSegmentCloseMinutes
+    ) {
+      setFormError(
+        `La hora inici del nou tram no pot ser inferior a la hora fi del tram anterior (${closeSegmentEndTime}).`
+      )
+      return
+    }
+
     const validationError = validateJourneyStatusPayload({
       currentStatus,
       nextStatus: effectiveStatus,
@@ -362,7 +312,6 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     note,
     formError,
     busy,
-    autoStarting,
     showPhotos,
     existingImages,
     existingCompletionAttachments,

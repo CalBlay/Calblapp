@@ -1395,7 +1395,15 @@ export default function PreventiusPlanificadorPage() {
                               {PRIORITY_LABEL[priority]}
                             </span>
                           </div>
-                          {item.workers.length > 0 && (
+                          {item.kind === 'ticket' &&
+                          item.workflowStage === 'externalized' &&
+                          String(item.supplierName || '').trim() ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <span className="inline-flex items-center rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-800">
+                                {item.supplierName}
+                              </span>
+                            </div>
+                          ) : item.workers.length > 0 ? (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {item.workers.map((worker) => (
                                 <span
@@ -1409,7 +1417,7 @@ export default function PreventiusPlanificadorPage() {
                                 </span>
                               ))}
                             </div>
-                          )}
+                          ) : null}
                         </button>
                       )
                     })}
@@ -1760,6 +1768,10 @@ export default function PreventiusPlanificadorPage() {
                             item.priority || 'normal'
                           const tone = getPriorityTone(item.kind, priority)
                           const visibleWorkers = item.workers.slice(0, 2)
+                          const providerLabel =
+                            item.kind === 'ticket' && item.workflowStage === 'externalized'
+                              ? String(item.supplierName || '').trim()
+                              : ''
                           const compactWorkers =
                             item.workers.length > 2 ||
                             visibleWorkers.reduce((total, worker) => total + worker.length, 0) > 12
@@ -1804,25 +1816,36 @@ export default function PreventiusPlanificadorPage() {
                                 </div>
                               )}
                               <div className="mt-1 flex flex-wrap items-center gap-1">
-                                {visibleWorkers.map((worker) => (
+                                {providerLabel ? (
                                   <span
-                                    key={`${item.id}-${worker}`}
-                                    className={[
-                                      'inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
-                                      getWorkerBadgeClass(worker),
-                                    ].join(' ')}
-                                    title={worker}
+                                    className="inline-flex items-center rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800"
+                                    title={providerLabel}
                                   >
-                                    {compactWorkers ? getInitials(worker) : worker}
+                                    {providerLabel}
                                   </span>
-                                ))}
-                                {item.workers.length > 2 && (
-                                  <span
-                                    className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700"
-                                    title={item.workers.join(', ')}
-                                  >
-                                    +{item.workers.length - 2}
-                                  </span>
+                                ) : (
+                                  <>
+                                    {visibleWorkers.map((worker) => (
+                                      <span
+                                        key={`${item.id}-${worker}`}
+                                        className={[
+                                          'inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                                          getWorkerBadgeClass(worker),
+                                        ].join(' ')}
+                                        title={worker}
+                                      >
+                                        {compactWorkers ? getInitials(worker) : worker}
+                                      </span>
+                                    ))}
+                                    {item.workers.length > 2 && (
+                                      <span
+                                        className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700"
+                                        title={item.workers.join(', ')}
+                                      >
+                                        +{item.workers.length - 2}
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             </div>
