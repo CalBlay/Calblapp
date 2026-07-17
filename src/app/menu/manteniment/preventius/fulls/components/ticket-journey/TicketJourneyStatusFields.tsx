@@ -17,7 +17,11 @@ type Props = {
   nextStatus: JourneyStatus
   horaInici: string
   horaFi: string
+  previousSegmentEndTime?: string
   openSegmentDateLabel?: string
+  openSegmentStartTimeLabel?: string
+  todayDateLabel?: string
+  hasStaleOpenSegment?: boolean
   note: string
   showPhotos: boolean
   existingCompletionAttachments: StoredAttachment[]
@@ -27,6 +31,7 @@ type Props = {
   imageError: string | null
   onHoraIniciChange: (value: string) => void
   onHoraFiChange: (value: string) => void
+  onPreviousSegmentEndTimeChange?: (value: string) => void
   onNoteChange: (value: string) => void
   onImageChange: (files: FileList | null) => void | Promise<void>
   onRemoveImage: (index: number) => void
@@ -44,7 +49,11 @@ export default function TicketJourneyStatusFields({
   nextStatus,
   horaInici,
   horaFi,
+  previousSegmentEndTime,
   openSegmentDateLabel,
+  openSegmentStartTimeLabel,
+  todayDateLabel,
+  hasStaleOpenSegment,
   note,
   showPhotos,
   existingCompletionAttachments,
@@ -54,6 +63,7 @@ export default function TicketJourneyStatusFields({
   imageError,
   onHoraIniciChange,
   onHoraFiChange,
+  onPreviousSegmentEndTimeChange,
   onNoteChange,
   onImageChange,
   onRemoveImage,
@@ -68,12 +78,68 @@ export default function TicketJourneyStatusFields({
 
   return (
     <div className="space-y-4">
-      {openSegmentDateLabel ? (
+      {hasStaleOpenSegment && openSegmentDateLabel ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Hi ha un tram obert d&apos;un dia anterior ({openSegmentDateLabel}
+          {openSegmentStartTimeLabel ? ` a les ${openSegmentStartTimeLabel}` : ''}). Primer tanca
+          aquell tram i despr&eacute;s registra la feina d&apos;avui.
+        </div>
+      ) : openSegmentDateLabel ? (
         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
           Tram obert del dia <span className="font-semibold text-slate-900">{openSegmentDateLabel}</span>
+          {openSegmentStartTimeLabel ? (
+            <>
+              {' '}
+              a les <span className="font-semibold text-slate-900">{openSegmentStartTimeLabel}</span>
+            </>
+          ) : null}
         </div>
       ) : null}
 
+      {hasStaleOpenSegment && openSegmentDateLabel ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+          <div className="mb-3 text-sm font-semibold text-slate-900">
+            Tancar tram del {openSegmentDateLabel}
+          </div>
+          <label className="text-sm font-medium text-gray-700">
+            Hora fi del tram anterior
+            <input
+              type="time"
+              className={timeInputClass}
+              value={previousSegmentEndTime || ''}
+              onChange={(e) => onPreviousSegmentEndTimeChange?.(e.target.value)}
+            />
+          </label>
+        </div>
+      ) : null}
+
+      {hasStaleOpenSegment ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="mb-3 text-sm font-semibold text-slate-900">
+            Nou tram del {todayDateLabel || 'avui'}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm font-medium text-gray-700">
+              Hora inici
+              <input
+                type="time"
+                className={timeInputClass}
+                value={horaInici}
+                onChange={(e) => onHoraIniciChange(e.target.value)}
+              />
+            </label>
+            <label className="text-sm font-medium text-gray-700">
+              Hora fi
+              <input
+                type="time"
+                className={timeInputClass}
+                value={horaFi}
+                onChange={(e) => onHoraFiChange(e.target.value)}
+              />
+            </label>
+          </div>
+        </div>
+      ) : (
       <div className="grid grid-cols-2 gap-3">
         <label className="text-sm font-medium text-gray-700">
           Hora inici
@@ -94,6 +160,7 @@ export default function TicketJourneyStatusFields({
           />
         </label>
       </div>
+      )}
 
       <label className="block text-sm text-gray-700">
         Observacions

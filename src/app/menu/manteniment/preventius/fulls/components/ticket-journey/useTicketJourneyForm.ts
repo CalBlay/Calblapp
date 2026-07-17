@@ -1,6 +1,6 @@
 'use client'
 
-import { format } from 'date-fns'
+import { format, isBefore, startOfDay } from 'date-fns'
 import { useEffect, useMemo, useState } from 'react'
 import {
   applyStatusHistoryUpdate,
@@ -17,6 +17,14 @@ import type { JourneyTicket } from '../../lib/types'
 const MAX_COMPLETION_IMAGES = 3
 
 const defaultTime = () => format(new Date(), 'HH:mm')
+
+function timeToMinutes(value?: string | null) {
+  const raw = String(value || '').trim()
+  if (!/^\d{2}:\d{2}$/.test(raw)) return null
+  const [hours, minutes] = raw.split(':').map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+  return hours * 60 + minutes
+}
 
 function parseHistoryAt(value?: number | string | null) {
   if (value === null || value === undefined) return null
@@ -59,6 +67,7 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
   const [nextStatus, setNextStatus] = useState<JourneyStatus | undefined>()
   const [horaInici, setHoraInici] = useState('')
   const [horaFi, setHoraFi] = useState('')
+  const [previousSegmentEndTime, setPreviousSegmentEndTime] = useState('')
   const [note, setNote] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -99,6 +108,15 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     () => (openSegment?.date ? format(openSegment.date, 'dd/MM/yyyy') : ''),
     [openSegment]
   )
+  const openSegmentStartTimeLabel = useMemo(
+    () => String(openSegment?.startTime || '').trim(),
+    [openSegment]
+  )
+  const todayDateLabel = useMemo(() => format(new Date(), 'dd/MM/yyyy'), [])
+  const hasStaleOpenSegment = useMemo(
+    () => Boolean(openSegment?.date && isBefore(startOfDay(openSegment.date), startOfDay(new Date()))),
+    [openSegment]
+  )
 
   const isDirty = useMemo(
     () => Boolean(nextStatus || horaInici || horaFi || note.trim() || imageCount > 0),
@@ -121,9 +139,11 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     if (initialStatus === 'en_curs' || initialStatus === 'espera') {
       setHoraInici(initialOpenSegment?.startTime || '')
       setHoraFi('')
+      setPreviousSegmentEndTime('')
     } else {
       setHoraInici('')
       setHoraFi('')
+      setPreviousSegmentEndTime('')
     }
     setNote('')
     clearImages()
@@ -197,14 +217,23 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
       getOpenSegmentStart(statusHistory, 'espera')
 
     setNextStatus(status)
-    setHoraFi(now)
-    setHoraInici(
-      status === 'fet'
-        ? openStart || now
-        : needsStartOnNextStatus(status)
-          ? now
-          : openStart || now
-    )
+    if (hasStaleOpenSegment) {
+      setHoraFi((prev) => (status === 'en_curs' ? '' : prev || now))
+      setHoraInici((prev) =>
+        needsStartOnNextStatus(status) || status === 'fet' || status === 'no_fet' ? prev || now : ''
+      )
+      setPreviousSegmentEndTime((prev) => prev || '')
+    } else {
+      setHoraFi((prev) => prev || now)
+      setHoraInici((prev) => {
+        if (prev) return prev
+        return status === 'fet'
+          ? openStart || now
+          : needsStartOnNextStatus(status)
+            ? now
+            : openStart || now
+      })
+    }
     setNote('')
     clearImages()
     setFormError(null)
@@ -215,9 +244,11 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     if (currentStatus === 'en_curs' || currentStatus === 'espera') {
       setHoraInici(openSegment?.startTime || '')
       setHoraFi('')
+      setPreviousSegmentEndTime('')
     } else {
       setHoraInici('')
       setHoraFi('')
+      setPreviousSegmentEndTime('')
     }
     setNote('')
     clearImages()
@@ -232,9 +263,46 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     const terminalEnd =
       effectiveStatus === 'fet' || effectiveStatus === 'no_fet' || effectiveStatus === 'validat'
 
-    const closeSegmentEndTime = closesPrevious || terminalEnd ? horaFi : undefined
+    const closeSegmentEndTime =
+      closesPrevious || terminalEnd
+        ? hasStaleOpenSegment
+          ? previousSegmentEndTime
+          : horaFi
+        : undefined
     const newSegmentStartTime = startsSegment || terminalEnd ? horaInici : undefined
     const newSegmentEndTime = effectiveStatus === 'fet' ? horaFi : terminalEnd ? horaFi : undefined
+
+    if (hasStaleOpenSegment && (closesPrevious || terminalEnd) && !String(previousSegmentEndTime || '').trim()) {
+      setFormError(`Omple hora fi del tram obert del ${openSegmentDateLabel}.`)
+      return
+    }
+
+    const previousEndMinutes = timeToMinutes(previousSegmentEndTime)
+    const openStartMinutes = timeToMinutes(openSegment?.startTime)
+    if (
+      hasStaleOpenSegment &&
+      (closesPrevious || terminalEnd) &&
+      previousEndMinutes !== null &&
+      openStartMinutes !== null &&
+      previousEndMinutes < openStartMinutes
+    ) {
+      setFormError(`La hora fi del tram anterior no pot ser inferior a la hora inici (${openSegment?.startTime}).`)
+      return
+    }
+
+    const startMinutes = timeToMinutes(newSegmentStartTime)
+    const endMinutes = timeToMinutes(newSegmentEndTime || closeSegmentEndTime)
+    const shouldCompareCurrentSegment =
+      !hasStaleOpenSegment || effectiveStatus === 'fet' || effectiveStatus === 'no_fet' || effectiveStatus === 'validat'
+    if (
+      shouldCompareCurrentSegment &&
+      startMinutes !== null &&
+      endMinutes !== null &&
+      endMinutes < startMinutes
+    ) {
+      setFormError(`La hora fi no pot ser inferior a la hora inici (${newSegmentStartTime}).`)
+      return
+    }
 
     const validationError = validateJourneyStatusPayload({
       currentStatus,
@@ -286,7 +354,11 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     nextStatus,
     horaInici,
     horaFi,
+    previousSegmentEndTime,
+    todayDateLabel,
     openSegmentDateLabel,
+    openSegmentStartTimeLabel,
+    hasStaleOpenSegment,
     note,
     formError,
     busy,
@@ -304,6 +376,7 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     handleSave,
     setHoraInici,
     setHoraFi,
+    setPreviousSegmentEndTime,
     setNote,
     handleImageChange,
     removeImage,

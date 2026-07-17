@@ -17,6 +17,10 @@ type Props = {
 export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose, onSaved }: Props) {
   const form = useTicketJourneyForm({ ticket, onSaved })
   const options = allowedNext(form.currentStatus).filter((status) => status !== 'validat')
+  const effectiveOptions =
+    form.hasStaleOpenSegment && form.currentStatus === 'en_curs'
+      ? ([form.currentStatus, ...options] as JourneyStatus[])
+      : options
   const showWorkFieldsByDefault =
     !form.autoStarting && !form.nextStatus && (form.currentStatus === 'en_curs' || form.currentStatus === 'espera')
   const canSaveWithoutChangingStage =
@@ -109,7 +113,11 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
             nextStatus={form.nextStatus || form.currentStatus}
             horaInici={form.horaInici}
             horaFi={form.horaFi}
+            previousSegmentEndTime={form.previousSegmentEndTime}
             openSegmentDateLabel={form.openSegmentDateLabel}
+            openSegmentStartTimeLabel={form.openSegmentStartTimeLabel}
+            todayDateLabel={form.todayDateLabel}
+            hasStaleOpenSegment={form.hasStaleOpenSegment}
             note={form.note}
             showPhotos
             existingCompletionAttachments={form.existingCompletionAttachments}
@@ -119,6 +127,7 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
             imageError={form.imageError}
             onHoraIniciChange={form.setHoraInici}
             onHoraFiChange={form.setHoraFi}
+            onPreviousSegmentEndTimeChange={form.setPreviousSegmentEndTime}
             onNoteChange={form.setNote}
             onImageChange={form.handleImageChange}
             onRemoveImage={form.removeImage}
@@ -129,10 +138,10 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Obrint ticket i passant-lo a En curs...
           </div>
-        ) : options.length > 0 ? (
+        ) : effectiveOptions.length > 0 ? (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
-              {options.map((status) => {
+              {effectiveOptions.map((status) => {
                 const selected = form.nextStatus === status
                 return (
                   <button
