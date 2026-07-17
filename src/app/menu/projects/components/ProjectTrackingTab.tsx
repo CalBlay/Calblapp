@@ -11,6 +11,7 @@ import {
   Layers,
   ListTodo,
   Save,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -70,12 +71,15 @@ type Props = {
   project: ProjectData
   ownerOptions: ResponsibleOption[]
   canManageProject?: boolean
+  projectDetailsOpen?: boolean
+  onToggleProjectDetails?: () => void
   savingOverview?: boolean
   dirtyOverview?: boolean
   onProjectChange?: Dispatch<SetStateAction<ProjectData>>
   onSaveOverview?: () => void
   onResolveAlert?: (target: TrackingAlertTarget) => void
   onOpenBlock?: (blockId: string) => void
+  onOpenTask?: (blockId: string, taskId: string) => void
 }
 
 type FlatTask = ProjectData['blocks'][number]['tasks'][number] & {
@@ -93,7 +97,7 @@ const toPercent = (value: number, total: number) => {
 }
 
 const deadlineHint = (daysLeft: number | null) => {
-  if (daysLeft === null) return 'Sense data'
+  if (daysLeft === null) return '--'
   if (daysLeft < 0) return `Retard de ${Math.abs(daysLeft)} dies`
   if (daysLeft === 0) return 'Venc avui'
   if (daysLeft <= 2) return `Falten ${daysLeft} dies`
@@ -141,7 +145,7 @@ function SectionHeader({
 }: {
   icon: ReactNode
   title: string
-  subtitle: string
+  subtitle?: string
   action?: ReactNode
   collapsible?: boolean
   expanded?: boolean
@@ -150,7 +154,7 @@ function SectionHeader({
   const titleBlock = (
     <>
       <h2 className={projectOverviewSectionTitleClass}>{title}</h2>
-      <p className={projectOverviewSectionSubtitleClass}>{subtitle}</p>
+      {subtitle ? <p className={projectOverviewSectionSubtitleClass}>{subtitle}</p> : null}
     </>
   )
 
@@ -162,7 +166,7 @@ function SectionHeader({
             type="button"
             onClick={onToggle}
             className="mt-1 shrink-0 rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-            aria-label={expanded ? 'Plegar secció' : 'Desplegar secció'}
+            aria-label={expanded ? 'Plegar secci�' : 'Desplegar secci�'}
             aria-expanded={expanded}
           >
             <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
@@ -270,13 +274,13 @@ function BlockTrackingCard({
               className={cn(
                 projectCardTitleClass,
                 'text-sm',
-                onOpen && 'group-hover:text-violet-800'
+                onOpen && 'cursor-pointer group-hover:text-violet-800'
               )}
             >
               {block.name}
             </div>
             <div className={cn(projectCardMetaClass, 'overview-body-copy mt-1 text-xs')}>
-              {block.owner || 'Sense responsable'} · {formatProjectDate(block.deadline)}
+              {block.owner || '--'} · {formatProjectDate(block.deadline) || '--'}
             </div>
           </div>
           <span className={cn(projectTrackingStatusBadgeClass, blockStatusClass(block.status))}>
@@ -338,16 +342,80 @@ function BlockTrackingCard({
   return <div className={projectTrackingCardClass}>{content}</div>
 }
 
-function TaskTrackingCard({ task }: { task: FlatTask }) {
+function TaskTrackingCard({ task, onOpen }: { task: FlatTask; onOpen?: (blockId: string, taskId: string) => void }) {
   const taskDeadline = dayDiffFromToday(task.deadline)
   const priorityLabel =
     task.priority === 'critical'
-      ? 'Crítica'
+            ? 'Critica'
       : task.priority === 'high'
         ? 'Alta'
         : task.priority === 'low'
           ? 'Baixa'
           : 'Normal'
+
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen(task.blockId, task.id)}
+        className={cn(projectTrackingCardClass, 'group w-full text-left')}
+      >
+        <span className={projectTrackingCardAccentClass} aria-hidden />
+        <div className="pl-2.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className={cn(projectCardTitleClass, 'text-sm', 'cursor-pointer group-hover:text-violet-800')}>
+                {task.title}
+              </div>
+              <div className={cn(projectCardMetaClass, 'overview-body-copy mt-1 truncate text-xs whitespace-nowrap')}>
+                {task.blockName} - {task.owner || '--'}
+              </div>
+            </div>
+            <span className={cn(projectTrackingStatusBadgeClass, taskStatusClass(task.status))}>
+              {taskStatusLabel(task.status)}
+            </span>
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-1">
+            <span
+              className={cn(
+                projectTrackingTagClass,
+                task.priority === 'critical'
+                  ? 'border border-rose-200 bg-rose-50 text-rose-700'
+                  : task.priority === 'high'
+                    ? 'border border-amber-200 bg-amber-50 text-amber-800'
+                    : 'border border-violet-200 bg-violet-50 text-violet-700'
+              )}
+            >
+              {priorityLabel}
+            </span>
+            {task.department ? (
+              <span
+                className={cn(
+                  projectTrackingTagClass,
+                  projectOverviewChipClass,
+                  colorByDepartment(task.department)
+                )}
+              >
+                <span className="truncate">{task.department}</span>
+              </span>
+            ) : null}
+            <span
+              className={cn(
+                projectTrackingTagClass,
+                'border',
+                taskDeadline !== null && taskDeadline < 0 && task.status !== 'done'
+                  ? 'border-rose-200 bg-rose-50 text-rose-700'
+                  : 'border-slate-200 text-slate-500'
+              )}
+            >
+              {formatProjectDate(task.deadline)} - {deadlineHint(taskDeadline)}
+            </span>
+          </div>
+        </div>
+      </button>
+    )
+  }
 
   return (
     <div className={projectTrackingCardClass}>
@@ -355,9 +423,11 @@ function TaskTrackingCard({ task }: { task: FlatTask }) {
       <div className="pl-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className={cn(projectCardTitleClass, 'text-sm')}>{task.title}</div>
-            <div className={cn(projectCardMetaClass, 'overview-body-copy mt-1 text-xs')}>
-              {task.blockName} · {task.owner || 'Sense responsable'}
+            <div className={cn(projectCardTitleClass, 'text-sm', onOpen && 'cursor-pointer group-hover:text-violet-800')}>
+              {task.title}
+            </div>
+            <div className={cn(projectCardMetaClass, 'overview-body-copy mt-1 truncate text-xs whitespace-nowrap')}>
+              {task.blockName} - {task.owner || '--'}
             </div>
           </div>
           <span className={cn(projectTrackingStatusBadgeClass, taskStatusClass(task.status))}>
@@ -398,7 +468,7 @@ function TaskTrackingCard({ task }: { task: FlatTask }) {
                 : 'border-slate-200 text-slate-500'
             )}
           >
-            {formatProjectDate(task.deadline)} · {deadlineHint(taskDeadline)}
+            {formatProjectDate(task.deadline)} - {deadlineHint(taskDeadline)}
           </span>
         </div>
       </div>
@@ -410,12 +480,15 @@ export default function ProjectTrackingTab({
   project,
   ownerOptions,
   canManageProject = false,
+  projectDetailsOpen = false,
+  onToggleProjectDetails,
   savingOverview = false,
   dirtyOverview = false,
   onProjectChange,
   onSaveOverview,
   onResolveAlert,
   onOpenBlock,
+  onOpenTask,
 }: Props) {
   const launchCountdown = dayDiffFromToday(project.launchDate)
   const allTasks: FlatTask[] = project.blocks.flatMap((block) =>
@@ -459,7 +532,7 @@ export default function ProjectTrackingTab({
     ...overdueTasks.map((task) => ({
       key: `task-overdue-${task.id}`,
       title: `Tasca vencuda: ${task.title}`,
-      detail: `Bloc ${task.blockName} · ${formatProjectDate(task.deadline)}`,
+      detail: `Bloc ${task.blockName} - ${formatProjectDate(task.deadline)}`,
       tone: 'amber' as const,
       actionLabel: 'Obrir tasca',
       target: { tab: 'tasks' as const, blockId: task.blockId, taskId: task.id },
@@ -492,7 +565,6 @@ export default function ProjectTrackingTab({
     if (left.tone !== right.tone) return left.tone === 'rose' ? -1 : 1
     return left.title.localeCompare(right.title, 'ca')
   })
-  const [detailsExpanded, setDetailsExpanded] = useState(false)
   const [blocksExpanded, setBlocksExpanded] = useState(true)
   const [tasksExpanded, setTasksExpanded] = useState(true)
   const [alertsExpanded, setAlertsExpanded] = useState(true)
@@ -504,116 +576,121 @@ export default function ProjectTrackingTab({
 
   return (
     <div className="w-full min-w-0 space-y-6 md:space-y-8">
-      {canManageProject ? (
-        <section>
-          <SectionHeader
-            icon={<FileText className="h-4 w-4" />}
-            title="Dades del projecte"
-            subtitle="Edita responsable, inici, arrencada i data límit des d'aquí."
-            collapsible
-            expanded={detailsExpanded}
-            onToggle={() => setDetailsExpanded((current) => !current)}
-            action={
-              detailsExpanded ? (
-                <Button
-                  type="button"
-                  onClick={onSaveOverview}
-                  disabled={!dirtyOverview || savingOverview}
-                  className={projectPrimaryButtonClass}
-                >
-                  <Save className="h-3.5 w-3.5" />
-                  {savingOverview ? 'Guardant...' : 'Guardar dades'}
-                </Button>
-              ) : null
-            }
-          />
-
-          {detailsExpanded ? (
-            <div className={projectTrackingPanelClass}>
-              <div className="grid gap-4 border-b border-slate-200 bg-slate-50/50 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4 lg:p-6">
-                <div className="space-y-2">
-                  <Label htmlFor="tracking-project-owner" className={projectOverviewLabelClass}>
-                    Responsable del projecte
-                  </Label>
-                  <select
-                    id="tracking-project-owner"
-                    value={project.owner || ''}
-                    onChange={(event) =>
-                      onProjectChange?.((current) => ({ ...current, owner: event.target.value }))
-                    }
-                    className={projectOverviewSelectClass}
-                  >
-                    <option value="">Selecciona responsable</option>
-                    {ownerOptions.map((option) => (
-                      <option key={`${option.id}-${option.name}`} value={option.name}>
-                        {option.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="tracking-project-start" className={projectOverviewLabelClass}>
-                    Data d'inici
-                  </Label>
-                  <Input
-                    id="tracking-project-start"
-                    type="date"
-                    value={project.startDate || ''}
-                    onChange={(event) =>
-                      onProjectChange?.((current) => ({ ...current, startDate: event.target.value }))
-                    }
-                    className={projectOverviewInputClass}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="tracking-project-kickoff" className={projectOverviewLabelClass}>
-                    Arrencada
-                  </Label>
-                  <Input
-                    id="tracking-project-kickoff"
-                    type="date"
-                    value={project.kickoff.date || ''}
-                    onChange={(event) =>
-                      onProjectChange?.((current) => ({
-                        ...current,
-                        kickoff: {
-                          ...current.kickoff,
-                          date: event.target.value,
-                        },
-                      }))
-                    }
-                    className={projectOverviewInputClass}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="tracking-project-deadline" className={projectOverviewLabelClass}>
-                    Deadline del projecte
-                  </Label>
-                  <Input
-                    id="tracking-project-deadline"
-                    type="date"
-                    value={project.launchDate || ''}
-                    onChange={(event) =>
-                      onProjectChange?.((current) => ({ ...current, launchDate: event.target.value }))
-                    }
-                    className={projectOverviewInputClass}
-                  />
-                </div>
+      {canManageProject && projectDetailsOpen ? (
+        <section className={projectTrackingPanelClass}>
+          <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/70 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="flex items-center gap-3">
+              <div className={cn(projectTrackingIconBoxClass, 'h-9 w-9')}>
+                <FileText className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className={projectOverviewSectionTitleClass}>Dades del projecte</h2>
+                <p className={projectOverviewSectionSubtitleClass}>Edita responsable, inici, arrencada i data limit.</p>
               </div>
             </div>
-          ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                onClick={onSaveOverview}
+                disabled={!dirtyOverview || savingOverview}
+                className={projectPrimaryButtonClass}
+              >
+                <Save className="h-3.5 w-3.5" />
+                {savingOverview ? 'Guardant...' : 'Guardar dades'}
+              </Button>
+              {onToggleProjectDetails ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={onToggleProjectDetails}
+                  title="Tancar dades del projecte"
+                  aria-label="Tancar dades del projecte"
+                  className="h-9 w-9 border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4 lg:p-6">
+            <div className="space-y-2">
+              <Label htmlFor="tracking-project-owner" className={projectOverviewLabelClass}>
+                Responsable del projecte
+              </Label>
+              <select
+                id="tracking-project-owner"
+                value={project.owner || ''}
+                onChange={(event) =>
+                  onProjectChange?.((current) => ({ ...current, owner: event.target.value }))
+                }
+                className={projectOverviewSelectClass}
+              >
+                <option value="">Selecciona responsable</option>
+                {ownerOptions.map((option) => (
+                  <option key={`${option.id}-${option.name}`} value={option.name}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="tracking-project-start" className={projectOverviewLabelClass}>
+                Data d'inici
+              </Label>
+              <Input
+                id="tracking-project-start"
+                type="date"
+                value={project.startDate || ''}
+                onChange={(event) =>
+                  onProjectChange?.((current) => ({ ...current, startDate: event.target.value }))
+                }
+                className={projectOverviewInputClass}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="tracking-project-kickoff" className={projectOverviewLabelClass}>
+                Arrencada
+              </Label>
+              <Input
+                id="tracking-project-kickoff"
+                type="date"
+                value={project.kickoff.date || ''}
+                onChange={(event) =>
+                  onProjectChange?.((current) => ({
+                    ...current,
+                    kickoff: {
+                      ...current.kickoff,
+                      date: event.target.value,
+                    },
+                  }))
+                }
+                className={projectOverviewInputClass}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="tracking-project-deadline" className={projectOverviewLabelClass}>
+                Deadline del projecte
+              </Label>
+              <Input
+                id="tracking-project-deadline"
+                type="date"
+                value={project.launchDate || ''}
+                onChange={(event) =>
+                  onProjectChange?.((current) => ({ ...current, launchDate: event.target.value }))
+                }
+                className={projectOverviewInputClass}
+              />
+            </div>
+          </div>
         </section>
       ) : null}
 
       <section>
-        <SectionHeader
-          icon={<FolderKanban className="h-4 w-4" />}
-          title="Resum del projecte"
-          subtitle="Indicadors clau de progrés, terminis i incidències."
-        />
+
 
         <div className={projectTrackingShellClass}>
           <div className={projectTrackingMetaBarClass}>
@@ -621,15 +698,15 @@ export default function ProjectTrackingTab({
               <span>
                 <span className="font-semibold tabular-nums text-slate-900">{completedBlocks}</span>/{project.blocks.length} blocs
               </span>
-              <span className="text-slate-300">·</span>
+              <span className="text-slate-300">-</span>
               <span>
                 <span className="font-semibold tabular-nums text-slate-900">{completedTasks}</span>/{allTasks.length} tasques
               </span>
-              <span className="text-slate-300">·</span>
+              <span className="text-slate-300">-</span>
               <span>
                 Arrencada <span className="font-semibold text-slate-900">{formatProjectDate(project.launchDate)}</span>
               </span>
-              <span className="hidden text-slate-300 sm:inline">·</span>
+              <span className="hidden text-slate-300 sm:inline">-</span>
               <span className="hidden sm:inline">
                 {launchCountdown === null
                   ? 'Sense comptador'
@@ -643,14 +720,14 @@ export default function ProjectTrackingTab({
 
             <div className="mt-3 grid divide-y divide-slate-200 border border-slate-200 sm:mt-4 sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
               <div className={projectTrackingKpiCardClass}>
-                <div className={projectTrackingKpiLabelClass}>Progrés blocs</div>
+                <div className={projectTrackingKpiLabelClass}>Progres blocs</div>
                 <div className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{blocksProgress}%</div>
                 <div className={cn(projectTrackingProgressTrackClass, 'mt-2')}>
                   <div className={projectTrackingProgressFillClass} style={{ width: `${blocksProgress}%` }} />
                 </div>
               </div>
               <div className={projectTrackingKpiCardClass}>
-                <div className={projectTrackingKpiLabelClass}>Progrés tasques</div>
+                <div className={projectTrackingKpiLabelClass}>Progres tasques</div>
                 <div className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{tasksProgress}%</div>
                 <div className={cn(projectTrackingProgressTrackClass, 'mt-2')}>
                   <div className={projectTrackingProgressFillTasksClass} style={{ width: `${tasksProgress}%` }} />
@@ -660,14 +737,14 @@ export default function ProjectTrackingTab({
                 <div className={projectTrackingKpiLabelClass}>Assignacions pendents</div>
                 <div className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{pendingAssignments}</div>
                 <div className="mt-1 text-xs text-slate-500">
-                  {blocksWithoutOwner.length} blocs · {tasksWithoutOwner.length} tasques
+                  {blocksWithoutOwner.length} blocs - {tasksWithoutOwner.length} tasques
                 </div>
               </div>
               <div className={projectTrackingKpiCardClass}>
                 <div className={projectTrackingKpiLabelClass}>Alertes obertes</div>
                 <div className="mt-1 text-xl font-semibold tabular-nums text-slate-900">{alerts.length}</div>
                 <div className="mt-1 text-xs text-slate-500">
-                  {alerts.length > 0 ? 'Requereixen acció' : 'Cap incidència pendent'}
+                  {alerts.length > 0 ? 'Requereixen accio' : 'Cap incidencia pendent'}
                 </div>
               </div>
             </div>
@@ -675,11 +752,11 @@ export default function ProjectTrackingTab({
         </div>
       </section>
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
       <section>
         <SectionHeader
           icon={<Layers className="h-4 w-4" />}
           title="Seguiment de blocs"
-          subtitle="Estat i progrés de cada bloc del projecte."
           collapsible
           expanded={blocksExpanded}
           onToggle={() => setBlocksExpanded((current) => !current)}
@@ -693,13 +770,13 @@ export default function ProjectTrackingTab({
                   <span className="font-semibold text-slate-700">{project.blocks.length}</span> bloc
                   {project.blocks.length === 1 ? '' : 's'}
                 </span>
-                <span className="text-slate-300">·</span>
+                <span className="text-slate-300">-</span>
                 <span>
                   <span className="font-semibold text-slate-700">{involvedDepartments.size}</span> departament
                   {involvedDepartments.size === 1 ? '' : 's'} implicat
                   {involvedDepartments.size === 1 ? '' : 's'}
                 </span>
-                <span className="text-slate-300">·</span>
+                <span className="text-slate-300">-</span>
                 <span>
                   <span className="font-semibold text-slate-700">{blocksProgress}%</span> completat
                 </span>
@@ -708,7 +785,7 @@ export default function ProjectTrackingTab({
 
             <div className="p-4 sm:p-5 lg:p-6">
               {project.blocks.length > 0 ? (
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                   {project.blocks.map((block) => (
                     <BlockTrackingCard key={block.id} block={block} onOpen={onOpenBlock} />
                   ))}
@@ -720,7 +797,7 @@ export default function ProjectTrackingTab({
                   </div>
                   <p className="overview-body-copy mt-3 font-medium text-slate-700">Encara no hi ha blocs</p>
                   <p className={cn('overview-body-copy mt-1 max-w-sm', projectEmptyStateClass)}>
-                    Quan s&apos;afegeixin blocs al projecte, apareixeran aquí amb el seu estat i progrés.
+                    Quan s&apos;afegeixin blocs al projecte, apareixeran aqui amb el seu estat i progres.
                   </p>
                 </div>
               )}
@@ -733,7 +810,6 @@ export default function ProjectTrackingTab({
         <SectionHeader
           icon={<ListTodo className="h-4 w-4" />}
           title="Seguiment de tasques"
-          subtitle="Resum de l'estat de les tasques del projecte."
           collapsible
           expanded={tasksExpanded}
           onToggle={() => setTasksExpanded((current) => !current)}
@@ -747,11 +823,11 @@ export default function ProjectTrackingTab({
                   <span className="font-semibold text-slate-700">{allTasks.length}</span> tasca
                   {allTasks.length === 1 ? '' : 's'}
                 </span>
-                <span className="text-slate-300">·</span>
+                <span className="text-slate-300">-</span>
                 <span>
                   <span className="font-semibold text-slate-700">{completedTasks}</span> fetes
                 </span>
-                <span className="text-slate-300">·</span>
+                <span className="text-slate-300">-</span>
                 <span>
                   <span className="font-semibold text-slate-700">{overdueTasks.length}</span> vencudes
                 </span>
@@ -760,9 +836,13 @@ export default function ProjectTrackingTab({
 
             <div className="p-4 sm:p-5 lg:p-6">
               {allTasks.length > 0 ? (
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                   {allTasks.map((task) => (
-                    <TaskTrackingCard key={`${task.blockId}:${task.id}`} task={task} />
+                    <TaskTrackingCard
+                      key={`${task.blockId}:${task.id}`}
+                      task={task}
+                      onOpen={onOpenTask}
+                    />
                   ))}
                 </div>
               ) : (
@@ -772,7 +852,7 @@ export default function ProjectTrackingTab({
                   </div>
                   <p className="overview-body-copy mt-3 font-medium text-slate-700">Encara no hi ha tasques</p>
                   <p className={cn('overview-body-copy mt-1 max-w-sm', projectEmptyStateClass)}>
-                    Les tasques del projecte apareixeran aquí amb el seu estat i terminis.
+                    Les tasques del projecte apareixeran aqui amb el seu estat i progres.
                   </p>
                 </div>
               )}
@@ -780,12 +860,12 @@ export default function ProjectTrackingTab({
           </div>
         ) : null}
       </section>
+      </div>
 
       <section>
         <SectionHeader
           icon={<AlertTriangle className="h-4 w-4" />}
           title="Alertes"
-          subtitle="Clica una alerta per resoldre-la. Després de guardar, desapareix d'aquesta llista."
           collapsible
           expanded={alertsExpanded}
           onToggle={() => setAlertsExpanded((current) => !current)}
@@ -813,7 +893,7 @@ export default function ProjectTrackingTab({
               ) : (
                 <div className="flex items-center gap-3 border-l-[3px] border-l-emerald-500 px-4 py-4 text-sm text-slate-700 sm:px-5">
                   <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
-                  No hi ha alertes obertes. El seguiment del projecte està al dia.
+                  No hi ha alertes obertes. El seguiment del projecte esta al dia.
                 </div>
               )}
             </div>
@@ -823,3 +903,4 @@ export default function ProjectTrackingTab({
     </div>
   )
 }
+

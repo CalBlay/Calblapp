@@ -32,7 +32,6 @@ import {
   getBlockDepartments,
   getBlockStatusExplanation,
   getPreLaunchDeadline,
-  getTaskDependencyHint,
   summarizeBlockTasks,
   type ProjectBlock,
   type ProjectData,
@@ -51,8 +50,10 @@ import {
 } from './project-ui'
 import ProjectTaskQuickComposer from './ProjectTaskQuickComposer'
 import ProjectTaskCoreFields from './ProjectTaskCoreFields'
-import ProjectTaskDependencyPicker, { PROJECT_TASK_ROW_GRID_CLASS } from './ProjectTaskDependencyPicker'
 import { type ResponsibleOption, taskStatusBadgeClass } from './project-workspace-helpers'
+
+const PROJECT_TASK_ROW_GRID_CLASS =
+  'grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_auto] lg:items-start'
 
 type BlockDraft = {
   name: string
@@ -72,7 +73,6 @@ type TaskDraft = {
   department: string
   owner: string
   deadline: string
-  dependsOn: string
   sprintId: string
   storyPoints: string
   priority: string
@@ -144,10 +144,8 @@ function BlockTaskSummary({
   const taskProgressPct = taskTotal > 0 ? Math.round((taskDone / taskTotal) * 100) : 0
   const statItems = [
     { label: 'Pendents', value: taskPending, className: 'border-amber-100 bg-amber-50 text-amber-900' },
-    { label: 'Bloc', value: taskBlocked, className: 'border-rose-100 bg-rose-50 text-rose-900' },
     { label: 'En curs', value: taskInProgress, className: 'border-sky-100 bg-sky-50 text-sky-900' },
     { label: 'Fetes', value: taskDone, className: 'border-emerald-100 bg-emerald-50 text-emerald-900' },
-    { label: 'Reunions', value: meetingCount, className: 'border-violet-100 bg-violet-50 text-violet-900' },
   ]
 
   return (
@@ -167,7 +165,7 @@ function BlockTaskSummary({
           style={{ width: taskTotal > 0 ? `${taskProgressPct}%` : '0%' }}
         />
       </div>
-      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
         {statItems.map((item) => (
           <div
             key={item.label}
@@ -534,21 +532,21 @@ export default function ProjectBlocksTab({
                 <div className={`h-1.5 w-full shrink-0 ${blockStatusAccentClass(block.status)}`} />
                 <div className={cn('flex flex-1 flex-col p-5', isExpanded && 'space-y-4')}>
                 <div
-                  className={`flex items-start justify-between gap-3 ${
+                  className={`relative flex items-start justify-between gap-3 ${
                     isExpanded && canEditCurrentBlock ? 'rounded-[18px] bg-violet-50/50 px-2 py-1' : ''
                   }`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="space-y-4 pl-2">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="flex items-start justify-between gap-4 pr-20">
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                          <div className="flex items-start gap-3">
                             {canAccessCurrentBlockRoom ? (
                               <button
                                 type="button"
                                 className={cn(
                                   projectCardTitleClass,
-                                  'text-[1.28rem] leading-8 text-violet-700 hover:underline'
+                                  'min-w-0 truncate text-[1.28rem] leading-8 text-violet-600 hover:text-violet-700 hover:underline'
                                 )}
                                 onClick={(event) => {
                                   event.stopPropagation()
@@ -558,40 +556,30 @@ export default function ProjectBlocksTab({
                                 {block.name || 'Bloc sense nom'}
                               </button>
                             ) : (
-                              <div className={cn(projectCardTitleClass, 'text-[1.28rem] leading-8 text-violet-700')}>
+                              <div className={cn(projectCardTitleClass, 'min-w-0 truncate text-[1.28rem] leading-8 text-violet-600')}>
                                 {block.name || 'Bloc sense nom'}
                               </div>
                             )}
-                            <span className={cn('rounded-full px-2.5 py-1 text-[11px] font-semibold', blockStatusTone(block.status))}>
-                              {statusLabel}
-                            </span>
-                            {blockStatusExplanation ? (
-                              <span className="w-full text-xs font-medium text-rose-700 sm:w-auto">
-                                {blockStatusExplanation}
-                              </span>
-                            ) : null}
-                            {canConvokeCurrentBlockMeeting && onOpenBlockMeeting ? (
-                              <button
-                                type="button"
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-violet-700 transition hover:bg-violet-100"
-                                aria-label="Convocar reunió"
-                                title="Convocar reunió"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  onOpenBlockMeeting(block.id)
-                                }}
-                              >
-                                <CalendarDays className="h-3.5 w-3.5" />
-                              </button>
-                            ) : null}
                           </div>
 
-                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
-                            <span>{block.owner || 'Sense responsable'}</span>
-                            <span className="text-slate-300">·</span>
-                            <span className="font-medium text-slate-800">{formatProjectDate(block.deadline)}</span>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-slate-500">
+                            <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', blockStatusTone(block.status))}>
+                              {statusLabel}
+                            </span>
+                            <span className="shrink-0">{block.owner || 'Sense responsable'}</span>
+                            <span className="shrink-0 text-slate-300">·</span>
+                            <span className="inline-flex shrink-0 items-center gap-1">
+                              <CalendarDays className="h-3.5 w-3.5" />
+                              <span className="font-medium text-slate-800">{formatProjectDate(block.deadline)}</span>
+                            </span>
                             {block.deadline ? (
-                              <span className={cn('font-medium', deadlineTextTone)}>{deadlineHint}</span>
+                              <span className={cn('shrink-0 text-[11px] font-medium', deadlineTextTone)}>{deadlineHint}</span>
+                            ) : null}
+                            {blockStatusExplanation ? (
+                              <>
+                                <span className="shrink-0 text-slate-300">·</span>
+                                <span className="shrink-0 text-[11px] font-medium text-rose-700">{blockStatusExplanation}</span>
+                              </>
                             ) : null}
                           </div>
                         </div>
@@ -599,15 +587,14 @@ export default function ProjectBlocksTab({
 
                       <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
                         <div className="sm:col-span-2">
-                          <span className="font-semibold text-slate-800">Departaments implicats:</span>
-                          <div className="mt-2 flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-1.5">
                             {blockDepartments.length > 0 ? (
                               blockDepartments.map((department) => (
                                 <span
                                   key={`${block.id}-dept-${department}`}
                                   className={cn(
                                     colorByDepartment(department),
-                                    'rounded-full px-3 py-1 text-xs font-semibold'
+                                    'rounded-full px-2.5 py-0.5 text-[11px] font-semibold'
                                   )}
                                 >
                                   {department}
@@ -638,7 +625,21 @@ export default function ProjectBlocksTab({
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+                  <div className="absolute right-0 top-0 flex items-center gap-0.5 sm:gap-1">
+                    {canConvokeCurrentBlockMeeting && onOpenBlockMeeting ? (
+                      <button
+                        type="button"
+                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-violet-700 transition hover:bg-violet-100"
+                        aria-label="Convocar reunió"
+                        title="Convocar reunió"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onOpenBlockMeeting(block.id)
+                        }}
+                      >
+                        <CalendarDays className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
                     {canEditCurrentBlock ? (
                       <Button
                         type="button"
@@ -936,8 +937,6 @@ export default function ProjectBlocksTab({
                                   const taskStatus =
                                     TASK_STATUS_OPTIONS.find((option) => option.value === task.status)?.label ||
                                     'Pendent'
-                                  const dependencyHint = getTaskDependencyHint(project.blocks, task)
-
                                   return (
                                   <div
                                     key={task.id}
@@ -963,9 +962,6 @@ export default function ProjectBlocksTab({
                                       >
                                         {taskStatus}
                                       </span>
-                                      {dependencyHint ? (
-                                        <span className="text-[11px] font-medium text-rose-700">{dependencyHint}</span>
-                                      ) : null}
                                     </div>
                                   </div>
                                   <ProjectTaskCoreFields
@@ -986,16 +982,6 @@ export default function ProjectBlocksTab({
                                     onPriorityChange={(value) =>
                                       onSetTaskField(block.id, task.id, 'priority', value)
                                     }
-                                  />
-                                  <ProjectTaskDependencyPicker
-                                    blocks={project.blocks}
-                                    dependsOn={task.dependsOn || ''}
-                                    excludeTaskId={task.id}
-                                    idPrefix={`${task.id}-depends`}
-                                    onDependsOnChange={(value) => {
-                                      if (value === task.id) return
-                                      onSetTaskField(block.id, task.id, 'dependsOn', value)
-                                    }}
                                   />
                                     <Button
                                       type="button"
@@ -1022,8 +1008,6 @@ export default function ProjectBlocksTab({
                                 owner={taskDraft.owner}
                                 deadline={taskDraft.deadline}
                                 priority={taskDraft.priority || 'normal'}
-                                dependsOn={taskDraft.dependsOn || ''}
-                                dependencyBlocks={project.blocks}
                                 departments={getBlockDepartments(block)}
                                 responsibleOptions={departmentResponsibleOptions(getBlockDepartments(block)).map((option) => ({
                                   id: option.id,
@@ -1035,7 +1019,6 @@ export default function ProjectBlocksTab({
                                 onOwnerChange={(value) => onSetTaskDraftField('owner', value)}
                                 onDeadlineChange={(value) => onSetTaskDraftField('deadline', value)}
                                 onPriorityChange={(value) => onSetTaskDraftField('priority', value)}
-                                onDependsOnChange={(value) => onSetTaskDraftField('dependsOn', value)}
                                 onSubmit={() => onAddTaskToBlock(block.id)}
                               />
                             ) : null}

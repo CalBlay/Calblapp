@@ -10,11 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { TASK_PRIORITY_OPTIONS, type ProjectBlock } from './project-shared'
-import ProjectTaskDependencyPicker, {
-  PROJECT_TASK_ROW_GRID_CLASS,
-  PROJECT_TASK_ROW_WITH_BLOCK_GRID_CLASS,
-} from './ProjectTaskDependencyPicker'
+import { TASK_PRIORITY_OPTIONS } from './project-shared'
+
+const PROJECT_TASK_ROW_GRID_CLASS =
+  'grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center'
+const PROJECT_TASK_ROW_WITH_BLOCK_GRID_CLASS =
+  'grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center'
 
 type Props = {
   blockId?: string
@@ -25,8 +26,6 @@ type Props = {
   owner?: string
   deadline: string
   priority: string
-  dependsOn?: string
-  dependencyBlocks?: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>
   departments: string[]
   responsibleOptions?: Array<{ id: string; name: string }>
   maxDeadline?: string
@@ -39,7 +38,6 @@ type Props = {
   onOwnerChange?: (value: string) => void
   onDeadlineChange: (value: string) => void
   onPriorityChange: (value: string) => void
-  onDependsOnChange?: (value: string) => void
   onSubmit: () => void
 }
 
@@ -52,8 +50,6 @@ export default function ProjectTaskQuickComposer({
   owner = '',
   deadline,
   priority,
-  dependsOn = '',
-  dependencyBlocks = [],
   departments,
   responsibleOptions = [],
   maxDeadline,
@@ -66,7 +62,6 @@ export default function ProjectTaskQuickComposer({
   onOwnerChange,
   onDeadlineChange,
   onPriorityChange,
-  onDependsOnChange,
   onSubmit,
 }: Props) {
   const selectedDepartment =
@@ -148,12 +143,6 @@ export default function ProjectTaskQuickComposer({
               ))}
             </SelectContent>
           </Select>
-          <ProjectTaskDependencyPicker
-            blocks={dependencyBlocks}
-            dependsOn={dependsOn}
-            idPrefix="task-draft-depends"
-            onDependsOnChange={(value) => onDependsOnChange?.(value)}
-          />
           <Button
             type="button"
             variant="ghost"
@@ -238,12 +227,6 @@ export default function ProjectTaskQuickComposer({
               ))}
             </SelectContent>
           </Select>
-          <ProjectTaskDependencyPicker
-            blocks={dependencyBlocks}
-            dependsOn={dependsOn}
-            idPrefix="task-draft-depends"
-            onDependsOnChange={(value) => onDependsOnChange?.(value)}
-          />
           <Button
             type="button"
             variant="ghost"

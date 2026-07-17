@@ -34,7 +34,6 @@ import {
   getBlockDepartments,
   getPreLaunchDeadline,
   getPrimaryBlockDepartment,
-  getTaskDependencyMeta,
   type ProjectData,
 } from '../../../components/project-shared'
 import ProjectTaskCard from '../../../components/ProjectTaskCard'
@@ -258,15 +257,6 @@ export default function ProjectRoomDetailPage() {
     documentsView === 'initial'
       ? inheritedInitialDocuments
       : [...inheritedOperationalDocuments, ...taskDocuments, ...roomDocuments]
-  const dependencyMetaByTaskId = useMemo(
-    () =>
-      new Map(
-        linkedTasks.map(
-          (task) => [task.id, getTaskDependencyMeta(project?.blocks || [], task)] as const
-        )
-      ),
-    [linkedTasks, project?.blocks]
-  )
   const dayDiffFromToday = (value?: string | null) => {
     const raw = String(value || '').trim()
     if (!raw) return null
@@ -978,7 +968,6 @@ export default function ProjectRoomDetailPage() {
                         canExpand={canManageLinkedTasks}
                         canManage={canManageLinkedTasks}
                         canAccessOps={canManageLinkedTasks}
-                        dependencyMeta={dependencyMetaByTaskId.get(task.id) || null}
                         projectBlocks={project?.blocks || []}
                         maxDeadline={getPreLaunchDeadline(project?.launchDate) || undefined}
                         taskResponsibleOptions={() =>

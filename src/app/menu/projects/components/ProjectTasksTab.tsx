@@ -17,7 +17,6 @@ import {
   corporateFilterFieldClass,
 } from '@/lib/corporate-filters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
-import { toast } from '@/components/ui/use-toast'
 import { useFilters } from '@/context/FiltersContext'
 import { cn } from '@/lib/utils'
 import {
@@ -30,8 +29,6 @@ import {
 import {
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
-  canChangeTaskStatus,
-  getTaskDependencyMeta,
   getPreLaunchDeadline,
   normalizeTaskWorkflowStatus,
   type ProjectBlock,
@@ -51,7 +48,6 @@ type TaskDraft = {
   department: string
   owner: string
   deadline: string
-  dependsOn: string
   sprintId: string
   storyPoints: string
   priority: string
@@ -127,6 +123,8 @@ const statusColumnTheme: Record<string, { header: string; column: string; badge:
   },
 }
 
+const TASK_BOARD_STATUS_ORDER = ['pending', 'in_progress', 'done', 'blocked'] as const
+
 export default function ProjectTasksTab({
   projectId,
   projectBlocks,
@@ -197,19 +195,6 @@ export default function ProjectTasksTab({
   const dirtyTasks = dirtyBlocks || hasPendingTaskDraft
   const totalFilteredTasks = filteredTasks.length
 
-  const dependencyMetaByTaskId = new Map(
-    allTasks.map(({ task }) => [task.id, getTaskDependencyMeta(projectBlocks, task)] as const)
-  )
-
-  const showDependencyBlockedToast = (task: ProjectTask) => {
-    const dependency = getTaskDependencyMeta(projectBlocks, task)
-    if (!dependency) return
-    toast({
-      title: 'Tasca bloquejada per dependència',
-      description: `No pots moure "${task.title || 'aquesta tasca'}" fins que "${dependency.dependencyTask.title || 'la tasca prèvia'}" estigui feta.`,
-    })
-  }
-
   const moveTaskToStatus = (blockId: string, taskId: string, status: string) => {
     const currentEntry = allTasks.find((item) => item.block.id === blockId && item.task.id === taskId)
     const currentTask = currentEntry?.task
@@ -240,12 +225,6 @@ export default function ProjectTasksTab({
       return
     }
 
-    if (!canChangeTaskStatus(currentEntry.task, status, projectBlocks)) {
-      showDependencyBlockedToast(currentEntry.task)
-      setDragOverStatus(null)
-      setDraggingTaskKey(null)
-      return
-    }
 
     onSetTaskField(blockId, taskId, 'status', status)
     setDragOverStatus(null)
@@ -352,8 +331,8 @@ export default function ProjectTasksTab({
               {kickoffMinutesStatus === 'closed'
                 ? 'Tancar acta'
                 : kickoffMinutesDraft.trim()
-                  ? 'Apunts reunió'
-                  : 'Acta reunió'}
+                  ? 'Apunts reuniÃ³'
+                  : 'Acta reuniÃ³'}
             </Button>
           ) : null}
           <FilterButton onClick={openFiltersPanel} />
@@ -403,8 +382,6 @@ export default function ProjectTasksTab({
               owner={taskDraft.owner}
               deadline={taskDraft.deadline}
               priority={taskDraft.priority || 'normal'}
-              dependsOn={taskDraft.dependsOn || ''}
-              dependencyBlocks={projectBlocks}
               departments={projectBlocks.find((block) => block.id === taskDraft.blockId)?.departments || []}
               responsibleOptions={taskResponsibleOptions(
                 taskDraft.department ||
@@ -431,7 +408,6 @@ export default function ProjectTasksTab({
               onOwnerChange={(value) => onSetTaskDraftField('owner', value)}
               onDeadlineChange={(value) => onSetTaskDraftField('deadline', value)}
               onPriorityChange={(value) => onSetTaskDraftField('priority', value)}
-              onDependsOnChange={(value) => onSetTaskDraftField('dependsOn', value)}
               onSubmit={() => {
                 if (taskDraft.blockId && taskDraft.blockId !== 'none') onAddTaskToBlock(taskDraft.blockId)
               }}
@@ -446,7 +422,9 @@ export default function ProjectTasksTab({
         ) : (
           <div className="overflow-x-auto">
             <div className="grid min-w-[1260px] grid-cols-4 gap-5">
-              {TASK_STATUS_OPTIONS.map((statusOption) => {
+              {TASK_BOARD_STATUS_ORDER.map((statusValue) => {
+                const statusOption = TASK_STATUS_OPTIONS.find((item) => item.value === statusValue)
+                if (!statusOption) return null
                 const columnTasks = filteredTasks.filter(({ task }) => task.status === statusOption.value)
                 const theme =
                   statusColumnTheme[statusOption.value] || {
@@ -476,20 +454,17 @@ export default function ProjectTasksTab({
                     }}
                   >
                     <div className={`rounded-[18px] border px-4 py-3 shadow-sm ${theme.header}`}>
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-[15px] font-semibold text-slate-950">{statusOption.label}</div>
-                          <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-600">
-                            Seguiment de tasques
+                          <div className="flex items-center gap-2 text-[15px] font-semibold text-slate-950">
+                            <span>{statusOption.label}</span>
+                            <span className="text-sm font-semibold text-slate-900">{percent}%</span>
+                            <span className="text-sm font-medium text-slate-500">del total</span>
                           </div>
                         </div>
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${theme.badge}`}>
                           {columnTasks.length}
                         </span>
-                      </div>
-                      <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
-                        <span>{percent}%</span>
-                        <span className="text-slate-500">del total</span>
                       </div>
                     </div>
 
@@ -512,7 +487,6 @@ export default function ProjectTasksTab({
                           const canMoveCurrentTask = canMoveTask(block, task)
                           const canExpandCurrentTask = canAccessOpsCurrentTask
                           const isObserverTask = !canAccessOpsCurrentTask
-                          const dependencyMeta = dependencyMetaByTaskId.get(task.id) || null
                           return (
                             <ProjectTaskCard
                               key={taskKey}
@@ -529,7 +503,6 @@ export default function ProjectTasksTab({
                               canMove={canMoveCurrentTask}
                               canConvokeMeeting={canConvokeCurrentTaskMeeting}
                               isObserver={isObserverTask}
-                              dependencyMeta={dependencyMeta}
                               projectBlocks={projectBlocks}
                               taskResponsibleOptions={taskResponsibleOptions}
                               maxDeadline={maxDeadline}
@@ -576,4 +549,3 @@ export default function ProjectTasksTab({
     </div>
   )
 }
-

@@ -5,7 +5,6 @@ import type { ReactNode } from 'react'
 import {
   CalendarDays,
   ChevronDown,
-  Link2,
   MessagesSquare,
   Paperclip,
   Trash2,
@@ -30,9 +29,7 @@ import {
   type ProjectBlock,
   type ProjectDocument,
   type ProjectTask,
-  type ProjectTaskDependencyMeta,
 } from './project-shared'
-import ProjectTaskDependencyPicker from './ProjectTaskDependencyPicker'
 import { priorityBadgeClass, type ResponsibleOption } from './project-workspace-helpers'
 import {
   priorityBorderClass,
@@ -58,7 +55,6 @@ type ProjectTaskCardProps = {
   canMove?: boolean
   canConvokeMeeting?: boolean
   isObserver?: boolean
-  dependencyMeta?: ProjectTaskDependencyMeta | null
   projectBlocks?: ProjectBlock[]
   taskResponsibleOptions?: (department?: string, blockId?: string) => ResponsibleOption[]
   maxDeadline?: string
@@ -93,7 +89,6 @@ export default function ProjectTaskCard({
   canMove = false,
   canConvokeMeeting = false,
   isObserver = false,
-  dependencyMeta = null,
   projectBlocks = [],
   taskResponsibleOptions = () => [],
   maxDeadline,
@@ -117,7 +112,7 @@ export default function ProjectTaskCard({
   const meetingCount = (task.meetings || []).length
   const taskMetaParts: string[] = []
   if (docCount > 0) taskMetaParts.push(`${docCount} doc${docCount === 1 ? '' : 's'}`)
-  if (meetingCount > 0) taskMetaParts.push(`${meetingCount} reunió${meetingCount === 1 ? '' : 's'}`)
+  if (meetingCount > 0) taskMetaParts.push(`${meetingCount} reuniÃ³${meetingCount === 1 ? '' : 's'}`)
   if (isObserver) taskMetaParts.push('Observador')
   const priorityLabel =
     TASK_PRIORITY_OPTIONS.find((option) => option.value === (task.priority || 'normal'))?.label ||
@@ -125,8 +120,8 @@ export default function ProjectTaskCard({
 
   const titleClassName = cn(
     'min-w-0 truncate text-left text-[15px] font-semibold leading-snug',
-    isObserver ? 'text-slate-700' : 'text-slate-900',
-    titleHref && 'hover:text-violet-700 hover:underline'
+    isObserver ? 'text-slate-700' : 'text-slate-800',
+    titleHref && 'hover:text-violet-600 hover:underline'
   )
 
   const renderTitle = () => {
@@ -242,8 +237,8 @@ export default function ProjectTaskCard({
               variant="ghost"
               size="icon"
               className="h-7 w-7 rounded-full text-slate-500 hover:text-violet-700"
-              aria-label="Convocar reunió"
-              title="Convocar reunió"
+              aria-label="Convocar reuniÃ³"
+              title="Convocar reuniÃ³"
               onClick={(event) => {
                 event.stopPropagation()
                 onOpenMeeting()
@@ -292,7 +287,7 @@ export default function ProjectTaskCard({
         {showBlockName ? (
           <>
             <span className="hidden text-slate-300 sm:inline" aria-hidden="true">
-              ·
+              Â·
             </span>
             {renderBlockName()}
           </>
@@ -312,7 +307,7 @@ export default function ProjectTaskCard({
         <div className="rounded-xl bg-slate-50 px-2.5 py-2">
           <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             <CalendarDays className="h-3 w-3" />
-            Data límit
+            Data lÃ­mit
           </div>
           <div
             className={cn(
@@ -325,26 +320,6 @@ export default function ProjectTaskCard({
         </div>
       </div>
 
-      {dependencyMeta ? (
-        <div
-          className={cn(
-            'mt-2 flex items-start gap-2 rounded-xl px-2.5 py-2 text-xs',
-            dependencyMeta.isResolved
-              ? 'bg-emerald-50 text-emerald-900 ring-1 ring-emerald-100'
-              : 'bg-amber-50 text-amber-900 ring-1 ring-amber-100'
-          )}
-        >
-          <Link2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <div className="min-w-0">
-            <div className="font-semibold uppercase tracking-wide opacity-70">
-              {dependencyMeta.isResolved ? 'Dependència feta' : 'Depèn de'}
-            </div>
-            <div className="truncate font-medium">
-              {dependencyMeta.dependencyTask.title || 'Tasca prèvia'}
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {taskMetaParts.length > 0 ? (
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
@@ -368,7 +343,7 @@ export default function ProjectTaskCard({
             {canManage ? (
               <Textarea
                 value={task.description || ''}
-                placeholder="Notes, context o referències sobre la tasca"
+                placeholder="Notes, context o referÃ¨ncies sobre la tasca"
                 className="min-h-[88px] resize-y border-violet-100 bg-white text-sm font-semibold leading-relaxed text-slate-900 placeholder:font-normal placeholder:text-slate-400"
                 onChange={(event) => {
                   onSetField('description', event.target.value)
@@ -385,7 +360,7 @@ export default function ProjectTaskCard({
 
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Planificació
+              PlanificaciÃ³
             </div>
             <div className={cn('grid gap-2', canManage ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}>
               <div className="min-w-0">
@@ -435,19 +410,9 @@ export default function ProjectTaskCard({
           {canManage ? (
             <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
               <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Assignació i dependències
+                Assignacio
               </div>
               <div className="space-y-2">
-                <ProjectTaskDependencyPicker
-                  blocks={projectBlocks}
-                  dependsOn={task.dependsOn || ''}
-                  excludeTaskId={task.id}
-                  idPrefix={`${task.id}-depends`}
-                  onDependsOnChange={(value) => {
-                    if (value === task.id) return
-                    onSetField('dependsOn', value)
-                  }}
-                />
                 <Select
                   value={task.owner || 'none'}
                   onValueChange={(value) => {

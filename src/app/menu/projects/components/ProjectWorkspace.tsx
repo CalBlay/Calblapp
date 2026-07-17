@@ -139,6 +139,7 @@ export default function ProjectWorkspace({
   const [meetingMinutesOpen, setMeetingMinutesOpen] = useState(false)
   const [kickoffMeetingOpen, setKickoffMeetingOpen] = useState(false)
   const [coordinationOpen, setCoordinationOpen] = useState(false)
+  const [projectDetailsOpen, setProjectDetailsOpen] = useState(false)
   const {
     canAccessProjectGeneralRoom,
     canAccessSpecificBlockRoom,
@@ -529,6 +530,16 @@ export default function ProjectWorkspace({
         coordinationHasMessagesToRead={coordinationOpen ? false : coordinationHasChannelMessagesToRead}
         coordinationActivityLoading={coordinationActivityLoading}
         onOpenCoordination={() => setCoordinationOpen(true)}
+        canManageProjectData={Boolean(canEditProjectData)}
+        projectDetailsOpen={activeTab === 'tracking' && projectDetailsOpen}
+        onToggleProjectDetails={() => {
+          if (activeTab === 'tracking') {
+            setProjectDetailsOpen((current) => !current)
+            return
+          }
+          setProjectDetailsOpen(true)
+          handleTabChange('tracking')
+        }}
         autosaveStatus={autosaveStatus}
         canEditLaunchDate={Boolean(canEditProjectData)}
         dirtyLaunchDate={dirtyOverview}
@@ -678,12 +689,16 @@ export default function ProjectWorkspace({
                   project={project}
                   ownerOptions={ownerOptions}
                   canManageProject={Boolean(canEditProjectData)}
+                  projectDetailsOpen={projectDetailsOpen}
+                  onToggleProjectDetails={() => setProjectDetailsOpen((current) => !current)}
                   savingOverview={savingOverview}
                   dirtyOverview={dirtyOverview}
                   onProjectChange={setProject}
                   onSaveOverview={() => {
                     void saveOverview()
                   }}
+                  onOpenBlock={handleNavigateToBlock}
+                  onOpenTask={handleNavigateToTask}
                 />
               ) : null}
             </div>

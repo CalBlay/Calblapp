@@ -9,7 +9,7 @@ type PathEntry = {
 }
 
 const SEGMENT_LABELS: Record<string, string> = {
-  projects: 'OpsiaProjects',
+  projects: 'Projectes',
   spaces: 'Espais',
   torns: 'Torns',
   quadrants: 'Quadrants',

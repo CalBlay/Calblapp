@@ -53,7 +53,7 @@ export default function ModuleHeader({
 
   // Traducció Ã¢â‚¬Å“mòdul Ã¢â€ â€™ nom visibleÃ¢â‚¬Â
   const moduleLabels: Record<string, string> = {
-    projects: 'OpsiaProjects',
+    projects: 'Projectes',
     spaces: 'Espais',
     torns: 'Torns',
     quadrants: 'Quadrants',

@@ -269,7 +269,7 @@ export default function ProjectsPage() {
       <div className="cmd-app flex w-full max-w-none flex-col">
         <ModuleHeader
           icon={<FolderKanban className="h-6 w-6 text-violet-600" />}
-          title="OpsiaProjects"
+          title="Projectes"
           breadcrumbSubtitle={scopeLabel}
           subtitle={filterSummary}
           actions={

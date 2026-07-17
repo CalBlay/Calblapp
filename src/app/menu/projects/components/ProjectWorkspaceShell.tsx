@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { CalendarClock, CalendarPlus, FolderKanban, MessageSquare, TimerReset, Trash2, UserRound } from 'lucide-react'
+import { CalendarClock, CalendarPlus, FileText, FolderKanban, MessageSquare, TimerReset, Trash2, UserRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { type ProjectParticipationKind } from '@/lib/projectParticipation'
@@ -28,6 +28,9 @@ type Props = {
   coordinationHasMessagesToRead?: boolean
   coordinationActivityLoading?: boolean
   onOpenCoordination?: () => void
+  canManageProjectData?: boolean
+  projectDetailsOpen?: boolean
+  onToggleProjectDetails?: () => void
   autosaveStatus?: WorkspaceAutosaveStatus
   canEditLaunchDate?: boolean
   dirtyLaunchDate?: boolean
@@ -52,6 +55,9 @@ export default function ProjectWorkspaceShell({
   coordinationHasMessagesToRead = false,
   coordinationActivityLoading = false,
   onOpenCoordination,
+  canManageProjectData = false,
+  projectDetailsOpen = false,
+  onToggleProjectDetails,
   autosaveStatus = 'idle',
   canEditLaunchDate = false,
   dirtyLaunchDate = false,
@@ -97,7 +103,7 @@ export default function ProjectWorkspaceShell({
             <div className="min-w-0">
               <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 text-sm">
                 <Link href="/menu/projects" className="font-semibold text-slate-700 hover:underline">
-                  OpsiaProjects
+                  Projectes
                 </Link>
                 <span className="text-slate-400">/</span>
                 <span className="truncate font-bold text-slate-900">
@@ -130,6 +136,22 @@ export default function ProjectWorkspaceShell({
           <div className="flex shrink-0 items-center gap-2">
             {autosaveLabel ? (
               <span className="hidden text-xs text-slate-500 sm:inline">{autosaveLabel}</span>
+            ) : null}
+            {canManageProjectData && onToggleProjectDetails ? (
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                title={projectDetailsOpen ? 'Amagar dades del projecte' : 'Dades del projecte'}
+                aria-label={projectDetailsOpen ? 'Amagar dades del projecte' : 'Dades del projecte'}
+                onClick={onToggleProjectDetails}
+                className={cn(
+                  'h-7 w-7 shrink-0 border border-violet-200 bg-white/90 text-violet-700 shadow-sm shadow-violet-200/30 hover:bg-violet-50 hover:text-violet-800',
+                  projectDetailsOpen && 'bg-violet-600 text-white hover:bg-violet-600 hover:text-white'
+                )}
+              >
+                <FileText className="h-3.5 w-3.5" />
+              </Button>
             ) : null}
             {canAccessGeneralRoom && onOpenCoordination ? (
               <Button
