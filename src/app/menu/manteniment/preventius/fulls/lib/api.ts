@@ -47,9 +47,10 @@ export async function fetchJourneyTickets(
 ): Promise<TicketJourneyItem[]> {
   try {
     const params = new URLSearchParams()
-    params.set('ticketType', 'maquinaria')
     if (start) params.set('start', start)
     if (end) params.set('end', end)
+    params.set('dateMode', 'planned')
+    params.set('limit', '500')
     if (role === 'treballador' && userId) params.set('assignedToId', userId)
 
     const res = await fetch(`/api/maintenance/tickets?${params.toString()}`, { cache: 'no-store' })
