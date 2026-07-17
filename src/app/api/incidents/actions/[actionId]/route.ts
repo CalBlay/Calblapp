@@ -180,6 +180,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
         title: String(d.title || ''),
         description: String(d.description || ''),
         status: normalizeIncidentActionStatus(String(d.status || 'open')),
+        assignedToId: String(d.assignedToId || ''),
         assignedToName: String(d.assignedToName || ''),
         department: String(d.department || ''),
         dueAt: tsToIso(d.dueAt),

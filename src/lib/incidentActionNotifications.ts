@@ -3,6 +3,7 @@ import {
   defaultPushUrlForNotificationType,
   sendPushToUsers,
 } from '@/lib/notifications/sendUserPush.server'
+import { writeUserNotification } from '@/lib/notifications/writeUserNotification'
 import {
   createIncidentActionDeadlineCalendarEvent,
   deleteOutlookCalendarEvent,
@@ -85,14 +86,11 @@ async function notifyIncidentActionAssigned(params: {
   const { userId, payload } = params
   const now = Date.now()
 
-  await db.collection('users').doc(userId).collection('notifications').add({
+  await writeUserNotification(userId, {
     ...payload,
     createdAt: now,
     read: false,
   })
-
-  const { afterNotificationsCommitted } = await import('@/lib/notifications/writeUserNotification')
-  await afterNotificationsCommitted([{ userId, type: payload.type }])
 
   if (process.env.ABLY_API_KEY) {
     try {
@@ -167,34 +165,30 @@ export async function handleIncidentActionAssigneeSideEffects(
   }
 
   if (params.notifyAssignment && assignee?.id) {
-    const skipSelf =
-      params.createdById && String(params.createdById).trim() === String(assignee.id).trim()
-    if (!skipSelf) {
-      const incidentLabel = String(params.incidentNumber || params.incidentId || '').trim()
-      const dueLabel = deadline ? ` · Data limit ${deadline.split('-').reverse().join('/')}` : ''
-      const payload: IncidentActionNotificationPayload = {
-        type: 'incident_action_assigned',
-        title: "T'han assignat una acció d'incidència",
-        body: [
-          params.actionTitle || 'Acció',
-          incidentLabel ? `Incidència ${incidentLabel}` : '',
-          String(params.department || '').trim(),
-        ]
-          .filter(Boolean)
-          .join(' · ')
-          .concat(dueLabel),
-        incidentId: params.incidentId,
-        incidentNumber: params.incidentNumber || null,
-        actionId: params.actionId,
-        actionTitle: params.actionTitle,
-        department: params.department || null,
-        dueAt: params.dueAtIso || null,
-      }
-      try {
-        await notifyIncidentActionAssigned({ userId: assignee.id, payload })
-      } catch (err) {
-        console.error('[incidentActionNotifications] notify error', err)
-      }
+    const incidentLabel = String(params.incidentNumber || params.incidentId || '').trim()
+    const dueLabel = deadline ? ` · Data limit ${deadline.split('-').reverse().join('/')}` : ''
+    const payload: IncidentActionNotificationPayload = {
+      type: 'incident_action_assigned',
+      title: "T'han assignat una acció d'incidència",
+      body: [
+        params.actionTitle || 'Acció',
+        incidentLabel ? `Incidència ${incidentLabel}` : '',
+        String(params.department || '').trim(),
+      ]
+        .filter(Boolean)
+        .join(' · ')
+        .concat(dueLabel),
+      incidentId: params.incidentId,
+      incidentNumber: params.incidentNumber || null,
+      actionId: params.actionId,
+      actionTitle: params.actionTitle,
+      department: params.department || null,
+      dueAt: params.dueAtIso || null,
+    }
+    try {
+      await notifyIncidentActionAssigned({ userId: assignee.id, payload })
+    } catch (err) {
+      console.error('[incidentActionNotifications] notify error', err)
     }
   }
 

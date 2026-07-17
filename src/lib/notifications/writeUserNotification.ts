@@ -1,14 +1,14 @@
 import type { DocumentReference } from 'firebase-admin/firestore'
-import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { incrementUserUnreadCounts } from '@/lib/notifications/unreadCounts'
+import { userNotificationsCollectionByAuthId } from '@/lib/notifications/userNotificationsRef'
 
 export type UserNotificationPayload = Record<string, unknown> & {
   type?: string
   read?: boolean
 }
 
-export function userNotificationRef(userId: string, docId?: string): DocumentReference {
-  const col = db.collection('users').doc(userId).collection('notifications')
+export async function userNotificationRef(userId: string, docId?: string): Promise<DocumentReference> {
+  const col = await userNotificationsCollectionByAuthId(userId)
   return docId ? col.doc(docId) : col.doc()
 }
 
@@ -18,7 +18,7 @@ export async function writeUserNotification(
   payload: UserNotificationPayload,
   options?: { docId?: string; merge?: boolean }
 ): Promise<string> {
-  const ref = userNotificationRef(userId, options?.docId)
+  const ref = await userNotificationRef(userId, options?.docId)
   const data = {
     ...payload,
     read: payload.read === true,

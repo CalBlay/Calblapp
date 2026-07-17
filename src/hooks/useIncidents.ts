@@ -49,6 +49,7 @@ export interface IncidentAction {
   title: string
   description: string
   status: IncidentActionStatus
+  assignedToId?: string
   assignedToName: string
   department: string
   dueAt: string

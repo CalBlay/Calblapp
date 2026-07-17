@@ -38,12 +38,13 @@ interface Props {
     description?: string
     originDepartment?: string
     priority?: string
+    status?: string
     categoryId?: string
   }
   setEditValues: (
     updater: (
-      prev: { description?: string; originDepartment?: string; priority?: string; categoryId?: string }
-    ) => { description?: string; originDepartment?: string; priority?: string; categoryId?: string }
+      prev: { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
+    ) => { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
   ) => void
 }
 
@@ -273,6 +274,39 @@ export default function IncidentsMobileCard({
               </Select>
             ) : (
               <p className={cn(typography('bodySm'), 'text-slate-800')}>{inc.originDepartment || '—'}</p>
+            )}
+          </div>
+          <div>
+            <p className={cn(typography('label'), 'mb-1 text-slate-500')}>Estat</p>
+            {isEditing ? (
+              <Select
+                value={editValues.status || workflow}
+                onValueChange={(val) => {
+                  setEditValues((v) => ({ ...v, status: val }))
+                  void applyPatch(inc.id, { status: val })
+                }}
+              >
+                <SelectTrigger onClick={(e) => e.stopPropagation()}>
+                  <SelectValue placeholder="Estat" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="obert">Obert</SelectItem>
+                  <SelectItem value="en_curs">En curs</SelectItem>
+                  <SelectItem value="resolt">Resolt</SelectItem>
+                  <SelectItem value="tancat">Tancat</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <button
+                type="button"
+                className={cn(typography('bodySm'), 'text-left text-slate-800 hover:underline')}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  beginEdit(inc)
+                }}
+              >
+                {statusLabel}
+              </button>
             )}
           </div>
           <div>

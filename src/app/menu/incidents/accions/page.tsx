@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+import { endOfWeek, format, startOfWeek } from 'date-fns'
 import { AlertTriangle, ExternalLink, ListChecks, Search } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Input } from '@/components/ui/input'
@@ -30,11 +31,16 @@ import { formatDateString } from '@/lib/formatDate'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import IncidentNotificationsBell from '../components/IncidentNotificationsBell'
+import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
+import { CorporateFiltersShell } from '@/components/layout/corporate-filters'
+import FilterButton from '@/components/ui/filter-button'
+import ResetFilterButton from '@/components/ui/ResetFilterButton'
+import { useFilters } from '@/context/FiltersContext'
 
 type StatusFilter = 'pending' | 'all' | 'open' | 'in_progress' | 'done' | 'cancelled'
 
 function shortDate(iso: string) {
-  if (!iso) return '—'
+  if (!iso) return '-'
   return formatDateString(iso) ?? iso.slice(0, 10)
 }
 
@@ -71,18 +77,45 @@ function KpiCard({
   )
 }
 
+function actionFilterDate(row: IncidentActionMineRow) {
+  return String(row.incident?.eventDate || row.createdAt || '').slice(0, 10)
+}
+
+function isWithinDateRange(dateIso: string, from?: string, to?: string) {
+  if (!dateIso) return true
+  if (from && dateIso < from) return false
+  if (to && dateIso > to) return false
+  return true
+}
+
 export default function IncidentActionsMinePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const { ready: uiPermsReady, canViewPath, hasAction } = useUiPermissions()
+  const { setContent, setOpen } = useFilters()
   const canSeeBoard = uiPermsReady && canViewPath(INCIDENTS_UI_PATH)
   const canSeeQuadre = uiPermsReady && hasAction(INCIDENTS_COMMAND_BOARD_PERM)
   const canSeeAccions = canSeeBoard || canSeeQuadre
 
+  const weekStart = useMemo(
+    () => format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+    []
+  )
+  const weekEnd = useMemo(
+    () => format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+    []
+  )
+
+  const [dateResetSignal, setDateResetSignal] = useState(0)
+  const [dateFilters, setDateFilters] = useState({
+    from: weekStart,
+    to: weekEnd,
+  })
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending')
   const [search, setSearch] = useState('')
   const [overdueOnly, setOverdueOnly] = useState(false)
   const [actions, setActions] = useState<IncidentActionMineRow[]>([])
+  const [scope, setScope] = useState<'mine' | 'all'>('mine')
   const [pendingCount, setPendingCount] = useState(0)
   const [overdueCount, setOverdueCount] = useState(0)
   const [totalAssigned, setTotalAssigned] = useState(0)
@@ -116,11 +149,12 @@ export default function IncidentActionsMinePage() {
       if (!res.ok) throw new Error(String(data?.error || `HTTP ${res.status}`))
 
       setActions(Array.isArray(data.actions) ? data.actions : [])
+      setScope(data.scope === 'all' ? 'all' : 'mine')
       setPendingCount(Number(data.pendingCount || 0))
       setOverdueCount(Number(data.overdueCount || 0))
       setTotalAssigned(Number(data.totalAssigned || 0))
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error de càrrega')
+      setError(e instanceof Error ? e.message : 'Error de carrega')
       setActions([])
     } finally {
       setLoading(false)
@@ -135,11 +169,42 @@ export default function IncidentActionsMinePage() {
     return () => window.clearTimeout(timer)
   }, [status, session, uiPermsReady, canSeeAccions, load, search])
 
+  const handleDateFiltersChange = useCallback((f: SmartFiltersChange) => {
+    setDateFilters((prev) => {
+      const nextFrom = f.start || weekStart
+      const nextTo = f.end || weekEnd
+      if (prev.from === nextFrom && prev.to === nextTo) return prev
+      return { from: nextFrom, to: nextTo }
+    })
+  }, [weekEnd, weekStart])
+
+  const filteredActions = useMemo(
+    () =>
+      actions.filter((row) =>
+        isWithinDateRange(actionFilterDate(row), dateFilters.from, dateFilters.to)
+      ),
+    [actions, dateFilters.from, dateFilters.to]
+  )
+
+  const filteredPendingCount = useMemo(
+    () => filteredActions.filter((row) => row.status === 'open' || row.status === 'in_progress').length,
+    [filteredActions]
+  )
+
+  const filteredOverdueCount = useMemo(
+    () =>
+      filteredActions.filter((row) => {
+        if (row.status !== 'open' && row.status !== 'in_progress') return false
+        return Boolean(row.dueAt) && Date.parse(row.dueAt.slice(0, 10)) < new Date(new Date().toDateString()).getTime()
+      }).length,
+    [filteredActions]
+  )
+
   const tableRows = useMemo(
     () =>
-      actions.map((row) => {
+      filteredActions.map((row) => {
         const st = row.status
-        const dueShort = row.dueAt ? shortDate(row.dueAt) : '—'
+        const dueShort = row.dueAt ? shortDate(row.dueAt) : '-'
         const isOverdue =
           (st === 'open' || st === 'in_progress') &&
           row.dueAt &&
@@ -150,31 +215,95 @@ export default function IncidentActionsMinePage() {
           incidentLabel: buildIncidentActionMineLabel(row),
           statusLabel: incidentActionStatusLabel[st],
           dueShort,
-          createdShort: row.createdAt ? shortDate(row.createdAt) : '—',
+          createdShort: row.createdAt ? shortDate(row.createdAt) : '-',
           isOverdue,
         }
       }),
-    [actions]
+    [filteredActions]
   )
 
+  const openFiltersPanel = useCallback(() => {
+    setContent(
+      <div className="space-y-4 p-4">
+        <div className="space-y-2">
+          <label className={typography('label')} htmlFor="incident-actions-search-panel">
+            Cerca
+          </label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              id="incident-actions-search-panel"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Titol, incidencia, esdeveniment..."
+              className="pl-9"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className={typography('label')}>Estat</label>
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pending">Pendents (obertes + en curs)</SelectItem>
+              <SelectItem value="open">Obertes</SelectItem>
+              <SelectItem value="in_progress">En curs</SelectItem>
+              <SelectItem value="done">Fetes</SelectItem>
+              <SelectItem value="cancelled">Cancel.lades</SelectItem>
+              <SelectItem value="all">Totes</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-4">
+          <Button
+            type="button"
+            variant={overdueOnly ? 'default' : 'outline'}
+            onClick={() => setOverdueOnly((v) => !v)}
+          >
+            Nomes vencudes
+          </Button>
+          <ResetFilterButton
+            onClick={() => {
+              setSearch('')
+              setStatusFilter('pending')
+              setOverdueOnly(false)
+              setDateFilters({ from: weekStart, to: weekEnd })
+              setDateResetSignal((value) => value + 1)
+              setOpen(false)
+            }}
+          />
+        </div>
+      </div>
+    )
+    setOpen(true)
+  }, [overdueOnly, search, setContent, setOpen, statusFilter, weekEnd, weekStart])
+
   if (status === 'loading' || !uiPermsReady || (session && !canSeeAccions)) {
-    return <p className={cn('text-center py-16', typography('bodySm'))}>Carregant…</p>
+    return <p className={cn('py-16 text-center', typography('bodySm'))}>Carregant...</p>
   }
 
   return (
-    <div className="p-4 flex flex-col gap-4 w-full max-w-none">
+    <div className="flex w-full max-w-none flex-col gap-4 p-4">
       <ModuleHeader
-        icon={<ListChecks className="w-7 h-7 text-violet-600" />}
-        title="Les meves accions"
-        subtitle="Accions d'incidències assignades a tu"
+        icon={<ListChecks className="h-7 w-7 text-violet-600" />}
+        title={scope === 'all' ? "Accions d'incidencies" : 'Les meves accions'}
+        subtitle={
+          scope === 'all'
+            ? "Vista global d'accions d'incidencies"
+            : "Accions d'incidencies assignades a tu"
+        }
         mainHref={canSeeBoard ? INCIDENTS_UI_PATH : undefined}
         actions={
-          <div className="flex flex-wrap items-center gap-2 justify-end">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <IncidentNotificationsBell />
             {canSeeBoard ? (
               <Link
                 href={INCIDENTS_UI_PATH}
-                className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
+                className={cn(typography('bodyMd'), 'whitespace-nowrap font-medium hover:underline')}
               >
                 Tauler setmanal
               </Link>
@@ -182,7 +311,7 @@ export default function IncidentActionsMinePage() {
             {canSeeQuadre ? (
               <Link
                 href={INCIDENTS_QUADRE_PATH}
-                className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
+                className={cn(typography('bodyMd'), 'whitespace-nowrap font-medium hover:underline')}
               >
                 Quadre de comandament
               </Link>
@@ -191,105 +320,78 @@ export default function IncidentActionsMinePage() {
         }
       />
 
+      <CorporateFiltersShell variant="toolbar" className="mb-2">
+        <SmartFilters
+          modeDefault="week"
+          modeOptions={['week', 'month', 'year', 'range']}
+          role="Direcció"
+          onChange={handleDateFiltersChange}
+          showDepartment={false}
+          showCommercial={false}
+          showWorker={false}
+          showLocation={false}
+          showStatus={false}
+          showImportance={false}
+          showAdvanced={false}
+          compact
+          initialStart={dateFilters.from}
+          initialEnd={dateFilters.to}
+          resetSignal={dateResetSignal}
+        />
+        <div className="min-w-[8px] flex-1" />
+        <FilterButton onClick={openFiltersPanel} />
+      </CorporateFiltersShell>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <KpiCard label="Pendents" value={pendingCount} tone="amber" />
-        <KpiCard label="Vençudes" value={overdueCount} tone="rose" />
-        <KpiCard label="Total assignades" value={totalAssigned} tone="slate" />
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="flex-1 space-y-2">
-            <label className={typography('label')} htmlFor="mine-action-search">
-              Cerca
-            </label>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                id="mine-action-search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Títol, incidència, esdeveniment…"
-                className="pl-9"
-              />
-            </div>
-          </div>
-
-          <div className="w-full space-y-2 lg:w-52">
-            <label className={typography('label')}>Estat</label>
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="pending">Pendents (obertes + en curs)</SelectItem>
-                <SelectItem value="open">Obertes</SelectItem>
-                <SelectItem value="in_progress">En curs</SelectItem>
-                <SelectItem value="done">Fetes</SelectItem>
-                <SelectItem value="cancelled">Cancel·lades</SelectItem>
-                <SelectItem value="all">Totes</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-end">
-            <Button
-              type="button"
-              variant={overdueOnly ? 'default' : 'outline'}
-              onClick={() => setOverdueOnly((v) => !v)}
-              className="whitespace-nowrap"
-            >
-              Només vençudes
-            </Button>
-          </div>
-        </div>
+        <KpiCard label="Pendents" value={filteredPendingCount} tone="amber" />
+        <KpiCard label="Vencudes" value={filteredOverdueCount} tone="rose" />
+        <KpiCard label="Total assignades" value={tableRows.length} tone="slate" />
       </div>
 
       {loading ? (
-        <p className={cn('text-center py-10', typography('bodySm'))}>Carregant accions…</p>
+        <p className={cn('py-10 text-center', typography('bodySm'))}>Carregant accions...</p>
       ) : error ? (
-        <p className={cn('text-center py-10', typography('bodySm'), 'text-red-600')}>{error}</p>
+        <p className={cn('py-10 text-center text-red-600', typography('bodySm'))}>{error}</p>
       ) : tableRows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-10 text-center">
           <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-slate-400" aria-hidden />
-          <p className={cn(typography('bodyMd'), 'font-medium text-slate-800')}>
-            Cap acció trobada
-          </p>
+          <p className={cn(typography('bodyMd'), 'font-medium text-slate-800')}>Cap accio trobada</p>
           <p className={cn(typography('bodySm'), 'mt-1 text-slate-600')}>
             {statusFilter === 'pending' && !search.trim() && !overdueOnly
-              ? 'No tens accions pendents assignades.'
-              : 'Prova d’ajustar els filtres o la cerca.'}
+              ? scope === 'all'
+                ? 'No hi ha accions pendents.'
+                : 'No tens accions pendents assignades.'
+              : 'Prova d ajustar els filtres o la cerca.'}
           </p>
         </div>
       ) : (
-        <section className="rounded-xl border bg-white p-4 shadow-sm overflow-hidden">
+        <section className="overflow-hidden rounded-xl border bg-white p-4 shadow-sm">
           <h2 className={cn(typography('sectionTitle'), 'mb-3')}>
-            {tableRows.length} acció{tableRows.length === 1 ? '' : 'ns'}
+            {tableRows.length} accio{tableRows.length === 1 ? '' : 'ns'}
           </h2>
-          <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <div className="overflow-hidden rounded-lg border border-slate-200">
             <div className="overflow-x-auto">
               <table className={cn('w-full min-w-[920px]', typography('bodySm'))}>
-                <thead className="bg-slate-100 border-b border-slate-200">
+                <thead className="border-b border-slate-200 bg-slate-100">
                   <tr>
-                    <th className="p-2 text-left font-semibold">Acció</th>
-                    <th className="p-2 text-left font-semibold">Incidència</th>
+                    <th className="p-2 text-left font-semibold">Accio</th>
+                    <th className="p-2 text-left font-semibold">Incidencia</th>
                     <th className="p-2 text-left font-semibold">Estat</th>
                     <th className="p-2 text-left font-semibold">Dept</th>
                     <th className="p-2 text-left font-semibold">Termini</th>
                     <th className="p-2 text-left font-semibold">Creada</th>
+                    <th className="p-2 text-left font-semibold">Assignada a</th>
                     <th className="p-2 text-left font-semibold">Obrir</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tableRows.map((row) => (
                     <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50/80">
-                      <td className="p-2 align-top max-w-[280px]">
-                        <span className="font-medium text-slate-900">{row.title || '—'}</span>
+                      <td className="max-w-[280px] p-2 align-top">
+                        <span className="font-medium text-slate-900">{row.title || '-'}</span>
                       </td>
-                      <td className="p-2 align-top max-w-[240px] text-slate-800">
-                        {row.incidentLabel}
-                      </td>
-                      <td className="p-2 align-top whitespace-nowrap">
+                      <td className="max-w-[240px] p-2 align-top text-slate-800">{row.incidentLabel}</td>
+                      <td className="whitespace-nowrap p-2 align-top">
                         <span
                           className={cn(
                             'rounded-full px-2 py-0.5 text-xs font-medium',
@@ -302,18 +404,19 @@ export default function IncidentActionsMinePage() {
                           {row.statusLabel}
                         </span>
                       </td>
-                      <td className="p-2 align-top">{(row.department || '').trim() || '—'}</td>
+                      <td className="p-2 align-top">{(row.department || '').trim() || '-'}</td>
                       <td
                         className={cn(
-                          'p-2 align-top whitespace-nowrap',
-                          row.isOverdue && 'text-red-700 font-semibold'
+                          'whitespace-nowrap p-2 align-top',
+                          row.isOverdue && 'font-semibold text-red-700'
                         )}
                       >
                         {row.dueShort}
                       </td>
-                      <td className="p-2 align-top whitespace-nowrap text-slate-600">
+                      <td className="whitespace-nowrap p-2 align-top text-slate-600">
                         {row.createdShort}
                       </td>
+                      <td className="p-2 align-top">{row.assignedToName || '-'}</td>
                       <td className="p-2 align-top">
                         <Link
                           href={incidentBoardHref(row.incidentId)}
@@ -322,7 +425,7 @@ export default function IncidentActionsMinePage() {
                             'inline-flex items-center gap-1 font-medium text-violet-700 hover:underline'
                           )}
                         >
-                          Veure incidència
+                          Veure incidencia
                           <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                         </Link>
                       </td>

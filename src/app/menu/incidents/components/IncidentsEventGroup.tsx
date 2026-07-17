@@ -16,6 +16,7 @@ type IncidentEditValues = {
   description?: string
   originDepartment?: string
   priority?: string
+  status?: string
   categoryId?: string
 }
 
@@ -102,6 +103,7 @@ export default function IncidentsEventGroup({
       description: row.description,
       originDepartment: row.originDepartment || '',
       priority: row.priority || row.importance || '',
+      status: row.status || '',
       categoryId: row.category?.id || '',
     })
   }, [])

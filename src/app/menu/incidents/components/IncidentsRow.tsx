@@ -42,12 +42,13 @@ interface Props {
     description?: string
     originDepartment?: string
     priority?: string
+    status?: string
     categoryId?: string
   }
   setEditValues: (
     updater: (
-      prev: { description?: string; originDepartment?: string; priority?: string; categoryId?: string }
-    ) => { description?: string; originDepartment?: string; priority?: string; categoryId?: string }
+      prev: { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
+    ) => { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
   ) => void
 }
 
@@ -199,19 +200,48 @@ function IncidentsRow({
       </td>
 
       {/* Estat */}
-      <td className={cell} onClick={(e) => e.stopPropagation()}>
-        <Badge
-          className={cn(
-            typography('bodyXs'),
-            'px-2 py-0.5',
-            workflow === 'obert' && 'bg-amber-100 text-amber-800',
-            workflow === 'en_curs' && 'bg-blue-100 text-blue-800',
-            workflow === 'resolt' && 'bg-emerald-100 text-emerald-800',
-            workflow === 'tancat' && 'bg-slate-200 text-slate-700'
-          )}
-        >
-          {statusLabel}
-        </Badge>
+      <td
+        className={cell}
+        onClick={(e) => {
+          if (isEditing) {
+            e.stopPropagation()
+            return
+          }
+          beginEdit(inc)
+        }}
+      >
+        {isEditing ? (
+          <Select
+            value={editValues.status || workflow}
+            onValueChange={(val) => {
+              setEditValues((v) => ({ ...v, status: val }))
+              void applyPatch(inc.id, { status: val })
+            }}
+          >
+            <SelectTrigger onClick={(e) => e.stopPropagation()}>
+              <SelectValue placeholder="Estat" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="obert">Obert</SelectItem>
+              <SelectItem value="en_curs">En curs</SelectItem>
+              <SelectItem value="resolt">Resolt</SelectItem>
+              <SelectItem value="tancat">Tancat</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge
+            className={cn(
+              typography('bodyXs'),
+              'px-2 py-0.5',
+              workflow === 'obert' && 'bg-amber-100 text-amber-800',
+              workflow === 'en_curs' && 'bg-blue-100 text-blue-800',
+              workflow === 'resolt' && 'bg-emerald-100 text-emerald-800',
+              workflow === 'tancat' && 'bg-slate-200 text-slate-700'
+            )}
+          >
+            {statusLabel}
+          </Badge>
+        )}
       </td>
 
       {/* Incidència (editable) */}

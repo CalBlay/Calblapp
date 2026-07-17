@@ -6,6 +6,7 @@ import type { Query } from 'firebase-admin/firestore'
 import { formatTornNotificationBody, formatTornNotificationLabel } from '@/lib/date-format'
 import { resolveEventDisplayName } from '@/lib/eventDisplayName'
 import { decrementUnreadFromNotificationDocs } from '@/lib/notifications/unreadCounts'
+import { userNotificationsCollectionByAuthId } from '@/lib/notifications/userNotificationsRef'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -95,10 +96,7 @@ export async function GET(req: Request) {
   const type = (searchParams.get('type') || '').trim()
 
   try {
-    const notificationsRef = db
-      .collection('users')
-      .doc(userId)
-      .collection('notifications')
+    const notificationsRef = await userNotificationsCollectionByAuthId(userId)
     let baseRef: Query = notificationsRef
 
     if (type) {
@@ -164,10 +162,7 @@ export async function PATCH(req: Request) {
     const requestId = (body.requestId || '').trim()
     const deliveryId = (body.deliveryId || '').trim()
 
-    const notificationsRef = db
-      .collection('users')
-      .doc(userId)
-      .collection('notifications')
+    const notificationsRef = await userNotificationsCollectionByAuthId(userId)
     let baseRef: Query = notificationsRef
 
     if (type) {

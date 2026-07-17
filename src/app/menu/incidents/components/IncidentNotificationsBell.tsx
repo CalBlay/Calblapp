@@ -13,6 +13,10 @@ import NotificationListItem from '@/components/layout/NotificationListItem'
 import { markAllNotificationsRead, markNotificationRead } from '@/lib/notifications/markRead'
 import { INCIDENT_NOTIFICATION_TYPES } from '@/lib/notifications/notificationTypes'
 import { INCIDENTS_ACCIONS_PATH, INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
+import {
+  buildIncidentActionMineLabel,
+  type IncidentActionMineRow,
+} from '@/lib/incidentActionsMine'
 
 type IncidentNotification = {
   id: string
@@ -27,6 +31,7 @@ type IncidentNotification = {
   department?: string | null
   eventCode?: string | null
   categoryLabel?: string | null
+  synthetic?: boolean
 }
 
 const INCIDENT_TYPES = new Set<string>(INCIDENT_NOTIFICATION_TYPES)
@@ -35,8 +40,8 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 const normalizeNotificationText = (value?: string | null) =>
   String(value || '')
-    .replace(/Â·/g, '\u00B7')
-    .replace(/â€™/g, "'")
+    .replace(/Ã‚Â·/g, '\u00B7')
+    .replace(/Ã¢â‚¬â„¢/g, "'")
     .trim()
 
 function extractNotificationLabel(notification: IncidentNotification) {
@@ -48,21 +53,16 @@ function extractNotificationLabel(notification: IncidentNotification) {
   const department = normalizeNotificationText(notification.department)
 
   if (notification.type === 'incident_action_assigned') {
-    const primary = actionTitle || body || title || 'Acció assignada'
-    const secondary = [incidentNumber ? `Incidència ${incidentNumber}` : '', department]
+    const primary = actionTitle || body || title || 'Accio assignada'
+    const secondary = [incidentNumber ? `Incidencia ${incidentNumber}` : '', department]
       .filter(Boolean)
       .join(' \u00B7 ')
-    return { prefix: 'Acció', primary, secondary }
+    return { prefix: 'Accio', primary, secondary }
   }
 
-  const primary =
-    incidentNumber ||
-    categoryLabel ||
-    body ||
-    title ||
-    'Nova incidència'
+  const primary = incidentNumber || categoryLabel || body || title || 'Nova incidencia'
   const secondary = [categoryLabel, department].filter(Boolean).join(' \u00B7 ')
-  return { prefix: 'Incidència', primary, secondary }
+  return { prefix: 'Incidencia', primary, secondary }
 }
 
 function incidentBoardHref(incidentId: string) {
@@ -121,7 +121,8 @@ function IncidentNotificationItems({
             secondary={label.secondary || undefined}
             detail={!label.secondary ? notification.title || undefined : undefined}
             onOpen={() => openNotification(notification)}
-            onDismiss={() => onDismiss(notification.id)}
+            onDismiss={notification.synthetic ? undefined : () => onDismiss(notification.id)}
+            dismissible={!notification.synthetic}
           />
         )
       })}
@@ -133,6 +134,10 @@ export default function IncidentNotificationsBell() {
   const { data: session } = useSession()
   const userId = String((session?.user as { id?: string })?.id || '').trim()
   const { data, mutate } = useSWR(userId ? '/api/notifications?mode=list' : null, fetcher)
+  const { data: mineData, mutate: mutateMine } = useSWR(
+    userId ? '/api/incidents/actions/mine?status=pending' : null,
+    fetcher
+  )
 
   useEffect(() => {
     if (!userId) return
@@ -141,6 +146,7 @@ export default function IncidentNotificationsBell() {
     const channel = client.channels.get(`user:${userId}:notifications`)
     const handler = () => {
       mutate().catch(() => {})
+      mutateMine().catch(() => {})
     }
 
     channel.subscribe('created', handler)
@@ -148,16 +154,42 @@ export default function IncidentNotificationsBell() {
     return () => {
       channel.unsubscribe('created', handler)
     }
-  }, [userId, mutate])
+  }, [userId, mutate, mutateMine])
 
-  const notifications = useMemo(
-    () =>
-      (Array.isArray(data?.notifications) ? data.notifications : []).filter(
-        (notification: IncidentNotification) =>
-          !notification.read && INCIDENT_TYPES.has(String(notification.type || ''))
-      ),
-    [data]
-  )
+  const notifications = useMemo(() => {
+    const unreadNotifications = (Array.isArray(data?.notifications) ? data.notifications : []).filter(
+      (notification: IncidentNotification) =>
+        !notification.read && INCIDENT_TYPES.has(String(notification.type || ''))
+    )
+
+    const pendingActions = Array.isArray(mineData?.actions)
+      ? (mineData.actions as IncidentActionMineRow[])
+      : []
+
+    const notifiedActionIds = new Set(
+      unreadNotifications
+        .filter((notification: IncidentNotification) => notification.type === 'incident_action_assigned')
+        .map((notification: IncidentNotification) => String(notification.actionId || '').trim())
+        .filter(Boolean)
+    )
+
+    const syntheticNotifications: IncidentNotification[] = pendingActions
+      .filter((action) => !notifiedActionIds.has(String(action.id || '').trim()))
+      .map((action) => ({
+        id: `synthetic-action-${action.id}`,
+        type: 'incident_action_assigned',
+        title: action.title || 'Accio assignada',
+        body: buildIncidentActionMineLabel(action),
+        incidentId: action.incidentId,
+        incidentNumber: action.incident?.incidentNumber || null,
+        actionId: action.id,
+        actionTitle: action.title || '',
+        department: action.department || action.incident?.department || null,
+        synthetic: true,
+      }))
+
+    return [...unreadNotifications, ...syntheticNotifications]
+  }, [data, mineData])
 
   const dismiss = async (notificationId: string) => {
     await markNotificationRead(notificationId)
@@ -171,21 +203,25 @@ export default function IncidentNotificationsBell() {
     await mutate()
   }
 
+  const hasStoredNotifications = notifications.some((notification) => !notification.synthetic)
+
   return (
     <ModuleNotificationsBell
-      title="Avisos d'incidències"
+      title="Avisos d'incidencies"
       count={notifications.length}
       showWhenEmpty
-      emptyMessage="Cap avís d'incidències pendent"
+      emptyMessage="Cap avis d'incidencies pendent"
       headerActions={
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
-          onClick={() => void markAll()}
-        >
-          <CheckCheck className="h-3.5 w-3.5" />
-          Marcar tot
-        </button>
+        hasStoredNotifications ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
+            onClick={() => void markAll()}
+          >
+            <CheckCheck className="h-3.5 w-3.5" />
+            Marcar tot
+          </button>
+        ) : undefined
       }
     >
       <IncidentNotificationItems notifications={notifications} onDismiss={dismiss} />

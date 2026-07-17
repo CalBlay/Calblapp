@@ -56,6 +56,7 @@ function applyActionPatchLocally(
   if (typeof body.title === 'string') next.title = body.title.trim()
   if (typeof body.description === 'string') next.description = body.description.trim()
   if (typeof body.department === 'string') next.department = body.department.trim()
+  if (typeof body.assignedToId === 'string') next.assignedToId = body.assignedToId.trim()
   if (typeof body.assignedToName === 'string') next.assignedToName = body.assignedToName.trim()
   if (typeof body.status === 'string') next.status = body.status as IncidentActionStatus
 
@@ -166,7 +167,7 @@ function ActionRowDeptAssignInline({
   const { caps, loading } = useCapsForDepartment(deptStored || undefined)
 
   const assigneeSelectItems = useMemo(() => {
-    const items: { value: string; label: string }[] = [{ value: CAP_NONE, label: '-' }]
+    const items: { value: string; label: string; id?: string }[] = [{ value: CAP_NONE, label: '-' }]
     const seen = new Set<string>([CAP_NONE])
     const currentName = (action.assignedToName || '').trim()
     if (currentName && !caps.some((c) => c.name === currentName)) {
@@ -175,7 +176,7 @@ function ActionRowDeptAssignInline({
     }
     for (const c of caps) {
       if (!seen.has(c.name)) {
-        items.push({ value: c.name, label: c.name })
+        items.push({ value: c.name, label: c.name, id: c.id })
         seen.add(c.name)
       }
     }
@@ -223,9 +224,13 @@ function ActionRowDeptAssignInline({
         </span>
         <Select
           value={assigneeSelectItems.some((x) => x.value === assigneeValue) ? assigneeValue : CAP_NONE}
-          onValueChange={(v) =>
-            void patchAction(action.id, { assignedToName: v === CAP_NONE ? '' : v })
-          }
+          onValueChange={(v) => {
+            const selected = assigneeSelectItems.find((item) => item.value === v)
+            void patchAction(action.id, {
+              assignedToId: v === CAP_NONE ? '' : selected?.id || '',
+              assignedToName: v === CAP_NONE ? '' : v,
+            })
+          }}
           disabled={!deptStored || loading}
         >
           <SelectTrigger

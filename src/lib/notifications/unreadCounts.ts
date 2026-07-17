@@ -1,6 +1,8 @@
 import { FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { fetchUnreadNotificationDocs } from '@/lib/notifications/firestoreCounts'
+import { userDocRefByAuthId } from '@/lib/notifications/userNotificationsRef'
+
 export const UNREAD_COUNTS_VERSION = 2
 
 export type NotificationUnreadBuckets = {
@@ -54,10 +56,6 @@ export function bucketForNotificationType(type: string): BucketKey | null {
   return null
 }
 
-function userRef(userId: string) {
-  return db.collection('users').doc(userId)
-}
-
 export async function incrementUserUnreadCount(
   userId: string,
   type: string,
@@ -65,7 +63,8 @@ export async function incrementUserUnreadCount(
 ): Promise<void> {
   const bucket = bucketForNotificationType(type)
   if (!bucket || !userId || delta === 0) return
-  await userRef(userId).set(
+  const ref = await userDocRefByAuthId(userId)
+  await ref.set(
     {
       notificationUnread: {
         [bucket]: FieldValue.increment(delta),
@@ -90,8 +89,9 @@ export async function incrementUserUnreadCounts(
   const batch = db.batch()
   const now = Date.now()
   for (const userId of uniqueIds) {
+    const ref = await userDocRefByAuthId(userId)
     batch.set(
-      userRef(userId),
+      ref,
       {
         notificationUnread: {
           [bucket]: FieldValue.increment(delta),
@@ -114,7 +114,8 @@ export async function decrementUserUnreadCount(
 }
 
 export async function readUserUnreadBuckets(userId: string): Promise<NotificationUnreadBuckets | null> {
-  const snap = await userRef(userId).get()
+  const ref = await userDocRefByAuthId(userId)
+  const snap = await ref.get()
   if (!snap.exists) return null
   const raw = (snap.data() as { notificationUnread?: Partial<NotificationUnreadBuckets> })
     ?.notificationUnread
@@ -156,7 +157,8 @@ export async function syncUserUnreadBuckets(userId: string): Promise<Notificatio
     if (bucket) buckets[bucket] += count
   }
 
-  await userRef(userId).set({ notificationUnread: buckets }, { merge: true })
+  const ref = await userDocRefByAuthId(userId)
+  await ref.set({ notificationUnread: buckets }, { merge: true })
   return buckets
 }
 
@@ -220,5 +222,6 @@ export async function decrementUnreadFromNotificationDocs(
     notificationUnread[bucket] = FieldValue.increment(delta)
   }
 
-  await userRef(userId).set({ notificationUnread }, { merge: true })
+  const ref = await userDocRefByAuthId(userId)
+  await ref.set({ notificationUnread }, { merge: true })
 }

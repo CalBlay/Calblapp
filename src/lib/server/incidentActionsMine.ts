@@ -39,6 +39,37 @@ async function fetchIncidentMetaByIds(ids: string[]) {
   return map
 }
 
+function mapIncidentActionRows(
+  entries: Array<[string, FirebaseFirestore.DocumentData]>,
+  incidentMeta: Map<string, IncidentActionMineIncidentMeta>
+): IncidentActionMineRow[] {
+  const rows: IncidentActionMineRow[] = entries.map(([id, d]) => {
+    const incidentId = String(d.incidentId || '').trim()
+    return {
+      id,
+      incidentId,
+      title: String(d.title || ''),
+      description: String(d.description || ''),
+      status: normalizeIncidentActionStatus(String(d.status || 'open')),
+      assignedToName: String(d.assignedToName || ''),
+      department: String(d.department || ''),
+      dueAt: tsToIso(d.dueAt),
+      createdAt: tsToIso(d.createdAt),
+      closedAt: d.closedAt ? tsToIso(d.closedAt) : '',
+      incident: incidentMeta.get(incidentId) || {
+        incidentNumber: null,
+        eventTitle: null,
+        eventCode: null,
+        eventDate: null,
+        department: null,
+      },
+    }
+  })
+
+  rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  return rows
+}
+
 export async function fetchAssignedIncidentActionsForUser(params: {
   userId: string
   userName?: string | null
@@ -72,29 +103,15 @@ export async function fetchAssignedIncidentActionsForUser(params: {
     .filter(Boolean)
   const incidentMeta = await fetchIncidentMetaByIds(incidentIds)
 
-  const rows: IncidentActionMineRow[] = [...merged.entries()].map(([id, d]) => {
-    const incidentId = String(d.incidentId || '').trim()
-    return {
-      id,
-      incidentId,
-      title: String(d.title || ''),
-      description: String(d.description || ''),
-      status: normalizeIncidentActionStatus(String(d.status || 'open')),
-      assignedToName: String(d.assignedToName || ''),
-      department: String(d.department || ''),
-      dueAt: tsToIso(d.dueAt),
-      createdAt: tsToIso(d.createdAt),
-      closedAt: d.closedAt ? tsToIso(d.closedAt) : '',
-      incident: incidentMeta.get(incidentId) || {
-        incidentNumber: null,
-        eventTitle: null,
-        eventCode: null,
-        eventDate: null,
-        department: null,
-      },
-    }
-  })
+  return mapIncidentActionRows([...merged.entries()], incidentMeta)
+}
 
-  rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
-  return rows
+export async function fetchAllIncidentActions(): Promise<IncidentActionMineRow[]> {
+  const snap = await firestoreAdmin.collection('incident_actions').get()
+  const entries = snap.docs.map((doc) => [doc.id, doc.data()] as [string, FirebaseFirestore.DocumentData])
+  const incidentIds = entries
+    .map(([, d]) => String(d.incidentId || '').trim())
+    .filter(Boolean)
+  const incidentMeta = await fetchIncidentMetaByIds(incidentIds)
+  return mapIncidentActionRows(entries, incidentMeta)
 }

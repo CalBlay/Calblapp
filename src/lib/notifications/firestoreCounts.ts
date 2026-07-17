@@ -1,17 +1,14 @@
-import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore'
+import { userNotificationsCollectionByAuthId } from '@/lib/notifications/userNotificationsRef'
 
 const UNREAD_FETCH_LIMIT = 500
 
-function notificationsRef(userId: string) {
-  return db.collection('users').doc(userId).collection('notifications')
-}
-
-/** Una sola lectura sense índex compost: filtre per `read` i agrupació en memòria. */
+/** Una sola lectura sense index compost: filtre per `read` i agrupacio en memoria. */
 export async function fetchUnreadNotificationDocs(
   userId: string
 ): Promise<QueryDocumentSnapshot[]> {
-  const snap = await notificationsRef(userId)
+  const notificationsRef = await userNotificationsCollectionByAuthId(userId)
+  const snap = await notificationsRef
     .where('read', '==', false)
     .limit(UNREAD_FETCH_LIMIT)
     .get()

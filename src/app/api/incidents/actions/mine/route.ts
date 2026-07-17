@@ -2,6 +2,7 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import {
+  fetchAllIncidentActions,
   fetchAssignedIncidentActionsForUser,
 } from '@/lib/server/incidentActionsMine'
 import {
@@ -10,7 +11,11 @@ import {
   isPendingIncidentActionStatus,
 } from '@/lib/incidentActionsMine'
 import { normalizeIncidentActionStatus } from '@/lib/incidentPolicy'
-import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
+import {
+  canEditIncidentsModule,
+  canViewIncidentsCommandBoard,
+  requireIncidentsModuleView,
+} from '@/lib/server/incidentsApiAuth'
 
 export async function GET(req: Request) {
   try {
@@ -20,7 +25,7 @@ export async function GET(req: Request) {
     const user = auth.user
     const userId = String(user.id || '').trim()
     if (!userId) {
-      return NextResponse.json({ error: 'Usuari no vàlid' }, { status: 401 })
+      return NextResponse.json({ error: 'Usuari no valid' }, { status: 401 })
     }
 
     const { searchParams } = new URL(req.url)
@@ -38,10 +43,16 @@ export async function GET(req: Request) {
         ? statusRaw
         : 'pending'
 
-    const allRows = await fetchAssignedIncidentActionsForUser({
-      userId,
-      userName: user.name,
-    })
+    const canSeeAllActions =
+      (await canEditIncidentsModule(auth.user)) ||
+      (await canViewIncidentsCommandBoard(auth.user))
+
+    const allRows = canSeeAllActions
+      ? await fetchAllIncidentActions()
+      : await fetchAssignedIncidentActionsForUser({
+          userId,
+          userName: user.name,
+        })
 
     const pendingCount = allRows.filter((row) =>
       isPendingIncidentActionStatus(normalizeIncidentActionStatus(row.status))
@@ -60,6 +71,7 @@ export async function GET(req: Request) {
         pendingCount,
         overdueCount,
         totalAssigned: allRows.length,
+        scope: canSeeAllActions ? 'all' : 'mine',
       },
       { status: 200 }
     )
