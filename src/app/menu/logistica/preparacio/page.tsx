@@ -130,6 +130,8 @@ export default function LogisticsPage() {
   const searchParams = useSearchParams()
   const searchParamsSafe = searchParams ?? new URLSearchParams()
   const { data: session } = useSession()
+  const currentUserId = String(session?.user?.id || '').trim()
+  const currentUserName = String(session?.user?.name || '').trim()
   const role = (session?.user?.role || '').toLowerCase()
   const isWorker = role === 'treballador'
   const isManager = role === 'cap' || role === 'admin' || role === 'direccio'
@@ -814,6 +816,8 @@ export default function LogisticsPage() {
           loading={loading}
           isWorker={isWorker}
           isManager={isManager}
+          currentUserId={currentUserId}
+          currentUserName={currentUserName}
           edited={edited}
           setEdited={setEdited}
           onFilterChange={handleFilterChange}

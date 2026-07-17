@@ -62,6 +62,18 @@ export type PreparationProgressSummary = {
   plannedLines: PrepLineProgress[]
 }
 
+export type WorkerPreparationSummary = {
+  totalCount: number
+  doneCount: number
+  pendingCount: number
+  completionPct: number
+  warehouses: {
+    warehouse: PreparationWarehouseCode
+    totalCount: number
+    doneCount: number
+  }[]
+}
+
 export function computePreparationProgressSummary(
   rows: LogisticsEventPrepRow[]
 ): PreparationProgressSummary {
@@ -106,6 +118,70 @@ export function computePreparationProgressSummary(
     warehouseSummaries,
     lines,
     plannedLines,
+  }
+}
+
+function normalizeComparableText(value: string | null | undefined): string {
+  return String(value || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+export function computeWorkerPreparationSummary(
+  rows: LogisticsEventPrepRow[],
+  options: {
+    userId?: string | null
+    userName?: string | null
+    warehouseCodes?: PreparationWarehouseCode[]
+  }
+): WorkerPreparationSummary {
+  const userId = String(options.userId || '').trim()
+  const normalizedUserName = normalizeComparableText(options.userName)
+  const warehouseCodes =
+    options.warehouseCodes && options.warehouseCodes.length > 0
+      ? options.warehouseCodes
+      : PREPARATION_WAREHOUSE_CODES
+
+  const plannedLines = rows
+    .filter((row) => !row.id.startsWith('draft_'))
+    .map((row) => computeLineProgress(row))
+    .filter((line) => line.status !== 'unscheduled')
+
+  const doneCount = plannedLines.filter((line) =>
+    warehouseCodes.some((warehouse) => {
+      const entry = line.warehouseMap[warehouse]
+      if (!entry?.at) return false
+      if (userId && entry.userId === userId) return true
+      return Boolean(normalizedUserName) && normalizeComparableText(entry.userName) === normalizedUserName
+    })
+  ).length
+
+  const totalCount = plannedLines.length
+  const pendingCount = Math.max(0, totalCount - doneCount)
+  const completionPct = totalCount ? Math.round((doneCount / totalCount) * 100) : 0
+  const warehouses = warehouseCodes.map((warehouse) => {
+    const warehouseDoneCount = plannedLines.filter((line) => {
+      const entry = line.warehouseMap[warehouse]
+      if (!entry?.at) return false
+      if (userId && entry.userId === userId) return true
+      return Boolean(normalizedUserName) && normalizeComparableText(entry.userName) === normalizedUserName
+    }).length
+
+    return {
+      warehouse,
+      totalCount,
+      doneCount: warehouseDoneCount,
+    }
+  })
+
+  return {
+    totalCount,
+    doneCount,
+    pendingCount,
+    completionPct,
+    warehouses,
   }
 }
 
