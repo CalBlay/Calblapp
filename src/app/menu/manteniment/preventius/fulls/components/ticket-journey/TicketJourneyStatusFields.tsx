@@ -17,6 +17,7 @@ type Props = {
   nextStatus: JourneyStatus
   horaInici: string
   horaFi: string
+  openSegmentDateLabel?: string
   note: string
   showPhotos: boolean
   existingCompletionAttachments: StoredAttachment[]
@@ -43,6 +44,7 @@ export default function TicketJourneyStatusFields({
   nextStatus,
   horaInici,
   horaFi,
+  openSegmentDateLabel,
   note,
   showPhotos,
   existingCompletionAttachments,
@@ -66,6 +68,12 @@ export default function TicketJourneyStatusFields({
 
   return (
     <div className="space-y-4">
+      {openSegmentDateLabel ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          Tram obert del dia <span className="font-semibold text-slate-900">{openSegmentDateLabel}</span>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3">
         <label className="text-sm font-medium text-gray-700">
           Hora inici

@@ -96,6 +96,57 @@ export async function fetchJourneyTickets(
   }
 }
 
+export async function fetchWaitingJourneyTickets(
+  role: string,
+  userId: string
+): Promise<TicketJourneyItem[]> {
+  try {
+    const params = new URLSearchParams()
+    params.set('status', 'espera')
+    params.set('limit', '200')
+    if (role === 'treballador' && userId) params.set('assignedToId', userId)
+
+    const res = await fetch(`/api/maintenance/tickets?${params.toString()}`, { cache: 'no-store' })
+    if (!res.ok) return []
+
+    const json = await res.json()
+    const list = Array.isArray(json?.tickets) ? json.tickets : []
+
+    return list
+      .filter((t: Record<string, unknown>) => t.plannedStart && t.plannedEnd)
+      .filter((t: Record<string, unknown>) =>
+        role === 'treballador'
+          ? normalizeMaintenanceStatus(typeof t.status === 'string' ? t.status : null) === 'espera'
+          : true
+      )
+      .map((t: Record<string, unknown>) => {
+        const plannedStart = new Date(Number(t.plannedStart))
+        const plannedEnd = new Date(Number(t.plannedEnd))
+        const code = String(t.ticketCode || t.incidentNumber || 'TIC')
+        const title = String(t.description || t.machine || t.location || '')
+        return {
+          id: String(t.id || code),
+          kind: 'ticket' as const,
+          title,
+          code,
+          status: normalizeMaintenanceStatus(typeof t.status === 'string' ? t.status : null),
+          ticketType: t.ticketType === 'deco' ? 'deco' : 'maquinaria',
+          date: format(plannedStart, 'yyyy-MM-dd'),
+          startTime: format(plannedStart, 'HH:mm'),
+          endTime: format(plannedEnd, 'HH:mm'),
+          location: String(t.location || ''),
+          worker: Array.isArray(t.assignedToNames) ? t.assignedToNames.join(', ') : '',
+          machine: String(t.machine || ''),
+          vehicleId: t.vehicleId || null,
+          vehiclePlate: t.vehiclePlate || null,
+          hasMedia: Boolean(t.imageUrl || (Array.isArray(t.imageUrls) && t.imageUrls.length > 0)),
+        }
+      })
+  } catch {
+    return []
+  }
+}
+
 export async function fetchTicketById(id: string): Promise<JourneyTicket | null> {
   try {
     const res = await fetch(`/api/maintenance/tickets/${encodeURIComponent(id)}`, {

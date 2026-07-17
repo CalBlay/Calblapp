@@ -18,6 +18,32 @@ const MAX_COMPLETION_IMAGES = 3
 
 const defaultTime = () => format(new Date(), 'HH:mm')
 
+function parseHistoryAt(value?: number | string | null) {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date(value < 1e12 ? value * 1000 : value)
+  }
+  const parsed = new Date(String(value))
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function getOpenSegment(history: StatusHistoryEntry[] | undefined, status: JourneyStatus) {
+  if (!Array.isArray(history)) return null
+  for (let i = history.length - 1; i >= 0; i--) {
+    const entry = history[i]
+    if (String(entry?.status || '') !== status) continue
+    const start = String(entry?.startTime || '').trim()
+    const end = String(entry?.endTime || '').trim()
+    if (start && !end) {
+      return {
+        startTime: start,
+        date: parseHistoryAt(entry?.at),
+      }
+    }
+  }
+  return null
+}
+
 type Params = {
   ticket: JourneyTicket
   onSaved: () => void
@@ -65,6 +91,15 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     [ticket.completionAttachments]
   )
 
+  const openSegment = useMemo(
+    () => getOpenSegment(statusHistory, 'en_curs') || getOpenSegment(statusHistory, 'espera'),
+    [statusHistory]
+  )
+  const openSegmentDateLabel = useMemo(
+    () => (openSegment?.date ? format(openSegment.date, 'dd/MM/yyyy') : ''),
+    [openSegment]
+  )
+
   const isDirty = useMemo(
     () => Boolean(nextStatus || horaInici || horaFi || note.trim() || imageCount > 0),
     [horaFi, horaInici, imageCount, nextStatus, note]
@@ -74,8 +109,22 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     setCurrentStatus(initialStatus)
     setStatusHistory(Array.isArray(ticket.statusHistory) ? (ticket.statusHistory as StatusHistoryEntry[]) : [])
     setNextStatus(undefined)
-    setHoraInici('')
-    setHoraFi('')
+    const initialOpenSegment =
+      getOpenSegment(
+        Array.isArray(ticket.statusHistory) ? (ticket.statusHistory as StatusHistoryEntry[]) : [],
+        'en_curs'
+      ) ||
+      getOpenSegment(
+        Array.isArray(ticket.statusHistory) ? (ticket.statusHistory as StatusHistoryEntry[]) : [],
+        'espera'
+      )
+    if (initialStatus === 'en_curs' || initialStatus === 'espera') {
+      setHoraInici(initialOpenSegment?.startTime || '')
+      setHoraFi('')
+    } else {
+      setHoraInici('')
+      setHoraFi('')
+    }
     setNote('')
     clearImages()
     setFormError(null)
@@ -163,8 +212,13 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
 
   const clearStatusSelection = () => {
     setNextStatus(undefined)
-    setHoraInici('')
-    setHoraFi('')
+    if (currentStatus === 'en_curs' || currentStatus === 'espera') {
+      setHoraInici(openSegment?.startTime || '')
+      setHoraFi('')
+    } else {
+      setHoraInici('')
+      setHoraFi('')
+    }
     setNote('')
     clearImages()
     setFormError(null)
@@ -232,6 +286,7 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     nextStatus,
     horaInici,
     horaFi,
+    openSegmentDateLabel,
     note,
     formError,
     busy,

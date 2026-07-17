@@ -109,6 +109,7 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
             nextStatus={form.nextStatus || form.currentStatus}
             horaInici={form.horaInici}
             horaFi={form.horaFi}
+            openSegmentDateLabel={form.openSegmentDateLabel}
             note={form.note}
             showPhotos
             existingCompletionAttachments={form.existingCompletionAttachments}
