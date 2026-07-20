@@ -172,24 +172,6 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
 
   const handleSelectStatus = (status: JourneyStatus) => {
     setNextStatus(status)
-    if (hasStaleOpenSegment) {
-      setHoraFi((prev) => (status === 'en_curs' ? '' : prev))
-      setHoraInici((prev) =>
-        needsStartOnNextStatus(status) || status === 'fet' || status === 'no_fet' ? prev : ''
-      )
-      setPreviousSegmentEndTime((prev) => prev || '')
-    } else {
-      setHoraFi((prev) => prev)
-      setHoraInici((prev) => {
-        if (status === 'fet' || status === 'no_fet' || status === 'validat') {
-          return currentStatus === 'en_curs' || currentStatus === 'espera'
-            ? openSegment?.startTime || prev
-            : prev
-        }
-        if (needsStartOnNextStatus(status)) return prev
-        return prev
-      })
-    }
     setNote('')
     clearImages()
     setFormError(null)
@@ -197,15 +179,6 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
 
   const clearStatusSelection = () => {
     setNextStatus(undefined)
-    if (currentStatus === 'en_curs' || currentStatus === 'espera') {
-      setHoraInici(openSegment?.startTime || '')
-      setHoraFi('')
-      setPreviousSegmentEndTime('')
-    } else {
-      setHoraInici('')
-      setHoraFi('')
-      setPreviousSegmentEndTime('')
-    }
     setNote('')
     clearImages()
     setFormError(null)
