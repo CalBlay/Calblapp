@@ -3,15 +3,15 @@
   "version": 2,
   "crons": [
     {
-      "path": "/api/sync/zoho-to-firestore?mode=cron",
+      "path": "/api/sync/zoho-to-firestore?mode=cron&includeAttachments=1",
       "schedule": "0 6 * * *"
     },
     {
-      "path": "/api/sync/zoho-to-firestore?mode=cron",
+      "path": "/api/sync/zoho-to-firestore?mode=cron&includeAttachments=1",
       "schedule": "0 12 * * *"
     },
     {
-      "path": "/api/sync/zoho-to-firestore?mode=cron",
+      "path": "/api/sync/zoho-to-firestore?mode=cron&includeAttachments=1",
       "schedule": "0 19 * * *"
     },
     {

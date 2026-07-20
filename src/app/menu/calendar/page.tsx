@@ -428,7 +428,7 @@ export default function CalendarPage() {
   const handleSync = async () => {
     try {
       setSyncing(true)
-      const res = await fetch('/api/sync/zoho-to-firestore?mode=manual')
+      const res = await fetch('/api/sync/zoho-to-firestore?mode=manual&includeAttachments=1')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Error')
       alert(`Sincronització: ${json.updated} actualitzats, ${json.created} nous`)
@@ -1024,6 +1024,5 @@ export default function CalendarPage() {
     </div>
   )
 }
-
 
 
