@@ -142,6 +142,22 @@ const isTranslationHeader = (label: string) => {
   )
 }
 
+const looksLikeMenuLabel = (label: string) => {
+  const trimmed = String(label || '').trim()
+  if (!trimmed) return false
+
+  const normalized = normalize(trimmed)
+  if (!normalized) return false
+
+  if (isMarkedMenuCell(trimmed)) return false
+  if (normalized === 'si' || normalized === 'no' || normalized === 't') return false
+  if (normalized === 'apte' || normalized === 'no apte') return false
+  if (IMPORT_ALLERGEN_HEADERS[normalized]) return false
+  if (isTranslationHeader(trimmed)) return false
+
+  return /[a-z]/i.test(trimmed)
+}
+
 export const resolveTranslationColumns = (rows: string[][], headerRowIndex: number) => {
   const headerCells = (rows[headerRowIndex] || []).map(cell => normalize(String(cell || '')))
   let nameEs = findColumnIndex(headerCells, TRANSLATION_ES_CANDIDATES)
@@ -207,8 +223,9 @@ export const buildMenuColumns = (
     ...rows.slice(0, Math.min(rows.length, headerRowIndex + 3)).map(row => row.length)
   )
 
-  const labelRowCandidates = [headerRowIndex + 1, headerRowIndex]
+  const labelRowCandidates = [headerRowIndex]
   if (headerRowIndex > 0) labelRowCandidates.push(headerRowIndex - 1)
+  if (headerRowIndex + 1 < rows.length) labelRowCandidates.push(headerRowIndex + 1)
 
   for (const labelRowIndex of labelRowCandidates) {
     if (labelRowIndex < 0 || labelRowIndex >= rows.length) continue
@@ -218,12 +235,11 @@ export const buildMenuColumns = (
     for (let index = startIndex; index < maxColumns; index++) {
       if (skipIndices.has(index)) continue
       const label = String(menuHeaders[index] || '').trim()
-      if (!label || isTranslationHeader(label)) continue
-      if (IMPORT_ALLERGEN_HEADERS[normalize(label)]) continue
+      if (!looksLikeMenuLabel(label)) continue
       columns.push({ index, label })
     }
 
-    if (columns.length >= 1) return columns
+    if (columns.length >= 2) return columns
   }
 
   return []

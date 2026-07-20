@@ -112,6 +112,11 @@ export default function AllergensBbddPage() {
     return combined
   }, [menusCatalog, form.menus])
 
+  const selectedMenuItems = useMemo(
+    () => menuItems.filter(menu => form.menus.includes(menu.id)),
+    [menuItems, form.menus]
+  )
+
   const allergenItems = useMemo(() => {
     const known = new Set(allergensCatalog.map(item => item.key))
     const combined = [...allergensCatalog]
@@ -1313,23 +1318,19 @@ export default function AllergensBbddPage() {
               <label className="text-sm font-medium text-slate-700">Menus</label>
 
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                {menuItems.length > 0 ? (
-                  menuItems.map(menu => (
+                {selectedMenuItems.length > 0 ? (
+                  selectedMenuItems.map(menu => (
                     <button
                       key={menu.id}
                       type="button"
                       onClick={() => toggleMenu(menu.id)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
-                        form.menus.includes(menu.id)
-                          ? 'bg-amber-100 border-amber-300 text-amber-800'
-                          : 'bg-white border-slate-200 text-slate-600'
-                      }`}
+                      className="px-3 py-1 rounded-full text-xs font-medium border transition bg-amber-100 border-amber-300 text-amber-800"
                     >
                       {menu.label}
                     </button>
                   ))
                 ) : (
-                  <p className="text-xs text-slate-500">Encara no hi ha menus registrats.</p>
+                  <p className="text-xs text-slate-500">No s'ha detectat cap menu per a aquest plat.</p>
                 )}
 
                 <Input
@@ -1530,4 +1531,3 @@ export default function AllergensBbddPage() {
     </>
   )
 }
-
