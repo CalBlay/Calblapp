@@ -18,8 +18,28 @@ const MAX_COMPLETION_IMAGES = 3
 
 const defaultTime = () => format(new Date(), 'HH:mm')
 
-function timeToMinutes(value?: string | null) {
+function normalizeTimeValue(value?: string | null) {
   const raw = String(value || '').trim()
+  if (!raw) return ''
+  const match = raw.match(/^(\d{1,2}):(\d{1,2})$/)
+  if (!match) return raw
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (
+    !Number.isFinite(hours) ||
+    !Number.isFinite(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return raw
+  }
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+function timeToMinutes(value?: string | null) {
+  const raw = normalizeTimeValue(value)
   if (!/^\d{2}:\d{2}$/.test(raw)) return null
   const [hours, minutes] = raw.split(':').map(Number)
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
@@ -195,18 +215,24 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
     const effectiveStatus = nextStatus || currentStatus
 
     const closesPrevious = needsClosePreviousSegment(currentStatus)
-    const startsSegment = needsStartOnNextStatus(effectiveStatus) || effectiveStatus === 'fet'
+    const opensNextSegment = needsStartOnNextStatus(effectiveStatus)
     const terminalEnd =
       effectiveStatus === 'fet' || effectiveStatus === 'no_fet' || effectiveStatus === 'validat'
 
     const closeSegmentEndTime =
       closesPrevious || terminalEnd
         ? hasStaleOpenSegment
-          ? previousSegmentEndTime
-          : horaFi
+          ? normalizeTimeValue(previousSegmentEndTime)
+          : normalizeTimeValue(horaFi)
         : undefined
-    const newSegmentStartTime = startsSegment || terminalEnd ? horaInici : undefined
-    const newSegmentEndTime = effectiveStatus === 'fet' ? horaFi : terminalEnd ? horaFi : undefined
+    const newSegmentStartTime =
+      opensNextSegment || terminalEnd ? normalizeTimeValue(horaInici) : undefined
+    const newSegmentEndTime =
+      effectiveStatus === 'fet'
+        ? normalizeTimeValue(horaFi)
+        : terminalEnd
+          ? normalizeTimeValue(horaFi)
+          : undefined
 
     if (hasStaleOpenSegment && (closesPrevious || terminalEnd) && !String(previousSegmentEndTime || '').trim()) {
       setFormError(`Omple hora fi del tram obert del ${openSegmentDateLabel}.`)
@@ -242,7 +268,8 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
 
     const previousSegmentCloseMinutes = timeToMinutes(closeSegmentEndTime)
     if (
-      startsSegment &&
+      !hasStaleOpenSegment &&
+      opensNextSegment &&
       closesPrevious &&
       startMinutes !== null &&
       previousSegmentCloseMinutes !== null &&
