@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -15,6 +15,7 @@ import {
 import { Incident, type IncidentAction } from '@/hooks/useIncidents'
 import { formatDateString } from '@/lib/formatDate'
 import { INCIDENT_ORIGIN_DEPARTMENTS } from '@/lib/incidentOriginDepartments'
+import { IconActionButton } from '@/lib/iconActionButton'
 import { INCIDENT_ACTION_STATUS, type IncidentActionStatus } from '@/lib/incidentPolicy'
 import { INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
 import { typography } from '@/lib/typography'
@@ -146,6 +147,10 @@ function ActionRowStatusSelect({
   )
 }
 
+function toDateInputValue(value?: string | null) {
+  return value ? String(value).slice(0, 10) : ''
+}
+
 interface Props {
   incident: Incident
   onIncidentPatch: (id: string, data: Partial<Incident>) => Promise<unknown>
@@ -271,6 +276,12 @@ export default function IncidentOperationsPanel({
   const [newDept, setNewDept] = useState('')
   const [newDue, setNewDue] = useState('')
   const [creating, setCreating] = useState(false)
+  const [editingActionId, setEditingActionId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  const [editingDescription, setEditingDescription] = useState('')
+  const [editingDue, setEditingDue] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [deletingActionId, setDeletingActionId] = useState<string | null>(null)
 
   const { caps: newFormCaps, loading: newFormCapsLoading } = useCapsForDepartment(
     newDept.trim() || undefined
@@ -412,6 +423,71 @@ export default function IncidentOperationsPanel({
     }
   }
 
+  const beginEditAction = useCallback((action: IncidentActionRow) => {
+    setEditingActionId(action.id)
+    setEditingTitle(action.title || '')
+    setEditingDescription(action.description || '')
+    setEditingDue(toDateInputValue(action.dueAt))
+  }, [])
+
+  const cancelEditAction = useCallback(() => {
+    setEditingActionId(null)
+    setEditingTitle('')
+    setEditingDescription('')
+    setEditingDue('')
+    setSavingEdit(false)
+  }, [])
+
+  const saveEditedAction = useCallback(async () => {
+    if (!editingActionId || !editingTitle.trim()) return
+    setSavingEdit(true)
+    try {
+      await patchAction(editingActionId, {
+        title: editingTitle.trim(),
+        description: editingDescription.trim(),
+        dueAt: editingDue ? `${editingDue}T12:00:00` : null,
+      })
+      cancelEditAction()
+    } catch {
+      setSavingEdit(false)
+    }
+  }, [cancelEditAction, editingActionId, editingDescription, editingDue, editingTitle, patchAction])
+
+  const deleteAction = useCallback(
+    async (action: IncidentActionRow) => {
+      if (!incident?.id) return
+      const confirmed = window.confirm(
+        `Vols eliminar l'accio "${action.title || 'sense titol'}"? Aquesta accio no es pot desfer.`
+      )
+      if (!confirmed) return
+
+      const previousActions = actions
+      const nextActions = previousActions.filter((row) => row.id !== action.id)
+      setDeletingActionId(action.id)
+      setError('')
+      setActions(nextActions)
+      onIncidentActionsLocalPatch?.(incident.id, nextActions)
+      onIncidentLocalPatch?.(incident.id, summarizeLocalActions(nextActions))
+
+      try {
+        const res = await fetch(`/api/incidents/actions/${action.id}`, {
+          method: 'DELETE',
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(String(json?.error || 'Error eliminant accio'))
+        if (editingActionId === action.id) cancelEditAction()
+      } catch (e) {
+        setActions(previousActions)
+        onIncidentActionsLocalPatch?.(incident.id, previousActions)
+        onIncidentLocalPatch?.(incident.id, summarizeLocalActions(previousActions))
+        setError(e instanceof Error ? e.message : 'Error eliminant accio')
+      } finally {
+        setDeletingActionId(null)
+      }
+    },
+    [actions, cancelEditAction, editingActionId, incident?.id, onIncidentActionsLocalPatch, onIncidentLocalPatch]
+  )
+
   const openActionsCount = useMemo(
     () => actions.filter((a) => a.status === 'open' || a.status === 'in_progress').length,
     [actions]
@@ -466,39 +542,118 @@ export default function IncidentOperationsPanel({
             <ul className="space-y-2">
               {actions.map((a) => (
                 <li key={a.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_150px_130px_minmax(260px,340px)] xl:items-end">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900">{a.title}</p>
-                      {a.description ? (
-                        <p className="mt-1 truncate text-xs leading-relaxed text-slate-500" title={a.description}>
-                          {a.description}
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-xs text-slate-400">Sense descripcio</p>
-                      )}
+                  {editingActionId === a.id ? (
+                    <div className="space-y-3">
+                      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_180px_130px_minmax(260px,340px)] xl:items-end">
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Titol</div>
+                          <Input
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            className={cn(ctrl, 'w-full bg-white px-2')}
+                            aria-label="Editar titol accio"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Data limit</div>
+                          <Input
+                            type="date"
+                            value={editingDue}
+                            onChange={(e) => setEditingDue(e.target.value)}
+                            className="bg-white text-slate-700"
+                            aria-label="Editar data limit accio"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Estat</div>
+                          <ActionRowStatusSelect
+                            value={a.status}
+                            disabled={!canChangeActionStatus(a)}
+                            onValueChange={(v) => void patchAction(a.id, { status: v })}
+                          />
+                        </div>
+                        <div>
+                          <ActionRowDeptAssignInline action={a} patchAction={patchAction} />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Descripcio</div>
+                        <textarea
+                          rows={4}
+                          value={editingDescription}
+                          onChange={(e) => setEditingDescription(e.target.value)}
+                          className={cn(
+                            'w-full resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/35 focus-visible:border-amber-300/60'
+                          )}
+                          aria-label="Editar descripcio accio"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={cancelEditAction}>
+                          Cancel.lar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-amber-600 text-white hover:bg-amber-700 disabled:bg-amber-300"
+                          disabled={savingEdit || !editingTitle.trim()}
+                          onClick={() => void saveEditedAction()}
+                        >
+                          {savingEdit ? 'Guardant...' : 'Guardar canvis'}
+                        </Button>
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Data limit</div>
-                      {a.dueAt ? (
-                        <span className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 text-[11px] font-medium text-slate-600">
-                          {formatDateString(a.dueAt) ?? a.dueAt.slice(0, 10)}
-                        </span>
-                      ) : (
-                        <span className="inline-flex h-8 items-center text-xs text-slate-400">Sense data</span>
-                      )}
+                  ) : (
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_150px_130px_minmax(260px,340px)_auto] xl:items-end">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">{a.title}</p>
+                        {a.description ? (
+                          <p className="mt-1 truncate text-xs leading-relaxed text-slate-500" title={a.description}>
+                            {a.description}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-slate-400">Sense descripcio</p>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Data limit</div>
+                        {a.dueAt ? (
+                          <span className="inline-flex h-8 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 text-[11px] font-medium text-slate-600">
+                            {formatDateString(a.dueAt) ?? a.dueAt.slice(0, 10)}
+                          </span>
+                        ) : (
+                          <span className="inline-flex h-8 items-center text-xs text-slate-400">Sense data</span>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Estat</div>
+                        <ActionRowStatusSelect
+                          value={a.status}
+                          disabled={!canChangeActionStatus(a)}
+                          onValueChange={(v) => void patchAction(a.id, { status: v })}
+                        />
+                      </div>
+                      <div>
+                        <ActionRowDeptAssignInline action={a} patchAction={patchAction} />
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-2 xl:pb-0.5">
+                        <IconActionButton
+                          icon={Pencil}
+                          label="Editar accio"
+                          onClick={() => beginEditAction(a)}
+                        />
+                        <IconActionButton
+                          icon={Trash2}
+                          label={deletingActionId === a.id ? 'Eliminant accio' : 'Eliminar accio'}
+                          tone="danger"
+                          disabled={deletingActionId === a.id}
+                          onClick={() => void deleteAction(a)}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Estat</div>
-                      <ActionRowStatusSelect
-                        value={a.status}
-                        disabled={!canChangeActionStatus(a)}
-                        onValueChange={(v) => void patchAction(a.id, { status: v })}
-                      />
-                    </div>
-                    <div>
-                      <ActionRowDeptAssignInline action={a} patchAction={patchAction} />
-                    </div>
-                  </div>
+                  )}
                 </li>
               ))}
             </ul>

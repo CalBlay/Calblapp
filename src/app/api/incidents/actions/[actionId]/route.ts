@@ -197,3 +197,43 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ actionId: str
     return NextResponse.json({ error: 'Error intern' }, { status: 500 })
   }
 }
+
+export async function DELETE(_req: Request, ctx: { params: Promise<{ actionId: string }> }) {
+  try {
+    const auth = await requireIncidentsModuleView()
+    if (!auth.ok) return auth.res
+    const user = auth.user
+
+    const { actionId } = await ctx.params
+    const id = String(actionId || '').trim()
+    if (!id) return NextResponse.json({ error: 'Id invalid' }, { status: 400 })
+
+    const ref = firestoreAdmin.collection('incident_actions').doc(id)
+    const snap = await ref.get()
+    if (!snap.exists) {
+      return NextResponse.json({ error: 'Accio no trobada' }, { status: 404 })
+    }
+
+    const canEditModule = await canEditIncidentsModule(user)
+    const createdById = String(snap.get('createdById') || '').trim()
+    const createdByName = String(snap.get('createdByName') || '').trim()
+    const userId = String(user.id || '').trim()
+    const userCandidates = [
+      normalizeComparableText(user.name),
+      normalizeComparableText(user.email),
+    ].filter(Boolean)
+    const isOwner =
+      (userId && userId === createdById) ||
+      (!!createdByName && userCandidates.includes(normalizeComparableText(createdByName)))
+
+    if (!canEditModule && !isOwner) {
+      return NextResponse.json({ error: 'Sense permisos per eliminar l accio' }, { status: 403 })
+    }
+
+    await ref.delete()
+    return NextResponse.json({ ok: true }, { status: 200 })
+  } catch (e) {
+    console.error('[incidents/actions DELETE]', e)
+    return NextResponse.json({ error: 'Error intern' }, { status: 500 })
+  }
+}
