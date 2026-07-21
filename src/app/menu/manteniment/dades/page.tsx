@@ -32,7 +32,6 @@ import {
   type SupplierRow,
 } from './types'
 import { parseFetchJson } from '@/lib/parseFetchJson'
-import { buildControlledMaintenanceLocations } from '@/lib/maintenanceLocationCatalog'
 
 export default function MaintenanceDataPage() {
   const { setContent } = useFilters()
@@ -51,6 +50,7 @@ export default function MaintenanceDataPage() {
   const [resolutionCategorySearch, setResolutionCategorySearch] = useState('')
   const [centerSearch, setCenterSearch] = useState('')
   const [centerTipusFilter, setCenterTipusFilter] = useState<'all' | 'propi' | 'extern'>('all')
+  const [showCreateMachine, setShowCreateMachine] = useState(false)
   const [centers, setCenters] = useState<CenterRow[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -87,7 +87,7 @@ export default function MaintenanceDataPage() {
 
       setSelectedMachineId((current) => {
         const stillExists = current && nextMachines.some((item: MachineRow) => item.id === current)
-        const nextId = stillExists ? current : nextMachines[0]?.id || null
+        const nextId = stillExists ? current : null
         const selected = nextMachines.find((item: MachineRow) => item.id === nextId)
         setMachineForm(selected ? buildMachineForm(selected) : emptyMachine)
         return nextId
@@ -176,17 +176,21 @@ export default function MaintenanceDataPage() {
     const q = machineSearch.trim().toLowerCase()
     if (!q) return machines
     return machines.filter((item) =>
-      [item.code, item.name, item.location, item.brand, item.model, item.supplierName]
+      [
+        item.code,
+        item.name,
+        item.center,
+        item.location,
+        item.zone,
+        item.brand,
+        item.model,
+        item.supplierName,
+      ]
         .join(' ')
         .toLowerCase()
         .includes(q)
     )
   }, [machineSearch, machines])
-
-  const machineLocationOptions = useMemo(
-    () => buildControlledMaintenanceLocations(centers),
-    [centers]
-  )
 
   const filteredSuppliers = useMemo(() => {
     const q = supplierSearch.trim().toLowerCase()
@@ -290,6 +294,10 @@ export default function MaintenanceDataPage() {
   const saveMachine = async () => {
     setSaving(true)
     try {
+      if (!machineForm.center.trim()) {
+        window.alert('Cal seleccionar un centre valid per la maquina.')
+        return
+      }
       if (!machineForm.location.trim()) {
         window.alert('Cal seleccionar una ubicacio valida per la maquina.')
         return
@@ -309,6 +317,7 @@ export default function MaintenanceDataPage() {
         body: JSON.stringify(payload),
       })
       if (!res.ok) throw new Error('save_failed')
+      setShowCreateMachine(false)
       await loadMachinesData()
     } finally {
       setSaving(false)
@@ -549,19 +558,30 @@ export default function MaintenanceDataPage() {
             loading={loading}
             saving={saving}
             filteredMachines={filteredMachines}
-            locationOptions={machineLocationOptions}
+            centers={centers}
             suppliers={suppliers}
+            showCreateMachine={showCreateMachine}
             selectedMachine={selectedMachine}
             selectedMachineId={selectedMachineId}
             machineForm={machineForm}
             machineStats={machineStats}
             machineStatsById={machineDataIndex.machineStatsById}
             onSelectMachine={(machine) => {
+              if (selectedMachineId === machine.id) {
+                setSelectedMachineId(null)
+                setMachineForm(emptyMachine)
+                return
+              }
+              setShowCreateMachine(false)
               setSelectedMachineId(machine.id)
               setMachineForm(buildMachineForm(machine))
             }}
             onMachineFormChange={(updater) => setMachineForm((prev) => updater(prev))}
             onResetMachine={() => {
+              if (showCreateMachine) {
+                setMachineForm(emptyMachine)
+                return
+              }
               setSelectedMachineId(null)
               setMachineForm(emptyMachine)
             }}
@@ -602,17 +622,29 @@ export default function MaintenanceDataPage() {
               onTipusFilterChange={setCenterTipusFilter}
               onSaved={(id, patch) => {
                 setCenters((prev) =>
-                  prev.map((row) =>
-                    row.id === id
-                      ? {
-                          ...row,
-                          travelMinutes: patch.travelMinutes,
-                          ...(patch.internalLocations !== undefined
-                            ? { internalLocations: patch.internalLocations }
-                            : {}),
-                        }
-                      : row
-                  )
+                  patch.created
+                    ? [...prev, patch.created].sort((a, b) =>
+                        a.name.localeCompare(b.name, 'ca', { sensitivity: 'base' })
+                      )
+                    : patch.deleted
+                      ? prev.filter((row) => row.id !== id)
+                      : prev.map((row) =>
+                          row.id === id
+                            ? {
+                                ...row,
+                                travelMinutes: patch.travelMinutes,
+                                ...(patch.name !== undefined ? { name: patch.name } : {}),
+                                ...(patch.code !== undefined ? { code: patch.code } : {}),
+                                ...(patch.tipus !== undefined ? { tipus: patch.tipus } : {}),
+                                ...(patch.internalLocations !== undefined
+                                  ? { internalLocations: patch.internalLocations }
+                                  : {}),
+                                ...(patch.locationNodes !== undefined
+                                  ? { locationNodes: patch.locationNodes }
+                                  : {}),
+                              }
+                            : row
+                        )
                 )
               }}
             />
@@ -666,6 +698,7 @@ export default function MaintenanceDataPage() {
         <FloatingAddButton
           onClick={() => {
             if (tab === 'machines') {
+              setShowCreateMachine(true)
               setSelectedMachineId(null)
               setMachineForm(emptyMachine)
               return

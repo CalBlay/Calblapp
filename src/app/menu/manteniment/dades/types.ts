@@ -3,7 +3,9 @@ export type MachineRow = {
   code: string
   name: string
   label: string
+  center?: string
   location?: string
+  zone?: string
   brand?: string
   model?: string
   serialNumber?: string
@@ -19,6 +21,12 @@ export type CenterRow = {
   tipus: string
   travelMinutes: number
   internalLocations?: string[]
+  locationNodes?: CenterLocationNode[]
+}
+
+export type CenterLocationNode = {
+  name: string
+  zones?: string[]
 }
 
 export type SupplierRow = {
@@ -43,7 +51,9 @@ export const emptyMachine = {
   id: '',
   code: '',
   name: '',
+  center: '',
   location: '',
+  zone: '',
   brand: '',
   model: '',
   serialNumber: '',
