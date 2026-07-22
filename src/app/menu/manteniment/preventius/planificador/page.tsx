@@ -179,6 +179,14 @@ function normalizePlannerTicketStatus(value?: string | null) {
   return 'nou'
 }
 
+function getExternalizedPlannerStatusMeta(status?: string | null) {
+  const normalized = normalizePlannerTicketStatus(status)
+  return {
+    label: TICKET_STATUS_FILTER_STYLES[normalized].label,
+    className: TICKET_STATUS_FILTER_STYLES[normalized].active,
+  }
+}
+
 const MAINTENANCE_TICKETS_PATH = '/menu/manteniment/tickets'
 
 export default function PreventiusPlanificadorPage() {
@@ -1052,7 +1060,7 @@ export default function PreventiusPlanificadorPage() {
           centers={filterCenters}
           locations={filterLocations}
           zones={filterZones}
-          visibleFilters={['responsable', 'center', 'location', 'zone']}
+          visibleFilters={[]}
           modeDefault={isMonthMode ? 'month' : 'week'}
           modeOptions={['week', 'month']}
         />
@@ -1241,6 +1249,10 @@ export default function PreventiusPlanificadorPage() {
                             {summary.highlights.map((item) => {
                               const priority = item.priority || 'normal'
                               const tone = getPriorityTone(item.kind, priority)
+                              const externalStatusMeta =
+                                item.kind === 'ticket' && item.workflowStage === 'externalized'
+                                  ? getExternalizedPlannerStatusMeta(item.status)
+                                  : null
                               const displayTitle =
                                 item.kind === 'ticket'
                                   ? item.title.replace(/^[A-Z]{2,}\d+\s*-\s*/i, '').trim() || item.title
@@ -1251,6 +1263,25 @@ export default function PreventiusPlanificadorPage() {
                                   className={`rounded-lg border px-2 py-1 text-[11px] ${tone.card}`}
                                 >
                                   <div className="truncate font-semibold">{displayTitle}</div>
+                                  {externalStatusMeta ? (
+                                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                                      {item.location ? (
+                                        <span className="inline-flex rounded-full bg-white/80 px-1.5 py-0.5 text-[9px] font-medium text-slate-700">
+                                          {item.location}
+                                        </span>
+                                      ) : null}
+                                      {String(item.supplierName || '').trim() ? (
+                                        <span className="inline-flex rounded-full bg-violet-100/80 px-1.5 py-0.5 text-[9px] font-medium text-violet-900">
+                                          {String(item.supplierName || '').trim()}
+                                        </span>
+                                      ) : null}
+                                      <span
+                                        className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${externalStatusMeta.className}`}
+                                      >
+                                        {externalStatusMeta.label}
+                                      </span>
+                                    </div>
+                                  ) : null}
                                   <div className="mt-0.5 truncate text-[10px] text-slate-600">
                                     {item.start}
                                     {item.location ? ` · ${item.location}` : ''}
@@ -1315,6 +1346,10 @@ export default function PreventiusPlanificadorPage() {
                       selectedMonthDay.items.map((item) => {
                         const priority = item.priority || 'normal'
                         const tone = getPriorityTone(item.kind, priority)
+                        const externalStatusMeta =
+                          item.kind === 'ticket' && item.workflowStage === 'externalized'
+                            ? getExternalizedPlannerStatusMeta(item.status)
+                            : null
                         return (
                           <button
                             key={item.id}
@@ -1328,6 +1363,25 @@ export default function PreventiusPlanificadorPage() {
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <div className={typography('sectionTitle')}>{item.title}</div>
+                                {externalStatusMeta ? (
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    {item.location ? (
+                                      <span className="inline-flex rounded-full bg-white/80 px-2 py-1 text-[10px] font-medium text-slate-700">
+                                        {item.location}
+                                      </span>
+                                    ) : null}
+                                    {String(item.supplierName || '').trim() ? (
+                                      <span className="inline-flex rounded-full bg-violet-100/80 px-2 py-1 text-[10px] font-medium text-violet-900">
+                                        {String(item.supplierName || '').trim()}
+                                      </span>
+                                    ) : null}
+                                    <span
+                                      className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${externalStatusMeta.className}`}
+                                    >
+                                      {externalStatusMeta.label}
+                                    </span>
+                                  </div>
+                                ) : null}
                                 <div className={`mt-1 ${typography('bodySm')}`}>
                                   {item.start} - {item.end}
                                   {item.location ? ` · ${item.location}` : ''}
@@ -1849,6 +1903,10 @@ export default function PreventiusPlanificadorPage() {
                           const priority: NonNullable<ScheduledItem['priority']> =
                             item.priority || 'normal'
                           const tone = getPriorityTone(item.kind, priority)
+                          const externalStatusMeta =
+                            item.kind === 'ticket' && item.workflowStage === 'externalized'
+                              ? getExternalizedPlannerStatusMeta(item.status)
+                              : null
                           const visibleWorkers = item.workers.slice(0, 2)
                           const providerLabel =
                             item.kind === 'ticket' && item.workflowStage === 'externalized'
@@ -1892,20 +1950,35 @@ export default function PreventiusPlanificadorPage() {
                               <div className="font-semibold leading-snug line-clamp-2">
                                 {displayTitle}
                               </div>
-                              {item.location && (
+                              {externalStatusMeta ? (
+                                <div className="mt-1 flex flex-wrap items-center gap-1">
+                                  {item.location ? (
+                                    <span className="inline-flex items-center rounded-full bg-white/80 px-1.5 py-0.5 text-[9px] font-medium text-slate-700">
+                                      {item.location}
+                                    </span>
+                                  ) : null}
+                                  {providerLabel ? (
+                                    <span
+                                      className="inline-flex items-center rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-medium text-violet-900"
+                                      title={providerLabel}
+                                    >
+                                      {providerLabel}
+                                    </span>
+                                  ) : null}
+                                  <span
+                                    className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${externalStatusMeta.className}`}
+                                  >
+                                    {externalStatusMeta.label}
+                                  </span>
+                                </div>
+                              ) : null}
+                              {!externalStatusMeta && item.location && (
                                 <div className="mt-1 line-clamp-1 text-[10px] text-gray-600">
                                   {item.location}
                                 </div>
                               )}
                               <div className="mt-1 flex flex-wrap items-center gap-1">
-                                {providerLabel ? (
-                                  <span
-                                    className="inline-flex items-center rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800"
-                                    title={providerLabel}
-                                  >
-                                    {providerLabel}
-                                  </span>
-                                ) : (
+                                {!providerLabel ? (
                                   <>
                                     {visibleWorkers.map((worker) => (
                                       <span
@@ -1928,7 +2001,7 @@ export default function PreventiusPlanificadorPage() {
                                       </span>
                                     )}
                                   </>
-                                )}
+                                ) : null}
                               </div>
                             </div>
                           )

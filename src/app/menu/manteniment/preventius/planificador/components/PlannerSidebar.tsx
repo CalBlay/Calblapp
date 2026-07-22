@@ -5,6 +5,39 @@ import type { DueTemplate, ScheduledItem, TicketCard } from '../types'
 import { isTicketStaleAlert, STALE_TICKET_CARD_CLASS_COMPACT } from '@/lib/maintenanceTicketAlerts'
 import { formatTicketCreatedAt, getAgeBadgeClass, getAgeLabel } from '../utils'
 
+function normalizeExternalizedTicketStatus(value?: string | null) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'validat') return 'validat'
+  if (normalized === 'fet' || normalized === 'resolut') return 'fet'
+  if (normalized === 'espera') return 'espera'
+  if (normalized === 'en_curs' || normalized === 'en curs') return 'en_curs'
+  if (normalized === 'assignat') return 'assignat'
+  if (normalized === 'reassignat') return 'reassignat'
+  if (normalized === 'no_fet' || normalized === 'no fet') return 'no_fet'
+  return 'nou'
+}
+
+function getExternalizedTicketStatusMeta(status?: string | null) {
+  switch (normalizeExternalizedTicketStatus(status)) {
+    case 'validat':
+      return { label: 'Validat', className: 'bg-violet-100 text-violet-800' }
+    case 'fet':
+      return { label: 'Fet', className: 'bg-emerald-100 text-emerald-800' }
+    case 'espera':
+      return { label: 'Espera', className: 'bg-slate-200 text-slate-800' }
+    case 'en_curs':
+      return { label: 'En curs', className: 'bg-amber-100 text-amber-800' }
+    case 'assignat':
+      return { label: 'Assignat', className: 'bg-sky-100 text-sky-800' }
+    case 'reassignat':
+      return { label: 'Reassignat', className: 'bg-orange-100 text-orange-800' }
+    case 'no_fet':
+      return { label: 'No fet', className: 'bg-rose-100 text-rose-800' }
+    default:
+      return { label: 'Nou', className: 'bg-emerald-100 text-emerald-800' }
+  }
+}
+
 function dayLabelForItem(dayIndex: number, dayLabels?: string[]) {
   const label = dayLabels?.[dayIndex]
   if (label != null && label !== '') return label
@@ -380,7 +413,9 @@ export default function PlannerSidebar({
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Externalitzats
             </div>
-            {externalizedTickets.map((item) => (
+            {externalizedTickets.map((item) => {
+              const statusMeta = getExternalizedTicketStatusMeta(item.status)
+              return (
               <button
                 key={`external-${item.id}`}
                 type="button"
@@ -400,9 +435,14 @@ export default function PlannerSidebar({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="font-semibold leading-snug">{item.code} - {item.title}</div>
-                  <span className="rounded-full border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
-                    Obrir
-                  </span>
+                  <div className="flex flex-wrap items-center justify-end gap-1">
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${statusMeta.className}`}>
+                      {statusMeta.label}
+                    </span>
+                    <span className="rounded-full border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
+                      Obrir
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-1 text-[11px] text-violet-800">
                   {item.location || '-'}{item.machine ? ` · ${item.machine}` : ''}
@@ -430,12 +470,15 @@ export default function PlannerSidebar({
                   ) : null}
                 </div>
               </button>
-            ))}
+              )
+            })}
           </div>
         ) : null}
 
         {tab === 'externalized' &&
-          externalizedTickets.map((item) => (
+          externalizedTickets.map((item) => {
+            const statusMeta = getExternalizedTicketStatusMeta(item.status)
+            return (
             <button
               key={`external-only-${item.id}`}
               type="button"
@@ -455,9 +498,14 @@ export default function PlannerSidebar({
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="font-semibold leading-snug">{item.code} - {item.title}</div>
-                <span className="rounded-full border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
-                  Obrir
-                </span>
+                <div className="flex flex-wrap items-center justify-end gap-1">
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${statusMeta.className}`}>
+                    {statusMeta.label}
+                  </span>
+                  <span className="rounded-full border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
+                    Obrir
+                  </span>
+                </div>
               </div>
               <div className="mt-1 text-[11px] text-violet-800">
                 {item.location || '-'}{item.machine ? ` · ${item.machine}` : ''}
@@ -484,7 +532,8 @@ export default function PlannerSidebar({
                 ) : null}
               </div>
             </button>
-          ))}
+            )
+          })}
 
         {tab === 'preventius' && showScheduledInSidebar && scheduledPreventiusOnCalendar.length > 0 ? (
           <div className={desktop ? 'mt-3 border-t border-slate-200 pt-3' : 'mt-6 border-t border-slate-200 pt-4'}>
