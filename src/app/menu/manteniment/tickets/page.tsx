@@ -31,13 +31,25 @@ import {
   isCuinaCentralDepartment,
   isMaintenanceTicketCreatorOnlyUser,
   canCreateMaintenanceTicketsAsReporter,
-  getMaintenanceTicketScope,
   type MaintenanceTicketScope,
 } from '@/lib/maintenanceTicketCreators'
 import { isQualitatCuinaCentralTicketViewer } from '@/lib/accessControl'
 import { markTicketSeen } from '@/lib/maintenanceSeen'
 import { formatDateTimeValue } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
+import {
+  MAINTENANCE_PRIORITY_BADGE_CLASSES,
+  MAINTENANCE_PRIORITY_LABELS,
+  MAINTENANCE_STATUS_BADGE_CLASSES,
+  MAINTENANCE_STATUS_LABELS,
+} from '@/lib/maintenanceStatus'
+import {
+  getMaintenanceCenterOptions,
+  getMaintenanceLocationsForCenter,
+  getMaintenanceZones,
+  resolveMaintenanceSite,
+} from '@/lib/maintenanceLocationCatalog'
+import { matchesMaintenanceTicketDateFilter } from '@/lib/maintenanceDateFilter'
 import { useMaintenanceTickets } from './useMaintenanceTickets'
 import type { Ticket, TicketPriority, TicketStatus } from './types'
 import TicketsList from './components/TicketsList'
@@ -49,6 +61,9 @@ import { createMaintenanceOpsWorkspaceConfig } from '@/lib/messaging/maintenance
 import MaintenanceNotificationsBell from '../components/MaintenanceNotificationsBell'
 
 const opsRoomsFetcher = (url: string) => fetch(url).then((r) => r.json())
+
+const STATUS_LABELS = MAINTENANCE_STATUS_LABELS
+const PRIORITY_LABELS = MAINTENANCE_PRIORITY_LABELS
 
 type SessionUser = {
   id?: string
@@ -64,46 +79,11 @@ const normalizeDept = (raw?: string) =>
     .toLowerCase()
     .trim()
 
-const STATUS_LABELS: Record<TicketStatus, string> = {
-  nou: 'Nou',
-  assignat: 'Assignat',
-  reassignat: 'Reassignat',
-  en_curs: 'En curs',
-  espera: 'Espera',
-  fet: 'Fet',
-  no_fet: 'No fet',
-  validat: 'Validat',
-}
-
-const PRIORITY_LABELS: Record<TicketPriority, string> = {
-  urgent: 'Urgent',
-  alta: 'Alta',
-  normal: 'Normal',
-  baixa: 'Baixa',
-}
-
-const statusBadgeClasses: Record<TicketStatus, string> = {
-  nou: 'bg-emerald-100 text-emerald-800',
-  assignat: 'bg-blue-100 text-blue-800',
-  reassignat: 'bg-orange-100 text-orange-800',
-  en_curs: 'bg-amber-100 text-amber-800',
-  espera: 'bg-slate-100 text-slate-700',
-  fet: 'bg-green-100 text-green-800',
-  no_fet: 'bg-rose-100 text-rose-700',
-  validat: 'bg-purple-100 text-purple-800',
-}
-
-const priorityBadgeClasses: Record<TicketPriority, string> = {
-  urgent: 'bg-red-100 text-red-700',
-  alta: 'bg-orange-100 text-orange-700',
-  normal: 'bg-slate-100 text-slate-700',
-  baixa: 'bg-blue-100 text-blue-700',
-}
-
 const KPI_STYLES = {
   inbox: 'border-amber-200 bg-amber-50/70',
   planned: 'border-sky-200 bg-sky-50/70',
-  active: 'border-blue-200 bg-blue-50/70',
+  in_progress: 'border-blue-200 bg-blue-50/70',
+  waiting: 'border-slate-300 bg-slate-50/80',
   validation: 'border-emerald-200 bg-emerald-50/70',
   external: 'border-violet-200 bg-violet-50/70',
   closed: 'border-fuchsia-200 bg-fuchsia-50/70',
@@ -112,7 +92,8 @@ const KPI_STYLES = {
 const INTERNAL_BUCKET_LABELS = {
   inbox: 'Nous i reoberts',
   planned: 'Planificats',
-  active: 'En curs / espera',
+  in_progress: 'En curs',
+  waiting: 'En espera',
   validation: 'Pendents validar',
   external: 'Externalitzats',
   closed: 'Validats',
@@ -127,7 +108,7 @@ const EXTERNAL_BUCKET_LABELS = {
 
 const EXTERNAL_KPI_STYLES = {
   nou: KPI_STYLES.inbox,
-  assignat: KPI_STYLES.active,
+  assignat: KPI_STYLES.in_progress,
   fet: KPI_STYLES.validation,
   externalitzat: KPI_STYLES.external,
 } as const
@@ -193,16 +174,22 @@ export default function MaintenanceTicketsPage() {
     setCenterQuery,
     createLocation,
     setCreateLocation,
+    createZone,
+    setCreateZone,
     createMachine,
     setCreateMachine,
     locationQuery,
     setLocationQuery,
+    zoneQuery,
+    setZoneQuery,
     machineQuery,
     setMachineQuery,
     showCenterList,
     setShowCenterList,
     showLocationList,
     setShowLocationList,
+    showZoneList,
+    setShowZoneList,
     showMachineList,
     setShowMachineList,
     createDescription,
@@ -266,6 +253,7 @@ export default function MaintenanceTicketsPage() {
     groupedTickets,
     ticketSummary,
     externalReporterSummary,
+    ticketScopeSummary,
   } = useMaintenanceTickets()
 
   const toggleExternalBucket = useCallback(
@@ -288,35 +276,77 @@ export default function MaintenanceTicketsPage() {
     [setFilters]
   )
 
-  const ticketScopeSummary = useMemo(() => {
-    const counts: Record<MaintenanceTicketScope, number> = {
-      restaurants: 0,
-      cuina_central: 0,
-      centres_propis: 0,
-    }
+  const createCenters = catalogCenters
+  const dateScopedSites = useMemo(() => {
+    const sites = tickets
+      .filter((ticket) =>
+        matchesMaintenanceTicketDateFilter({
+          mode: (filters.dateMode ?? 'planned') as MaintenanceDateFilterMode,
+          start: filters.start,
+          end: filters.end,
+          plannedStart: ticket.plannedStart,
+          createdAt: ticket.createdAt,
+        })
+      )
+      .map((ticket) => resolveMaintenanceSite(catalogCenters, ticket.workLocation, ticket.location))
 
-    tickets.forEach((ticket) => {
-      const inRange =
-        (filters.dateMode ?? 'planned') === 'all'
-          ? true
-          : (() => {
-              const from = filters.start || ''
-              const to = filters.end || ''
-              const targetRaw =
-                (filters.dateMode ?? 'planned') === 'planned' ? ticket.plannedStart : ticket.createdAt
-              const target = new Date(targetRaw || 0)
-              if (Number.isNaN(target.getTime())) return false
-              const day = target.toISOString().slice(0, 10)
-              return (!from || day >= from) && (!to || day <= to)
-            })()
-      if (!inRange) return
-      counts[getMaintenanceTicketScope(ticket)] += 1
+    const centerMap = new Map<string, string>()
+    const locationMap = new Map<string, string>()
+    const zoneMap = new Map<string, string>()
+
+    sites.forEach((site) => {
+      if (site.center) centerMap.set(site.center.toLowerCase(), site.center)
+      if (site.location) locationMap.set(`${site.center}__${site.location}`.toLowerCase(), site.location)
+      if (site.zone) zoneMap.set(`${site.center}__${site.location}__${site.zone}`.toLowerCase(), site.zone)
     })
 
-    return counts
-  }, [filters.dateMode, filters.end, filters.start, tickets])
-
-  const createCenters = catalogCenters
+    return {
+      centers: [...centerMap.values()].sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' })),
+      sites,
+    }
+  }, [catalogCenters, filters.dateMode, filters.end, filters.start, tickets])
+  const filterCenters = useMemo(
+    () => dateScopedSites.centers,
+    [dateScopedSites.centers]
+  )
+  const filterLocations = useMemo(
+    () => {
+      const selectedCenter = filters.center && filters.center !== '__all__' ? filters.center : ''
+      if (!selectedCenter) {
+        const unique = new Map<string, string>()
+        dateScopedSites.sites.forEach((site) => {
+          if (!site.location) return
+          unique.set(site.location.toLowerCase(), site.location)
+        })
+        return [...unique.values()].sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }))
+      }
+      const unique = new Map<string, string>()
+      dateScopedSites.sites
+        .filter((site) => site.center === selectedCenter)
+        .forEach((site) => {
+          if (!site.location) return
+          unique.set(site.location.toLowerCase(), site.location)
+        })
+      return [...unique.values()].sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }))
+    },
+    [dateScopedSites.sites, filters.center]
+  )
+  const filterZones = useMemo(
+    () => {
+      const selectedCenter = filters.center && filters.center !== '__all__' ? filters.center : ''
+      const selectedLocation = filters.location && filters.location !== '__all__' ? filters.location : ''
+      const unique = new Map<string, string>()
+      dateScopedSites.sites
+        .filter((site) => !selectedCenter || site.center === selectedCenter)
+        .filter((site) => !selectedLocation || site.location === selectedLocation)
+        .forEach((site) => {
+          if (!site.zone) return
+          unique.set(site.zone.toLowerCase(), site.zone)
+        })
+      return [...unique.values()].sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }))
+    },
+    [dateScopedSites.sites, filters.center, filters.location]
+  )
 
   useEffect(() => {
     setContent(
@@ -399,16 +429,59 @@ export default function MaintenanceTicketsPage() {
               </select>
             </label>
             <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Centre</span>
+              <select
+                value={filters.center ?? '__all__'}
+                onChange={(e) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    center: e.target.value,
+                    location: '__all__',
+                    zone: '__all__',
+                  }))
+                }
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Tots</option>
+                {filterCenters.map((center) => (
+                  <option key={center} value={center}>
+                    {center}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-700">
               <span className="font-medium">Ubicacio</span>
               <select
                 value={filters.location ?? '__all__'}
-                onChange={(e) => setFilters((prev) => ({ ...prev, location: e.target.value }))}
+                onChange={(e) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    location: e.target.value,
+                    zone: '__all__',
+                  }))
+                }
                 className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
               >
                 <option value="__all__">Totes</option>
-                {catalogLocations.map((location) => (
+                {filterLocations.map((location) => (
                   <option key={location} value={location}>
                     {location}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Zona</span>
+              <select
+                value={filters.zone ?? '__all__'}
+                onChange={(e) => setFilters((prev) => ({ ...prev, zone: e.target.value }))}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Totes</option>
+                {filterZones.map((zone) => (
+                  <option key={zone} value={zone}>
+                    {zone}
                   </option>
                 ))}
               </select>
@@ -425,7 +498,9 @@ export default function MaintenanceTicketsPage() {
                 end,
                 status: '__all__',
                 priority: '__all__',
+                center: '__all__',
                 location: '__all__',
+                zone: '__all__',
                 ticketBucket: '__all__',
                 ticketScope: '__all__',
                 dateMode: 'planned' as const,
@@ -439,7 +514,17 @@ export default function MaintenanceTicketsPage() {
     )
 
     return () => setContent(null)
-  }, [canValidate, catalogLocations, dateResetSignal, filters, isExternalReporter, setContent, setFilters])
+  }, [
+    canValidate,
+    dateResetSignal,
+    filterCenters,
+    filterLocations,
+    filterZones,
+    filters,
+    isExternalReporter,
+    setContent,
+    setFilters,
+  ])
 
   const displayStatusLabels: Record<TicketStatus, string> = canValidate
     ? STATUS_LABELS
@@ -449,10 +534,10 @@ export default function MaintenanceTicketsPage() {
       }
 
   const displayStatusBadgeClasses: Record<TicketStatus, string> = canValidate
-    ? statusBadgeClasses
+    ? MAINTENANCE_STATUS_BADGE_CLASSES
     : {
-        ...statusBadgeClasses,
-        validat: statusBadgeClasses.validat,
+        ...MAINTENANCE_STATUS_BADGE_CLASSES,
+        validat: MAINTENANCE_STATUS_BADGE_CLASSES.validat,
       }
 
   const queryTicketId = (searchParams?.get('ticketId') || '').trim()
@@ -692,8 +777,14 @@ export default function MaintenanceTicketsPage() {
                       {PRIORITY_LABELS[filters.priority as TicketPriority]}
                     </CorporateActiveFilterChip>
                   ) : null}
+                  {!isExternalReporter && filters.center && filters.center !== '__all__' ? (
+                    <CorporateActiveFilterChip>{filters.center}</CorporateActiveFilterChip>
+                  ) : null}
                   {!isExternalReporter && filters.location && filters.location !== '__all__' ? (
                     <CorporateActiveFilterChip>{filters.location}</CorporateActiveFilterChip>
+                  ) : null}
+                  {!isExternalReporter && filters.zone && filters.zone !== '__all__' ? (
+                    <CorporateActiveFilterChip>{filters.zone}</CorporateActiveFilterChip>
                   ) : null}
                 </CorporateFiltersActiveRow>
               </div>
@@ -705,7 +796,7 @@ export default function MaintenanceTicketsPage() {
         {error && <p className="text-sm text-red-500">{error}</p>}
 
         {isExternalReporter ? (
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {(Object.keys(EXTERNAL_BUCKET_LABELS) as Array<keyof typeof EXTERNAL_BUCKET_LABELS>).map(
               (bucket) => {
                 const active = filters.ticketBucket === bucket
@@ -714,12 +805,12 @@ export default function MaintenanceTicketsPage() {
                     key={bucket}
                     type="button"
                     onClick={() => toggleExternalBucket(bucket)}
-                    className={`rounded-2xl border px-4 py-3 text-left transition ${
+                    className={`rounded-xl border px-3 py-2.5 text-left transition ${
                       EXTERNAL_KPI_STYLES[bucket]
                     } ${active ? 'ring-2 ring-emerald-500 ring-offset-1' : 'hover:brightness-[0.98]'}`}
                   >
                     <div className={typography('eyebrow')}>{EXTERNAL_BUCKET_LABELS[bucket]}</div>
-                    <div className={`mt-2 ${typography('kpiValue')}`}>
+                    <div className="mt-1 text-3xl font-semibold leading-none text-slate-900">
                       {externalReporterSummary[bucket]}
                     </div>
                   </button>
@@ -728,12 +819,13 @@ export default function MaintenanceTicketsPage() {
             )}
           </section>
         ) : (
-          <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">
+          <section className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
             {(
               [
                 { key: 'inbox', value: ticketSummary.inbox, style: KPI_STYLES.inbox },
                 { key: 'planned', value: ticketSummary.planned, style: KPI_STYLES.planned },
-                { key: 'active', value: ticketSummary.active, style: KPI_STYLES.active },
+                { key: 'in_progress', value: ticketSummary.inProgress, style: KPI_STYLES.in_progress },
+                { key: 'waiting', value: ticketSummary.waiting, style: KPI_STYLES.waiting },
                 { key: 'validation', value: ticketSummary.pendingValidation, style: KPI_STYLES.validation },
                 { key: 'external', value: ticketSummary.externalized, style: KPI_STYLES.external },
                 { key: 'closed', value: ticketSummary.closed, style: KPI_STYLES.closed },
@@ -745,12 +837,12 @@ export default function MaintenanceTicketsPage() {
                   key={item.key}
                   type="button"
                   onClick={() => toggleInternalBucket(item.key)}
-                  className={`rounded-2xl border px-4 py-3 text-left transition ${item.style} ${
+                  className={`rounded-xl border px-3 py-2.5 text-left transition ${item.style} ${
                     active ? 'ring-2 ring-emerald-500 ring-offset-1' : 'hover:brightness-[0.98]'
                   }`}
                 >
                   <div className={typography('eyebrow')}>{INTERNAL_BUCKET_LABELS[item.key]}</div>
-                  <div className={`mt-2 ${typography('kpiValue')}`}>{item.value}</div>
+                  <div className="mt-1 text-3xl font-semibold leading-none text-slate-900">{item.value}</div>
                 </button>
               )
             })}
@@ -784,9 +876,9 @@ export default function MaintenanceTicketsPage() {
           onOpenOps={openTicketOps}
           formatDateTime={formatDateTime}
           statusBadgeClasses={displayStatusBadgeClasses}
-          priorityBadgeClasses={priorityBadgeClasses}
+          priorityBadgeClasses={MAINTENANCE_PRIORITY_BADGE_CLASSES}
           statusLabels={displayStatusLabels}
-          priorityLabels={PRIORITY_LABELS}
+          priorityLabels={MAINTENANCE_PRIORITY_LABELS}
         />
 
         {hasMoreTickets && (
@@ -816,8 +908,14 @@ export default function MaintenanceTicketsPage() {
             setLocationQuery={setLocationQuery}
             createLocation={createLocation}
             setCreateLocation={setCreateLocation}
+            zoneQuery={zoneQuery}
+            setZoneQuery={setZoneQuery}
+            createZone={createZone}
+            setCreateZone={setCreateZone}
             showCenterList={showCenterList}
             setShowCenterList={setShowCenterList}
+            showZoneList={showZoneList}
+            setShowZoneList={setShowZoneList}
             machineQuery={machineQuery}
             setMachineQuery={setMachineQuery}
             createMachine={createMachine}
@@ -831,7 +929,7 @@ export default function MaintenanceTicketsPage() {
             setShowLocationList={setShowLocationList}
             showMachineList={showMachineList}
             setShowMachineList={setShowMachineList}
-            priorityLabels={PRIORITY_LABELS}
+            priorityLabels={MAINTENANCE_PRIORITY_LABELS}
             onClose={() => setShowCreate(false)}
             onCreate={handleCreateTicket}
             createBusy={createBusy}

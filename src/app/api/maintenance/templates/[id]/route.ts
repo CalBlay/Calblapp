@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import {
+  buildMaintenanceTemplateSitePayload,
+  normalizeMaintenanceTemplateSite,
+} from '@/lib/maintenanceTemplateSite'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 import {
   ROLES_MAINTENANCE_TEMPLATES_READ,
@@ -12,9 +16,11 @@ export const dynamic = 'force-dynamic'
 type TemplateSection = { location: string; items: { label: string }[] }
 type TemplatePatch = {
   name?: string
-  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | null
+  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'semestral' | 'yearly' | null
   lastDone?: string | null
+  center?: string
   location?: string
+  zone?: string
   primaryOperator?: string
   backupOperator?: string
   active?: boolean
@@ -31,6 +37,17 @@ type TemplateDocument = TemplatePatch & {
   updatedByName?: string
 }
 
+function normalizeTemplateDocument(docId: string, data: TemplateDocument) {
+  const site = normalizeMaintenanceTemplateSite(data)
+  return {
+    id: docId,
+    ...data,
+    center: site.center,
+    location: site.location,
+    zone: site.zone,
+  }
+}
+
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
@@ -42,7 +59,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const ref = db.collection('maintenancePreventiusTemplates').doc(id)
     const snap = await ref.get()
     if (!snap.exists) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    return NextResponse.json({ template: { id: snap.id, ...(snap.data() as TemplateDocument) } })
+    return NextResponse.json({
+      template: normalizeTemplateDocument(snap.id, snap.data() as TemplateDocument),
+    })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -64,7 +83,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (body.name !== undefined) patch.name = String(body.name || '').trim()
     if (body.periodicity !== undefined) patch.periodicity = body.periodicity
     if (body.lastDone !== undefined) patch.lastDone = body.lastDone
-    if (body.location !== undefined) patch.location = String(body.location || '').trim()
+    if (body.center !== undefined || body.location !== undefined || body.zone !== undefined) {
+      Object.assign(
+        patch,
+        buildMaintenanceTemplateSitePayload({
+          center: body.center,
+          location: body.location,
+          zone: body.zone,
+        })
+      )
+    }
     if (body.primaryOperator !== undefined)
       patch.primaryOperator = String(body.primaryOperator || '').trim()
     if (body.backupOperator !== undefined)

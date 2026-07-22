@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, memo } from 'react'
 import { usePathname } from 'next/navigation'
-import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilters'
+import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { startOfWeek, endOfWeek, format } from 'date-fns'
 import { useFilters } from '@/context/FiltersContext'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
@@ -22,14 +22,16 @@ export type FiltersState = {
   ln?: string
   responsable?: string
   commercial?: string
+  center?: string
   location?: string
+  zone?: string
   status?: string
   priority?: string
   ticketBucket?: string
   ticketScope?: string
 }
 
-type FilterKey = 'ln' | 'responsable' | 'commercial' | 'location'
+type FilterKey = 'ln' | 'responsable' | 'commercial' | 'center' | 'location' | 'zone'
 
 export type FiltersBarProps = {
   id?: string
@@ -41,7 +43,9 @@ export type FiltersBarProps = {
   lnOptions?: string[]
   responsables?: string[]
   commercials?: string[]
+  centers?: string[]
   locations?: string[]
+  zones?: string[]
   collapseOnMobile?: boolean
   statusOptions?: { value: string; label: string }[]
   statusLabel?: string
@@ -57,11 +61,13 @@ export default function FiltersBar({
   setFilters,
   onReset,
   visibleFilters = [],
-  hiddenFilters = ['ln', 'responsable', 'location'],
+  hiddenFilters = ['ln', 'responsable', 'center', 'location', 'zone'],
   lnOptions = [],
   responsables = [],
   commercials = [],
+  centers = [],
   locations = [],
+  zones = [],
   collapseOnMobile = false,
   statusOptions = [],
   statusLabel = 'Estat',
@@ -91,43 +97,28 @@ export default function FiltersBar({
 
   const handleDatesChange = useCallback(
     (f: SmartFiltersChange) => {
-      if (f.start && f.end) {
-        if (f.mode === 'month') {
-          setFilters({
-            start: f.start,
-            end: f.end,
-            mode: 'month',
-          })
-          return
-        }
-
-        if (f.mode === 'day') {
-          setFilters({
-            start: f.start,
-            end: f.end,
-            mode: 'day',
-          })
-          return
-        }
-
-        if (f.mode === 'range') {
-          setFilters({
-            start: f.start,
-            end: f.end,
-            mode: 'range',
-          })
-          return
-        }
-
-        const base = new Date(f.start)
-        const weekStart = startOfWeek(base, { weekStartsOn: 1 })
-        const weekEnd = endOfWeek(base, { weekStartsOn: 1 })
-        setFilters({
-          start: format(weekStart, 'yyyy-MM-dd'),
-          end: format(weekEnd, 'yyyy-MM-dd'),
-          mode: 'week',
-        })
+      if (!f.start || !f.end) return
+      if (f.mode === 'month') {
+        setFilters({ start: f.start, end: f.end, mode: 'month' })
+        return
       }
+      if (f.mode === 'day') {
+        setFilters({ start: f.start, end: f.end, mode: 'day' })
+        return
+      }
+      if (f.mode === 'range') {
+        setFilters({ start: f.start, end: f.end, mode: 'range' })
+        return
+      }
+
+      const base = new Date(f.start)
+      const weekStart = startOfWeek(base, { weekStartsOn: 1 })
+      const weekEnd = endOfWeek(base, { weekStartsOn: 1 })
+      setFilters({
+        start: format(weekStart, 'yyyy-MM-dd'),
+        end: format(weekEnd, 'yyyy-MM-dd'),
+        mode: 'week',
+      })
     },
     [setFilters]
   )
@@ -186,15 +177,51 @@ export default function FiltersBar({
           </CorporateFilterField>
         )}
 
+        {visibleFilters.includes('center') && (
+          <CorporateFilterField label="Centre" className="shrink-0">
+            <CorporateFilterSelect
+              minWidthClassName="min-w-[180px]"
+              value={filters.center ?? '__all__'}
+              onChange={(e) =>
+                setFilters({ center: e.target.value, location: '__all__', zone: '__all__' })
+              }
+            >
+              <option value="__all__">Tots</option>
+              {centers.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </CorporateFilterSelect>
+          </CorporateFilterField>
+        )}
+
         {visibleFilters.includes('location') && (
           <CorporateFilterField label="Ubicació" className="shrink-0">
             <CorporateFilterSelect
               minWidthClassName="min-w-[170px]"
               value={filters.location ?? '__all__'}
-              onChange={(e) => setFilters({ location: e.target.value })}
+              onChange={(e) => setFilters({ location: e.target.value, zone: '__all__' })}
             >
               <option value="__all__">Totes</option>
               {locations.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </CorporateFilterSelect>
+          </CorporateFilterField>
+        )}
+
+        {visibleFilters.includes('zone') && (
+          <CorporateFilterField label="Zona" className="shrink-0">
+            <CorporateFilterSelect
+              minWidthClassName="min-w-[170px]"
+              value={filters.zone ?? '__all__'}
+              onChange={(e) => setFilters({ zone: e.target.value })}
+            >
+              <option value="__all__">Totes</option>
+              {zones.map((o) => (
                 <option key={o} value={o}>
                   {o}
                 </option>
@@ -236,7 +263,7 @@ export default function FiltersBar({
         onClick={() => {
           setContent(
             <div className="flex flex-col gap-4 p-4">
-              {lnOptions?.length > 0 && (
+              {lnOptions.length > 0 ? (
                 <CorporateFilterField label="Línia de negoci">
                   <CorporateFilterSelect
                     className="w-full"
@@ -252,9 +279,9 @@ export default function FiltersBar({
                     ))}
                   </CorporateFilterSelect>
                 </CorporateFilterField>
-              )}
+              ) : null}
 
-              {(isQuadrants || statusOptions.length > 0) && (
+              {isQuadrants || statusOptions.length > 0 ? (
                 <CorporateFilterField label={statusLabel}>
                   <CorporateFilterSelect
                     className="w-full"
@@ -278,9 +305,9 @@ export default function FiltersBar({
                     )}
                   </CorporateFilterSelect>
                 </CorporateFilterField>
-              )}
+              ) : null}
 
-              {priorityOptions.length > 0 && (
+              {priorityOptions.length > 0 ? (
                 <CorporateFilterField label={priorityLabel}>
                   <CorporateFilterSelect
                     className="w-full"
@@ -295,9 +322,9 @@ export default function FiltersBar({
                     ))}
                   </CorporateFilterSelect>
                 </CorporateFilterField>
-              )}
+              ) : null}
 
-              {(showResponsableFilter || (responsables && responsables.length > 0)) && (
+              {showResponsableFilter || responsables.length > 0 ? (
                 <CorporateFilterField label="Responsable">
                   <CorporateFilterSelect
                     className="w-full"
@@ -313,9 +340,9 @@ export default function FiltersBar({
                     ))}
                   </CorporateFilterSelect>
                 </CorporateFilterField>
-              )}
+              ) : null}
 
-              {commercials && commercials.length > 0 && (
+              {commercials.length > 0 ? (
                 <CorporateFilterField label="Comercial">
                   <CorporateFilterSelect
                     className="w-full"
@@ -331,15 +358,41 @@ export default function FiltersBar({
                     ))}
                   </CorporateFilterSelect>
                 </CorporateFilterField>
-              )}
+              ) : null}
 
-              {locations && locations.length > 0 && (
+              {centers.length > 0 ? (
+                <CorporateFilterField label="Centre">
+                  <CorporateFilterSelect
+                    className="w-full"
+                    minWidthClassName="min-w-0"
+                    value={filters.center ?? '__all__'}
+                    onChange={(e) =>
+                      applyFiltersAndClose({
+                        center: e.target.value,
+                        location: '__all__',
+                        zone: '__all__',
+                      })
+                    }
+                  >
+                    <option value="__all__">Tots</option>
+                    {centers.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </CorporateFilterSelect>
+                </CorporateFilterField>
+              ) : null}
+
+              {locations.length > 0 ? (
                 <CorporateFilterField label="Ubicació">
                   <CorporateFilterSelect
                     className="w-full"
                     minWidthClassName="min-w-0"
                     value={filters.location ?? '__all__'}
-                    onChange={(e) => applyFiltersAndClose({ location: e.target.value })}
+                    onChange={(e) =>
+                      applyFiltersAndClose({ location: e.target.value, zone: '__all__' })
+                    }
                   >
                     <option value="__all__">Totes</option>
                     {locations.map((o) => (
@@ -349,7 +402,25 @@ export default function FiltersBar({
                     ))}
                   </CorporateFilterSelect>
                 </CorporateFilterField>
-              )}
+              ) : null}
+
+              {zones.length > 0 ? (
+                <CorporateFilterField label="Zona">
+                  <CorporateFilterSelect
+                    className="w-full"
+                    minWidthClassName="min-w-0"
+                    value={filters.zone ?? '__all__'}
+                    onChange={(e) => applyFiltersAndClose({ zone: e.target.value })}
+                  >
+                    <option value="__all__">Totes</option>
+                    {zones.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </CorporateFilterSelect>
+                </CorporateFilterField>
+              ) : null}
 
               <ResetFilterButton
                 onClick={() => {
@@ -362,7 +433,9 @@ export default function FiltersBar({
                     ln: undefined,
                     responsable: undefined,
                     commercial: undefined,
+                    center: undefined,
                     location: undefined,
+                    zone: undefined,
                     status: undefined,
                     priority: undefined,
                   })

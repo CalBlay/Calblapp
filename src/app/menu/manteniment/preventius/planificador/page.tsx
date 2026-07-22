@@ -21,7 +21,13 @@ import FiltersBar, { type FiltersState } from '@/components/layout/FiltersBar'
 import MaintenanceToolbar from '@/app/menu/manteniment/components/MaintenanceToolbar'
 import { typography } from '@/lib/typography'
 import { MAINTENANCE_TICKETS_MANAGE_PERM } from '@/lib/maintenanceTicketsPermissions'
-import type { PlannerDraft, ScheduledItem } from './types'
+import {
+  getMaintenanceCenterOptions,
+  getMaintenanceLocationsForCenter,
+  getMaintenanceZones,
+  matchesMaintenanceSiteFilters,
+} from '@/lib/maintenanceLocationCatalog'
+import type { DueTemplate, PlannerDraft, ScheduledItem, TicketCard } from './types'
 import {
   PRIORITY_LABEL,
   getInitials,
@@ -250,6 +256,7 @@ export default function PreventiusPlanificadorPage() {
     [days]
   )
   const {
+    centers,
     locations,
     machines,
     users,
@@ -287,6 +294,25 @@ export default function PreventiusPlanificadorPage() {
     [scheduledItems]
   )
 
+  const filterCenters = useMemo(() => getMaintenanceCenterOptions(centers), [centers])
+  const filterLocations = useMemo(
+    () =>
+      getMaintenanceLocationsForCenter(
+        centers,
+        filters.center && filters.center !== '__all__' ? filters.center : ''
+      ),
+    [centers, filters.center]
+  )
+  const filterZones = useMemo(
+    () =>
+      getMaintenanceZones(
+        centers,
+        filters.center && filters.center !== '__all__' ? filters.center : '',
+        filters.location && filters.location !== '__all__' ? filters.location : ''
+      ),
+    [centers, filters.center, filters.location]
+  )
+
   const effectivePlannerViewFilters = useMemo<PlannerTypeFilter[]>(
     () =>
       isMonthMode
@@ -297,8 +323,34 @@ export default function PreventiusPlanificadorPage() {
 
   const filteredExternalizedTickets = useMemo(() => {
     if (tab !== 'tickets' && tab !== 'externalized') return []
-    return externalizedTickets
-  }, [externalizedTickets, tab])
+    return externalizedTickets.filter((item) =>
+      matchesMaintenanceSiteFilters(
+        centers,
+        {
+          center: filters.center !== '__all__' ? filters.center : '',
+          location: filters.location !== '__all__' ? filters.location : '',
+          zone: filters.zone !== '__all__' ? filters.zone : '',
+        },
+        item.location
+      )
+    )
+  }, [centers, externalizedTickets, filters.center, filters.location, filters.zone, tab])
+
+  const filteredVisibleItems = useMemo(
+    () =>
+      visibleItems.filter((item) =>
+        matchesMaintenanceSiteFilters(
+          centers,
+          {
+            center: filters.center !== '__all__' ? filters.center : '',
+            location: filters.location !== '__all__' ? filters.location : '',
+            zone: filters.zone !== '__all__' ? filters.zone : '',
+          },
+          item.location
+        )
+      ),
+    [centers, filters.center, filters.location, filters.zone, visibleItems]
+  )
 
   const fallbackTicketScheduledItems = useMemo(() => {
     const entries = Object.entries(ticketById || {})
@@ -441,18 +493,36 @@ export default function PreventiusPlanificadorPage() {
   }, [kindFilteredScheduledItems, showsTicketContent, ticketsStatusFilter])
 
   const filteredScheduledItems = useMemo(() => {
-    if (!selectedWorker || selectedWorker === '__all__') return ticketStatusFilteredScheduledItems
+    const siteFiltered = ticketStatusFilteredScheduledItems.filter((item) =>
+      matchesMaintenanceSiteFilters(
+        centers,
+        {
+          center: filters.center !== '__all__' ? filters.center : '',
+          location: filters.location !== '__all__' ? filters.location : '',
+          zone: filters.zone !== '__all__' ? filters.zone : '',
+        },
+        item.location
+      )
+    )
+    if (!selectedWorker || selectedWorker === '__all__') return siteFiltered
     const normalizedSelected = normalizeName(selectedWorker)
-    return ticketStatusFilteredScheduledItems.filter((item) =>
+    return siteFiltered.filter((item) =>
       item.workers.some((worker) => normalizeName(worker) === normalizedSelected)
     )
-  }, [selectedWorker, ticketStatusFilteredScheduledItems])
+  }, [
+    centers,
+    filters.center,
+    filters.location,
+    filters.zone,
+    selectedWorker,
+    ticketStatusFilteredScheduledItems,
+  ])
 
   const normalizedPlannerSearch = useMemo(() => normalizeName(plannerSearch), [plannerSearch])
 
   const searchMatchedScheduledItems = useMemo(() => {
     if (!normalizedPlannerSearch) return []
-    return scheduledItems
+    return filteredScheduledItems
       .filter((item) => {
         const haystack = [
           item.title,
@@ -473,7 +543,7 @@ export default function PreventiusPlanificadorPage() {
         if (a.dayIndex !== b.dayIndex) return a.dayIndex - b.dayIndex
         return minutesFromTime(a.start) - minutesFromTime(b.start)
       })
-  }, [normalizedPlannerSearch, scheduledItems])
+  }, [filteredScheduledItems, normalizedPlannerSearch])
 
   const calendarScheduledItems = useMemo(
     () => (normalizedPlannerSearch ? searchMatchedScheduledItems : filteredScheduledItems),
@@ -979,6 +1049,10 @@ export default function PreventiusPlanificadorPage() {
           filters={filters}
           setFilters={setFilters}
           responsables={workerOptions}
+          centers={filterCenters}
+          locations={filterLocations}
+          zones={filterZones}
+          visibleFilters={['responsable', 'center', 'location', 'zone']}
           modeDefault={isMonthMode ? 'month' : 'week'}
           modeOptions={['week', 'month']}
         />
@@ -1336,7 +1410,11 @@ export default function PreventiusPlanificadorPage() {
 
           <PlannerSidebar
             tab={tab}
-            visibleItems={visibleItems}
+            visibleItems={
+              (tab === 'preventius'
+                ? (filteredVisibleItems as DueTemplate[])
+                : (filteredVisibleItems as TicketCard[]))
+            }
             externalizedItems={filteredExternalizedTickets}
             scheduledItems={filteredScheduledItems}
             dayLabels={daySidebarLabels}
@@ -1680,7 +1758,11 @@ export default function PreventiusPlanificadorPage() {
           <div className="grid h-[calc(100vh-250px)] min-h-[620px] grid-cols-[200px_1fr] gap-3">
               <PlannerSidebar
                 tab={tab}
-                visibleItems={visibleItems}
+                visibleItems={
+                  (tab === 'preventius'
+                    ? (filteredVisibleItems as DueTemplate[])
+                    : (filteredVisibleItems as TicketCard[]))
+                }
                 externalizedItems={filteredExternalizedTickets}
                 scheduledItems={filteredScheduledItems}
                 dayLabels={daySidebarLabels}

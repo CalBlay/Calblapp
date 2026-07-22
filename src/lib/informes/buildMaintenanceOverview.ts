@@ -3,6 +3,15 @@ import { addMaintenanceTravelToWorkMinutes } from '@/lib/maintenanceCenterTravel
 import { loadMaintenancePreventiusForInformes } from '@/lib/informes/loadMaintenancePreventiusForInformes'
 import { loadMaintenanceTravelIndexForInformes } from '@/lib/informes/loadMaintenanceTravelIndex'
 import {
+  flattenMaintenanceLocationNodes,
+  getMaintenanceCenterOptions,
+  getMaintenanceLocationsForCenter,
+  getMaintenanceZones,
+  matchesMaintenanceSiteFilters,
+  sanitizeMaintenanceInternalLocations,
+  sanitizeMaintenanceLocationNodes,
+} from '@/lib/maintenanceLocationCatalog'
+import {
   resolvePreventiuWorkMinutesForReport,
   resolveTicketWorkMinutesForReport,
   workInvolvesOperator,
@@ -28,7 +37,9 @@ type BuildParams = {
   dateTo?: string
   status?: string
   priority?: string
+  center?: string
   location?: string
+  zone?: string
   ticketType?: string
   interventionType?: string
   assigneeId?: string
@@ -172,6 +183,29 @@ function uniqueLabeledOptions(
     .map((value) => ({ value, label: labelFor(value) }))
 }
 
+async function loadMaintenanceCentersForReports() {
+  const snap = await db.collection('finques').get()
+  return snap.docs
+    .map((doc) => {
+      const data = doc.data() as Record<string, unknown>
+      const locationNodes = sanitizeMaintenanceLocationNodes(
+        data.maintenanceLocationNodes,
+        data.maintenanceInternalLocations
+      )
+      return {
+        id: doc.id,
+        name: String(data.nom || data.name || '').trim(),
+        code: String(data.codi || data.code || doc.id || '').trim(),
+        tipus: String(data.tipus || '').trim(),
+        internalLocations: locationNodes.length
+          ? flattenMaintenanceLocationNodes(locationNodes)
+          : sanitizeMaintenanceInternalLocations(data.maintenanceInternalLocations),
+        locationNodes,
+      }
+    })
+    .filter((row) => row.name)
+}
+
 function resolveAssigneeNamesForAggregation(
   item: InternalWorkItem,
   operatorId: string,
@@ -295,7 +329,9 @@ function resolveWindow(params: BuildParams): { fromMs: number; toMs: number; con
         dateTo,
         status: params.status || undefined,
         priority: params.priority || undefined,
+        center: params.center || undefined,
         location: params.location || undefined,
+        zone: params.zone || undefined,
         ticketType: params.ticketType || undefined,
         interventionType: params.interventionType || undefined,
         assigneeId: operatorId || undefined,
@@ -353,10 +389,11 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
   const operatorId = String(params.operatorId || params.assigneeId || '').trim()
   const travelIndex = await loadMaintenanceTravelIndexForInformes()
 
-  const [ticketSnap, preventiusRaw, personnelOperators] = await Promise.all([
+  const [ticketSnap, preventiusRaw, personnelOperators, maintenanceCenters] = await Promise.all([
     db.collection('maintenanceTickets').get(),
     loadMaintenancePreventiusForInformes(),
     loadMaintenancePersonnelOptions(),
+    loadMaintenanceCentersForReports(),
   ])
 
   const allItems: InternalWorkItem[] = []
@@ -453,7 +490,19 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     if (params.mode !== 'custom') return true
     if (params.status && item.status !== normalizeText(params.status)) return false
     if (params.priority && item.priority !== normalizeText(params.priority)) return false
-    if (params.location && item.location !== params.location) return false
+    if (
+      !matchesMaintenanceSiteFilters(
+        maintenanceCenters,
+        {
+          center: params.center || '',
+          location: params.location || '',
+          zone: params.zone || '',
+        },
+        item.location
+      )
+    ) {
+      return false
+    }
     if (params.interventionType) {
       const type = normalizeText(params.interventionType)
       if (type === 'preventiu' && item.kind !== 'preventiu') return false
@@ -677,15 +726,17 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       optionSource.map((t) => t.priority),
       (value) => PRIORITY_LABELS[value] || value
     ),
+    centers: uniqueLabeledOptions(getMaintenanceCenterOptions(maintenanceCenters), (value) => value),
     interventionTypes: [
       { value: 'ticket_internal', label: 'Tickets interns' },
       { value: 'ticket_externalized', label: 'Tickets externalitzats' },
       { value: 'preventiu', label: 'Preventius' },
     ],
     locations: uniqueLabeledOptions(
-      optionSource.map((t) => t.location).filter(Boolean),
+      getMaintenanceLocationsForCenter(maintenanceCenters),
       (value) => value
     ),
+    zones: uniqueLabeledOptions(getMaintenanceZones(maintenanceCenters), (value) => value),
     ticketTypes: uniqueLabeledOptions(
       optionSource.filter((t) => t.kind === 'ticket').map((t) => t.category),
       (value) => (value === 'deco' ? 'Decoració' : 'Maquinària')

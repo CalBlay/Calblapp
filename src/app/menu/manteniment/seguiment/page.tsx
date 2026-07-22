@@ -17,6 +17,10 @@ import {
 } from '@/components/layout/corporate-filters'
 import { corporateFilterBadgeClass } from '@/lib/corporate-filters'
 import {
+  MAINTENANCE_EXTERNAL_FLOW_LABELS,
+  MAINTENANCE_STATUS_LABELS,
+} from '@/lib/maintenanceStatus'
+import {
   getCurrentMaintenanceWeekRange,
   matchesMaintenancePlannedDateFilter,
   type MaintenanceDateFilterMode,
@@ -36,60 +40,16 @@ import type { MaintenanceStatus, TabKey } from './types'
 import { useSeguimentActions } from './hooks/useSeguimentActions'
 import { useSeguimentData } from './hooks/useSeguimentData'
 import { useSeguimentDerivedData } from './hooks/useSeguimentDerivedData'
-import { getTicketLastMovementAt, parseDate, parseDateFromParts, STATUSES, STATUS_LABELS } from './utils'
+import { getTicketLastMovementAt, parseDate, parseDateFromParts } from './utils'
 import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
 import { typography } from '@/lib/typography'
+import { resolveMaintenanceSite } from '@/lib/maintenanceLocationCatalog'
 
+const STATUS_LABELS = MAINTENANCE_STATUS_LABELS
 function formatDayLabel(day: string) {
   const parsed = parseISO(day)
   if (Number.isNaN(parsed.getTime())) return day
   return format(parsed, 'dd/MM/yyyy', { locale: ca })
-}
-
-const STATUS_FILTER_STYLES: Record<
-  MaintenanceStatus,
-  { active: string; dot: string; label: string }
-> = {
-  nou: {
-    active: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    dot: 'bg-emerald-500',
-    label: 'Nou',
-  },
-  assignat: {
-    active: 'bg-sky-100 text-sky-800 border-sky-200',
-    dot: 'bg-sky-500',
-    label: 'Assignat',
-  },
-  reassignat: {
-    active: 'bg-orange-100 text-orange-800 border-orange-200',
-    dot: 'bg-orange-500',
-    label: 'Reassignat',
-  },
-  en_curs: {
-    active: 'bg-amber-100 text-amber-800 border-amber-200',
-    dot: 'bg-amber-500',
-    label: 'En curs',
-  },
-  espera: {
-    active: 'bg-slate-200 text-slate-800 border-slate-300',
-    dot: 'bg-slate-500',
-    label: 'Espera',
-  },
-  fet: {
-    active: 'bg-green-100 text-green-800 border-green-200',
-    dot: 'bg-green-500',
-    label: 'Fet',
-  },
-  no_fet: {
-    active: 'bg-rose-100 text-rose-800 border-rose-200',
-    dot: 'bg-rose-500',
-    label: 'No fet',
-  },
-  validat: {
-    active: 'bg-violet-100 text-violet-800 border-violet-200',
-    dot: 'bg-violet-500',
-    label: 'Validat',
-  },
 }
 
 export default function MaintenanceSeguimentPage() {
@@ -117,7 +77,9 @@ export default function MaintenanceSeguimentPage() {
   const [externalFilter, setExternalFilter] = useState<'all' | 'internal' | 'external'>('all')
   const [statusFilter, setStatusFilter] = useState<MaintenanceStatus[]>([])
   const [workerFilter, setWorkerFilter] = useState<string>('all')
+  const [centerFilter, setCenterFilter] = useState<string>('all')
   const [locationFilter, setLocationFilter] = useState<string>('all')
+  const [zoneFilter, setZoneFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [pendingValidationOnly, setPendingValidationOnly] = useState(false)
   const [stalledOnly, setStalledOnly] = useState(false)
@@ -129,6 +91,7 @@ export default function MaintenanceSeguimentPage() {
     tickets,
     setTickets,
     preventius,
+    centers,
     locations,
     machines,
     users,
@@ -136,54 +99,6 @@ export default function MaintenanceSeguimentPage() {
     error,
     loadData,
   } = useSeguimentData()
-
-  useEffect(() => {
-    setContent(
-      <SeguimentSidebarFilters
-        tab={tab}
-        dateMode={dateMode}
-        externalFilter={externalFilter}
-        statusFilter={statusFilter}
-        workerFilter={workerFilter}
-        locationFilter={locationFilter}
-        pendingValidationOnly={pendingValidationOnly}
-        stalledOnly={stalledOnly}
-        locations={locations}
-        users={users}
-        onDateModeChange={setDateMode}
-        onExternalFilterChange={setExternalFilter}
-        onStatusFilterChange={setStatusFilter}
-        onWorkerFilterChange={setWorkerFilter}
-        onLocationFilterChange={setLocationFilter}
-        onPendingValidationOnlyChange={setPendingValidationOnly}
-        onStalledOnlyChange={setStalledOnly}
-        onReset={() => {
-          setDateMode('planned')
-          setStatusFilter([])
-          setExternalFilter('all')
-          setWorkerFilter('all')
-          setLocationFilter('all')
-          setPendingValidationOnly(false)
-          setStalledOnly(false)
-          setSearch('')
-          setDateRange(getCurrentMaintenanceWeekRange())
-          setDateResetSignal((current) => current + 1)
-        }}
-      />
-    )
-  }, [
-    dateMode,
-    externalFilter,
-    locationFilter,
-    locations,
-    pendingValidationOnly,
-    setContent,
-    stalledOnly,
-    statusFilter,
-    tab,
-    users,
-    workerFilter,
-  ])
 
   const applyDateFilter = useCallback(
     (value: number | string | null) =>
@@ -195,6 +110,135 @@ export default function MaintenanceSeguimentPage() {
       }),
     [dateMode, dateRange.end, dateRange.start]
   )
+
+  const dateScopedFilterOptions = useMemo(() => {
+    const workerMap = new Map<string, string>()
+    const centerMap = new Map<string, string>()
+    const scopedSites: Array<{ center: string; location: string; zone: string }> = []
+
+    if (tab === 'tickets') {
+      tickets
+        .filter((ticket) => applyDateFilter(getTicketLastMovementAt(ticket)))
+        .forEach((ticket) => {
+          const site = resolveMaintenanceSite(centers, ticket.workLocation, ticket.location)
+          scopedSites.push(site)
+          if (site.center) centerMap.set(site.center.toLowerCase(), site.center)
+          ;(ticket.assignedToNames || []).forEach((name) => {
+            const value = String(name || '').trim()
+            if (value) workerMap.set(value.toLowerCase(), value)
+          })
+        })
+    } else {
+      preventius
+        .filter((item) =>
+          applyDateFilter(parseDateFromParts(item.plannedDate, item.plannedStart)?.getTime() || null)
+        )
+        .forEach((item) => {
+          const site = resolveMaintenanceSite(centers, item.location)
+          scopedSites.push(site)
+          if (site.center) centerMap.set(site.center.toLowerCase(), site.center)
+          item.workerNames.forEach((name) => {
+            const value = String(name || '').trim()
+            if (value) workerMap.set(value.toLowerCase(), value)
+          })
+        })
+    }
+
+    const selectedCenter = centerFilter !== 'all' ? centerFilter : ''
+    const selectedLocation = locationFilter !== 'all' ? locationFilter : ''
+    const locationMap = new Map<string, string>()
+    const zoneMap = new Map<string, string>()
+
+    scopedSites
+      .filter((site) => !selectedCenter || site.center === selectedCenter)
+      .forEach((site) => {
+        if (site.location) locationMap.set(site.location.toLowerCase(), site.location)
+      })
+
+    scopedSites
+      .filter((site) => !selectedCenter || site.center === selectedCenter)
+      .filter((site) => !selectedLocation || site.location === selectedLocation)
+      .forEach((site) => {
+        if (site.zone) zoneMap.set(site.zone.toLowerCase(), site.zone)
+      })
+
+    const sort = (values: string[]) =>
+      values.sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }))
+
+    return {
+      workerOptions: sort([...workerMap.values()]),
+      centerOptions: sort([...centerMap.values()]),
+      locationOptions: sort([...locationMap.values()]),
+      zoneOptions: sort([...zoneMap.values()]),
+    }
+  }, [applyDateFilter, centerFilter, centers, locationFilter, preventius, tab, tickets])
+
+  useEffect(() => {
+    setContent(
+      <SeguimentSidebarFilters
+        tab={tab}
+        dateMode={dateMode}
+        externalFilter={externalFilter}
+        statusFilter={statusFilter}
+        workerFilter={workerFilter}
+        centerFilter={centerFilter}
+        locationFilter={locationFilter}
+        zoneFilter={zoneFilter}
+        pendingValidationOnly={pendingValidationOnly}
+        stalledOnly={stalledOnly}
+        centerOptions={dateScopedFilterOptions.centerOptions}
+        locationOptions={dateScopedFilterOptions.locationOptions}
+        zoneOptions={dateScopedFilterOptions.zoneOptions}
+        workerOptions={dateScopedFilterOptions.workerOptions}
+        onDateModeChange={setDateMode}
+        onExternalFilterChange={setExternalFilter}
+        onStatusFilterChange={setStatusFilter}
+        onWorkerFilterChange={setWorkerFilter}
+        onCenterFilterChange={(value) => {
+          setCenterFilter(value)
+          setLocationFilter('all')
+          setZoneFilter('all')
+        }}
+        onLocationFilterChange={(value) => {
+          setLocationFilter(value)
+          setZoneFilter('all')
+        }}
+        onZoneFilterChange={setZoneFilter}
+        onPendingValidationOnlyChange={setPendingValidationOnly}
+        onStalledOnlyChange={setStalledOnly}
+        onReset={() => {
+          setDateMode('planned')
+          setStatusFilter([])
+          setExternalFilter('all')
+          setWorkerFilter('all')
+          setCenterFilter('all')
+          setLocationFilter('all')
+          setZoneFilter('all')
+          setPendingValidationOnly(false)
+          setStalledOnly(false)
+          setSearch('')
+          setDateRange(getCurrentMaintenanceWeekRange())
+          setDateResetSignal((current) => current + 1)
+        }}
+      />
+    )
+  }, [
+    dateMode,
+    dateScopedFilterOptions.centerOptions,
+    dateScopedFilterOptions.locationOptions,
+    dateScopedFilterOptions.workerOptions,
+    dateScopedFilterOptions.zoneOptions,
+    externalFilter,
+    centerFilter,
+    locationFilter,
+    pendingValidationOnly,
+    setContent,
+    stalledOnly,
+    statusFilter,
+    tab,
+    workerFilter,
+    zoneFilter,
+  ])
 
   const {
     ticketRows: _ticketRows,
@@ -212,12 +256,15 @@ export default function MaintenanceSeguimentPage() {
     tab,
     tickets,
     preventius,
+    centers,
     machines,
     dateMode,
     dateRange,
     statusFilter,
     workerFilter,
+    centerFilter,
     locationFilter,
+    zoneFilter,
     externalFilter,
     pendingValidationOnly,
     stalledOnly,
@@ -236,10 +283,13 @@ export default function MaintenanceSeguimentPage() {
   })
 
   const toggleStatusFilter = useCallback((status: MaintenanceStatus) => {
+    if (tab === 'tickets' && externalFilter === 'external') {
+      setExternalFilter('all')
+    }
     setStatusFilter((current) =>
       current.includes(status) ? current.filter((item) => item !== status) : [...current, status]
     )
-  }, [])
+  }, [externalFilter, tab])
 
   const daySections = useMemo(() => {
     const map = new Map<string, typeof currentRows>()
@@ -343,46 +393,6 @@ export default function MaintenanceSeguimentPage() {
                     </button>
                   ))}
                 </div>
-                <div className="h-6 w-px bg-slate-200" />
-                <div className="flex flex-wrap items-center gap-2">
-                  {tab === 'tickets' ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExternalFilter((current) =>
-                          current === 'external' ? 'all' : 'external'
-                        )
-                      }
-                      className={[
-                        'rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] border inline-flex items-center gap-2',
-                        externalFilter === 'external'
-                          ? 'bg-violet-100 text-violet-800 border-violet-200'
-                          : 'bg-white text-gray-700 border-gray-200',
-                      ].join(' ')}
-                      title="Filtrar tickets externalitzats"
-                    >
-                      <span className="h-2 w-2 rounded-full bg-violet-500" />
-                      Externalitzats
-                    </button>
-                  ) : null}
-                  {STATUSES.map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={() => toggleStatusFilter(status)}
-                      className={[
-                        'rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] border inline-flex items-center gap-2',
-                        statusFilter.includes(status)
-                          ? STATUS_FILTER_STYLES[status].active
-                          : 'bg-white text-gray-700 border-gray-200',
-                      ].join(' ')}
-                      title={`Filtrar per estat ${STATUS_FILTER_STYLES[status].label}`}
-                    >
-                      <span className={`h-2 w-2 rounded-full ${STATUS_FILTER_STYLES[status].dot}`} />
-                      {STATUS_FILTER_STYLES[status].label}
-                    </button>
-                  ))}
-                </div>
               </div>
             }
             bottomSlot={
@@ -395,12 +405,20 @@ export default function MaintenanceSeguimentPage() {
                 {workerFilter !== 'all' ? (
                   <CorporateActiveFilterChip>{workerFilter}</CorporateActiveFilterChip>
                 ) : null}
+                {centerFilter !== 'all' ? (
+                  <CorporateActiveFilterChip>{centerFilter}</CorporateActiveFilterChip>
+                ) : null}
                 {locationFilter !== 'all' ? (
                   <CorporateActiveFilterChip>{locationFilter}</CorporateActiveFilterChip>
                 ) : null}
+                {zoneFilter !== 'all' ? (
+                  <CorporateActiveFilterChip>{zoneFilter}</CorporateActiveFilterChip>
+                ) : null}
                 {tab === 'tickets' && externalFilter !== 'all' ? (
                   <CorporateActiveFilterChip>
-                    {externalFilter === 'external' ? 'Derivats a proveidor' : 'Interns'}
+                    {externalFilter === 'external'
+                      ? MAINTENANCE_EXTERNAL_FLOW_LABELS.external
+                      : MAINTENANCE_EXTERNAL_FLOW_LABELS.internal}
                   </CorporateActiveFilterChip>
                 ) : null}
                 {pendingValidationOnly ? (
@@ -428,6 +446,22 @@ export default function MaintenanceSeguimentPage() {
           totalTrackedMinutes={totalTrackedMinutes}
           summaryStatuses={summaryStatuses}
           statusCounts={statusCounts}
+          activeStatuses={statusFilter}
+          externalFilter={externalFilter}
+          pendingValidationOnly={pendingValidationOnly}
+          onToggleStatus={toggleStatusFilter}
+          onToggleExternal={() =>
+            setExternalFilter((current) => {
+              const next = current === 'external' ? 'all' : 'external'
+              if (next === 'external') {
+                setStatusFilter([])
+              }
+              return next
+            })
+          }
+          onTogglePendingValidation={() =>
+            setPendingValidationOnly((current) => !current)
+          }
         />
 
         {loading ? (

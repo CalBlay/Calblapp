@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, format, parseISO } from 'date-fns'
 import type { DueTemplate, ScheduledItem, Template, TicketCard } from './types'
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
+import type { CenterRow } from '../../dades/types'
+import { buildControlledMaintenanceLocations } from '@/lib/maintenanceLocationCatalog'
 import {
   findAutoPlanSlot,
   findBestPreventiuSlot,
@@ -377,6 +379,7 @@ export default function usePlannerData({
   const [templates, setTemplates] = useState<Template[]>([])
   const [realTickets, setRealTickets] = useState<TicketCard[]>([])
   const [ticketById, setTicketById] = useState<Record<string, Ticket>>({})
+  const [centers, setCenters] = useState<CenterRow[]>([])
   const [locations, setLocations] = useState<string[]>([])
   const [machines, setMachines] = useState<Array<{ code: string; name: string; label: string }>>([])
   const [users, setUsers] = useState<Array<{ id: string; name: string; department?: string }>>([])
@@ -542,9 +545,9 @@ export default function usePlannerData({
     const endStr = format(addDays(weekStart, dayCount - 1), 'yyyy-MM-dd')
     const loadMasterData = async () => {
       try {
-        const [templatesRes, locationsRes, machinesRes, usersRes, ticketsData] = await Promise.all([
+        const [templatesRes, centersRes, machinesRes, usersRes, ticketsData] = await Promise.all([
           fetch('/api/maintenance/templates', { cache: 'no-store' }),
-          fetch('/api/spaces/internal', { cache: 'no-store' }),
+          fetch('/api/maintenance/data/centers', { cache: 'no-store' }),
           fetch('/api/maintenance/machines', { cache: 'no-store' }),
           fetch('/api/personnel?department=manteniment', { cache: 'no-store' }),
           loadTicketsData({ start: startStr, end: endStr }),
@@ -569,8 +572,10 @@ export default function usePlannerData({
             }))
         )
 
-        const locationsJson = locationsRes.ok ? await locationsRes.json() : { locations: [] }
-        setLocations(Array.isArray(locationsJson?.locations) ? locationsJson.locations : [])
+        const centersJson = centersRes.ok ? await centersRes.json() : { centers: [] }
+        const nextCenters = Array.isArray(centersJson?.centers) ? centersJson.centers : []
+        setCenters(nextCenters)
+        setLocations(buildControlledMaintenanceLocations(nextCenters))
 
         const machinesJson = machinesRes.ok ? await machinesRes.json() : { machines: [] }
         setMachines(Array.isArray(machinesJson?.machines) ? machinesJson.machines : [])
@@ -592,6 +597,7 @@ export default function usePlannerData({
         setExternalizedTickets(ticketsData.externalized)
       } catch {
         setTemplates([])
+        setCenters([])
         setLocations([])
         setMachines([])
         setUsers([])
@@ -948,6 +954,7 @@ export default function usePlannerData({
   }, [scheduledItems])
 
   return {
+    centers,
     locations,
     machines,
     users,

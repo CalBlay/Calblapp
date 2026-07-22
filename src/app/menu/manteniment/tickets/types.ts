@@ -33,6 +33,7 @@ export type Ticket = {
   incidentNumber?: string | null
   location: string
   workLocation?: string | null
+  zone?: string | null
   machine: string
   description: string
   operatorTitle?: string | null
@@ -153,7 +154,9 @@ export type MachineItem = {
   code: string
   name: string
   label: string
+  center?: string
   location?: string
+  zone?: string
 }
 
 export type TransportItem = {

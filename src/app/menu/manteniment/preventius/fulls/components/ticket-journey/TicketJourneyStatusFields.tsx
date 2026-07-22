@@ -73,7 +73,7 @@ export default function TicketJourneyStatusFields({
     nextStatus === 'no_fet'
       ? 'Motiu obligatori'
       : nextStatus === 'espera'
-        ? 'Explica el motiu de la pausa'
+        ? "Explica el motiu de l'espera"
         : 'Opcional'
 
   return (

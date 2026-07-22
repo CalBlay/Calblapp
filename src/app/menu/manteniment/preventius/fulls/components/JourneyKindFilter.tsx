@@ -62,7 +62,7 @@ export default function JourneyKindFilter({
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            {status === 'espera' ? 'En pausa' : getStatusLabel(status, status)}
+            {getStatusLabel(status, status)}
           </button>
         )
       })}

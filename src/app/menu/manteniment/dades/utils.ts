@@ -8,7 +8,7 @@ export const STATUS_LABELS: Record<string, string> = {
   assignat: 'Assignat',
   reassignat: 'Reassignat',
   en_curs: 'En curs',
-  espera: 'En espera',
+  espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
   validat: 'Validat',

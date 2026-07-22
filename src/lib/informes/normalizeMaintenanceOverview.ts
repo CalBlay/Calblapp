@@ -97,7 +97,9 @@ export function normalizeMaintenanceOverview(
     filterOptions: data.filterOptions ?? {
       statuses: [],
       priorities: [],
+      centers: [],
       locations: [],
+      zones: [],
       ticketTypes: [],
       interventionTypes: [],
       assignees: [],

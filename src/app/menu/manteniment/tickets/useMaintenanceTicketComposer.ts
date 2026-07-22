@@ -23,6 +23,7 @@ type Params = {
   defaultCenter?: string
   defaultWorkerName?: string
   defaultLocation?: string
+  defaultZone?: string
   defaultMachine?: string
   requireLocation?: boolean
   /** Força encaminament cuina central encara que el departament de sessió sigui admin. */
@@ -44,6 +45,7 @@ export function useMaintenanceTicketComposer({
   defaultCenter = '',
   defaultWorkerName = '',
   defaultLocation = '',
+  defaultZone = '',
   defaultMachine = '',
   requireLocation = true,
   routingOverride,
@@ -53,12 +55,15 @@ export function useMaintenanceTicketComposer({
   const [showCreate, setShowCreate] = useState(false)
   const [createCenter, setCreateCenter] = useState('')
   const [createLocation, setCreateLocation] = useState('')
+  const [createZone, setCreateZone] = useState('')
   const [createMachine, setCreateMachine] = useState('')
   const [centerQuery, setCenterQuery] = useState('')
   const [locationQuery, setLocationQuery] = useState('')
+  const [zoneQuery, setZoneQuery] = useState('')
   const [machineQuery, setMachineQuery] = useState('')
   const [showCenterList, setShowCenterList] = useState(false)
   const [showLocationList, setShowLocationList] = useState(false)
+  const [showZoneList, setShowZoneList] = useState(false)
   const [showMachineList, setShowMachineList] = useState(false)
   const [createDescription, setCreateDescription] = useState('')
   const [createWorkerName, setCreateWorkerName] = useState('')
@@ -79,6 +84,10 @@ export function useMaintenanceTicketComposer({
   useEffect(() => {
     setLocationQuery(createLocation)
   }, [createLocation])
+
+  useEffect(() => {
+    setZoneQuery(createZone)
+  }, [createZone])
 
   useEffect(() => {
     setMachineQuery(createMachine)
@@ -110,20 +119,23 @@ export function useMaintenanceTicketComposer({
     }
   }, [])
 
-  const applyDefaults = (preset?: { center?: string; location?: string; machine?: string }) => {
+  const applyDefaults = (preset?: { center?: string; location?: string; zone?: string; machine?: string }) => {
     const center = preset?.center ?? defaultCenter
     const loc = preset?.location ?? defaultLocation
+    const zone = preset?.zone ?? defaultZone
     const mac = preset?.machine ?? defaultMachine
     setCreateCenter(center)
     setCreateLocation(loc)
+    setCreateZone(zone)
     setCreateMachine(mac)
     setCenterQuery(center)
     setLocationQuery(loc)
+    setZoneQuery(zone)
     setMachineQuery(mac)
     setCreateWorkerName(center ? '' : defaultWorkerName)
   }
 
-  const openCreate = (preset?: { center?: string; location?: string; machine?: string }) => {
+  const openCreate = (preset?: { center?: string; location?: string; zone?: string; machine?: string }) => {
     applyDefaults(preset)
     setShowCreate(true)
   }
@@ -132,12 +144,15 @@ export function useMaintenanceTicketComposer({
     setShowCreate(false)
     setCreateCenter('')
     setCreateLocation('')
+    setCreateZone('')
     setCreateMachine('')
     setCenterQuery('')
     setLocationQuery('')
+    setZoneQuery('')
     setMachineQuery('')
     setShowCenterList(false)
     setShowLocationList(false)
+    setShowZoneList(false)
     setShowMachineList(false)
     setCreateDescription('')
     setCreateWorkerName('')
@@ -304,6 +319,7 @@ export function useMaintenanceTicketComposer({
         body: JSON.stringify({
           location: createCenter.trim(),
           workLocation: createLocation.trim() || null,
+          zone: createZone.trim() || null,
           machine: getEffectiveMachine(),
           operatorTitle: getEffectiveMachine(),
           description: createDescription.trim(),
@@ -350,16 +366,22 @@ export function useMaintenanceTicketComposer({
     setCenterQuery,
     createLocation,
     setCreateLocation,
+    createZone,
+    setCreateZone,
     createMachine,
     setCreateMachine,
     locationQuery,
     setLocationQuery,
+    zoneQuery,
+    setZoneQuery,
     machineQuery,
     setMachineQuery,
     showCenterList,
     setShowCenterList,
     showLocationList,
     setShowLocationList,
+    showZoneList,
+    setShowZoneList,
     showMachineList,
     setShowMachineList,
     createDescription,

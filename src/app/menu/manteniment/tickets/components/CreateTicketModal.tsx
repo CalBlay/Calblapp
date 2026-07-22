@@ -11,6 +11,8 @@ import type { PendingTicketAttachment } from '../useMaintenanceTicketComposer'
 import type { MachineItem, TicketPriority } from '../types'
 import type { CenterRow } from '@/app/menu/manteniment/dades/types'
 
+const normalizeSiteValue = (value?: string | null) => String(value || '').trim().toLowerCase()
+
 export type TicketAttachmentPreview = Pick<PendingTicketAttachment, 'preview' | 'kind'>
 
 type Props = {
@@ -26,12 +28,18 @@ type Props = {
   setLocationQuery: (value: string) => void
   createLocation: string
   setCreateLocation: (value: string) => void
+  zoneQuery: string
+  setZoneQuery: (value: string) => void
+  createZone: string
+  setCreateZone: (value: string) => void
   createWorkerName?: string
   setCreateWorkerName?: (value: string) => void
   showCenterList: boolean
   setShowCenterList: (value: boolean) => void
   showLocationList: boolean
   setShowLocationList: (value: boolean) => void
+  showZoneList: boolean
+  setShowZoneList: (value: boolean) => void
   machineQuery: string
   setMachineQuery: (value: string) => void
   createMachine: string
@@ -75,12 +83,18 @@ export default function CreateTicketModal({
   setLocationQuery,
   createLocation: _createLocation,
   setCreateLocation,
+  zoneQuery,
+  setZoneQuery,
+  createZone: _createZone,
+  setCreateZone,
   createWorkerName = '',
   setCreateWorkerName,
   showCenterList,
   setShowCenterList,
   showLocationList,
   setShowLocationList,
+  showZoneList,
+  setShowZoneList,
   machineQuery,
   setMachineQuery,
   createMachine: _createMachine,
@@ -122,7 +136,7 @@ export default function CreateTicketModal({
   const videoLimitLabel = formatTicketAttachmentLimitMb(DEFAULT_MAX_VIDEO_UPLOAD_BYTES)
   const effectiveCenter = (_createCenter || centerQuery).trim()
   const effectiveLocation = (_createLocation || locationQuery).trim()
-  const effectiveMachineLocation = effectiveLocation || effectiveCenter
+  const effectiveZone = (_createZone || zoneQuery).trim()
   const machineQueryNorm = machineQuery.trim().toLowerCase()
 
   const filteredCenters = useMemo(
@@ -141,7 +155,10 @@ export default function CreateTicketModal({
   )
 
   const centerLocations = useMemo(
-    () => (selectedCenter?.internalLocations || []).filter(Boolean),
+    () =>
+      (selectedCenter?.locationNodes?.map((item) => item.name) || selectedCenter?.internalLocations || []).filter(
+        Boolean
+      ),
     [selectedCenter]
   )
   const canSkipLocation = Boolean(effectiveCenter) && centerLocations.length === 0
@@ -161,15 +178,71 @@ export default function CreateTicketModal({
     [centerLocations, locationQuery]
   )
 
-  const locationMachines = useMemo(
+  const selectedLocationNode = useMemo(
     () =>
-      effectiveMachineLocation
-        ? machines.filter((machine) =>
-            matchesMaintenanceTicketLocation(machine.location, effectiveMachineLocation)
-          )
-        : [],
-    [effectiveMachineLocation, machines]
+      selectedCenter?.locationNodes?.find(
+        (location) => normalizeSiteValue(location.name) === normalizeSiteValue(effectiveLocation)
+      ) || null,
+    [effectiveLocation, selectedCenter]
   )
+
+  const machineCandidates = useMemo(
+    () =>
+      machines.filter((machine) => {
+        if (effectiveCenter && normalizeSiteValue(machine.center) !== normalizeSiteValue(effectiveCenter)) {
+          return false
+        }
+        if (effectiveLocation && normalizeSiteValue(machine.location) !== normalizeSiteValue(effectiveLocation)) {
+          return false
+        }
+        if (effectiveZone && normalizeSiteValue(machine.zone) !== normalizeSiteValue(effectiveZone)) {
+          return false
+        }
+        return true
+      }),
+    [effectiveCenter, effectiveLocation, effectiveZone, machines]
+  )
+
+  const zoneOptions = useMemo(() => {
+    const baseZones = Array.isArray(selectedLocationNode?.zones) ? selectedLocationNode.zones : []
+    const machineZones = machineCandidates.map((machine) => String(machine.zone || '').trim()).filter(Boolean)
+    const machineZonesByQuery = machines
+      .filter((machine) => {
+        if (effectiveCenter && normalizeSiteValue(machine.center) !== normalizeSiteValue(effectiveCenter)) {
+          return false
+        }
+        if (effectiveLocation && normalizeSiteValue(machine.location) !== normalizeSiteValue(effectiveLocation)) {
+          return false
+        }
+        if (!machineQueryNorm) return true
+        return machine.label.toLowerCase().includes(machineQueryNorm)
+      })
+      .map((machine) => String(machine.zone || '').trim())
+      .filter(Boolean)
+
+    const unique = new Map<string, string>()
+    ;[...baseZones, ...machineZones, ...machineZonesByQuery].forEach((zone) => {
+      const key = normalizeSiteValue(zone)
+      if (!key || unique.has(key)) return
+      unique.set(key, zone)
+    })
+
+    return [...unique.values()]
+  }, [effectiveCenter, effectiveLocation, machineCandidates, machineQueryNorm, machines, selectedLocationNode?.zones])
+
+  useEffect(() => {
+    if (effectiveZone && !zoneOptions.some((zone) => normalizeSiteValue(zone) === normalizeSiteValue(effectiveZone))) {
+      setCreateZone('')
+      setZoneQuery('')
+    }
+  }, [effectiveZone, setCreateZone, setZoneQuery, zoneOptions])
+
+  const locationMachines = useMemo(() => {
+    if (!effectiveCenter || !effectiveLocation) return []
+    return machineCandidates.filter((machine) =>
+      matchesMaintenanceTicketLocation(machine.location, effectiveLocation)
+    )
+  }, [effectiveCenter, effectiveLocation, machineCandidates])
 
   const filteredMachines = useMemo(
     () =>
@@ -181,7 +254,7 @@ export default function CreateTicketModal({
     [locationMachines, machineQueryNorm]
   )
   const shouldShowMachineDropdown =
-    showMachineList && effectiveMachineLocation && locationMachines.length > 0
+    showMachineList && effectiveCenter && effectiveLocation && locationMachines.length > 0
 
   const clearMachine = () => {
     setMachineQuery('')
@@ -262,8 +335,11 @@ export default function CreateTicketModal({
                     setCreateCenter('')
                     setLocationQuery('')
                     setCreateLocation('')
+                    setZoneQuery('')
+                    setCreateZone('')
                     setShowCenterList(true)
                     setShowLocationList(false)
+                    setShowZoneList(false)
                     clearMachine()
                   }}
                 />
@@ -275,8 +351,11 @@ export default function CreateTicketModal({
                       setCreateCenter('')
                       setLocationQuery('')
                       setCreateLocation('')
+                      setZoneQuery('')
+                      setCreateZone('')
                       setShowCenterList(false)
                       setShowLocationList(false)
+                      setShowZoneList(false)
                       clearMachine()
                     }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-base text-gray-400 hover:text-gray-600"
@@ -293,17 +372,22 @@ export default function CreateTicketModal({
                       key={center.id}
                       type="button"
                       onClick={() => {
+                        const centerLocationCount =
+                          center.locationNodes?.length || (center.internalLocations || []).filter(Boolean).length
                         setCreateCenter(center.name)
                         setCenterQuery(center.name)
-                        if ((center.internalLocations || []).filter(Boolean).length === 0) {
+                        if (centerLocationCount === 0) {
                           setLocationQuery(center.name)
                           setCreateLocation(center.name)
                         } else {
                           setLocationQuery('')
                           setCreateLocation('')
                         }
+                        setZoneQuery('')
+                        setCreateZone('')
                         setShowCenterList(false)
                         setShowLocationList(false)
+                        setShowZoneList(false)
                         clearMachine()
                       }}
                       className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
@@ -341,7 +425,10 @@ export default function CreateTicketModal({
                   onChange={(e) => {
                     setLocationQuery(e.target.value)
                     setCreateLocation('')
+                    setZoneQuery('')
+                    setCreateZone('')
                     setShowLocationList(true)
+                    setShowZoneList(false)
                     clearMachine()
                   }}
                 />
@@ -352,6 +439,9 @@ export default function CreateTicketModal({
                       setLocationQuery('')
                       setCreateLocation('')
                       setShowLocationList(false)
+                      setZoneQuery('')
+                      setCreateZone('')
+                      setShowZoneList(false)
                       clearMachine()
                     }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-base text-gray-400 hover:text-gray-600"
@@ -377,6 +467,9 @@ export default function CreateTicketModal({
                         setCreateLocation(location)
                         setLocationQuery(location)
                         setShowLocationList(false)
+                        setZoneQuery('')
+                        setCreateZone('')
+                        setShowZoneList(false)
                         clearMachine()
                       }}
                       className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
@@ -391,6 +484,82 @@ export default function CreateTicketModal({
               ) : null}
             </div>
 
+            <div className="relative">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Zona
+              </label>
+              <div className="relative">
+                <input
+                  className="h-12 w-full rounded-2xl border px-4 pr-10 text-base disabled:bg-slate-50"
+                  placeholder={
+                    !effectiveLocation
+                      ? 'Primer selecciona centre i ubicacio...'
+                      : zoneOptions.length > 0
+                        ? 'Cerca zona...'
+                        : 'Sense zones registrades per aquesta ubicacio'
+                  }
+                  value={zoneQuery}
+                  disabled={!effectiveLocation || zoneOptions.length === 0}
+                  onFocus={() => {
+                    if (effectiveLocation && zoneOptions.length > 0) setShowZoneList(true)
+                  }}
+                  onChange={(e) => {
+                    setZoneQuery(e.target.value)
+                    setCreateZone('')
+                    setShowZoneList(zoneOptions.length > 0)
+                    clearMachine()
+                  }}
+                  onBlur={() => {
+                    if (!_createZone && zoneQuery.trim()) {
+                      setCreateZone(zoneQuery.trim())
+                    }
+                  }}
+                />
+                {zoneQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setZoneQuery('')
+                      setCreateZone('')
+                      setShowZoneList(false)
+                      clearMachine()
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-base text-gray-400 hover:text-gray-600"
+                    aria-label="Esborrar"
+                  >
+                    x
+                  </button>
+                ) : null}
+              </div>
+              {showZoneList ? (
+                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-2xl border bg-white shadow-lg">
+                  {zoneOptions
+                    .filter((zone) => zone.toLowerCase().includes(zoneQuery.toLowerCase()))
+                    .map((zone) => (
+                      <button
+                        key={zone}
+                        type="button"
+                        onClick={() => {
+                          setCreateZone(zone)
+                          setZoneQuery(zone)
+                          setShowZoneList(false)
+                          clearMachine()
+                        }}
+                        className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
+                      >
+                        {zone}
+                      </button>
+                    ))}
+                  {zoneOptions.filter((zone) => zone.toLowerCase().includes(zoneQuery.toLowerCase())).length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-gray-500">Sense resultats</div>
+                  ) : null}
+                </div>
+              ) : null}
+              <p className="mt-2 text-xs text-slate-500">
+                Camp opcional. Si tries una zona, la maquinària es filtra automàticament.
+              </p>
+            </div>
+
             <div className="relative md:col-span-2">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Maquinaria *
@@ -399,15 +568,15 @@ export default function CreateTicketModal({
                 <input
                   className="h-12 w-full rounded-2xl border px-4 pr-10 text-base disabled:bg-slate-50"
                   placeholder={
-                    effectiveMachineLocation
+                    effectiveCenter && effectiveLocation
                       ? 'Selecciona una maquina del llistat o escriu text lliure...'
                       : 'Primer selecciona centre i ubicacio...'
                   }
                   value={machineQuery}
                   required
-                  disabled={!effectiveMachineLocation}
+                  disabled={!effectiveCenter || !effectiveLocation}
                   onFocus={() => {
-                    if (effectiveMachineLocation && locationMachines.length > 0) setShowMachineList(true)
+                    if (effectiveCenter && effectiveLocation && locationMachines.length > 0) setShowMachineList(true)
                   }}
                   onChange={(e) => {
                     setMachineQuery(e.target.value)
@@ -443,6 +612,10 @@ export default function CreateTicketModal({
                       onClick={() => {
                         setCreateMachine(machine.label)
                         setMachineQuery(machine.label)
+                        if (machine.zone) {
+                          setCreateZone(machine.zone)
+                          setZoneQuery(machine.zone)
+                        }
                         setShowMachineList(false)
                       }}
                       className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
@@ -457,7 +630,7 @@ export default function CreateTicketModal({
                   ) : null}
                 </div>
               ) : null}
-              {effectiveMachineLocation && locationMachines.length === 0 ? (
+              {effectiveCenter && effectiveLocation && locationMachines.length === 0 ? (
                 <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-gray-500">
                   No hi ha maquinaria registrada per aquesta ubicacio. Pots escriure el nom
                   manualment.
@@ -466,9 +639,10 @@ export default function CreateTicketModal({
               {machines.length === 0 ? (
                 <div className="mt-1 text-xs text-amber-600">No s&apos;ha pogut carregar la maquinaria.</div>
               ) : null}
-              {effectiveMachineLocation && locationMachines.length > 0 ? (
+              {effectiveCenter && effectiveLocation && locationMachines.length > 0 ? (
                 <div className="mt-1 text-xs text-slate-500">
-                  {locationMachines.length} maquina{locationMachines.length === 1 ? '' : 's'} a aquesta ubicacio
+                  {locationMachines.length} maquina{locationMachines.length === 1 ? '' : 's'}
+                  {effectiveZone ? ' a aquesta zona' : ' en aquesta ubicacio'}
                 </div>
               ) : null}
             </div>

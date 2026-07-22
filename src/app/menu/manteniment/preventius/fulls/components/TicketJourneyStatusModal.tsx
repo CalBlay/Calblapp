@@ -39,7 +39,6 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
   }
 
   const badgeLabel = (status: JourneyStatus) => {
-    if (status === 'espera') return 'En pausa'
     return STATUS_LABELS[status]
   }
 

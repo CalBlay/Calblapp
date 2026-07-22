@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { format } from 'date-fns'
 import type { MachineItem, Ticket } from '@/app/menu/manteniment/tickets/types'
 import type { MaintenanceStatus, Preventiu, SeguimentRow, TabKey } from '../types'
+import type { CenterRow } from '../../dades/types'
 import {
   getDaysOpen,
   getTicketLastMovementAt,
@@ -15,17 +16,73 @@ import {
   parseDateFromParts,
   STATUSES,
 } from '../utils'
+import { matchesMaintenanceSiteFilters } from '@/lib/maintenanceLocationCatalog'
+
+function classifyTicketStatusForSeguimentSummary(ticket: Ticket): MaintenanceStatus | null {
+  if (ticket.externalized) return null
+  if (
+    ticket.status === 'validat' ||
+    ticket.workflowStage === 'resolved_admin' ||
+    ticket.workflowStage === 'resolved_planner' ||
+    ticket.workflowStage === 'closed'
+  ) {
+    return 'validat'
+  }
+  if (ticket.status === 'fet') return 'fet'
+  if (
+    (
+      (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' ||
+      ticket.workflowStage === 'planned_internal'
+    ) &&
+    ticket.status === 'espera'
+  ) {
+    return 'espera'
+  }
+  if (
+    (
+      (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' ||
+      ticket.workflowStage === 'planned_internal'
+    ) &&
+    ticket.status === 'en_curs'
+  ) {
+    return 'en_curs'
+  }
+  if (
+    (
+      (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' ||
+      ticket.workflowStage === 'planned_internal'
+    ) &&
+    ticket.status === 'assignat'
+  ) {
+    return 'assignat'
+  }
+  if (
+    (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
+    (
+      ticket.status === 'nou' ||
+      ticket.status === 'no_fet' ||
+      ticket.status === 'reassignat' ||
+      ticket.status === 'assignat'
+    )
+  ) {
+    return normalizeStatus(ticket.status)
+  }
+  return normalizeStatus(ticket.status)
+}
 
 type Params = {
   tab: TabKey
   tickets: Ticket[]
   preventius: Preventiu[]
+  centers: CenterRow[]
   machines: MachineItem[]
   dateMode: 'all' | 'planned'
   dateRange: { start: string; end: string }
   statusFilter: MaintenanceStatus[]
   workerFilter: string
+  centerFilter: string
   locationFilter: string
+  zoneFilter: string
   externalFilter: 'all' | 'internal' | 'external'
   pendingValidationOnly: boolean
   stalledOnly: boolean
@@ -37,10 +94,13 @@ export function useSeguimentDerivedData({
   tab,
   tickets,
   preventius,
+  centers,
   machines,
   statusFilter,
   workerFilter,
+  centerFilter,
   locationFilter,
+  zoneFilter,
   externalFilter,
   pendingValidationOnly,
   stalledOnly,
@@ -49,38 +109,113 @@ export function useSeguimentDerivedData({
 }: Params) {
   const normalizedSearch = search.trim().toLowerCase()
   const hasStatusFilter = statusFilter.length > 0
+  const matchesTicketBaseFilters = (ticket: Ticket) => {
+    if (workerFilter !== 'all' && !(ticket.assignedToNames || []).includes(workerFilter)) {
+      return false
+    }
+    if (
+      !matchesMaintenanceSiteFilters(
+        centers,
+        {
+          center: centerFilter !== 'all' ? centerFilter : '',
+          location: locationFilter !== 'all' ? locationFilter : '',
+          zone: zoneFilter !== 'all' ? zoneFilter : '',
+        },
+        ticket.workLocation,
+        ticket.location
+      )
+    ) {
+      return false
+    }
+    if (stalledOnly && (getDaysOpen(ticket.createdAt) || 0) < 3) return false
+    if (
+      normalizedSearch &&
+      ![
+        ticket.ticketCode,
+        ticket.incidentNumber,
+        ticket.description,
+        ticket.machine,
+        ticket.location,
+        ...(ticket.assignedToNames || []),
+        ticket.supplierName,
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedSearch)
+    ) {
+      return false
+    }
+    return applyDateMatch(getTicketLastMovementAt(ticket))
+  }
+
+  const matchesPreventiuBaseFilters = (item: Preventiu) => {
+    if (workerFilter !== 'all' && !item.workerNames.includes(workerFilter)) return false
+    if (
+      !matchesMaintenanceSiteFilters(
+        centers,
+        {
+          center: centerFilter !== 'all' ? centerFilter : '',
+          location: locationFilter !== 'all' ? locationFilter : '',
+          zone: zoneFilter !== 'all' ? zoneFilter : '',
+        },
+        item.location
+      )
+    ) {
+      return false
+    }
+    if (stalledOnly && (getDaysOpen(item.createdAt) || 0) < 3) return false
+    if (
+      normalizedSearch &&
+      ![item.title, item.location, ...item.workerNames]
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedSearch)
+    ) {
+      return false
+    }
+    return applyDateMatch(parseDateFromParts(item.plannedDate, item.plannedStart)?.getTime() || null)
+  }
+
+  const statusUniverseTicketRows = useMemo(
+    () =>
+      tickets
+        .filter(matchesTicketBaseFilters)
+        .sort((a, b) => {
+          const aTime = parseDate(getTicketLastMovementAt(a))?.getTime() || 0
+          const bTime = parseDate(getTicketLastMovementAt(b))?.getTime() || 0
+          return bTime - aTime
+        }),
+    [applyDateMatch, centerFilter, centers, locationFilter, normalizedSearch, stalledOnly, tickets, workerFilter, zoneFilter]
+  )
+
+  const statusUniversePreventiuRows = useMemo(
+    () =>
+      preventius
+        .filter(matchesPreventiuBaseFilters)
+        .sort(
+          (a, b) =>
+            (parseDate(b.updatedAt || b.createdAt)?.getTime() || 0) -
+            (parseDate(a.updatedAt || a.createdAt)?.getTime() || 0)
+        ),
+    [applyDateMatch, centerFilter, centers, locationFilter, normalizedSearch, preventius, stalledOnly, workerFilter, zoneFilter]
+  )
 
   const ticketRows = useMemo(
     () =>
-      tickets
+      statusUniverseTicketRows
         .filter((ticket) => {
-          if (hasStatusFilter && !statusFilter.includes(normalizeStatus(ticket.status))) return false
           if (externalFilter === 'external' && !ticket.externalized) return false
           if (externalFilter === 'internal' && ticket.externalized) return false
-          if (workerFilter !== 'all' && !(ticket.assignedToNames || []).includes(workerFilter)) {
-            return false
-          }
-          if (locationFilter !== 'all' && ticket.location !== locationFilter) return false
-          if (pendingValidationOnly && normalizeStatus(ticket.status) !== 'fet') return false
-          if (stalledOnly && (getDaysOpen(ticket.createdAt) || 0) < 3) return false
+          const classifiedStatus = classifyTicketStatusForSeguimentSummary(ticket)
           if (
-            normalizedSearch &&
-            ![
-              ticket.ticketCode,
-              ticket.incidentNumber,
-              ticket.description,
-              ticket.machine,
-              ticket.location,
-              ...(ticket.assignedToNames || []),
-              ticket.supplierName,
-            ]
-              .join(' ')
-              .toLowerCase()
-              .includes(normalizedSearch)
+            externalFilter !== 'external' &&
+            hasStatusFilter &&
+            (!classifiedStatus || !statusFilter.includes(classifiedStatus))
           ) {
             return false
           }
-          return applyDateMatch(getTicketLastMovementAt(ticket))
+          if (pendingValidationOnly && normalizeStatus(ticket.status) !== 'fet') return false
+          return true
         })
         .sort((a, b) => {
           const aTime = parseDate(getTicketLastMovementAt(a))?.getTime() || 0
@@ -88,38 +223,21 @@ export function useSeguimentDerivedData({
           return bTime - aTime
         }),
     [
-      applyDateMatch,
       externalFilter,
       hasStatusFilter,
-      locationFilter,
-      normalizedSearch,
       pendingValidationOnly,
-      stalledOnly,
       statusFilter,
-      tickets,
-      workerFilter,
+      statusUniverseTicketRows,
     ]
   )
 
   const preventiuRows = useMemo(
     () =>
-      preventius
+      statusUniversePreventiuRows
         .filter((item) => {
           if (hasStatusFilter && !statusFilter.includes(item.status)) return false
-          if (workerFilter !== 'all' && !item.workerNames.includes(workerFilter)) return false
-          if (locationFilter !== 'all' && item.location !== locationFilter) return false
           if (pendingValidationOnly && item.status !== 'fet') return false
-          if (stalledOnly && (getDaysOpen(item.createdAt) || 0) < 3) return false
-          if (
-            normalizedSearch &&
-            ![item.title, item.location, ...item.workerNames]
-              .join(' ')
-              .toLowerCase()
-              .includes(normalizedSearch)
-          ) {
-            return false
-          }
-          return applyDateMatch(parseDateFromParts(item.plannedDate, item.plannedStart)?.getTime() || null)
+          return true
         })
         .sort(
           (a, b) =>
@@ -127,37 +245,43 @@ export function useSeguimentDerivedData({
             (parseDate(a.updatedAt || a.createdAt)?.getTime() || 0)
         ),
     [
-      applyDateMatch,
       hasStatusFilter,
-      locationFilter,
-      normalizedSearch,
       pendingValidationOnly,
-      preventius,
-      stalledOnly,
       statusFilter,
-      workerFilter,
+      statusUniversePreventiuRows,
     ]
   )
 
   const currentRows = tab === 'tickets' ? ticketRows : preventiuRows
+  const statusUniverseRows = tab === 'tickets' ? statusUniverseTicketRows : statusUniversePreventiuRows
 
   const statusCounts = useMemo(
     () =>
       Object.fromEntries(
         STATUSES.map((status) => [
           status,
-          currentRows.filter((row: SeguimentRow) => normalizeStatus(row.status) === status).length,
+          statusUniverseRows.filter((row: SeguimentRow) => {
+            if (tab === 'tickets') {
+              return classifyTicketStatusForSeguimentSummary(row as Ticket) === status
+            }
+            return normalizeStatus(row.status) === status
+          }).length,
         ])
       ) as Record<MaintenanceStatus, number>,
-    [currentRows]
+    [statusUniverseRows, tab]
   )
 
   const summaryStatuses = useMemo(() => STATUSES.filter((status) => status !== 'fet'), [])
 
   const pendingValidationCount = useMemo(
     () =>
-      currentRows.filter((row: SeguimentRow) => normalizeStatus(row.status) === 'fet').length,
-    [currentRows]
+      statusUniverseRows.filter((row: SeguimentRow) => {
+        if (tab === 'tickets') {
+          return classifyTicketStatusForSeguimentSummary(row as Ticket) === 'fet'
+        }
+        return normalizeStatus(row.status) === 'fet'
+      }).length,
+    [statusUniverseRows, tab]
   )
 
   const averageDays = useMemo(
@@ -217,8 +341,8 @@ export function useSeguimentDerivedData({
   )
 
   const externalizedCount = useMemo(
-    () => ticketRows.filter((row) => row.externalized).length,
-    [ticketRows]
+    () => statusUniverseTicketRows.filter((row) => row.externalized).length,
+    [statusUniverseTicketRows]
   )
 
   return {

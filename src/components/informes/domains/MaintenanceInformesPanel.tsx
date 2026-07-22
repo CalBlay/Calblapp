@@ -73,7 +73,9 @@ export function MaintenanceInformesPanel() {
   const [customDateTo, setCustomDateTo] = useState(defRange.to)
   const [customStatus, setCustomStatus] = useState('')
   const [customPriority, setCustomPriority] = useState('')
+  const [customCenter, setCustomCenter] = useState('')
   const [customLocation, setCustomLocation] = useState('')
+  const [customZone, setCustomZone] = useState('')
   const [customTicketType, setCustomTicketType] = useState('')
   const [customInterventionType, setCustomInterventionType] = useState('')
   const [customAssigneeId, setCustomAssigneeId] = useState('')
@@ -118,7 +120,9 @@ export function MaintenanceInformesPanel() {
     customDateTo,
     customStatus,
     customPriority,
+    customCenter,
     customLocation,
+    customZone,
     customTicketType,
     customInterventionType,
     customAssigneeId,
@@ -154,7 +158,9 @@ export function MaintenanceInformesPanel() {
       params.set('dateTo', customDateTo)
       if (customStatus) params.set('status', customStatus)
       if (customPriority) params.set('priority', customPriority)
+      if (customCenter) params.set('center', customCenter)
       if (customLocation) params.set('location', customLocation)
+      if (customZone) params.set('zone', customZone)
       if (customTicketType) params.set('ticketType', customTicketType)
       if (customInterventionType) params.set('interventionType', customInterventionType)
       if (customAssigneeId) {
@@ -178,7 +184,9 @@ export function MaintenanceInformesPanel() {
     customDateTo,
     customStatus,
     customPriority,
+    customCenter,
     customLocation,
+    customZone,
     customTicketType,
     customInterventionType,
     customAssigneeId,

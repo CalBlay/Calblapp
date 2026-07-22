@@ -14,7 +14,9 @@ export type MaintenanceReportContext =
       dateTo: string
       status?: string
       priority?: string
+      center?: string
       location?: string
+      zone?: string
       ticketType?: string
       interventionType?: string
       assigneeId?: string
@@ -105,7 +107,9 @@ export type MaintenanceOverview = {
   filterOptions: {
     statuses: MaintenanceSelectOption[]
     priorities: MaintenanceSelectOption[]
+    centers: MaintenanceSelectOption[]
     locations: MaintenanceSelectOption[]
+    zones: MaintenanceSelectOption[]
     ticketTypes: MaintenanceSelectOption[]
     interventionTypes: MaintenanceSelectOption[]
     assignees: MaintenanceSelectOption[]

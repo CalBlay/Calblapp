@@ -4,10 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MachineItem, Ticket, UserItem } from '@/app/menu/manteniment/tickets/types'
 import type { Preventiu } from '../types'
 import { buildSeguimentRows, fetcher } from '../utils'
+import type { CenterRow } from '../../dades/types'
+import { buildControlledMaintenanceLocations } from '@/lib/maintenanceLocationCatalog'
 
 export function useSeguimentData() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [preventius, setPreventius] = useState<Preventiu[]>([])
+  const [centers, setCenters] = useState<CenterRow[]>([])
   const [locations, setLocations] = useState<string[]>([])
   const [machines, setMachines] = useState<MachineItem[]>([])
   const [users, setUsers] = useState<UserItem[]>([])
@@ -38,12 +41,12 @@ export function useSeguimentData() {
         return
       }
 
-      const [ticketsJson, plannedJson, completedJson, locationsJson, machinesJson, usersJson] =
+      const [ticketsJson, plannedJson, completedJson, centersJson, machinesJson, usersJson] =
         await Promise.all([
           fetcher('/api/maintenance/tickets?ticketType=maquinaria&limit=300'),
           fetcher('/api/maintenance/preventius/planned'),
           fetcher('/api/maintenance/preventius/completed'),
-          fetcher('/api/spaces/internal'),
+          fetcher('/api/maintenance/data/centers'),
           fetcher('/api/maintenance/machines'),
           fetcher('/api/personnel?department=manteniment'),
         ])
@@ -56,7 +59,9 @@ export function useSeguimentData() {
 
       setTickets(nextTickets)
       setPreventius(nextPreventius)
-      setLocations(Array.isArray(locationsJson?.locations) ? locationsJson.locations : [])
+      const nextCenters = Array.isArray(centersJson?.centers) ? centersJson.centers : []
+      setCenters(nextCenters)
+      setLocations(buildControlledMaintenanceLocations(nextCenters))
       setMachines(Array.isArray(machinesJson?.machines) ? machinesJson.machines : [])
       setUsers(Array.isArray(usersJson?.data) ? usersJson.data : [])
     } catch (err) {
@@ -67,6 +72,8 @@ export function useSeguimentData() {
       setError(err instanceof Error ? err.message : 'Error carregant seguiment')
       setTickets([])
       setPreventius([])
+      setCenters([])
+      setLocations([])
     } finally {
       if (!silent) setLoading(false)
     }
@@ -107,6 +114,7 @@ export function useSeguimentData() {
     setTickets,
     preventius,
     setPreventius,
+    centers,
     locations,
     machines,
     users,

@@ -141,8 +141,14 @@ export function CuinaCentralMaintenanceTicketProvider({
           setLocationQuery={composer.setLocationQuery}
           createLocation={composer.createLocation}
           setCreateLocation={composer.setCreateLocation}
+          zoneQuery={composer.zoneQuery}
+          setZoneQuery={composer.setZoneQuery}
+          createZone={composer.createZone}
+          setCreateZone={composer.setCreateZone}
           showCenterList={composer.showCenterList}
           setShowCenterList={composer.setShowCenterList}
+          showZoneList={composer.showZoneList}
+          setShowZoneList={composer.setShowZoneList}
           machineQuery={composer.machineQuery}
           setMachineQuery={composer.setMachineQuery}
           createMachine={composer.createMachine}

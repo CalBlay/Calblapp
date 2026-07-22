@@ -1,8 +1,8 @@
 'use client'
 
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
-import type { UserItem } from '@/app/menu/manteniment/tickets/types'
 import type { MaintenanceStatus, TabKey } from '../types'
+import { MAINTENANCE_EXTERNAL_FLOW_LABELS } from '@/lib/maintenanceStatus'
 
 type Props = {
   tab: TabKey
@@ -10,16 +10,22 @@ type Props = {
   externalFilter: 'all' | 'internal' | 'external'
   statusFilter: MaintenanceStatus[]
   workerFilter: string
+  centerFilter: string
   locationFilter: string
+  zoneFilter: string
   pendingValidationOnly: boolean
   stalledOnly: boolean
-  locations: string[]
-  users: UserItem[]
+  centerOptions: string[]
+  locationOptions: string[]
+  zoneOptions: string[]
+  workerOptions: string[]
   onDateModeChange: (value: 'all' | 'planned') => void
   onExternalFilterChange: (value: 'all' | 'internal' | 'external') => void
   onStatusFilterChange: (value: MaintenanceStatus[]) => void
   onWorkerFilterChange: (value: string) => void
+  onCenterFilterChange: (value: string) => void
   onLocationFilterChange: (value: string) => void
+  onZoneFilterChange: (value: string) => void
   onPendingValidationOnlyChange: (value: boolean) => void
   onStalledOnlyChange: (value: boolean) => void
   onReset: () => void
@@ -30,15 +36,21 @@ export default function SeguimentSidebarFilters({
   dateMode,
   externalFilter,
   workerFilter,
+  centerFilter,
   locationFilter,
+  zoneFilter,
   pendingValidationOnly,
   stalledOnly,
-  locations,
-  users,
+  centerOptions,
+  locationOptions,
+  zoneOptions,
+  workerOptions,
   onDateModeChange,
   onExternalFilterChange,
   onWorkerFilterChange,
+  onCenterFilterChange,
   onLocationFilterChange,
+  onZoneFilterChange,
   onPendingValidationOnlyChange,
   onStalledOnlyChange,
   onReset,
@@ -64,9 +76,9 @@ export default function SeguimentSidebarFilters({
             }
             className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
           >
-            <option value="all">Tots</option>
-            <option value="internal">Interns</option>
-            <option value="external">Derivats a proveidor</option>
+            <option value="all">{MAINTENANCE_EXTERNAL_FLOW_LABELS.all}</option>
+            <option value="internal">{MAINTENANCE_EXTERNAL_FLOW_LABELS.internal}</option>
+            <option value="external">{MAINTENANCE_EXTERNAL_FLOW_LABELS.external}</option>
           </select>
         </label>
       ) : null}
@@ -79,9 +91,25 @@ export default function SeguimentSidebarFilters({
           className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
         >
           <option value="all">Tots</option>
-          {users.map((user) => (
-            <option key={user.id} value={user.name}>
-              {user.name}
+          {workerOptions.map((worker) => (
+            <option key={worker} value={worker}>
+              {worker}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="space-y-2 text-sm text-slate-700">
+        <span className="font-medium">Centre</span>
+        <select
+          value={centerFilter}
+          onChange={(e) => onCenterFilterChange(e.target.value)}
+          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+        >
+          <option value="all">Tots</option>
+          {centerOptions.map((center) => (
+            <option key={center} value={center}>
+              {center}
             </option>
           ))}
         </select>
@@ -95,9 +123,25 @@ export default function SeguimentSidebarFilters({
           className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
         >
           <option value="all">Totes</option>
-          {locations.map((location) => (
+          {locationOptions.map((location) => (
             <option key={location} value={location}>
               {location}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="space-y-2 text-sm text-slate-700">
+        <span className="font-medium">Zona</span>
+        <select
+          value={zoneFilter}
+          onChange={(e) => onZoneFilterChange(e.target.value)}
+          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+        >
+          <option value="all">Totes</option>
+          {zoneOptions.map((zone) => (
+            <option key={zone} value={zone}>
+              {zone}
             </option>
           ))}
         </select>

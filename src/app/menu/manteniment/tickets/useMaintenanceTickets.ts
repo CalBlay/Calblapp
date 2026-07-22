@@ -11,6 +11,7 @@ import {
 } from '@/lib/accessControl'
 import {
   getExternalReporterTicketBucket,
+  getMaintenanceTicketScope,
   matchesMaintenanceTicketScope,
   matchesExternalReporterTicketBucket,
   resolveDefaultTicketCenterFromUserName,
@@ -31,6 +32,7 @@ import {
   MAINTENANCE_TICKETS_REOPEN_PERM,
   MAINTENANCE_TICKETS_VALIDATE_PERM,
 } from '@/lib/maintenanceTicketsPermissions'
+import { matchesMaintenanceSiteFilters } from '@/lib/maintenanceLocationCatalog'
 
 type SessionUser = {
   id?: string
@@ -48,7 +50,14 @@ type AvailabilityItem = {
   name?: string
 }
 
-type InternalTicketBucket = 'inbox' | 'planned' | 'active' | 'validation' | 'external' | 'closed'
+type InternalTicketBucket =
+  | 'inbox'
+  | 'planned'
+  | 'in_progress'
+  | 'waiting'
+  | 'validation'
+  | 'external'
+  | 'closed'
 
 const normalizeDept = (raw?: string) =>
   (raw || '')
@@ -57,6 +66,58 @@ const normalizeDept = (raw?: string) =>
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .trim()
+
+function classifyInternalTicketBucket(ticket: Ticket): InternalTicketBucket | null {
+  if (ticket.externalized) return 'external'
+  if (
+    ticket.status === 'validat' ||
+    ticket.workflowStage === 'resolved_admin' ||
+    ticket.workflowStage === 'resolved_planner' ||
+    ticket.workflowStage === 'closed'
+  ) {
+    return 'closed'
+  }
+  if (ticket.status === 'fet') return 'validation'
+  if (
+    (
+      (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' ||
+      ticket.workflowStage === 'planned_internal'
+    ) &&
+    ticket.status === 'espera'
+  ) {
+    return 'waiting'
+  }
+  if (
+    (
+      (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' ||
+      ticket.workflowStage === 'planned_internal'
+    ) &&
+    ticket.status === 'en_curs'
+  ) {
+    return 'in_progress'
+  }
+  if (
+    (
+      (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' ||
+      ticket.workflowStage === 'planned_internal'
+    ) &&
+    ticket.status === 'assignat'
+  ) {
+    return 'planned'
+  }
+  if (
+    (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
+    (
+      ticket.status === 'nou' ||
+      ticket.status === 'no_fet' ||
+      ticket.status === 'reassignat' ||
+      ticket.status === 'assignat'
+    )
+  ) {
+    return 'inbox'
+  }
+  return null
+}
 
 export function useMaintenanceTickets() {
   const { data: session } = useSession()
@@ -97,7 +158,9 @@ export function useMaintenanceTickets() {
       dateMode: 'planned',
       status: '__all__',
       priority: '__all__',
+      center: '__all__',
       location: '__all__',
+      zone: '__all__',
       ticketBucket: '__all__',
       ticketScope: '__all__',
     }
@@ -106,7 +169,9 @@ export function useMaintenanceTickets() {
   const [filters, setFilters] = useState<FiltersState>(initial)
   const statusFilter = filters.status ?? '__all__'
   const priorityFilter = filters.priority ?? '__all__'
+  const centerFilter = filters.center ?? '__all__'
   const locationFilter = filters.location ?? '__all__'
+  const zoneFilter = filters.zone ?? '__all__'
   const dateModeFilter = (filters.dateMode ?? 'planned') as MaintenanceDateFilterMode
   const ticketBucketFilter = filters.ticketBucket ?? '__all__'
   const ticketScopeFilter = filters.ticketScope ?? '__all__'
@@ -161,7 +226,6 @@ export function useMaintenanceTickets() {
         params.set('ticketType', 'maquinaria')
         if (statusFilter !== '__all__') params.set('status', statusFilter)
         if (priorityFilter !== '__all__') params.set('priority', priorityFilter)
-        if (locationFilter !== '__all__') params.set('location', locationFilter)
         if (dateModeFilter === 'planned') {
           if (filters.start) params.set('start', filters.start)
           if (filters.end) params.set('end', filters.end)
@@ -198,7 +262,7 @@ export function useMaintenanceTickets() {
         }
       }
     },
-    [dateModeFilter, filters.end, filters.start, locationFilter, priorityFilter, statusFilter]
+    [dateModeFilter, filters.end, filters.start, priorityFilter, statusFilter]
   )
 
   const {
@@ -210,16 +274,22 @@ export function useMaintenanceTickets() {
     setCenterQuery,
     createLocation,
     setCreateLocation,
+    createZone,
+    setCreateZone,
     createMachine,
     setCreateMachine,
     locationQuery,
     setLocationQuery,
+    zoneQuery,
+    setZoneQuery,
     machineQuery,
     setMachineQuery,
     showCenterList,
     setShowCenterList,
     showLocationList,
     setShowLocationList,
+    showZoneList,
+    setShowZoneList,
     showMachineList,
     setShowMachineList,
     createDescription,
@@ -719,6 +789,22 @@ export function useMaintenanceTickets() {
           ? matchesExternalReporterTicketBucket(ticket, ticketBucketFilter)
           : matchesMaintenanceTicketScope(ticket, ticketScopeFilter)
       )
+      .filter((ticket) =>
+        matchesMaintenanceSiteFilters(
+          centers,
+          {
+            center: centerFilter !== '__all__' ? centerFilter : '',
+            location: locationFilter !== '__all__' ? locationFilter : '',
+            zone: zoneFilter !== '__all__' ? zoneFilter : '',
+          },
+          ticket.workLocation,
+          ticket.location
+        )
+      )
+
+    const internalScoped = inRange.filter(
+      (ticket) => !ticket.externalized && matchesMaintenanceTicketScope(ticket, ticketScopeFilter)
+    )
 
     const sortTickets = (list: Ticket[]) =>
       [...list].sort((a, b) => {
@@ -769,24 +855,13 @@ export function useMaintenanceTickets() {
       return sections.filter((section) => section.items.length > 0)
     }
 
-    const ticketsInbox = inRange.filter(
-      (ticket) =>
-        !ticket.externalized &&
-        (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
-        (
-          ticket.status === 'nou' ||
-          ticket.status === 'no_fet' ||
-          ticket.status === 'reassignat' ||
-          ticket.status === 'assignat'
-        )
-    )
-    const plannerQueue = inRange.filter(
-      (ticket) =>
-        !ticket.externalized &&
-        (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' &&
-        ticket.status !== 'validat' &&
-        ticket.status !== 'fet'
-    )
+    const ticketsInbox = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'inbox')
+    const plannedTickets = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'planned')
+    const inProgressTickets = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'in_progress')
+    const waitingTickets = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'waiting')
+    const pendingValidationTickets = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'validation')
+    const closedTickets = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'closed')
+    const externalizedTickets = inRange.filter((ticket) => ticket.externalized)
 
     const sections: Array<{
       key: InternalTicketBucket
@@ -802,44 +877,39 @@ export function useMaintenanceTickets() {
       },
       {
         key: 'planned',
-        title: 'Enviats al planificador',
-        note: 'Tickets derivats des de tickets o entrades directes de Cuina Central',
-        items: plannerQueue,
+        title: 'Planificats',
+        note: 'Tickets assignats o derivats, pendents de començar',
+        items: plannedTickets,
       },
       {
-        key: 'active',
-        title: 'En curs i en espera',
-        note: 'Feines obertes que ja s estan executant o bloquejades',
-        items: inRange.filter(
-          (ticket) =>
-            !ticket.externalized &&
-            (ticket.workflowStage === 'planned_internal' || ticket.workflowStage === 'planner_queue') &&
-            (ticket.status === 'assignat' || ticket.status === 'en_curs' || ticket.status === 'espera')
-        ),
+        key: 'in_progress',
+        title: 'En curs',
+        note: 'Feines que s estan executant ara mateix',
+        items: inProgressTickets,
+      },
+      {
+        key: 'waiting',
+        title: 'En espera',
+        note: 'Feines bloquejades o pendents d una accio externa',
+        items: waitingTickets,
       },
       {
         key: 'validation',
         title: 'Pendents de validar',
         note: 'Tickets fets pendents de revisio final',
-        items: inRange.filter((ticket) => !ticket.externalized && ticket.status === 'fet'),
+        items: pendingValidationTickets,
       },
       {
         key: 'external',
         title: 'Externalitzats',
         note: 'Tickets derivats a proveidor',
-        items: inRange.filter((ticket) => ticket.externalized),
+        items: externalizedTickets,
       },
       {
         key: 'closed',
         title: 'Validats',
         note: 'Feines tancades i validades',
-        items: inRange.filter(
-          (ticket) =>
-            ticket.status === 'validat' ||
-            ticket.workflowStage === 'resolved_admin' ||
-            ticket.workflowStage === 'resolved_planner' ||
-            ticket.workflowStage === 'closed'
-        ),
+        items: closedTickets,
       },
     ]
 
@@ -851,7 +921,19 @@ export function useMaintenanceTickets() {
     return filteredSections
       .map((section) => ({ ...section, items: sortTickets(section.items) }))
       .filter((section) => section.items.length > 0)
-  }, [dateModeFilter, filters.end, filters.start, isExternalReporter, ticketBucketFilter, ticketScopeFilter, tickets])
+  }, [
+    centerFilter,
+    centers,
+    dateModeFilter,
+    filters.end,
+    filters.start,
+    isExternalReporter,
+    locationFilter,
+    ticketBucketFilter,
+    ticketScopeFilter,
+    tickets,
+    zoneFilter,
+  ])
 
   const externalReporterSummary = useMemo(() => {
     const inRange = (ticket: Ticket) =>
@@ -865,7 +947,19 @@ export function useMaintenanceTickets() {
 
     const countBucket = (bucket: ExternalReporterTicketBucket) =>
       tickets.filter(
-        (ticket) => inRange(ticket) && getExternalReporterTicketBucket(ticket) === bucket
+        (ticket) =>
+          inRange(ticket) &&
+          matchesMaintenanceSiteFilters(
+            centers,
+            {
+              center: centerFilter !== '__all__' ? centerFilter : '',
+              location: locationFilter !== '__all__' ? locationFilter : '',
+              zone: zoneFilter !== '__all__' ? zoneFilter : '',
+            },
+            ticket.workLocation,
+            ticket.location
+          ) &&
+          getExternalReporterTicketBucket(ticket) === bucket
       ).length
 
     return {
@@ -874,7 +968,7 @@ export function useMaintenanceTickets() {
       fet: countBucket('fet'),
       externalitzat: countBucket('externalitzat'),
     }
-  }, [dateModeFilter, filters.end, filters.start, tickets])
+  }, [centerFilter, centers, dateModeFilter, filters.end, filters.start, locationFilter, tickets, zoneFilter])
 
   const ticketSummary = useMemo(() => {
     const inRange = (ticket: Ticket) =>
@@ -886,52 +980,105 @@ export function useMaintenanceTickets() {
         createdAt: ticket.createdAt,
       })
 
+    const scopedInternalTickets = tickets.filter(
+      (ticket) =>
+        inRange(ticket) &&
+        matchesMaintenanceSiteFilters(
+          centers,
+          {
+            center: centerFilter !== '__all__' ? centerFilter : '',
+            location: locationFilter !== '__all__' ? locationFilter : '',
+            zone: zoneFilter !== '__all__' ? zoneFilter : '',
+          },
+          ticket.workLocation,
+          ticket.location
+        ) &&
+        matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
+        !ticket.externalized
+    )
+
     return {
-      inbox: tickets.filter(
-        (ticket) =>
-          inRange(ticket) &&
-          matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
-          !ticket.externalized &&
-          (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox'
-      ).length,
-      planned: tickets.filter(
-        (ticket) =>
-          inRange(ticket) &&
-          matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
-          !ticket.externalized &&
-          (ticket.workflowStage || '') === 'planner_queue'
-      ).length,
-      active: tickets.filter(
-        (ticket) =>
-          inRange(ticket) &&
-          matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
-          !ticket.externalized &&
-          (ticket.status === 'assignat' || ticket.status === 'en_curs' || ticket.status === 'espera')
-      ).length,
-      pendingValidation: tickets.filter(
-        (ticket) =>
-          inRange(ticket) &&
-          matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
-          !ticket.externalized &&
-          ticket.status === 'fet'
-      ).length,
+      inbox: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'inbox').length,
+      planned: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'planned').length,
+      inProgress: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'in_progress').length,
+      waiting: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'waiting').length,
+      pendingValidation: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'validation').length,
       externalized: tickets.filter(
         (ticket) =>
-          inRange(ticket) && matchesMaintenanceTicketScope(ticket, ticketScopeFilter) && ticket.externalized
-      ).length,
-      closed: tickets.filter(
-        (ticket) =>
           inRange(ticket) &&
+          matchesMaintenanceSiteFilters(
+            centers,
+            {
+              center: centerFilter !== '__all__' ? centerFilter : '',
+              location: locationFilter !== '__all__' ? locationFilter : '',
+              zone: zoneFilter !== '__all__' ? zoneFilter : '',
+            },
+            ticket.workLocation,
+            ticket.location
+          ) &&
           matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
-          (
-            ticket.status === 'validat' ||
-            ticket.workflowStage === 'resolved_admin' ||
-            ticket.workflowStage === 'resolved_planner' ||
-            ticket.workflowStage === 'closed'
-          )
+          ticket.externalized
       ).length,
+      closed: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'closed').length,
     }
-  }, [dateModeFilter, filters.end, filters.start, ticketScopeFilter, tickets])
+  }, [
+    centerFilter,
+    centers,
+    dateModeFilter,
+    filters.end,
+    filters.start,
+    locationFilter,
+    ticketScopeFilter,
+    tickets,
+    zoneFilter,
+  ])
+
+  const ticketScopeSummary = useMemo(() => {
+    const counts: Record<'restaurants' | 'cuina_central' | 'centres_propis', number> = {
+      restaurants: 0,
+      cuina_central: 0,
+      centres_propis: 0,
+    }
+
+    tickets.forEach((ticket) => {
+      const inCurrentDateRange = matchesMaintenanceTicketDateFilter({
+        mode: dateModeFilter,
+        start: filters.start,
+        end: filters.end,
+        plannedStart: ticket.plannedStart,
+        createdAt: ticket.createdAt,
+      })
+      if (!inCurrentDateRange) return
+      if (
+        !matchesMaintenanceSiteFilters(
+          centers,
+          {
+            center: centerFilter !== '__all__' ? centerFilter : '',
+            location: locationFilter !== '__all__' ? locationFilter : '',
+            zone: zoneFilter !== '__all__' ? zoneFilter : '',
+          },
+          ticket.workLocation,
+          ticket.location
+        )
+      ) {
+        return
+      }
+
+      if (!classifyInternalTicketBucket(ticket) && !ticket.externalized) return
+      counts[getMaintenanceTicketScope(ticket)] += 1
+    })
+
+    return counts
+  }, [
+    centerFilter,
+    centers,
+    dateModeFilter,
+    filters.end,
+    filters.start,
+    locationFilter,
+    tickets,
+    zoneFilter,
+  ])
 
   return {
     role,
@@ -963,16 +1110,22 @@ export function useMaintenanceTickets() {
     setCenterQuery,
     createLocation,
     setCreateLocation,
+    createZone,
+    setCreateZone,
     createMachine,
     setCreateMachine,
     locationQuery,
     setLocationQuery,
+    zoneQuery,
+    setZoneQuery,
     machineQuery,
     setMachineQuery,
     showCenterList,
     setShowCenterList,
     showLocationList,
     setShowLocationList,
+    showZoneList,
+    setShowZoneList,
     showMachineList,
     setShowMachineList,
     createDescription,
@@ -1048,5 +1201,6 @@ export function useMaintenanceTickets() {
     groupedTickets,
     ticketSummary,
     externalReporterSummary,
+    ticketScopeSummary,
   }
 }

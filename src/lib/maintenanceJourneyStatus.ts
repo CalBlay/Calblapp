@@ -134,7 +134,7 @@ export function validateJourneyStatusPayload(params: {
 
   if ((nextStatus === 'no_fet' || nextStatus === 'espera') && !note) {
     return nextStatus === 'espera'
-      ? 'Cal indicar el motiu de la pausa en observacions.'
+      ? "Cal indicar el motiu de l'espera en observacions."
       : 'Cal indicar el motiu en observacions.'
   }
 

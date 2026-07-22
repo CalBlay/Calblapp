@@ -2,6 +2,11 @@
 
 import { differenceInCalendarDays, format } from 'date-fns'
 import type { Ticket, TicketStatus } from '@/app/menu/manteniment/tickets/types'
+import {
+  MAINTENANCE_PRIORITY_BADGE_CLASSES,
+  MAINTENANCE_STATUSES,
+  MAINTENANCE_STATUS_LABELS,
+} from '@/lib/maintenanceStatus'
 import type {
   CompletedRecord,
   MaintenanceStatus,
@@ -10,34 +15,11 @@ import type {
   WorkHistoryEntry,
 } from './types'
 
-export const STATUSES: MaintenanceStatus[] = [
-  'nou',
-  'assignat',
-  'reassignat',
-  'en_curs',
-  'espera',
-  'fet',
-  'no_fet',
-  'validat',
-]
+export const STATUSES: MaintenanceStatus[] = MAINTENANCE_STATUSES
 
-export const STATUS_LABELS: Record<MaintenanceStatus, string> = {
-  nou: 'Nou',
-  assignat: 'Assignat',
-  reassignat: 'Reassignat',
-  en_curs: 'En curs',
-  espera: 'En espera',
-  fet: 'Fet',
-  no_fet: 'No fet',
-  validat: 'Validat',
-}
+export const STATUS_LABELS: Record<MaintenanceStatus, string> = MAINTENANCE_STATUS_LABELS
 
-export const PRIORITY_BADGES: Record<string, string> = {
-  urgent: 'bg-red-100 text-red-700',
-  alta: 'bg-orange-100 text-orange-700',
-  normal: 'bg-slate-100 text-slate-700',
-  baixa: 'bg-blue-100 text-blue-700',
-}
+export const PRIORITY_BADGES: Record<string, string> = MAINTENANCE_PRIORITY_BADGE_CLASSES
 
 export const fetcher = async (url: string) => {
   const res = await fetch(url, { cache: 'no-store' })

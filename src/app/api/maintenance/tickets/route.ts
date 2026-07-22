@@ -42,6 +42,7 @@ type TicketImagePayload = {
 type TicketPayload = {
   location?: string
   workLocation?: string | null
+  zone?: string | null
   machine?: string
   description?: string
   operatorTitle?: string | null
@@ -463,6 +464,7 @@ export async function POST(req: Request) {
     const body = (await req.json()) as TicketPayload
     const location = (body.location || '').trim()
     const workLocation = String(body.workLocation || '').trim() || null
+    const zone = String(body.zone || '').trim() || null
     const machine = (body.machine || '').trim()
     const description = (body.description || '').trim()
     const workerName = String(body.workerName || '').trim()
@@ -530,6 +532,7 @@ export async function POST(req: Request) {
       incidentNumber: incidentNumber || null,
       location,
       workLocation,
+      zone,
       machine: machine || '',
       description,
       operatorTitle: String(body.operatorTitle || body.machine || '').trim() || null,
