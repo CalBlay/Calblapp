@@ -237,7 +237,8 @@ export function buildIncidentsMeetingMinutesHtml(input: BuildMeetingMinutesHtmlI
           const rows = ev.rows
             .map((inc) => {
               const desc = escapeHtml(inc.description || '—')
-              const res = inc.resolutionNote ? escapeHtml(inc.resolutionNote) : '—'
+              const actionsText = inc.meetingMinutesActionsText?.trim() || inc.resolutionNote?.trim() || ''
+              const res = actionsText ? escapeHtml(actionsText).replace(/\r\n|\n|\r/g, '<br/>') : '—'
               return `<tr>
                 <td>${escapeHtml(inc.incidentNumber || '—')}</td>
                 <td>${escapeHtml(inc.department || '—')}</td>
@@ -256,7 +257,7 @@ export function buildIncidentsMeetingMinutesHtml(input: BuildMeetingMinutesHtmlI
             <table>
               <thead>
                 <tr>
-                  <th>Nº</th><th>Dept</th><th>Imp.</th><th>Estat</th><th>Cat.</th><th>Descripció</th><th>Resolució</th>
+                  <th>Nº</th><th>Dept</th><th>Imp.</th><th>Estat</th><th>Cat.</th><th>Descripció</th><th>Accions de cada incidència</th>
                 </tr>
               </thead>
               <tbody>${rows}</tbody>

@@ -4,6 +4,7 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import type { MeetingMinutesFilters } from '@/lib/incidentsMeetingMinutes'
 import type { IncidentMeetingAttendee } from '@/lib/incidentMeetingSession'
 import { mergeMeetingAttendees, resolveCoreMeetingAttendees } from '@/lib/incidentMeetingAttendees'
+import { normalizeIncidentActionStatus } from '@/lib/incidentPolicy'
 import { loadAllAppUsers } from '@/lib/server/incidentMeetingUsers'
 
 function normalizeTimestamp(ts: unknown): string {
@@ -17,6 +18,23 @@ function normalizeTimestamp(ts: unknown): string {
   }
   if (typeof ts === 'string') return ts
   return ''
+}
+
+function formatActionStatusLabel(raw: unknown) {
+  const status = normalizeIncidentActionStatus(String(raw || 'open'))
+  if (status === 'done') return 'Tancada'
+  if (status === 'in_progress') return 'En curs'
+  return 'Oberta'
+}
+
+function formatActionSummary(action: Record<string, unknown>) {
+  const title = String(action.title || '').trim()
+  const description = String(action.description || '').trim()
+  const assignedToName = String(action.assignedToName || '').trim()
+  const parts = [title || description || 'Acció sense títol']
+  if (assignedToName) parts.push(`Responsable: ${assignedToName}`)
+  parts.push(`Estat: ${formatActionStatusLabel(action.status)}`)
+  return parts.join(' · ')
 }
 
 export async function loadDefaultMeetingAttendees(): Promise<IncidentMeetingAttendee[]> {
@@ -67,7 +85,7 @@ export async function fetchIncidentsForMeetingMinutes(filters: MeetingMinutesFil
     }
   }
 
-  const incidents = raw.map((inc) => {
+  const incidents = raw.map((inc): Record<string, unknown> => {
     const ev = eventsMap.get(String(inc.eventId || '')) || {}
     return {
       ...inc,
@@ -83,5 +101,32 @@ export async function fetchIncidentsForMeetingMinutes(filters: MeetingMinutesFil
     }
   })
 
-  return incidents
+  const incidentIds = incidents.map((inc) => String(inc.id || '').trim()).filter(Boolean)
+  const actionsByIncident = new Map<string, string[]>()
+  const chunkSize = 30
+
+  for (let i = 0; i < incidentIds.length; i += chunkSize) {
+    const chunk = incidentIds.slice(i, i + chunkSize)
+    const actionsSnap = await firestoreAdmin
+      .collection('incident_actions')
+      .where('incidentId', 'in', chunk)
+      .get()
+
+    actionsSnap.docs.forEach((doc) => {
+      const data = doc.data() as Record<string, unknown>
+      const incidentId = String(data.incidentId || '').trim()
+      if (!incidentId) return
+      const current = actionsByIncident.get(incidentId) || []
+      current.push(formatActionSummary(data))
+      actionsByIncident.set(incidentId, current)
+    })
+  }
+
+  return incidents.map((incident) => {
+    const actionLines = actionsByIncident.get(String(incident.id || '').trim()) || []
+    return {
+      ...incident,
+      meetingMinutesActionsText: actionLines.join('\n'),
+    }
+  })
 }

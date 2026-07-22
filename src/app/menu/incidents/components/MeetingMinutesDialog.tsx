@@ -46,6 +46,23 @@ type Props = {
   initialSession?: IncidentMeetingSession | null
 }
 
+function normalizeActionStatusLabel(raw?: string | null) {
+  const value = String(raw || '').trim().toLowerCase()
+  if (value === 'done') return 'Tancada'
+  if (value === 'in_progress') return 'En curs'
+  return 'Oberta'
+}
+
+function buildMeetingMinutesActionText(action: Record<string, unknown>) {
+  const title = String(action.title || '').trim()
+  const description = String(action.description || '').trim()
+  const assignedToName = String(action.assignedToName || '').trim()
+  const parts = [title || description || 'Acció sense títol']
+  if (assignedToName) parts.push(`Responsable: ${assignedToName}`)
+  parts.push(`Estat: ${normalizeActionStatusLabel(String(action.status || 'open'))}`)
+  return parts.join(' · ')
+}
+
 function RecullFiltersPanel({
   filters,
   loadingIncidents,
@@ -194,7 +211,39 @@ export default function MeetingMinutesDialog({
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(String(json?.error || 'Error carregant incidències'))
       const rows = Array.isArray(json.incidents) ? (json.incidents as Incident[]) : []
-      setIncidents(rows)
+      const incidentIds = rows.map((row) => String(row.id || '').trim()).filter(Boolean)
+      if (incidentIds.length === 0) {
+        setIncidents(rows)
+        return
+      }
+
+      const actionsRes = await fetch('/api/incidents/actions/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incidentIds }),
+      })
+      const actionsJson = await actionsRes.json().catch(() => ({}))
+      if (!actionsRes.ok) throw new Error(String(actionsJson?.error || 'Error carregant accions'))
+
+      const grouped = new Map<string, string[]>()
+      const actions = Array.isArray(actionsJson.actions)
+        ? (actionsJson.actions as Array<Record<string, unknown>>)
+        : []
+
+      for (const action of actions) {
+        const incidentId = String(action.incidentId || '').trim()
+        if (!incidentId) continue
+        const current = grouped.get(incidentId) || []
+        current.push(buildMeetingMinutesActionText(action))
+        grouped.set(incidentId, current)
+      }
+
+      setIncidents(
+        rows.map((row) => ({
+          ...row,
+          meetingMinutesActionsText: (grouped.get(String(row.id || '').trim()) || []).join('\n'),
+        }))
+      )
     } catch {
       setIncidents([])
     } finally {

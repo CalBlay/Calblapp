@@ -41,6 +41,7 @@ export interface Incident {
   hasActions?: boolean
   actionsCount?: number
   openActionsCount?: number
+  meetingMinutesActionsText?: string
 }
 
 export interface IncidentAction {
