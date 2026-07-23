@@ -198,6 +198,75 @@ const normalizeWorkflowStage = (value?: string | null) => {
   return 'tickets_inbox'
 }
 
+const normalizeAssignedIds = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.map((entry) => String(entry || '').trim()).filter(Boolean)
+    : []
+
+const haveSameAssignedIds = (left: string[], right: string[]) => {
+  if (left.length !== right.length) return false
+  const rightSet = new Set(right)
+  return left.every((entry) => rightSet.has(entry))
+}
+
+const rangesOverlap = (
+  startA: number | null,
+  endA: number | null,
+  startB: number | null,
+  endB: number | null
+) => {
+  if (startA === null || endA === null || startB === null || endB === null) return false
+  return startA < endB && endA > startB
+}
+
+async function findMaintenanceTicketAssigneeConflict(params: {
+  ticketId: string
+  assignedToIds: string[]
+  plannedStart: number | null
+  plannedEnd: number | null
+}) {
+  const { ticketId, assignedToIds, plannedStart, plannedEnd } = params
+  if (!assignedToIds.length || plannedStart === null || plannedEnd === null) return null
+
+  const dayStart = new Date(plannedStart)
+  dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(plannedStart)
+  dayEnd.setHours(23, 59, 59, 999)
+
+  const snap = await db
+    .collection('maintenanceTickets')
+    .where('plannedStart', '>=', dayStart.getTime())
+    .where('plannedStart', '<=', dayEnd.getTime())
+    .get()
+
+  for (const doc of snap.docs) {
+    if (doc.id === ticketId) continue
+    const data = doc.data() as MaintenanceTicketRecord
+    const otherIds = normalizeAssignedIds(data.assignedToIds)
+    if (!otherIds.some((id) => assignedToIds.includes(id))) continue
+
+    const otherStart = toMillis(data.plannedStart)
+    const otherEnd = toMillis(data.plannedEnd)
+    if (!rangesOverlap(plannedStart, plannedEnd, otherStart, otherEnd)) continue
+
+    const conflictId = otherIds.find((id) => assignedToIds.includes(id)) || ''
+    const conflictName = Array.isArray(data.assignedToNames)
+      ? String(data.assignedToNames[otherIds.indexOf(conflictId)] || '').trim()
+      : ''
+
+    return {
+      conflictingTicketId: doc.id,
+      conflictingTicketCode: String(data.ticketCode || data.incidentNumber || doc.id).trim(),
+      conflictingPersonId: conflictId,
+      conflictingPersonName: conflictName,
+      conflictingStart: otherStart,
+      conflictingEnd: otherEnd,
+    }
+  }
+
+  return null
+}
+
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireMaintenanceTicketApiView()
   if (!auth.ok) return auth.res
@@ -345,10 +414,26 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     let nextStatus = body.status ? normalizeStatus(body.status) : null
     const nextPriority = body.priority ? normalizePriority(body.priority) : null
     const currentStatus = normalizeStatus(current.status)
+    const currentAssignedIds = normalizeAssignedIds(current.assignedToIds)
+    const nextAssignedIds =
+      body.assignedToIds !== undefined ? normalizeAssignedIds(body.assignedToIds) : currentAssignedIds
+    const assigneesChanged =
+      body.assignedToIds !== undefined && !haveSameAssignedIds(currentAssignedIds, nextAssignedIds)
     const validationApproval =
       body.validationApproval === 'creator' || body.validationApproval === 'cap'
         ? body.validationApproval
         : null
+
+    if (assigneesChanged && currentAssignedIds.length > 0) {
+      const canReassignFromCurrentStatus =
+        currentStatus === 'assignat' || currentStatus === 'no_fet' || currentStatus === 'reassignat'
+      if (!canReassignFromCurrentStatus) {
+        return NextResponse.json(
+          { error: "Només es poden reassignar tickets en estat Assignat o No fet." },
+          { status: 400 }
+        )
+      }
+    }
 
     if (validationApproval === 'creator') {
       if (!canCreatorValidateMaintenanceTicket(current, user.id)) {
@@ -535,6 +620,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       previousPlannedEnd !== nextPlannedEnd ||
       body.assignedToIds !== undefined ||
       body.assignedToNames !== undefined
+    const planningKeepsInternalAssignment = nextHasPlanning && nextAssignedIds.length > 0
+    const shouldReturnToAssignedAfterPlanningSave =
+      planningTouched &&
+      planningKeepsInternalAssignment &&
+      role !== 'treballador' &&
+      (currentStatus === 'assignat' || currentStatus === 'en_curs' || currentStatus === 'espera')
 
     if (planningTouched && planningChanged) {
       let planningAction: 'planificat' | 'replanificat' | 'desplanificat' | null = null
@@ -568,26 +659,48 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     }
 
+    const overlapConflict = await findMaintenanceTicketAssigneeConflict({
+      ticketId: id,
+      assignedToIds: nextAssignedIds,
+      plannedStart: nextPlannedStart,
+      plannedEnd: nextPlannedEnd,
+    })
+    if (overlapConflict) {
+      const who = overlapConflict.conflictingPersonName || overlapConflict.conflictingPersonId || 'Operari'
+      return NextResponse.json(
+        {
+          error: `${who} ja te un altre ticket assignat en aquesta mateixa franja (${overlapConflict.conflictingTicketCode}).`,
+        },
+        { status: 409 }
+      )
+    }
+
     let autoReturnToPlanner = false
 
     if (body.assignedToIds !== undefined) {
-      updates.assignedAt = body.assignedToIds.length ? Date.now() : null
+      updates.assignedAt = nextAssignedIds.length ? Date.now() : null
       updates.assignedById = user.id
       updates.assignedByName = user.name || ''
-      if (body.assignedToIds.length > 0) {
+      if (nextAssignedIds.length > 0) {
         updates.workflowStage = 'planned_internal'
       } else if (normalizeWorkflowStage(String(current.workflowStage || '')) === 'planned_internal') {
         updates.workflowStage = 'planner_queue'
       }
-      const currentStatus = normalizeStatus(current.status)
       if (
         !nextStatus &&
-        body.assignedToIds.length > 0 &&
-        (currentStatus === 'nou' || currentStatus === 'reassignat')
+        nextAssignedIds.length > 0 &&
+        (currentStatus === 'nou' ||
+          currentStatus === 'no_fet' ||
+          currentStatus === 'reassignat')
       ) {
         nextStatus = 'assignat'
         updates.status = nextStatus
       }
+    }
+
+    if (!nextStatus && shouldReturnToAssignedAfterPlanningSave) {
+      nextStatus = 'assignat'
+      updates.status = 'assignat'
     }
 
     if (wantsCapValidation) {
@@ -678,6 +791,29 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           userName: user.name || '',
         }
       )
+
+      if (
+        role !== 'treballador' &&
+        nextStatus === 'assignat' &&
+        currentStatus !== 'assignat' &&
+        currentStatus !== 'nou' &&
+        currentStatus !== 'no_fet' &&
+        currentStatus !== 'reassignat'
+      ) {
+        const historyWithAssigned = Array.isArray(updates.statusHistory)
+          ? [...updates.statusHistory]
+          : []
+        historyWithAssigned.push({
+          status: 'assignat',
+          at: Date.now(),
+          byId: user.id,
+          byName: user.name || '',
+          note: 'Retornat a assignat des del planificador',
+          startTime: null,
+          endTime: null,
+        })
+        updates.statusHistory = historyWithAssigned
+      }
 
       if (role === 'treballador' && !canManageTickets && nextStatus === 'no_fet') {
         autoReturnToPlanner = true

@@ -211,6 +211,21 @@ export default function AssignTicketModal({
   onOpenOps,
   onClose,
 }: Props) {
+  const statusBadgeClasses: Record<TicketStatus, string> = {
+    nou: 'bg-emerald-100 text-emerald-800',
+    assignat: 'bg-blue-100 text-blue-800',
+    reassignat: 'bg-orange-100 text-orange-800',
+    en_curs: 'bg-amber-100 text-amber-800',
+    espera: 'bg-slate-100 text-slate-700',
+    fet: 'bg-green-100 text-green-800',
+    no_fet: 'bg-rose-100 text-rose-700',
+    validat: 'bg-purple-100 text-purple-800',
+  }
+  const getPlanningActionLabel = (action?: string) => {
+    if (action === 'replanificat') return 'Replanificat'
+    if (action === 'desplanificat') return 'Desplanificat'
+    return 'Planificat'
+  }
   const isDeco = ticket.ticketType === 'deco'
   const isValidated = ticket.status === 'validat'
   const validationSummary = getMaintenanceTicketValidationSummary(ticket)
@@ -218,6 +233,78 @@ export default function AssignTicketModal({
   const isPlanningStage =
     ticket.status === 'nou' || ticket.status === 'no_fet' || ticket.status === 'reassignat'
   const isAssignedStage = ticket.status === 'assignat'
+  const canSubmitAssignment =
+    !isValidated &&
+    (isPlanningStage || isAssignedStage)
+  const assignmentBlockedReason =
+    !canSubmitAssignment && ticket.assignedToIds && ticket.assignedToIds.length > 0
+      ? "Aquest ticket no es pot reassignar mentre està en espera, en curs o fet."
+      : ''
+  const mergedHistory = useMemo(() => {
+    const statusEntries = (ticket.statusHistory || []).map((item, index) => ({
+      key: `status-${item.status}-${item.at}-${index}`,
+      at: Number(item.at || 0),
+      content: (
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClasses[item.status]}`}>
+              {statusLabels[item.status]}
+            </span>
+            <span className="text-xs text-slate-500">{formatDateTime(item.at)}</span>
+            {item.byName ? <span className="text-xs text-slate-500">- {item.byName}</span> : null}
+          </div>
+          {item.note ? <div className="mt-1 text-sm text-slate-700">{item.note}</div> : null}
+        </div>
+      ),
+    }))
+
+    const planningEntries = (ticket.planningHistory || []).map((item, index) => {
+      const nextSlot =
+        item.plannedStart && item.plannedEnd
+          ? `${formatDateTime(item.plannedStart)} - ${formatDateTime(item.plannedEnd)}`
+          : 'Sense franja'
+      const previousSlot =
+        item.previousPlannedStart && item.previousPlannedEnd
+          ? `${formatDateTime(item.previousPlannedStart)} - ${formatDateTime(item.previousPlannedEnd)}`
+          : ''
+
+      return {
+        key: `planning-${item.action}-${item.at}-${index}`,
+        at: Number(item.at || 0),
+        content: (
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                {getPlanningActionLabel(item.action)}
+              </span>
+              <span className="text-xs text-slate-500">{formatDateTime(item.at)}</span>
+              {item.byName ? <span className="text-xs text-slate-500">- {item.byName}</span> : null}
+            </div>
+            <div className="mt-1 text-sm text-slate-700">
+              {item.action === 'desplanificat' ? (
+                <>Franja anterior: {previousSlot || nextSlot}</>
+              ) : item.action === 'replanificat' ? (
+                <>
+                  Nova franja: {nextSlot}
+                  {previousSlot ? ` - Abans: ${previousSlot}` : ''}
+                </>
+              ) : (
+                <>Franja: {nextSlot}</>
+              )}
+            </div>
+            {item.assignedToNames && item.assignedToNames.length > 0 ? (
+              <div className="mt-1 text-sm text-slate-500">
+                Operaris: {item.assignedToNames.join(', ')}
+              </div>
+            ) : null}
+            {item.note ? <div className="mt-1 text-sm text-slate-500">{item.note}</div> : null}
+          </div>
+        ),
+      }
+    })
+
+    return [...statusEntries, ...planningEntries].sort((a, b) => b.at - a.at)
+  }, [formatDateTime, statusBadgeClasses, statusLabels, ticket.planningHistory, ticket.statusHistory])
   const machineLabel = isDeco ? 'Material' : 'Maquinaria'
   const machinePlaceholder = isDeco ? 'Selecciona material' : 'Selecciona maquinaria'
   const createdDateLabel = formatDateOnly(ticket.createdAt, '-')
@@ -622,6 +709,22 @@ export default function AssignTicketModal({
                   sourceText={getSourceText(ticket.source)}
                   assignedToNames={ticket.assignedToNames}
                 />
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className={typography('eyebrow')}>Estat actual</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${statusBadgeClasses[ticket.status]}`}
+                    >
+                      {statusLabels[ticket.status]}
+                    </span>
+                    {ticket.assignedToNames && ticket.assignedToNames.length > 0 ? (
+                      <span className="text-sm text-slate-600">
+                        Operaris: {ticket.assignedToNames.join(', ')}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
 
                 {ticketImages.length > 0 && (
                   <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
@@ -1282,10 +1385,8 @@ export default function AssignTicketModal({
             </button>
             {historyOpen && showHistory && (
               <div className="space-y-2 rounded-2xl border p-4">
-                {(ticket.statusHistory || []).map((item, index) => (
-                  <div key={`status-${index}`} className="text-sm text-gray-500">
-                    {statusLabels[item.status]} - {formatDateTime(item.at)} - {item.byName || ''}
-                  </div>
+                {mergedHistory.map((entry) => (
+                  <div key={entry.key}>{entry.content}</div>
                 ))}
                 {externalHistory.map((item, index) => (
                   <div key={`external-${index}`} className="text-sm text-slate-600">
@@ -1293,7 +1394,7 @@ export default function AssignTicketModal({
                     {formatDateTime(item.at)} - {item.byName || ''}
                   </div>
                 ))}
-                {(!ticket.statusHistory || ticket.statusHistory.length === 0) &&
+                {mergedHistory.length === 0 &&
                   externalHistory.length === 0 && (
                     <div className="text-sm text-gray-400">Sense historial.</div>
                   )}
@@ -1347,14 +1448,19 @@ export default function AssignTicketModal({
                 Reobrir
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => onAssign(ticket, ticket.assignedToIds || [], ticket.assignedToNames || [])}
-                disabled={assignBusy || isValidated}
-                className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {assignBusy ? 'Guardant...' : isAssignedStage ? 'Reassignar' : 'Assignar'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => onAssign(ticket, ticket.assignedToIds || [], ticket.assignedToNames || [])}
+                  disabled={assignBusy || !canSubmitAssignment}
+                  className="min-h-[48px] rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {assignBusy ? 'Guardant...' : isAssignedStage ? 'Reassignar' : 'Assignar'}
+                </button>
+                {assignmentBlockedReason ? (
+                  <p className="text-xs text-slate-500">{assignmentBlockedReason}</p>
+                ) : null}
+              </>
             )}
           </div>
         </div>

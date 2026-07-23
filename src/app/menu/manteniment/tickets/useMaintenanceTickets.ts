@@ -419,6 +419,7 @@ export function useMaintenanceTickets() {
         prev
           ? {
               ...prev,
+              status: 'assignat',
               assignedToIds: assignedIds,
               assignedToNames: assignedNames,
               plannedStart,
