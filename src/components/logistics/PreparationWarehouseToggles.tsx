@@ -27,7 +27,7 @@ export default function PreparationWarehouseToggles({
   const map = normalizePreparationWarehouseMap(completionMap)
 
   if (!allowedWarehouses.length) {
-    return <span className="text-[11px] text-slate-400">Sense magatzems assignats</span>
+    return null
   }
 
   return (

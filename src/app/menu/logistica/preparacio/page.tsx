@@ -2,7 +2,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, DragEvent } from 'react'
+import type { ChangeEvent } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
@@ -11,6 +11,7 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import ExportMenu from '@/components/export/ExportMenu'
 import { Button } from '@/components/ui/button'
 import { RoleGuard } from '@/lib/withRoleGuard'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { LogisticsGrid } from '@/components/logistics'
 import { useLogisticsData } from '@/hooks/useLogisticsData'
 import type { LogisticsEventPrepRow, LogisticsWarehousePrepRow } from '@/lib/logistics/prepTypes'
@@ -32,7 +33,11 @@ import type { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import type { EditedMap } from '@/components/logistics/LogisticsGrid'
 import type { AllowedPreparationWarehouse } from '@/components/logistics/PreparationWarehouseToggles'
 import type { PreparationWarehouseCode } from '@/lib/logistics/preparationWarehouses'
-import { BarChart3, FileSpreadsheet, Truck, Upload } from 'lucide-react'
+import {
+  PREPARATION_IMPORT_PERM,
+  isPreparationManagerRole,
+} from '@/lib/logistics/preparationPermissions'
+import { BarChart3, FileSpreadsheet, Truck } from 'lucide-react'
 import { formatDateOnly, formatDayMonthValue } from '@/lib/date-format'
 
 interface PreparationExportRow {
@@ -130,11 +135,24 @@ export default function LogisticsPage() {
   const searchParams = useSearchParams()
   const searchParamsSafe = searchParams ?? new URLSearchParams()
   const { data: session } = useSession()
+  const { uiActions, canEditPath, ready: permsReady } = useUiPermissions()
   const currentUserId = String(session?.user?.id || '').trim()
   const currentUserName = String(session?.user?.name || '').trim()
   const role = (session?.user?.role || '').toLowerCase()
   const isWorker = role === 'treballador'
-  const isManager = role === 'cap' || role === 'admin' || role === 'direccio'
+  const isManager = isPreparationManagerRole(role)
+  const canEditPreparationList = useMemo(() => {
+    if (!permsReady) return isManager
+    return canEditPath('/menu/logistica/preparacio')
+  }, [canEditPath, isManager, permsReady])
+  const showPreparerView = useMemo(() => {
+    if (!permsReady) return isWorker
+    return !canEditPreparationList
+  }, [canEditPreparationList, isWorker, permsReady])
+  const canImportServices = useMemo(() => {
+    if (!permsReady) return isManager
+    return uiActions[PREPARATION_IMPORT_PERM] === true
+  }, [isManager, permsReady, uiActions])
 
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(() => {
     const fallback = isWorker ? buildTodayRange() : buildDefaultWeekRange()
@@ -156,7 +174,9 @@ export default function LogisticsPage() {
       latestFilterRef.current = { dateRange, mode: filterMode }
     }
   }, [dateRange, filterMode])
-  const { events, warehouseTasks, refresh, loading } = useLogisticsData(dateRange)
+  const { events, warehouseTasks, refresh, loading } = useLogisticsData(dateRange, {
+    preparerMode: showPreparerView,
+  })
   const [updating, setUpdating] = useState(false)
   const [edited, setEdited] = useState<EditedMap>({})
   const [manualRows, setManualRows] = useState<LogisticsEventPrepRow[]>([])
@@ -219,7 +239,7 @@ export default function LogisticsPage() {
   }, [])
 
   useEffect(() => {
-    if (!isWorker) return
+    if (!showPreparerView) return
 
     setDateRange((prev) => {
       const defaultWeek = buildDefaultWeekRange()
@@ -231,7 +251,7 @@ export default function LogisticsPage() {
       }
       return prev
     })
-  }, [isWorker])
+  }, [showPreparerView])
 
   const rows = useMemo(() => {
     const allRows = [...events, ...manualRows]
@@ -407,14 +427,6 @@ export default function LogisticsPage() {
       await handleImportFile(file)
     }
     event.target.value = ''
-  }, [handleImportFile])
-
-  const handleImportDrop = useCallback(async (event: DragEvent<HTMLLabelElement>) => {
-    event.preventDefault()
-    const file = event.dataTransfer.files?.[0]
-    if (file) {
-      await handleImportFile(file)
-    }
   }, [handleImportFile])
 
   const handleAddRow = useCallback(() => {
@@ -758,7 +770,7 @@ export default function LogisticsPage() {
         subtitle="Planificació de dates i hores de preparació per serveis"
         actions={
           <div className="flex items-center gap-2">
-            {isManager ? (
+            {canEditPreparationList ? (
               <Button
                 type="button"
                 variant="outline"
@@ -774,7 +786,7 @@ export default function LogisticsPage() {
         }
       />
 
-      {isManager ? (
+      {canImportServices ? (
         <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white p-4 shadow-sm">
           <input
             ref={fileInputRef}
@@ -783,26 +795,26 @@ export default function LogisticsPage() {
             className="hidden"
             onChange={(event) => void handleFileInputChange(event)}
           />
-          <label
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => void handleImportDrop(event)}
-            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-300 bg-white/80 px-4 py-6 text-center transition hover:border-emerald-400 hover:bg-emerald-50/60"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <div className="flex items-center gap-2 text-emerald-700">
-              <Upload className="h-5 w-5" />
-              <FileSpreadsheet className="h-5 w-5" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-slate-800">
+                Importació de serveis
+              </div>
+              <div className="text-xs text-slate-500">
+                Importa només serveis Planned i exclou automàticament els que comencen per C espai.
+              </div>
             </div>
-            <div className="text-sm font-semibold text-slate-800">
-              Arrossega l Excel de serveis o fes clic per importar-lo
-            </div>
-            <div className="text-xs text-slate-500">
-              Importa només serveis Planned i exclou automàticament els que comencen per C espai.
-            </div>
-            <div className="text-xs font-medium text-emerald-700">
-              {importing ? 'Important serveis...' : 'Actualitza la graella sense canviar el filtre actual'}
-            </div>
-          </label>
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              {importing ? 'Important serveis...' : 'Importar Excel de serveis'}
+            </Button>
+          </div>
           {importMessage ? (
             <div className="mt-3 text-sm text-slate-700">{importMessage}</div>
           ) : null}
@@ -814,8 +826,9 @@ export default function LogisticsPage() {
           rows={rows}
           warehouseTasks={warehouseTasks}
           loading={loading}
-          isWorker={isWorker}
+          isWorker={showPreparerView}
           isManager={isManager}
+          canEditPreparationList={canEditPreparationList}
           currentUserId={currentUserId}
           currentUserName={currentUserName}
           edited={edited}
@@ -828,11 +841,11 @@ export default function LogisticsPage() {
           onToggleWarehousePrepared={handleToggleWarehousePrepared}
           onWarehouseComandaClick={handleWarehouseComandaClick}
           updating={updating}
-          filterRole={parseRoleForPreparationFilters(role)}
+          filterRole={showPreparerView ? 'Treballador' : parseRoleForPreparationFilters(role)}
           locationOptions={locationOptions}
           allowedWarehouses={allowedWarehouses}
-          showAllWarehouses={isManager}
-          filterModeDefault={isWorker ? 'day' : filterMode}
+          showAllWarehouses={canEditPreparationList}
+          filterModeDefault={showPreparerView ? 'day' : filterMode}
           initialStart={dateRange?.start}
           initialEnd={dateRange?.end}
         />

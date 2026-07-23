@@ -2,7 +2,6 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
 import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
 import {
-  listAllowedPreparationWarehouses,
   PREPARATION_UI_PATH,
   preparationWarehousePerm,
 } from '@/lib/logistics/preparationPermissions'
@@ -41,9 +40,15 @@ function buildActionsFromAssignment(assignment: UserAccessAssignmentDoc | null):
   return actions
 }
 
+function listExplicitPreparationWarehouses(actions: Record<string, boolean>): PreparationWarehouseCode[] {
+  return PREPARATION_WAREHOUSE_CODES.filter(
+    (warehouse) => actions[preparationWarehousePerm(warehouse)] === true
+  )
+}
+
 export async function listPreparationWarehousesForUser(userId: string, role: string) {
   const normalizedRole = normalizeRole(role)
-  if (normalizedRole === 'admin' || normalizedRole === 'direccio' || normalizedRole === 'cap') {
+  if (normalizedRole === 'admin' || normalizedRole === 'direccio') {
     return [...PREPARATION_WAREHOUSE_CODES]
   }
 
@@ -65,5 +70,5 @@ export async function listPreparationWarehousesForUser(userId: string, role: str
     assignmentSnap.exists ? (assignmentSnap.data() as UserAccessAssignmentDoc) : null
   )
 
-  return listAllowedPreparationWarehouses({ role: normalizedRole, actions })
+  return listExplicitPreparationWarehouses(actions)
 }

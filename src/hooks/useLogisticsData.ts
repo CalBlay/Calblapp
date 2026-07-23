@@ -11,15 +11,19 @@ export type { LogisticsEventPrepRow, LogisticsWarehousePrepRow }
 
 const FETCH_TIMEOUT_MS = 45_000
 
-export function useLogisticsData(dateRange?: { start: string; end: string } | null) {
+export function useLogisticsData(
+  dateRange?: { start: string; end: string } | null,
+  options?: { preparerMode?: boolean }
+) {
   const { data: session } = useSession()
   const role = (session?.user?.role || '').toLowerCase()
+  const preparerMode = Boolean(options?.preparerMode)
   const isSingleDayFilter = Boolean(
     dateRange?.start &&
     dateRange?.end &&
     dateRange.start === dateRange.end
   )
-  const filterByPreparation = role === 'treballador' || isSingleDayFilter
+  const filterByPreparation = preparerMode || isSingleDayFilter
 
   const [events, setEvents] = useState<LogisticsEventPrepRow[]>([])
   const [warehouseTasks, setWarehouseTasks] = useState<LogisticsWarehousePrepRow[]>([])
@@ -95,10 +99,9 @@ export function useLogisticsData(dateRange?: { start: string; end: string } | nu
         rowType: 'event' as const,
       }))
 
-      const visibleEvents =
-        role === 'treballador'
-          ? eventRows.filter((event) => event.PreparacioData && event.PreparacioHora)
-          : eventRows
+      const visibleEvents = preparerMode
+        ? eventRows.filter((event) => event.PreparacioData && event.PreparacioHora)
+        : eventRows
 
       const nextWarehouseTasks = Array.isArray(warehouseData)
         ? warehouseData.map((task) => ({ ...task, rowType: 'warehouse_comanda' as const }))
@@ -126,7 +129,7 @@ export function useLogisticsData(dateRange?: { start: string; end: string } | nu
       setLoading(false)
       setIsRefreshing(false)
     }
-  }, [dateRange?.start, dateRange?.end, filterByPreparation, role])
+  }, [dateRange?.start, dateRange?.end, filterByPreparation, preparerMode])
 
   useEffect(() => {
     loadData()

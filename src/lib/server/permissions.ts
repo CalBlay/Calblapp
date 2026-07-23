@@ -17,6 +17,11 @@ import {
   RESERVA_COMERCIALS_UI_PATH,
 } from '@/lib/reservaComercialsPermissions'
 import {
+  PREPARATION_IMPORT_ACTION,
+  PREPARATION_UI_PATH,
+  isPreparationManagerRole,
+} from '@/lib/logistics/preparationPermissions'
+import {
   QUADRANTS_ACTION,
   QUADRANTS_UI_PATH,
   baseCanEditQuadrantsPremisses,
@@ -209,6 +214,14 @@ export async function isUiPermissionGranted(params: {
         department: params.user.department,
         isTransportLead: params.user.isTransportLead,
       })
+    }
+  }
+
+  if (parsed?.path === PREPARATION_UI_PATH) {
+    const canView = await canViewUiPath({ user: params.user, path: parsed.path })
+    if (!canView) return false
+    if (parsed.action === PREPARATION_IMPORT_ACTION) {
+      return isPreparationManagerRole(params.user.role || '')
     }
   }
 

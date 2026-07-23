@@ -8,6 +8,11 @@ import {
 export const PREPARATION_UI_PATH = '/menu/logistica/preparacio'
 
 export const PREPARATION_WAREHOUSE_ACTION_PREFIX = 'warehouse:'
+export const PREPARATION_IMPORT_ACTION = 'services:import'
+export const PREPARATION_IMPORT_PERM = PERM.action(
+  PREPARATION_UI_PATH,
+  PREPARATION_IMPORT_ACTION
+)
 
 export function preparationWarehousePerm(warehouse: PreparationWarehouseCode): string {
   return PERM.action(PREPARATION_UI_PATH, `${PREPARATION_WAREHOUSE_ACTION_PREFIX}${warehouse}`)

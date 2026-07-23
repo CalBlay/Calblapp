@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { normalizeRole } from '@/lib/roles'
+import { PREPARATION_UI_PATH } from '@/lib/logistics/preparationPermissions'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { canEditUiPath } from '@/lib/server/permissions'
 
 export const runtime = 'nodejs'
-
-const EDIT_ROLES = new Set(['admin', 'direccio', 'cap'])
 const isIsoDate = (value?: string | null) => /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? '').trim())
 const isTime = (value?: string | null) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value ?? '').trim())
 
@@ -21,20 +20,6 @@ type UpdateItem = {
   NumPax?: string | number | null
   Ubicacio?: string
   DataInici?: string
-}
-
-async function authContext(req: NextRequest) {
-  const token = await getToken({ req })
-  if (!token) {
-    return { error: NextResponse.json({ ok: false, error: 'No autenticat' }, { status: 401 }) }
-  }
-
-  const role = normalizeRole(String((token as { role?: string }).role || 'treballador'))
-  if (!EDIT_ROLES.has(role)) {
-    return { error: NextResponse.json({ ok: false, error: 'Sense permisos' }, { status: 403 }) }
-  }
-
-  return { role }
 }
 
 function normalizeUpdates(body: unknown): UpdateItem[] {
@@ -58,8 +43,13 @@ function targetCollection(item: UpdateItem) {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await authContext(req)
-    if ('error' in auth) return auth.error
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
+    const canEdit = await canEditUiPath({ user: auth.user, path: PREPARATION_UI_PATH })
+    if (!canEdit) {
+      return NextResponse.json({ ok: false, error: 'Sense permisos' }, { status: 403 })
+    }
 
     const body = await req.json()
     const updates = normalizeUpdates(body)

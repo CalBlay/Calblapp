@@ -4,6 +4,7 @@ import {
   EVENTS_COMANDA_PREPARE_PERM,
 } from '@/lib/eventComandaPermissions'
 import {
+  PREPARATION_IMPORT_PERM,
   PREPARATION_UI_PATH,
   PREPARATION_WAREHOUSE_PERMISSION_KEYS,
 } from '@/lib/logistics/preparationPermissions'
@@ -151,6 +152,14 @@ export const PERMISSION_ACTION_GROUPS: PermissionActionGroup[] = [
         label: 'Preparar comandes (magatzem assignat)',
       },
     ],
+  },
+  {
+    id: 'logisticsPreparationActions',
+    title: 'Logística · Preparació · Accions',
+    subtitle: 'Controla la importació de serveis des d’Excel dins del llistat de preparació.',
+    visibleWhen: { path: PREPARATION_UI_PATH },
+    requireViewOnly: true,
+    actions: [{ key: PREPARATION_IMPORT_PERM, label: 'Importar serveis des d’Excel' }],
   },
   {
     id: 'logisticsPreparationWarehouses',

@@ -68,6 +68,7 @@ interface LogisticsGridProps {
   loading: boolean
   isWorker: boolean
   isManager: boolean
+  canEditPreparationList: boolean
   edited: EditedMap
   setEdited: Dispatch<SetStateAction<EditedMap>>
   onFilterChange: (f: SmartFiltersChange) => void
@@ -159,6 +160,7 @@ export default function LogisticsGrid({
   loading,
   isWorker,
   isManager,
+  canEditPreparationList,
   edited,
   setEdited,
   onFilterChange,
@@ -231,7 +233,7 @@ export default function LogisticsGrid({
             warehouseTasks={warehouseTasks}
             edited={edited}
             setEdited={setEdited}
-            isManager={isManager}
+            canEditPreparationList={canEditPreparationList}
             loading={loading}
             locationOptions={locationOptions}
             onDeleteRow={onDeleteRow}
@@ -240,8 +242,7 @@ export default function LogisticsGrid({
         )}
       </div>
 
-      {isManager && (
-        <div className="flex justify-between border-t bg-gray-50 p-4">
+      <div className="flex justify-between border-t bg-gray-50 p-4">
           <div className="flex items-center gap-2">
             <button
               onClick={onRefresh}
@@ -250,6 +251,7 @@ export default function LogisticsGrid({
               <RefreshCcw className={`h-4 w-4 ${updating ? 'animate-spin' : ''}`} />
               Actualitzar
             </button>
+            {canEditPreparationList ? (
             <button
               type="button"
               onClick={onAddRow}
@@ -258,7 +260,9 @@ export default function LogisticsGrid({
               <Plus className="h-4 w-4" />
               Afegir línia
             </button>
+            ) : null}
           </div>
+          {canEditPreparationList ? (
           <button
             onClick={onConfirm}
             disabled={updating}
@@ -268,8 +272,8 @@ export default function LogisticsGrid({
           >
             {updating ? 'Guardant...' : 'Confirmar ordre'}
           </button>
-        </div>
-      )}
+          ) : <div />}
+      </div>
     </div>
   )
 }
@@ -363,6 +367,7 @@ function WorkerGroupedView({
   ) => void
   onWarehouseComandaClick?: (task: LogisticsWarehousePrepRow) => void
 }) {
+  const hasAssignedWarehouses = allowedWarehouses.length > 0
   const groups = useMemo(
     () => buildDayGroups(events, warehouseTasks),
     [events, warehouseTasks]
@@ -388,18 +393,25 @@ function WorkerGroupedView({
   return (
     <div className="divide-y">
       <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-700">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          {workerSummary.warehouses.map((item) => (
-            <span key={item.warehouse} className="whitespace-nowrap">
-              <span className="font-semibold text-slate-900">
-                {PREPARATION_WAREHOUSE_LABELS[item.warehouse]}
-              </span>{' '}
-              <span className="tabular-nums">
-                {item.doneCount}/{item.totalCount}
+        {hasAssignedWarehouses ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {workerSummary.warehouses.map((item) => (
+              <span key={item.warehouse} className="whitespace-nowrap">
+                <span className="font-semibold text-slate-900">
+                  {PREPARATION_WAREHOUSE_LABELS[item.warehouse]}
+                </span>{' '}
+                <span className="tabular-nums">
+                  {item.doneCount}/{item.totalCount}
+                </span>
               </span>
-            </span>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+            No tens cap magatzem assignat als permisos de preparació. Pots consultar el llistat,
+            però no marcar cap magatzem.
+          </div>
+        )}
       </div>
       {groups.map(([dayIso, items]) => {
         const eventItems = items.filter(isEventPrepRow)
@@ -489,17 +501,19 @@ function WorkerGroupedView({
                       <div className="mt-1 text-xs text-slate-600 line-clamp-2">
                         {ev.Ubicacio || 'Sense ubicació'}
                       </div>
-                      <div className="mt-3 space-y-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                          Magatzems
+                      {hasAssignedWarehouses ? (
+                        <div className="mt-3 space-y-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            Magatzems
+                          </div>
+                          <PreparationWarehouseToggles
+                            rowId={ev.id}
+                            completionMap={ev.PreparacioMagatzems}
+                            allowedWarehouses={allowedWarehouses}
+                            onToggle={onToggleWarehousePrepared}
+                          />
                         </div>
-                        <PreparationWarehouseToggles
-                          rowId={ev.id}
-                          completionMap={ev.PreparacioMagatzems}
-                          allowedWarehouses={allowedWarehouses}
-                          onToggle={onToggleWarehousePrepared}
-                        />
-                      </div>
+                      ) : null}
                     </div>
                     )
                   })}
@@ -517,7 +531,9 @@ function WorkerGroupedView({
                         <th className="w-16 px-3 py-2 text-left">Pax</th>
                         <th className="w-28 px-3 py-2 text-left">Data servei</th>
                         <th className="w-24 px-3 py-2 text-left">Hora servei</th>
-                        <th className="px-3 py-2 text-left">Magatzems</th>
+                        {hasAssignedWarehouses ? (
+                          <th className="px-3 py-2 text-left">Magatzems</th>
+                        ) : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -551,14 +567,16 @@ function WorkerGroupedView({
                             {ev.ServiceDate ? formatDayMonthValue(ev.ServiceDate, '--/--') : '--/--'}
                           </td>
                           <td className="px-3 py-2 text-slate-700">{ev.ServiceTime || '--:--'}</td>
-                          <td className="px-3 py-2">
-                            <PreparationWarehouseToggles
-                              rowId={ev.id}
-                              completionMap={ev.PreparacioMagatzems}
-                              allowedWarehouses={allowedWarehouses}
-                              onToggle={onToggleWarehousePrepared}
-                            />
-                          </td>
+                          {hasAssignedWarehouses ? (
+                            <td className="px-3 py-2">
+                              <PreparationWarehouseToggles
+                                rowId={ev.id}
+                                completionMap={ev.PreparacioMagatzems}
+                                allowedWarehouses={allowedWarehouses}
+                                onToggle={onToggleWarehousePrepared}
+                              />
+                            </td>
+                          ) : null}
                         </tr>
                         )
                       })}
@@ -599,7 +617,7 @@ function EditableTable({
   warehouseTasks,
   edited,
   setEdited,
-  isManager,
+  canEditPreparationList,
   loading,
   locationOptions,
   onDeleteRow,
@@ -609,7 +627,7 @@ function EditableTable({
   warehouseTasks: LogisticsWarehousePrepRow[]
   edited: EditedMap
   setEdited: React.Dispatch<React.SetStateAction<EditedMap>>
-  isManager: boolean
+  canEditPreparationList: boolean
   loading: boolean
   locationOptions: string[]
   onDeleteRow?: (rowId: string) => void
@@ -675,7 +693,7 @@ function EditableTable({
                   )}
                 >
                   <td className="sticky left-0 border-r bg-white px-3 py-3 font-medium shadow-sm xl:px-4">
-                    {isManager ? (
+                    {canEditPreparationList ? (
                       <input
                         type="date"
                         value={prepDate}
@@ -688,7 +706,7 @@ function EditableTable({
                   </td>
 
                   <td className="px-3 py-3 xl:px-4">
-                    {isManager ? (
+                    {canEditPreparationList ? (
                       <input
                         type="time"
                         value={prepH}
@@ -704,7 +722,7 @@ function EditableTable({
                     <span>{displayServiceName(ev) || '-'}</span>
                   </td>
                   <td className="px-3 py-3 xl:px-4">
-                    {isManager ? (
+                    {canEditPreparationList ? (
                       <input
                         type="text"
                         value={eventCode}
@@ -716,7 +734,7 @@ function EditableTable({
                     )}
                   </td>
                   <td className="px-3 py-3 xl:px-4">
-                    {isManager ? (
+                    {canEditPreparationList ? (
                       <input
                         type="text"
                         value={eventName}
@@ -728,7 +746,7 @@ function EditableTable({
                     )}
                   </td>
                   <td className="px-3 py-3 xl:px-4">
-                    {isManager ? (
+                    {canEditPreparationList ? (
                       <select
                         value={ubicacio}
                         onChange={(e) => setField(ev.id, 'Ubicacio', e.target.value)}
@@ -746,7 +764,7 @@ function EditableTable({
                     )}
                   </td>
                   <td className="px-3 py-3 xl:px-4">
-                    {isManager ? (
+                    {canEditPreparationList ? (
                       <input
                         type="number"
                         min="0"
@@ -759,7 +777,7 @@ function EditableTable({
                     )}
                   </td>
                   <td className="px-3 py-3 xl:px-4">
-                    {isManager ? (
+                    {canEditPreparationList ? (
                       <input
                         type="date"
                         value={dataInici}
@@ -774,7 +792,7 @@ function EditableTable({
                     <span>{serviceTime || '--:--'}</span>
                   </td>
                   <td className="px-3 py-3 text-center xl:px-4">
-                    {isManager ? (
+                    {canEditPreparationList ? (
                       <button
                         type="button"
                         onClick={() => onDeleteRow?.(ev.id)}

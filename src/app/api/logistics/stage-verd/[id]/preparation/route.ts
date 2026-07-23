@@ -2,8 +2,10 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import { PREPARATION_UI_PATH } from '@/lib/logistics/preparationPermissions'
 import { buildPreparationUpdateFields } from '@/lib/logistics/preparationUpdate'
-import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { canEditUiPath } from '@/lib/server/permissions'
 
 export async function PATCH(
   req: Request,
@@ -11,8 +13,10 @@ export async function PATCH(
 ) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
-  const denied = requireRoles(auth, ['admin', 'direccio', 'cap'])
-  if (denied) return denied.res
+  const canEdit = await canEditUiPath({ user: auth.user, path: PREPARATION_UI_PATH })
+  if (!canEdit) {
+    return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
+  }
 
   try {
     const { id } = await context.params

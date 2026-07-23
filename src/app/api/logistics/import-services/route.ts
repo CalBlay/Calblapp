@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { normalizeRole } from '@/lib/roles'
+import { PREPARATION_IMPORT_PERM } from '@/lib/logistics/preparationPermissions'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { isUiPermissionGranted } from '@/lib/server/permissions'
 
 export const runtime = 'nodejs'
-
-const EDIT_ROLES = new Set(['admin', 'direccio', 'cap'])
 
 type ImportRow = {
   code?: unknown
@@ -78,21 +77,6 @@ function normalizeTime(value: unknown) {
   const match = /^(\d{1,2}):(\d{2})/.exec(raw)
   if (!match) return ''
   return `${match[1]!.padStart(2, '0')}:${match[2]}`
-}
-
-async function authContext(req: NextRequest) {
-  const token = await getToken({ req })
-  if (!token) {
-    return { error: NextResponse.json({ ok: false, error: 'No autenticat' }, { status: 401 }) }
-  }
-
-  const role = normalizeRole(String((token as { role?: string }).role || 'treballador'))
-  if (!EDIT_ROLES.has(role)) {
-    return { error: NextResponse.json({ ok: false, error: 'Sense permisos' }, { status: 403 }) }
-  }
-
-  const userName = String((token as { name?: string }).name || '').trim()
-  return { role, userName }
 }
 
 function trim(value: unknown) {
@@ -178,8 +162,16 @@ async function loadExistingServicesByCode(codes: string[]) {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await authContext(req)
-    if ('error' in auth) return auth.error
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
+    const granted = await isUiPermissionGranted({
+      user: auth.user,
+      permission: PREPARATION_IMPORT_PERM,
+    })
+    if (!granted) {
+      return NextResponse.json({ ok: false, error: 'Sense permisos' }, { status: 403 })
+    }
 
     const body = await req.json().catch(() => null)
     const rows = normalizeRows(body)
@@ -295,7 +287,7 @@ export async function POST(req: NextRequest) {
         Ubicacio: row.location || parent?.location || '',
         NumPax: row.pax,
         importedAt: nowIso,
-        importedBy: auth.userName,
+        importedBy: String(auth.user.name || '').trim(),
         updatedAt: nowIso,
         ...(parent?.name
           ? {
