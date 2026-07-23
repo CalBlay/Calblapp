@@ -12,6 +12,7 @@ export interface ZohoNamedValue {
 export interface ZohoDeal {
   id: string
   Deal_Name: string
+  Modified_Time?: string | null
   Account_Name?: string | ZohoNamedValue | null
   Stage: string
   Servicio_texto?: string | null

@@ -354,8 +354,18 @@ type AttachmentSyncTotals = {
 }
 
 const MAX_BATCH_WRITES = 450
+const ZOHO_SYNC_STATE_COLLECTION = 'internal_sync_state'
+const ZOHO_SYNC_STATE_DOC_ID = 'zoho_deals'
+const ZOHO_SYNC_OVERLAP_MS = 15 * 60 * 1000
 
 type StageSnapshotMap = Map<string, FirebaseFirestore.QueryDocumentSnapshot>
+
+type ZohoSyncState = {
+  lastSuccessfulSyncAt?: string
+  lastAttemptedSyncAt?: string
+  lastMode?: 'full' | 'incremental'
+  updatedAt?: string
+}
 
 type ManualReplacementMap = Map<
   string,
@@ -365,6 +375,34 @@ type ManualReplacementMap = Map<
 async function readStageDocs(collection: string): Promise<StageSnapshotMap> {
   const snap = await firestore.collection(collection).get()
   return new Map(snap.docs.map((doc) => [doc.id, doc]))
+}
+
+function parseZohoModifiedTimeMs(value?: string | null): number | null {
+  const raw = String(value || '').trim()
+  if (!raw) return null
+  const ms = Date.parse(raw)
+  return Number.isFinite(ms) ? ms : null
+}
+
+async function readZohoSyncState(): Promise<ZohoSyncState> {
+  const snap = await firestore
+    .collection(ZOHO_SYNC_STATE_COLLECTION)
+    .doc(ZOHO_SYNC_STATE_DOC_ID)
+    .get()
+  return (snap.data() as ZohoSyncState | undefined) || {}
+}
+
+async function writeZohoSyncState(state: ZohoSyncState): Promise<void> {
+  await firestore
+    .collection(ZOHO_SYNC_STATE_COLLECTION)
+    .doc(ZOHO_SYNC_STATE_DOC_ID)
+    .set(
+      {
+        ...state,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    )
 }
 
 function addAttachmentStats(
@@ -438,6 +476,7 @@ async function syncStageCollections({
   manuals,
   totals,
   classifyStage,
+  fullSync,
 }: {
   normalized: NormalizedDeal[]
   zohoById: Map<string, ZohoDeal>
@@ -447,6 +486,7 @@ async function syncStageCollections({
   manuals: ManualReserveDoc[]
   totals: AttachmentSyncTotals
   classifyStage: (stage: string) => 'groc' | 'taronja' | 'verd' | null
+  fullSync: boolean
 }) {
   const idsVerd = new Set<string>()
   const idsGroc = new Set<string>()
@@ -551,46 +591,89 @@ async function syncStageCollections({
     console.info('Cap actualitzacio groc/taronja en aquest sync')
   }
 
-  await cleanupGrocTaronjaStageDocs(idsVerd, idsGroc, idsTaronja, {
-    groc: existingGroc,
-    taronja: existingTaronja,
-  })
+  if (fullSync) {
+    await cleanupGrocTaronjaStageDocs(idsVerd, idsGroc, idsTaronja, {
+      groc: existingGroc,
+      taronja: existingTaronja,
+    })
 
-  let verdCleanupBatch = firestore.batch()
-  let verdCleanupCount = 0
-  const flushVerdCleanup = async () => {
-    if (verdCleanupCount === 0) return
-    await verdCleanupBatch.commit()
-    verdCleanupBatch = firestore.batch()
-    verdCleanupCount = 0
+    let verdCleanupBatch = firestore.batch()
+    let verdCleanupCount = 0
+    const flushVerdCleanup = async () => {
+      if (verdCleanupCount === 0) return
+      await verdCleanupBatch.commit()
+      verdCleanupBatch = firestore.batch()
+      verdCleanupCount = 0
+    }
+
+    for (const doc of existingVerd.values()) {
+      const id = doc.id
+      const data = doc.data() as { origen?: string }
+      if (data?.origen !== 'zoho') continue
+
+      const zoho = zohoById.get(id)
+      if (!zoho) continue
+
+      const group = classifyStage(zoho.Stage || '')
+      if (group !== 'verd') {
+        verdCleanupBatch.delete(doc.ref)
+        verdCleanupCount += 1
+        const reason =
+          group === 'groc'
+            ? 'ara es groc'
+            : group === 'taronja'
+              ? 'ara es taronja'
+              : 'ja no es verd'
+        console.log(`Eliminat de stage_verd (${reason}): ${id}`)
+        if (verdCleanupCount >= MAX_BATCH_WRITES) {
+          await flushVerdCleanup()
+        }
+      }
+    }
+
+    await flushVerdCleanup()
+    return
   }
 
-  for (const doc of existingVerd.values()) {
-    const id = doc.id
-    const data = doc.data() as { origen?: string }
-    if (data?.origen !== 'zoho') continue
+  let moveBatch = firestore.batch()
+  let moveBatchCount = 0
+  const flushMoveBatch = async () => {
+    if (moveBatchCount === 0) return
+    await moveBatch.commit()
+    moveBatch = firestore.batch()
+    moveBatchCount = 0
+  }
 
-    const zoho = zohoById.get(id)
-    if (!zoho) continue
+  for (const deal of normalized) {
+    const id = deal.idZoho
+    const targetCollection =
+      deal.collection === 'verd'
+        ? 'stage_verd'
+        : deal.collection === 'groc'
+          ? 'stage_groc'
+          : deal.collection === 'taronja'
+            ? 'stage_taronja'
+            : null
+    if (!targetCollection) continue
 
-    const group = classifyStage(zoho.Stage || '')
-    if (group !== 'verd') {
-      verdCleanupBatch.delete(doc.ref)
-      verdCleanupCount += 1
-      const reason =
-        group === 'groc'
-          ? 'ara es groc'
-          : group === 'taronja'
-            ? 'ara es taronja'
-            : 'ja no es verd'
-      console.log(`Eliminat de stage_verd (${reason}): ${id}`)
-      if (verdCleanupCount >= MAX_BATCH_WRITES) {
-        await flushVerdCleanup()
+    for (const collectionName of ['stage_verd', 'stage_groc', 'stage_taronja'] as const) {
+      if (collectionName === targetCollection) continue
+      const existingDoc =
+        collectionName === 'stage_verd'
+          ? existingVerd.get(id)
+          : collectionName === 'stage_groc'
+            ? existingGroc.get(id)
+            : existingTaronja.get(id)
+      if (!existingDoc) continue
+      moveBatch.delete(existingDoc.ref)
+      moveBatchCount += 1
+      if (moveBatchCount >= MAX_BATCH_WRITES) {
+        await flushMoveBatch()
       }
     }
   }
 
-  await flushVerdCleanup()
+  await flushMoveBatch()
 }
 
 export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {}): Promise<{
@@ -608,6 +691,7 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
   const syncStartedAt = Date.now()
 
   const todayISO = new Date().toISOString().slice(0, 10)
+  const syncStartedAtIso = new Date(syncStartedAt).toISOString()
   const moduleName = process.env.ZOHO_CRM_MODULE || 'Deals'
   const attachmentTotals: AttachmentSyncTotals = {
     attachmentsChecked: 0,
@@ -616,21 +700,49 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
     attachmentsDeletedFromStorage: 0,
   }
   const baseFields =
-    'id,Deal_Name,Account_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec,Full_de_Tast'
+    'id,Deal_Name,Modified_Time,Account_Name,Stage,Servicio_texto,Men_texto,C_digo,N_mero_de_invitados,N_mero_de_personas_del_evento,Finca_2,Espai_2,Fecha_del_evento,Fecha_y_hora_del_evento,Duraci_n_del_evento,Owner,Responsable,Comercial_Interna,Fecha_de_petici_n,Precio_Total,Amount,Observacions,Description,Fulla_d_enc_rrec,Full_de_Tast'
   const fields = ZOHO_EXTRA_RESPONSABLE_FIELD
     ? `${baseFields},${ZOHO_EXTRA_RESPONSABLE_FIELD}`
     : baseFields
 
+  const previousSyncState = await readZohoSyncState()
+  const previousSyncMs = parseZohoModifiedTimeMs(previousSyncState.lastSuccessfulSyncAt)
+  const incrementalCutoffMs =
+    previousSyncMs !== null ? Math.max(0, previousSyncMs - ZOHO_SYNC_OVERLAP_MS) : null
+  const fullSync = incrementalCutoffMs === null
+
+  await writeZohoSyncState({
+    lastAttemptedSyncAt: syncStartedAtIso,
+    lastMode: fullSync ? 'full' : 'incremental',
+  })
 
   // 1ï¸âƒ£ Llegir oportunitats amb paginaciÃ³
   const allDeals: ZohoDeal[] = []
+  let stoppedByIncrementalCutoff = false
   for (let page = 1; ; page++) {
     const res = await zohoFetch<{ data?: ZohoDeal[] }>(
-      `/${moduleName}?fields=${fields}&page=${page}&per_page=200`
+      `/${moduleName}?fields=${fields}&page=${page}&per_page=200&sort_by=Modified_Time&sort_order=desc`
     )
     const data = res.data ?? []
     if (data.length === 0) break
-    allDeals.push(...data)
+
+    if (incrementalCutoffMs === null) {
+      allDeals.push(...data)
+      continue
+    }
+
+    const pageRecords = data.filter((deal) => {
+      const modifiedMs = parseZohoModifiedTimeMs(deal.Modified_Time)
+      return modifiedMs === null || modifiedMs >= incrementalCutoffMs
+    })
+    allDeals.push(...pageRecords)
+
+    const oldestRecord = data[data.length - 1]
+    const oldestModifiedMs = parseZohoModifiedTimeMs(oldestRecord?.Modified_Time)
+    if (oldestModifiedMs !== null && oldestModifiedMs < incrementalCutoffMs) {
+      stoppedByIncrementalCutoff = true
+      break
+    }
   }
 
   console.info(`ðŸ“¦ Rebudes ${allDeals.length} oportunitats`)
@@ -644,7 +756,7 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
     return !!eventDate && eventDate >= today
   })
   console.info(
-    `[zoho-sync] Deals carregats=${allDeals.length} futurs=${filteredDeals.length} includeAttachments=${includeAttachments}`
+    `[zoho-sync] mode=${fullSync ? 'full' : 'incremental'} dealsCarregats=${allDeals.length} futurs=${filteredDeals.length} includeAttachments=${includeAttachments} cutoff=${incrementalCutoffMs ? new Date(incrementalCutoffMs).toISOString() : 'none'} stoppedByCutoff=${stoppedByIncrementalCutoff}`
   )
 
   // 3ï¸âƒ£ FunciÃ³ per determinar LN segons propietari (Owner)
@@ -788,6 +900,7 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
     manuals,
     totals: attachmentTotals,
     classifyStage,
+    fullSync,
   })
 
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -877,6 +990,11 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
   console.info(
     `[zoho-sync] resum durationMs=${durationMs} totalDeals=${allDeals.length} normalized=${normalized.length} deleted=${deleted} manualReplaced=${manualReplacedCount} attachmentsChecked=${attachmentTotals.attachmentsChecked} attachmentsDownloaded=${attachmentTotals.attachmentsDownloaded} attachmentsReused=${attachmentTotals.attachmentsReused} attachmentsDeletedFromStorage=${attachmentTotals.attachmentsDeletedFromStorage}`
   )
+  await writeZohoSyncState({
+    lastSuccessfulSyncAt: syncStartedAtIso,
+    lastAttemptedSyncAt: syncStartedAtIso,
+    lastMode: fullSync ? 'full' : 'incremental',
+  })
   return {
     totalCount: allDeals.length,
     createdCount: normalized.length,
