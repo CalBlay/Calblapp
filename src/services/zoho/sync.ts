@@ -273,30 +273,56 @@ const normalizeIncomingZohoCode = (code?: string | null): string | null => {
 async function cleanupGrocTaronjaStageDocs(
   idsVerd: Set<string>,
   idsGroc: Set<string>,
-  idstaronja: Set<string>
+  idsTaronja: Set<string>,
+  existingDocs?: {
+    groc?: StageSnapshotMap
+    taronja?: StageSnapshotMap
+  }
 ): Promise<void> {
   const colNeteja = [
-    { name: 'stage_groc', idsActuals: idsGroc },
-    { name: 'stage_taronja', idsActuals: idstaronja },
+    {
+      name: 'stage_groc',
+      idsActuals: idsGroc,
+      docs: existingDocs?.groc ? Array.from(existingDocs.groc.values()) : null,
+    },
+    {
+      name: 'stage_taronja',
+      idsActuals: idsTaronja,
+      docs: existingDocs?.taronja ? Array.from(existingDocs.taronja.values()) : null,
+    },
   ] as const
 
-  for (const { name, idsActuals } of colNeteja) {
-    const snap = await firestore.collection(name).get()
+  for (const { name, idsActuals, docs } of colNeteja) {
+    const stageDocs = docs ?? (await firestore.collection(name).get()).docs
+    let batch = firestore.batch()
+    let pendingWrites = 0
 
-    for (const doc of snap.docs) {
+    const flush = async () => {
+      if (pendingWrites === 0) return
+      await batch.commit()
+      batch = firestore.batch()
+      pendingWrites = 0
+    }
+
+    for (const doc of stageDocs) {
       const id = doc.id
 
       if (idsVerd.has(id)) {
-        await doc.ref.delete()
+        batch.delete(doc.ref)
+        pendingWrites += 1
         console.log(`ðŸ§¹ Eliminat de ${name} (ara Ã©s verd): ${id}`)
-        continue
-      }
-
-      if (!idsActuals.has(id)) {
-        await doc.ref.delete()
+      } else if (!idsActuals.has(id)) {
+        batch.delete(doc.ref)
+        pendingWrites += 1
         console.log(`ðŸ§¹ Eliminat de ${name} (ja no Ã©s ${name} a Zoho): ${id}`)
       }
+
+      if (pendingWrites >= MAX_BATCH_WRITES) {
+        await flush()
+      }
     }
+
+    await flush()
   }
 
   console.info('âœ¨ Neteja stage_groc i stage_taronja completada')
@@ -327,14 +353,18 @@ type AttachmentSyncTotals = {
   attachmentsDeletedFromStorage: number
 }
 
+const MAX_BATCH_WRITES = 450
+
+type StageSnapshotMap = Map<string, FirebaseFirestore.QueryDocumentSnapshot>
+
 type ManualReplacementMap = Map<
   string,
   { createdAt: string; mergedFromManualId: string }
 >
 
-async function readStageDocs(collection: string) {
+async function readStageDocs(collection: string): Promise<StageSnapshotMap> {
   const snap = await firestore.collection(collection).get()
-  return new Map(snap.docs.map((doc) => [doc.id, doc.data()]))
+  return new Map(snap.docs.map((doc) => [doc.id, doc]))
 }
 
 function addAttachmentStats(
@@ -433,9 +463,19 @@ async function syncStageCollections({
   const existingTaronja = await readStageDocs('stage_taronja')
 
   const getExistingStageDoc = (id: string) =>
-    existingVerd.get(id) || existingGroc.get(id) || existingTaronja.get(id)
+    existingVerd.get(id)?.data() ||
+    existingGroc.get(id)?.data() ||
+    existingTaronja.get(id)?.data()
 
-  const batchVerd = firestore.batch()
+  let batchVerd = firestore.batch()
+  let batchVerdCount = 0
+
+  const flushVerd = async () => {
+    if (batchVerdCount === 0) return
+    await batchVerd.commit()
+    batchVerd = firestore.batch()
+    batchVerdCount = 0
+  }
 
   for (const deal of normalized) {
     if (deal.collection !== 'verd') continue
@@ -452,15 +492,24 @@ async function syncStageCollections({
       totals,
     })
     batchVerd.set(ref, dataToSave, { merge: true })
+    batchVerdCount += 1
+    if (batchVerdCount >= MAX_BATCH_WRITES) {
+      await flushVerd()
+    }
   }
 
-  await batchVerd.commit()
+  await flushVerd()
   console.info(`stage_verd actualitzat: ${idsVerd.size} deals`)
 
-  await cleanupGrocTaronjaStageDocs(idsVerd, idsGroc, idsTaronja)
-
-  const batchOthers = firestore.batch()
+  let batchOthers = firestore.batch()
   let batchOthersCount = 0
+
+  const flushOthers = async () => {
+    if (batchOthersCount === 0) return
+    await batchOthers.commit()
+    batchOthers = firestore.batch()
+    batchOthersCount = 0
+  }
 
   for (const deal of normalized) {
     const id = deal.idZoho
@@ -489,19 +538,34 @@ async function syncStageCollections({
       batchOthers.set(ref, dataToSave, { merge: true })
       batchOthersCount += 1
     }
+
+    if (batchOthersCount >= MAX_BATCH_WRITES) {
+      await flushOthers()
+    }
   }
 
   if (batchOthersCount > 0) {
-    await batchOthers.commit()
+    await flushOthers()
     console.info('Groc/taronja escrits respectant la prioritat de verd')
   } else {
     console.info('Cap actualitzacio groc/taronja en aquest sync')
   }
 
-  await cleanupGrocTaronjaStageDocs(idsVerd, idsGroc, idsTaronja)
+  await cleanupGrocTaronjaStageDocs(idsVerd, idsGroc, idsTaronja, {
+    groc: existingGroc,
+    taronja: existingTaronja,
+  })
 
-  const verdSnap = await firestore.collection('stage_verd').get()
-  for (const doc of verdSnap.docs) {
+  let verdCleanupBatch = firestore.batch()
+  let verdCleanupCount = 0
+  const flushVerdCleanup = async () => {
+    if (verdCleanupCount === 0) return
+    await verdCleanupBatch.commit()
+    verdCleanupBatch = firestore.batch()
+    verdCleanupCount = 0
+  }
+
+  for (const doc of existingVerd.values()) {
     const id = doc.id
     const data = doc.data() as { origen?: string }
     if (data?.origen !== 'zoho') continue
@@ -511,7 +575,8 @@ async function syncStageCollections({
 
     const group = classifyStage(zoho.Stage || '')
     if (group !== 'verd') {
-      await doc.ref.delete()
+      verdCleanupBatch.delete(doc.ref)
+      verdCleanupCount += 1
       const reason =
         group === 'groc'
           ? 'ara es groc'
@@ -519,8 +584,13 @@ async function syncStageCollections({
             ? 'ara es taronja'
             : 'ja no es verd'
       console.log(`Eliminat de stage_verd (${reason}): ${id}`)
+      if (verdCleanupCount >= MAX_BATCH_WRITES) {
+        await flushVerdCleanup()
+      }
     }
   }
+
+  await flushVerdCleanup()
 }
 
 export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {}): Promise<{
@@ -678,11 +748,28 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
   let deleted = 0
   for (const col of ['stage_taronja', 'stage_groc']) {
     const snap = await firestore.collection(col).get()
-    const dels = snap.docs
-      .filter((d) => (d.data().DataInici || '') < todayISO)
-      .map((d) => d.ref.delete())
-    deleted += dels.length
-    await Promise.all(dels)
+    let deleteBatch = firestore.batch()
+    let deleteBatchCount = 0
+
+    const flushDeleteBatch = async () => {
+      if (deleteBatchCount === 0) return
+      await deleteBatch.commit()
+      deleteBatch = firestore.batch()
+      deleteBatchCount = 0
+    }
+
+    for (const doc of snap.docs) {
+      if ((doc.data().DataInici || '') >= todayISO) continue
+      deleteBatch.delete(doc.ref)
+      deleteBatchCount += 1
+      deleted += 1
+
+      if (deleteBatchCount >= MAX_BATCH_WRITES) {
+        await flushDeleteBatch()
+      }
+    }
+
+    await flushDeleteBatch()
   }
 
   await syncStageCollections({
@@ -753,13 +840,26 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
   }
 
   if (manualIdsToDeleteAfterStageWrite.length > 0) {
-    const manualDeleteBatch = firestore.batch()
+    let manualDeleteBatch = firestore.batch()
+    let manualDeleteCount = 0
+
+    const flushManualDeletes = async () => {
+      if (manualDeleteCount === 0) return
+      await manualDeleteBatch.commit()
+      manualDeleteBatch = firestore.batch()
+      manualDeleteCount = 0
+    }
+
     for (const manualId of manualIdsToDeleteAfterStageWrite) {
       manualDeleteBatch.delete(
         firestore.collection(SPACES_MANUAL_RESERVES_COLLECTION).doc(manualId)
       )
+      manualDeleteCount += 1
+      if (manualDeleteCount >= MAX_BATCH_WRITES) {
+        await flushManualDeletes()
+      }
     }
-    await manualDeleteBatch.commit()
+    await flushManualDeletes()
     console.info(
       `ðŸŸ£ Reserves manuals substituÃ¯des per Zoho: ${manualReplacedCount}`
     )
