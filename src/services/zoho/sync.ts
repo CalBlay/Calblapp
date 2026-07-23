@@ -605,6 +605,7 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
 }> {
   console.info('ðŸš€ Iniciant sincronitzaciÃ³ Zoho â†’ Firestore')
   const includeAttachments = options.includeAttachments === true
+  const syncStartedAt = Date.now()
 
   const todayISO = new Date().toISOString().slice(0, 10)
   const moduleName = process.env.ZOHO_CRM_MODULE || 'Deals'
@@ -642,6 +643,9 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
       parseZohoDate(d.Fecha_y_hora_del_evento)
     return !!eventDate && eventDate >= today
   })
+  console.info(
+    `[zoho-sync] Deals carregats=${allDeals.length} futurs=${filteredDeals.length} includeAttachments=${includeAttachments}`
+  )
 
   // 3ï¸âƒ£ FunciÃ³ per determinar LN segons propietari (Owner)
   const ownerLnCache = new Map<string, Promise<string>>()
@@ -701,6 +705,9 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
   })
 
   console.info(`âœ… Oportunitats vÃ lides: ${normalized.length}`)
+  console.info(
+    `[zoho-sync] Normalitzats=${normalized.length} stageVerd=${normalized.filter((deal) => deal.collection === 'verd').length} stageGroc=${normalized.filter((deal) => deal.collection === 'groc').length} stageTaronja=${normalized.filter((deal) => deal.collection === 'taronja').length}`
+  )
 
   let manualReplacedCount = 0
   let manualReplacements = new Map<
@@ -866,6 +873,10 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
   }
 
   console.info('ðŸ”¥ Firestore sincronitzat correctament')
+  const durationMs = Date.now() - syncStartedAt
+  console.info(
+    `[zoho-sync] resum durationMs=${durationMs} totalDeals=${allDeals.length} normalized=${normalized.length} deleted=${deleted} manualReplaced=${manualReplacedCount} attachmentsChecked=${attachmentTotals.attachmentsChecked} attachmentsDownloaded=${attachmentTotals.attachmentsDownloaded} attachmentsReused=${attachmentTotals.attachmentsReused} attachmentsDeletedFromStorage=${attachmentTotals.attachmentsDeletedFromStorage}`
+  )
   return {
     totalCount: allDeals.length,
     createdCount: normalized.length,

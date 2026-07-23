@@ -112,10 +112,14 @@ async function resolveZohoDealAttachments(
   deal?: Pick<ZohoDeal, 'Fulla_d_enc_rrec' | 'Full_de_Tast'>
 ): Promise<ZohoAttachment[]> {
   const fieldValues: unknown[] = []
+  const hasDealPayload = Boolean(deal && typeof deal === 'object')
 
   for (const field of ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES) {
+    const fieldWasIncludedOnDeal =
+      hasDealPayload && Object.prototype.hasOwnProperty.call(deal, field)
+
     let value = deal?.[field]
-    if (mergeZohoFieldAttachments([value]).length === 0) {
+    if (!fieldWasIncludedOnDeal && mergeZohoFieldAttachments([value]).length === 0) {
       value = await getZohoFieldAttachmentValue(moduleName, dealId, field)
     }
     fieldValues.push(value)
