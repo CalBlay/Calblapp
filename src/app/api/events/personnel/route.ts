@@ -159,11 +159,18 @@ export async function GET(req: NextRequest) {
         typeof auth.user.isTransportLead === 'boolean' ? auth.user.isTransportLead : undefined,
     }
 
-    const canView = await isUiPermissionGranted({
-      user: accessUser,
-      permission: PERM.view('/menu/events'),
-    })
-    if (!canView) {
+    const [canViewEvents, canViewTorns] = await Promise.all([
+      isUiPermissionGranted({
+        user: accessUser,
+        permission: PERM.view('/menu/events'),
+      }),
+      isUiPermissionGranted({
+        user: accessUser,
+        permission: PERM.view('/menu/torns'),
+      }),
+    ])
+
+    if (!canViewEvents && !canViewTorns) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
