@@ -132,6 +132,37 @@ function Chip({
   )
 }
 
+function CompactAllergenPreview({
+  title,
+  items,
+  variant,
+}: {
+  title: string
+  items: AllergenItem[]
+  variant: 'destructive' | 'warning'
+}) {
+  if (items.length === 0) return null
+
+  const visible = items.slice(0, 3)
+  const extra = items.length - visible.length
+
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="shrink-0 font-semibold uppercase tracking-[0.14em] text-slate-500">
+        {title}
+      </span>
+      <div className="flex min-w-0 flex-wrap gap-1.5">
+        {visible.map(item => (
+          <Badge key={`${title}-${item.key}`} variant={variant}>
+            {item.label}
+          </Badge>
+        ))}
+        {extra > 0 ? <Badge variant="outline">+{extra}</Badge> : null}
+      </div>
+    </div>
+  )
+}
+
 export default function AllergensSearchPage() {
   const { canViewPath, isLoading: uiPermLoading } = useUiPermissions()
 
@@ -352,6 +383,14 @@ export default function AllergensSearchPage() {
                   placeholder="Cercar plat, codi o menu"
                   className="h-auto border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0"
                 />
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(true)}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 lg:hidden"
+                  aria-label="Obrir filtres"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </button>
                 {searchText ? (
                   <button
                     type="button"
@@ -364,7 +403,7 @@ export default function AllergensSearchPage() {
                 ) : null}
               </div>
 
-              <div className="flex flex-wrap gap-2 lg:justify-end">
+              <div className="hidden flex-wrap gap-2 lg:justify-end lg:flex">
                 <Chip
                   active={inverseMode}
                   onClick={() => {
@@ -410,7 +449,7 @@ export default function AllergensSearchPage() {
             </div>
 
             {inverseMode && (
-              <div className="flex gap-2 overflow-x-auto pb-1">
+              <div className="hidden gap-2 overflow-x-auto pb-1 lg:flex">
                 {quickAllergens.map(allergen => (
                   <Chip
                     key={allergen.key}
@@ -425,17 +464,6 @@ export default function AllergensSearchPage() {
 
             {menuOptions.length > 0 && (
               <>
-                <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
-                  {menuOptions.slice(0, 8).map(menu => (
-                    <Chip
-                      key={menu}
-                      active={menuFilters.includes(menu)}
-                      onClick={() => toggleMenuFilter(menu)}
-                    >
-                      {menu}
-                    </Chip>
-                  ))}
-                </div>
                 <div className="hidden flex-wrap gap-2 border-t border-slate-100 pt-3 lg:flex">
                   {menuOptions.slice(0, 14).map(menu => (
                     <Chip
@@ -448,6 +476,32 @@ export default function AllergensSearchPage() {
                   ))}
                 </div>
               </>
+            )}
+
+            {(inverseMode ||
+              consumptionFilters.vegetarian ||
+              consumptionFilters.vegan ||
+              activeFilterCount > 0 ||
+              menuFilters.length > 0) && (
+              <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
+                {inverseMode ? <Chip active onClick={() => setFiltersOpen(true)}>Apta</Chip> : null}
+                {consumptionFilters.vegetarian ? (
+                  <Chip active onClick={() => setFiltersOpen(true)}>Veg.</Chip>
+                ) : null}
+                {consumptionFilters.vegan ? (
+                  <Chip active onClick={() => setFiltersOpen(true)}>Vega</Chip>
+                ) : null}
+                {menuFilters.map(menu => (
+                  <Chip key={`active-${menu}`} active onClick={() => setFiltersOpen(true)}>
+                    {menu}
+                  </Chip>
+                ))}
+                {activeAdvancedCount > 0 ? (
+                  <Chip active onClick={() => setFiltersOpen(true)}>
+                    Allergens {activeAdvancedCount}
+                  </Chip>
+                ) : null}
+              </div>
             )}
           </div>
         </div>
@@ -477,6 +531,55 @@ export default function AllergensSearchPage() {
                 key={plat.id}
                 className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm lg:px-4 lg:py-4"
               >
+                <div className="md:hidden">
+                  <div className="min-w-0">
+                    <h2 className="truncate text-base font-semibold leading-5 text-slate-900">
+                      {name}
+                    </h2>
+
+                    {metaParts.length > 0 ? (
+                      <p className="mt-1 truncate text-xs text-slate-500">
+                        {metaParts.join(' · ')}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Badge variant={positives.length > 0 ? 'destructive' : 'outline'}>
+                      {positives.length} si
+                    </Badge>
+                    <Badge variant={traces.length > 0 ? 'warning' : 'outline'}>
+                      {traces.length} traces
+                    </Badge>
+                    {plat.consumption?.vegan ? (
+                      <Badge variant="success" className="gap-1">
+                        <Leaf className="h-3 w-3" />
+                        Vega
+                      </Badge>
+                    ) : null}
+                    {!plat.consumption?.vegan && plat.consumption?.vegetarian ? (
+                      <Badge variant="success" className="gap-1">
+                        <Salad className="h-3 w-3" />
+                        Vegetaria
+                      </Badge>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-2 space-y-2">
+                    <CompactAllergenPreview
+                      title="Conte"
+                      items={positives}
+                      variant="destructive"
+                    />
+                    <CompactAllergenPreview
+                      title="Traces"
+                      items={traces}
+                      variant="warning"
+                    />
+                  </div>
+                </div>
+
+                <div className="hidden md:block">
                 <div className="lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.7fr)] lg:gap-6">
                   <div className="min-w-0">
                     <h2 className="truncate text-[15px] font-semibold leading-5 text-slate-900 lg:text-lg lg:leading-6">
@@ -569,6 +672,7 @@ export default function AllergensSearchPage() {
                       </div>
                     ) : null}
                   </div>
+                </div>
                 </div>
               </article>
             )
@@ -710,16 +814,6 @@ export default function AllergensSearchPage() {
           </SheetContent>
         </Sheet>
 
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-3 py-3 md:hidden">
-          <Button
-            variant="secondary"
-            className="h-11 w-full"
-            onClick={() => setFiltersOpen(true)}
-          >
-            <SlidersHorizontal className="mr-2 h-4 w-4" />
-            {activeFilterCount > 0 ? `Filtres ${activeFilterCount}` : 'Filtres'}
-          </Button>
-        </div>
       </section>
     </>
   )

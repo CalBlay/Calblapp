@@ -1001,7 +1001,7 @@ export default function AllergensBbddPage() {
     <>
       <ModuleHeader subtitle="Alta i edicio de plats per allergens i menus." />
 
-      <section className="w-full max-w-5xl mx-auto p-6 flex flex-col gap-6">
+      <section className="w-full max-w-none p-4 xl:p-6 flex flex-col gap-6">
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
             <h2 className="text-lg font-semibold text-slate-800">Dades basiques</h2>
@@ -1111,7 +1111,7 @@ export default function AllergensBbddPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-4">
             <div>
               <label className="text-sm font-medium text-slate-700">Codi *</label>
               <Input
@@ -1248,7 +1248,7 @@ export default function AllergensBbddPage() {
           <h2 className="text-lg font-semibold text-slate-800 mb-4">Classificacio</h2>
 
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6 gap-4">
               <div>
                 <label className="text-sm font-medium text-slate-700">Grup</label>
                 <Select
@@ -1317,7 +1317,7 @@ export default function AllergensBbddPage() {
             <div>
               <label className="text-sm font-medium text-slate-700">Menus</label>
 
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2 xl:gap-3">
                 {selectedMenuItems.length > 0 ? (
                   selectedMenuItems.map(menu => (
                     <button
@@ -1334,7 +1334,7 @@ export default function AllergensBbddPage() {
                 )}
 
                 <Input
-                  className="min-w-[240px] flex-1 max-w-md"
+                  className="min-w-[240px] flex-1 xl:max-w-xl"
                   value={newMenu}
                   onChange={e => setNewMenu(e.target.value)}
                   placeholder="Nou menu (C1, CH2, CELIAC)"
@@ -1388,7 +1388,7 @@ export default function AllergensBbddPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6 gap-4">
             {allergenItems.map(allergen => (
               <div key={allergen.key}>
                 <label className="text-sm font-medium text-slate-700">{allergen.label}</label>
