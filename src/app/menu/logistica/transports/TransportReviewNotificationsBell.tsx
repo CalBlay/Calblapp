@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useMemo } from 'react'
+import { CheckCheck } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
 import { subscribeToAblyEvent } from '@/lib/ablyClient'
 import ModuleNotificationsBell from '@/components/layout/ModuleNotificationsBell'
 import NotificationListItem from '@/components/layout/NotificationListItem'
-import { markNotificationRead } from '@/lib/notifications/markRead'
+import { markAllNotificationsRead, markNotificationRead } from '@/lib/notifications/markRead'
 
 type TransportReviewNotification = {
   id: string
@@ -20,6 +21,7 @@ type TransportReviewNotification = {
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
+const TRANSPORT_NOTIFICATION_TYPES = ['transport_review_due', 'transport_itv_due'] as const
 
 export default function TransportReviewNotificationsBell({
   refreshSignal,
@@ -51,8 +53,9 @@ export default function TransportReviewNotificationsBell({
     const raw = (Array.isArray(data?.notifications) ? data.notifications : []).filter(
       (n: TransportReviewNotification) =>
         !n.read &&
-        (String(n.type || '') === 'transport_review_due' ||
-          String(n.type || '') === 'transport_itv_due')
+        TRANSPORT_NOTIFICATION_TYPES.includes(
+          String(n.type || '') as (typeof TRANSPORT_NOTIFICATION_TYPES)[number]
+        )
     )
 
     const deduped = new Map<string, TransportReviewNotification>()
@@ -74,8 +77,28 @@ export default function TransportReviewNotificationsBell({
     await mutate()
   }
 
+  const markAll = async () => {
+    for (const type of TRANSPORT_NOTIFICATION_TYPES) {
+      await markAllNotificationsRead(type)
+    }
+    await mutate()
+  }
+
   return (
-    <ModuleNotificationsBell title="Avisos de transports" count={notifications.length}>
+    <ModuleNotificationsBell
+      title="Avisos de transports"
+      count={notifications.length}
+      headerActions={
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
+          onClick={() => void markAll()}
+        >
+          <CheckCheck className="h-3.5 w-3.5" />
+          Marcar tot
+        </button>
+      }
+    >
       {notifications.slice(0, 12).map((notification) => (
         <NotificationListItem
           key={notification.id}

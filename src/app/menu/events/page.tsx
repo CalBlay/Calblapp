@@ -19,6 +19,7 @@ import EventAvisosReadOnlyModal from '@/components/events/EventAvisosReadOnlyMod
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { isProductionWorker } from '@/lib/accessControl'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
+import EventNotificationsBell from './components/EventNotificationsBell'
 import {
   EVENTS_COMANDA_CREATE_PERM,
   hasEventComandaPrepareAction,
@@ -581,11 +582,14 @@ export default function EventsPage() {
             : 'Consulta i gestiona els esdeveniments'
         }
         actions={
-          !eventsListLoading && !error && visibleEventCount > 0 ? (
-            <span className="rounded-full bg-indigo-600 px-3 py-1 text-sm font-bold text-white">
-              {visibleEventCount} visibles
-            </span>
-          ) : undefined
+          <>
+            <EventNotificationsBell />
+            {!eventsListLoading && !error && visibleEventCount > 0 ? (
+              <span className="rounded-full bg-indigo-600 px-3 py-1 text-sm font-bold text-white">
+                {visibleEventCount} visibles
+              </span>
+            ) : null}
+          </>
         }
       />
 

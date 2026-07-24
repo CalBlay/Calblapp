@@ -10,6 +10,7 @@ import { type WorkspaceTab, workspaceTabs } from './project-workspace-helpers'
 import ProjectSummaryStrip, { projectDaysRunningLabel, projectDeadlineStatus } from './ProjectSummaryStrip'
 import { GENERAL_ROOM_LABEL } from './project-room-ui'
 import type { WorkspaceAutosaveStatus } from './useProjectWorkspaceAutosave'
+import ProjectNotificationsBell from './ProjectNotificationsBell'
 
 type Props = {
   project: ProjectData
@@ -137,6 +138,7 @@ export default function ProjectWorkspaceShell({
             {autosaveLabel ? (
               <span className="hidden text-xs text-slate-500 sm:inline">{autosaveLabel}</span>
             ) : null}
+            <ProjectNotificationsBell />
             {canManageProjectData && onToggleProjectDetails ? (
               <Button
                 type="button"

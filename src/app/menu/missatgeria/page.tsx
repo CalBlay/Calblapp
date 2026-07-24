@@ -177,6 +177,26 @@ export default function MissatgeriaPage() {
     [activeEventChannels]
   )
 
+  const unreadByCategory = useMemo(() => {
+    const counts = {
+      finques: 0,
+      restaurants: 0,
+      projects: 0,
+      events: activeEventUnread,
+    }
+
+    allChannels.forEach((channel) => {
+      const unread = Number(channel.unreadCount || 0)
+      if (!unread || Number.isNaN(unread)) return
+
+      if (channel.source === 'finques') counts.finques += unread
+      if (channel.source === 'restaurants') counts.restaurants += unread
+      if (channel.source === 'projects') counts.projects += unread
+    })
+
+    return counts
+  }, [activeEventUnread, allChannels])
+
   const filteredChannels = useMemo(() => {
     let out = allChannels
     if (eventMode && selectedChannelId) {
@@ -200,16 +220,28 @@ export default function MissatgeriaPage() {
       eventMode
         ? undefined
         : [
-            { key: 'finques', label: 'Finques' },
-            { key: 'restaurants', label: 'Restaurants' },
-            { key: 'projects', label: 'Projectes' },
+            {
+              key: 'finques',
+              label: 'Finques',
+              badge: unreadByCategory.finques > 0 ? unreadByCategory.finques : undefined,
+            },
+            {
+              key: 'restaurants',
+              label: 'Restaurants',
+              badge: unreadByCategory.restaurants > 0 ? unreadByCategory.restaurants : undefined,
+            },
+            {
+              key: 'projects',
+              label: 'Projectes',
+              badge: unreadByCategory.projects > 0 ? unreadByCategory.projects : undefined,
+            },
             {
               key: 'events',
               label: 'Events',
-              badge: activeEventUnread > 0 ? activeEventUnread : undefined,
+              badge: unreadByCategory.events > 0 ? unreadByCategory.events : undefined,
             },
           ],
-    [activeEventUnread, eventMode]
+    [eventMode, unreadByCategory]
   )
 
   useEffect(() => {
@@ -1010,4 +1042,3 @@ export default function MissatgeriaPage() {
     </RoleGuard>
   )
 }
-

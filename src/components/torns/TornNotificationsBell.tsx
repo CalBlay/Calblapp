@@ -2,7 +2,7 @@
 
 import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
+import { CheckCheck } from 'lucide-react'
 import { formatTornsDayDate } from '@/lib/date-format'
 import ModuleNotificationsBell, {
   useCloseModuleNotificationsBell,
@@ -118,14 +118,15 @@ export default function TornNotificationsBell() {
     <ModuleNotificationsBell
       title="Torns nous o modificats"
       count={unread.length}
-      footer={
-        <Button
-          variant="outline"
-          className="h-9 w-full text-sm"
+      headerActions={
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
           onClick={() => void markAll()}
         >
-          Marcar tot com llegit
-        </Button>
+          <CheckCheck className="h-3.5 w-3.5" />
+          Marcar tot
+        </button>
       }
     >
       <TornNotificationItems unread={unread} onDismiss={dismiss} />

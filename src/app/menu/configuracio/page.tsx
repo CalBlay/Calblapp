@@ -466,7 +466,7 @@ export default function ConfiguracioPage() {
           <h2 className="font-semibold text-lg">Integracions</h2>
         </div>
         <p className="text-sm text-gray-600">
-          Properament: connexió amb Google Calendar i Outlook per sincronitzar esdeveniments i torns.
+          Les integracions externes s&apos;estan revisant abans d&apos;activar noves sincronitzacions.
         </p>
       </MotionDiv>
 
@@ -513,4 +513,3 @@ export default function ConfiguracioPage() {
     </section>
   )
 }
-

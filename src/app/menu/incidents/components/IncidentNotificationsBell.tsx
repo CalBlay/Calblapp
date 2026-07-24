@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
@@ -34,9 +34,46 @@ type IncidentNotification = {
   synthetic?: boolean
 }
 
+const DISMISSED_SYNTHETIC_STORAGE_KEY = 'incident-dismissed-synthetic-notifications'
+
 const INCIDENT_TYPES = new Set<string>(INCIDENT_NOTIFICATION_TYPES)
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
+const fetchIncidentNotifications = async (): Promise<IncidentNotification[]> => {
+  const responses = await Promise.all(
+    INCIDENT_NOTIFICATION_TYPES.map(async (type) => {
+      const response = await fetch(
+        `/api/notifications?mode=list&type=${encodeURIComponent(type)}`,
+        { cache: 'no-store' }
+      )
+      return response.json().catch(() => ({ notifications: [] }))
+    })
+  )
+
+  const notifications = responses.flatMap((payload) =>
+    Array.isArray(payload?.notifications) ? payload.notifications : []
+  ) as IncidentNotification[]
+
+  const deduped = new Map<string, IncidentNotification>()
+  notifications.forEach((notification) => {
+    const id = String(notification.id || '').trim()
+    if (!id || deduped.has(id)) return
+    deduped.set(id, notification)
+  })
+
+  return [...deduped.values()].sort((a, b) => {
+    const aCreatedAt =
+      typeof (a as { createdAt?: unknown }).createdAt === 'number'
+        ? Number((a as { createdAt?: unknown }).createdAt)
+        : 0
+    const bCreatedAt =
+      typeof (b as { createdAt?: unknown }).createdAt === 'number'
+        ? Number((b as { createdAt?: unknown }).createdAt)
+        : 0
+    return bCreatedAt - aCreatedAt
+  })
+}
 
 const normalizeNotificationText = (value?: string | null) =>
   String(value || '')
@@ -133,7 +170,8 @@ function IncidentNotificationItems({
 export default function IncidentNotificationsBell() {
   const { data: session } = useSession()
   const userId = String((session?.user as { id?: string })?.id || '').trim()
-  const { data, mutate } = useSWR(userId ? '/api/notifications?mode=list' : null, fetcher)
+  const [dismissedSyntheticIds, setDismissedSyntheticIds] = useState<string[]>([])
+  const { data, mutate } = useSWR(userId ? 'incident-notifications' : null, fetchIncidentNotifications)
   const { data: mineData, mutate: mutateMine } = useSWR(
     userId ? '/api/incidents/actions/mine?status=pending' : null,
     fetcher
@@ -156,8 +194,19 @@ export default function IncidentNotificationsBell() {
     }
   }, [userId, mutate, mutateMine])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(DISMISSED_SYNTHETIC_STORAGE_KEY)
+      const parsed = raw ? JSON.parse(raw) : []
+      setDismissedSyntheticIds(Array.isArray(parsed) ? parsed.map((value) => String(value)) : [])
+    } catch {
+      setDismissedSyntheticIds([])
+    }
+  }, [])
+
   const notifications = useMemo(() => {
-    const unreadNotifications = (Array.isArray(data?.notifications) ? data.notifications : []).filter(
+    const unreadNotifications = (Array.isArray(data) ? data : []).filter(
       (notification: IncidentNotification) =>
         !notification.read && INCIDENT_TYPES.has(String(notification.type || ''))
     )
@@ -188,10 +237,23 @@ export default function IncidentNotificationsBell() {
         synthetic: true,
       }))
 
-    return [...unreadNotifications, ...syntheticNotifications]
-  }, [data, mineData])
+    return [...unreadNotifications, ...syntheticNotifications].filter(
+      (notification) =>
+        !notification.synthetic || !dismissedSyntheticIds.includes(String(notification.id || ''))
+    )
+  }, [data, dismissedSyntheticIds, mineData])
 
   const dismiss = async (notificationId: string) => {
+    const target = notifications.find((notification) => notification.id === notificationId)
+    if (target?.synthetic) {
+      const nextIds = [...new Set([...dismissedSyntheticIds, notificationId])]
+      setDismissedSyntheticIds(nextIds)
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(DISMISSED_SYNTHETIC_STORAGE_KEY, JSON.stringify(nextIds))
+      }
+      return
+    }
+
     await markNotificationRead(notificationId)
     await mutate()
   }
@@ -200,10 +262,21 @@ export default function IncidentNotificationsBell() {
     for (const type of INCIDENT_NOTIFICATION_TYPES) {
       await markAllNotificationsRead(type)
     }
+    const syntheticIds = notifications
+      .filter((notification) => notification.synthetic)
+      .map((notification) => notification.id)
+    if (syntheticIds.length > 0) {
+      const nextIds = [...new Set([...dismissedSyntheticIds, ...syntheticIds])]
+      setDismissedSyntheticIds(nextIds)
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(DISMISSED_SYNTHETIC_STORAGE_KEY, JSON.stringify(nextIds))
+      }
+    }
     await mutate()
   }
 
   const hasStoredNotifications = notifications.some((notification) => !notification.synthetic)
+  const hasSyntheticNotifications = notifications.some((notification) => notification.synthetic)
 
   return (
     <ModuleNotificationsBell
@@ -212,7 +285,7 @@ export default function IncidentNotificationsBell() {
       showWhenEmpty
       emptyMessage="Cap avis d'incidencies pendent"
       headerActions={
-        hasStoredNotifications ? (
+        hasStoredNotifications || hasSyntheticNotifications ? (
           <button
             type="button"
             className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"

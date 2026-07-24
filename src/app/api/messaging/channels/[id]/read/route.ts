@@ -19,14 +19,9 @@ export async function PATCH(_req: Request, ctx: { params: Promise<{ id: string }
 
   const user = session.user as SessionUser
   const userId = user.id
-  const role = normalizeRole(user.role || '')
   const { id } = await ctx.params
 
   try {
-    if (role === 'admin' || role === 'direccio') {
-      return NextResponse.json({ success: true })
-    }
-
     const snap = await db
       .collection('channelMembers')
       .where('channelId', '==', id)

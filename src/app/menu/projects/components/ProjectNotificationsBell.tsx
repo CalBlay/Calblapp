@@ -2,12 +2,13 @@
 
 import { useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { CheckCheck } from 'lucide-react'
 import useSWR from 'swr'
 import ModuleNotificationsBell, {
   useCloseModuleNotificationsBell,
 } from '@/components/layout/ModuleNotificationsBell'
 import NotificationListItem from '@/components/layout/NotificationListItem'
-import { markNotificationRead } from '@/lib/notifications/markRead'
+import { markAllNotificationsRead, markNotificationRead } from '@/lib/notifications/markRead'
 
 type ProjectNotification = {
   id: string
@@ -23,7 +24,45 @@ type ProjectNotification = {
   taskName?: string
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+const PROJECT_NOTIFICATION_TYPES = [
+  'project_assignment',
+  'project_block_assignment',
+  'project_task_assignment',
+  'project_task_dependency_unlocked',
+] as const
+
+const fetchProjectNotifications = async (): Promise<ProjectNotification[]> => {
+  const responses = await Promise.all(
+    PROJECT_NOTIFICATION_TYPES.map(async (type) => {
+      const response = await fetch(
+        `/api/notifications?mode=list&type=${encodeURIComponent(type)}`,
+        { cache: 'no-store' }
+      )
+      return response.json().catch(() => ({ notifications: [] }))
+    })
+  )
+
+  const notifications = responses.flatMap((payload) =>
+    Array.isArray(payload?.notifications) ? payload.notifications : []
+  ) as ProjectNotification[]
+
+  const deduped = new Map<string, ProjectNotification>()
+  notifications.forEach((notification) => {
+    const id = String(notification.id || '').trim()
+    if (!id || deduped.has(id)) return
+    deduped.set(id, notification)
+  })
+
+  return [...deduped.values()].sort((a, b) => {
+    const aCreatedAt = typeof (a as { createdAt?: unknown }).createdAt === 'number'
+      ? Number((a as { createdAt?: unknown }).createdAt)
+      : 0
+    const bCreatedAt = typeof (b as { createdAt?: unknown }).createdAt === 'number'
+      ? Number((b as { createdAt?: unknown }).createdAt)
+      : 0
+    return bCreatedAt - aCreatedAt
+  })
+}
 
 function extractNotificationLabel(notification: ProjectNotification) {
   const body = String(notification.body || '')
@@ -38,6 +77,18 @@ function extractNotificationLabel(notification: ProjectNotification) {
       body.match(/bloc\s+(.+)$/i)?.[1]?.trim() ||
       ''
     return { primary: taskName, secondary: blockName, prefix: 'Tasca' }
+  }
+
+  if (notification.type === 'project_task_dependency_unlocked') {
+    const taskName =
+      String(notification.taskName || '').trim() ||
+      body.match(/tasca\s+(.+?)\s+(?:ja\s+)?disponible/i)?.[1]?.trim() ||
+      'Tasca desbloquejada'
+    const blockName =
+      String(notification.blockName || '').trim() ||
+      body.match(/bloc\s+(.+)$/i)?.[1]?.trim() ||
+      ''
+    return { primary: taskName, secondary: blockName, prefix: 'Desbloqueig' }
   }
 
   if (notification.type === 'project_block_assignment') {
@@ -77,7 +128,8 @@ function ProjectNotificationsBellItems({
 
     if (
       notification.type === 'project_task_assignment' ||
-      notification.type === 'project_block_assignment'
+      notification.type === 'project_block_assignment' ||
+      notification.type === 'project_task_dependency_unlocked'
     ) {
       router.push(`/menu/projects/${projectId}?tab=tasks`)
       return
@@ -113,18 +165,16 @@ function ProjectNotificationsBellItems({
 }
 
 export default function ProjectNotificationsBell() {
-  const { data, mutate } = useSWR('/api/notifications?mode=list', fetcher)
+  const { data, mutate } = useSWR('project-notifications', fetchProjectNotifications)
 
   const notifications = useMemo(
     () =>
-      (Array.isArray(data?.notifications) ? data.notifications : []).filter(
+      (Array.isArray(data) ? data : []).filter(
         (notification: ProjectNotification) =>
           !notification.read &&
-          [
-            'project_assignment',
-            'project_block_assignment',
-            'project_task_assignment',
-          ].includes(String(notification.type || ''))
+          PROJECT_NOTIFICATION_TYPES.includes(
+            String(notification.type || '') as (typeof PROJECT_NOTIFICATION_TYPES)[number]
+          )
       ),
     [data]
   )
@@ -134,8 +184,30 @@ export default function ProjectNotificationsBell() {
     await mutate()
   }
 
+  const markAll = async () => {
+    for (const type of PROJECT_NOTIFICATION_TYPES) {
+      await markAllNotificationsRead(type)
+    }
+    await mutate()
+  }
+
   return (
-    <ModuleNotificationsBell title="Avisos de projectes" count={notifications.length}>
+    <ModuleNotificationsBell
+      title="Avisos de projectes"
+      count={notifications.length}
+      showWhenEmpty
+      emptyMessage="Cap avís de projectes pendent"
+      headerActions={
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
+          onClick={() => void markAll()}
+        >
+          <CheckCheck className="h-3.5 w-3.5" />
+          Marcar tot
+        </button>
+      }
+    >
       <ProjectNotificationsBellItems notifications={notifications} onDismiss={dismiss} />
     </ModuleNotificationsBell>
   )
