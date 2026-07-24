@@ -54,6 +54,30 @@ export function classifyStage(stage: string): StageCollection | null {
   return null
 }
 
+/**
+ * Incremental Zoho sync only loads recently modified deals and skips full stage
+ * cleanup. Deals whose Stage no longer maps to verd/groc/taronja must still be
+ * removed from Firestore stage collections, or cancelled/lost opportunities
+ * remain visible as active calendar events.
+ */
+export function collectUntrackedZohoDealIds(
+  deals: Iterable<{ id?: string | null; Stage?: string | null }>,
+  classify: (stage: string) => StageCollection | null = classifyStage
+): string[] {
+  const ids: string[] = []
+  const seen = new Set<string>()
+
+  for (const deal of deals) {
+    const id = String(deal?.id || '').trim()
+    if (!id || seen.has(id)) continue
+    if (classify(String(deal?.Stage || '')) !== null) continue
+    seen.add(id)
+    ids.push(id)
+  }
+
+  return ids
+}
+
 function stagePresentation(group: StageCollection) {
   if (group === 'taronja') {
     return {
