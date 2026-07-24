@@ -250,6 +250,7 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
           pathname.startsWith('/menu/manteniment/dades') ||
           pathname.startsWith('/menu/manteniment/informes') ||
           pathname.startsWith('/menu/manteniment/tickets') ||
+          pathname.startsWith('/menu/reports') ||
           pathname.startsWith('/menu/documentacio') ||
           pathname.startsWith('/menu/roba-personal') ||
           pathname.startsWith('/menu/spaces') ||
