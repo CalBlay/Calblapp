@@ -3,10 +3,7 @@
 import { format, isBefore, startOfDay } from 'date-fns'
 import { useEffect, useMemo, useState } from 'react'
 import {
-  applyStatusHistoryUpdate,
-  getOpenSegmentStart,
-  needsClosePreviousSegment,
-  needsStartOnNextStatus,
+  deriveJourneyTransitionTimes,
   validateJourneyStatusPayload,
   type JourneyStatus,
   type StatusHistoryEntry,
@@ -16,30 +13,8 @@ import type { JourneyTicket } from '../../lib/types'
 
 const MAX_COMPLETION_IMAGES = 3
 
-const defaultTime = () => format(new Date(), 'HH:mm')
-
-function normalizeTimeValue(value?: string | null) {
-  const raw = String(value || '').trim()
-  if (!raw) return ''
-  const match = raw.match(/^(\d{1,2}):(\d{1,2})$/)
-  if (!match) return raw
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-  if (
-    !Number.isFinite(hours) ||
-    !Number.isFinite(minutes) ||
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59
-  ) {
-    return raw
-  }
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
-}
-
 function timeToMinutes(value?: string | null) {
-  const raw = normalizeTimeValue(value)
+  const raw = String(value || '').trim()
   if (!/^\d{2}:\d{2}$/.test(raw)) return null
   const [hours, minutes] = raw.split(':').map(Number)
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
@@ -185,27 +160,22 @@ export function useTicketJourneyForm({ ticket, onSaved }: Params) {
   }
 
   const handleSave = async () => {
-    const effectiveStatus = nextStatus || currentStatus
-
-    const closesPrevious = needsClosePreviousSegment(currentStatus)
-    const opensNextSegment = needsStartOnNextStatus(effectiveStatus)
-    const terminalEnd =
-      effectiveStatus === 'fet' || effectiveStatus === 'no_fet' || effectiveStatus === 'validat'
-
-    const closeSegmentEndTime =
-      closesPrevious || terminalEnd
-        ? hasStaleOpenSegment
-          ? normalizeTimeValue(previousSegmentEndTime)
-          : normalizeTimeValue(horaFi)
-        : undefined
-    const newSegmentStartTime =
-      opensNextSegment || terminalEnd ? normalizeTimeValue(horaInici) : undefined
-    const newSegmentEndTime =
-      effectiveStatus === 'fet'
-        ? normalizeTimeValue(horaFi)
-        : terminalEnd
-          ? normalizeTimeValue(horaFi)
-          : undefined
+    const {
+      effectiveStatus,
+      closesPrevious,
+      opensNextSegment,
+      terminalEnd,
+      closeSegmentEndTime,
+      newSegmentStartTime,
+      newSegmentEndTime,
+    } = deriveJourneyTransitionTimes({
+      currentStatus,
+      nextStatus,
+      startTime: horaInici,
+      endTime: horaFi,
+      previousSegmentEndTime,
+      hasStaleOpenSegment,
+    })
 
     if (hasStaleOpenSegment && (closesPrevious || terminalEnd) && !String(previousSegmentEndTime || '').trim()) {
       setFormError(`Omple hora fi del tram obert del ${openSegmentDateLabel}.`)
