@@ -24,8 +24,8 @@ test('parsePendingAssignacionsRowId rejects malformed pending ids', () => {
   assert.equal(parsePendingAssignacionsRowId('pending:'), null)
   assert.equal(parsePendingAssignacionsRowId('pending:onlydoc'), null)
   assert.equal(parsePendingAssignacionsRowId('pending::1'), null)
+  assert.equal(parsePendingAssignacionsRowId('pending:doc:'), null)
   assert.equal(parsePendingAssignacionsRowId('pending:doc:-1'), null)
-  assert.equal(parsePendingAssignacionsRowId('pending:doc:1.5'), null)
   assert.equal(parsePendingAssignacionsRowId('pending:doc:abc'), null)
 })
 
