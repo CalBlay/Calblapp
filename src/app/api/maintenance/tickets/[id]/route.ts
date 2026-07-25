@@ -620,12 +620,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       previousPlannedEnd !== nextPlannedEnd ||
       body.assignedToIds !== undefined ||
       body.assignedToNames !== undefined
-    const planningKeepsInternalAssignment = nextHasPlanning && nextAssignedIds.length > 0
-    const shouldReturnToAssignedAfterPlanningSave =
-      planningTouched &&
-      planningKeepsInternalAssignment &&
-      role !== 'treballador' &&
-      (currentStatus === 'assignat' || currentStatus === 'en_curs' || currentStatus === 'espera')
+    // Planning saves from the planner always include plannedStart/assignedToIds.
+    // Never auto-force status back to `assignat` for `en_curs` / `espera`:
+    // that leaves open workLogs without endTime, and computeWorkLogMinutes
+    // ignores open entries — permanently dropping already-worked time.
+    // Clients that need assignat (no_fet / reassignat) send status explicitly.
 
     if (planningTouched && planningChanged) {
       let planningAction: 'planificat' | 'replanificat' | 'desplanificat' | null = null
@@ -696,11 +695,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         nextStatus = 'assignat'
         updates.status = nextStatus
       }
-    }
-
-    if (!nextStatus && shouldReturnToAssignedAfterPlanningSave) {
-      nextStatus = 'assignat'
-      updates.status = 'assignat'
     }
 
     if (wantsCapValidation) {
@@ -791,29 +785,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           userName: user.name || '',
         }
       )
-
-      if (
-        role !== 'treballador' &&
-        nextStatus === 'assignat' &&
-        currentStatus !== 'assignat' &&
-        currentStatus !== 'nou' &&
-        currentStatus !== 'no_fet' &&
-        currentStatus !== 'reassignat'
-      ) {
-        const historyWithAssigned = Array.isArray(updates.statusHistory)
-          ? [...updates.statusHistory]
-          : []
-        historyWithAssigned.push({
-          status: 'assignat',
-          at: Date.now(),
-          byId: user.id,
-          byName: user.name || '',
-          note: 'Retornat a assignat des del planificador',
-          startTime: null,
-          endTime: null,
-        })
-        updates.statusHistory = historyWithAssigned
-      }
 
       if (role === 'treballador' && !canManageTickets && nextStatus === 'no_fet') {
         autoReturnToPlanner = true

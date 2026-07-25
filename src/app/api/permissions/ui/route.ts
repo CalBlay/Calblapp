@@ -46,8 +46,11 @@ import {
   eventsWarehouseComandaActionBaseAccess,
 } from '@/lib/eventComandaPermissions'
 import {
+  PREPARATION_IMPORT_ACTION,
+  PREPARATION_IMPORT_PERM,
   PREPARATION_UI_PATH,
   PREPARATION_WAREHOUSE_PERMISSION_KEYS,
+  resolvePreparationImportUiAction,
 } from '@/lib/logistics/preparationPermissions'
 import {
   MAINTENANCE_TICKETS_ACTION,
@@ -110,6 +113,7 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/events', action: 'comanda:create' },
   { path: '/menu/events', action: 'comanda:prepare' },
   { path: '/menu/events', action: 'warehouse:comanda-only' },
+  { path: PREPARATION_UI_PATH, action: PREPARATION_IMPORT_ACTION },
   ...PREPARATION_WAREHOUSE_PERMISSION_KEYS.map((key) => {
     const action = key.replace(`ui:action:${PREPARATION_UI_PATH}:`, '')
     return { path: PREPARATION_UI_PATH, action }
@@ -423,6 +427,13 @@ export async function GET() {
         actions[key] = false
       }
     }
+    actions[PREPARATION_IMPORT_PERM] = resolvePreparationImportUiAction({
+      canViewPreparation: true,
+      role: accessUser.role || '',
+      overrideEffect: effectFor(assignment, PREPARATION_IMPORT_PERM),
+    })
+  } else {
+    actions[PREPARATION_IMPORT_PERM] = false
   }
 
   if (map[MAINTENANCE_TICKETS_UI_PATH] === true) {

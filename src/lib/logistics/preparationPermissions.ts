@@ -47,3 +47,19 @@ export function canMarkPreparationWarehouse(opts: {
 }): boolean {
   return listAllowedPreparationWarehouses(opts).includes(opts.warehouse)
 }
+
+/**
+ * UI `/api/permissions/ui` action map for Excel import.
+ * Mirrors server `isUiPermissionGranted` defaults: managers may import unless
+ * an explicit deny override is present.
+ */
+export function resolvePreparationImportUiAction(opts: {
+  canViewPreparation: boolean
+  role: string
+  overrideEffect?: 'allow' | 'deny' | null
+}): boolean {
+  if (!opts.canViewPreparation) return false
+  if (opts.overrideEffect === 'deny') return false
+  if (opts.overrideEffect === 'allow') return true
+  return isPreparationManagerRole(opts.role)
+}
