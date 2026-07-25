@@ -153,7 +153,8 @@ function resolveWindow(window: BuildWindow) {
   }
 }
 
-function parseTimeToMinutes(raw?: string | null) {
+/** Exported for unit tests: HH:mm → minutes since midnight. */
+export function parseTimeToMinutes(raw?: string | null) {
   const value = String(raw || '').trim()
   if (!/^\d{2}:\d{2}$/.test(value)) return null
   const [hours, minutes] = value.split(':').map(Number)
@@ -161,7 +162,8 @@ function parseTimeToMinutes(raw?: string | null) {
   return hours * 60 + minutes
 }
 
-function diffHours(startTime?: string | null, endTime?: string | null) {
+/** Exported for unit tests: planned/actual hour spans, including overnight. */
+export function diffHours(startTime?: string | null, endTime?: string | null) {
   const start = parseTimeToMinutes(startTime)
   const end = parseTimeToMinutes(endTime)
   if (start == null || end == null) return 0
@@ -191,7 +193,8 @@ function pickRoleList(roleSet: Set<string>) {
     .join(', ')
 }
 
-function matchesFilters(entry: EventsWorkersEntryRow, filters?: BuildFilters) {
+/** Exported for unit tests: accent-insensitive department/worker/role filters. */
+export function matchesFilters(entry: EventsWorkersEntryRow, filters?: BuildFilters) {
   if (!filters) return true
   if (filters.department && norm(entry.department) !== norm(filters.department)) return false
   if (filters.workerName && norm(entry.workerName) !== norm(filters.workerName)) return false
@@ -210,7 +213,8 @@ function uniquePushOption(
   if (!map.has(key)) map.set(key, { value, label })
 }
 
-function collectPersonLines(doc: QuadrantDoc) {
+/** Exported for unit tests: flatten responsable/conductors/treballadors shapes. */
+export function collectPersonLines(doc: QuadrantDoc) {
   const lines: Array<{
     name: string
     role: string
