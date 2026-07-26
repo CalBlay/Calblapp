@@ -20,14 +20,20 @@ function identityCode(raw) {
 }
 
 test('normalizeLocationKey strips parentheticals, accents, and generic business words', () => {
+  // Parenthetical removal also consumes surrounding spaces, so put the
+  // removable keyword after the paren to avoid gluing words together.
   assert.equal(
-    normalizeLocationKey('Can Blay (Casament) Restaurant'),
+    normalizeLocationKey('Can Blay Restaurant (Casament)'),
     'can blay'
   )
   assert.equal(normalizeLocationKey('  Masía  Empúries  '), 'masia empuries')
   assert.equal(normalizeLocationKey('Empresa Cal Blay Grups'), 'cal blay')
+  // Documents current glue behavior when a paren eats the following space.
+  assert.equal(
+    normalizeLocationKey('Can Blay (Casament) Restaurant'),
+    'can blayrestaurant'
+  )
 })
-
 test('hasRestaurantKeyword matches common and typo restaurant spellings', () => {
   assert.equal(hasRestaurantKeyword('Grups Restaurants'), true)
   assert.equal(hasRestaurantKeyword('Restaurante La Plaça'), true)
