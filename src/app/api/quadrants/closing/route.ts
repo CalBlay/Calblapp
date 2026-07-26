@@ -10,6 +10,12 @@ import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isAllowedByClientOverride } from '@/lib/server/permissions'
+import {
+  applyClosingUpdatesToQuadrantData,
+  normalizeClosingEventId,
+  selectClosingQuadrantDocs,
+  type ClosingPersonUpdate,
+} from '@/lib/quadrantsClosing'
 
 type Dept =
   | 'serveis'
@@ -18,15 +24,6 @@ type Dept =
   | 'produccio'
   | 'comercial'
   | string
-
-type PersonUpdate = {
-  name: string
-  role?: string
-  endTimeReal?: string
-  notes?: string
-  noShow?: boolean
-  leftEarly?: boolean
-}
 
 const unaccent = (s?: string | null) =>
   (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -37,12 +34,6 @@ async function resolveCollection(department: string) {
   return resolveQuadrantCollection(department, { prefer: 'singular' })
 }
 
-function matchByName(a?: string, b?: string) {
-  return norm(a) === norm(b) && norm(a) !== ''
-}
-
-type ClosingRow = Record<string, unknown>
-
 function jwtString(token: JWT, keys: readonly string[]): string {
   const rec = token as JWT & Record<string, unknown>
   for (const key of keys) {
@@ -50,22 +41,6 @@ function jwtString(token: JWT, keys: readonly string[]): string {
     if (typeof v === 'string') return v
   }
   return ''
-}
-
-function updateArray(
-  arr: ClosingRow[] | undefined,
-  updates: PersonUpdate[],
-  setter: (item: ClosingRow, upd: PersonUpdate) => void
-): ClosingRow[] | undefined {
-  if (!Array.isArray(arr)) return arr
-  return arr.map((item) => {
-    const itemName = typeof item.name === 'string' ? item.name : undefined
-    const upd = updates.find((u) => matchByName(u.name, itemName))
-    if (!upd) return item
-    const next = { ...item }
-    setter(next, upd)
-    return next
-  })
 }
 
 export async function PUT(req: NextRequest) {
@@ -85,7 +60,7 @@ export async function PUT(req: NextRequest) {
     const { eventId, department, updates, closeDept } = (await req.json()) as {
       eventId?: string
       department?: Dept
-      updates?: PersonUpdate[]
+      updates?: ClosingPersonUpdate[]
       closeDept?: boolean
     }
 
@@ -107,69 +82,70 @@ export async function PUT(req: NextRequest) {
     }
 
     const colName = await resolveCollection(department)
-    const docRef = db.collection(colName).doc(String(eventId))
-    const snap = await docRef.get()
-    if (!snap.exists) {
-      return NextResponse.json({ error: 'Quadrant no trobat' }, { status: 404 })
-    }
+    const collection = db.collection(colName)
+    const canonicalEventId = normalizeClosingEventId(eventId)
 
-    const data = snap.data() || {}
-    const now = new Date().toISOString()
-    const userId = jwtString(token, ['sub', 'id'])
+    const byEventIdSnap = await collection.where('eventId', '==', canonicalEventId).get()
+    const queriedDocs = byEventIdSnap.docs.map((doc) => ({
+      id: doc.id,
+      data: (doc.data() || {}) as Record<string, unknown>,
+    }))
 
-    const setter = (item: ClosingRow, upd: PersonUpdate) => {
-      item.endTimeReal = upd.endTimeReal || null
-      item.sortidaNotes = upd.notes || ''
-      item.noShow = !!upd.noShow
-      item.leftEarly = !!upd.leftEarly
-      item.sortidaSetBy = { userId, ts: now }
-    }
-
-    const rawResp = data.responsable
-    const responsable: ClosingRow[] = Array.isArray(rawResp)
-      ? (rawResp as ClosingRow[])
-      : rawResp && typeof rawResp === 'object'
-        ? [rawResp as ClosingRow]
-        : []
-    const updatedResponsable = updateArray(responsable, updates, setter)
-    const updatedConductors = updateArray(
-      Array.isArray(data.conductors) ? (data.conductors as ClosingRow[]) : undefined,
-      updates,
-      setter
-    )
-    const updatedTreballadors = updateArray(
-      Array.isArray(data.treballadors) ? (data.treballadors as ClosingRow[]) : undefined,
-      updates,
-      setter
-    )
-    const updatedWorkers = updateArray(
-      Array.isArray(data.workers) ? (data.workers as ClosingRow[]) : undefined,
-      updates,
-      setter
-    )
-
-    const payload: Record<string, unknown> = {
-      updatedAt: now,
-    }
-    if (updatedResponsable) payload.responsable = Array.isArray(updatedResponsable) && updatedResponsable.length === 1 ? updatedResponsable[0] : updatedResponsable
-    if (updatedConductors) payload.conductors = updatedConductors
-    if (updatedTreballadors) payload.treballadors = updatedTreballadors
-    if (updatedWorkers) payload.workers = updatedWorkers
-    if (closeDept) {
-      const prevRaw = data.closedByDept
-      const prev =
-        prevRaw && typeof prevRaw === 'object' && !Array.isArray(prevRaw)
-          ? { ...(prevRaw as Record<string, unknown>) }
-          : {}
-      payload.closedByDept = {
-        ...prev,
-        [norm(department)]: now,
+    let directDoc: { id: string; data: Record<string, unknown> } | null = null
+    if (queriedDocs.length === 0) {
+      const directSnap = await collection.doc(canonicalEventId).get()
+      if (directSnap.exists) {
+        directDoc = {
+          id: directSnap.id,
+          data: (directSnap.data() || {}) as Record<string, unknown>,
+        }
       }
     }
 
-    await docRef.set(payload, { merge: true })
+    const targetDocs = selectClosingQuadrantDocs({
+      eventId: canonicalEventId,
+      queriedDocs,
+      directDoc,
+    })
 
-    return NextResponse.json({ ok: true })
+    if (targetDocs.length === 0) {
+      return NextResponse.json({ error: 'Quadrant no trobat' }, { status: 404 })
+    }
+
+    const now = new Date().toISOString()
+    const userId = jwtString(token, ['sub', 'id'])
+    let totalMatched = 0
+    let written = 0
+
+    for (const target of targetDocs) {
+      const { payload, matchedPeople } = applyClosingUpdatesToQuadrantData({
+        data: target.data,
+        updates,
+        department: String(department),
+        closeDept: Boolean(closeDept),
+        nowIso: now,
+        userId,
+      })
+
+      totalMatched += matchedPeople
+      if (matchedPeople === 0 && !closeDept) continue
+
+      await collection.doc(target.id).set(payload, { merge: true })
+      written += 1
+    }
+
+    if (written === 0 || (totalMatched === 0 && !closeDept)) {
+      return NextResponse.json(
+        { error: 'No s’han trobat persones coincidents al quadrant' },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json({
+      ok: true,
+      updatedDocs: written,
+      matchedPeople: totalMatched,
+    })
   } catch (err: unknown) {
     console.error('[quadrants/closing] error', err)
     const message = err instanceof Error ? err.message : 'Internal error'
