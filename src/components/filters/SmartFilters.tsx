@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, CalendarDays } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '../ui/calendar' // 🔹 Ruta relativa (no '@/') segons la teva config actual
 import {
@@ -448,11 +448,11 @@ if (key !== lastPayloadRef.current) {
   }, [resetSignal, modeDefault])
 
   const containerClass = compact
-    ? 'inline-flex flex-row flex-wrap items-center gap-2'
+    ? 'flex w-full min-w-0 items-center gap-2'
     : 'flex flex-col md:flex-row md:flex-wrap gap-2 w-full'
 
   const dateBarClass = compact
-    ? 'flex items-center gap-2 flex-shrink-0 whitespace-nowrap'
+    ? 'flex min-w-0 flex-1 items-center gap-2 overflow-hidden'
     : 'flex items-center gap-2 flex-shrink-0 py-1.5 px-1.5 whitespace-nowrap'
 
   /* ==================== RENDER ==================== */
@@ -465,30 +465,30 @@ if (key !== lastPayloadRef.current) {
 
 {/* 🔹 Navegació compacta amb fletxes (mostra en Setmana i Dia, amaga en Rang) */}
 {mode !== 'range' && (
-  <div className="flex items-center gap-1 shrink-0">
+  <div className={cn('flex items-center gap-1 shrink-0', compact && 'rounded-2xl border border-slate-200 bg-slate-50/80 p-1')}>
     <Button
       size="icon"
       variant="ghost"
       onClick={prev}
-      className="h-7 w-7 text-gray-600"
+      className={cn('text-gray-600', compact ? 'h-8 w-8 rounded-xl' : 'h-7 w-7')}
     >
       ◀
     </Button>
 
     {mode === 'week' && (
-      <span className="whitespace-nowrap px-0.5 text-sm font-semibold text-slate-800">
+      <span className={cn('px-0.5 text-sm font-semibold text-slate-800', compact ? 'max-w-[132px] truncate' : 'whitespace-nowrap')}>
         {weekLabel.replace(/ 20\d{2}/g, '')}
       </span>
     )}
 
     {mode === 'month' && (
-      <span className="whitespace-nowrap px-0.5 text-sm font-semibold text-slate-800">
+      <span className={cn('px-0.5 text-sm font-semibold text-slate-800', compact ? 'max-w-[132px] truncate' : 'whitespace-nowrap')}>
         {monthLabel}
       </span>
     )}
 
     {mode === 'year' && (
-      <span className="whitespace-nowrap px-0.5 text-sm font-semibold text-slate-800">
+      <span className={cn('px-0.5 text-sm font-semibold text-slate-800', compact ? 'max-w-[132px] truncate' : 'whitespace-nowrap')}>
         {yearLabel}
       </span>
     )}
@@ -497,7 +497,7 @@ if (key !== lastPayloadRef.current) {
       size="icon"
       variant="ghost"
       onClick={next}
-      className="h-7 w-7 text-gray-600"
+      className={cn('text-gray-600', compact ? 'h-8 w-8 rounded-xl' : 'h-7 w-7')}
     >
       ▶
     </Button>
@@ -506,7 +506,7 @@ if (key !== lastPayloadRef.current) {
 
 
   {/* 🗓️ Zona del label i inputs */}
-  <div className="flex items-center gap-2 shrink-0">
+  <div className={cn('flex items-center gap-2 shrink-0', compact && 'min-w-0')}>
    
 {mode === 'day' && (
   <Popover open={openDay} onOpenChange={setOpenDay}>
@@ -514,7 +514,7 @@ if (key !== lastPayloadRef.current) {
       <Button
         variant="outline"
         size="sm"
-        className={cn(corporateFilterChipClass, 'whitespace-nowrap')}
+        className={cn(corporateFilterChipClass, compact ? 'max-w-[148px] truncate rounded-2xl border-slate-200 bg-white px-4' : 'whitespace-nowrap')}
         onClick={() => setOpenDay(true)}
       >
         {format(parseISO(dayStr), 'd MMM yyyy', { locale: es })}
@@ -565,7 +565,7 @@ if (key !== lastPayloadRef.current) {
       <Button
         variant="outline"
         size="sm"
-        className={cn(corporateFilterChipClass, 'whitespace-nowrap')}
+        className={cn(corporateFilterChipClass, compact ? 'max-w-[168px] truncate rounded-2xl border-slate-200 bg-white px-4' : 'whitespace-nowrap')}
         onClick={() => setOpenRange(true)}
       >
         {rangeStartStr && rangeEndStr
@@ -629,7 +629,7 @@ if (key !== lastPayloadRef.current) {
       setAnchor(new Date(nextYear, anchor.getMonth(), anchor.getDate()))
     }}
   >
-    <SelectTrigger className={cn(corporateFilterChipClass, 'min-w-[92px] whitespace-nowrap')}>
+    <SelectTrigger className={cn(corporateFilterChipClass, compact ? 'min-w-[92px] rounded-2xl border-slate-200 bg-white whitespace-nowrap' : 'min-w-[92px] whitespace-nowrap')}>
       <SelectValue placeholder="Any" />
     </SelectTrigger>
     <SelectContent>
@@ -651,10 +651,25 @@ if (key !== lastPayloadRef.current) {
     <Button
       variant="outline"
       size="sm"
-      className={cn(corporateFilterChipClass, 'flex items-center gap-1 px-4')}
+      className={cn(
+        corporateFilterChipClass,
+        compact
+          ? 'h-11 w-11 min-w-0 justify-center rounded-2xl border-slate-200 bg-white px-0'
+          : 'flex items-center gap-1 px-4'
+      )}
+      aria-label={`Mode de dates: ${mode === 'week' ? 'Setmana' : mode === 'month' ? 'Mes' : mode === 'year' ? 'Any' : mode === 'day' ? 'Dia' : 'Rang'}`}
     >
-      {mode === 'week' ? 'Setmana' : mode === 'month' ? 'Mes' : mode === 'year' ? 'Any' : mode === 'day' ? 'Dia' : 'Rang'}
-      <span className="text-gray-500 text-xs">▼</span>
+      {compact ? (
+        <span className="flex items-center gap-1.5 text-slate-600">
+          <CalendarDays className="h-4 w-4" />
+          <span className="text-[10px]">▼</span>
+        </span>
+      ) : (
+        <>
+          {mode === 'week' ? 'Setmana' : mode === 'month' ? 'Mes' : mode === 'year' ? 'Any' : mode === 'day' ? 'Dia' : 'Rang'}
+          <span className="text-gray-500 text-xs">▼</span>
+        </>
+      )}
     </Button>
   </PopoverTrigger>
 

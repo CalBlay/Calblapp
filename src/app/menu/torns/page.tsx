@@ -348,7 +348,7 @@ export default function TornsPage() {
   // ============================
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'treballador']}>
-      <div className="px-3 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-4 sm:pb-4 max-w-full overflow-x-hidden touch-manipulation">
+      <div className="max-w-full overflow-x-hidden px-3 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] touch-manipulation sm:p-4 sm:pb-4">
       <ModuleHeader
         icon={<CalendarDays className="w-7 h-7 text-blue-600 shrink-0" />}
         title="Torns Assignats"
@@ -356,9 +356,13 @@ export default function TornsPage() {
         actions={<TornNotificationsBell />}
       />
 
-      <div className="mb-4 w-full min-w-0 py-2 sm:mb-6 sm:px-1 sm:py-3">
-        <CorporateFiltersShell variant="toolbar" bodyClassName="flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex w-full min-w-0 items-center gap-3">
+      <div className="mb-4 w-full min-w-0 py-3 sm:mb-6 sm:px-1">
+        <CorporateFiltersShell
+          variant="toolbar"
+          className="rounded-[28px] border-slate-200/90 bg-white shadow-[0_18px_45px_-30px_rgba(15,23,42,0.28)]"
+          bodyClassName="flex items-start gap-2 sm:gap-3"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
             <SmartFilters
               modeDefault="week"
               role={role}
@@ -377,7 +381,7 @@ export default function TornsPage() {
           </div>
 
           <FilterButton
-            className="shrink-0 self-end sm:self-center"
+            className="h-12 w-12 shrink-0 self-start rounded-2xl border-slate-200 bg-slate-50 text-slate-700 shadow-none hover:bg-slate-100"
             onClick={() => {
               setContent(
                 <TornFilters
