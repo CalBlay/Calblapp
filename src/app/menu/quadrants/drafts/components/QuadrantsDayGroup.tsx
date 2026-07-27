@@ -19,6 +19,7 @@ export default function QuadrantsDayGroup({ date, quadrants }: Props) {
       const key = String(raw || '').trim().toLowerCase()
       if (key && key !== 'extra') people.add(key)
     }
+    ;(q.responsables || []).forEach((person) => push(person?.name))
     push(typeof q.responsableName === 'string' ? q.responsableName : null)
     ;(q.conductors || []).forEach((person) => push(person?.name))
     ;(q.treballadors || []).forEach((person) => push(person?.name))

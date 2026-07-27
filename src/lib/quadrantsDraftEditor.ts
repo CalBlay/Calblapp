@@ -42,6 +42,17 @@ export type EditorGroup = {
   driverName?: string | null
   responsibleId?: string | null
   responsibleName?: string | null
+  roleLines?: Array<{
+    slotId?: string
+    role?: 'responsable' | 'conductor' | 'treballador' | 'jamonero'
+    personId?: string
+    personName?: string
+    serviceDate?: string
+    meetingPoint?: string
+    startTime?: string
+    endTime?: string
+    arrivalTime?: string
+  }>
   /** Serveis: si és `false`, no es fa fallback de responsable des del primer conductor. */
   wantsResponsible?: boolean
 }
@@ -68,6 +79,7 @@ export type EditorDraftInput = {
   responsableId?: string
   responsableName?: string | Record<string, unknown>
   responsable?: Partial<EditorRow> | null
+  responsables?: Array<Partial<EditorRow>>
   conductors?: Array<Partial<EditorRow>>
   treballadors?: Array<Partial<EditorRow>>
   legacyBrigades?: Array<
@@ -128,7 +140,11 @@ export const buildStructuredGroups = (groups?: EditorDraftInput['groups']) =>
         Number(group.workers || 0) > 0 ||
         Number(group.drivers || 0) > 0 ||
         Boolean(String(group.responsibleId || '').trim()) ||
-        Boolean(String(group.responsibleName || '').trim())
+        Boolean(String(group.responsibleName || '').trim()) ||
+        (Array.isArray(group.roleLines) &&
+          group.roleLines.some((line) =>
+            Boolean(String(line?.personId || '').trim() || String(line?.personName || '').trim())
+          ))
       )
     })
     .map((group, idx) => ({
@@ -235,6 +251,7 @@ const buildGroupedRows = ({
 }: BuildGroupedRowsParams): EditorRow[] => {
   const isCuinaDept = department === 'cuina'
   const rows: EditorRow[] = []
+  const responsiblesPool = [...(draft.responsables || [])]
   const driversPool = [...(draft.conductors || [])]
   const driverNameSet = new Set(
     (draft.conductors || [])
@@ -291,6 +308,29 @@ const buildGroupedRows = ({
     return workersPool.shift() || null
   }
 
+  const takePreferredResponsibles = (groupId: string, groupIndex: number) => {
+    const matches = responsiblesPool.filter((person) => {
+      const personGroupId = String(person?.groupId || '').trim()
+      if (personGroupId) return personGroupId === groupId
+      return groupIndex === 0
+    })
+    if (matches.length === 0) return []
+
+    const matchedIndexes = new Set<number>()
+    responsiblesPool.forEach((person, index) => {
+      const personGroupId = String(person?.groupId || '').trim()
+      const sameGroup = personGroupId ? personGroupId === groupId : groupIndex === 0
+      if (sameGroup) matchedIndexes.add(index)
+    })
+    Array.from(matchedIndexes)
+      .sort((a, b) => b - a)
+      .forEach((index) => {
+        responsiblesPool.splice(index, 1)
+      })
+
+    return matches
+  }
+
   groupDefs.forEach((group, idx) => {
     const groupId = group.id || `group-${idx + 1}`
     const groupDate = group.serviceDate || draft.startDate
@@ -298,6 +338,52 @@ const buildGroupedRows = ({
     const groupEndTime = group.endTime || draft.endTime || ''
     const groupArrivalTime = group.arrivalTime || draft.arrivalTime || ''
     const groupMeetingPoint = group.meetingPoint || defaultMeetingPoint
+
+    if ((isServeisDept || isCuinaDept) && Array.isArray(group.roleLines) && group.roleLines.length > 0) {
+      group.roleLines.forEach((line) => {
+        const personId = String(line?.personId || '').trim()
+        const personName = String(line?.personName || '').trim()
+        if (!personId && !personName) return
+
+        const normalizedRole = line?.role === 'jamonero' ? 'treballador' : line?.role || 'treballador'
+        rows.push({
+          id: personId,
+          name: personName,
+          role:
+            normalizedRole === 'responsable' || normalizedRole === 'conductor'
+              ? normalizedRole
+              : 'treballador',
+          isDriver:
+            normalizedRole === 'responsable'
+              ? group.roleLines!.some((candidate) => {
+                  const candidateId = String(candidate?.personId || '').trim()
+                  const candidateName = String(candidate?.personName || '').trim()
+                  if (candidate?.role !== 'conductor') return false
+                  if (personId && candidateId && candidateId === personId) return true
+                  return Boolean(
+                    personName &&
+                      candidateName &&
+                      normalizeDraftText(candidateName) === normalizeDraftText(personName)
+                  )
+                })
+              : false,
+          isJamonero: line?.role === 'jamonero',
+          groupId,
+          startDate: line?.serviceDate || groupDate,
+          startTime: line?.startTime || groupStartTime,
+          endDate: draft.endDate || line?.serviceDate || groupDate,
+          endTime: line?.endTime || groupEndTime,
+          meetingPoint: line?.meetingPoint || groupMeetingPoint,
+          arrivalTime: line?.arrivalTime || groupArrivalTime,
+          plate: '',
+          vehicleType: '',
+        })
+      })
+
+      return
+    }
+
+    const explicitResponsibles = takePreferredResponsibles(groupId, idx)
     const respId = group.responsibleId || (idx === 0 ? draft.responsableId || '' : '')
     let respName =
       group.responsibleName ||
@@ -309,30 +395,41 @@ const buildGroupedRows = ({
     }
 
     const groupWantsResponsible = group.wantsResponsible !== false
-    const hasResponsible = groupWantsResponsible && Boolean(respName || respId)
-    const respRowIndex = hasResponsible ? rows.length : -1
+    const responsiblesForGroup =
+      explicitResponsibles.length > 0
+        ? explicitResponsibles.filter((person) => {
+            const name = String(person?.name || '').trim()
+            return !shouldDeduplicateName(name) || !usedNames.has(normalizeDraftText(name))
+          })
+        : groupWantsResponsible && Boolean(respName || respId)
+        ? [{ id: respId, name: respName }]
+        : []
+    const hasResponsible = groupWantsResponsible && responsiblesForGroup.length > 0
+    const respRowIndexes: number[] = []
     const preferredDriverRow = isServeisDept ? takePreferredServiceDriver(group) : null
     const mainDriverRow =
       isServeisDept ? preferredDriverRow || driversPool[0] || null : null
 
-    if (hasResponsible) {
+    responsiblesForGroup.forEach((responsible) => {
+      const rowIndex = rows.length
+      respRowIndexes.push(rowIndex)
       rows.push({
-        id: respId || '',
-        name: respName || '',
+        id: String(responsible?.id || '').trim(),
+        name: String(responsible?.name || '').trim(),
         role: 'responsable',
         isDriver: false,
         groupId,
-        startDate: groupDate,
-        startTime: mainDriverRow?.startTime || groupStartTime,
-        endDate: draft.endDate || groupDate,
-        endTime: mainDriverRow?.endTime || groupEndTime,
-        meetingPoint: groupMeetingPoint,
-        arrivalTime: mainDriverRow?.arrivalTime || groupArrivalTime,
-        plate: '',
-        vehicleType: '',
+        startDate: String(responsible?.startDate || groupDate),
+        startTime: String(responsible?.startTime || mainDriverRow?.startTime || groupStartTime),
+        endDate: String(responsible?.endDate || draft.endDate || groupDate),
+        endTime: String(responsible?.endTime || mainDriverRow?.endTime || groupEndTime),
+        meetingPoint: String(responsible?.meetingPoint || groupMeetingPoint),
+        arrivalTime: String(responsible?.arrivalTime || mainDriverRow?.arrivalTime || groupArrivalTime),
+        plate: String(responsible?.plate || ''),
+        vehicleType: String(responsible?.vehicleType || ''),
         isJamonero: false,
       })
-    }
+    })
 
     const driversNeeded = Number(group.drivers || 0)
     const assignedDrivers: Array<{ name?: string }> = []
@@ -358,20 +455,27 @@ const buildGroupedRows = ({
         if (!driverName) driverName = 'Extra'
         assignedDrivers.push({ name: driverName })
 
-        const samePersonAsResponsible =
-          hasResponsible &&
-          driverName &&
-          respName &&
-          normalizeDraftText(driverName) === normalizeDraftText(respName)
+        const matchingResponsibleIndex =
+          hasResponsible && driverName
+            ? responsiblesForGroup.findIndex((responsible) => {
+                const responsibleId = String(responsible?.id || '').trim()
+                const responsibleName = String(responsible?.name || '').trim()
+                if (next?.id && responsibleId && next.id === responsibleId) return true
+                return Boolean(
+                  responsibleName &&
+                    normalizeDraftText(driverName) === normalizeDraftText(responsibleName)
+                )
+              })
+            : -1
 
-        if (samePersonAsResponsible && respRowIndex >= 0) {
-          rows[respRowIndex] = {
-            ...rows[respRowIndex],
+        if (matchingResponsibleIndex >= 0 && respRowIndexes[matchingResponsibleIndex] >= 0) {
+          rows[respRowIndexes[matchingResponsibleIndex]] = {
+            ...rows[respRowIndexes[matchingResponsibleIndex]],
             isDriver: true,
           }
         }
 
-        if (!samePersonAsResponsible) {
+        if (matchingResponsibleIndex < 0) {
           rows.push({
             id: group.driverId || '',
             name: driverName,
@@ -420,7 +524,13 @@ const buildGroupedRows = ({
 
     const responsibleIsDriver =
       hasResponsible &&
-      assignedDrivers.some((p) => p.name && normalizeDraftText(p.name) === normalizeDraftText(respName))
+      assignedDrivers.some((p) =>
+        p.name &&
+        responsiblesForGroup.some((responsible) => {
+          const responsibleName = String(responsible?.name || '').trim()
+          return responsibleName && normalizeDraftText(p.name) === normalizeDraftText(responsibleName)
+        })
+      )
     const workersNeeded = Math.max(
       Number(group.workers || 0) - driversNeeded - (hasResponsible ? (responsibleIsDriver ? 0 : 1) : 0),
       0
@@ -463,15 +573,16 @@ const buildGroupedRows = ({
 
     extrasNeeded = Math.max(extrasNeeded, missingWorkersNeeded)
 
-    if (respRowIndex >= 0 && !rows[respRowIndex]?.name && department !== 'serveis') {
+    const primaryRespRowIndex = respRowIndexes[0] ?? -1
+    if (primaryRespRowIndex >= 0 && !rows[primaryRespRowIndex]?.name && department !== 'serveis') {
       const candidate =
         assignedWorkers.find((p) => p.name && p.name !== 'Extra') ||
         assignedDrivers.find((p) => p.name && p.name !== 'Extra')
-      if (candidate?.name) rows[respRowIndex].name = candidate.name
+      if (candidate?.name) rows[primaryRespRowIndex].name = candidate.name
     }
 
     const groupNames = [
-      rows[respRowIndex]?.name,
+      ...respRowIndexes.map((rowIndex) => rows[rowIndex]?.name),
       ...assignedDrivers.map((p) => p.name),
       ...assignedWorkers.map((p) => p.name),
     ]
@@ -700,7 +811,7 @@ export const pruneEditorGroups = ({
     if (!groupId) return false
 
     const hasRows = rows.some((row) => String(row.groupId || '').trim() === groupId)
-    if (departmentKey === 'cuina') return hasRows
+    if (departmentKey === 'cuina' || departmentKey === 'serveis') return hasRows
     if (hasRows) return true
 
     const hasUsefulContent =

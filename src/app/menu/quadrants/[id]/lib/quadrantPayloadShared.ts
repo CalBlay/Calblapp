@@ -185,6 +185,7 @@ export function extractDraftResponsible(draft: {
   responsableId?: string
   responsableName?: string | Record<string, unknown>
   responsable?: { id?: string; name?: string } | null
+  responsables?: Array<{ id?: string; name?: string } | null>
   conductors?: Array<{ id?: string; name?: string } | null>
   groups?: Array<{
     wantsResponsible?: boolean
@@ -192,6 +193,11 @@ export function extractDraftResponsible(draft: {
     responsibleName?: string | null
     driverId?: string | null
     driverName?: string | null
+    roleLines?: Array<{
+      role?: string | null
+      personId?: string | null
+      personName?: string | null
+    } | null>
   }>
 }): { id: string; name: string } {
   const resolveNameById = (id: string) => {
@@ -209,15 +215,43 @@ export function extractDraftResponsible(draft: {
       : typeof draft.responsable?.name === 'string'
       ? draft.responsable.name.trim()
       : ''
+  const firstExplicitResponsible = (draft.responsables || []).find((person) =>
+    Boolean(String(person?.id || '').trim() || String(person?.name || '').trim())
+  )
+  const explicitId = String(firstExplicitResponsible?.id || '').trim()
+  const explicitName = String(firstExplicitResponsible?.name || '').trim()
 
   const groups = Array.isArray(draft.groups) ? draft.groups : []
   const groupWithResponsible = groups.find((group) => {
     if (group.wantsResponsible === false) return false
-    return Boolean(String(group.responsibleId || '').trim() || String(group.responsibleName || '').trim())
+    const hasLegacyResponsible = Boolean(
+      String(group.responsibleId || '').trim() || String(group.responsibleName || '').trim()
+    )
+    const hasRoleLineResponsible = Array.isArray(group.roleLines)
+      ? group.roleLines.some(
+          (line) =>
+            String(line?.role || '').trim() === 'responsable' &&
+            Boolean(String(line?.personId || '').trim() || String(line?.personName || '').trim())
+        )
+      : false
+    return hasLegacyResponsible || hasRoleLineResponsible
   })
 
-  let groupId = String(groupWithResponsible?.responsibleId || '').trim()
-  let groupName = String(groupWithResponsible?.responsibleName || '').trim()
+  const firstRoleLineResponsible =
+    groupWithResponsible && Array.isArray(groupWithResponsible.roleLines)
+      ? groupWithResponsible.roleLines.find(
+          (line) =>
+            String(line?.role || '').trim() === 'responsable' &&
+            Boolean(String(line?.personId || '').trim() || String(line?.personName || '').trim())
+        )
+      : null
+
+  let groupId =
+    String(firstRoleLineResponsible?.personId || '').trim() ||
+    String(groupWithResponsible?.responsibleId || '').trim()
+  let groupName =
+    String(firstRoleLineResponsible?.personName || '').trim() ||
+    String(groupWithResponsible?.responsibleName || '').trim()
 
   if (!groupId && !groupName) {
     const samePersonGroup = groups.find((group) => {
@@ -234,8 +268,8 @@ export function extractDraftResponsible(draft: {
     }
   }
 
-  const id = topId || groupId
-  const name = topName || groupName || resolveNameById(id)
+  const id = topId || explicitId || groupId
+  const name = topName || explicitName || groupName || resolveNameById(id)
 
   return { id, name }
 }

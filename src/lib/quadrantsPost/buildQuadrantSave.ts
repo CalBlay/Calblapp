@@ -197,9 +197,8 @@ export function buildQuadrantSave(
               idx < Math.max(1, Number(g.drivers || 0))
             )?.name ||
             null,
-          ...(Array.isArray((g as { manualWorkers?: unknown })?.manualWorkers)
-            ? { manualWorkers: (g as { manualWorkers?: unknown }).manualWorkers }
-            : {}),
+          ...(Array.isArray(g.manualWorkers) ? { manualWorkers: g.manualWorkers } : {}),
+          ...(Array.isArray(g.roleLines) ? { roleLines: g.roleLines } : {}),
           responsibleId: resolvedResponsibleId || null,
           responsibleName: resolvedResponsibleName,
         }

@@ -33,12 +33,17 @@ function parseCsvNames(value?: string | null): string[] {
 
 type DraftPersonnelSource = {
   responsableName?: string | { name?: string } | null
+  responsables?: Array<{ name?: string | null }> | null
   conductors?: Array<{ name?: string | null }> | null
   treballadors?: Array<{ name?: string | null }> | null
   groups?: Array<{
     wantsResponsible?: boolean
     responsibleId?: string | null
     responsibleName?: string | null
+    roleLines?: Array<{
+      role?: string | null
+      personName?: string | null
+    }> | null
   }> | null
 }
 
@@ -76,6 +81,18 @@ export function peopleFromPhase(phase: UnifiedEvent): QuadrantPersonEntry[] {
     typeof draft?.responsableName === 'string'
       ? draft.responsableName
       : draft?.responsableName?.name
+  ;(draft?.responsables || []).forEach((person) => upsert(person?.name, 'responsable'))
+  ;(draft?.groups || []).forEach((group) => {
+    if (Array.isArray(group?.roleLines) && group.roleLines.length > 0) {
+      group.roleLines.forEach((line) => {
+        if (String(line?.role || '').trim() === 'responsable') {
+          upsert(line?.personName, 'responsable')
+        }
+      })
+      return
+    }
+    upsert(group?.responsibleName, 'responsable')
+  })
   const draftRespKey = normalizeNameKey(draftRespRaw)
   const conductorNameKeys = new Set(
     (draft?.conductors || [])
@@ -138,7 +155,7 @@ export function getQuadrantPersonnelSummary(
   phases: UnifiedEvent[],
   rowDate?: string
 ): QuadrantPersonnelSummary {
-  const phaseLines: QuadrantPhaseStaffLine[] = phases.map((phase) => {
+  const rawPhaseLines: QuadrantPhaseStaffLine[] = phases.map((phase) => {
     const day = rowDate || (phase.start ? phase.start.slice(0, 10) : '')
     const phaseLabel = buildQuadrantPhaseBadge(phase, day) || 'EVENT'
     const people = peopleFromPhase(phase)
@@ -156,6 +173,17 @@ export function getQuadrantPersonnelSummary(
       schedule,
     }
   })
+  const phaseLines = Array.from(
+    rawPhaseLines.reduce((map, line) => {
+      const peopleKey = line.people
+        .map((person) => `${person.role}:${normalizeNameKey(person.name)}`)
+        .join('|')
+      const key = [line.phaseLabel, line.status, line.schedule || '', peopleKey].join('::')
+      if (!map.has(key)) map.set(key, line)
+      return map
+    }, new Map<string, QuadrantPhaseStaffLine>())
+      .values()
+  )
 
   const primarySchedule =
     phaseLines.find((line) => line.schedule && line.status !== 'pending')?.schedule ||
@@ -187,29 +215,23 @@ export function getQuadrantPersonnelSummary(
 
 /** Personal assignat als borradors/confirmats del grup (exclou pendents sense draft). */
 export function countAssignedStaffFromPhases(phases: UnifiedEvent[]): number {
-  return phases.reduce((sum, phase) => {
-    if (phase.quadrantStatus === 'pending') return sum
+  const managedPhases = phases.filter((phase) => phase.quadrantStatus !== 'pending')
+  const mergedPeople = mergePeopleAcrossPhases(
+    managedPhases.flatMap((phase) => peopleFromPhase(phase))
+  )
 
+  if (mergedPeople.length > 0) return mergedPeople.length
+
+  return managedPhases.reduce((max, phase) => {
     const draft = phase.draft as
       | {
           totalWorkers?: number | null
-          treballadors?: unknown[] | null
-          conductors?: unknown[] | null
-          responsableId?: string | null
-          responsableName?: string | null
         }
       | null
       | undefined
-
-    if (draft) {
-      const fromRoster = peopleFromPhase(phase).length
-      if (fromRoster > 0) return sum + fromRoster
-
-      const explicit = Number(draft.totalWorkers)
-      if (Number.isFinite(explicit) && explicit > 0) return sum + explicit
-    }
-
-    return sum + peopleFromPhase(phase).length
+    const explicit = Number(draft?.totalWorkers)
+    if (Number.isFinite(explicit) && explicit > max) return explicit
+    return max
   }, 0)
 }
 

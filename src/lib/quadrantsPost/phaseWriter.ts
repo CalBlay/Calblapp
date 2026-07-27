@@ -1,5 +1,5 @@
 import { after, type NextRequest } from 'next/server'
-import { Timestamp, type DocumentData, type DocumentSnapshot } from 'firebase-admin/firestore'
+import { FieldPath, Timestamp, type DocumentData, type DocumentSnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 import {
@@ -559,6 +559,49 @@ export async function processPhaseRequests(params: ProcessPhaseRequestsParams) {
       if (fwCount >= 480) await flushFw()
     }
     await flushFw()
+  }
+
+  if (deptNorm === 'serveis' && orderedPhaseRequests.length > 0) {
+    const expectedDocIds = new Set(createdDocIds)
+    const cleanupPrefixes = Array.from(
+      new Set(
+        orderedPhaseRequests.map((phase) => {
+          const phaseKey = norm(phase.label || phase.phaseType || 'fase')
+          const phaseDate = String(phase.date || body.startDate || '').trim()
+          if (!phaseKey || !phaseDate) return ''
+          return `${canonicalEventId}__${phaseKey}__${phaseDate}__`
+        }).filter(Boolean)
+      )
+    )
+
+    for (const prefix of cleanupPrefixes) {
+      const snap = await db
+        .collection(collectionName)
+        .orderBy(FieldPath.documentId())
+        .startAt(prefix)
+        .endAt(`${prefix}\uf8ff`)
+        .get()
+
+      const staleDocs = snap.docs.filter((doc) => !expectedDocIds.has(doc.id))
+      if (staleDocs.length === 0) continue
+
+      let cleanupBatch = db.batch()
+      let cleanupCount = 0
+      const flushCleanupBatch = async () => {
+        if (cleanupCount === 0) return
+        await cleanupBatch.commit()
+        cleanupBatch = db.batch()
+        cleanupCount = 0
+      }
+
+      for (const doc of staleDocs) {
+        cleanupBatch.delete(doc.ref)
+        cleanupCount += 1
+        if (cleanupCount >= 450) await flushCleanupBatch()
+      }
+
+      await flushCleanupBatch()
+    }
   }
 
   let confirmInlineApplied = false

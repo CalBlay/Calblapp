@@ -197,6 +197,17 @@ export async function computeQuadrantsGet(
                 driverName?: string | null
                 responsibleId?: string | null
                 responsibleName?: string | null
+                roleLines?: Array<{
+                  slotId?: string | null
+                  role?: string | null
+                  personId?: string | null
+                  personName?: string | null
+                  serviceDate?: string | null
+                  meetingPoint?: string | null
+                  startTime?: string | null
+                  endTime?: string | null
+                  arrivalTime?: string | null
+                }>
                 manualWorkers?: unknown
               }, idx: number) => ({
               id: g.id || `group-${idx + 1}`,
@@ -215,6 +226,21 @@ export async function computeQuadrantsGet(
               driverName: g.driverName || null,
               responsibleId: g.responsibleId || null,
               responsibleName: g.responsibleName || null,
+              ...(Array.isArray(g.roleLines)
+                ? {
+                    roleLines: g.roleLines.map((line) => ({
+                      slotId: String(line?.slotId || ''),
+                      role: String(line?.role || ''),
+                      personId: String(line?.personId || ''),
+                      personName: String(line?.personName || ''),
+                      serviceDate: String(line?.serviceDate || ''),
+                      meetingPoint: String(line?.meetingPoint || ''),
+                      startTime: String(line?.startTime || ''),
+                      endTime: String(line?.endTime || ''),
+                      arrivalTime: String(line?.arrivalTime || ''),
+                    })),
+                  }
+                : {}),
               ...(Array.isArray(g.manualWorkers) ? { manualWorkers: g.manualWorkers } : {}),
             }))
           : undefined,

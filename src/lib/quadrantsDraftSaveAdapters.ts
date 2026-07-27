@@ -1,3 +1,4 @@
+import admin from 'firebase-admin'
 import {
   buildGroupedDraftPersistence,
   normalizeDepartmentKey,
@@ -165,6 +166,7 @@ const persistServeisDraft = async ({
   db,
   coll,
   department,
+  sourceDocId,
   canonicalEventId,
   rows,
   groups,
@@ -180,9 +182,39 @@ const persistServeisDraft = async ({
   }
 
   const eventDocsSnap = await db.collection(coll).where('eventId', '==', canonicalEventId).get()
-  const existingDocs = eventDocsSnap.docs
+  const eventDocPrefix = `${canonicalEventId}__event__`
+  const prefixedDocsSnap = await db
+    .collection(coll)
+    .orderBy(admin.firestore.FieldPath.documentId())
+    .startAt(eventDocPrefix)
+    .endAt(`${eventDocPrefix}\uf8ff`)
+    .get()
+  const directDocIds = Array.from(
+    new Set([String(sourceDocId || '').trim(), String(canonicalEventId || '').trim()].filter(Boolean))
+  )
+  const directDocSnaps = await Promise.all(
+    directDocIds.map(async (docId) => {
+      const snap = await db.collection(coll).doc(docId).get()
+      return snap.exists ? snap : null
+    })
+  )
+  const existingDocs = [
+    ...eventDocsSnap.docs,
+    ...prefixedDocsSnap.docs.filter(
+      (doc) => !eventDocsSnap.docs.some((eventDoc) => eventDoc.id === doc.id)
+    ),
+    ...directDocSnaps.filter(
+      (snap): snap is FirebaseFirestore.DocumentSnapshot =>
+        snap !== null &&
+        !eventDocsSnap.docs.some((doc) => doc.id === snap.id) &&
+        !prefixedDocsSnap.docs.some((doc) => doc.id === snap.id)
+    ),
+  ]
   const baseDoc: Record<string, unknown> = existingDocs[0]?.data() || {}
-  const existingByGroup = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
+  const existingByGroup = new Map<
+    string,
+    FirebaseFirestore.DocumentSnapshot | FirebaseFirestore.QueryDocumentSnapshot
+  >()
 
   existingDocs.forEach((doc) => {
     const data = doc.data() as Record<string, unknown>
@@ -228,8 +260,13 @@ const persistServeisDraft = async ({
     const fallbackResponsible =
       explicitResponsables[0] ??
       (group.wantsResponsible !== false ? conductorsRows[0] ?? null : null)
-    const responsables = fallbackResponsible ? [fallbackResponsible] : []
-    const mainResponsable = fallbackResponsible
+    const responsables =
+      explicitResponsables.length > 0
+        ? explicitResponsables
+        : fallbackResponsible
+        ? [fallbackResponsible]
+        : []
+    const mainResponsable = responsables[0] ?? fallbackResponsible
     const responsibleActsAsDriver = !!mainResponsable?.isDriver
     const conductorsForSave = [
       ...(responsibleActsAsDriver && mainResponsable ? [mainResponsable] : []),
@@ -261,6 +298,34 @@ const persistServeisDraft = async ({
       group.meetingPoint || timingAnchor?.meetingPoint || groupRows[0]?.meetingPoint || previous?.meetingPoint || ''
     const totalWorkers = names.size + extraCount
     const numDrivers = conductorsForSave.length
+    const roleLines = [...responsables, ...conductorsForSave, ...treballadorsRows].map(
+      (row, lineIndex) => ({
+        slotId:
+          `${groupId}-line-${lineIndex + 1}`,
+        role: row.isJamonero ? 'jamonero' : row.role,
+        personId: row.id || '',
+        personName: row.name || '',
+        serviceDate: row.startDate || groupDate || previous?.startDate || '',
+        meetingPoint: row.meetingPoint || meetingPoint,
+        startTime: row.startTime || startTime,
+        endTime: row.endTime || endTime,
+        arrivalTime: row.arrivalTime || arrivalTime || '',
+      })
+    )
+    const manualWorkers = treballadorsRows.map((row) => ({
+      id: row.id || '',
+      name: row.name || '',
+      groupId: row.groupId || groupId,
+      meetingPoint: row.meetingPoint || meetingPoint,
+      isJamonero: row.isJamonero === true,
+      startDate: row.startDate || groupDate || previous?.startDate || '',
+      startTime: row.startTime || startTime,
+      endDate: row.endDate || row.startDate || groupDate || previous?.startDate || '',
+      endTime: row.endTime || endTime,
+      arrivalTime: row.arrivalTime || arrivalTime || '',
+      vehicleType: row.vehicleType || '',
+      plate: row.plate || '',
+    }))
     const docId =
       baseGroupDoc?.id ||
       `${canonicalEventId}__event__${groupDate || previous?.startDate || 'nodate'}__${sanitizeGroupId(groupId)}`
@@ -316,6 +381,8 @@ const persistServeisDraft = async ({
               null,
             responsibleId: mainResponsable?.id || null,
             responsibleName: mainResponsable?.name || null,
+            roleLines,
+            manualWorkers,
           },
         ],
         createdAt: coerceDocDate(previous?.createdAt, new Date()),
@@ -499,6 +566,27 @@ const persistCuinaDraft = async ({
       if (!name || name === 'Extra') return
       uniqueNames.add(name.toLowerCase())
     })
+    const roleLines = [...responsables, ...conductors, ...treballadors].map((row, index) => ({
+      slotId: `${groupId}-line-${index + 1}`,
+      role: row.role,
+      personId: row.id || '',
+      personName: row.name || '',
+      serviceDate: row.startDate || groupMeta.serviceDate || previousGroup.serviceDate || existing?.startDate || '',
+      meetingPoint:
+        row.meetingPoint ||
+        groupMeta.meetingPoint ||
+        previousGroup.meetingPoint ||
+        existing?.meetingPoint ||
+        '',
+      startTime: row.startTime || groupMeta.startTime || previousGroup.startTime || existing?.startTime || '',
+      endTime: row.endTime || groupMeta.endTime || previousGroup.endTime || existing?.endTime || '',
+      arrivalTime:
+        row.arrivalTime ??
+        groupMeta.arrivalTime ??
+        previousGroup.arrivalTime ??
+        existing?.arrivalTime ??
+        '',
+    }))
 
     return {
       ...previousGroup,
@@ -538,6 +626,7 @@ const persistCuinaDraft = async ({
       drivers: conductors.length,
       responsibleName: responsables[0]?.name || null,
       responsibleId: responsables[0]?.id || null,
+      roleLines,
     }
   })
 

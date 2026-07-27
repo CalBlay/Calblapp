@@ -13,8 +13,10 @@ import {
   servicePhaseOptions,
 } from '../phaseConfig'
 import {
+  countServiceGroupRoleLineTotals,
   createEmptyRoleLine,
   ensureGroupRoleLines,
+  getPrimaryServiceRoleLines,
   syncGroupFromRoleLines,
 } from '../lib/serviceGroupRoleLines'
 import { hydrateServiceGroupsFromDraft } from '../lib/hydrateServiceGroupsFromDraft'
@@ -322,11 +324,11 @@ export function useServicePhasesState({
     let responsables = 0
 
     activeServiceGroups.forEach((group) => {
-      const lines = ensureGroupRoleLines(group).filter((line) => String(line.personId || '').trim())
-      workers += lines.length
-      jamoneros += lines.filter((line) => line.role === 'jamonero').length
-      if (lines.some((line) => line.role === 'conductor')) drivers += 1
-      if (lines.some((line) => line.role === 'responsable')) responsables += 1
+      const totals = countServiceGroupRoleLineTotals(ensureGroupRoleLines(group))
+      workers += totals.workers
+      jamoneros += totals.jamoneros
+      drivers += totals.drivers
+      responsables += totals.responsables
     })
 
     return { workers, jamoneros, drivers, responsables }
@@ -366,16 +368,13 @@ export function useServicePhasesState({
     (manualResponsibleId: string | null, manualResponsibleName?: string | null) => {
       return selectedServiceGroups.map((group, index) => {
         const roleLines = ensureGroupRoleLines(group)
-        const filledLines = roleLines.filter(
-          (line) =>
-            String(line.personId || '').trim() || String(line.personName || '').trim()
-        )
-        const responsable = filledLines.find((line) => line.role === 'responsable')
-        const conductor = filledLines.find((line) => line.role === 'conductor')
-        const staffLines = filledLines.filter(
-          (line) => line.role === 'treballador' || line.role === 'jamonero'
-        )
-        const hasResponsableLine = roleLines.some((line) => line.role === 'responsable')
+        const {
+          filled,
+          responsable,
+          conductor,
+          staffLines,
+          hasResponsableLine,
+        } = getPrimaryServiceRoleLines(roleLines)
         const topBarResponsible =
           index === 0 &&
           group.phaseKey === 'event' &&
@@ -397,6 +396,16 @@ export function useServicePhasesState({
                 isJamonero: line.role === 'jamonero',
               }))
             : null
+        const persistedRoleLines = roleLines.map((line) => ({
+          slotId: line.slotId,
+          role: line.role,
+          personId: line.personId || '',
+          personName: line.personName || '',
+          serviceDate: line.serviceDate || group.serviceDate,
+          meetingPoint: line.meetingPoint || group.meetingPoint,
+          startTime: line.startTime || group.startTime,
+          endTime: line.endTime || group.endTime,
+        }))
 
         return {
           id: group.id,
@@ -405,8 +414,8 @@ export function useServicePhasesState({
           meetingPoint: group.meetingPoint,
           startTime: group.startTime,
           endTime: group.endTime,
-          workers: filledLines.length,
-          jamoneros: filledLines.filter((line) => line.role === 'jamonero').length,
+          workers: filled.length,
+          jamoneros: filled.filter((line) => line.role === 'jamonero').length,
           drivers: conductor ? 1 : 0,
           needsDriver: roleLines.some((line) => line.role === 'conductor'),
           driverId: conductor?.personId || null,
@@ -433,6 +442,7 @@ export function useServicePhasesState({
               ? conductor.personName || manualResponsibleName || null
               : null,
           wantsResponsible,
+          roleLines: persistedRoleLines,
           ...(manualWorkers ? { manualWorkers } : {}),
         }
       })

@@ -12,6 +12,21 @@ export interface CuinaGroup {
   responsibleName?: string | null
 }
 
+export type GroupRoleLine = {
+  slotId?: string | null
+  role?: string | null
+  personId?: string | null
+  personName?: string | null
+  serviceDate?: string | null
+  meetingPoint?: string | null
+  startTime?: string | null
+  endTime?: string | null
+  arrivalTime?: string | null
+  isExternal?: boolean
+  externalType?: 'ett' | 'centerExternalExtra' | null
+  isCenterExternalExtra?: boolean
+}
+
 export interface QuadrantSave {
   code: string
   eventId: string
@@ -63,6 +78,8 @@ export interface QuadrantSave {
     driverName?: string | null
     responsibleId?: string | null
     responsibleName?: string | null
+    roleLines?: GroupRoleLine[]
+    manualWorkers?: unknown[]
   }>
   cuinaGroupCount?: number
   service?: string | null
@@ -109,7 +126,8 @@ export type ServeisGroupInput = Record<string, unknown> & {
   driverName?: string | null
   responsibleId?: string | null
   responsibleName?: string | null
-  manualWorkers?: unknown
+  roleLines?: GroupRoleLine[]
+  manualWorkers?: unknown[]
 }
 
 export type ExternalWorkerInput = {

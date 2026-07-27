@@ -374,9 +374,21 @@ export function createManualAssignGroup({
   endTime: string
   source?: EditorGroup | null
 }): EditorGroup {
+  const draftStartDate = String(draft.startDate || '').trim()
+  const draftEndDate = String(draft.endDate || draftStartDate).trim()
+  const sourceDate = String(source?.serviceDate || draftStartDate).trim()
+  const nextServiceDate =
+    draftStartDate &&
+    draftEndDate &&
+    draftEndDate > draftStartDate &&
+    sourceDate &&
+    sourceDate < draftEndDate
+      ? addDaysToIsoDate(sourceDate, 1)
+      : sourceDate || draftStartDate
+
   return {
     id: `group-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-    serviceDate: source?.serviceDate || draft.startDate,
+    serviceDate: nextServiceDate,
     dateLabel: source?.dateLabel || null,
     meetingPoint: source?.meetingPoint || meetingPoint,
     startTime: source?.startTime || startTime,

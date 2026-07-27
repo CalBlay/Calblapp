@@ -15,6 +15,16 @@ import {
 } from './resolveRoleLinePersonIds'
 
 type ServeisGroupDef = EditorGroup & {
+  roleLines?: Array<{
+    slotId?: string
+    role?: ServeiRoleKey
+    personId?: string
+    personName?: string
+    meetingPoint?: string
+    serviceDate?: string
+    startTime?: string
+    endTime?: string
+  }>
   manualWorkers?: Array<{
     id?: string
     name?: string
@@ -58,6 +68,29 @@ function roleLinesFromSavedServeisGroup(
   draft: EditorDraftInput,
   defaultMeetingPoint: string
 ): ServeiGroupRoleLine[] | null {
+  const savedRoleLines = Array.isArray(groupDef.roleLines)
+    ? groupDef.roleLines
+        .map((line) => ({
+          slotId: String(line?.slotId || makeSlotId()),
+          role: (line?.role || 'treballador') as ServeiRoleKey,
+          personId: String(line?.personId || '').trim(),
+          personName: String(line?.personName || '').trim(),
+          serviceDate: String(line?.serviceDate || groupDef.serviceDate || draft.startDate || ''),
+          meetingPoint: String(line?.meetingPoint || groupDef.meetingPoint || defaultMeetingPoint),
+          startTime: String(line?.startTime || groupDef.startTime || draft.startTime || ''),
+          endTime: String(line?.endTime || groupDef.endTime || draft.endTime || ''),
+        }))
+        .filter((line) => {
+          const hasPerson = Boolean(line.personId || line.personName)
+          const isPlaceholderConductor =
+            line.role === 'conductor' && !line.personId && !line.personName
+          return hasPerson || isPlaceholderConductor
+        })
+    : []
+  if (savedRoleLines.length > 0) {
+    return sortRoleLinesConductorFirst(savedRoleLines)
+  }
+
   const manualWorkers = Array.isArray(groupDef.manualWorkers) ? groupDef.manualWorkers : []
   const driverId = String(groupDef.driverId || '').trim()
   const driverName = resolveConductorNameFromDraft(draft, groupDef)

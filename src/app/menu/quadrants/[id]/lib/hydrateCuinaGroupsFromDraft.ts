@@ -3,6 +3,11 @@ import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
 import type { ServeiGroupRoleLine, VehicleAssignment } from '../phaseConfig'
 import { makeGroupId } from '../components/quadrantModalUtils'
 import { getExternalWorkerTypeFromName } from '@/lib/quadrantExternalWorkers'
+import {
+  ensureCuinaRoleLines,
+  ensureCuinaVehicleAssignments,
+  syncCuinaGroupFromRoleLines,
+} from './cuinaGroupRoleLines'
 
 type HydrateParams = {
   draft: EditorDraftInput
@@ -35,6 +40,52 @@ const normPerson = (value?: string | null) =>
     const conductor = conductors[conductorIdx]
     const roleLines: ServeiGroupRoleLine[] = []
     const vehicleAssignments: VehicleAssignment[] = []
+    const baseGroup: CuinaGroup = {
+      id: seed.id || makeGroupId(),
+      meetingPoint: seed.meetingPoint || baseMeeting,
+      serviceDate: seed.serviceDate || baseDate,
+      startTime: seed.startTime || baseStart,
+      endTime: seed.endTime || baseEnd,
+      arrivalTime: seed.arrivalTime || baseArrival,
+      workers: Number(seed.workers || 0),
+      drivers: Number(seed.drivers || 0),
+      needsDriver: seed.needsDriver !== false && Number(seed.drivers || 0) > 0,
+      wantsResponsible: seed.wantsResponsible !== false,
+      responsibleId: String(seed.responsibleId || '').trim(),
+      driverMode: String(seed.driverMode || '__auto__'),
+      vehicleType: String(seed.vehicleType || ''),
+      driverAssignments: Array.isArray(seed.driverAssignments) ? seed.driverAssignments : [],
+      roleLines: Array.isArray(seed.roleLines) ? seed.roleLines : [],
+      vehicleAssignments: Array.isArray(seed.vehicleAssignments) ? seed.vehicleAssignments : [],
+      workerIds: Array.isArray(seed.workerIds) ? seed.workerIds : [],
+      workerDetails: seed.workerDetails || {},
+    }
+
+    if (Array.isArray(seed.roleLines) && seed.roleLines.length > 0) {
+      const hydratedRoleLines = ensureCuinaRoleLines(
+        {
+          ...baseGroup,
+          roleLines: seed.roleLines.map((line) => ({
+            ...line,
+            serviceDate: line.serviceDate || baseGroup.serviceDate,
+            meetingPoint: line.meetingPoint || baseGroup.meetingPoint,
+            startTime: line.startTime || baseGroup.startTime,
+            endTime: line.endTime || baseGroup.endTime,
+            arrivalTime: line.arrivalTime || baseGroup.arrivalTime || '',
+          })),
+        },
+        Array.isArray(seed.vehicleAssignments) ? seed.vehicleAssignments : []
+      )
+      const hydratedAssignments = ensureCuinaVehicleAssignments(
+        { ...baseGroup, roleLines: hydratedRoleLines },
+        hydratedRoleLines
+      )
+      return syncCuinaGroupFromRoleLines(
+        { ...baseGroup, roleLines: hydratedRoleLines, vehicleAssignments: hydratedAssignments },
+        hydratedRoleLines,
+        hydratedAssignments
+      )
+    }
 
     const respId = String(seed.responsibleId || draft.responsableId || '').trim()
     const respName =
@@ -149,17 +200,11 @@ const normPerson = (value?: string | null) =>
     }, {})
 
     return {
-      id: seed.id || makeGroupId(),
-      meetingPoint: seed.meetingPoint || baseMeeting,
-      serviceDate: seed.serviceDate || baseDate,
-      startTime: seed.startTime || baseStart,
-      endTime: seed.endTime || baseEnd,
-      arrivalTime: seed.arrivalTime || baseArrival,
-      workers: Math.max(Number(seed.workers || 0), roleLines.filter((l) => l.role === 'treballador').length),
-      drivers: hasDriver ? Math.max(1, Number(seed.drivers || 0)) : 0,
-      needsDriver: hasDriver,
+      ...baseGroup,
       wantsResponsible: seed.wantsResponsible !== false && Boolean(respId || respName),
       responsibleId: respId,
+      drivers: hasDriver ? Math.max(1, Number(seed.drivers || 0)) : 0,
+      needsDriver: hasDriver,
       driverMode: sameRespAndDriver ? '__responsable__' : driverId || '__auto__',
       vehicleType: String(conductor?.vehicleType || ''),
       driverAssignments: hasDriver
@@ -172,6 +217,7 @@ const normPerson = (value?: string | null) =>
         : [],
       roleLines,
       vehicleAssignments,
+      workers: Math.max(Number(seed.workers || 0), roleLines.filter((l) => l.role === 'treballador').length),
       workerIds,
       workerDetails,
     }
@@ -195,6 +241,22 @@ const normPerson = (value?: string | null) =>
           responsibleName: group.responsibleName || undefined,
           driverId: group.driverId || undefined,
           driverName: group.driverName || undefined,
+          roleLines: Array.isArray(group.roleLines)
+            ? group.roleLines.map((line, lineIdx) => ({
+                slotId: String(line?.slotId || `${group.id || `group-${idx + 1}`}-line-${lineIdx + 1}`),
+                role: line?.role || 'treballador',
+                personId: String(line?.personId || '').trim(),
+                personName: String(line?.personName || '').trim(),
+                serviceDate: line?.serviceDate || group.serviceDate || baseDate,
+                meetingPoint: line?.meetingPoint || group.meetingPoint || baseMeeting,
+                startTime: line?.startTime || group.startTime || baseStart,
+                endTime: line?.endTime || group.endTime || baseEnd,
+                arrivalTime: line?.arrivalTime || group.arrivalTime || baseArrival,
+              }))
+            : undefined,
+          vehicleAssignments: Array.isArray((group as Partial<CuinaGroup>).vehicleAssignments)
+            ? (group as Partial<CuinaGroup>).vehicleAssignments
+            : undefined,
         },
         idx
       )

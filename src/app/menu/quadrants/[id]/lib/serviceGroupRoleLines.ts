@@ -37,17 +37,7 @@ export function normalizeGroupRoleLines(
 ): ServeiGroupRoleLine[] {
   if (roleLines.length === 0) return [createEmptyRoleLine(group, 'conductor')]
 
-  const sorted = sortRoleLinesConductorFirst(roleLines)
-  const first = sorted[0]
-  if (!String(first.personId || '').trim() && first.role !== 'conductor') {
-    sorted[0] = {
-      ...first,
-      role: 'conductor',
-      personId: '',
-      personName: String(first.personName || '').trim(),
-    }
-  }
-  return sorted
+  return sortRoleLinesConductorFirst(roleLines)
 }
 
 export function roleLinesFromLegacyGroup(group: ServeiGroup): ServeiGroupRoleLine[] {
@@ -108,7 +98,9 @@ export function ensureGroupRoleLines(group: ServeiGroup): ServeiGroupRoleLine[] 
 
 export function syncGroupFromRoleLines(group: ServeiGroup, roleLines: ServeiGroupRoleLine[]): ServeiGroup {
   const normalizedRoleLines = normalizeGroupRoleLines(group, roleLines)
-  const filled = normalizedRoleLines.filter((line) => String(line.personId || '').trim())
+  const filled = normalizedRoleLines.filter(
+    (line) => String(line.personId || '').trim() || String(line.personName || '').trim()
+  )
   const responsable = filled.find((line) => line.role === 'responsable')
   const conductor = filled.find((line) => line.role === 'conductor')
   const staffLines = filled.filter((line) => line.role === 'treballador' || line.role === 'jamonero')
@@ -137,6 +129,33 @@ export function syncGroupFromRoleLines(group: ServeiGroup, roleLines: ServeiGrou
     jamoneros: filled.filter((line) => line.role === 'jamonero').length,
     workerIds,
     workerDetails,
+  }
+}
+
+export function countServiceGroupRoleLineTotals(roleLines: ServeiGroupRoleLine[]) {
+  const filled = roleLines.filter(
+    (line) => String(line.personId || '').trim() || String(line.personName || '').trim()
+  )
+
+  return {
+    workers: filled.length,
+    jamoneros: filled.filter((line) => line.role === 'jamonero').length,
+    drivers: filled.filter((line) => line.role === 'conductor').length,
+    responsables: filled.filter((line) => line.role === 'responsable').length,
+  }
+}
+
+export function getPrimaryServiceRoleLines(roleLines: ServeiGroupRoleLine[]) {
+  const filled = roleLines.filter(
+    (line) => String(line.personId || '').trim() || String(line.personName || '').trim()
+  )
+
+  return {
+    filled,
+    responsable: filled.find((line) => line.role === 'responsable'),
+    conductor: filled.find((line) => line.role === 'conductor'),
+    staffLines: filled.filter((line) => line.role === 'treballador' || line.role === 'jamonero'),
+    hasResponsableLine: roleLines.some((line) => line.role === 'responsable'),
   }
 }
 

@@ -159,6 +159,17 @@ export function buildCuinaPayload(input: BuildCuinaPayloadInput): BuiltPayload {
         selectedDriver?.name ||
         (singleGroup && responsibleActsAsDriver ? manualResponsibleName || null : null),
       driverId: selectedDriverId && selectedDriverId !== '__auto__' ? selectedDriverId : null,
+      roleLines: roleLines.map((line) => ({
+        slotId: line.slotId,
+        role: line.role,
+        personId: String(line.personId || '').trim() || null,
+        personName: String(line.personName || '').trim() || null,
+        serviceDate: line.serviceDate || group.serviceDate || startDate,
+        meetingPoint: line.meetingPoint || group.meetingPoint || meetingPoint,
+        startTime: line.startTime || group.startTime || startTime,
+        endTime: line.endTime || group.endTime || endTime,
+        arrivalTime: line.arrivalTime || group.arrivalTime || null,
+      })),
       ...(manualWorkersOrNull ? { manualWorkers: manualWorkersOrNull } : {}),
     }
   })

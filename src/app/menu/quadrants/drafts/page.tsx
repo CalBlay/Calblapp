@@ -54,6 +54,18 @@ export interface Draft {
     plate?: string
     vehicleType?: string
   }
+  responsables?: Array<{
+    id?: string
+    name?: string
+    groupId?: string
+    meetingPoint?: string
+    startDate?: string
+    startTime?: string
+    endDate?: string
+    endTime?: string
+    arrivalTime?: string
+    isDriver?: boolean
+  }>
 
   // Conductors
   conductors?: Array<{
@@ -112,6 +124,17 @@ export interface Draft {
     drivers?: number
     responsibleId?: string | null
     responsibleName?: string | null
+    roleLines?: Array<{
+      slotId?: string | null
+      role?: string | null
+      personId?: string | null
+      personName?: string | null
+      serviceDate?: string | null
+      meetingPoint?: string | null
+      startTime?: string | null
+      endTime?: string | null
+      arrivalTime?: string | null
+    }>
   }>
   timetables?: Array<{ startTime: string; endTime: string }>
 
@@ -389,8 +412,15 @@ export default function DraftsPage() {
 
                   {/* Files de quadrants */}
                   {items.map((q) => {
+                    const responsables = Array.isArray(q.responsables)
+                      ? q.responsables
+                          .map((person) => String(person?.name || '').trim())
+                          .filter(Boolean)
+                      : []
                     const responsable =
-                      typeof q.responsableName === 'string'
+                      responsables.length > 0
+                        ? Array.from(new Set(responsables)).join(', ')
+                        : typeof q.responsableName === 'string'
                         ? q.responsableName
                         : q.responsableName &&
                             typeof q.responsableName === 'object' &&
@@ -401,7 +431,7 @@ export default function DraftsPage() {
                     const loc = normalizeLocation(q.location)
                     const workers = (q.treballadors || []).map((t) => t.name)
                     const drivers = (q.conductors || []).map((c) => c.name)
-                    const people = [...workers, ...drivers]
+                    const people = [...responsables, ...workers, ...drivers]
 
                     const serviceTimetables = Array.isArray(q.timetables)
                       ? q.timetables

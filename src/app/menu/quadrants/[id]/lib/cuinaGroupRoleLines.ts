@@ -50,8 +50,9 @@ export function countCuinaStaffTotals(
   for (const group of groups) {
     workers += countFilledCuinaRoleLines(group, 'treballador')
     drivers += countFilledCuinaRoleLines(group, 'conductor')
-    if (countFilledCuinaRoleLines(group, 'responsable') > 0) {
-      responsables += 1
+    const groupResponsables = countFilledCuinaRoleLines(group, 'responsable')
+    if (groupResponsables > 0) {
+      responsables += groupResponsables
       continue
     }
     if (group.wantsResponsible && String(group.responsibleId || '').trim()) {
