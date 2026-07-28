@@ -119,12 +119,22 @@ type ConfirmParams = {
 
 export async function confirmDraftTable({ draft, onConfirmed, silent = false }: ConfirmParams) {
   try {
+    const draftMeta = draft as DraftInput & {
+      phaseType?: string | null
+      phaseLabel?: string | null
+      phaseDate?: string | null
+      startDate?: string | null
+    }
     const res = await fetch('/api/quadrantsDraft/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         department: draft.department,
         eventId: draft.id,
+        phaseKey: draftMeta.phaseType || draftMeta.phaseLabel || null,
+        phaseType: draftMeta.phaseType || null,
+        phaseLabel: draftMeta.phaseLabel || null,
+        phaseDate: draftMeta.phaseDate || draftMeta.startDate || null,
       }),
     })
     if (!res.ok) throw new Error('Error confirmant quadrant')
@@ -157,12 +167,22 @@ export async function unconfirmDraftTable({
   onUnconfirmed,
 }: UnconfirmParams) {
   try {
+    const draftMeta = draft as DraftInput & {
+      phaseType?: string | null
+      phaseLabel?: string | null
+      phaseDate?: string | null
+      startDate?: string | null
+    }
     const res = await fetch('/api/quadrantsDraft/unconfirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         department: draft.department,
         eventId: draft.id,
+        phaseKey: draftMeta.phaseType || draftMeta.phaseLabel || null,
+        phaseType: draftMeta.phaseType || null,
+        phaseLabel: draftMeta.phaseLabel || null,
+        phaseDate: draftMeta.phaseDate || draftMeta.startDate || null,
       }),
     })
     if (!res.ok) throw new Error('Error reobrint quadrant')
@@ -186,12 +206,22 @@ export async function deleteDraftTable({ draft, rows }: DeleteParams) {
   if (!confirm('Segur que vols eliminar aquest quadrant?')) return false
 
   try {
+    const draftMeta = draft as DraftInput & {
+      phaseType?: string | null
+      phaseLabel?: string | null
+      phaseDate?: string | null
+      startDate?: string | null
+    }
     const res = await fetch('/api/quadrantsDraft/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         department: draft.department,
         eventId: draft.id,
+        phaseKey: draftMeta.phaseType || draftMeta.phaseLabel || null,
+        phaseType: draftMeta.phaseType || null,
+        phaseLabel: draftMeta.phaseLabel || null,
+        phaseDate: draftMeta.phaseDate || draftMeta.startDate || null,
         rows,
       }),
     })

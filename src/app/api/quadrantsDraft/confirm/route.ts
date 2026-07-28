@@ -12,6 +12,10 @@ import { listAllCollectionIds } from '@/lib/firestoreCollections'
 import { findQuadrantOverlapConflicts } from '@/lib/quadrantOverlapGuard'
 import { formatTornNotificationLabel } from '@/lib/date-format'
 import { resolveEventDisplayName } from '@/lib/eventDisplayName'
+import {
+  docMatchesServeisPhaseScope,
+  resolveServeisPhaseScope,
+} from '@/lib/quadrantsServeisPhaseScope'
 
 export const runtime = 'nodejs'
 
@@ -224,6 +228,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const deptRaw: string = body?.department || body?.dept
     const eventId: string = normalizeEventId(body?.eventId || body?.id)
+    const phaseKey = body?.phaseKey || body?.phaseType || body?.phaseLabel || ''
+    const phaseDate = body?.phaseDate || body?.startDate || ''
+    const phaseScope = phaseKey
+      ? resolveServeisPhaseScope({
+          phaseType: body?.phaseType || phaseKey,
+          phaseLabel: body?.phaseLabel || phaseKey,
+          phaseDate,
+        })
+      : null
 
     if (!deptRaw || !eventId) {
       return NextResponse.json({ ok: false, error: 'Missing department or eventId' }, { status: 400 })
@@ -238,9 +251,22 @@ export async function POST(req: NextRequest) {
     const eventSnap = await db.collection('stage_verd').doc(String(eventId)).get()
     const eventData = eventSnap.exists ? (eventSnap.data() as EventStageData) : null
 
+    const matchesPhase = (
+      doc: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot
+    ) => {
+      if (!phaseScope) return true
+      return docMatchesServeisPhaseScope(
+        doc.id,
+        (doc.data() as Record<string, unknown>) || {},
+        phaseScope
+      )
+    }
+
     const targetDocs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot>()
-    if (directSnap.exists) targetDocs.set(directSnap.id, directSnap)
-    byEvent.docs.forEach((doc) => targetDocs.set(doc.id, doc))
+    if (directSnap.exists && matchesPhase(directSnap)) targetDocs.set(directSnap.id, directSnap)
+    byEvent.docs.forEach((doc) => {
+      if (matchesPhase(doc)) targetDocs.set(doc.id, doc)
+    })
 
     const prevDocs = Array.from(targetDocs.values())
     const overlapAssignments = prevDocs.flatMap((doc) => {

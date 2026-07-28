@@ -7,6 +7,10 @@ import { listAllCollectionIds } from '@/lib/firestoreCollections'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { canViewUiPath, isAllowedByClientOverride } from '@/lib/server/permissions'
+import {
+  docMatchesServeisPhaseScope,
+  resolveServeisPhaseScope,
+} from '@/lib/quadrantsServeisPhaseScope'
 
 export const runtime = 'nodejs'
 
@@ -85,9 +89,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    const payload = (await req.json()) as { department: string; eventId: string }
+    const payload = (await req.json()) as {
+      department: string
+      eventId: string
+      phaseKey?: string | null
+      phaseType?: string | null
+      phaseLabel?: string | null
+      phaseDate?: string | null
+      startDate?: string | null
+    }
     const department = payload.department
     const eventId = normalizeEventId(payload.eventId)
+    const phaseKey = payload.phaseKey || payload.phaseType || payload.phaseLabel || ''
+    const phaseDate = payload.phaseDate || payload.startDate || ''
+    const phaseScope = phaseKey
+      ? resolveServeisPhaseScope({
+          phaseType: payload.phaseType || phaseKey,
+          phaseLabel: payload.phaseLabel || phaseKey,
+          phaseDate,
+        })
+      : null
     if (!department || !eventId) {
       return NextResponse.json({ ok: false, error: 'Bad payload' }, { status: 400 })
     }
@@ -121,9 +142,22 @@ export async function POST(req: NextRequest) {
     const directSnap = await directRef.get()
     const byEvent = await collection.where('eventId', '==', eventId).get()
 
+    const matchesPhase = (
+      doc: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot
+    ) => {
+      if (!phaseScope) return true
+      return docMatchesServeisPhaseScope(
+        doc.id,
+        (doc.data() as Record<string, unknown>) || {},
+        phaseScope
+      )
+    }
+
     const refs = new Map<string, FirebaseFirestore.DocumentReference>()
-    if (directSnap.exists) refs.set(directRef.id, directRef)
-    byEvent.docs.forEach((doc) => refs.set(doc.id, doc.ref))
+    if (directSnap.exists && matchesPhase(directSnap)) refs.set(directRef.id, directRef)
+    byEvent.docs.forEach((doc) => {
+      if (matchesPhase(doc)) refs.set(doc.id, doc.ref)
+    })
 
     if (refs.size === 0) {
       await directRef.set(
