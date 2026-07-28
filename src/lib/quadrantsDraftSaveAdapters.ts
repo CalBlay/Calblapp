@@ -7,6 +7,11 @@ import {
   type EditorRole,
   type EditorRow,
 } from '@/lib/quadrantsDraftEditor'
+import {
+  buildServeisPhaseDocId,
+  docMatchesServeisPhaseScope,
+  resolveServeisPhaseScope,
+} from '@/lib/quadrantsServeisPhaseScope'
 
 type FirestoreDb = typeof import('@/lib/firebaseAdmin').firestoreAdmin
 
@@ -181,8 +186,9 @@ const persistServeisDraft = async ({
     return null
   }
 
+  const phaseScope = resolveServeisPhaseScope(docMeta)
   const eventDocsSnap = await db.collection(coll).where('eventId', '==', canonicalEventId).get()
-  const eventDocPrefix = `${canonicalEventId}__event__`
+  const eventDocPrefix = `${canonicalEventId}__${phaseScope.phaseKey}__`
   const prefixedDocsSnap = await db
     .collection(coll)
     .orderBy(admin.firestore.FieldPath.documentId())
@@ -198,7 +204,7 @@ const persistServeisDraft = async ({
       return snap.exists ? snap : null
     })
   )
-  const existingDocs = [
+  const loadedDocs = [
     ...eventDocsSnap.docs,
     ...prefixedDocsSnap.docs.filter(
       (doc) => !eventDocsSnap.docs.some((eventDoc) => eventDoc.id === doc.id)
@@ -210,6 +216,11 @@ const persistServeisDraft = async ({
         !prefixedDocsSnap.docs.some((doc) => doc.id === snap.id)
     ),
   ]
+  // Critical: only touch docs for this phase+date. Loading every eventId doc and
+  // deleting "unkept" ones wiped muntatge / other-day assignments on event saves.
+  const existingDocs = loadedDocs.filter((doc) =>
+    docMatchesServeisPhaseScope(doc.id, (doc.data() as Record<string, unknown>) || {}, phaseScope)
+  )
   const baseDoc: Record<string, unknown> = existingDocs[0]?.data() || {}
   const existingByGroup = new Map<
     string,
@@ -328,7 +339,12 @@ const persistServeisDraft = async ({
     }))
     const docId =
       baseGroupDoc?.id ||
-      `${canonicalEventId}__event__${groupDate || previous?.startDate || 'nodate'}__${sanitizeGroupId(groupId)}`
+      buildServeisPhaseDocId({
+        canonicalEventId,
+        phaseKey: phaseScope.phaseKey,
+        phaseDate: groupDate || previous?.startDate || phaseScope.phaseDate || '',
+        groupId: sanitizeGroupId(groupId),
+      })
 
     keptDocIds.add(docId)
 

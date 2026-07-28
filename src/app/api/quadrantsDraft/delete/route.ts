@@ -6,6 +6,10 @@ import { listAllCollectionIds } from '@/lib/firestoreCollections'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { canViewUiPath, isAllowedByClientOverride } from '@/lib/server/permissions'
+import {
+  docMatchesServeisPhaseScope,
+  resolveServeisPhaseScope,
+} from '@/lib/quadrantsServeisPhaseScope'
 
 export const runtime = 'nodejs'
 
@@ -25,6 +29,8 @@ type QuadrantDraftSnap = {
   phaseKey?: string
   phaseType?: string
   phaseLabel?: string
+  phaseDate?: string
+  startDate?: string
 }
 
 const canonicalCollectionFor = (dept: string) => {
@@ -66,7 +72,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { department, eventId, phaseKey } = await req.json()
+    const body = await req.json()
+    const department = body?.department
+    const eventId = body?.eventId
+    const phaseKey = body?.phaseKey || body?.phaseType || body?.phaseLabel || ''
+    const phaseDate = body?.phaseDate || body?.startDate || ''
     const canonicalEventId = normalizeEventId(eventId)
 
     if (!department || !canonicalEventId) {
@@ -81,6 +91,13 @@ export async function POST(req: NextRequest) {
     const directRef = collection.doc(String(canonicalEventId))
     const directSnap = await directRef.get()
     const byEvent = await collection.where('eventId', '==', String(canonicalEventId)).get()
+    const phaseScope = phaseKey
+      ? resolveServeisPhaseScope({
+          phaseType: body?.phaseType || phaseKey,
+          phaseLabel: body?.phaseLabel || phaseKey,
+          phaseDate,
+        })
+      : null
 
     if (directSnap.exists) {
       const data = directSnap.data() as QuadrantDraftSnap
@@ -99,27 +116,57 @@ export async function POST(req: NextRequest) {
       }
 
       const batch = db.batch()
-      batch.delete(directRef)
+      const shouldDeleteDirect =
+        !phaseScope ||
+        docMatchesServeisPhaseScope(
+          directSnap.id,
+          (directSnap.data() as Record<string, unknown>) || {},
+          phaseScope
+        )
+      if (shouldDeleteDirect) batch.delete(directRef)
       byEvent.docs.forEach((doc) => {
-        if (doc.id !== directRef.id) batch.delete(doc.ref)
+        if (doc.id === directRef.id) return
+        if (
+          phaseScope &&
+          !docMatchesServeisPhaseScope(
+            doc.id,
+            (doc.data() as Record<string, unknown>) || {},
+            phaseScope
+          )
+        ) {
+          return
+        }
+        batch.delete(doc.ref)
       })
       await batch.commit()
       revalidateQuadrantsListCache()
-      return NextResponse.json({ ok: true, deletedCount: 1 + byEvent.docs.filter((doc) => doc.id !== directRef.id).length })
+      return NextResponse.json({
+        ok: true,
+        deletedCount:
+          (shouldDeleteDirect ? 1 : 0) +
+          byEvent.docs.filter((doc) => {
+            if (doc.id === directRef.id) return false
+            if (!phaseScope) return true
+            return docMatchesServeisPhaseScope(
+              doc.id,
+              (doc.data() as Record<string, unknown>) || {},
+              phaseScope
+            )
+          }).length,
+      })
     }
 
     if (byEvent.empty) {
       return NextResponse.json({ ok: true, alreadyDeleted: true, deletedCount: 0 })
     }
 
-    const targetPhase = String(phaseKey || '').toLowerCase().trim()
     const docsToDelete = byEvent.docs.filter((doc) => {
-      if (!targetPhase) return true
-      const data = doc.data() as QuadrantDraftSnap
-      const keys = [data?.phaseKey, data?.phaseType, data?.phaseLabel]
-        .map((value) => String(value || '').toLowerCase().trim())
-        .filter(Boolean)
-      return keys.includes(targetPhase)
+      if (!phaseScope) return true
+      return docMatchesServeisPhaseScope(
+        doc.id,
+        (doc.data() as Record<string, unknown>) || {},
+        phaseScope
+      )
     })
 
     if (docsToDelete.length === 0) {

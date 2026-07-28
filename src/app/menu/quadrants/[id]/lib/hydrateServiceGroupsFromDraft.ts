@@ -242,25 +242,25 @@ function roleLinesFromDraftPersonnel(
   return sortRoleLinesConductorFirst(lines)
 }
 
-/** Combina candidates per nom/id; prioritat d’ordre (manualWorkers → files → arrays draft). */
+/** Combina candidates per rol+persona; prioritat d’ordre (manualWorkers → files → arrays draft). */
 function mergeRoleLineCandidates(
   candidates: Array<ServeiGroupRoleLine[] | null | undefined>,
   fallback: ServeiGroupRoleLine[]
 ): ServeiGroupRoleLine[] {
   const merged: ServeiGroupRoleLine[] = []
-  const seenNames = new Set<string>()
-  const seenIds = new Set<string>()
+  const seenKeys = new Set<string>()
 
   for (const candidate of candidates) {
     if (!candidate?.length) continue
     for (const line of candidate) {
       const nameKey = normName(line.personName)
       const id = String(line.personId || '').trim()
+      const role = String(line.role || '').trim() || 'treballador'
       if (!nameKey && !id) continue
-      if (id && seenIds.has(id)) continue
-      if (nameKey && seenNames.has(nameKey)) continue
-      if (id) seenIds.add(id)
-      if (nameKey) seenNames.add(nameKey)
+      // Same person may be both responsable and conductor (driver-responsable).
+      const dedupeKey = id ? `${role}|id:${id}` : `${role}|name:${nameKey}`
+      if (seenKeys.has(dedupeKey)) continue
+      seenKeys.add(dedupeKey)
       merged.push(line)
     }
   }
