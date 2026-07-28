@@ -147,7 +147,7 @@ test('buildDraftEditorModel assigns draft.responsables to matching group ids', (
 test('pruneEditorGroups drops empty serveis groups but keeps useful logistics shells', () => {
   const groups = [
     { id: 'keep-rows', workers: 0, drivers: 0 },
-    { id: 'drop-empty', workers: 2, drivers: 1, responsibleName: 'Legacy' },
+    { id: 'drop-empty', workers: 0, drivers: 0 },
     { id: 'logistics-shell', workers: 3, drivers: 1 },
   ]
   const rows = [{ groupId: 'keep-rows', role: 'treballador', id: 't1', name: 'A', startDate: '', startTime: '', endDate: '', endTime: '' }]

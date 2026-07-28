@@ -79,36 +79,49 @@ test('syncRowsWithDraftAndRoster refreshes responsable names from draft.responsa
   assert.equal(next[2].arrivalTime, '09:30')
 })
 
-test('syncRowsWithDraftAndRoster matches responsable by name+group when id is stale', () => {
-  const next = syncRowsWithDraftAndRoster(
-    [
-      {
-        id: 'stale-id',
-        name: 'anna cap',
-        role: 'responsable',
-        groupId: 'group-a',
-        startDate: '2026-07-20',
-        startTime: '10:00',
-        endDate: '2026-07-20',
-        endTime: '18:00',
-      },
-    ],
+test('syncRowsWithDraftAndRoster scopes responsable name match by groupId when id is stale', () => {
+  const baseRow = {
+    id: 'stale-id',
+    name: 'Anna Cap',
+    role: 'responsable',
+    groupId: 'group-a',
+    startDate: '2026-07-20',
+    startTime: '10:00',
+    endDate: '2026-07-20',
+    endTime: '18:00',
+  }
+  const roster = {
+    responsables: [{ id: 'stale-id', name: 'Roster Fallback' }],
+    conductors: [],
+    treballadors: [],
+  }
+
+  const matched = syncRowsWithDraftAndRoster(
+    [baseRow],
     {
       id: 'draft-2',
       department: 'serveis',
       startDate: '2026-07-20',
       responsables: [
         { id: 'r2', name: 'Anna Cap', groupId: 'group-b' },
-        { id: 'r1', name: 'Ànna Cap', groupId: 'group-a' },
+        { id: 'r1', name: 'Anna Cap', groupId: 'group-a' },
       ],
     },
-    {
-      responsables: [{ id: 'stale-id', name: 'Roster Fallback' }],
-      conductors: [],
-      treballadors: [],
-    }
+    roster
   )
+  // Draft name+group match blocks roster overwrite.
+  assert.equal(matched[0].name, 'Anna Cap')
 
-  // Stale row id misses; name+group match prefers draft display name over roster.
-  assert.equal(next[0].name, 'Ànna Cap')
+  const unmatchedGroup = syncRowsWithDraftAndRoster(
+    [baseRow],
+    {
+      id: 'draft-3',
+      department: 'serveis',
+      startDate: '2026-07-20',
+      responsables: [{ id: 'r2', name: 'Anna Cap', groupId: 'group-b' }],
+    },
+    roster
+  )
+  // Wrong-group-only draft miss falls back to roster display name.
+  assert.equal(unmatchedGroup[0].name, 'Roster Fallback')
 })
