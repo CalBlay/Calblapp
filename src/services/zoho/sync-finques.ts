@@ -1,25 +1,20 @@
 import { firestoreAdmin as firestore } from '@/lib/firebaseAdmin'
-import { hasRestaurantKeyword, normalizeLocationKey } from '@/services/zoho/sync-finca-matching'
+import { normalizeLocationKey } from '@/services/zoho/sync-finca-matching'
+import {
+  nextCEUCode,
+  parseCeuNumber,
+  parseCeuNumberStrict4,
+  resolveFincaLnForNewCode,
+} from '@/services/zoho/sync-finques-codes'
 import type { NormalizedDeal } from '@/services/zoho/sync-types'
 
-const CEU_BASE_FALLBACK = 172
-
-function parseCeuNumber(code?: string | null): number {
-  return Number(String(code || '').replace(/^CEU/i, ''))
-}
-
-function parseCeuNumberStrict4(code?: string | null): number | null {
-  const normalized = String(code || '').trim().toUpperCase()
-  const match = normalized.match(/^CEU(\d{4})$/)
-  if (!match) return null
-  const num = Number(match[1])
-  return Number.isFinite(num) ? num : null
-}
-
-function nextCEUCode(currentMaxNum: number | null): string {
-  const nextNum = (currentMaxNum ?? CEU_BASE_FALLBACK) + 1
-  return `CEU${String(nextNum).padStart(4, '0')}`
-}
+export {
+  CEU_BASE_FALLBACK,
+  nextCEUCode,
+  parseCeuNumber,
+  parseCeuNumberStrict4,
+  resolveFincaLnForNewCode,
+} from '@/services/zoho/sync-finques-codes'
 
 type SyncFinquesOptions = {
   deals: NormalizedDeal[]
@@ -86,15 +81,11 @@ export async function syncFinquesFromDeals({
     code = normalizeSyncedCode(code) || code
     if (existingCodes.has(code)) continue
 
-    const forceGrupsRestaurants =
-      code.startsWith('CCR') || hasRestaurantKeyword(rawNom)
-
-    let ln = ''
-    if (forceGrupsRestaurants) ln = 'Grups Restaurants'
-    else if (code.startsWith('CCB')) ln = 'Casaments'
-    else if (code.startsWith('CCE')) ln = 'Empreses'
-    else if (code.startsWith('CCF')) ln = 'Foodlovers'
-    else if (code.startsWith('CEU')) ln = deal.LN
+    const ln = resolveFincaLnForNewCode({
+      code,
+      locationName: rawNom,
+      dealLn: deal.LN,
+    })
 
     const ref = firestore.collection('finques').doc(code)
     batchFinques.set(ref, {
