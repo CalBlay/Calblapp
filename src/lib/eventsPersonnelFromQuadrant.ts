@@ -24,12 +24,21 @@ export type QuadrantGroupLine = {
   meetingPoint?: string | null
   startTime?: string | null
   endTime?: string | null
+  responsibleEndTimeReal?: string | null
+  responsibleNoShow?: boolean | null
+  responsibleLeftEarly?: boolean | null
+  responsibleSortidaNotes?: string | null
   roleLines?: Array<{
     role?: string | null
     personName?: string | null
+    name?: string | null
     meetingPoint?: string | null
     startTime?: string | null
     endTime?: string | null
+    endTimeReal?: string | null
+    sortidaNotes?: string | null
+    noShow?: boolean | null
+    leftEarly?: boolean | null
   }>
 }
 
@@ -41,6 +50,7 @@ export type QuadrantPersonnelSource = {
   hour?: string
   convocatoria?: string
   responsableName?: string
+  responsable?: QuadrantPersonLine | QuadrantPersonLine[] | null
   responsables?: QuadrantPersonLine[]
   conductors?: QuadrantPersonLine[]
   treballadors?: QuadrantPersonLine[]
@@ -76,14 +86,32 @@ export function extractPersonnelLinesFromQuadrant(
   const qTime = q.startTime || q.hour || q.convocatoria
   const qEnd = q.endTime || ''
 
+  const rawTopResponsable = q.responsable
+  const topResponsableRows: QuadrantPersonLine[] = Array.isArray(rawTopResponsable)
+    ? rawTopResponsable
+    : rawTopResponsable && typeof rawTopResponsable === 'object'
+      ? [rawTopResponsable]
+      : []
+  const topResponsableByName = new Map<string, QuadrantPersonLine>()
+  topResponsableRows.forEach((row) => {
+    const key = trimName(row?.name).toLowerCase()
+    if (key) topResponsableByName.set(key, row)
+  })
+
   if (q.responsableName) {
+    const name = String(q.responsableName).trim()
+    const closingMeta = topResponsableByName.get(name.toLowerCase())
     people.push({
-      name: String(q.responsableName).trim(),
+      name,
       role: 'responsable',
       department: dept,
-      meetingPoint: qMeeting,
-      time: qTime,
-      endTime: qEnd,
+      meetingPoint: closingMeta?.meetingPoint || qMeeting,
+      time: closingMeta?.time || closingMeta?.hour || qTime,
+      endTime: closingMeta?.endTime || qEnd,
+      endTimeReal: closingMeta?.endTimeReal || '',
+      notes: closingMeta?.sortidaNotes || '',
+      noShow: !!closingMeta?.noShow,
+      leftEarly: !!closingMeta?.leftEarly,
     })
   }
 
@@ -132,6 +160,10 @@ export function extractPersonnelLinesFromQuadrant(
           meetingPoint: groupMeeting,
           time: groupStart,
           endTime: groupEnd,
+          endTimeReal: String(group?.responsibleEndTimeReal || ''),
+          notes: String(group?.responsibleSortidaNotes || ''),
+          noShow: !!group?.responsibleNoShow,
+          leftEarly: !!group?.responsibleLeftEarly,
         })
       }
 
@@ -139,7 +171,7 @@ export function extractPersonnelLinesFromQuadrant(
       for (const line of group.roleLines) {
         const role = String(line?.role || '').trim().toLowerCase()
         if (role !== 'responsable') continue
-        const name = trimName(line?.personName)
+        const name = trimName(line?.personName || line?.name)
         if (!name) continue
         people.push({
           name,
@@ -148,12 +180,49 @@ export function extractPersonnelLinesFromQuadrant(
           meetingPoint: String(line?.meetingPoint || '').trim() || groupMeeting,
           time: String(line?.startTime || '').trim() || groupStart,
           endTime: String(line?.endTime || '').trim() || groupEnd,
+          endTimeReal: String(line?.endTimeReal || ''),
+          notes: String(line?.sortidaNotes || ''),
+          noShow: !!line?.noShow,
+          leftEarly: !!line?.leftEarly,
         })
       }
     }
   }
 
-  return people.filter((person) => Boolean(trimName(person.name)))
+  return coalescePersonnelLines(
+    people.filter((person) => Boolean(trimName(person.name)))
+  )
+}
+
+/** Same person may appear from responsableName, responsables[], and groups — keep richest closing fields. */
+function coalescePersonnelLines(people: ExtractedPersonnelLine[]): ExtractedPersonnelLine[] {
+  const merged = new Map<string, ExtractedPersonnelLine>()
+
+  people.forEach((person) => {
+    const key = `${String(person.role || '')
+      .trim()
+      .toLowerCase()}|${trimName(person.name).toLowerCase()}`
+    const existing = merged.get(key)
+    if (!existing) {
+      merged.set(key, person)
+      return
+    }
+
+    merged.set(key, {
+      ...existing,
+      ...person,
+      meetingPoint: person.meetingPoint || existing.meetingPoint,
+      time: person.time || existing.time,
+      endTime: person.endTime || existing.endTime,
+      endTimeReal: person.endTimeReal || existing.endTimeReal,
+      notes: person.notes || existing.notes,
+      noShow: person.noShow || existing.noShow,
+      leftEarly: person.leftEarly || existing.leftEarly,
+      plate: person.plate || existing.plate,
+    })
+  })
+
+  return Array.from(merged.values())
 }
 
 export type ClosingPersonUpdate = {

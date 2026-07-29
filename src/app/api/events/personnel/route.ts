@@ -95,14 +95,44 @@ type QRow = {
     meetingPoint?: string | null
     startTime?: string | null
     endTime?: string | null
+    responsibleEndTimeReal?: string | null
+    responsibleNoShow?: boolean | null
+    responsibleLeftEarly?: boolean | null
+    responsibleSortidaNotes?: string | null
     roleLines?: Array<{
       role?: string | null
       personName?: string | null
+      name?: string | null
       meetingPoint?: string | null
       startTime?: string | null
       endTime?: string | null
+      endTimeReal?: string | null
+      sortidaNotes?: string | null
+      noShow?: boolean | null
+      leftEarly?: boolean | null
     }>
   }>
+  responsable?: {
+    name?: string
+    meetingPoint?: string
+    time?: string
+    hour?: string
+    endTime?: string
+    endTimeReal?: string
+    sortidaNotes?: string
+    noShow?: boolean
+    leftEarly?: boolean
+  } | Array<{
+    name?: string
+    meetingPoint?: string
+    time?: string
+    hour?: string
+    endTime?: string
+    endTimeReal?: string
+    sortidaNotes?: string
+    noShow?: boolean
+    leftEarly?: boolean
+  }> | null
 }
 
 type PersonnelDoc = {

@@ -112,3 +112,51 @@ test('applyClosingUpdatesToGroups mirrors closing onto responsibleName and roleL
   assert.equal(updated[1].roleLines[0].endTimeReal, '19:00')
   assert.equal(updated[1].roleLines[1].endTimeReal, undefined)
 })
+
+test('extractPersonnelLinesFromQuadrant round-trips group closing fields after save', () => {
+  const groupsAfterClose = applyClosingUpdatesToGroups(
+    [
+      {
+        id: 'g2',
+        responsibleName: 'Second Group Resp',
+        meetingPoint: 'G2',
+        startTime: '08:30',
+        endTime: '16:30',
+        roleLines: [{ role: 'responsable', personName: 'Second Group Resp', meetingPoint: 'G2' }],
+      },
+    ],
+    [{ name: 'Second Group Resp', endTimeReal: '19:00', notes: 'va sortir', noShow: false, leftEarly: true }],
+    { userId: 'u3', ts: '2026-07-29T12:00:00.000Z' }
+  )
+
+  const lines = extractPersonnelLinesFromQuadrant({
+    department: 'cuina',
+    responsableName: 'Only First',
+    groups: groupsAfterClose,
+  })
+
+  const second = lines.find((line) => line.name === 'Second Group Resp')
+  assert.ok(second)
+  assert.equal(second.endTimeReal, '19:00')
+  assert.equal(second.leftEarly, true)
+  assert.equal(second.notes, 'va sortir')
+})
+
+test('extractPersonnelLinesFromQuadrant reads endTimeReal from singular responsable object', () => {
+  const lines = extractPersonnelLinesFromQuadrant({
+    department: 'cuina',
+    responsableName: 'Anna Primària',
+    responsable: {
+      name: 'Anna Primària',
+      endTimeReal: '17:45',
+      sortidaNotes: 'ok',
+      noShow: false,
+      leftEarly: false,
+    },
+  })
+
+  const anna = lines.find((line) => line.name === 'Anna Primària')
+  assert.ok(anna)
+  assert.equal(anna.endTimeReal, '17:45')
+  assert.equal(anna.notes, 'ok')
+})
