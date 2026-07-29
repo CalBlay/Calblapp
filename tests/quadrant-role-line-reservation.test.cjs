@@ -150,7 +150,23 @@ test('extractDraftResponsible prefers top-level, then responsables[], then roleL
       ],
       conductors: [{ id: 'same', name: 'From Conductors' }],
     }),
-    { id: 'same', name: 'Driver Resp' }
+    // responsibleId is enough to select the group; empty responsibleName resolves via conductors.
+    { id: 'same', name: 'From Conductors' }
+  )
+
+  assert.deepEqual(
+    extractDraftResponsible({
+      groups: [
+        {
+          wantsResponsible: true,
+          responsibleId: 'same',
+          responsibleName: 'Named Resp',
+          driverId: 'same',
+          driverName: 'Driver Resp',
+        },
+      ],
+    }),
+    { id: 'same', name: 'Named Resp' }
   )
 })
 
