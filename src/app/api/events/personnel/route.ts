@@ -6,6 +6,7 @@ import type { AccessUser } from '@/lib/accessControl'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isUiPermissionGranted } from '@/lib/server/permissions'
+import { extractPersonnelLinesFromQuadrant } from '@/lib/eventsPersonnelFromQuadrant'
 
 export const runtime = 'nodejs'
 
@@ -42,6 +43,17 @@ type QRow = {
   hour?: string
   convocatoria?: string
   responsableName?: string
+  responsables?: Array<{
+    name?: string
+    meetingPoint?: string
+    time?: string
+    hour?: string
+    endTime?: string
+    endTimeReal?: string
+    sortidaNotes?: string
+    noShow?: boolean
+    leftEarly?: boolean
+  }>
   conductors?: Array<{
     name?: string
     meetingPoint?: string
@@ -78,6 +90,19 @@ type QRow = {
     noShow?: boolean
     leftEarly?: boolean
   }>
+  groups?: Array<{
+    responsibleName?: string | null
+    meetingPoint?: string | null
+    startTime?: string | null
+    endTime?: string | null
+    roleLines?: Array<{
+      role?: string | null
+      personName?: string | null
+      meetingPoint?: string | null
+      startTime?: string | null
+      endTime?: string | null
+    }>
+  }>
 }
 
 type PersonnelDoc = {
@@ -86,21 +111,6 @@ type PersonnelDoc = {
   mobile?: string
   tel?: string
   telephone?: string
-}
-
-type QuadrantLinePerson = {
-  name?: string
-  meetingPoint?: string
-  time?: string
-  hour?: string
-  endTime?: string
-  endTimeReal?: string
-  sortidaNotes?: string
-  noShow?: boolean
-  leftEarly?: boolean
-  plate?: string
-  matricula?: string
-  vehiclePlate?: string
 }
 
 type PersonnelListEntry = {
@@ -290,52 +300,15 @@ export async function GET(req: NextRequest) {
     const people: PersonnelListEntry[] = []
 
     for (const q of filtered) {
-      const dept = q.department
-      const qMeeting = q.meetingPoint
-      const qTime = q.startTime || q.hour || q.convocatoria
       const sourceUpdatedAt =
         toMillis(q.updatedAt) || toMillis(q.confirmedAt) || toMillis(q.createdAt)
 
-      if (q.responsableName) {
+      extractPersonnelLinesFromQuadrant(q).forEach((line) => {
         people.push({
-          name: q.responsableName,
-          role: 'responsable',
-          department: dept,
-          meetingPoint: qMeeting,
-          time: qTime,
+          ...line,
           sourceUpdatedAt,
         })
-      }
-
-      const each = (arr: QuadrantLinePerson[] | undefined, role: string) => {
-        if (!Array.isArray(arr)) return
-        for (const p of arr) {
-          const name = (p?.name || '').trim()
-          if (!name) continue
-          const plate =
-            role === 'conductor'
-              ? String(p.plate || p.matricula || p.vehiclePlate || '')
-              : ''
-          people.push({
-            name,
-            role,
-            department: dept,
-            meetingPoint: p.meetingPoint || qMeeting,
-            time: p.time || p.hour || qTime,
-            endTime: p.endTime || q.endTime || '',
-            endTimeReal: p.endTimeReal || '',
-            notes: p.sortidaNotes || '',
-            noShow: !!p.noShow,
-            leftEarly: !!p.leftEarly,
-            sourceUpdatedAt,
-            ...(plate ? { plate: String(plate) } : {}),
-          })
-        }
-      }
-
-      each(q.conductors, 'conductor')
-      each(q.treballadors, 'treballador')
-      each(q.workers, 'treballador')
+      })
     }
 
     const dedupMap = new Map<string, PersonnelListEntry>()
