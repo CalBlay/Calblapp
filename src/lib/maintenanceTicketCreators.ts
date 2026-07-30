@@ -154,6 +154,19 @@ export function canCreateMaintenanceTicketsAsReporter(user: {
   return isMaintenanceTicketCreatorDepartment(dept) || isQualitatDepartment(dept)
 }
 
+/**
+ * Server/UI gate for POST create: editors of the tickets path, or
+ * department reporters who only have view (role `treballador` is not in EDIT_ROLES).
+ */
+export function canCreateMaintenanceTicketWithUiAccess(params: {
+  user: { role?: string | null; department?: string | null }
+  canEditTicketsPath: boolean
+  canViewTicketsPath: boolean
+}) {
+  if (params.canEditTicketsPath) return true
+  return params.canViewTicketsPath && canCreateMaintenanceTicketsAsReporter(params.user)
+}
+
 /** Cal indicar qui reporta el ticket (comptes genèrics de restaurant). */
 export function requiresMaintenanceTicketWorkerName(params: {
   department?: string | null
