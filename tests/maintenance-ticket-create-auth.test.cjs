@@ -27,11 +27,11 @@ test('treballador reporters can create with view but not edit (fred regression)'
 })
 
 test('view-only non-reporters cannot create tickets via API', () => {
-  const observerLike = { role: 'observer', department: 'serveis' }
-  assert.equal(canCreateMaintenanceTicketsAsReporter(observerLike), false)
+  const logisticsViewer = { role: 'treballador', department: 'logistica' }
+  assert.equal(canCreateMaintenanceTicketsAsReporter(logisticsViewer), false)
   assert.equal(
     canCreateMaintenanceTicketWithUiAccess({
-      user: observerLike,
+      user: logisticsViewer,
       canEditTicketsPath: false,
       canViewTicketsPath: true,
     }),
