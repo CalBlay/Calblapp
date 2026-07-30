@@ -30,14 +30,17 @@ export function isPendingIncidentActionStatus(status: IncidentActionStatus) {
   return status === 'open' || status === 'in_progress'
 }
 
-export function isOverdueIncidentAction(row: Pick<IncidentActionMineRow, 'dueAt' | 'status'>) {
+export function isOverdueIncidentAction(
+  row: Pick<IncidentActionMineRow, 'dueAt' | 'status'>,
+  now: Date = new Date()
+) {
   const st = normalizeIncidentActionStatus(row.status)
   if (!isPendingIncidentActionStatus(st)) return false
   const dueRaw = String(row.dueAt || '').trim()
   if (!dueRaw) return false
   const due = parseISO(dueRaw.slice(0, 10))
   if (Number.isNaN(due.getTime())) return false
-  return isBefore(due, startOfDay(new Date()))
+  return isBefore(due, startOfDay(now))
 }
 
 function incidentShortLabel(meta: IncidentActionMineIncidentMeta | undefined, incidentId: string) {
@@ -80,6 +83,8 @@ export type MineActionsFilter = {
   status?: 'pending' | 'all' | IncidentActionStatus
   q?: string
   overdueOnly?: boolean
+  /** Injected clock for overdue checks (defaults to now). */
+  now?: Date
 }
 
 export function filterMineIncidentActions(
@@ -90,6 +95,7 @@ export function filterMineIncidentActions(
     .trim()
     .toLowerCase()
   const status = filter.status || 'pending'
+  const now = filter.now ?? new Date()
 
   return rows.filter((row) => {
     const st = normalizeIncidentActionStatus(row.status)
@@ -99,7 +105,7 @@ export function filterMineIncidentActions(
       return false
     }
 
-    if (filter.overdueOnly && !isOverdueIncidentAction(row)) return false
+    if (filter.overdueOnly && !isOverdueIncidentAction(row, now)) return false
 
     if (q) {
       const label = buildIncidentActionMineLabel(row)
