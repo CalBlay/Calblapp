@@ -10,6 +10,10 @@ import { resolveQuadrantCollection } from '@/lib/firestoreCollections'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isAllowedByClientOverride } from '@/lib/server/permissions'
+import {
+  applyClosingUpdatesToGroups,
+  applyClosingUpdatesToPersonArray,
+} from '@/lib/eventsPersonnelFromQuadrant'
 
 type Dept =
   | 'serveis'
@@ -37,10 +41,6 @@ async function resolveCollection(department: string) {
   return resolveQuadrantCollection(department, { prefer: 'singular' })
 }
 
-function matchByName(a?: string, b?: string) {
-  return norm(a) === norm(b) && norm(a) !== ''
-}
-
 type ClosingRow = Record<string, unknown>
 
 function jwtString(token: JWT, keys: readonly string[]): string {
@@ -50,22 +50,6 @@ function jwtString(token: JWT, keys: readonly string[]): string {
     if (typeof v === 'string') return v
   }
   return ''
-}
-
-function updateArray(
-  arr: ClosingRow[] | undefined,
-  updates: PersonUpdate[],
-  setter: (item: ClosingRow, upd: PersonUpdate) => void
-): ClosingRow[] | undefined {
-  if (!Array.isArray(arr)) return arr
-  return arr.map((item) => {
-    const itemName = typeof item.name === 'string' ? item.name : undefined
-    const upd = updates.find((u) => matchByName(u.name, itemName))
-    if (!upd) return item
-    const next = { ...item }
-    setter(next, upd)
-    return next
-  })
 }
 
 export async function PUT(req: NextRequest) {
@@ -116,14 +100,7 @@ export async function PUT(req: NextRequest) {
     const data = snap.data() || {}
     const now = new Date().toISOString()
     const userId = jwtString(token, ['sub', 'id'])
-
-    const setter = (item: ClosingRow, upd: PersonUpdate) => {
-      item.endTimeReal = upd.endTimeReal || null
-      item.sortidaNotes = upd.notes || ''
-      item.noShow = !!upd.noShow
-      item.leftEarly = !!upd.leftEarly
-      item.sortidaSetBy = { userId, ts: now }
-    }
+    const meta = { userId, ts: now }
 
     const rawResp = data.responsable
     const responsable: ClosingRow[] = Array.isArray(rawResp)
@@ -131,30 +108,43 @@ export async function PUT(req: NextRequest) {
       : rawResp && typeof rawResp === 'object'
         ? [rawResp as ClosingRow]
         : []
-    const updatedResponsable = updateArray(responsable, updates, setter)
-    const updatedConductors = updateArray(
+    const updatedResponsable = applyClosingUpdatesToPersonArray(responsable, updates, meta)
+    const updatedResponsables = applyClosingUpdatesToPersonArray(
+      Array.isArray(data.responsables) ? (data.responsables as ClosingRow[]) : undefined,
+      updates,
+      meta
+    )
+    const updatedConductors = applyClosingUpdatesToPersonArray(
       Array.isArray(data.conductors) ? (data.conductors as ClosingRow[]) : undefined,
       updates,
-      setter
+      meta
     )
-    const updatedTreballadors = updateArray(
+    const updatedTreballadors = applyClosingUpdatesToPersonArray(
       Array.isArray(data.treballadors) ? (data.treballadors as ClosingRow[]) : undefined,
       updates,
-      setter
+      meta
     )
-    const updatedWorkers = updateArray(
+    const updatedWorkers = applyClosingUpdatesToPersonArray(
       Array.isArray(data.workers) ? (data.workers as ClosingRow[]) : undefined,
       updates,
-      setter
+      meta
     )
+    const updatedGroups = applyClosingUpdatesToGroups(data.groups, updates, meta)
 
     const payload: Record<string, unknown> = {
       updatedAt: now,
     }
-    if (updatedResponsable) payload.responsable = Array.isArray(updatedResponsable) && updatedResponsable.length === 1 ? updatedResponsable[0] : updatedResponsable
+    if (updatedResponsable) {
+      payload.responsable =
+        Array.isArray(updatedResponsable) && updatedResponsable.length === 1
+          ? updatedResponsable[0]
+          : updatedResponsable
+    }
+    if (updatedResponsables) payload.responsables = updatedResponsables
     if (updatedConductors) payload.conductors = updatedConductors
     if (updatedTreballadors) payload.treballadors = updatedTreballadors
     if (updatedWorkers) payload.workers = updatedWorkers
+    if (Array.isArray(data.groups)) payload.groups = updatedGroups
     if (closeDept) {
       const prevRaw = data.closedByDept
       const prev =
