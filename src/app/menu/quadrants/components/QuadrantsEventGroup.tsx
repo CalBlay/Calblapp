@@ -312,6 +312,7 @@ export default function QuadrantsEventGroup({
                       <th className="w-28 p-2 text-left text-xs font-semibold">Responsable</th>
                       <th className="p-2 text-left text-xs font-semibold">Equip</th>
                       <th className="w-28 p-2 text-left text-xs font-semibold">Horari</th>
+                      <th className="w-28 p-2 text-left text-xs font-semibold">Vestimenta</th>
                       <th className="w-24 p-2 text-left text-xs font-semibold">Estat</th>
                     </tr>
                   </thead>

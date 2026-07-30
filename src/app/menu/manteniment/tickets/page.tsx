@@ -29,8 +29,6 @@ import {
 } from '@/lib/maintenanceDateFilter'
 import {
   isCuinaCentralDepartment,
-  isMaintenanceTicketCreatorOnlyUser,
-  canCreateMaintenanceTicketsAsReporter,
   type MaintenanceTicketScope,
 } from '@/lib/maintenanceTicketCreators'
 import { isQualitatCuinaCentralTicketViewer } from '@/lib/accessControl'
@@ -126,16 +124,16 @@ export default function MaintenanceTicketsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setContent } = useFilters()
-  const { isPathAllowed, hasAction } = useUiPermissions()
+  const { isPathAllowed, canEditPath, hasAction } = useUiPermissions()
   const canViewPlanner = isPathAllowed(MAINTENANCE_PLANNER_PATH)
   const sessionUser = (session?.user || {}) as SessionUser
   const department = normalizeDept(sessionUser.department || '')
-  const isOwnTicketsOnly = isMaintenanceTicketCreatorOnlyUser(sessionUser)
   const isQualitatViewer = isQualitatCuinaCentralTicketViewer(sessionUser)
-  const canCreateNewTicket = canCreateMaintenanceTicketsAsReporter(sessionUser)
+  const canCreateNewTicket = canEditPath('/menu/manteniment/tickets')
   const canManageInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
   const canDeleteAnyTicket = hasAction(MAINTENANCE_TICKETS_DELETE_PERM)
   const canManageAllTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM)
+  const isOwnTicketsOnly = canCreateNewTicket && !canManageAllTickets && !canManageInbox
   const canSeeMaintenanceBell =
     canManageAllTickets || canManageInbox || canCreateNewTicket || isPathAllowed('/menu/manteniment/tickets')
   const canManageInboxTickets = canManageInbox

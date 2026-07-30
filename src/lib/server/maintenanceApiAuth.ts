@@ -33,6 +33,20 @@ export async function requireMaintenanceTicketApiView(
   return auth
 }
 
+export async function requireMaintenanceTicketApiEdit(
+  path: string = MAINTENANCE_TICKETS_PATH
+): Promise<AuthSuccess | AuthFailure> {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth
+
+  const allowed = await canEditUiPath({ user: auth.user, path })
+  if (!allowed) {
+    return { ok: false, res: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
+  }
+
+  return auth
+}
+
 /** Accés a dades mestres de manteniment (màquines, proveïdors, centres). */
 export async function requireMaintenanceDataAccess(
   mode: 'view' | 'edit' = 'view'

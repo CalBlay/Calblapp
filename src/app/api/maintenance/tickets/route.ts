@@ -7,6 +7,7 @@ import {
 } from '@/lib/server/maintenanceTicketsAccess'
 import {
   MAINTENANCE_TICKETS_PATH,
+  requireMaintenanceTicketApiEdit,
   requireMaintenanceTicketApiView,
 } from '@/lib/server/maintenanceApiAuth'
 import {
@@ -455,7 +456,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireMaintenanceTicketApiView([MAINTENANCE_TICKETS_PATH])
+  const auth = await requireMaintenanceTicketApiEdit(MAINTENANCE_TICKETS_PATH)
   if (!auth.ok) return auth.res
 
   const user = auth.user as SessionUser
