@@ -49,8 +49,16 @@ test('isCuinaCenterExternalExtraLine detects flag, externalType, and Extra C.Ext
     true
   )
   assert.equal(
-    isCuinaCenterExternalExtraLine(line({ personName: 'Extra C.Extern 1' })),
+    isCuinaCenterExternalExtraLine(line({ personName: 'Extra C.Extern' })),
     true
+  )
+  assert.equal(
+    isCuinaCenterExternalExtraLine(line({ personName: 'Extra C.Extern - Sala' })),
+    true
+  )
+  assert.equal(
+    isCuinaCenterExternalExtraLine(line({ personName: 'Extra C.Extern 1' })),
+    false
   )
   assert.equal(isCuinaCenterExternalExtraLine(line({ personName: 'Maria' })), false)
 })

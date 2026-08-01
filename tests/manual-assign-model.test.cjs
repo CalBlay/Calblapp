@@ -49,10 +49,11 @@ test('inferEndDateFromTimes and patchRowSchedule roll overnight shifts to next d
   assert.equal(normalized.endDate, '2026-07-29')
 })
 
-test('applyGroupScheduleToRows applies group times only to matching group and infers overnight endDate', () => {
+test('applyGroupScheduleToRows updates matching group; overnight endDate only when row endDate empty', () => {
   const rows = [
-    row({ groupId: 'g1', startTime: '08:00', endTime: '16:00', endDate: '2026-07-28' }),
+    row({ groupId: 'g1', startTime: '08:00', endTime: '16:00', endDate: '' }),
     row({ groupId: 'g2', startTime: '08:00', endTime: '16:00', endDate: '2026-07-28' }),
+    row({ groupId: 'g1', startTime: '08:00', endTime: '16:00', endDate: '2026-07-28' }),
   ]
   const next = applyGroupScheduleToRows(
     rows,
@@ -70,6 +71,9 @@ test('applyGroupScheduleToRows applies group times only to matching group and in
   assert.equal(next[0].meetingPoint, 'Magatzem')
   assert.equal(next[1].startTime, '08:00')
   assert.equal(next[1].endDate, '2026-07-28')
+  // Existing endDate is preserved even when group times cross midnight.
+  assert.equal(next[2].startTime, '22:00')
+  assert.equal(next[2].endDate, '2026-07-28')
 })
 
 test('assigned-person helpers match by accent-insensitive id/name and exclude current row', () => {
