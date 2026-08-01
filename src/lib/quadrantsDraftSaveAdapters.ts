@@ -7,6 +7,7 @@ import {
   type EditorRole,
   type EditorRow,
 } from '@/lib/quadrantsDraftEditor'
+import { resolveGroupedDraftTargetDocId } from '@/lib/quadrantsDraftDocResolve'
 
 type FirestoreDb = typeof import('@/lib/firebaseAdmin').firestoreAdmin
 
@@ -403,6 +404,54 @@ const persistServeisDraft = async ({
   } satisfies SaveDraftResult
 }
 
+const loadEventDraftDocCandidates = async (
+  db: FirestoreDb,
+  coll: string,
+  canonicalEventId: string
+) => {
+  const snap = await db.collection(coll).where('eventId', '==', canonicalEventId).get()
+  return snap.docs.map((doc) => {
+    const data = (doc.data() || {}) as Record<string, unknown>
+    return {
+      id: doc.id,
+      phaseDate: typeof data.phaseDate === 'string' ? data.phaseDate : null,
+      startDate: typeof data.startDate === 'string' ? data.startDate : null,
+    }
+  })
+}
+
+const resolveSingleDocDraftRef = async ({
+  db,
+  coll,
+  sourceDocId,
+  canonicalEventId,
+  docMeta,
+}: {
+  db: FirestoreDb
+  coll: string
+  sourceDocId: string
+  canonicalEventId: string
+  docMeta?: Record<string, unknown>
+}) => {
+  const needsLookup =
+    !String(sourceDocId || '').includes('__') &&
+    Boolean(String(docMeta?.phaseDate || docMeta?.startDate || '').trim())
+
+  const existingDocs = needsLookup
+    ? await loadEventDraftDocCandidates(db, coll, canonicalEventId)
+    : []
+
+  const targetDocId = resolveGroupedDraftTargetDocId({
+    sourceDocId,
+    canonicalEventId,
+    phaseDate: typeof docMeta?.phaseDate === 'string' ? docMeta.phaseDate : null,
+    startDate: typeof docMeta?.startDate === 'string' ? docMeta.startDate : null,
+    existingDocs,
+  })
+
+  return db.collection(coll).doc(targetDocId)
+}
+
 const persistGenericGroupedDraft = async ({
   db,
   coll,
@@ -413,7 +462,13 @@ const persistGenericGroupedDraft = async ({
   groups,
   docMeta,
 }: SaveDraftContext) => {
-  const ref = db.collection(coll).doc(sourceDocId || canonicalEventId)
+  const ref = await resolveSingleDocDraftRef({
+    db,
+    coll,
+    sourceDocId,
+    canonicalEventId,
+    docMeta,
+  })
   const snap = await ref.get()
   let createdAt = new Date()
   const existing = snap.exists ? (snap.data() as Record<string, unknown>) : null
@@ -482,7 +537,13 @@ const persistCuinaDraft = async ({
   groups,
   docMeta,
 }: SaveDraftContext) => {
-  const ref = db.collection(coll).doc(sourceDocId || canonicalEventId)
+  const ref = await resolveSingleDocDraftRef({
+    db,
+    coll,
+    sourceDocId,
+    canonicalEventId,
+    docMeta,
+  })
   const snap = await ref.get()
   let createdAt = new Date()
   const existing = snap.exists ? (snap.data() as Record<string, unknown>) : null
