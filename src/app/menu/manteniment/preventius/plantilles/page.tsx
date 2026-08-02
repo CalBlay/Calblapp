@@ -4,9 +4,19 @@ import React, { useEffect, useMemo, useState } from 'react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { useFilters } from '@/context/FiltersContext'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
-import { RoleGuard } from '@/lib/withRoleGuard'
 import FloatingAddButton from '@/components/ui/floating-add-button'
+import MaintenancePermissionGate from '../../components/MaintenancePermissionGate'
 import { formatDateOnly } from '@/lib/date-format'
+import {
+  getMaintenanceCenterOptions,
+  getMaintenanceLocationsForCenter,
+  getMaintenanceZones,
+  type MaintenanceCenterHierarchyRow,
+} from '@/lib/maintenanceLocationCatalog'
+import {
+  formatMaintenanceTemplateSite,
+  normalizeMaintenanceTemplateSite,
+} from '@/lib/maintenanceTemplateSite'
 import ImportTemplatesCard from './components/ImportTemplatesCard'
 import TemplatesFiltersCard from './components/TemplatesFiltersCard'
 import EmbeddedTemplatesLayout from './components/EmbeddedTemplatesLayout'
@@ -38,9 +48,13 @@ export function PreventiusTemplatesContent({
   hideFab?: boolean
 }) {
   const { setContent } = useFilters()
+  const [centers, setCenters] = useState<MaintenanceCenterHierarchyRow[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
   const [search, setSearch] = useState('')
   const [periodicity, setPeriodicity] = useState('all')
+  const [centerFilter, setCenterFilter] = useState('')
+  const [locationFilter, setLocationFilter] = useState('')
+  const [zoneFilter, setZoneFilter] = useState('')
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [importing, setImporting] = useState(false)
   const [modelBMode, setModelBMode] = useState<ModelBImportMode>('single')
@@ -50,31 +64,70 @@ export function PreventiusTemplatesContent({
   const [selectedTemplateLastNotes, setSelectedTemplateLastNotes] = useState('')
 
   const loadTemplates = async () => {
-    const res = await fetch('/api/maintenance/templates', { cache: 'no-store' })
-    if (!res.ok) {
+    const [templatesRes, centersRes] = await Promise.all([
+      fetch('/api/maintenance/templates', { cache: 'no-store' }),
+      fetch('/api/maintenance/data/centers', { cache: 'no-store' }),
+    ])
+
+    if (!templatesRes.ok) {
       setTemplates([])
+    } else {
+      const json = await templatesRes.json()
+      setTemplates(
+        Array.isArray(json?.templates)
+          ? json.templates.map((template: Partial<Template> & { id?: string }) => {
+              const site = normalizeMaintenanceTemplateSite(template)
+              return {
+                id: String(template.id || ''),
+                name: String(template.name || '').trim(),
+                periodicity: template.periodicity || null,
+                lastDone: template.lastDone || null,
+                center: site.center,
+                location: site.location,
+                zone: site.zone,
+                primaryOperator: String(template.primaryOperator || '').trim(),
+                backupOperator: String(template.backupOperator || '').trim(),
+                sections: normalizeTemplateSections(template.sections),
+              }
+            })
+          : []
+      )
+    }
+
+    if (!centersRes.ok) {
+      setCenters([])
       return
     }
-    const json = await res.json()
-    setTemplates(
-      Array.isArray(json?.templates)
-        ? json.templates.map((template: Partial<Template> & { id?: string }) => ({
-            id: String(template.id || ''),
-            name: String(template.name || '').trim(),
-            periodicity: template.periodicity || null,
-            lastDone: template.lastDone || null,
-            location: String(template.location || '').trim(),
-            primaryOperator: String(template.primaryOperator || '').trim(),
-            backupOperator: String(template.backupOperator || '').trim(),
-            sections: normalizeTemplateSections(template.sections),
-          }))
-        : []
-    )
+
+    const centersJson = await centersRes.json()
+    setCenters(Array.isArray(centersJson?.centers) ? centersJson.centers : [])
   }
 
   useEffect(() => {
     void loadTemplates()
   }, [])
+
+  const filterCenters = useMemo(() => getMaintenanceCenterOptions(centers), [centers])
+  const filterLocations = useMemo(
+    () => getMaintenanceLocationsForCenter(centers, centerFilter),
+    [centerFilter, centers]
+  )
+  const filterZones = useMemo(
+    () => getMaintenanceZones(centers, centerFilter, locationFilter),
+    [centerFilter, centers, locationFilter]
+  )
+
+  useEffect(() => {
+    if (locationFilter && !filterLocations.includes(locationFilter)) {
+      setLocationFilter('')
+    }
+  }, [filterLocations, locationFilter])
+
+  useEffect(() => {
+    if (zoneFilter && !filterZones.includes(zoneFilter)) {
+      setZoneFilter('')
+    }
+  }, [filterZones, zoneFilter])
 
   useEffect(() => {
     if (embedded) {
@@ -98,29 +151,110 @@ export function PreventiusTemplatesContent({
           </select>
         </label>
 
+        <label className="space-y-2 text-sm text-slate-700">
+          <span className="font-medium">Centre</span>
+          <select
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            value={centerFilter}
+            onChange={(event) => {
+              setCenterFilter(event.target.value)
+              setLocationFilter('')
+              setZoneFilter('')
+            }}
+          >
+            <option value="">Tots</option>
+            {filterCenters.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="space-y-2 text-sm text-slate-700">
+          <span className="font-medium">Ubicacio</span>
+          <select
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            value={locationFilter}
+            onChange={(event) => {
+              setLocationFilter(event.target.value)
+              setZoneFilter('')
+            }}
+          >
+            <option value="">Totes</option>
+            {filterLocations.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="space-y-2 text-sm text-slate-700">
+          <span className="font-medium">Zona</span>
+          <select
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            value={zoneFilter}
+            onChange={(event) => setZoneFilter(event.target.value)}
+          >
+            <option value="">Totes</option>
+            {filterZones.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <div className="flex justify-end">
           <ResetFilterButton
             onClick={() => {
               setPeriodicity('all')
+              setCenterFilter('')
+              setLocationFilter('')
+              setZoneFilter('')
             }}
           />
         </div>
       </div>
     )
-  }, [embedded, periodicity, setContent])
+  }, [
+    centerFilter,
+    embedded,
+    filterCenters,
+    filterLocations,
+    filterZones,
+    locationFilter,
+    periodicity,
+    setContent,
+    zoneFilter,
+  ])
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
     return templates.filter((template) => {
       if (periodicity !== 'all' && template.periodicity !== periodicity) return false
+      if (centerFilter && template.center !== centerFilter) return false
+      if (locationFilter && template.location !== locationFilter) return false
+      if (zoneFilter && template.zone !== zoneFilter) return false
       if (!term) return true
-      const haystack = [template.name, template.location, template.primaryOperator, template.backupOperator]
+
+      const haystack = [
+        template.name,
+        template.center,
+        template.location,
+        template.zone,
+        formatMaintenanceTemplateSite(template),
+        template.primaryOperator,
+        template.backupOperator,
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
+
       return haystack.includes(term)
     })
-  }, [periodicity, search, templates])
+  }, [centerFilter, locationFilter, periodicity, search, templates, zoneFilter])
 
   useEffect(() => {
     if (!embedded) return
@@ -218,7 +352,7 @@ export function PreventiusTemplatesContent({
         fileName: file?.name || '',
         model: 'UNKNOWN',
         templates: [],
-        warnings: ['No s\'ha pogut llegir el fitxer.'],
+        warnings: ["No s'ha pogut llegir el fitxer."],
       })
     }
   }
@@ -240,7 +374,9 @@ export function PreventiusTemplatesContent({
     return selected.map((section) => ({
       name: `${base.name} - ${section.location}`,
       periodicity: periodFromLabel(section.location),
+      center: base.center,
       location: base.location,
+      zone: base.zone,
       sections: [{ location: 'GENERAL', items: section.items }],
     }))
   }
@@ -265,6 +401,9 @@ export function PreventiusTemplatesContent({
           body: JSON.stringify({
             name: candidate.name,
             periodicity: candidate.periodicity || null,
+            center: candidate.center || '',
+            location: candidate.location || '',
+            zone: candidate.zone || '',
             sections: candidate.sections,
           }),
         })
@@ -285,7 +424,7 @@ export function PreventiusTemplatesContent({
       setModelBSelectedPeriods([])
       setModelBMode('single')
     } catch {
-      alert('No s\'ha pogut completar la importacio.')
+      alert("No s'ha pogut completar la importacio.")
     } finally {
       setImporting(false)
     }
@@ -303,7 +442,9 @@ export function PreventiusTemplatesContent({
           ['Nom plantilla', template.name || '-'],
           ['Data exportacio', exportDate],
           ['Temporalitat', template.periodicity || '-'],
+          ['Centre', template.center || '-'],
           ['Ubicacio', template.location || '-'],
+          ['Zona', template.zone || '-'],
           ['Operari principal', template.primaryOperator || '-'],
           ['Operari backup', template.backupOperator || '-'],
           ['Ultima revisio', formatDateOnly(template.lastDone)],
@@ -370,7 +511,9 @@ export function PreventiusTemplatesContent({
         ['Nom plantilla', template.name || '-'],
         ['Data exportacio', exportDate],
         ['Temporalitat', periodicityLabel[String(template.periodicity || '')] || (template.periodicity || '-')],
+        ['Centre', template.center || '-'],
         ['Ubicacio', template.location || '-'],
+        ['Zona', template.zone || '-'],
         ['Operari principal', template.primaryOperator || '-'],
         ['Operari backup', template.backupOperator || '-'],
         ['Ultima revisio', formatDateOnly(template.lastDone)],
@@ -464,7 +607,7 @@ export function PreventiusTemplatesContent({
 
   const deleteTemplate = async (template: Template) => {
     const ok = window.confirm(
-      `Vols eliminar la plantilla «${displayMaintenanceTemplateName(template)}»?`
+      `Vols eliminar la plantilla "${displayMaintenanceTemplateName(template)}"?`
     )
     if (!ok) return
     try {
@@ -500,8 +643,24 @@ export function PreventiusTemplatesContent({
         filteredCount={filtered.length}
         periodicity={periodicity}
         search={search}
+        centerFilter={centerFilter}
+        locationFilter={locationFilter}
+        zoneFilter={zoneFilter}
+        centerOptions={filterCenters}
+        locationOptions={filterLocations}
+        zoneOptions={filterZones}
         onSearchChange={setSearch}
         onPeriodicityChange={setPeriodicity}
+        onCenterFilterChange={(value) => {
+          setCenterFilter(value)
+          setLocationFilter('')
+          setZoneFilter('')
+        }}
+        onLocationFilterChange={(value) => {
+          setLocationFilter(value)
+          setZoneFilter('')
+        }}
+        onZoneFilterChange={setZoneFilter}
       />
 
       {embedded ? (
@@ -530,7 +689,7 @@ export function PreventiusTemplatesContent({
 
   if (embedded) return content
 
-  return <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>{content}</RoleGuard>
+  return <MaintenancePermissionGate>{content}</MaintenancePermissionGate>
 }
 
 export default function PreventiusPlantillesPage() {

@@ -1,39 +1,23 @@
 // ✅ file: src/services/firestore/logisticsService.ts
 'use client'
 
-import { firestoreClient } from '@/lib/firebase'
-
 /**
- * 📦 Llegeix els esdeveniments logístics dins del rang especificat
- */
-export async function getLogisticsEvents(start: Date, end: Date) {
-  const snapshot = await firestoreClient
-    .collection('stage_verd')
-    .where('code', '!=', '')
-    .where('DataInici', '>=', start)
-    .where('DataInici', '<=', end)
-    .get()
-
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }))
-}
-
-/**
- * ✏️ Actualitza o crea els camps de preparació per un esdeveniment
+ * Actualitza camps de preparació d'un esdeveniment logístic via API (no SDK client).
  */
 export async function updatePreparation(id: string, data?: string, hora?: string) {
   if (!id) return
 
-  const updateFields: Record<string, string> = {}
-  if (data) updateFields.PreparacioData = data
-  if (hora) updateFields.PreparacioHora = hora
+  const res = await fetch(`/api/logistics/stage-verd/${encodeURIComponent(id)}/preparation`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      preparacioData: data,
+      preparacioHora: hora,
+    }),
+  })
 
-  try {
-    await firestoreClient.collection('stage_verd').doc(id).update(updateFields)
-    console.log(`✅ Preparació actualitzada per ${id}`)
-  } catch (err) {
-    console.error('❌ Error actualitzant preparació:', err)
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as { error?: string } | null
+    throw new Error(payload?.error || `HTTP ${res.status}`)
   }
 }

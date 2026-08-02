@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { SUPPLIERS_COLLECTION } from '@/lib/companySuppliers/constants'
 import { normalizeSupplierDepartmentsInput } from '@/lib/companySuppliers/server'
+import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -10,6 +11,9 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireMaintenanceDataAccess('edit')
+  if (!auth.ok) return auth.res
+
   try {
     const { id } = await params
     const body = await req.json().catch(() => ({}))

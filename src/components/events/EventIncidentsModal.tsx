@@ -51,6 +51,7 @@ export default function EventIncidentsModal({ open, onClose, eventId, eventSumma
     eventId,
     light: false,
     limit: 80,
+    enabled: open,
   })
   const { name, ln, code } = parseEventTitle(eventSummary)
 

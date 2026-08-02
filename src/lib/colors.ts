@@ -1,5 +1,7 @@
 // ✅ file: src/lib/colors.ts
 
+import { normalizeDepartmentLabel } from '@/data/departments'
+
 /**
  * 🎨 Colors corporatius Cal Blay
  * Paleta unificada i coherent per a:
@@ -49,7 +51,72 @@ export const COLORS_LN: Record<string, string> = {
 
 // ───────────────────────────────────────────────
 // 🏷️ COLORS PER DEPARTAMENT
+// Paleta ampla: cada departament rep un color estable per nom (hash),
+// per evitar repeticions quan n'hi ha molts.
 // ───────────────────────────────────────────────
+const DEPARTMENT_BADGE_PALETTE = [
+  'bg-sky-100 border border-sky-400 text-sky-900 shadow-sm',
+  'bg-orange-100 border border-orange-400 text-orange-900 shadow-sm',
+  'bg-violet-100 border border-violet-400 text-violet-900 shadow-sm',
+  'bg-amber-100 border border-amber-400 text-amber-900 shadow-sm',
+  'bg-pink-100 border border-pink-400 text-pink-900 shadow-sm',
+  'bg-emerald-100 border border-emerald-400 text-emerald-900 shadow-sm',
+  'bg-rose-100 border border-rose-400 text-rose-900 shadow-sm',
+  'bg-fuchsia-100 border border-fuchsia-400 text-fuchsia-900 shadow-sm',
+  'bg-cyan-100 border border-cyan-400 text-cyan-900 shadow-sm',
+  'bg-blue-100 border border-blue-400 text-blue-900 shadow-sm',
+  'bg-red-100 border border-red-400 text-red-900 shadow-sm',
+  'bg-lime-100 border border-lime-400 text-lime-900 shadow-sm',
+  'bg-teal-100 border border-teal-400 text-teal-900 shadow-sm',
+  'bg-green-100 border border-green-400 text-green-900 shadow-sm',
+  'bg-indigo-100 border border-indigo-400 text-indigo-900 shadow-sm',
+  'bg-yellow-100 border border-yellow-400 text-yellow-900 shadow-sm',
+  'bg-purple-100 border border-purple-400 text-purple-900 shadow-sm',
+  'bg-stone-100 border border-stone-400 text-stone-900 shadow-sm',
+  'bg-slate-100 border border-slate-500 text-slate-900 shadow-sm',
+  'bg-sky-200 border border-sky-500 text-sky-950 shadow-sm',
+  'bg-orange-200 border border-orange-500 text-orange-950 shadow-sm',
+  'bg-emerald-200 border border-emerald-500 text-emerald-950 shadow-sm',
+  'bg-rose-200 border border-rose-500 text-rose-950 shadow-sm',
+  'bg-cyan-200 border border-cyan-500 text-cyan-950 shadow-sm',
+] as const
+
+const DEPARTMENT_DOT_PALETTE = [
+  'bg-sky-500',
+  'bg-orange-500',
+  'bg-violet-500',
+  'bg-amber-500',
+  'bg-pink-500',
+  'bg-emerald-500',
+  'bg-rose-500',
+  'bg-fuchsia-500',
+  'bg-cyan-500',
+  'bg-blue-500',
+  'bg-red-500',
+  'bg-lime-500',
+  'bg-teal-500',
+  'bg-green-500',
+  'bg-indigo-500',
+  'bg-yellow-500',
+  'bg-purple-500',
+  'bg-stone-500',
+  'bg-slate-500',
+  'bg-sky-600',
+  'bg-orange-600',
+  'bg-emerald-600',
+  'bg-rose-600',
+  'bg-cyan-600',
+] as const
+
+const departmentColorIndex = (key: string) => {
+  let hash = 0
+  for (let i = 0; i < key.length; i += 1) {
+    hash = (hash * 33 + key.charCodeAt(i)) >>> 0
+  }
+  return hash % DEPARTMENT_BADGE_PALETTE.length
+}
+
+/** @deprecated Mapa manual; preferir `colorByDepartment()` (assignació per hash). */
 export const COLORS_DEPARTMENT: Record<string, string> = {
   empresa: 'bg-sky-50 border border-sky-200 text-sky-800',
   compres: 'bg-orange-50 border border-orange-200 text-orange-800',
@@ -101,11 +168,11 @@ export const COLORS_STAGE: Record<string, string> = {
 export const MAINTENANCE_STATUS_BADGES: Record<string, string> = {
   nou: 'bg-teal-100 text-teal-800',
   assignat: 'bg-sky-100 text-sky-800',
+  reassignat: 'bg-orange-100 text-orange-800',
   en_curs: 'bg-amber-100 text-amber-800',
   espera: 'bg-slate-100 text-slate-700',
   fet: 'bg-emerald-100 text-emerald-800',
   no_fet: 'bg-rose-100 text-rose-700',
-  resolut: 'bg-violet-100 text-violet-800',
   validat: 'bg-violet-100 text-violet-800',
 }
 
@@ -118,8 +185,15 @@ export const colorByLN = (lnRaw?: string): string => {
 }
 
 export const colorByDepartment = (departmentRaw?: string): string => {
-  const department = (departmentRaw || '').trim().toLowerCase()
-  return COLORS_DEPARTMENT[department] || COLORS_DEPARTMENT['altres']
+  const key = normalizeDepartmentLabel(departmentRaw)
+  if (!key) return 'bg-gray-50 border border-gray-200 text-gray-700'
+  return DEPARTMENT_BADGE_PALETTE[departmentColorIndex(key)]
+}
+
+export const dotByDepartment = (departmentRaw?: string): string => {
+  const key = normalizeDepartmentLabel(departmentRaw)
+  if (!key) return 'bg-slate-400'
+  return DEPARTMENT_DOT_PALETTE[departmentColorIndex(key)]
 }
 
 export const colorByStage = (stage?: string): string => {

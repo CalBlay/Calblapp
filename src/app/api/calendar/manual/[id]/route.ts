@@ -65,10 +65,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const body = await req.json()
-    const { collection = 'stage_verd', field = 'file1', url } = body as {
+    const { collection = 'stage_verd', field = 'file1', url, name } = body as {
       collection?: string
       field?: string
       url?: string
+      name?: string
     }
 
     if (!collection || !id || !url) {
@@ -78,10 +79,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       )
     }
 
-    await db
-      .collection(collection)
-      .doc(id)
-      .set({ [field]: url, updatedAt: new Date().toISOString() }, { merge: true })
+    const payload: Record<string, unknown> = {
+      [field]: url,
+      updatedAt: new Date().toISOString(),
+    }
+    const fileName = String(name || '').trim()
+    if (fileName) {
+      payload[`${field}Name`] = fileName
+    }
+
+    await db.collection(collection).doc(id).set(payload, { merge: true })
 
     console.log(`✅ Fitxer ${field} desat correctament a ${collection}/${id}`)
     return NextResponse.json({ ok: true, field, url })

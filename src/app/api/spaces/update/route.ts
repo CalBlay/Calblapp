@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { registerFinquesProduccioImagesInIndex } from '@/lib/media/storageMediaIndex'
+import { registerFinquesProduccioMediaInIndex } from '@/lib/media/storageMediaIndex'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { requireSpacesBbddMutation } from '@/lib/server/spacesApiAuth'
 
@@ -110,16 +110,30 @@ export async function POST(req: Request) {
 
     await ref.set(payload, { merge: true })
 
-    if (Array.isArray(produccioFormatted.images)) {
-      const imgList = (produccioFormatted.images as string[]).map((x) => String(x).trim()).filter(Boolean)
-      if (imgList.length) {
-        void registerFinquesProduccioImagesInIndex(id, {
-          nom: String(rest.nom || '').trim(),
-          code: String(rest.code || '').trim(),
-          images: imgList,
-          createdAt: payload.updatedAt as number,
-        })
-      }
+    const mediaList = Array.isArray(produccioFormatted.media)
+      ? (produccioFormatted.media as Array<{ kind?: string; url?: string }>)
+          .map((row) => ({
+            kind: String(row.kind || 'image').trim(),
+            url: String(row.url || '').trim(),
+          }))
+          .filter((row) => row.url)
+      : []
+    const imgList = Array.isArray(produccioFormatted.images)
+      ? (produccioFormatted.images as string[]).map((x) => String(x).trim()).filter(Boolean)
+      : []
+
+    const indexMedia =
+      mediaList.length > 0
+        ? mediaList
+        : imgList.map((url) => ({ kind: 'image', url }))
+
+    if (indexMedia.length) {
+      void registerFinquesProduccioMediaInIndex(id, {
+        nom: String(rest.nom || '').trim(),
+        code: String(rest.code || '').trim(),
+        media: indexMedia,
+        createdAt: payload.updatedAt as number,
+      })
     }
 
     return NextResponse.json({ ok: true, id })

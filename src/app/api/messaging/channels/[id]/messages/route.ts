@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import {
@@ -8,6 +8,12 @@ import {
   notifyForNewMaintenanceTicket,
 } from '@/lib/maintenanceNotifications'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
+import { buildUnreadIncrement } from '@/lib/messaging/channelUnread'
+import {
+  buildChannelPushUrl,
+  resolveMessagePushRecipients,
+} from '@/lib/messaging/messagePush.server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -45,17 +51,9 @@ type MessageRecord = Record<string, unknown> & {
   body?: string
 }
 
-async function sendPushToUids(baseUrl: string, uids: string[], title: string, body: string, url: string) {
+async function sendPushToUids(_baseUrl: string, uids: string[], title: string, body: string, url: string) {
   if (!uids.length) return
-  await Promise.all(
-    uids.map((uid) =>
-      fetch(`${baseUrl}/api/push/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: uid, title, body, url }),
-      }).catch(() => {})
-    )
-  )
+  await sendPushToUsers(uids, { title, body, url })
 }
 
 async function ensureMember(channelId: string, userId: string) {
@@ -190,6 +188,7 @@ async function createTicketFromMessage(args: {
     {
       lastMessagePreview: summaryBody.slice(0, 180),
       lastMessageAt: now,
+      lastSenderName: userName || '',
     },
     { merge: true }
   )
@@ -413,6 +412,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       {
         lastMessagePreview: preview,
         lastMessageAt: now,
+        lastSenderName: senderName,
       },
       { merge: true }
     )
@@ -426,9 +426,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       if (memberUserId === userId) continue
       if (member?.hidden || member?.notify === false) continue
       if (visibility === 'direct' && memberUserId !== targetUserId) continue
-      const memberUpdate: Record<string, unknown> = {
-        unreadCount: Number(member?.unreadCount || 0) + 1,
-      }
+      const unreadUpdate = buildUnreadIncrement(visibility, member)
+      const memberUpdate: Record<string, unknown> = { ...unreadUpdate }
 
       if (channelSource === 'projects' && visibility === 'channel') {
         const hasPendingWindow = Boolean(member?.projectMissedActivityPending)
@@ -467,8 +466,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const apiKey = process.env.ABLY_API_KEY
     if (apiKey) {
       try {
-        const Ably = (await import('ably')).default
-        const rest = new Ably.Rest({ key: apiKey })
+        const { getAblyRest } = await import('@/lib/server/ablyRest')
+        const rest = getAblyRest()
 
         if (visibility === 'channel') {
           await rest.channels
@@ -517,14 +516,32 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const pushRecipients = recipients.filter((uid) => !mutedUsers.has(uid))
 
     const baseUrl = new URL(req.url).origin
-    const title = channelName ? `Missatge: ${channelName}` : 'Nou missatge'
+    const channelTitle = channelName ? `Missatge: ${channelName}` : 'Nou missatge'
     const pushBody = text ? text.slice(0, 180) : 'Imatge'
-    const url = `/menu/missatgeria?channel=${id}`
+    const url = buildChannelPushUrl(id, channelData)
     const shouldSendPush =
       channelSource !== 'projects' || visibility === 'direct'
 
-    if (shouldSendPush) {
-      await sendPushToUids(baseUrl, pushRecipients, title, pushBody, url)
+    const memberRows = memberDocs.map((d) => d.data() as ChannelMemberRecord)
+    const { finalRecipients, isMentionPush } = resolveMessagePushRecipients({
+      visibility,
+      targetUserId,
+      senderUserId: userId,
+      text,
+      channelSource,
+      members: memberRows,
+      mutedUserIds: mutedUsers,
+      regularRecipientIds: pushRecipients,
+      shouldSendChannelPush: shouldSendPush,
+    })
+
+    if (finalRecipients.length > 0) {
+      const pushTitle = isMentionPush
+        ? senderName
+          ? `${senderName} t'ha mencionat`
+          : "T'han mencionat al xat"
+        : channelTitle
+      await sendPushToUids(baseUrl, finalRecipients, pushTitle, pushBody, url)
     }
 
     const shouldAutoTicket =
@@ -543,8 +560,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
       if (ticketResult && apiKey) {
         try {
-          const Ably = (await import('ably')).default
-          const rest = new Ably.Rest({ key: apiKey })
+          const { getAblyRest } = await import('@/lib/server/ablyRest')
+          const rest = getAblyRest()
           await rest.channels
             .get(`chat:${id}`)
             .publish('message', ticketResult.summaryData)
@@ -575,7 +592,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           (uid): uid is string =>
             typeof uid === 'string' && uid.length > 0 && uid !== userId && !mutedUsersForTicket.has(uid)
         )
-        await sendPushToUids(baseUrl, pushRecipientsTicket, title, ticketResult.summaryData.body, url)
+        await sendPushToUids(baseUrl, pushRecipientsTicket, channelTitle, ticketResult.summaryData.body, url)
       }
     }
 

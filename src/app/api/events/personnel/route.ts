@@ -2,9 +2,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { QuerySnapshot } from 'firebase-admin/firestore'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import type { AccessUser } from '@/lib/accessControl'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
-import { isAllowedByClientOverride } from '@/lib/server/permissions'
+import { isUiPermissionGranted } from '@/lib/server/permissions'
 
 export const runtime = 'nodejs'
 
@@ -13,6 +14,11 @@ const unaccent = (s?: string | null) =>
   (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const norm = (s?: string | null) => unaccent(String(s || '')).toLowerCase().trim()
 const dayKey = (iso?: string | null) => (iso || '').slice(0, 10)
+const normalizeEventId = (value?: string | null) =>
+  String(value || '')
+    .trim()
+    .split('__')[0]
+    .trim()
 const chunk = <T>(arr: T[], size = 10) => {
   const out: T[][] = []
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
@@ -137,18 +143,43 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth()
     if (!auth.ok) return auth.res
-    const ok = await isAllowedByClientOverride({
-      userId: auth.user.id,
-      role: auth.user.role,
-      permission: PERM.view('/menu/events'),
-    })
-    if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+    const accessUser: AccessUser & { id: string } = {
+      id: auth.user.id,
+      role: auth.user.role ?? undefined,
+      department: auth.user.department ?? undefined,
+      canRespondSurveys: Boolean(auth.user.canRespondSurveys),
+      isDepartmentRobaLead: Boolean(auth.user.isDepartmentRobaLead),
+      robaLinkedPersonnelId: auth.user.robaLinkedPersonnelId ?? null,
+      opsProjectsConfigurable:
+        typeof auth.user.opsProjectsConfigurable === 'boolean'
+          ? auth.user.opsProjectsConfigurable
+          : undefined,
+      isTransportLead:
+        typeof auth.user.isTransportLead === 'boolean' ? auth.user.isTransportLead : undefined,
+    }
+
+    const [canViewEvents, canViewTorns] = await Promise.all([
+      isUiPermissionGranted({
+        user: accessUser,
+        permission: PERM.view('/menu/events'),
+      }),
+      isUiPermissionGranted({
+        user: accessUser,
+        permission: PERM.view('/menu/torns'),
+      }),
+    ])
+
+    if (!canViewEvents && !canViewTorns) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const url = new URL(req.url)
-    const eventId = url.searchParams.get('eventId')
-    if (!eventId) {
+    const rawEventId = url.searchParams.get('eventId')
+    if (!rawEventId) {
       return NextResponse.json({ error: 'Falta eventId' }, { status: 400 })
     }
+    const eventId = normalizeEventId(rawEventId)
 
     /* ────────────────────────────────────────────────
        1) BUSCAR L'ESDEVENIMENT A FIRESTORE (paral·lel)
@@ -242,10 +273,10 @@ export async function GET(req: NextRequest) {
 
     const filtered = rows
       .filter((r) => {
-      if (r.eventId === eventId) return true
-      if (code && r.code && normCode(r.code) === normCode(code)) return true
-      if (r.eventName && norm(r.eventName) === eventNameNorm) return true
-      return false
+        if (normalizeEventId(r.eventId) === eventId) return true
+        if (code && r.code && normCode(r.code) === normCode(code)) return true
+        if (r.eventName && norm(r.eventName) === eventNameNorm) return true
+        return false
       })
       .sort((a, b) => {
         const aTs = toMillis(a.updatedAt) || toMillis(a.confirmedAt) || toMillis(a.createdAt)

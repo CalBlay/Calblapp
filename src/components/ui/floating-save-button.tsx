@@ -1,7 +1,7 @@
 'use client'
 
 import { Save } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { MotionButton } from '@/lib/lazyMotion'
 import { cn } from '@/lib/utils'
 
 export default function FloatingSaveButton({
@@ -12,7 +12,7 @@ export default function FloatingSaveButton({
   className?: string
 }) {
   return (
-    <motion.button
+    <MotionButton
       whileTap={{ scale: 0.9 }}
       onClick={onClick}
       className={cn(
@@ -33,6 +33,6 @@ export default function FloatingSaveButton({
       )}
     >
       <Save className="h-7 w-7" />
-    </motion.button>
+    </MotionButton>
   )
 }

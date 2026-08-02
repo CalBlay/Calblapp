@@ -3,6 +3,7 @@ import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns'
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import type { QuadrantStatus, UnifiedEvent } from '@/app/menu/quadrants/types'
+import { incidentMatchesLnFilter } from '@/lib/incidentLn'
 
 interface UseQuadrantsPageDataParams {
   events: QuadrantEvent[]
@@ -442,6 +443,7 @@ export function useQuadrantsPageData({
         phaseDate,
         eventDateLabel,
         eventDateRaw: rawEventDate || undefined,
+        department: cleanText(q.department || ev?.department || '') || undefined,
         draft: q,
       }
       out.push(mergedEvent)
@@ -524,6 +526,7 @@ export function useQuadrantsPageData({
         phaseDate: eventStartDate || undefined,
         eventDateLabel,
         eventDateRaw: eventStartDate || undefined,
+        department: cleanText(event.department || '') || undefined,
         draft: null,
       }
       out.push(pendingEvent)
@@ -743,18 +746,16 @@ export function useQuadrantsPageData({
 
   const filteredEvents = useMemo<UnifiedEvent[]>(() => {
     return eventsWithStatus.filter((ev) => {
-      const evLn = (ev.ln || '').toString().trim().toLowerCase()
       const evResp = (ev.responsable || '').toString().trim().toLowerCase()
       const evLoc = (ev.location || '').toString().trim().toLowerCase()
 
-      const fLn = (filters.ln || '').toLowerCase()
       const fResp = (filters.responsable || '').toLowerCase()
       const fLoc = (filters.location || '').toLowerCase()
 
       if (filters.status !== '__all__' && ev.quadrantStatus !== filters.status)
         return false
 
-      if (filters.ln !== '__all__' && fLn !== evLn) return false
+      if (!incidentMatchesLnFilter(ev.ln, filters.ln)) return false
 
       if (filters.responsable !== '__all__' && !evResp.includes(fResp))
         return false

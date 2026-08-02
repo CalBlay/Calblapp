@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 import { sendProjectMissedActivityEmail } from '@/services/graph/calendar'
+import { requireCronAuth } from '@/lib/server/internalApiAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -30,22 +31,10 @@ type ChannelMemberData = {
 async function authorize(req: Request) {
   const url = new URL(req.url)
   const mode = String(url.searchParams.get('mode') || '').toLowerCase()
-  const cronSecret = process.env.CRON_SECRET
 
   if (mode === 'cron') {
-    if (cronSecret) {
-      const authorizationHeader = req.headers.get('authorization') || ''
-      const incoming =
-        (authorizationHeader.startsWith('Bearer ')
-          ? authorizationHeader.slice('Bearer '.length).trim()
-          : '') ||
-        req.headers.get('x-cron-secret') ||
-        url.searchParams.get('secret') ||
-        ''
-      if (incoming !== cronSecret) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    }
+    const cronDenied = requireCronAuth(req)
+    if (cronDenied) return cronDenied
     return null
   }
 

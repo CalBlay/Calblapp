@@ -4,6 +4,7 @@ import {
   createTransportItvCalendarEvent,
   createTransportReviewCalendarEvent,
 } from '@/services/graph/calendar'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 
 type TransportMonthlyMileageEntry = {
   month?: string
@@ -180,8 +181,8 @@ async function publishRealtime(
   if (!apiKey || !uids.length) return
 
   try {
-    const Ably = (await import('ably')).default
-    const rest = new Ably.Rest({ key: apiKey })
+    const { getAblyRest } = await import('@/lib/server/ablyRest')
+    const rest = getAblyRest()
     await Promise.all(
       uids.map((uid) =>
         rest.channels.get(`user:${uid}:notifications`).publish('created', payload)
@@ -192,21 +193,12 @@ async function publishRealtime(
   }
 }
 
-async function sendPush(baseUrl: string, userId: string, title: string, body: string) {
-  try {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        title,
-        body,
-        url: '/menu/logistica/transports',
-      }),
-    })
-  } catch (err) {
-    console.error('[transportReviewNotifications] push error', err)
-  }
+async function sendPush(_baseUrl: string, userId: string, title: string, body: string) {
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: '/menu/logistica/transports',
+  })
 }
 
 async function getTransportLeadUsers() {

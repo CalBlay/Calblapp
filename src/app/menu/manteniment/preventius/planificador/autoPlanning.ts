@@ -4,7 +4,7 @@ import type { DueTemplate, ScheduledItem, Template } from './types'
 
 export const AUTO_PLAN_DEFAULT_MINUTES = 60
 export const AUTO_PLAN_START_MINUTES = 8 * 60
-export const AUTO_PLAN_END_MINUTES = 17 * 60
+export const AUTO_PLAN_END_MINUTES = 18 * 60
 export const AUTO_PLAN_SLOT_STEP = 30
 export const AUTO_PLAN_MAX_UNASSIGNED = 2
 

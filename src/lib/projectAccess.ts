@@ -16,3 +16,15 @@ export function sessionToAccessUser(user: {
     opsProjectsConfigurable: user.opsProjectsConfigurable,
   }
 }
+
+export function sessionToRoomAccessUser(user: {
+  id?: string | null
+  name?: string | null
+  role?: string | null
+}): import('@/lib/projectRoomAccess').RoomAccessUser {
+  return {
+    id: String(user.id || '').trim(),
+    name: String(user.name || '').trim(),
+    role: String(user.role || '').trim(),
+  }
+}

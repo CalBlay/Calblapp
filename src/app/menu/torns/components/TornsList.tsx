@@ -5,6 +5,7 @@ import React from 'react'
 import TornCard, { TornCardItem } from './TornCard'
 import TornCardWorker from './TornCardWorker'
 import { Users, Calendar } from 'lucide-react'
+import { formatTornsDayDate } from '@/lib/date-format'
 
 type Props = {
   items?: TornCardItem[]
@@ -26,11 +27,7 @@ type ExtendedTornCardItem = TornCardItem & {
   vestimentModel?: string
 }
 
-const formatDate = (iso: string) => {
-  if (!iso || iso.length < 10) return iso || ''
-  const [y, m, d] = iso.slice(0, 10).split('-')
-  return `${d}/${m}/${y.slice(2)}`
-}
+const formatDate = (iso: string) => formatTornsDayDate(iso, iso || '')
 
 const weekdayLong = (iso: string) => {
   const d = new Date(iso)
@@ -220,17 +217,17 @@ export default function TornsList({
         const total = dayItems.length
         return (
           <section key={dayIso} className="mb-4 sm:mb-6">
-            <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3 bg-green-50 p-3 sm:p-3 rounded-xl shadow-sm">
-              <h2 className="text-base sm:text-lg font-semibold text-gray-800 flex flex-wrap items-center gap-2 min-w-0">
+            <header className="mb-3 flex items-center justify-between gap-3 rounded-[24px] border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-emerald-50/80 px-4 py-3 shadow-[0_12px_30px_-24px_rgba(16,185,129,0.6)]">
+              <h2 className="min-w-0 flex items-center gap-2 text-base font-semibold text-slate-800 sm:text-lg">
                 <span className="tabular-nums">
                   {weekdayLong(dayIso)} {formatDate(dayIso)}
                 </span>
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-xs font-semibold text-fuchsia-700">
                   <Calendar className="w-3.5 h-3.5 shrink-0" />
                   {total} torn{total !== 1 && 's'}
                 </span>
               </h2>
-              <span className="flex items-center gap-1.5 text-pink-600 font-bold text-sm sm:text-base shrink-0">
+              <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/85 px-2.5 py-1 text-sm font-bold text-pink-600 ring-1 ring-pink-100 sm:text-base">
                 <Users className="w-4 h-4 shrink-0" />
                 {total}
               </span>
@@ -292,6 +289,4 @@ export default function TornsList({
     </div>
   )
 }
-
-
 

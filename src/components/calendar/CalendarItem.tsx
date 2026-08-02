@@ -2,7 +2,7 @@
 'use client'
 
 import React from 'react'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 import CalendarModal from './CalendarModal'
 import type { Deal } from '@/hooks/useCalendarData'
 
@@ -28,7 +28,7 @@ export default function CalendarItem({ event }: { event: Deal }) {
   } = event
 
   return (
-    <motion.div
+    <MotionDiv
       key={id}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -90,6 +90,6 @@ export default function CalendarItem({ event }: { event: Deal }) {
           </div>
         }
       />
-    </motion.div>
+    </MotionDiv>
   )
 }

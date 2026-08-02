@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 export const runtime = 'nodejs'
 
@@ -11,6 +12,9 @@ const MAX_LIMIT_PER_COLLECTION = 1500
  * Query: limitPerCol (default 400, max 1500 per col·lecció).
  */
 export async function GET(req: Request) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+
   try {
     const { searchParams } = new URL(req.url)
     const raw = Number(searchParams.get('limitPerCol') || searchParams.get('limit') || '')

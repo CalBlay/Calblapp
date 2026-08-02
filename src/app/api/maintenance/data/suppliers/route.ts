@@ -6,11 +6,15 @@ import {
   listAllSuppliers,
   normalizeSupplierDepartmentsInput,
 } from '@/lib/companySuppliers/server'
+import { requireMaintenanceDataAccess } from '@/lib/server/maintenanceApiAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
+  const auth = await requireMaintenanceDataAccess()
+  if (!auth.ok) return auth.res
+
   try {
     const all = await listAllSuppliers(db)
     const suppliers = filterSuppliersByDepartment(all, 'Manteniment')
@@ -22,6 +26,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const auth = await requireMaintenanceDataAccess('edit')
+  if (!auth.ok) return auth.res
+
   try {
     const body = await req.json().catch(() => ({}))
     const name = String(body?.name || '').trim()

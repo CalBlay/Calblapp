@@ -24,7 +24,7 @@ export function cuinaCentralMachineToTicketItem(
   const code = String(machine.code || '').trim()
   const name = String(machine.name || '').trim()
   const label = machineLabel(machine)
-  return { code, name, label }
+  return { code, name, label, location: String(machine.location || '').trim() || CUINA_CENTRAL_TICKET_LOCATION }
 }
 
 export function mergeTicketMachines(
@@ -41,16 +41,4 @@ export function mergeTicketMachines(
     if (item.label) byLabel.set(item.label.toLowerCase(), item)
   }
   return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label, 'ca'))
-}
-
-export function ensureCuinaCentralLocation(locations: string[]) {
-  const norm = (s: string) =>
-    s
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .toLowerCase()
-      .trim()
-  const key = norm(CUINA_CENTRAL_TICKET_LOCATION)
-  if (locations.some((loc) => norm(loc) === key)) return locations
-  return [CUINA_CENTRAL_TICKET_LOCATION, ...locations]
 }

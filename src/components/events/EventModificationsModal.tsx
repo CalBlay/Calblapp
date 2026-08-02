@@ -52,7 +52,7 @@ function parseEventTitle(summary: string) {
 
 /* ───────────────────────── Component ───────────────────────── */
 export default function EventModificationsModal({ open, onClose, eventId, eventSummary = '' }: Props) {
-  const { modifications, loading, error } = useModifications({ eventId })
+  const { modifications, loading, error } = useModifications({ eventId, enabled: open })
   const { name, ln, code } = parseEventTitle(eventSummary)
 
   return (

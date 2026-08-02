@@ -3,7 +3,7 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 export type ProjectRoomLike = Record<string, unknown> & {
   id?: string
   name?: string
-  kind?: 'block' | 'manual'
+  kind?: 'block' | 'manual' | 'general'
   blockId?: string
   departments?: string[]
   participants?: string[]
@@ -117,6 +117,15 @@ export async function syncProjectRoomOpsChannel(params: {
     )
   ).filter(Boolean) as Array<{ userId: string; userName: string }>
 
+  const memberByUserId = new Map(resolvedMembers.map((member) => [member.userId, member]))
+  if (responsibleUser && !memberByUserId.has(responsibleUser.id)) {
+    memberByUserId.set(responsibleUser.id, {
+      userId: responsibleUser.id,
+      userName: responsibleUser.name,
+    })
+  }
+  const finalMembers = Array.from(memberByUserId.values())
+
   const roomName = String(room.name || '').trim() || 'Sala'
   const channelPayload = {
     name: roomName,
@@ -149,11 +158,11 @@ export async function syncProjectRoomOpsChannel(params: {
       return [String(data.userId || ''), doc]
     })
   )
-  const nextMemberIds = new Set(resolvedMembers.map((member) => member.userId))
+  const nextMemberIds = new Set(finalMembers.map((member) => member.userId))
 
   const batch = db.batch()
 
-  for (const member of resolvedMembers) {
+  for (const member of finalMembers) {
     const ref = db.collection('channelMembers').doc(`${channelId}_${member.userId}`)
     const existing = existingByUserId.get(member.userId)
     const currentData = existing?.data() as Record<string, unknown> | undefined
@@ -195,4 +204,51 @@ export async function syncProjectRoomOpsChannel(params: {
     rooms,
     channelId,
   }
+}
+
+export function roomParticipantsFingerprint(room: ProjectRoomLike): string {
+  return [...(Array.isArray(room.participants) ? room.participants : [])]
+    .map((name) => String(name || '').trim())
+    .filter(Boolean)
+    .sort()
+    .join('|')
+}
+
+export async function syncProjectRoomsWithChangedParticipants(params: {
+  projectId: string
+  project: ProjectLike
+  currentRooms: ProjectRoomLike[]
+  nextRooms: ProjectRoomLike[]
+}) {
+  const { projectId, project, currentRooms, nextRooms } = params
+  const currentById = new Map(currentRooms.map((room) => [String(room.id || ''), room]))
+
+  const roomsToSync = nextRooms.filter((room) => {
+    const roomId = String(room.id || '')
+    if (!roomId) return false
+    if (!String(room.opsChannelId || '').trim()) return true
+    const current = currentById.get(roomId)
+    if (!current) return true
+    return roomParticipantsFingerprint(room) !== roomParticipantsFingerprint(current)
+  })
+
+  if (roomsToSync.length === 0) return
+
+  let workingRooms = [...nextRooms]
+  for (const room of roomsToSync) {
+    const roomId = String(room.id || '')
+    const result = await syncProjectRoomOpsChannel({
+      project: { ...project, rooms: workingRooms },
+      roomId,
+    })
+    workingRooms = result.rooms as ProjectRoomLike[]
+  }
+
+  await db.collection('projects').doc(projectId).set(
+    {
+      rooms: workingRooms,
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  )
 }

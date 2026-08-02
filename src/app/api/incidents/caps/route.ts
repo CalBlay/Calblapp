@@ -1,20 +1,14 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
-import { canAccessIncidentsModule } from '@/lib/incidentPolicy'
 import { capDepartmentMatchesIncidentOrigin } from '@/lib/incidentOriginDepartments'
+import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
 import { normalizeRole } from '@/lib/roles'
 
 /** Caps de departament (rol `cap`) per assignar accions derivades, filtrats per departament d’origen. */
 export async function GET(req: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canAccessIncidentsModule(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsModuleView()
+    if (!auth.ok) return auth.res
 
     const { searchParams } = new URL(req.url)
     const deptRaw = String(searchParams.get('department') || '').trim()

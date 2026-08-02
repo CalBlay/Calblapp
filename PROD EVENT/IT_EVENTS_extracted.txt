@@ -1,0 +1,88 @@
+Document d'Arquitectura Tècnica: Sistema de Gestió d'Esdeveniments
+Data: 18 de Juny de 2026 Autor: Manus AI
+1. Introducció
+El present document descriu la proposta d'arquitectura tècnica per a un nou sistema informàtic de gestió d'esdeveniments, dissenyat per optimitzar els processos des de la venda comercial fins a la logística i producció. L'objectiu principal és integrar la informació actualment dispersa en fitxers Excel, com plantillasevents.xlsx i ArticlesAPP.xlsx, en una plataforma unificada que millori l'eficiència operativa, redueixi errors i faciliti la presa de decisions.
+2. Objectiu del Sistema
+L'objectiu principal és establir un sistema robust que permeti:
+Centralitzar la informació: Unificar dades de plantilles d'esdeveniments, articles, estocs i processos.
+Automatitzar la planificació: Generar llistes de necessitats (materials, producció) de forma automàtica basant-se en les seleccions comercials i el nombre de comensals.
+Optimitzar la gestió d'estocs: Implementar un sistema de reserves intel·ligent que permeti la venda flexible sense comprometre l'estoc real fins a la confirmació final.
+Millorar l'eficiència logística: Facilitar la preparació i distribució del material per zones de l'esdeveniment, minimitzant la manipulació innecessària.
+Proporcionar traçabilitat: Registrar el flux de material des del magatzem fins a l'esdeveniment i el seu retorn.
+3. Arquitectura de Dades Proposada
+La base del sistema es fonamentarà en una estructura de dades relacional que aprofiti la jerarquia existent en el fitxer ArticlesAPP.xlsx (Grup, Família, Subfamília) i la complementi amb noves entitats per a la gestió d'esdeveniments i reserves.
+3.1. Entitats Clau de la Base de Dades
+A. Taula Articles (Basada en ArticlesAPP.xlsx)
+Camps principals: Codi (PK), Nom, U.Compra, Codi Magatzem, Grup, Nom Grup Magatzem, Familia, Nom familia, Codi Subfamilia, Nom Subfamilia.
+Addicions proposades:
+EstocActual: Quantitat física disponible.
+EstocReservatSoft: Quantitat reservada per a esdeveniments en fase de pressupost/prova.
+EstocReservatHard: Quantitat reservada per a esdeveniments confirmats.
+UbicacioMagatzem: Detall de la localització física.
+PermetReservaGenerica (BOOLEAN): Indica si aquest article pot ser considerat com a part d'una subfamília per a reserves genèriques (útil per a articles molt específics que no haurien d'entrar en el pool genèric).
+B. Taula PlantillesServei (Basada en plantillasevents.xlsx)
+Camps principals: IDPlantilla (PK), NomPlantilla, Descripcio.
+Relació: Molts a molts amb PlantillaArticleDetall.
+C. Taula PlantillaArticleDetall
+Camps principals: IDPlantilla (FK), CodiArticle (FK a Articles), CodiSubfamilia (FK a Articles), QuantitatBase, TipusCalcul (Fix, PerComensal, PerEsdeveniment), AreaEvento (SALA, CUINA, APERITIU, etc.).
+Funció: Defineix els components de cada plantilla de servei, permetent referenciar tant articles concrets com subfamílies per a càlculs genèrics.
+D. Taula Esdeveniments
+Camps principals: IDEsdeveniment (PK), NomEsdeveniment, DataEsdeveniment, Client, Lloc, Estat (Pressupost, ProvaMenú, Confirmat, Finalitzat).
+E. Taula EsdevenimentServei
+Camps principals: IDEsdeveniment (FK), IDPlantilla (FK), NumComensals, HorariInici, HorariFi.
+Funció: Vincula les plantilles de servei a un esdeveniment concret, permetent múltiples serveis per esdeveniment.
+F. Taula EsdevenimentArticleReserva
+Camps principals: IDEsdeveniment (FK), CodiArticle (FK), CodiSubfamilia (FK), QuantitatReservada, TipusReserva (SOFT, HARD), AreaDestinacio.
+Funció: Registra les reserves d'estoc, permetent la transició de reserves genèriques (SOFT) a reserves d'articles concrets (HARD) un cop confirmades les eleccions.
+3.2. Relacions Clau
+Esdeveniments 1:N EsdevenimentServei
+PlantillesServei 1:N PlantillaArticleDetall
+Articles 1:N PlantillaArticleDetall (via CodiArticle o CodiSubfamilia)
+Esdeveniments 1:N EsdevenimentArticleReserva
+Articles 1:N EsdevenimentArticleReserva
+4. Flux de Treball Integrat per Departaments
+El sistema haurà de suportar un flux de treball que abasti tot el cicle de vida d'un esdeveniment, amb mòduls i funcionalitats específiques per a cada departament.
+4.1. Mòdul Comercial (Venda i Prova de Menú)
+Creació d'Esdeveniment: El comercial inicia un nou esdeveniment, introduint dades bàsiques (client, data, lloc).
+Configuració de Serveis (Event Builder): Interfície visual per afegir serveis a l'esdeveniment. Cada servei carregarà les seves plantilles associades, que al seu torn generaran una llista de necessitats d'articles/subfamílies.
+Reserva Tova (Soft-Lock): En aquesta fase, el sistema realitza reserves a nivell de CodiSubfamilia (o Grup/Família si es defineix així) en la taula EsdevenimentArticleReserva amb TipusReserva = 'SOFT'. L'estoc real dels articles individuals no es veu afectat directament, però el sistema calcula la disponibilitat agregada per subfamília.
+Prova de Menú: Interfície optimitzada per a la selecció final d'articles. Un cop el client tria, el sistema realitza les següents accions:
+Alliberament: Les reserves SOFT dels articles/subfamílies no seleccionats s'eliminen o es marquen com a alliberades.
+Bloqueig Dur (Hard-Lock): Es creen noves reserves en EsdevenimentArticleReserva amb TipusReserva = 'HARD' per als articles concrets seleccionats, afectant directament l'EstocReservatHard dels articles individuals a la taula Articles.
+4.2. Mòdul de Producció (Planificació i Validació)
+Consolidació de Necessitats: El sistema consolida totes les necessitats d'articles (HARD-LOCK) per a un esdeveniment, sumant les quantitats de tots els serveis seleccionats.
+Alertes d'Estoc i Col·lisions: El sistema compara les necessitats consolidades amb l'EstocActual i l'EstocReservatHard dels articles. Genera alertes en cas de dèficit o conflictes amb altres esdeveniments confirmats.
+Validació de Producció: Un cop resoltes les alertes, Producció valida l'esdeveniment, generant les ordres de treball definitives per a Logística i Cuina.
+4.3. Mòdul de Logística (Preparació i Expedició)
+Llista de Picking per Destinació: El sistema genera una llista de picking detallada, agrupant els articles per AreaDestinacio (SALA, CUINA, APERITIU, etc.) i per ordre de càrrega/descàrrega (considerant l'horari dels serveis).
+Etiquetatge Intel·ligent: Generació d'etiquetes amb codis de barres/QR per a cada unitat de càrrega (caixa, gàbia, palet), indicant l'esdeveniment, la zona de destinació i el contingut principal.
+Gestió de Càrrega: Interfície per registrar la càrrega del material al camió, validant amb escàner.
+4.4. Mòdul de Cuina (Elaboració)
+Full de Producció Consolidat: Generació de fulls de producció per a cada partida (freds, calents, pastisseria), consolidant les necessitats de matèries primeres per a tots els esdeveniments del dia.
+Fitxes Tècniques: Vinculació amb fitxes tècniques de receptes i processos d'elaboració.
+4.5. Mòdul d'Execució i Retorn
+Check-in a Destí: El personal de servei a la finca pot escanejar les unitats de càrrega per confirmar la recepció a la zona correcta.
+Recollida i Retorn: Interfície per registrar la recollida del material a la finca.
+Check-out a Magatzem: Al retorn a la central, el sistema permet registrar el material retornat. En cas de diferències amb el material expedit, es genera automàticament una incidència de trencament/pèrdua associada a l'esdeveniment i l'article.
+Actualització d'Estoc: El material retornat i revisat torna a l'EstocActual i s'allibera de l'EstocReservatHard.
+5. Consideracions Tècniques Clau
+Tecnologia de Base de Dades: Es recomana una base de dades relacional (SQL Server, PostgreSQL, MySQL) per la complexitat de les relacions i la integritat referencial necessària.
+Tecnologies Frontend: Aplicació web responsiva (React, Angular, Vue.js) per garantir l'accessibilitat des de diferents dispositius (ordinadors, tauletes, mòbils).
+Tecnologies Backend: API RESTful (Node.js, Python/Django/Flask, .NET Core) per gestionar la lògica de negoci i la interacció amb la base de dades.
+Gestió d'Estocs: Implementació de transaccions atòmiques per garantir la consistència de l'estoc durant les operacions de reserva i alliberament.
+Informes i Analítiques: Integració amb eines de Business Intelligence (Power BI, Tableau) o mòduls d'informes interns per analitzar costos, trencaments, ús de material, etc.
+Seguretat: Implementació de controls d'accés basats en rols (RBAC) per a cada mòdul i funcionalitat.
+6. Beneficis Esperats
+La implementació d'aquest sistema aportarà beneficis significatius:
+Reducció d'errors: Minimització d'errors humans en càlculs i preparació.
+Optimització de recursos: Millor aprofitament de l'estoc i reducció de la necessitat de lloguers d'última hora.
+Major eficiència operativa: Agilització dels processos de picking, càrrega i descàrrega.
+Millora de la satisfacció del client: Major precisió en la preparació i execució dels esdeveniments.
+Dades per a la presa de decisions: Informació fiable per a l'anàlisi de rendibilitat i la gestió d'inventari.
+7. Properes Passos
+Es suggereixen els següents passos per a la implementació:
+Validació de Requisits: Revisió detallada d'aquest document amb els usuaris clau de cada departament.
+Disseny Detallat de Base de Dades: Creació del model de dades lògic i físic.
+Selecció de Tecnologies: Confirmació de l'stack tecnològic.
+Desenvolupament per Fases: Implementació modular, començant pels mòduls de dades mestres i comercial.
+Formació d'Usuaris: Capacitació del personal en l'ús del nou sistema.

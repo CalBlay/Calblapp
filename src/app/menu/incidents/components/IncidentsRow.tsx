@@ -2,17 +2,18 @@
 'use client'
 
 import React from 'react'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { Incident } from '@/hooks/useIncidents'
+import { Incident, type IncidentAction } from '@/hooks/useIncidents'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
-import { Camera, ListChecks, Trash2 } from 'lucide-react'
+import { Camera, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import IncidentOperationsPanel from './IncidentOperationsPanel'
 
 declare global {
   interface Window {
@@ -26,19 +27,28 @@ interface Props {
   /** Referències estables (per `React.memo`): la fila passa `inc` a la crida. */
   beginEdit: (row: Incident) => void
   applyPatch: (id: string, d: Partial<Incident>) => void | Promise<unknown>
-  openOps: (row: Incident) => void
+  opsExpanded: boolean
+  onToggleOps: (row: Incident) => void
+  onIncidentPatch: (id: string, d: Partial<Incident>) => Promise<unknown>
+  onIncidentLocalPatch: (id: string, d: Partial<Incident>) => void
+  initialActions?: IncidentAction[]
+  onIncidentActionsLocalPatch: (id: string, actions: IncidentAction[]) => void
   openImages: (row: Incident) => void
   canDelete: boolean
+  canEditCategory: boolean
+  categoryOptions: Array<{ id: string; label: string }>
   onDelete: (row: Incident) => void
   editValues: {
     description?: string
     originDepartment?: string
     priority?: string
+    status?: string
+    categoryId?: string
   }
   setEditValues: (
     updater: (
-      prev: { description?: string; originDepartment?: string; priority?: string }
-    ) => { description?: string; originDepartment?: string; priority?: string }
+      prev: { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
+    ) => { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
   ) => void
 }
 
@@ -47,9 +57,16 @@ function IncidentsRow({
   isEditing,
   beginEdit,
   applyPatch,
-  openOps,
+  opsExpanded,
+  onToggleOps,
+  onIncidentPatch,
+  onIncidentLocalPatch,
+  initialActions,
+  onIncidentActionsLocalPatch,
   openImages,
   canDelete,
+  canEditCategory,
+  categoryOptions,
   onDelete,
   editValues,
   setEditValues,
@@ -74,6 +91,10 @@ function IncidentsRow({
 
   const cell = cn(typography('bodySm'), 'p-2')
   const cellTrunc = cn(cell, 'truncate')
+  const incidentDescRead = cn(
+    'max-h-36 min-h-[2.75rem] overflow-y-auto overscroll-contain rounded-lg border border-slate-100/90 bg-slate-50/60 px-3 py-2.5',
+    'text-base font-medium leading-relaxed text-slate-900 whitespace-pre-wrap'
+  )
 
   const workflow = normalizeIncidentStatus(inc.status)
   const statusLabel =
@@ -85,26 +106,32 @@ function IncidentsRow({
       ? 'Tancat'
       : 'Obert'
 
+  const colCount = 13
+
   return (
-    <tr
-      className="border-b last:border-0 hover:bg-slate-50"
-      onClick={() => !isEditing && beginEdit(inc)}
-    >
+    <>
+      <tr
+        id={`incident-row-${inc.id}`}
+        className={cn(
+          'border-b hover:bg-slate-50',
+          !opsExpanded && 'last:border-0'
+        )}
+        onClick={() => !isEditing && beginEdit(inc)}
+      >
       <td className="p-1 align-middle">
-        <Button
+        <button
           type="button"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 shrink-0 text-slate-600"
-          title="Seguiment i accions"
-          aria-label="Seguiment i accions"
           onClick={(e) => {
             e.stopPropagation()
-            openOps(inc)
+            onToggleOps(inc)
           }}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50"
+          title={opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'}
+          aria-label={opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'}
+          aria-expanded={opsExpanded}
         >
-          <ListChecks className="h-4 w-4" />
-        </Button>
+          {opsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
       </td>
       {/* Nº */}
       <td className="p-1 align-middle">
@@ -173,33 +200,59 @@ function IncidentsRow({
       </td>
 
       {/* Estat */}
-      <td className={cell} onClick={(e) => e.stopPropagation()}>
-        <Badge
-          className={cn(
-            typography('bodyXs'),
-            'px-2 py-0.5',
-            workflow === 'obert' && 'bg-amber-100 text-amber-800',
-            workflow === 'en_curs' && 'bg-blue-100 text-blue-800',
-            workflow === 'resolt' && 'bg-emerald-100 text-emerald-800',
-            workflow === 'tancat' && 'bg-slate-200 text-slate-700'
-          )}
-        >
-          {statusLabel}
-        </Badge>
+      <td
+        className={cell}
+        onClick={(e) => {
+          if (isEditing) {
+            e.stopPropagation()
+            return
+          }
+          beginEdit(inc)
+        }}
+      >
+        {isEditing ? (
+          <Select
+            value={editValues.status || workflow}
+            onValueChange={(val) => {
+              setEditValues((v) => ({ ...v, status: val }))
+              void applyPatch(inc.id, { status: val })
+            }}
+          >
+            <SelectTrigger onClick={(e) => e.stopPropagation()}>
+              <SelectValue placeholder="Estat" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="obert">Obert</SelectItem>
+              <SelectItem value="en_curs">En curs</SelectItem>
+              <SelectItem value="resolt">Resolt</SelectItem>
+              <SelectItem value="tancat">Tancat</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge
+            className={cn(
+              typography('bodyXs'),
+              'px-2 py-0.5',
+              workflow === 'obert' && 'bg-amber-100 text-amber-800',
+              workflow === 'en_curs' && 'bg-blue-100 text-blue-800',
+              workflow === 'resolt' && 'bg-emerald-100 text-emerald-800',
+              workflow === 'tancat' && 'bg-slate-200 text-slate-700'
+            )}
+          >
+            {statusLabel}
+          </Badge>
+        )}
       </td>
 
       {/* Incidència (editable) */}
-      <td className={cellTrunc}>
+      <td className="p-2 align-top">
         {isEditing ? (
-          <Input
+          <Textarea
             value={editValues.description}
+            rows={3}
+            className="max-h-36 min-h-[2.75rem] resize-y text-base font-medium leading-relaxed text-slate-900"
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => setEditValues((v) => ({ ...v, description: e.target.value }))}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                void applyPatch(inc.id, { description: e.currentTarget.value })
-              }
-            }}
             onBlur={(e) => {
               if (e.currentTarget.value !== inc.description) {
                 void applyPatch(inc.id, { description: e.currentTarget.value })
@@ -207,12 +260,58 @@ function IncidentsRow({
             }}
           />
         ) : (
-          inc.description
+          <div
+            className={incidentDescRead}
+            onClick={(e) => e.stopPropagation()}
+            title={inc.description || undefined}
+          >
+            {inc.description || '—'}
+          </div>
         )}
       </td>
 
-      <td className={cellTrunc}>
-        {inc.category?.label || inc.category?.id || '—'}
+      <td
+        className={cellTrunc}
+        onClick={(e) => {
+          if (isEditing) {
+            e.stopPropagation()
+            return
+          }
+          beginEdit(inc)
+        }}
+      >
+        {isEditing && canEditCategory ? (
+          <Select
+            value={editValues.categoryId || inc.category?.id || ''}
+            onValueChange={(val) => {
+              setEditValues((v) => ({ ...v, categoryId: val }))
+              const selected = categoryOptions.find((option) => option.id === val)
+              if (!selected) return
+              void applyPatch(inc.id, { category: { id: selected.id, label: selected.label } })
+            }}
+          >
+            <SelectTrigger onClick={(e) => e.stopPropagation()}><SelectValue placeholder="Categoria" /></SelectTrigger>
+            <SelectContent>
+              {categoryOptions.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          inc.category?.label || inc.category?.id || '—'
+        )}
+      </td>
+
+      <td className={cell} onClick={(e) => e.stopPropagation()}>
+        {inc.actionsCount ? (
+          <span className="inline-flex min-w-10 items-center justify-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800">
+            {inc.actionsCount}
+          </span>
+        ) : (
+          <span className={cn(typography('bodyXs'), 'text-slate-300')}>—</span>
+        )}
       </td>
 
       {/* Origen */}
@@ -282,6 +381,20 @@ function IncidentsRow({
         )}
       </td>
     </tr>
+      {opsExpanded ? (
+        <tr className="border-b last:border-0 bg-gradient-to-b from-amber-50/25 to-slate-50/40">
+          <td colSpan={colCount} className="border-t border-slate-200 bg-slate-50/50 px-3 py-2">
+            <IncidentOperationsPanel
+              incident={inc}
+              onIncidentPatch={onIncidentPatch}
+              onIncidentLocalPatch={onIncidentLocalPatch}
+              initialActions={initialActions}
+              onIncidentActionsLocalPatch={onIncidentActionsLocalPatch}
+            />
+          </td>
+        </tr>
+      ) : null}
+    </>
   )
 }
 

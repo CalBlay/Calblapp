@@ -57,7 +57,8 @@ export default function EventKitchenDocumentsModal({
     eventId,
     eventCode || undefined,
     FIELD_PREFIX,
-    refresh
+    refresh,
+    open
   )
 
   const existingKeys = docs.map((d) => d.id)

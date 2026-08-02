@@ -1,16 +1,42 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { endOfWeek, format, parseISO, startOfWeek } from 'date-fns'
+import {
+  getCurrentMaintenanceWeekRange,
+  matchesMaintenanceTicketDateFilter,
+  type MaintenanceDateFilterMode,
+} from '@/lib/maintenanceDateFilter'
 import { useSession } from 'next-auth/react'
-import { isMaintenanceCapDepartment } from '@/lib/accessControl'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import {
+  isExternalMaintenanceTicketReporter,
+} from '@/lib/accessControl'
+import {
+  getExternalReporterTicketBucket,
+  getMaintenanceTicketScope,
+  matchesMaintenanceTicketScope,
+  matchesExternalReporterTicketBucket,
+  resolveDefaultTicketCenterFromUserName,
+  resolveDefaultTicketLocationFromUserName,
+  type ExternalReporterTicketBucket,
+} from '@/lib/maintenanceTicketCreators'
 import { normalizeRole } from '@/lib/roles'
 import type { Ticket, TicketPriority, TicketStatus } from './types'
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import { useMaintenanceTicketCatalog } from './useMaintenanceTicketCatalog'
 import { useMaintenanceTicketComposer } from './useMaintenanceTicketComposer'
 import { normalizeName } from '@/app/menu/manteniment/preventius/planificador/utils'
+import {
+  canCreatorValidateMaintenanceTicket,
+} from '@/lib/maintenanceTicketValidation'
+import {
+  MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
+  MAINTENANCE_TICKETS_REOPEN_PERM,
+  MAINTENANCE_TICKETS_VALIDATE_PERM,
+} from '@/lib/maintenanceTicketsPermissions'
+import { matchesMaintenanceSiteFilters } from '@/lib/maintenanceLocationCatalog'
 
 type SessionUser = {
   id?: string
+  name?: string
   role?: string
   department?: string
 }
@@ -24,6 +50,15 @@ type AvailabilityItem = {
   name?: string
 }
 
+type InternalTicketBucket =
+  | 'inbox'
+  | 'planned'
+  | 'in_progress'
+  | 'waiting'
+  | 'validation'
+  | 'external'
+  | 'closed'
+
 const normalizeDept = (raw?: string) =>
   (raw || '')
     .toString()
@@ -32,20 +67,81 @@ const normalizeDept = (raw?: string) =>
     .toLowerCase()
     .trim()
 
+function classifyInternalTicketBucket(ticket: Ticket): InternalTicketBucket | null {
+  if (ticket.externalized) return 'external'
+  if (
+    ticket.status === 'validat' ||
+    ticket.workflowStage === 'resolved_admin' ||
+    ticket.workflowStage === 'resolved_planner' ||
+    ticket.workflowStage === 'closed'
+  ) {
+    return 'closed'
+  }
+  if (ticket.status === 'fet') return 'validation'
+  if (
+    (
+      (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' ||
+      ticket.workflowStage === 'planned_internal'
+    ) &&
+    ticket.status === 'espera'
+  ) {
+    return 'waiting'
+  }
+  if (
+    (
+      (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' ||
+      ticket.workflowStage === 'planned_internal'
+    ) &&
+    ticket.status === 'en_curs'
+  ) {
+    return 'in_progress'
+  }
+  if (
+    (
+      (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' ||
+      ticket.workflowStage === 'planned_internal'
+    ) &&
+    ticket.status === 'assignat'
+  ) {
+    return 'planned'
+  }
+  if (
+    (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
+    (
+      ticket.status === 'nou' ||
+      ticket.status === 'no_fet' ||
+      ticket.status === 'reassignat' ||
+      ticket.status === 'assignat'
+    )
+  ) {
+    return 'inbox'
+  }
+  return null
+}
+
 export function useMaintenanceTickets() {
   const { data: session } = useSession()
   const sessionUser = (session?.user || {}) as SessionUser
   const role = normalizeRole(sessionUser.role || '')
   const department = normalizeDept(sessionUser.department || '')
   const userId = sessionUser.id || ''
+  const { hasAction } = useUiPermissions()
 
-  const isMaintenanceCap = role === 'cap' && isMaintenanceCapDepartment(department)
-  const canValidate = role === 'admin' || isMaintenanceCap
-  const canReopen = canValidate
-  const canExternalize =
-    role === 'admin' ||
-    role === 'direccio' ||
-    (role === 'cap' && isMaintenanceCapDepartment(department))
+  const isExternalReporter = isExternalMaintenanceTicketReporter({
+    role,
+    department,
+  })
+  const canValidate = hasAction(MAINTENANCE_TICKETS_VALIDATE_PERM)
+  const canReopen = hasAction(MAINTENANCE_TICKETS_REOPEN_PERM)
+  const canCapValidateTicket = useCallback(
+    (_ticket: Ticket) => canValidate,
+    [canValidate]
+  )
+  const canCreatorValidateTicket = useCallback(
+    (ticket: Ticket) => canCreatorValidateMaintenanceTicket(ticket, userId),
+    [userId]
+  )
+  const canExternalize = hasAction(MAINTENANCE_TICKETS_EXTERNALIZE_PERM)
 
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(false)
@@ -55,23 +151,30 @@ export function useMaintenanceTickets() {
   const [loadingMoreTickets, setLoadingMoreTickets] = useState(false)
 
   const initial: FiltersState = useMemo(() => {
-    const start = startOfWeek(new Date(), { weekStartsOn: 1 })
-    const end = endOfWeek(new Date(), { weekStartsOn: 1 })
+    const { start, end } = getCurrentMaintenanceWeekRange()
     return {
-      start: format(start, 'yyyy-MM-dd'),
-      end: format(end, 'yyyy-MM-dd'),
-      dateMode: 'all',
+      start,
+      end,
+      dateMode: 'planned',
       status: '__all__',
       priority: '__all__',
+      center: '__all__',
       location: '__all__',
+      zone: '__all__',
+      ticketBucket: '__all__',
+      ticketScope: '__all__',
     }
   }, [])
 
   const [filters, setFilters] = useState<FiltersState>(initial)
   const statusFilter = filters.status ?? '__all__'
   const priorityFilter = filters.priority ?? '__all__'
+  const centerFilter = filters.center ?? '__all__'
   const locationFilter = filters.location ?? '__all__'
-  const dateModeFilter = filters.dateMode ?? 'all'
+  const zoneFilter = filters.zone ?? '__all__'
+  const dateModeFilter = (filters.dateMode ?? 'planned') as MaintenanceDateFilterMode
+  const ticketBucketFilter = filters.ticketBucket ?? '__all__'
+  const ticketScopeFilter = filters.ticketScope ?? '__all__'
 
   const [selected, setSelected] = useState<Ticket | null>(null)
   const [assignBusy, setAssignBusy] = useState(false)
@@ -90,7 +193,20 @@ export function useMaintenanceTickets() {
   const [detailsDescription, setDetailsDescription] = useState('')
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
 
-  const { locations, machines, maintenanceUsers, furgonetes } = useMaintenanceTicketCatalog()
+  const { locations, centers, machines, maintenanceUsers, furgonetes } = useMaintenanceTicketCatalog()
+
+  const defaultCreateLocation = useMemo(
+    () => resolveDefaultTicketLocationFromUserName(sessionUser.name, locations) || '',
+    [locations, sessionUser.name]
+  )
+  const defaultCreateCenter = useMemo(() => {
+    const centerNames = centers.map((center) => center.name).filter(Boolean)
+    return resolveDefaultTicketCenterFromUserName(sessionUser.name, centerNames) || ''
+  }, [centers, sessionUser.name])
+  const defaultCreateWorkerName = useMemo(() => {
+    if (defaultCreateCenter) return ''
+    return String(sessionUser.name || '').trim()
+  }, [defaultCreateCenter, sessionUser.name])
 
   const fetchTickets = useCallback(
     async (opts?: { append?: boolean; cursorCreatedAt?: number }) => {
@@ -110,10 +226,11 @@ export function useMaintenanceTickets() {
         params.set('ticketType', 'maquinaria')
         if (statusFilter !== '__all__') params.set('status', statusFilter)
         if (priorityFilter !== '__all__') params.set('priority', priorityFilter)
-        if (locationFilter !== '__all__') params.set('location', locationFilter)
-        if (filters.start) params.set('start', filters.start)
-        if (filters.end) params.set('end', filters.end)
-        if (dateModeFilter !== 'all') params.set('dateMode', dateModeFilter)
+        if (dateModeFilter === 'planned') {
+          if (filters.start) params.set('start', filters.start)
+          if (filters.end) params.set('end', filters.end)
+          params.set('dateMode', 'planned')
+        }
         if (cursorCreatedAt && cursorCreatedAt > 0) {
           params.set('cursorCreatedAt', String(cursorCreatedAt))
         }
@@ -145,40 +262,60 @@ export function useMaintenanceTickets() {
         }
       }
     },
-    [dateModeFilter, filters.end, filters.start, locationFilter, priorityFilter, statusFilter]
+    [dateModeFilter, filters.end, filters.start, priorityFilter, statusFilter]
   )
 
   const {
     showCreate,
     setShowCreate,
+    createCenter,
+    setCreateCenter,
+    centerQuery,
+    setCenterQuery,
     createLocation,
     setCreateLocation,
+    createZone,
+    setCreateZone,
     createMachine,
     setCreateMachine,
     locationQuery,
     setLocationQuery,
+    zoneQuery,
+    setZoneQuery,
     machineQuery,
     setMachineQuery,
+    showCenterList,
+    setShowCenterList,
     showLocationList,
     setShowLocationList,
+    showZoneList,
+    setShowZoneList,
     showMachineList,
     setShowMachineList,
     createDescription,
     setCreateDescription,
+    createWorkerName,
+    setCreateWorkerName,
+    needsWorkerName,
     createPriority,
     setCreatePriority,
-    createImages,
-    createImageCount,
-    maxTicketImages,
+    createAttachments,
+    createAttachmentCount,
+    maxTicketAttachments,
     createBusy,
-    imageError,
+    attachmentCompressing,
+    attachmentError,
     formError,
     canCreateTicket,
-    handleImageChange,
-    removeImage,
+    handleAttachmentChange,
+    removeAttachment,
     handleCreateTicket,
+    openCreate,
   } = useMaintenanceTicketComposer({
     refreshTickets: () => fetchTickets(),
+    defaultCenter: defaultCreateCenter,
+    defaultWorkerName: defaultCreateWorkerName,
+    defaultLocation: defaultCreateLocation,
   })
 
   useEffect(() => {
@@ -282,6 +419,7 @@ export function useMaintenanceTickets() {
         prev
           ? {
               ...prev,
+              status: 'assignat',
               assignedToIds: assignedIds,
               assignedToNames: assignedNames,
               plannedStart,
@@ -308,10 +446,43 @@ export function useMaintenanceTickets() {
     }
   }
 
+  const handleCreatorValidate = async (ticket: Ticket) => {
+    try {
+      const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ validationApproval: 'creator' }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await fetchTickets()
+      setSelected((prev) =>
+        prev && prev.id === ticket.id
+          ? {
+              ...prev,
+              creatorValidatedAt: Date.now(),
+              status: prev.capValidatedAt ? 'validat' : 'fet',
+            }
+          : prev
+      )
+    } catch (err: unknown) {
+      const error = err as ErrorWithMessage
+      alert(error?.message || "No s'ha pogut validar")
+    }
+  }
+
   const handleStatusChange = async (
     ticket: Ticket,
     status: TicketStatus,
-    meta?: { supplierResolvedAt?: number | null; note?: string | null }
+    meta?: {
+      supplierResolvedAt?: number | null
+      note?: string | null
+      validationApproval?: 'cap'
+      completionImages?: Array<{
+        url?: string | null
+        path?: string | null
+        meta?: { size?: number; type?: string; name?: string } | null
+      }>
+    }
   ) => {
     try {
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
@@ -321,6 +492,8 @@ export function useMaintenanceTickets() {
           status,
           supplierResolvedAt: meta?.supplierResolvedAt,
           statusNote: meta?.note,
+          validationApproval: meta?.validationApproval,
+          completionImages: meta?.completionImages,
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -524,7 +697,10 @@ export function useMaintenanceTickets() {
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
         method: 'DELETE',
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(String(json?.error || `HTTP ${res.status}`))
+      }
       await fetchTickets()
     } catch (err: unknown) {
       const error = err as ErrorWithMessage
@@ -557,6 +733,11 @@ export function useMaintenanceTickets() {
       area: 'administracio' | 'manteniment'
       category: string
       note: string
+      completionImages?: Array<{
+        url?: string | null
+        path?: string | null
+        meta?: { size?: number; type?: string; name?: string } | null
+      }>
     }
   ) => {
     try {
@@ -570,6 +751,7 @@ export function useMaintenanceTickets() {
           resolutionCategory: payload.category.trim() || null,
           resolutionNote: payload.note.trim() || null,
           statusNote: payload.note.trim() || `Resolt per ${payload.area}`,
+          completionImages: payload.completionImages,
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -582,7 +764,7 @@ export function useMaintenanceTickets() {
               resolvedByArea: payload.area,
               resolutionCategory: payload.category.trim() || null,
               resolutionNote: payload.note.trim() || null,
-              status: 'resolut',
+              status: 'fet',
             }
           : prev
       )
@@ -593,31 +775,37 @@ export function useMaintenanceTickets() {
   }
 
   const groupedTickets = useMemo(() => {
-    const start = parseISO(filters.start)
-    const end = new Date(parseISO(filters.end).getTime() + 24 * 60 * 60 * 1000)
-    const getFilterDate = (ticket: Ticket) => {
-      if (dateModeFilter === 'planned') return ticket.plannedStart || null
-      if (dateModeFilter === 'created') return ticket.createdAt || null
-      if (dateModeFilter === 'updated') {
-        const latest = (ticket.statusHistory || [])
-          .slice()
-          .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]?.at
-        return latest || ticket.assignedAt || ticket.createdAt || null
-      }
-      if (dateModeFilter === 'completed') {
-        return (ticket.statusHistory || [])
-          .filter((entry) => entry.status === 'validat' || entry.status === 'resolut')
-          .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]?.at || null
-      }
-      return ticket.plannedStart || ticket.assignedAt || ticket.createdAt || null
-    }
-    const inRange = tickets.filter((ticket) => {
-      if (dateModeFilter === 'all') return true
-      const base = getFilterDate(ticket)
-      const date = typeof base === 'string' ? new Date(base) : new Date(Number(base))
-      if (Number.isNaN(date.getTime())) return false
-      return date >= start && date <= end
-    })
+    const inRange = tickets
+      .filter((ticket) =>
+        matchesMaintenanceTicketDateFilter({
+          mode: dateModeFilter,
+          start: filters.start,
+          end: filters.end,
+          plannedStart: ticket.plannedStart,
+          createdAt: ticket.createdAt,
+        })
+      )
+      .filter((ticket) =>
+        isExternalReporter
+          ? matchesExternalReporterTicketBucket(ticket, ticketBucketFilter)
+          : matchesMaintenanceTicketScope(ticket, ticketScopeFilter)
+      )
+      .filter((ticket) =>
+        matchesMaintenanceSiteFilters(
+          centers,
+          {
+            center: centerFilter !== '__all__' ? centerFilter : '',
+            location: locationFilter !== '__all__' ? locationFilter : '',
+            zone: zoneFilter !== '__all__' ? zoneFilter : '',
+          },
+          ticket.workLocation,
+          ticket.location
+        )
+      )
+
+    const internalScoped = inRange.filter(
+      (ticket) => !ticket.externalized && matchesMaintenanceTicketScope(ticket, ticketScopeFilter)
+    )
 
     const sortTickets = (list: Ticket[]) =>
       [...list].sort((a, b) => {
@@ -646,21 +834,42 @@ export function useMaintenanceTickets() {
         return tb - ta
       })
 
-    const ticketsInbox = inRange.filter(
-      (ticket) =>
-        !ticket.externalized &&
-        (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
-        (ticket.status === 'nou' || ticket.status === 'no_fet' || ticket.status === 'assignat')
-    )
-    const plannerQueue = inRange.filter(
-      (ticket) =>
-        !ticket.externalized &&
-        (ticket.workflowStage || 'tickets_inbox') === 'planner_queue' &&
-        ticket.status !== 'validat' &&
-        ticket.status !== 'resolut'
-    )
+    if (isExternalReporter) {
+      const bucketSections: Array<{
+        key: ExternalReporterTicketBucket
+        title: string
+        note: string
+      }> = [
+        { key: 'nou', title: 'Nous', note: 'Pendents de gestio per manteniment' },
+        { key: 'assignat', title: 'Assignats', note: 'Amb operari i data prevista' },
+        { key: 'fet', title: 'Fets', note: 'Feina completada o tancada' },
+        { key: 'externalitzat', title: 'Externalitzats', note: 'Derivats a proveidor' },
+      ]
 
-    const sections = [
+      const sections = bucketSections.map((section) => ({
+        ...section,
+        items: sortTickets(
+          inRange.filter((ticket) => getExternalReporterTicketBucket(ticket) === section.key)
+        ),
+      }))
+
+      return sections.filter((section) => section.items.length > 0)
+    }
+
+    const ticketsInbox = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'inbox')
+    const plannedTickets = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'planned')
+    const inProgressTickets = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'in_progress')
+    const waitingTickets = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'waiting')
+    const pendingValidationTickets = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'validation')
+    const closedTickets = internalScoped.filter((ticket) => classifyInternalTicketBucket(ticket) === 'closed')
+    const externalizedTickets = inRange.filter((ticket) => ticket.externalized)
+
+    const sections: Array<{
+      key: InternalTicketBucket
+      title: string
+      note: string
+      items: Ticket[]
+    }> = [
       {
         key: 'inbox',
         title: 'Nous i per decidir',
@@ -669,69 +878,217 @@ export function useMaintenanceTickets() {
       },
       {
         key: 'planned',
-        title: 'Enviats al planificador',
-        note: 'Tickets derivats des de tickets o entrades directes de Cuina Central',
-        items: plannerQueue,
+        title: 'Planificats',
+        note: 'Tickets assignats o derivats, pendents de començar',
+        items: plannedTickets,
       },
       {
-        key: 'active',
-        title: 'En curs i en espera',
-        note: 'Feines obertes que ja s estan executant o bloquejades',
-        items: inRange.filter(
-          (ticket) =>
-            !ticket.externalized &&
-            (ticket.workflowStage === 'planned_internal' || ticket.workflowStage === 'planner_queue') &&
-            (ticket.status === 'assignat' || ticket.status === 'en_curs' || ticket.status === 'espera')
-        ),
+        key: 'in_progress',
+        title: 'En curs',
+        note: 'Feines que s estan executant ara mateix',
+        items: inProgressTickets,
+      },
+      {
+        key: 'waiting',
+        title: 'En espera',
+        note: 'Feines bloquejades o pendents d una accio externa',
+        items: waitingTickets,
       },
       {
         key: 'validation',
         title: 'Pendents de validar',
-        note: 'Tickets fets o resolts pendents de revisio final',
-        items: inRange.filter((ticket) => !ticket.externalized && (ticket.status === 'fet' || ticket.status === 'resolut')),
+        note: 'Tickets fets pendents de revisio final',
+        items: pendingValidationTickets,
       },
       {
         key: 'external',
         title: 'Externalitzats',
         note: 'Tickets derivats a proveidor',
-        items: inRange.filter((ticket) => ticket.externalized),
+        items: externalizedTickets,
       },
       {
         key: 'closed',
         title: 'Validats',
         note: 'Feines tancades i validades',
-        items: inRange.filter(
-          (ticket) =>
-            ticket.status === 'validat' ||
-            ticket.status === 'resolut' ||
-            ticket.workflowStage === 'resolved_admin' ||
-            ticket.workflowStage === 'resolved_planner' ||
-            ticket.workflowStage === 'closed'
-        ),
+        items: closedTickets,
       },
     ]
 
-    return sections
+    const filteredSections =
+      ticketBucketFilter !== '__all__'
+        ? sections.filter((section) => section.key === ticketBucketFilter)
+        : sections
+
+    return filteredSections
       .map((section) => ({ ...section, items: sortTickets(section.items) }))
       .filter((section) => section.items.length > 0)
-  }, [dateModeFilter, filters.end, filters.start, tickets])
+  }, [
+    centerFilter,
+    centers,
+    dateModeFilter,
+    filters.end,
+    filters.start,
+    isExternalReporter,
+    locationFilter,
+    ticketBucketFilter,
+    ticketScopeFilter,
+    tickets,
+    zoneFilter,
+  ])
 
-  const ticketSummary = useMemo(
-    () => ({
-      inbox: tickets.filter((ticket) => !ticket.externalized && (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox').length,
-      planned: tickets.filter((ticket) => !ticket.externalized && (ticket.workflowStage || '') === 'planner_queue').length,
-      active: tickets.filter((ticket) => !ticket.externalized && (ticket.status === 'assignat' || ticket.status === 'en_curs' || ticket.status === 'espera')).length,
-      pendingValidation: tickets.filter((ticket) => !ticket.externalized && (ticket.status === 'fet' || ticket.status === 'resolut')).length,
-      externalized: tickets.filter((ticket) => ticket.externalized).length,
-    }),
-    [tickets]
-  )
+  const externalReporterSummary = useMemo(() => {
+    const inRange = (ticket: Ticket) =>
+      matchesMaintenanceTicketDateFilter({
+        mode: dateModeFilter,
+        start: filters.start,
+        end: filters.end,
+        plannedStart: ticket.plannedStart,
+        createdAt: ticket.createdAt,
+      })
+
+    const countBucket = (bucket: ExternalReporterTicketBucket) =>
+      tickets.filter(
+        (ticket) =>
+          inRange(ticket) &&
+          matchesMaintenanceSiteFilters(
+            centers,
+            {
+              center: centerFilter !== '__all__' ? centerFilter : '',
+              location: locationFilter !== '__all__' ? locationFilter : '',
+              zone: zoneFilter !== '__all__' ? zoneFilter : '',
+            },
+            ticket.workLocation,
+            ticket.location
+          ) &&
+          getExternalReporterTicketBucket(ticket) === bucket
+      ).length
+
+    return {
+      nou: countBucket('nou'),
+      assignat: countBucket('assignat'),
+      fet: countBucket('fet'),
+      externalitzat: countBucket('externalitzat'),
+    }
+  }, [centerFilter, centers, dateModeFilter, filters.end, filters.start, locationFilter, tickets, zoneFilter])
+
+  const ticketSummary = useMemo(() => {
+    const inRange = (ticket: Ticket) =>
+      matchesMaintenanceTicketDateFilter({
+        mode: dateModeFilter,
+        start: filters.start,
+        end: filters.end,
+        plannedStart: ticket.plannedStart,
+        createdAt: ticket.createdAt,
+      })
+
+    const scopedInternalTickets = tickets.filter(
+      (ticket) =>
+        inRange(ticket) &&
+        matchesMaintenanceSiteFilters(
+          centers,
+          {
+            center: centerFilter !== '__all__' ? centerFilter : '',
+            location: locationFilter !== '__all__' ? locationFilter : '',
+            zone: zoneFilter !== '__all__' ? zoneFilter : '',
+          },
+          ticket.workLocation,
+          ticket.location
+        ) &&
+        matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
+        !ticket.externalized
+    )
+
+    return {
+      inbox: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'inbox').length,
+      planned: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'planned').length,
+      inProgress: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'in_progress').length,
+      waiting: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'waiting').length,
+      pendingValidation: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'validation').length,
+      externalized: tickets.filter(
+        (ticket) =>
+          inRange(ticket) &&
+          matchesMaintenanceSiteFilters(
+            centers,
+            {
+              center: centerFilter !== '__all__' ? centerFilter : '',
+              location: locationFilter !== '__all__' ? locationFilter : '',
+              zone: zoneFilter !== '__all__' ? zoneFilter : '',
+            },
+            ticket.workLocation,
+            ticket.location
+          ) &&
+          matchesMaintenanceTicketScope(ticket, ticketScopeFilter) &&
+          ticket.externalized
+      ).length,
+      closed: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'closed').length,
+    }
+  }, [
+    centerFilter,
+    centers,
+    dateModeFilter,
+    filters.end,
+    filters.start,
+    locationFilter,
+    ticketScopeFilter,
+    tickets,
+    zoneFilter,
+  ])
+
+  const ticketScopeSummary = useMemo(() => {
+    const counts: Record<'restaurants' | 'cuina_central' | 'centres_propis', number> = {
+      restaurants: 0,
+      cuina_central: 0,
+      centres_propis: 0,
+    }
+
+    tickets.forEach((ticket) => {
+      const inCurrentDateRange = matchesMaintenanceTicketDateFilter({
+        mode: dateModeFilter,
+        start: filters.start,
+        end: filters.end,
+        plannedStart: ticket.plannedStart,
+        createdAt: ticket.createdAt,
+      })
+      if (!inCurrentDateRange) return
+      if (
+        !matchesMaintenanceSiteFilters(
+          centers,
+          {
+            center: centerFilter !== '__all__' ? centerFilter : '',
+            location: locationFilter !== '__all__' ? locationFilter : '',
+            zone: zoneFilter !== '__all__' ? zoneFilter : '',
+          },
+          ticket.workLocation,
+          ticket.location
+        )
+      ) {
+        return
+      }
+
+      if (!classifyInternalTicketBucket(ticket) && !ticket.externalized) return
+      counts[getMaintenanceTicketScope(ticket)] += 1
+    })
+
+    return counts
+  }, [
+    centerFilter,
+    centers,
+    dateModeFilter,
+    filters.end,
+    filters.start,
+    locationFilter,
+    tickets,
+    zoneFilter,
+  ])
 
   return {
     role,
     department,
     userId,
+    isExternalReporter,
     canValidate,
+    canCapValidateTicket,
+    canCreatorValidateTicket,
     canReopen,
     canExternalize,
     tickets,
@@ -743,29 +1100,47 @@ export function useMaintenanceTickets() {
     filters,
     setFilters,
     locations,
+    centers,
     machines,
     showCreate,
     setShowCreate,
+    openCreate,
+    createCenter,
+    setCreateCenter,
+    centerQuery,
+    setCenterQuery,
     createLocation,
     setCreateLocation,
+    createZone,
+    setCreateZone,
     createMachine,
     setCreateMachine,
     locationQuery,
     setLocationQuery,
+    zoneQuery,
+    setZoneQuery,
     machineQuery,
     setMachineQuery,
+    showCenterList,
+    setShowCenterList,
     showLocationList,
     setShowLocationList,
+    showZoneList,
+    setShowZoneList,
     showMachineList,
     setShowMachineList,
     createDescription,
     setCreateDescription,
+    createWorkerName,
+    setCreateWorkerName,
+    needsWorkerName,
     createPriority,
     setCreatePriority,
-    createImageCount,
-    maxTicketImages,
+    createAttachmentCount,
+    maxTicketAttachments,
     createBusy,
-    imageError,
+    attachmentCompressing,
+    attachmentError,
     formError,
     canCreateTicket,
     selected,
@@ -797,9 +1172,18 @@ export function useMaintenanceTickets() {
     setDetailsPriority,
     maintenanceUsers,
     furgonetes,
-    createImagePreviews: createImages.map((image) => image.preview),
-    handleImageChange,
-    removeImage,
+    createAttachmentPreviews: createAttachments.map((item) => ({
+      preview: item.preview,
+      kind: item.kind,
+    })),
+    handleAttachmentChange,
+    removeAttachment,
+    createImageCount: createAttachmentCount,
+    maxTicketImages: maxTicketAttachments,
+    imageError: attachmentError,
+    createImagePreviews: createAttachments.map((item) => item.preview),
+    handleImageChange: handleAttachmentChange,
+    removeImage: removeAttachment,
     handleCreateTicket,
     handleAssign,
     handleStatusChange,
@@ -809,6 +1193,7 @@ export function useMaintenanceTickets() {
     handleExternalize,
     handleSendToPlanner,
     handleDirectResolution,
+    handleCreatorValidate,
     handleDelete,
     fetchMoreTickets: () =>
       nextTicketsCursor
@@ -816,5 +1201,7 @@ export function useMaintenanceTickets() {
         : Promise.resolve(),
     groupedTickets,
     ticketSummary,
+    externalReporterSummary,
+    ticketScopeSummary,
   }
 }

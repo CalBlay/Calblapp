@@ -8,6 +8,8 @@ export type QuadrantModalProps = {
   onSaved?: () => Promise<void>
 }
 
+import type { ServeiGroupRoleLine, VehicleAssignment } from '../phaseConfig'
+
 export type CuinaDriverAssignment = {
   vehicleType: string
   driverMode: string
@@ -19,14 +21,25 @@ export type CuinaGroup = {
   startTime: string
   arrivalTime: string
   endTime: string
+  /** Data del servei del grup (yyyy-MM-dd). */
+  serviceDate?: string
   workers: number
   drivers: number
   needsDriver: boolean
   wantsResponsible: boolean
   responsibleId: string
+  /** Nom del responsable (hidratació des de borrador / payload). */
+  responsibleName?: string
+  /** Conductor del grup quan ve del borrador. */
+  driverId?: string
+  driverName?: string
   driverMode: string
   vehicleType: string
   driverAssignments?: CuinaDriverAssignment[]
+  /** Línies d'assignació per rol (UI alineada amb Serveis/Logística). */
+  roleLines?: ServeiGroupRoleLine[]
+  /** Assignacions de vehicles per conductor (slotId vinculat a roleLines). */
+  vehicleAssignments?: VehicleAssignment[]
   /** Mode manual: igual que Serveis - IDs de slots de treballadors */
   workerIds?: string[]
   workerDetails?: Record<
@@ -38,6 +51,7 @@ export type CuinaGroup = {
       meetingPoint?: string
       startTime?: string
       endTime?: string
+      arrivalTime?: string
     }
   >
 }
@@ -79,6 +93,12 @@ export type PremisesResponse = {
   premises?: {
     surveyGroups?: Array<{ id: string; name: string; workerIds: string[] }>
     vestimentModels?: string[]
+    driverCrews?: Array<{
+      id?: string
+      driverId?: string
+      driverName?: string
+      companions?: Array<{ id?: string; name?: string }>
+    }>
   }
 }
 

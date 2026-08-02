@@ -15,10 +15,13 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import SearchFincaInput from '@/components/shared/SearchFincaInput'
 import SearchServeiInput from '@/components/shared/SearchServeiInput'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Mail } from 'lucide-react'
 import AttachFileButton from '@/components/calendar/AttachFileButton'
+import CalendarSendDocumentsDialog from '@/components/calendar/CalendarSendDocumentsDialog'
+import { displayCalendarFileName } from '@/lib/calendar/calendarFiles'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
+import { CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
 
 interface Props {
   date: string           // data de la casella clicada
@@ -85,7 +88,8 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [createdId, setCreatedId] = useState<string | null>(null)
-  const [files, setFiles] = useState<{ key: string; url: string }[]>([])
+  const [files, setFiles] = useState<{ key: string; url: string; name?: string }[]>([])
+  const [sendDocumentsOpen, setSendDocumentsOpen] = useState(false)
   const [multiDay, setMultiDay] = useState(false)
   const [comercialCandidates, setComercialCandidates] = useState<
     { name: string; department: string }[]
@@ -147,6 +151,21 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
     Comercial: '',
   })
 
+  const canSendEmail = useMemo(() => {
+    if (!permsReady) return canAttach
+    return uiActions[CALENDAR_PERM.sendDocuments] === true
+  }, [permsReady, uiActions, canAttach])
+  const canManageMailGroups = useMemo(() => {
+    if (!permsReady) return false
+    return uiActions[CALENDAR_PERM.manageMailGroups] === true
+  }, [permsReady, uiActions])
+  const canSendDocuments = Boolean(createdId) && canSendEmail && files.length > 0
+
+  const emailRecipientCandidates = useMemo(() => {
+    const comercial = String(formData.Comercial || '').trim()
+    return comercial ? [{ key: 'comercial', role: 'Comercial', name: comercial }] : []
+  }, [formData.Comercial])
+
   const handleChange = (
     field: keyof EventFormData,
     value: EventFormData[keyof EventFormData]
@@ -170,7 +189,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
     const load = async () => {
       try {
         setComercialLoading(true)
-        const res = await fetch('/api/users')
+        const res = await fetch('/api/users?view=commercial-options')
         const data = await res.json()
         if (!Array.isArray(data)) return
 
@@ -354,6 +373,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
         const filePayload: Record<string, string> = {}
         files.forEach((f) => {
           filePayload[f.key] = f.url
+          if (f.name) filePayload[`${f.key}Name`] = f.name
         })
 
         await fetch(`/api/calendar/manual/${data.id}`, {
@@ -409,6 +429,22 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
   }
 
   return (
+    <>
+      {createdId ? (
+        <CalendarSendDocumentsDialog
+          open={sendDocumentsOpen}
+          onOpenChange={setSendDocumentsOpen}
+          eventId={createdId}
+          collection="stage_verd"
+          eventTitle={formData.NomEvent}
+          eventCode={formData.code}
+          files={files}
+          recipientCandidates={emailRecipientCandidates}
+          eventLN={formData.LN}
+          canManageMailGroups={canManageMailGroups}
+        />
+      ) : null}
+
     <Dialog modal={false} open={open} onOpenChange={setOpen}>
       <DialogTrigger
         asChild
@@ -600,7 +636,10 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
               disabled={!createdId || !canEdit || !canAttach}
               existingKeys={files.map((f) => f.key)}
               onAdded={(att) => {
-                setFiles((prev) => [...prev, { key: att.key, url: att.url }])
+                setFiles((prev) => [
+                  ...prev,
+                  { key: att.key, url: att.url, name: att.name },
+                ])
               }}
             />
           </div>
@@ -610,7 +649,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
               <p className="text-sm text-gray-400 text-center">No hi ha documents afegits</p>
             ) : (
               <ul className="space-y-1">
-                {files.map(({ key, url }) => (
+                {files.map(({ key, url, name }) => (
                   <li
                     key={`${key}-${url}`}
                     className="flex items-center justify-between text-sm bg-white px-2 py-1 rounded-md shadow-sm hover:bg-gray-100"
@@ -622,7 +661,7 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
                       className="text-blue-600 hover:underline flex-1 break-all flex items-center gap-1"
                     >
                       <ExternalLink className="w-4 h-4 shrink-0" />
-                      {decodeURIComponent(url.split('/').pop() || url)}
+                      {displayCalendarFileName({ key, url, name })}
                     </a>
                     <Button
                       size="sm"
@@ -637,6 +676,18 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
               </ul>
             )}
           </div>
+
+          {canSendDocuments && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setSendDocumentsOpen(true)}
+            >
+              <Mail className="mr-2 h-4 w-4" />
+              Enviar documents per correu
+            </Button>
+          )}
         </div>
 
         <DialogFooter className="mt-4 flex flex-col gap-2">
@@ -665,5 +716,6 @@ export default function CalendarNewEventModal({ date, trigger, onSaved }: Props)
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   )
 }

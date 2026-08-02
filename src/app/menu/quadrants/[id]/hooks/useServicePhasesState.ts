@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import {
   ServeiGroup,
@@ -11,6 +12,17 @@ import {
   ServicePhaseSetting,
   servicePhaseOptions,
 } from '../phaseConfig'
+import {
+  countServiceGroupRoleLineTotals,
+  createEmptyRoleLine,
+  ensureGroupRoleLines,
+  getPrimaryServiceRoleLines,
+  syncGroupFromRoleLines,
+} from '../lib/serviceGroupRoleLines'
+import { hydrateServiceGroupsFromDraft } from '../lib/hydrateServiceGroupsFromDraft'
+import { resolveRoleLinesPersonIds } from '../lib/resolveRoleLinePersonIds'
+
+const EMPTY_PERSONNEL_POOLS: Array<{ id: string; name: string }> = []
 
 const extractDate = (iso = '') => iso.split('T')[0] || ''
 
@@ -26,6 +38,9 @@ type UseServicePhasesStateOptions = {
   endTime: string
   totalWorkers: number
   modalOpen: boolean
+  existingDraft?: EditorDraftInput | null
+  /** Pools de personal per resoldre ids en hidratar borradors (només nom desat). */
+  personnelPools?: Array<{ id: string; name: string }>
 }
 
 export type UseServicePhasesStateResult = {
@@ -115,25 +130,44 @@ export function useServicePhasesState({
   endTime,
   totalWorkers,
   modalOpen,
+  existingDraft,
+  personnelPools = EMPTY_PERSONNEL_POOLS,
 }: UseServicePhasesStateOptions): UseServicePhasesStateResult {
+  const personnelPoolIdsKey = useMemo(
+    () =>
+      personnelPools
+        .map((p) => String(p.id || '').trim())
+        .filter(Boolean)
+        .sort()
+        .join('|'),
+    [personnelPools]
+  )
   const defaultMeetingPoint = meetingPoint || location || event.eventLocation || ''
   const defaultServiceDate = extractDate(event.start)
 
-  const createServiceGroup = useCallback((phaseKey: ServicePhaseKey, seed: Partial<ServeiGroup> = {}) => ({
-    id: seed.id || makeGroupId(),
-    phaseKey,
-    serviceDate: seed.serviceDate || defaultServiceDate,
-    dateLabel: seed.dateLabel || '',
-    meetingPoint: seed.meetingPoint || defaultMeetingPoint,
-    startTime: seed.startTime || startTime || '',
-    endTime: seed.endTime || endTime || '',
-    workers: seed.workers ?? 0,
-    jamoneros: seed.jamoneros ?? 0,
-    wantsResponsible: seed.wantsResponsible ?? phaseKey === 'event',
-    responsibleId: seed.responsibleId || '',
-    needsDriver: seed.needsDriver ?? false,
-    driverId: seed.driverId || '',
-  }), [defaultMeetingPoint, defaultServiceDate, endTime, startTime])
+  const normalizeLoadedGroups = useCallback((groups: ServeiGroup[]) => {
+    return groups.map((group) => syncGroupFromRoleLines(group, ensureGroupRoleLines(group)))
+  }, [])
+
+  const createServiceGroup = useCallback((phaseKey: ServicePhaseKey, seed: Partial<ServeiGroup> = {}) => {
+    const base: ServeiGroup = {
+      id: seed.id || makeGroupId(),
+      phaseKey,
+      serviceDate: seed.serviceDate || defaultServiceDate,
+      dateLabel: seed.dateLabel || '',
+      meetingPoint: seed.meetingPoint || defaultMeetingPoint,
+      startTime: seed.startTime || startTime || '',
+      endTime: seed.endTime || endTime || '',
+      workers: seed.workers ?? 0,
+      jamoneros: seed.jamoneros ?? 0,
+      wantsResponsible: seed.wantsResponsible ?? phaseKey === 'event',
+      responsibleId: seed.responsibleId || '',
+      needsDriver: seed.needsDriver ?? false,
+      driverId: seed.driverId || '',
+    }
+    const roleLines = seed.roleLines?.length ? seed.roleLines : [createEmptyRoleLine(base, 'conductor')]
+    return syncGroupFromRoleLines(base, roleLines)
+  }, [defaultMeetingPoint, defaultServiceDate, endTime, startTime])
 
   const createServicePhaseGroups = useCallback(
     (overrides: Partial<ServeiGroup>[] = []) =>
@@ -156,6 +190,25 @@ export function useServicePhasesState({
 
   useEffect(() => {
     if (department.toLowerCase() !== 'serveis') return
+
+    if (existingDraft && modalOpen) {
+      const hydrated = hydrateServiceGroupsFromDraft(existingDraft, [])
+      setServicePhaseGroups(normalizeLoadedGroups(hydrated.groups))
+      setServiceJamoneroAssignments([])
+      setServicePhaseVisibility(hydrated.visibility)
+      setServicePhaseSettings(hydrated.settings)
+      setServicePhaseEtt(
+        buildServicePhaseEttState({
+          serviceDate: existingDraft.startDate || defaultServiceDate,
+          meetingPoint:
+            String(existingDraft.meetingPoint || '').trim() || defaultMeetingPoint,
+          startTime: existingDraft.startTime || startTime || '',
+          endTime: existingDraft.endTime || endTime || '',
+        })
+      )
+      return
+    }
+
     const overrides = servicePhaseOptions.map(() => ({
       serviceDate: defaultServiceDate,
       meetingPoint: defaultMeetingPoint,
@@ -163,7 +216,7 @@ export function useServicePhasesState({
       endTime: endTime || '',
       workers: totalWorkers,
     }))
-    setServicePhaseGroups(createServicePhaseGroups(overrides))
+    setServicePhaseGroups(normalizeLoadedGroups(createServicePhaseGroups(overrides)))
     setServiceJamoneroAssignments([])
     setServicePhaseVisibility(createServicePhaseVisibility())
     setServicePhaseSettings(createServicePhaseSettings())
@@ -175,7 +228,39 @@ export function useServicePhasesState({
         endTime: endTime || '',
       })
     )
-  }, [createServicePhaseGroups, department, defaultMeetingPoint, defaultServiceDate, startTime, endTime, totalWorkers, modalOpen])
+  }, [
+    createServicePhaseGroups,
+    department,
+    defaultMeetingPoint,
+    defaultServiceDate,
+    startTime,
+    endTime,
+    totalWorkers,
+    modalOpen,
+    existingDraft,
+    normalizeLoadedGroups,
+  ])
+
+  /** Quan carrega el personal, resol ids per nom sense re-hidratar tot el borrador. */
+  useEffect(() => {
+    if (department.toLowerCase() !== 'serveis') return
+    if (!existingDraft || !modalOpen || !personnelPoolIdsKey) return
+
+    setServicePhaseGroups((prev) => {
+      let changed = false
+      const next = prev.map((group) => {
+        const lines = ensureGroupRoleLines(group)
+        const resolved = resolveRoleLinesPersonIds(lines, personnelPools)
+        const idsChanged = resolved.some(
+          (line, index) => line.personId !== lines[index]?.personId
+        )
+        if (!idsChanged) return group
+        changed = true
+        return syncGroupFromRoleLines(group, resolved)
+      })
+      return changed ? next : prev
+    })
+  }, [department, existingDraft, modalOpen, personnelPoolIdsKey, personnelPools])
 
   const addServiceGroup = (phaseKey: ServicePhaseKey) => {
     setServicePhaseGroups((prev) => [...prev, createServiceGroup(phaseKey)])
@@ -185,9 +270,10 @@ export function useServicePhasesState({
     setServicePhaseGroups((prev) =>
       prev.map((group) => {
         if (group.id !== id) return group
-        const nextWorkers =
-          typeof patch.workers === 'number' ? Math.min(30, Math.max(0, patch.workers)) : group.workers
-        return { ...group, ...patch, workers: nextWorkers }
+        if (patch.roleLines) {
+          return syncGroupFromRoleLines({ ...group, ...patch }, patch.roleLines)
+        }
+        return { ...group, ...patch }
       })
     )
   }
@@ -232,19 +318,21 @@ export function useServicePhasesState({
   )
 
   const serviceTotals = useMemo(() => {
-    const activeResponsiblePhases = new Set(
-      activeServiceGroups
-        .filter((group) => group.wantsResponsible)
-        .map((group) => `${group.phaseKey}:${group.id}`)
-    )
-    return {
-      // Suma per fase activa: cada grup és el **total de persones** (resp + conductor + equip en un sol número; el jamonero compta dins).
-      workers: activeServiceGroups.reduce((sum, group) => sum + group.workers, 0),
-      jamoneros: serviceJamoneroAssignments.length,
-      drivers: activeServiceGroups.filter((group) => group.needsDriver).length,
-      responsables: activeResponsiblePhases.size,
-    }
-  }, [activeServiceGroups, serviceJamoneroAssignments])
+    let workers = 0
+    let jamoneros = 0
+    let drivers = 0
+    let responsables = 0
+
+    activeServiceGroups.forEach((group) => {
+      const totals = countServiceGroupRoleLineTotals(ensureGroupRoleLines(group))
+      workers += totals.workers
+      jamoneros += totals.jamoneros
+      drivers += totals.drivers
+      responsables += totals.responsables
+    })
+
+    return { workers, jamoneros, drivers, responsables }
+  }, [activeServiceGroups])
 
   const setServiceJamoneroCount = useCallback((count: number) => {
     const safeCount = Math.max(0, Number.isNaN(Number(count)) ? 0 : Number(count))
@@ -279,28 +367,46 @@ export function useServicePhasesState({
   const buildServiceGroupsPayload = useCallback(
     (manualResponsibleId: string | null, manualResponsibleName?: string | null) => {
       return selectedServiceGroups.map((group, index) => {
-        const wantsResponsible = group.wantsResponsible === true
-        const inheritsTopResponsible =
-          wantsResponsible &&
+        const roleLines = ensureGroupRoleLines(group)
+        const {
+          filled,
+          responsable,
+          conductor,
+          staffLines,
+          hasResponsableLine,
+        } = getPrimaryServiceRoleLines(roleLines)
+        const topBarResponsible =
           index === 0 &&
           group.phaseKey === 'event' &&
-          Boolean(manualResponsibleId)
-        const resolvedWorkerIds = Array.isArray(group.workerIds) ? group.workerIds.filter(Boolean) : []
-        const resolvedWorkerDetails = group.workerDetails || {}
+          Boolean(manualResponsibleId || manualResponsibleName)
+        const wantsResponsible = hasResponsableLine || topBarResponsible
+        const inheritsTopResponsible =
+          topBarResponsible &&
+          !String(responsable?.personId || responsable?.personName || '').trim()
+
         const manualWorkers =
-          resolvedWorkerIds.length > 0
-            ? resolvedWorkerIds.map((id) => {
-                const d = resolvedWorkerDetails[id] || { id }
-                return {
-                  id,
-                  name: d.name,
-                  serviceDate: d.serviceDate || group.serviceDate,
-                  meetingPoint: d.meetingPoint || group.meetingPoint,
-                  startTime: d.startTime || group.startTime,
-                  endTime: d.endTime || group.endTime,
-                }
-              })
+          staffLines.length > 0
+            ? staffLines.map((line) => ({
+                id: line.personId,
+                name: line.personName,
+                serviceDate: line.serviceDate || group.serviceDate,
+                meetingPoint: line.meetingPoint || group.meetingPoint,
+                startTime: line.startTime || group.startTime,
+                endTime: line.endTime || group.endTime,
+                isJamonero: line.role === 'jamonero',
+              }))
             : null
+        const persistedRoleLines = roleLines.map((line) => ({
+          slotId: line.slotId,
+          role: line.role,
+          personId: line.personId || '',
+          personName: line.personName || '',
+          serviceDate: line.serviceDate || group.serviceDate,
+          meetingPoint: line.meetingPoint || group.meetingPoint,
+          startTime: line.startTime || group.startTime,
+          endTime: line.endTime || group.endTime,
+        }))
+
         return {
           id: group.id,
           serviceDate: group.serviceDate,
@@ -308,18 +414,35 @@ export function useServicePhasesState({
           meetingPoint: group.meetingPoint,
           startTime: group.startTime,
           endTime: group.endTime,
-          workers: group.workers,
-          jamoneros: 0,
-          drivers: group.needsDriver ? 1 : 0,
-          needsDriver: group.needsDriver,
-          driverId: group.driverId || null,
-          responsibleId: wantsResponsible ? group.responsibleId || (inheritsTopResponsible ? manualResponsibleId : null) : null,
-          responsibleName: wantsResponsible && group.responsibleId
-            ? null
-            : inheritsTopResponsible
-            ? manualResponsibleName || null
+          workers: filled.length,
+          jamoneros: filled.filter((line) => line.role === 'jamonero').length,
+          drivers: conductor ? 1 : 0,
+          needsDriver: roleLines.some((line) => line.role === 'conductor'),
+          driverId: conductor?.personId || null,
+          responsibleId: wantsResponsible
+            ? responsable?.personId ||
+              (inheritsTopResponsible ? manualResponsibleId : null) ||
+              (conductor?.personId &&
+              manualResponsibleId &&
+              conductor.personId === manualResponsibleId
+                ? conductor.personId
+                : null)
             : null,
+          responsibleName:
+            wantsResponsible && responsable?.personId
+              ? responsable.personName || null
+              : wantsResponsible && responsable?.personName
+              ? responsable.personName
+              : inheritsTopResponsible
+              ? manualResponsibleName || null
+              : wantsResponsible &&
+                conductor?.personId &&
+                manualResponsibleId &&
+                conductor.personId === manualResponsibleId
+              ? conductor.personName || manualResponsibleName || null
+              : null,
           wantsResponsible,
+          roleLines: persistedRoleLines,
           ...(manualWorkers ? { manualWorkers } : {}),
         }
       })

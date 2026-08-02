@@ -24,7 +24,7 @@ export default function EventAvisosReadOnlyModal({
   eventCode,
   onAvisosStateChange,
 }: Props) {
-  const { avisos, loading, error } = useAvisos(eventCode)
+  const { avisos, loading, error } = useAvisos(eventCode, open)
 
   React.useEffect(() => {
     const lastAvisoDate = avisos[0]?.editedAt || avisos[0]?.createdAt

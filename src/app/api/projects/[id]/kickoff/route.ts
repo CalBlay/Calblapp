@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { canAccessProjects } from '@/lib/projectAccess'
 import {
@@ -164,6 +164,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       excludedKeys,
       attendees,
       organizerEmail,
+      organizerUserId: auth.user.id,
       invitedAt: Date.now(),
       graphEventId: event.id,
       graphWebLink: event.webLink,

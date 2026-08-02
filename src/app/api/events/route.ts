@@ -1,7 +1,7 @@
 // ✅ file: src/app/api/events/route.ts
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestore as db } from '@/services/db'
 import { normalizeRole } from '@/lib/roles'
 import { isProductionWorker } from '@/lib/accessControl'

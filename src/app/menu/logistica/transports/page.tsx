@@ -4,13 +4,17 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import TransportList from '@/components/transports/TransportList'
 import NewTransportModal from '@/components/transports/NewTransportModal'
-import TransportReviewNotificationsBanner from './TransportReviewNotificationsBanner'
+import TransportReviewNotificationsBell from './TransportReviewNotificationsBell'
 import { useTransports } from '@/hooks/useTransports'
 import type { Transport } from '@/hooks/useTransports'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import FloatingAddButton from '@/components/ui/floating-add-button'
-import { Input } from '@/components/ui/input'
 import FilterButton from '@/components/ui/filter-button'
+import {
+  CorporateFilterField,
+  CorporateFilterSearch,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
 import { useFilters as useSlideFilters } from '@/context/FiltersContext'
 import TransportFilters, {
   TransportFiltersState,
@@ -205,41 +209,33 @@ export default function LogisticsTransportsPage() {
         icon={<Truck className="h-7 w-7 text-emerald-600" />}
         title="Transports"
         subtitle="Gestió de vehicles i conductors"
-        actions={<ExportMenu items={exportItems} />}
+        actions={
+          <>
+            <TransportReviewNotificationsBell refreshSignal={notificationsRefreshSignal} />
+            <ExportMenu items={exportItems} />
+          </>
+        }
       />
 
-      {/* Barra superior */}
-      <div className="flex flex-col gap-3 rounded-xl bg-white shadow-sm border p-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-800">
-            Llistat de vehicles
-          </h2>
-          <p className="text-xs text-gray-500 mt-1">
-            Control centralitzat de matrícula, tipus, conductor i disponibilitat.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <Input
+      <CorporateFiltersShell variant="toolbar">
+        <CorporateFilterField label="Cercar vehicle" className="min-w-[220px] flex-1">
+          <CorporateFilterSearch
             placeholder="Cerca per matrícula o tipus…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="text-sm md:w-64"
+            className="md:max-w-sm"
           />
+        </CorporateFilterField>
 
-          <FilterButton
-            onClick={() => {
-              setContent(
-                <TransportFilters filters={filters} setFilters={setFilters} />
-              )
-              setOpen(true)
-            }}
-          />
-        </div>
-      </div>
+        <FilterButton
+          onClick={() => {
+            setContent(<TransportFilters filters={filters} setFilters={setFilters} />)
+            setOpen(true)
+          }}
+        />
+      </CorporateFiltersShell>
 
       <div id="transports-print-root">
-        <TransportReviewNotificationsBanner refreshSignal={notificationsRefreshSignal} />
         <TransportList
           transports={filteredTransports}
           onEdit={handleEdit}

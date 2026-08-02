@@ -3,7 +3,9 @@ export type MachineRow = {
   code: string
   name: string
   label: string
+  center?: string
   location?: string
+  zone?: string
   brand?: string
   model?: string
   serialNumber?: string
@@ -18,6 +20,13 @@ export type CenterRow = {
   code: string
   tipus: string
   travelMinutes: number
+  internalLocations?: string[]
+  locationNodes?: CenterLocationNode[]
+}
+
+export type CenterLocationNode = {
+  name: string
+  zones?: string[]
 }
 
 export type SupplierRow = {
@@ -32,11 +41,19 @@ export type SupplierRow = {
   supplierDepartments?: string[]
 }
 
+export type ResolutionCategoryRow = {
+  id: string
+  name: string
+  active?: boolean
+}
+
 export const emptyMachine = {
   id: '',
   code: '',
   name: '',
+  center: '',
   location: '',
+  zone: '',
   brand: '',
   model: '',
   serialNumber: '',
@@ -56,8 +73,15 @@ export const emptySupplier = {
   supplierDepartments: ['Manteniment'] as string[],
 }
 
+export const emptyResolutionCategory = {
+  id: '',
+  name: '',
+  active: true,
+}
+
 export type MachineView = typeof emptyMachine
 export type MachineViewTab = 'summary' | 'tickets' | 'timeline' | 'data'
+export type ResolutionCategoryView = typeof emptyResolutionCategory
 
 export type MachineListStats = {
   total: number

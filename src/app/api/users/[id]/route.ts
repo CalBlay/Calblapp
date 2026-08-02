@@ -5,6 +5,13 @@ export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { preparePasswordForStorage } from '@/lib/server/passwords'
+import {
+  pickSelfProfileUpdate,
+  serializeAdminUserResponse,
+  serializeUserResponse,
+} from '@/lib/server/userApiSerialization'
 
 // ──────────────────────────────────────────────────────────────
 // Helpers
@@ -81,6 +88,7 @@ interface UserUpdate {
   updatedAt?: number
   createdAt?: number
   userId?: string
+  password?: string
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -91,7 +99,15 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const { id } = await context.params
+    const isSelf = auth.user.id === id
+    if (!isSelf) {
+      const denied = requireRoles(auth, ['admin'])
+      if (denied) return denied.res
+    }
 
     const snap = await db.collection('users').doc(id).get()
     if (!snap.exists) {
@@ -99,12 +115,16 @@ export async function GET(
     }
 
     const data = snap.data() as Record<string, unknown>
-    return NextResponse.json({
-      id: snap.id,
-      ...data,
+    const extras = {
       role: canonicalRoleLabel(String(data.role || ''), Boolean(data.isAdmin)),
       department: canonicalDepartmentLabel(String(data.department || '')),
-    })
+    }
+
+    if (isSelf) {
+      return NextResponse.json(serializeUserResponse(snap.id, data, extras))
+    }
+
+    return NextResponse.json(serializeAdminUserResponse(snap.id, data, extras))
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     return NextResponse.json({ error: message }, { status: 500 })
@@ -119,8 +139,24 @@ export async function PUT(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const { id } = await context.params
-    const data = (await req.json()) as Partial<UserUpdate>
+    const isSelf = auth.user.id === id
+    const isAdmin = auth.role === 'admin'
+
+    if (!isSelf && !isAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const body = (await req.json()) as Partial<UserUpdate> & { password?: string }
+    const data: Partial<UserUpdate> & { password?: string } = isAdmin
+      ? body
+      : (pickSelfProfileUpdate(body as Record<string, unknown>) as Partial<UserUpdate> & {
+          password?: string
+        })
+
     const currentSnap = await db.collection('users').doc(id).get()
     const currentData = currentSnap.data() || {}
     const nextRole = typeof data.role === 'string' ? data.role : currentData.role
@@ -188,10 +224,20 @@ export async function PUT(
       rawUpdate.workerRank = undefined
     }
 
+    const passwordPlain =
+      typeof (data as { password?: string }).password === 'string'
+        ? (data as { password?: string }).password!.trim()
+        : ''
+    if (passwordPlain) {
+      rawUpdate.password = (await preparePasswordForStorage(passwordPlain)) || undefined
+    } else {
+      delete (rawUpdate as { password?: string }).password
+    }
+
     // 🔹 Eliminar propietats undefined
     const update = Object.fromEntries(
       Object.entries(rawUpdate).filter(([, v]) => v !== undefined)
-    ) as UserUpdate
+    ) as UserUpdate & { password?: string }
 
     // 🔹 Guardar usuari a `users`
     await db
@@ -227,9 +273,15 @@ export async function PUT(
       await personRef.set(body, { merge: true })
     }
 
-    // 🔹 Retornar document final
+    // 🔹 Retornar document final (mai exposar password)
     const final = await db.collection('users').doc(id).get()
-    return NextResponse.json({ id, ...final.data() })
+    const finalData = (final.data() || {}) as Record<string, unknown>
+    return NextResponse.json(
+      serializeAdminUserResponse(id, finalData, {
+        role: canonicalRoleLabel(String(finalData.role || ''), Boolean(finalData.isAdmin)),
+        department: canonicalDepartmentLabel(String(finalData.department || '')),
+      })
+    )
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     return NextResponse.json({ error: message }, { status: 500 })
@@ -244,6 +296,11 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const denied = requireRoles(auth, ['admin'])
+    if (denied) return denied.res
+
     const { id } = await context.params
 
     await db.collection('users').doc(id).delete()

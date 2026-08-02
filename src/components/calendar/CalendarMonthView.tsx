@@ -7,12 +7,20 @@ import CalendarModal from './CalendarModal'
 import CalendarNewEventModal from './CalendarNewEventModal'
 import type { Deal } from '@/hooks/useCalendarData'
 import { colorByLN } from '@/lib/colors'
+import { dealsForDay } from '@/lib/calendarDealDates'
+import {
+  CALENDAR_BADGE_TEXT,
+  CALENDAR_DAY_HEADER,
+  CALENDAR_DAY_NUMBER,
+  CALENDAR_EVENT_TEXT,
+} from '@/lib/calendarTypography'
+import { useCalendarVisibleLanes } from '@/hooks/useCalendarVisibleLanes'
 
 function dotColorByCollection(collection?: string) {
   const c = (collection || '').toLowerCase()
   if (c.includes('verd')) return 'bg-green-500'
   if (c.includes('taronja')) return 'bg-amber-500'
-  if (c.includes('taronja')) return 'bg-blue-500'
+  if (c.includes('groc')) return 'bg-yellow-500'
   return 'bg-gray-300'
 }
 
@@ -65,18 +73,33 @@ const endOfWeekMon = (d: Date) => {
   return r
 }
 
-const VISIBLE_LANES = 6
+const lnDotClass = (ln?: string) => {
+  const key = String(ln || '').toLowerCase().trim()
+  if (key.includes('casament')) return 'bg-rose-400'
+  if (key.includes('food')) return 'bg-orange-400'
+  if (key.includes('empresa') || key.includes('corporate')) return 'bg-blue-400'
+  if (key.includes('agenda')) return 'bg-violet-400'
+  return 'bg-slate-400'
+}
 
 export default function CalendarMonthView({
   deals,
   start,
   onCreated,
   showCodeStatus,
+  onRequestPanel,
+  selectedDay,
+  onSelectDay,
+  compactMobile = false,
 }: {
   deals: Deal[]
   start?: string
   onCreated?: () => void
   showCodeStatus?: boolean
+  onRequestPanel?: (deal: Deal) => void
+  selectedDay?: string | null
+  onSelectDay?: (iso: string) => void
+  compactMobile?: boolean
 }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const firstIso = deals.length ? pickDateIso(deals[0], ['DataInici', 'Data']) : ''
@@ -93,6 +116,18 @@ export default function CalendarMonthView({
     month: 'long',
     year: 'numeric',
   })
+
+  const dayEventCounts = useMemo(() => {
+    const map = new Map<string, Deal[]>()
+    if (!compactMobile) return map
+    const monthStart = new Date(year, month, 1)
+    const monthEnd = new Date(year, month + 1, 0)
+    for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+      const iso = toISO(d)
+      map.set(iso, dealsForDay(deals, iso))
+    }
+    return map
+  }, [compactMobile, deals, month, year])
 
   const weeks = useMemo(() => {
     const first = new Date(year, month, 1)
@@ -119,15 +154,32 @@ export default function CalendarMonthView({
     return out
   }, [month, year])
 
+  const visibleLanes = useCalendarVisibleLanes({ mode: 'month', weekCount: weeks.length })
+
+  const handleDayClick = (cell: WeekCell) => {
+    if (cell.isOther) return
+    if (onSelectDay) {
+      onSelectDay(cell.iso)
+      return
+    }
+    setSelectedDate(cell.iso)
+  }
+
   return (
-    <div className="flex flex-col w-full h-auto">
-      <div className="sm:hidden sticky top-0 z-10 bg-white py-3 text-center font-semibold text-lg border-b shadow-sm">
+    <div className="flex h-auto w-full flex-col">
+      <div className="sticky top-0 z-10 border-b bg-white py-3 text-center text-lg font-semibold shadow-sm sm:hidden">
         {monthLabel}
       </div>
 
-      <div className="grid grid-cols-7 text-[10px] sm:text-xs text-gray-600 bg-gray-50 border-b">
+      {compactMobile && (
+        <p className="px-3 py-2 text-[11px] text-slate-500 sm:hidden">
+          Toca un dia per veure els esdeveniments.
+        </p>
+      )}
+
+      <div className={`grid grid-cols-7 ${CALENDAR_DAY_HEADER} border-b bg-gray-50 text-gray-600`}>
         {['Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds', 'Dg'].map((d) => (
-          <div key={d} className="py-1 sm:py-2 text-center font-medium">
+          <div key={d} className="py-2 text-center font-medium">
             {d}
           </div>
         ))}
@@ -135,6 +187,63 @@ export default function CalendarMonthView({
 
       <div className="overflow-visible">
         {weeks.map((week, wIdx) => {
+          if (compactMobile) {
+            return (
+              <div key={wIdx} className="grid grid-cols-7 border-b bg-gray-50">
+                {week.map((c) => {
+                  const dayEvents = dayEventCounts.get(c.iso) ?? []
+                  const isToday =
+                    c.iso === toISO(new Date()) && !c.isOther
+                  const isSelected = !c.isOther && selectedDay === c.iso
+
+                  return (
+                    <button
+                      key={c.iso}
+                      type="button"
+                      disabled={c.isOther}
+                      onClick={() => handleDayClick(c)}
+                      className={`
+                        relative flex min-h-[52px] flex-col items-center justify-start border-r p-1.5
+                        transition-colors
+                        ${c.isOther ? 'cursor-default bg-gray-50 text-gray-300' : 'bg-white active:bg-blue-50'}
+                        ${isSelected ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/70' : ''}
+                      `}
+                    >
+                      <span
+                        className={`
+                          flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold
+                          ${isToday ? 'bg-blue-600 text-white' : c.isOther ? 'text-gray-300' : 'text-slate-700'}
+                        `}
+                      >
+                        {c.date.getDate()}
+                      </span>
+                      {!c.isOther && dayEvents.length > 0 && (
+                        <div className="mt-1 flex max-w-full flex-wrap items-center justify-center gap-0.5">
+                          {dayEvents.slice(0, 3).map((ev) => (
+                            <span
+                              key={ev.id}
+                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${lnDotClass(ev.LN)}`}
+                            />
+                          ))}
+                          {dayEvents.length > 3 && (
+                            <span className="text-[9px] font-semibold text-blue-600">
+                              +{dayEvents.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {!c.isOther && dayEvents.length > 0 && (
+                        <span className="mt-0.5 text-[9px] font-medium text-slate-500">
+                          {dayEvents.length} ev
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          }
+
           const weekStart = week[0].date
           const spans: Span[] = []
 
@@ -168,35 +277,29 @@ export default function CalendarMonthView({
           })
 
           const laneCount = laneEnds.length
-          const visibleLaneCount = Math.min(VISIBLE_LANES, laneCount)
-          const minHeight = Math.max(130, visibleLaneCount * 30 + 70)
+          const visibleLaneCount = Math.min(visibleLanes, laneCount)
+          const minHeight = Math.max(130, visibleLaneCount * 32 + 72)
           const visibleSpans = spans.filter((s) => s.lane < visibleLaneCount)
 
           return (
             <div
               key={wIdx}
-              className="
-                relative
-                grid grid-cols-7 
-                border-b 
-                bg-gray-50
-              "
+              className="relative grid grid-cols-7 border-b bg-gray-50"
               style={{ minHeight }}
             >
-              {/* Dia + numero */}
               {week.map((c) => (
                 <div
                   key={c.iso}
-                  onClick={() => !c.isOther && setSelectedDate(c.iso)}
+                  onClick={() => handleDayClick(c)}
                   className={`
-                    relative border-r p-1 
-                    flex flex-col 
+                    relative flex cursor-pointer flex-col border-r p-1
                     ${c.isOther ? 'bg-gray-50 text-gray-400' : 'bg-white'}
+                    ${!c.isOther && selectedDay === c.iso ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/60' : ''}
                   `}
                 >
                   <div
                     className={`
-                      text-[11px] sm:text-xs font-semibold leading-none
+                      ${CALENDAR_DAY_NUMBER}
                       ${c.isOther ? 'text-gray-300' : 'text-slate-600'}
                     `}
                   >
@@ -205,14 +308,8 @@ export default function CalendarMonthView({
                 </div>
               ))}
 
-              {/* Franges multi-dia */}
               <div
-                className="
-                  absolute inset-0
-                  grid grid-cols-7 gap-2
-                  px-2 pb-2 pt-6
-                  pointer-events-none
-                "
+                className="pointer-events-none absolute inset-0 grid grid-cols-7 gap-2 px-2 pb-2 pt-6"
                 style={{ gridAutoRows: 'minmax(24px, auto)' }}
               >
                 {visibleSpans.map((span, idx) => {
@@ -224,15 +321,16 @@ export default function CalendarMonthView({
                       key={`${span.ev.id}-${idx}`}
                       deal={span.ev}
                       onSaved={onCreated}
+                      onRequestPanel={onRequestPanel}
                       trigger={
                         <div
                           onClick={(e) => e.stopPropagation()}
                           className={`
                             pointer-events-auto
                             truncate ${isSingleDay ? 'px-2 py-[2px]' : 'px-2 py-[4px]'}
-                            rounded-md border 
                             flex items-center ${isSingleDay ? 'justify-start' : 'justify-center'} gap-2
-                            text-[10px] sm:text-[12px] font-medium
+                            rounded-md border
+                            ${CALENDAR_EVENT_TEXT}
                             ${colorByLN(span.ev.LN)}
                           `}
                           style={{
@@ -241,14 +339,16 @@ export default function CalendarMonthView({
                           }}
                         >
                           <span
-                            className={`w-2 h-2 rounded-full ${dotColorByCollection(span.ev.collection)}`}
+                            className={`h-2 w-2 rounded-full ${dotColorByCollection(span.ev.collection)}`}
                           />
-                          <span className={`truncate ${isSingleDay ? 'text-left' : 'text-center'} flex-1`}>
+                          <span
+                            className={`truncate ${isSingleDay ? 'text-left' : 'text-center'} flex-1`}
+                          >
                             {span.ev.NomEvent}
                           </span>
                           {badge && (
                             <span
-                              className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] text-[10px] font-semibold ${badge.className}`}
+                              className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
                             >
                               {badge.label}
                             </span>
@@ -259,7 +359,6 @@ export default function CalendarMonthView({
                   )
                 })}
 
-                {/* Botons +X mes per dies amb lanes ocultes */}
                 {week.map((c, dayIdx) => {
                   const segments = spans
                     .filter((s) => s.startIdx <= dayIdx && s.endIdx >= dayIdx)
@@ -274,12 +373,13 @@ export default function CalendarMonthView({
                         gridColumn: `${dayIdx + 1} / ${dayIdx + 2}`,
                         gridRowStart: visibleLaneCount + 1,
                       }}
-                      className="flex items-center pointer-events-auto"
+                      className="pointer-events-auto flex items-center"
                     >
                       <MoreEventsPopup
                         events={hidden.map((h) => h.ev)}
                         date={c.date}
                         showCodeStatus={showCodeStatus}
+                        onRequestPanel={onRequestPanel}
                       />
                     </div>
                   )
@@ -290,7 +390,7 @@ export default function CalendarMonthView({
         })}
       </div>
 
-      {selectedDate && (
+      {!onSelectDay && selectedDate && (
         <CalendarNewEventModal
           key={selectedDate}
           date={selectedDate}
@@ -309,59 +409,64 @@ function MoreEventsPopup({
   events,
   date,
   showCodeStatus,
+  onRequestPanel,
 }: {
   events: Deal[]
   date: Date
   showCodeStatus?: boolean
+  onRequestPanel?: (deal: Deal) => void
 }) {
   const [open, setOpen] = useState(false)
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <div
-        className="text-[10px] text-gray-400 italic cursor-pointer hover:text-blue-500"
+      <button
+        type="button"
+        className="min-h-8 rounded px-2 py-1 text-[11px] font-medium italic text-gray-500 hover:text-blue-600"
         onClick={(e) => {
           e.stopPropagation()
           setOpen(true)
         }}
       >
         +{events.length} mes
-      </div>
+      </button>
 
-      <DialogContent className="max-w-sm sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-sm">
+      <DialogContent className="flex max-h-[85dvh] w-[min(95vw,28rem)] flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="text-sm capitalize">
             {date.toLocaleDateString('ca-ES', {
+              weekday: 'long',
               day: 'numeric',
               month: 'long',
             })}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-1 max-h-[60dvh] overflow-y-auto">
+        <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain">
           {events.map((ev) => {
             const badge = showCodeStatus ? codeBadgeFor(ev) : null
             return (
               <CalendarModal
                 key={ev.id}
                 deal={ev}
+                onRequestPanel={onRequestPanel}
                 trigger={
                   <div
                     onClick={(e) => e.stopPropagation()}
                     className={`
-                      flex items-center gap-2
-                      truncate px-1.5 py-[3px] rounded-md border
-                      text-[11px] sm:text-[12px]
+                      flex min-h-11 items-center gap-2
+                      truncate rounded-md border px-2 py-2
+                      ${CALENDAR_EVENT_TEXT}
                       ${colorByLN(ev.LN)}
                     `}
                   >
                     <span
-                      className={`w-2 h-2 rounded-full ${dotColorByCollection(ev.collection)}`}
+                      className={`h-2 w-2 shrink-0 rounded-full ${dotColorByCollection(ev.collection)}`}
                     />
                     <span className="truncate flex-1">{ev.NomEvent}</span>
                     {badge && (
                       <span
-                        className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] text-[10px] font-semibold ${badge.className}`}
+                        className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
                       >
                         {badge.label}
                       </span>

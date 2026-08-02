@@ -7,10 +7,9 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { useSession } from 'next-auth/react'
-import { RoleGuard } from '@/lib/withRoleGuard'
-import { isMaintenanceCapDepartment } from '@/lib/accessControl'
 import ExportMenu from '@/components/export/ExportMenu'
-import { normalizeRole } from '@/lib/roles'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import MaintenancePermissionGate from '../../../components/MaintenancePermissionGate'
 
 type TemplateSection = { location: string; items: { label: string }[] }
 type Template = {
@@ -90,7 +89,8 @@ const normalizePreventiuStatus = (value?: string | null): MaintenanceStatus => {
   if (raw === 'espera') return 'espera'
   if (raw === 'fet') return 'fet'
   if (raw === 'no fet' || raw === 'no_fet') return 'no_fet'
-  if (raw === 'resolut' || raw === 'validat') return 'validat'
+  if (raw === 'resolut') return 'fet'
+  if (raw === 'validat') return 'validat'
   return 'assignat'
 }
 
@@ -113,15 +113,9 @@ export default function PreventiusFullsFitxaPage() {
   const [lastRecord, setLastRecord] = useState<CompletedRecord | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [activeRecordId, setActiveRecordId] = useState<string | null>(recordId)
+  const { canViewPath } = useUiPermissions()
   const sessionUser = session?.user as SessionUser | undefined
-  const role = normalizeRole(sessionUser?.role || '')
-  const department = (sessionUser?.department || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
-  const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
+  const canValidate = canViewPath('/menu/manteniment/preventius/planificador')
   const isValidated = lastRecord?.status === 'validat'
   const currentStatus = draft?.status || 'assignat'
   const isChecklistReadOnly = isValidated
@@ -523,22 +517,22 @@ export default function PreventiusFullsFitxaPage() {
 
   if (loadingDraft) {
     return (
-      <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+      <MaintenancePermissionGate>
         <div className="p-6 text-sm text-gray-600">Carregant fitxa...</div>
-      </RoleGuard>
+      </MaintenancePermissionGate>
     )
   }
 
   if (!draft) {
     return (
-      <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+      <MaintenancePermissionGate>
         <div className="p-6 text-sm text-gray-600">Fitxa no trobada.</div>
-      </RoleGuard>
+      </MaintenancePermissionGate>
     )
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+    <MaintenancePermissionGate>
       <div className="min-h-screen w-full bg-white flex flex-col">
         <style>{`
           @media print {
@@ -801,6 +795,6 @@ export default function PreventiusFullsFitxaPage() {
           </div>
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

@@ -63,6 +63,28 @@ export function invalidateCollectionsCache() {
 }
 
 /**
+ * Col·leccions operatives de quadrants (Serveis, Cuina, Logística, Producció).
+ * Evita escanejar totes les col·leccions `quadrant*` del projecte en cada desament.
+ */
+const OPERATIONAL_QUADRANT_DEPARTMENTS = ['serveis', 'cuina', 'logistica', 'produccio'] as const
+
+export async function listOperationalQuadrantCollectionIds(): Promise<string[]> {
+  const ids = await listAllCollectionIds()
+  const lowerMap = new Map(ids.map((id) => [id.toLowerCase(), id]))
+  const resolved: string[] = []
+
+  for (const dept of OPERATIONAL_QUADRANT_DEPARTMENTS) {
+    const cap = capitalize(dept)
+    const plural = `quadrants${cap}`
+    const singular = `quadrant${cap}`
+    const hit = lowerMap.get(plural.toLowerCase()) || lowerMap.get(singular.toLowerCase())
+    if (hit) resolved.push(hit)
+  }
+
+  return resolved.length > 0 ? resolved : ['quadrantsServeis', 'quadrantsCuina', 'quadrantsLogistica']
+}
+
+/**
  * Retorna nomes col·leccions de quadrants (`quadrants*`), sense
  * variants de borrador (`*draft*`).
  */

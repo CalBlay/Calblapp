@@ -4,16 +4,26 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
-import Ably from 'ably'
+import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 
 import { normalizeRole } from '@/lib/roles'
+import { saveUserAccessAssignment } from '@/lib/server/userAccessAssignment'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
+import { stripPassword } from '@/lib/server/userApiSerialization'
+import type { UserAccessAssignmentInput } from '@/lib/permissions/types'
 
 const unaccent = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const normLower = (s?: string) =>
   unaccent((s || '').toString().trim()).toLowerCase()
+
+const isTreballador = (role?: string) => normLower(role) === 'treballador'
+const isCapDepartament = (role?: string) => normalizeRole(role) === 'cap'
+const requiresCorporateEmail = (role?: string, isAdmin?: boolean) =>
+  Boolean(isAdmin) || ['admin', 'direccio', 'cap'].includes(normalizeRole(role))
 
 interface UserRequest {
   status?: string
@@ -47,7 +57,7 @@ async function notifyRequester(params: {
   personId: string
   baseUrl: string
 }) {
-  const { requesterId, title, body, personId, baseUrl } = params
+  const { requesterId, title, body, personId } = params
   if (!requesterId) return
 
   try {
@@ -62,29 +72,27 @@ async function notifyRequester(params: {
       type: 'user_request_result',
       personId,
     })
+    await incrementUserUnreadCount(requesterId, 'user_request_result', 1)
 
-    const apiKey = process.env.ABLY_API_KEY
-    if (!apiKey) return
+    if (hasAblyApiKey()) {
+      try {
+        const rest = getAblyRest()
+        const channel = rest.channels.get(`user:${requesterId}:notifications`)
+        await channel.publish('created', {
+          type: 'user_request_result',
+          personId,
+          createdAt: Date.now(),
+        })
+      } catch (err) {
+        console.error('[approve user request] Ably publish error', err)
+      }
+    }
 
-    const rest = new Ably.Rest({ key: apiKey })
-    const channel = rest.channels.get(`user:${requesterId}:notifications`)
-    await channel.publish('created', {
-      type: 'user_request_result',
-      personId,
-      createdAt: Date.now(),
-    })
-
-    // Push al requester (mòbil)
     try {
-      await fetch(`${baseUrl}/api/push/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: requesterId,
-          title,
-          body,
-          url: '/menu/personnel',
-        }),
+      await sendPushToUsers([requesterId], {
+        title,
+        body,
+        url: '/menu/personnel',
       })
     } catch (err) {
       console.error('Error enviant push al requester:', err)
@@ -110,6 +118,28 @@ async function usernameExists(username: string, excludeId?: string) {
 }
 
 
+type ApproveBody = {
+  password?: string
+  name?: string
+  role?: string
+  isAdmin?: boolean
+  department?: string
+  commercialName?: string
+  email?: string
+  phone?: string
+  opsEventsConfigurable?: boolean
+  opsEventsEnabled?: boolean
+  opsProjectsConfigurable?: boolean
+  opsChannelsConfigurable?: string[]
+  canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
+  isTransportLead?: boolean
+  available?: boolean
+  isDriver?: boolean
+  workerRank?: string
+  accessAssignment?: UserAccessAssignmentInput
+}
+
 export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) {
@@ -121,12 +151,12 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     return NextResponse.json({ success: false, error: 'Només Admin' }, { status: 403 })
   }
 
+  const adminUserId = String((session.user as { id?: string })?.id || '').trim()
   const personId = ctx.params.id
 
   try {
-    const { password: passwordFromBody } = (await req.json().catch(() => ({}))) as {
-      password?: string
-    }
+    const body = (await req.json().catch(() => ({}))) as ApproveBody
+    const { password: passwordFromBody } = body
     console.log('[approve] Inici aprovació per personId:', personId)
 
     const reqRef = firestoreAdmin.collection('userRequests').doc(personId)
@@ -162,7 +192,22 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const p = personSnap.data() as Personnel | undefined
     console.log('[approve] Dades de personnel:', p)
 
-    const desiredUsername = (p?.name || reqData?.requestedByName || personId).toString().trim()
+    const role = (body.role || 'Treballador').toString().trim()
+    const isAdmin = Boolean(body.isAdmin || normalizeRole(role) === 'admin')
+    const department = (body.department || p?.department || '').toString().trim()
+    const desiredUsername = (body.name || p?.name || reqData?.requestedByName || personId)
+      .toString()
+      .trim()
+    const email = (body.email ?? p?.email ?? reqData?.email ?? null)?.toString().trim() || null
+    const phone = (body.phone ?? p?.phone ?? reqData?.phone ?? null)?.toString().trim() || null
+
+    if (requiresCorporateEmail(role, isAdmin) && !email) {
+      return NextResponse.json(
+        { success: false, error: 'Email corporatiu obligatori per admin, direccio i caps de departament' },
+        { status: 400 }
+      )
+    }
+
     if (await usernameExists(desiredUsername, personId)) {
       return NextResponse.json(
         { success: false, error: "Nom d'usuari ja existeix", code: 'username_taken' },
@@ -173,27 +218,94 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const passwordPlain =
       (passwordFromBody || '').toString().trim() || Math.random().toString(36).slice(-8)
 
+    const commercialName = (body.commercialName || '').toString().trim()
+    const departmentLower = normLower(department || p?.departmentLower)
+
     // Payload per crear usuari nou
-    const userPayload = {
+    const userPayload: Record<string, unknown> = {
       name: desiredUsername,
-      password: passwordPlain, // temporal fins OAuth
-      role: 'Treballador',
-      department: (p?.department || '').toString().trim(),
-      departmentLower: (p?.departmentLower || '').toString().trim().toLowerCase(),
-      email: p?.email ?? null,
-      phone: p?.phone ?? null,
+      nameFold: normLower(desiredUsername),
+      password: passwordPlain,
+      role,
+      isAdmin,
+      department,
+      departmentLower,
+      commercialName: commercialName || undefined,
+      commercialNameFold: commercialName ? normLower(commercialName) : undefined,
+      email,
+      phone,
       userId: personId,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      available: p?.available ?? true,
-      isDriver: p?.isDriver ?? false,
-      workerRank: p?.workerRank ?? 'equip',
+      opsEventsConfigurable: Boolean(body.opsEventsConfigurable),
+      opsEventsEnabled: Boolean(body.opsEventsEnabled),
+      opsProjectsConfigurable:
+        typeof body.opsProjectsConfigurable === 'boolean' ? body.opsProjectsConfigurable : true,
+      opsChannelsConfigurable: Array.isArray(body.opsChannelsConfigurable)
+        ? body.opsChannelsConfigurable.map(String).filter(Boolean)
+        : [],
+      canRespondSurveys: Boolean(body.canRespondSurveys),
+      isDepartmentRobaLead: Boolean(body.isDepartmentRobaLead),
+      isTransportLead:
+        isCapDepartament(role) && departmentLower === 'logistica'
+          ? Boolean(body.isTransportLead)
+          : false,
+      available:
+        isTreballador(role) || isCapDepartament(role)
+          ? (body.available ?? p?.available ?? true)
+          : undefined,
+      isDriver:
+        isTreballador(role) || isCapDepartament(role)
+          ? (body.isDriver ?? p?.isDriver ?? false)
+          : undefined,
+      workerRank:
+        isTreballador(role) || isCapDepartament(role)
+          ? (body.workerRank || p?.workerRank || 'equip')
+          : undefined,
     }
 
-    console.log('[approve] Creant usuari a Firestore.users:', userPayload)
+    const cleanedPayload = Object.fromEntries(
+      Object.entries(userPayload).filter(([, v]) => v !== undefined)
+    )
+
+    console.log('[approve] Creant usuari a Firestore.users:', stripPassword(cleanedPayload))
 
     // Crear usuari amb docId = personId
-    await userRef.set(userPayload, { merge: true })
+    await userRef.set(cleanedPayload, { merge: true })
+
+    if (body.accessAssignment && adminUserId) {
+      await saveUserAccessAssignment({
+        userId: personId,
+        role,
+        department,
+        overrides: body.accessAssignment.overrides ?? [],
+        updatedBy: adminUserId,
+      })
+    }
+
+    // Sincronitzar personnel si cal
+    if (isTreballador(role) || isCapDepartament(role)) {
+      const personRef = firestoreAdmin.collection('personnel').doc(personId)
+      const isCap = isCapDepartament(role)
+      await personRef.set(
+        {
+          id: personId,
+          name: desiredUsername,
+          department,
+          departmentLower,
+          role: isCap ? 'responsable' : 'treballador',
+          available: (cleanedPayload.available as boolean | undefined) ?? true,
+          isDriver: (cleanedPayload.isDriver as boolean | undefined) ?? false,
+          workerRank: isCap
+            ? 'responsable'
+            : ((cleanedPayload.workerRank as string | undefined) ?? 'equip'),
+          email,
+          phone,
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      )
+    }
 
     // Actualitzar sol·licitud com aprovada
     await reqRef.set({ status: 'approved', updatedAt: Date.now() }, { merge: true })
@@ -203,16 +315,18 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     await notifyRequester({
       requesterId: reqData?.requestedByUserId,
       title: 'Usuari aprovat',
-      body: `S'ha creat l'usuari ${userPayload.name}. Contrasenya temporal: ${passwordPlain}`,
+      body: `S'ha creat l'usuari ${userPayload.name}. Contacta amb administració per obtenir la contrasenya d'accés.`,
       personId,
       baseUrl: req.nextUrl.origin,
     })
 
-    return NextResponse.json({ success: true, user: { id: personId, ...userPayload } })
+    return NextResponse.json({
+      success: true,
+      user: stripPassword({ id: personId, ...cleanedPayload }),
+    })
   } catch (error: unknown) {
     console.error('[approve user request] error:', error)
     const message = error instanceof Error ? error.message : 'Error intern'
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
-

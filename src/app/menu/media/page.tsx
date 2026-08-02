@@ -7,10 +7,12 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import { Images, RefreshCw, Trash2 } from 'lucide-react'
 import Image from 'next/image'
+import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
+import { isTicketVideoMime, isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 import useSWR from 'swr'
 import { PERM } from '@/lib/permissionKeys'
 
-type MediaSource = 'incidents' | 'maintenance' | 'messaging' | 'audits' | 'spaces'
+type MediaSource = 'incidents' | 'maintenance' | 'messaging' | 'audits' | 'spaces' | 'events'
 
 type MediaItem = {
   id: string
@@ -27,6 +29,7 @@ type MediaItem = {
   auditItemId?: string | null
   auditRunId?: string | null
   incidentEventId?: string | null
+  eventEventId?: string | null
   indexDocId?: string
 }
 
@@ -36,9 +39,10 @@ const SOURCE_LABELS: Record<MediaSource, string> = {
   messaging: 'Missatgeria',
   audits: 'Auditories',
   spaces: 'Espais',
+  events: 'Esdeveniments',
 }
 
-function formatDate(value: number) {
+function formatDate(value: number): string {
   if (!value) return 'Sense data'
   return new Intl.DateTimeFormat('ca-ES', {
     dateStyle: 'short',
@@ -46,14 +50,25 @@ function formatDate(value: number) {
   }).format(new Date(value))
 }
 
-function formatSize(bytes: number | null) {
+function isMediaVideo(item: MediaItem): boolean {
+  const mime = String(item.type || '')
+  if (isTicketVideoMime(mime)) return true
+  const location = String(item.url || item.path || '')
+  return isTicketVideoUrl(location)
+}
+
+function formatSize(bytes: number | null): string {
   if (!bytes || bytes <= 0) return 'Sense mida'
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+  }
+  if (bytes >= 1024) {
+    return `${Math.round(bytes / 1024)} KB`
+  }
   return `${bytes} B`
 }
 
-function MediaPage() {
+export default function MediaPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const pathname = usePathname()
@@ -98,7 +113,11 @@ function MediaPage() {
       if (cursor) params.set('cursor', cursor)
       if (source !== 'all') params.set('source', source)
       const ev = auditEventFilter.trim()
-      if (ev) params.set('auditEventId', ev)
+      if (ev) {
+        if (source === 'events') params.set('eventEventId', ev)
+        else if (source === 'audits') params.set('auditEventId', ev)
+        else if (source === 'incidents') params.set('incidentEventId', ev)
+      }
       return params
     },
     [source, auditEventFilter]
@@ -156,8 +175,16 @@ function MediaPage() {
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
+    const eventFilter = auditEventFilter.trim()
     return items.filter((item) => {
       if (source !== 'all' && !item.sourceKinds.includes(source)) return false
+      if (eventFilter && source === 'all') {
+        const matchesEvent =
+          item.auditEventId === eventFilter ||
+          item.eventEventId === eventFilter ||
+          item.incidentEventId === eventFilter
+        if (!matchesEvent) return false
+      }
       if (!normalizedQuery) return true
       const haystack = [
         item.title,
@@ -168,12 +195,13 @@ function MediaPage() {
         item.auditDepartment || '',
         item.auditItemId || '',
         item.incidentEventId || '',
+        item.eventEventId || '',
       ]
         .join(' ')
         .toLowerCase()
       return haystack.includes(normalizedQuery)
     })
-  }, [items, query, source])
+  }, [items, query, source, auditEventFilter])
 
   const totalBytes = useMemo(
     () => filteredItems.reduce((acc, item) => acc + Number(item.size || 0), 0),
@@ -234,7 +262,7 @@ function MediaPage() {
       <ModuleHeader
         icon={<Images className="w-7 h-7 text-slate-700" />}
         title="Gestio d'Imatges"
-        subtitle="Imatges optimitzades (WebP), indexades per font i consulta paginada"
+        subtitle="Imatges i videos indexats per font (WebP, MP4…), consulta paginada"
         mainHref="/menu/media"
         actions={
           <Button
@@ -260,7 +288,7 @@ function MediaPage() {
         <div className="rounded-xl border bg-white p-4 shadow-sm">
           <div className="text-xs uppercase tracking-wide text-gray-500">Fonts</div>
           <div className="mt-2 text-sm text-gray-700">
-            Incidencies, manteniment, missatgeria, auditories i espais
+            Incidencies, manteniment, missatgeria, auditories, espais i visites
           </div>
         </div>
       </div>
@@ -276,7 +304,7 @@ function MediaPage() {
           <input
             value={auditEventFilter}
             onChange={(e) => setAuditEventFilter(e.target.value)}
-            placeholder="Filtrar per ID esdeveniment (auditories, al servidor)"
+            placeholder="Filtrar per ID esdeveniment (auditories i visites, al servidor)"
             className="w-full rounded-lg border px-3 py-2 text-sm"
           />
           <select
@@ -319,13 +347,21 @@ function MediaPage() {
               >
                 <div className="overflow-hidden rounded-lg bg-gray-100">
                   {item.url ? (
-                    <div className="relative h-[120px] w-full">
-                      <Image
-                        src={item.url}
-                        alt={item.title || 'Imatge'}
-                        fill
-                        className="object-cover"
-                      />
+                    <div className="relative flex h-[120px] w-full items-center justify-center">
+                      {isMediaVideo(item) ? (
+                        <TicketAttachmentTile
+                          url={item.url}
+                          alt={item.title || 'Video'}
+                          className="max-h-[120px] w-full object-contain"
+                        />
+                      ) : (
+                        <Image
+                          src={item.url}
+                          alt={item.title || 'Imatge'}
+                          fill
+                          className="object-cover"
+                        />
+                      )}
                     </div>
                   ) : (
                     <div className="flex h-[120px] items-center justify-center text-xs text-gray-400">
@@ -355,6 +391,11 @@ function MediaPage() {
                     {item.incidentEventId ? (
                       <span className="rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-900">
                         Inc. esdeveniment {item.incidentEventId}
+                      </span>
+                    ) : null}
+                    {item.eventEventId ? (
+                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-900">
+                        Visita esdeveniment {item.eventEventId}
                       </span>
                     ) : null}
                     <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">
@@ -387,5 +428,3 @@ function MediaPage() {
     </div>
   )
 }
-
-export default MediaPage

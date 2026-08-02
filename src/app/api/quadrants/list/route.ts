@@ -50,6 +50,7 @@ interface FirestoreDraftDoc {
   responsableId?: string
   responsableName?: string
   responsable?: FirestorePerson
+  responsables?: FirestorePerson[]
   conductors?: FirestorePerson[]
   treballadors?: FirestorePerson[]
   legacyExternalWorkers?: Array<Record<string, unknown>>
@@ -71,6 +72,17 @@ interface FirestoreDraftDoc {
     drivers?: number
     responsibleId?: string | null
     responsibleName?: string | null
+    roleLines?: Array<{
+      slotId?: string | null
+      role?: string | null
+      personId?: string | null
+      personName?: string | null
+      serviceDate?: string | null
+      meetingPoint?: string | null
+      startTime?: string | null
+      endTime?: string | null
+      arrivalTime?: string | null
+    }>
   }>
 
   // alias heretats de les col·leccions d’esdeveniments originals
@@ -119,6 +131,7 @@ type Person = {
 
 type Draft = {
   id: string
+  eventId?: string
   code: string
   eventName: string
   department: string
@@ -128,11 +141,13 @@ type Draft = {
   endTime: string
   arrivalTime?: string
   location?: string
+  meetingPoint?: string
   totalWorkers: number
   numDrivers: number
   responsableId?: string
   responsableName?: string
   responsable?: Person | null
+  responsables?: Person[]
   conductors: Person[]
   treballadors: Person[]
   groups?: Array<{
@@ -147,6 +162,17 @@ type Draft = {
     drivers?: number
     responsibleId?: string | null
     responsibleName?: string | null
+    roleLines?: Array<{
+      slotId?: string | null
+      role?: string | null
+      personId?: string | null
+      personName?: string | null
+      serviceDate?: string | null
+      meetingPoint?: string | null
+      startTime?: string | null
+      endTime?: string | null
+      arrivalTime?: string | null
+    }>
   }>
   updatedAt: string
   status: 'confirmed' | 'draft'
@@ -156,6 +182,8 @@ type Draft = {
   vestimentModel?: string | null
   numPax?: number | null
   commercial?: string | null
+  phaseType?: string | null
+  phaseLabel?: string | null
 }
 
 type Dept = string
@@ -274,6 +302,121 @@ const expandLegacyExternalWorkers = (entries: Array<Record<string, unknown>> = [
     }))
   })
 
+const canonicalEventId = (draft: Pick<Draft, 'eventId' | 'id'>) =>
+  String(draft.eventId || draft.id || '')
+    .trim()
+    .split('__')[0]
+    .trim()
+
+const normalizePersonKey = (person?: Partial<Person> | null) => {
+  const id = String(person?.id || '').trim()
+  if (id) return `id:${id}`
+  const name = unaccent(String(person?.name || '').toLowerCase().trim())
+  const groupId = String(person?.groupId || '').trim()
+  if (!name) return ''
+  return `name:${name}|group:${groupId}`
+}
+
+const dedupePeople = (people: Person[] = []): Person[] => {
+  const seen = new Set<string>()
+  const merged: Person[] = []
+  people.forEach((person) => {
+    const key = normalizePersonKey(person)
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    merged.push(person)
+  })
+  return merged
+}
+
+const countUniqueAssignedPeople = (draft: Draft) => {
+  const keys = new Set<string>()
+  ;[
+    ...(draft.responsables || []),
+    ...(draft.conductors || []),
+    ...(draft.treballadors || []),
+  ].forEach((person) => {
+    const name = String(person?.name || '').trim()
+    if (!name || name.toLowerCase() === 'extra') return
+    const key = normalizePersonKey(person)
+    if (key) keys.add(key)
+  })
+  return keys.size
+}
+
+const aggregateDrafts = (drafts: Draft[]): Draft[] => {
+  const grouped = new Map<string, Draft>()
+
+  drafts.forEach((draft) => {
+    const key = [
+      draft.department || '',
+      canonicalEventId(draft),
+      draft.phaseType || 'event',
+      draft.startDate || '',
+    ].join('::')
+
+    const existing = grouped.get(key)
+    if (!existing) {
+      grouped.set(key, {
+        ...draft,
+        id: canonicalEventId(draft) || draft.id,
+        eventId: canonicalEventId(draft) || draft.eventId || draft.id,
+        responsables: dedupePeople(draft.responsables || []),
+        conductors: dedupePeople(draft.conductors || []),
+        treballadors: dedupePeople(draft.treballadors || []),
+        groups: Array.isArray(draft.groups) ? [...draft.groups] : draft.groups,
+      })
+      return
+    }
+
+    const mergedGroups = [
+      ...(Array.isArray(existing.groups) ? existing.groups : []),
+      ...(Array.isArray(draft.groups) ? draft.groups : []),
+    ]
+    const dedupedGroups = mergedGroups.filter((group, index, arr) => {
+      const groupId = String(group?.id || '').trim()
+      if (!groupId) return true
+      return arr.findIndex((candidate) => String(candidate?.id || '').trim() === groupId) === index
+    })
+
+    const merged: Draft = {
+      ...existing,
+      code: existing.code || draft.code,
+      eventName: existing.eventName || draft.eventName,
+      location: existing.location || draft.location,
+      meetingPoint: existing.meetingPoint || draft.meetingPoint,
+      startTime: existing.startTime || draft.startTime,
+      endTime: existing.endTime || draft.endTime,
+      endDate: existing.endDate || draft.endDate,
+      arrivalTime: existing.arrivalTime || draft.arrivalTime,
+      responsableId: existing.responsableId || draft.responsableId,
+      responsableName: existing.responsableName || draft.responsableName,
+      responsable: existing.responsable || draft.responsable || null,
+      responsables: dedupePeople([...(existing.responsables || []), ...(draft.responsables || [])]),
+      conductors: dedupePeople([...(existing.conductors || []), ...(draft.conductors || [])]),
+      treballadors: dedupePeople([...(existing.treballadors || []), ...(draft.treballadors || [])]),
+      groups: dedupedGroups,
+      updatedAt:
+        new Date(existing.updatedAt).getTime() >= new Date(draft.updatedAt).getTime()
+          ? existing.updatedAt
+          : draft.updatedAt,
+      confirmedAt: existing.confirmedAt || draft.confirmedAt || null,
+      confirmed: existing.confirmed || draft.confirmed,
+      status: existing.status === 'confirmed' || draft.status === 'confirmed' ? 'confirmed' : 'draft',
+      service: existing.service || draft.service || null,
+      vestimentModel: existing.vestimentModel || draft.vestimentModel || null,
+      numPax: existing.numPax || draft.numPax || null,
+      commercial: existing.commercial || draft.commercial || null,
+    }
+
+    merged.totalWorkers = countUniqueAssignedPeople(merged)
+    merged.numDrivers = dedupePeople(merged.conductors || []).length
+    grouped.set(key, merged)
+  })
+
+  return Array.from(grouped.values())
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    Query principal (carrega drafts d’un departament)
 ────────────────────────────────────────────────────────────────────────── */
@@ -337,6 +480,7 @@ async function fetchDeptDrafts(
     )
     return {
       id: doc.id,
+      eventId: String((d.eventId as string | undefined) || doc.id).trim(),
       code: d.code || '',
       eventName: d.eventName || '',
       department: normalizeDept(d.department || dept),
@@ -351,6 +495,9 @@ async function fetchDeptDrafts(
       numDrivers: Number(d.numDrivers || 0),
       responsableId: d.responsableId || '',
       responsableName: d.responsableName || '',
+      responsables: Array.isArray(d.responsables)
+        ? d.responsables.map((p) => mapPerson(p, d))
+        : [],
       conductors: Array.isArray(d.conductors)
         ? d.conductors.map((p) => mapPerson(p, d))
         : [],
@@ -361,8 +508,8 @@ async function fetchDeptDrafts(
         ...legacyExternalWorkers,
       ],
       groups: Array.isArray(d.groups)
-        ? d.groups.map((g) => ({
-            id: g.id || null,
+        ? d.groups.map((g, idx) => ({
+            id: g.id || `group-${idx + 1}`,
             serviceDate: g.serviceDate || null,
             dateLabel: g.dateLabel || null,
             meetingPoint: g.meetingPoint || '',
@@ -370,9 +517,32 @@ async function fetchDeptDrafts(
             arrivalTime: g.arrivalTime ?? null,
             endTime: g.endTime || '',
             workers: Number(g.workers || 0),
+            jamoneros: Number((g as { jamoneros?: unknown }).jamoneros || 0),
             drivers: Number(g.drivers || 0),
+            needsDriver: !!(g as { needsDriver?: boolean }).needsDriver,
+            wantsResponsible: (g as { wantsResponsible?: boolean }).wantsResponsible === true,
+            driverId: (g as { driverId?: string | null }).driverId || null,
+            driverName: (g as { driverName?: string | null }).driverName || null,
             responsibleId: g.responsibleId || null,
             responsibleName: g.responsibleName || null,
+            ...(Array.isArray((g as { roleLines?: unknown }).roleLines)
+              ? {
+                  roleLines: ((g as { roleLines?: Array<Record<string, unknown>> }).roleLines || []).map((line) => ({
+                    slotId: String(line?.slotId || ''),
+                    role: String(line?.role || ''),
+                    personId: String(line?.personId || ''),
+                    personName: String(line?.personName || ''),
+                    serviceDate: String(line?.serviceDate || ''),
+                    meetingPoint: String(line?.meetingPoint || ''),
+                    startTime: String(line?.startTime || ''),
+                    endTime: String(line?.endTime || ''),
+                    arrivalTime: String(line?.arrivalTime || ''),
+                  })),
+                }
+              : {}),
+            ...(Array.isArray((g as { manualWorkers?: unknown }).manualWorkers)
+              ? { manualWorkers: (g as { manualWorkers?: unknown }).manualWorkers }
+              : {}),
           }))
         : undefined,
       responsable: d.responsable
@@ -393,10 +563,12 @@ async function fetchDeptDrafts(
       vestimentModel: typeof d.vestimentModel === 'string' ? d.vestimentModel : null,
       numPax: d.numPax || d.NumPax || null,
       commercial: d.commercial || d.Comercial || null,
+      phaseType: typeof d.phaseType === 'string' ? d.phaseType : null,
+      phaseLabel: typeof d.phaseLabel === 'string' ? d.phaseLabel : null,
     }
   })
 
-  return drafts
+  return aggregateDrafts(drafts)
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

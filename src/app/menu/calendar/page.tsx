@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import Link from 'next/link'
 import {
   RefreshCw,
   CalendarDays,
@@ -8,15 +9,21 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
+  Users,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import ExportMenu from '@/components/export/ExportMenu'
-import { useCalendarData } from '@/hooks/useCalendarData'
+import { useCalendarData, type Deal } from '@/hooks/useCalendarData'
 import CalendarMonthView from '@/components/calendar/CalendarMonthView'
 import CalendarWeekView from '@/components/calendar/CalendarWeekView'
 import CalendarNewEventModal from '@/components/calendar/CalendarNewEventModal'
 import CalendarRangeView from '@/components/calendar/CalendarRangeView'
+import CalendarPeriodList from '@/components/calendar/CalendarPeriodList'
+import CalendarPeriodSummary from '@/components/calendar/CalendarPeriodSummary'
+import CalendarDayPanel from '@/components/calendar/CalendarDayPanel'
+import CalendarActiveFilters from '@/components/calendar/CalendarActiveFilters'
+import CalendarModal from '@/components/calendar/CalendarModal'
 import Legend from '@/components/calendar/CalendarLegend'
 import CalendarFilters, { CalendarLN } from '@/components/calendar/CalendarFilters'
 import { useSession } from 'next-auth/react'
@@ -25,6 +32,8 @@ import FloatingAddButton from '@/components/ui/floating-add-button'
 import { useFilters } from '@/context/FiltersContext'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { CALENDAR_MAIL_GROUPS_PATH, CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
 
 import {
   addMonths,
@@ -41,6 +50,7 @@ import {
 /* TYPES */
 /* ------------------------------ */
 type ViewMode = 'month' | 'week' | 'range'
+type ContentLayout = 'grid' | 'list'
 
 type CalendarViewState = {
   mode: ViewMode
@@ -66,6 +76,9 @@ type SessionUserLike = {
 }
 
 const STORAGE_KEY = 'calblay.calendar.filters.v1'
+const MODE_STORAGE_KEY = 'calblay.calendar.mode.v1'
+const MOBILE_BREAKPOINT = 768
+const DESKTOP_BREAKPOINT = 1024
 const toIso = (d: Date) => format(d, 'yyyy-MM-dd')
 const EMPTY_FILTER_LIST: CalendarLN[] = []
 const escapeHtml = (value: string) =>
@@ -97,20 +110,58 @@ const toArray = (value: unknown) => {
   return [] as CalendarLN[]
 }
 
+const resolveInitialContentLayout = (): ContentLayout => {
+  if (typeof window === 'undefined') return 'grid'
+  try {
+    if (window.innerWidth < MOBILE_BREAKPOINT) return 'list'
+  } catch {}
+  return 'grid'
+}
+
+const resolveInitialMode = (): ViewMode => {
+  if (typeof window === 'undefined') return 'month'
+  try {
+    const saved = localStorage.getItem(MODE_STORAGE_KEY) as ViewMode | null
+    if (saved === 'month' || saved === 'week' || saved === 'range') return saved
+    if (window.innerWidth >= DESKTOP_BREAKPOINT) return 'week'
+  } catch {}
+  return 'month'
+}
+
+const datesForMode = (mode: ViewMode, anchor = new Date(), rangeMonths = 6) => {
+  if (mode === 'week') {
+    return {
+      start: toIso(startOfWeek(anchor, { weekStartsOn: 1 })),
+      end: toIso(endOfWeek(anchor, { weekStartsOn: 1 })),
+    }
+  }
+  if (mode === 'range') {
+    const rangeStart = startOfMonth(anchor)
+    const rangeEnd = endOfMonth(addMonths(rangeStart, Math.max(1, rangeMonths) - 1))
+    return { start: toIso(rangeStart), end: toIso(rangeEnd) }
+  }
+  return {
+    start: toIso(startOfMonth(anchor)),
+    end: toIso(endOfMonth(anchor)),
+  }
+}
+
 /* ------------------------------ */
 /* ESTAT INICIAL */
 /* ------------------------------ */
 const makeInitialState = (): CalendarViewState => {
   const today = new Date()
+  const mode = resolveInitialMode()
+  const dates = datesForMode(mode, today)
 
   const base: CalendarViewState = {
-    mode: 'month',
+    mode,
     ln: [],
     stage: 'all',
     commercial: [],
     codeStatus: 'all',
-    start: toIso(startOfMonth(today)),
-    end: toIso(endOfMonth(today)),
+    start: dates.start,
+    end: dates.end,
     rangeMonths: 6,
   }
 
@@ -174,6 +225,12 @@ export default function CalendarPage() {
     } catch {}
   }, [ln, stage])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(MODE_STORAGE_KEY, mode)
+    } catch {}
+  }, [mode])
+
   /* Dades calendari (finals) */
   const {
     deals,
@@ -221,6 +278,9 @@ export default function CalendarPage() {
 
   /* Sessió */
   const { data: session } = useSession()
+  const { uiActions, ready: permsReady } = useUiPermissions()
+  const canManageMailGroups =
+    permsReady && uiActions[CALENDAR_PERM.manageMailGroups] === true
   const normalize = (value: string) =>
     value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
@@ -265,11 +325,67 @@ export default function CalendarPage() {
     return deals.filter((d) => d.codeStatus === codeStatus)
   }, [deals, codeStatus, canManageCodes])
 
+  const periodStats = useMemo(() => {
+    const stats = { confirmed: 0, review: 0, missing: 0 }
+    visibleDeals.forEach((deal) => {
+      if (deal.codeStatus === 'review') stats.review += 1
+      else if (deal.codeStatus === 'confirmed') stats.confirmed += 1
+      else stats.missing += 1
+    })
+    return { total: visibleDeals.length, codeCounts: stats }
+  }, [visibleDeals])
+
   /* UI */
   const [syncing, setSyncing] = useState(false)
   const [syncingAda, setSyncingAda] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(false)
   const [showLegend, setShowLegend] = useState(false)
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [panelDeal, setPanelDeal] = useState<Deal | null>(null)
+  const [mobileDetailDeal, setMobileDetailDeal] = useState<Deal | null>(null)
+  const [contentLayout, setContentLayout] = useState<ContentLayout>(resolveInitialContentLayout)
+
+  useEffect(() => {
+    if (mode === 'range') setContentLayout('grid')
+  }, [mode])
+
+  useEffect(() => {
+    if (mode !== 'month' || contentLayout !== 'grid') {
+      setSelectedDay(null)
+    }
+  }, [mode, contentLayout])
+
+  const monthSplitActive =
+    isDesktop && mode === 'month' && contentLayout === 'grid'
+  const showDayPanel = monthSplitActive && selectedDay && !panelDeal
+  const showDesktopPanel = Boolean(panelDeal || showDayPanel)
+  const showMobileDaySheet = isMobile && mode === 'month' && selectedDay && !mobileDetailDeal
+
+  const handleRequestPanel = useCallback((deal: Deal) => {
+    if (typeof window !== 'undefined' && window.innerWidth >= DESKTOP_BREAKPOINT) {
+      setPanelDeal(deal)
+      return
+    }
+    setMobileDetailDeal(deal)
+  }, [])
+
+  const handleSelectDay = useCallback((iso: string) => {
+    setSelectedDay(iso)
+    setPanelDeal(null)
+  }, [])
+
+  const handleMobileDayDealSelect = useCallback(
+    (deal: Deal) => {
+      setSelectedDay(null)
+      setMobileDetailDeal(deal)
+    },
+    []
+  )
+
+  const handleSelectFromList = useCallback((deal: Deal) => {
+    handleRequestPanel(deal)
+  }, [handleRequestPanel])
 
   /* Obrir filtres */
   const openFilters = () => {
@@ -297,9 +413,12 @@ export default function CalendarPage() {
   }
 
 
-  /* Detectar mobile */
+  /* Detectar mobile / desktop */
   useEffect(() => {
-    const update = () => setIsMobile(window.innerWidth < 768)
+    const update = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+      setIsDesktop(window.innerWidth >= DESKTOP_BREAKPOINT)
+    }
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
@@ -309,7 +428,7 @@ export default function CalendarPage() {
   const handleSync = async () => {
     try {
       setSyncing(true)
-      const res = await fetch('/api/sync/zoho-to-firestore?mode=manual')
+      const res = await fetch('/api/sync/zoho-to-firestore?mode=manual&includeAttachments=1')
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Error')
       alert(`Sincronització: ${json.updated} actualitzats, ${json.created} nous`)
@@ -566,9 +685,9 @@ export default function CalendarPage() {
   ]
 
   return (
-    <div className="relative w-full">
+    <div className="relative flex w-full flex-col overflow-x-hidden pb-24 sm:pb-0 lg:h-[calc(100dvh-3.5rem-1.5rem)] lg:min-h-[480px]">
       {/* CAPÇALERA */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-2 mb-3">
+      <div className="mb-3 mt-2 flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700">
             <CalendarDays size={18} />
@@ -583,9 +702,49 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
           <FilterButton onClick={openFilters} />
+          <CalendarActiveFilters
+            ln={ln}
+            stage={stage}
+            commercial={commercial}
+            codeStatus={codeStatus}
+            showCodeStatus={canManageCodes}
+            onRemoveLn={(value) =>
+              setState((prev) => ({
+                ...prev,
+                ln: prev.ln.filter((item) => item !== value),
+              }))
+            }
+            onClearStage={() => setState((prev) => ({ ...prev, stage: 'all' }))}
+            onRemoveCommercial={(value) =>
+              setState((prev) => ({
+                ...prev,
+                commercial: prev.commercial.filter((item) => item !== value),
+              }))
+            }
+            onClearCodeStatus={() =>
+              setState((prev) => ({ ...prev, codeStatus: 'all' }))
+            }
+            onClearAll={() =>
+              setState((prev) => ({
+                ...prev,
+                ln: [],
+                stage: 'all',
+                commercial: [],
+                codeStatus: 'all',
+              }))
+            }
+          />
           <ExportMenu items={exportItems} ariaLabel="Exportar calendari" />
+          {canManageMailGroups ? (
+            <Button asChild variant="outline" size="sm" className="flex items-center gap-1">
+              <Link href={CALENDAR_MAIL_GROUPS_PATH}>
+                <Users size={14} />
+                <span className="hidden sm:inline">Grups d’enviament</span>
+              </Link>
+            </Button>
+          ) : null}
           {!isMobile && canManageCodes && (
             <>
               <Button
@@ -622,7 +781,7 @@ export default function CalendarPage() {
       {/* LLEGENDA */}
       <button
         onClick={() => setShowLegend((v) => !v)}
-        className="text-xs sm:text-sm text-gray-600 mb-2 flex items-center gap-1"
+        className="mb-2 flex shrink-0 items-center gap-1 text-xs text-gray-600 sm:text-sm"
       >
         {showLegend ? (
           <>Amagar llegenda <ChevronUp size={14} /></>
@@ -632,10 +791,12 @@ export default function CalendarPage() {
       </button>
 
       {showLegend && (
-        <Legend
-          showCodeStatus={canManageCodes}
-          codeCounts={codeCounts}
-        />
+        <div className="mb-2 shrink-0">
+          <Legend
+            showCodeStatus={canManageCodes}
+            codeCounts={codeCounts}
+          />
+        </div>
       )}
 
       {/* MODE */}
@@ -663,11 +824,31 @@ export default function CalendarPage() {
         }
       `}</style>
 
-      <div className="flex justify-between items-center mb-3 print:hidden">
-        <div className="inline-flex bg-gray-100 rounded-full p-1">
-          <button onClick={switchToMonth} className={`px-3 py-1 text-sm rounded-full ${mode === 'month' ? 'bg-white shadow' : ''}`}>Mes</button>
-          <button onClick={switchToWeek} className={`px-3 py-1 text-sm rounded-full ${mode === 'week' ? 'bg-white shadow' : ''}`}>Setmana</button>
-          <button onClick={() => switchToRange()} className={`px-3 py-1 text-sm rounded-full ${mode === 'range' ? 'bg-white shadow' : ''}`}>6-12 mesos</button>
+      <div className="mb-3 flex shrink-0 flex-col gap-2 print:hidden sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex w-full rounded-full bg-gray-100 p-1 sm:w-auto">
+            <button onClick={switchToMonth} className={`min-h-10 flex-1 rounded-full px-3 py-1.5 text-sm sm:flex-none sm:min-h-0 ${mode === 'month' ? 'bg-white shadow' : ''}`}>Mes</button>
+            <button onClick={switchToWeek} className={`min-h-10 flex-1 rounded-full px-3 py-1.5 text-sm sm:flex-none sm:min-h-0 ${mode === 'week' ? 'bg-white shadow' : ''}`}>Setmana</button>
+            <button onClick={() => switchToRange()} className={`min-h-10 flex-1 rounded-full px-3 py-1.5 text-sm sm:flex-none sm:min-h-0 ${mode === 'range' ? 'bg-white shadow' : ''}`}>6-12 mesos</button>
+          </div>
+          {mode !== 'range' && (
+            <div className="inline-flex w-full rounded-full bg-gray-100 p-1 sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setContentLayout('grid')}
+                className={`min-h-10 flex-1 rounded-full px-3 py-1.5 text-sm sm:flex-none sm:min-h-0 ${contentLayout === 'grid' ? 'bg-white shadow' : ''}`}
+              >
+                Graella
+              </button>
+              <button
+                type="button"
+                onClick={() => setContentLayout('list')}
+                className={`min-h-10 flex-1 rounded-full px-3 py-1.5 text-sm sm:flex-none sm:min-h-0 ${contentLayout === 'list' ? 'bg-white shadow' : ''}`}
+              >
+                Llista
+              </button>
+            </div>
+          )}
         </div>
 
         {mode === 'month' ? (
@@ -707,11 +888,19 @@ export default function CalendarPage() {
         )}
       </div>
 
-      {/* CONTINGUT */}
-      {error && <p className="text-red-600 text-sm">{error}</p>}
-      {loading && <p className="text-gray-500 text-sm">Carregant dades...</p>}
+      <div className="mb-2 shrink-0 print:hidden">
+        <CalendarPeriodSummary
+          total={periodStats.total}
+          codeCounts={periodStats.codeCounts}
+          showCodeStatus={canManageCodes}
+        />
+      </div>
 
-      <div id="calendar-print-root" className="space-y-3">
+      {/* CONTINGUT */}
+      {error && <p className="shrink-0 text-sm text-red-600">{error}</p>}
+      {loading && <p className="shrink-0 text-sm text-gray-500">Carregant dades...</p>}
+
+      <div id="calendar-print-root" className="flex min-h-0 flex-1 flex-col print:block">
         <div className="hidden print:block">
           <h1 className="text-xl font-semibold">Calendari comercial</h1>
           <p className="text-sm text-gray-600">
@@ -719,26 +908,112 @@ export default function CalendarPage() {
           </p>
         </div>
 
-        <div className="rounded-xl bg-white border shadow-sm overflow-hidden">
-        {mode === 'range' ? (
-          <CalendarRangeView deals={visibleDeals} start={start} months={rangeMonths} />
-        ) : mode === 'week' ? (
-          <CalendarWeekView
-            deals={visibleDeals}
-            start={start}
-            onCreated={reload}
-            showCodeStatus={canManageCodes}
-          />
-        ) : (
-          <CalendarMonthView
-            deals={visibleDeals}
-            start={start}
-            onCreated={reload}
-            showCodeStatus={canManageCodes}
-          />
-        )}
+        <div className="flex min-h-0 flex-1 gap-0 lg:gap-3">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-visible rounded-xl border bg-white shadow-sm lg:overflow-hidden print:overflow-visible">
+            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-visible lg:overflow-y-auto print:overflow-visible">
+              {contentLayout === 'list' && mode !== 'range' ? (
+                <CalendarPeriodList
+                  deals={visibleDeals}
+                  showCodeStatus={canManageCodes}
+                  selectedDealId={panelDeal?.id}
+                  onSelectDeal={handleSelectFromList}
+                />
+              ) : mode === 'range' ? (
+                <CalendarRangeView deals={visibleDeals} start={start} months={rangeMonths} />
+              ) : mode === 'week' ? (
+                <CalendarWeekView
+                  deals={visibleDeals}
+                  start={start}
+                  onCreated={reload}
+                  showCodeStatus={canManageCodes}
+                  onRequestPanel={handleRequestPanel}
+                />
+              ) : (
+                <CalendarMonthView
+                  deals={visibleDeals}
+                  start={start}
+                  onCreated={reload}
+                  showCodeStatus={canManageCodes}
+                  onRequestPanel={handleRequestPanel}
+                  selectedDay={monthSplitActive || (isMobile && contentLayout === 'grid') ? selectedDay : null}
+                  onSelectDay={
+                    monthSplitActive || (isMobile && contentLayout === 'grid')
+                      ? handleSelectDay
+                      : undefined
+                  }
+                  compactMobile={isMobile && contentLayout === 'grid'}
+                />
+              )}
+            </div>
+          </div>
+
+          {showDesktopPanel && (
+            <aside className="hidden h-full min-h-0 w-[min(400px,30vw)] shrink-0 flex-col overflow-hidden rounded-xl border bg-white shadow-sm lg:flex">
+              {panelDeal ? (
+                <CalendarModal
+                  key={panelDeal.id}
+                  embedded
+                  deal={panelDeal}
+                  onEmbeddedClose={() => setPanelDeal(null)}
+                  onBack={selectedDay ? () => setPanelDeal(null) : undefined}
+                  backLabel="Tornar al dia"
+                  onSaved={reload}
+                />
+              ) : selectedDay ? (
+                <CalendarDayPanel
+                  dateIso={selectedDay}
+                  deals={visibleDeals}
+                  showCodeStatus={canManageCodes}
+                  selectedDealId={null}
+                  onSelectDeal={handleRequestPanel}
+                  onClose={() => setSelectedDay(null)}
+                  onCreated={reload}
+                />
+              ) : null}
+            </aside>
+          )}
         </div>
       </div>
+
+      {showMobileDaySheet && selectedDay && (
+        <div className="fixed inset-0 z-[60] lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setSelectedDay(null)}
+            aria-hidden
+          />
+          <div className="absolute inset-x-0 bottom-0 flex max-h-[min(88dvh,720px)] flex-col overflow-hidden rounded-t-2xl bg-white pb-[env(safe-area-inset-bottom)] shadow-xl">
+            <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-slate-200" />
+            <CalendarDayPanel
+              dateIso={selectedDay}
+              deals={visibleDeals}
+              showCodeStatus={canManageCodes}
+              selectedDealId={null}
+              onSelectDeal={handleMobileDayDealSelect}
+              onClose={() => setSelectedDay(null)}
+              onCreated={reload}
+            />
+          </div>
+        </div>
+      )}
+
+      {mobileDetailDeal && (
+        <div className="fixed inset-0 z-[70] lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setMobileDetailDeal(null)}
+          />
+          <div className="absolute inset-0 flex flex-col overflow-hidden bg-white pb-[env(safe-area-inset-bottom)]">
+            <CalendarModal
+              key={mobileDetailDeal.id}
+              embedded
+              deal={mobileDetailDeal}
+              onEmbeddedClose={() => setMobileDetailDeal(null)}
+              onSaved={reload}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ADD */}
       <CalendarNewEventModal
@@ -749,7 +1024,5 @@ export default function CalendarPage() {
     </div>
   )
 }
-
-
 
 

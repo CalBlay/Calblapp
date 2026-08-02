@@ -34,6 +34,7 @@ import {
 import { requestReferenceFromDocId } from '@/lib/roba-personal/dotacioReferenceCodes'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
+import { CorporateFilterSearch, CorporateFiltersShell } from '@/components/layout/corporate-filters'
 import { robaMovimentsDefaultMonthRange, robaRequestCalendarDay } from './robaPersonalDates'
 
 const STOCK_MOVEMENTS_PURGE_CONFIRM_PHRASE = 'ESBORRAR_TOTS_ELS_MOVIMENTS_I_RESERVA'
@@ -999,7 +1000,7 @@ export function EstocPanel() {
           als moviments (o ampliïu dates). Si tampoc no hi ha preparació, useu «Comprovar reserva» a la vista d’estoc.
         </p>
         )}
-        <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+        <CorporateFiltersShell showHeader={false} variant="toolbar" className="mb-3 border-0 shadow-none">
           <SmartFilters
             modeDefault="month"
             modeOptions={['week', 'month', 'day', 'range']}
@@ -1015,19 +1016,13 @@ export function EstocPanel() {
             initialStart={movListRangeStart}
             initialEnd={movListRangeEnd}
           />
-          <div className="relative flex min-w-[12rem] flex-1 basis-[14rem] max-w-md">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
-            />
-            <Input
-              className="h-10 rounded-xl border-gray-300 bg-white pl-9 dark:bg-background"
-              placeholder="Cercar tipus, producte, ref. S-…/E-…/R-…, departament, usuari…"
-              value={movListSearch}
-              onChange={(e) => setMovListSearch(e.target.value)}
-              aria-label="Cercar moviments"
-            />
-          </div>
+          <CorporateFilterSearch
+            className="min-w-[12rem] max-w-md flex-1 basis-[14rem]"
+            placeholder="Cercar tipus, producte, ref. S-…/E-…/R-…, departament, usuari…"
+            value={movListSearch}
+            onChange={(e) => setMovListSearch(e.target.value)}
+            aria-label="Cercar moviments"
+          />
           <ResetFilterButton
             onClick={() => {
               setMovListSearch('')
@@ -1041,7 +1036,7 @@ export function EstocPanel() {
           <div className="ml-auto">
             <ExportMenu items={movimentsExportMenuItems} ariaLabel="Exportar moviments d'estoc" />
           </div>
-        </div>
+        </CorporateFiltersShell>
         {movementTypeOptions.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-muted-foreground">Tipus:</span>

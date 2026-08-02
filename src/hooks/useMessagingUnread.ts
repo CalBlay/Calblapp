@@ -1,31 +1,42 @@
 'use client'
 
-import useSWR from 'swr'
+import { useMemo } from 'react'
 import { useSession } from 'next-auth/react'
+import useSWR from 'swr'
+import { useNotificationSummaryContext } from '@/context/NotificationSummaryContext'
 
-const fetcher = (url: string) => fetch(url).then(r => r.json())
+type MessagingChannel = {
+  unreadCount?: number | null
+}
 
-type MessagingChannel = { unreadCount?: number | string | null }
+type MessagingChannelsResponse = {
+  channels?: MessagingChannel[]
+}
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export function useMessagingUnreadCount() {
-  const { status } = useSession()
-  const isAuth = status === 'authenticated'
+  const { summary, loading, error } = useNotificationSummaryContext()
+  const { data: session } = useSession()
+  const userId = String((session?.user as { id?: string } | undefined)?.id || '').trim()
 
-  const { data, error } = useSWR(
-    isAuth ? '/api/messaging/channels?scope=mine' : null,
-    fetcher,
-    { refreshInterval: isAuth ? 15000 : 0 }
+  const { data } = useSWR<MessagingChannelsResponse>(
+    userId ? '/api/messaging/channels?scope=mine' : null,
+    fetcher
   )
 
-  const channels = Array.isArray(data?.channels) ? data.channels : []
-  const count = channels.reduce((acc: number, c: MessagingChannel) => {
-    const n = Number(c?.unreadCount || 0)
-    return acc + (Number.isNaN(n) ? 0 : n)
-  }, 0)
+  const count = useMemo(() => {
+    const channels = Array.isArray(data?.channels) ? data.channels : []
+    if (channels.length === 0) return summary.messaging
+    return channels.reduce((total, channel) => {
+      const unread = Number(channel?.unreadCount || 0)
+      return total + (Number.isNaN(unread) ? 0 : unread)
+    }, 0)
+  }, [data?.channels, summary.messaging])
 
   return {
     count,
-    loading: status === 'loading' || (isAuth && !data && !error),
+    loading,
     error,
   }
 }

@@ -2,7 +2,7 @@
 'use client'
 
 import { Plus } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { MotionButton } from '@/lib/lazyMotion'
 import { cn } from '@/lib/utils'
 
 type FloatingAddButtonProps = {
@@ -12,16 +12,18 @@ type FloatingAddButtonProps = {
 
 export default function FloatingAddButton({ onClick, className }: FloatingAddButtonProps) {
   return (
-    <motion.button
+    <MotionButton
       onClick={onClick}
       initial={{ opacity: 0, scale: 0.7, y: 20 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       whileTap={{ scale: 0.9 }}
       className={cn(
         `
-        fixed 
-        bottom-6 right-10 
-        h-14 w-14 
+        fixed
+        bottom-[max(1.25rem,env(safe-area-inset-bottom))]
+        right-4
+        sm:right-10
+        h-14 w-14
         rounded-full
         bg-blue-600 
         text-white 
@@ -36,6 +38,6 @@ export default function FloatingAddButton({ onClick, className }: FloatingAddBut
       )}
     >
       <Plus className="h-7 w-7" />
-    </motion.button>
+    </MotionButton>
   )
 }

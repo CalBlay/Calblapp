@@ -8,7 +8,8 @@ import { AlertTriangle, Plus } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { canManageIncidentCategories } from '@/lib/incidentPolicy'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { INCIDENTS_TYPOLOGIES_MANAGE_PERM } from '@/lib/incidentsPermissions'
 import { familyLabelForCategoryId, mergeFamilyLabels } from '@/lib/incidentTypology'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -24,8 +25,8 @@ type CategoryRow = {
 export default function IncidentTipologiesPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const user = session?.user as { role?: string; department?: string } | undefined
-  const canManage = canManageIncidentCategories(user || {})
+  const { ready: uiPermsReady, hasAction } = useUiPermissions()
+  const canManage = uiPermsReady && hasAction(INCIDENTS_TYPOLOGIES_MANAGE_PERM)
 
   const [rows, setRows] = useState<CategoryRow[]>([])
   const [families, setFamilies] = useState<Record<string, string>>(() => mergeFamilyLabels(undefined))
@@ -49,10 +50,11 @@ export default function IncidentTipologiesPage() {
       router.replace('/login')
       return
     }
+    if (!uiPermsReady) return
     if (!canManage) {
       router.replace('/menu/incidents')
     }
-  }, [status, session, router, canManage])
+  }, [status, session, router, canManage, uiPermsReady])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -209,7 +211,7 @@ export default function IncidentTipologiesPage() {
 
   const familyKeys = Object.keys(familyEdits).sort((a, b) => a.localeCompare(b))
 
-  if (status === 'loading' || !canManage) {
+  if (status === 'loading' || !uiPermsReady || !canManage) {
     return <div className={`p-6 text-center ${typography('bodySm')}`}>Carregant…</div>
   }
 

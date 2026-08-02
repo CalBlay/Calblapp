@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { registerFinquesProduccioImagesInIndex } from '@/lib/media/storageMediaIndex'
+import { registerFinquesProduccioMediaInIndex } from '@/lib/media/storageMediaIndex'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { requireSpacesBbddMutation } from '@/lib/server/spacesApiAuth'
 
@@ -97,14 +97,28 @@ export async function POST(req: Request) {
     const docRef = db.collection('finques').doc()
     await docRef.set(payload)
 
+    const mediaList = Array.isArray(produccioFormatted.media)
+      ? (produccioFormatted.media as Array<{ kind?: string; url?: string }>)
+          .map((row) => ({
+            kind: String(row.kind || 'image').trim(),
+            url: String(row.url || '').trim(),
+          }))
+          .filter((row) => row.url)
+      : []
     const imgList = Array.isArray(produccioFormatted.images)
       ? (produccioFormatted.images as string[]).map((x) => String(x).trim()).filter(Boolean)
       : []
-    if (imgList.length) {
-      void registerFinquesProduccioImagesInIndex(docRef.id, {
+
+    const indexMedia =
+      mediaList.length > 0
+        ? mediaList
+        : imgList.map((url) => ({ kind: 'image', url }))
+
+    if (indexMedia.length) {
+      void registerFinquesProduccioMediaInIndex(docRef.id, {
         nom,
         code: codeValue,
-        images: imgList,
+        media: indexMedia,
         createdAt: payload.createdAt as number,
       })
     }

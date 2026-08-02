@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 
@@ -29,7 +29,7 @@ type ChannelMemberRecord = Record<string, unknown> & {
   channelId?: string
 }
 
-const ALLOWED_SOURCES = new Set(['finques', 'restaurants', 'events', 'projects'])
+const ALLOWED_SOURCES = new Set(['finques', 'restaurants', 'events', 'event_comanda', 'projects'])
 
 async function getAllowedChannelIds(userId: string): Promise<string[]> {
   const userSnap = await db.collection('users').doc(userId).get()

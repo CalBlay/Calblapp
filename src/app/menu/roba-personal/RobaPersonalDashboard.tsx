@@ -1,21 +1,52 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { normalizeRole } from '@/lib/roles'
 import { robaTabUiPath } from '@/lib/robaPersonalPermissions'
-import { ProductesPanel } from './ProductesPanel'
 import type { TabId } from './robaPersonalTypes'
 import { parseRobaTab } from './robaPersonalConstants'
-import { RobaPersonalRequestNotificationsBanner } from './RobaPersonalRequestNotificationsBanner'
-import { TreballadorsPanel } from './TreballadorsPanel'
-import { EstocPanel } from './EstocPanel'
-import { SollicitudsPanel } from './SollicitudsPanel'
-import { EntreguesPanel } from './EntreguesPanel'
-import { CompresPanel } from './CompresPanel'
-import { RrhhInformesPanel } from '@/components/informes/domains/RrhhInformesPanel'
+
+const tabLoadingFallback = () => (
+  <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
+    Carregant pestanya...
+  </div>
+)
+
+const ProductesPanel = dynamic(
+  () => import('./ProductesPanel').then((mod) => ({ default: mod.ProductesPanel })),
+  { loading: tabLoadingFallback }
+)
+const TreballadorsPanel = dynamic(
+  () => import('./TreballadorsPanel').then((mod) => ({ default: mod.TreballadorsPanel })),
+  { loading: tabLoadingFallback }
+)
+const EstocPanel = dynamic(
+  () => import('./EstocPanel').then((mod) => ({ default: mod.EstocPanel })),
+  { loading: tabLoadingFallback }
+)
+const SollicitudsPanel = dynamic(
+  () => import('./SollicitudsPanel').then((mod) => ({ default: mod.SollicitudsPanel })),
+  { loading: tabLoadingFallback }
+)
+const EntreguesPanel = dynamic(
+  () => import('./EntreguesPanel').then((mod) => ({ default: mod.EntreguesPanel })),
+  { loading: tabLoadingFallback }
+)
+const CompresPanel = dynamic(
+  () => import('./CompresPanel').then((mod) => ({ default: mod.CompresPanel })),
+  { loading: tabLoadingFallback }
+)
+const RrhhInformesPanel = dynamic(
+  () =>
+    import('@/components/informes/domains/RrhhInformesPanel').then((mod) => ({
+      default: mod.RrhhInformesPanel,
+    })),
+  { loading: tabLoadingFallback }
+)
 
 export default function RobaPersonalDashboard() {
   const searchParams = useSearchParams()
@@ -140,72 +171,8 @@ export default function RobaPersonalDashboard() {
     router.replace(`/menu/roba-personal?${p.toString()}`, { scroll: false })
   }
 
-  const navigateEntregaForRequest = useCallback(
-    (requestId: string) => {
-      setTab('entregues')
-      router.replace(
-        `/menu/roba-personal?tab=entregues&requestId=${encodeURIComponent(requestId)}`,
-        { scroll: false }
-      )
-    },
-    [router]
-  )
-
-  const navigatePreparationForRequest = useCallback(
-    (requestId: string) => {
-      setTab('preparacio')
-      router.replace(
-        `/menu/roba-personal?tab=preparacio&requestId=${encodeURIComponent(requestId)}`,
-        { scroll: false }
-      )
-    },
-    [router]
-  )
-
-  const navigateRecepcioForRequest = useCallback(
-    (requestId: string) => {
-      setTab('recollides')
-      router.replace(
-        `/menu/roba-personal?tab=recollides&requestId=${encodeURIComponent(requestId)}`,
-        { scroll: false }
-      )
-    },
-    [router]
-  )
-
-  const navigateDeliveryAck = useCallback(
-    (deliveryId: string) => {
-      setTab('entregues')
-      router.replace(
-        `/menu/roba-personal?tab=entregues&deliveryId=${encodeURIComponent(deliveryId)}`,
-        { scroll: false }
-      )
-    },
-    [router]
-  )
-
-  const navigateDeliveryDispute = useCallback(
-    (deliveryId: string) => {
-      setTab('recollides')
-      router.replace(
-        `/menu/roba-personal?tab=recollides&deliveryId=${encodeURIComponent(deliveryId)}`,
-        { scroll: false }
-      )
-    },
-    [router]
-  )
-
   return (
     <div className="space-y-5 px-2 pb-8 sm:px-4">
-      <RobaPersonalRequestNotificationsBanner
-        onOpenPreparation={navigatePreparationForRequest}
-        onMaterialReady={navigateRecepcioForRequest}
-        onDeliveryAck={navigateDeliveryAck}
-        onDeliveryRevised={navigateDeliveryAck}
-        onDeliveryDispute={navigateDeliveryDispute}
-        onWorkerPendingRequest={navigateEntregaForRequest}
-      />
-
       {!isRobaWorkerSelf ? (
         <div className="flex flex-wrap gap-2 border-b border-border pb-3">
           {visibleTabs.map(([id, label]) => (

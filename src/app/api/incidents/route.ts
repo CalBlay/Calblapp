@@ -1,7 +1,7 @@
 // File: src/app/api/incidents/route.ts
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/server/authOptions";
 import { firestoreAdmin, storageAdmin } from "@/lib/firebaseAdmin";
 import admin from "firebase-admin";
 import type { Query } from "firebase-admin/firestore";
@@ -10,9 +10,11 @@ import {
   notifyForNewMaintenanceTicket,
 } from '@/lib/maintenanceNotifications'
 import { notifyMarketingManagersFor9xxIncident } from '@/lib/incidentNotifications'
-import { canAccessIncidentsModule, canPostIncident } from '@/lib/incidentPolicy'
+import { canPostIncident } from '@/lib/incidentPolicy'
+import { canViewIncidentsModule } from '@/lib/server/incidentsApiAuth'
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { normalizeRole } from '@/lib/roles'
+import { isIncidentCategoryGroup2xx } from '@/lib/incidentTypology'
 
 interface IncidentDoc {
   id?: string;
@@ -374,6 +376,16 @@ export async function POST(req: Request) {
       meta: imageMeta || null,
     }
 
+    const categoryId = String(category?.id || '').trim()
+    const hasAttachment =
+      normalizedImages.length > 0 || Boolean(primaryImage.url || primaryImage.path)
+    if (isIncidentCategoryGroup2xx(categoryId) && !hasAttachment) {
+      return NextResponse.json(
+        { error: 'Les incidències del grup 2XX (Maquinària) requereixen adjuntar com a mínim una foto o fitxer.' },
+        { status: 400 }
+      )
+    }
+
     // 3️⃣ Crear document incidència
     const createdAtMs = Date.now();
     const docRef = await firestoreAdmin.collection("incidents").add({
@@ -420,7 +432,6 @@ export async function POST(req: Request) {
       });
     }
 
-    const categoryId = String(category?.id || "").trim();
     const categoryPrefix = categoryId.charAt(0);
     const baseUrl = new URL(req.url).origin
 
@@ -549,13 +560,6 @@ export async function POST(req: Request) {
  * ----------------------------------------------------- */
 export async function GET(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined;
-    if (!user?.id) return NextResponse.json({ error: "No autenticat" }, { status: 401 });
-    if (!canAccessIncidentsModule(user)) {
-      return NextResponse.json({ error: "Sense permisos" }, { status: 403 });
-    }
-
     const { searchParams } = new URL(req.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
@@ -572,6 +576,21 @@ export async function GET(req: Request) {
     );
     const lightList =
       searchParams.get("light") === "1" || searchParams.get("light") === "true";
+
+    const session = await getServerSession(authOptions);
+    const user = session?.user as
+      | { id?: string; role?: string; department?: string; name?: string; commercialName?: string }
+      | undefined;
+    if (!user?.id) {
+      return NextResponse.json({ error: "No autenticat" }, { status: 401 });
+    }
+
+    const accessUser = { ...user, id: String(user.id) };
+    const canViewModule = await canViewIncidentsModule(accessUser);
+    const canViewEventScopedIncidents = Boolean(eventId) && canPostIncident(accessUser);
+    if (!canViewModule && !canViewEventScopedIncidents) {
+      return NextResponse.json({ error: "Sense permisos" }, { status: 403 });
+    }
 
     // Amb rang de dates: filtre i ordre per **data de l'esdeveniment** (reunió setmanal).
     // Sense rang: ordre per creació (tauler general).

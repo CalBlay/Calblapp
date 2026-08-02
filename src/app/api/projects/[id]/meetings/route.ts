@@ -3,9 +3,10 @@ export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
 import { canAccessProjects, sessionToAccessUser } from '@/lib/projectAccess'
+import { canConvokeProjectMeeting } from '@/lib/projectMeetingAccess'
 import type {
   ProjectBlock,
   ProjectDocument,
@@ -143,6 +144,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const project = projectSnap.data() as {
       name?: string
+      owner?: string
+      ownerUserId?: string
+      sponsor?: string
+      createdById?: string
       blocks?: ProjectBlock[]
     }
     const scope = body.scope === 'task' ? 'task' : 'block'
@@ -189,6 +194,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     if (scope === 'task' && !task) {
       return NextResponse.json({ error: 'Tasca no trobada' }, { status: 404 })
+    }
+
+    if (
+      !canConvokeProjectMeeting(auth.user, project, scope, blockId, scope === 'task' ? taskId : undefined)
+    ) {
+      return NextResponse.json(
+        { error: 'No tens permisos per convocar aquesta reunio' },
+        { status: 403 }
+      )
     }
 
     const organizerSnap = await db.collection('users').doc(auth.user.id).get()
@@ -275,6 +289,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       notes,
       attendees,
       organizerEmail,
+      organizerUserId: auth.user.id,
       attachments: uploadedAttachments,
       invitedAt: Date.now(),
       graphEventId: event.id,

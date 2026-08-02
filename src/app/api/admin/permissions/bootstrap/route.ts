@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { MODULES } from '@/lib/accessControl'
-import { normalizeRole } from '@/lib/roles'
+import { buildBootstrapAssignmentUpdate } from '@/lib/permissions/bootstrapAssignments'
 
 type BootstrapResult = {
   ok: true
@@ -18,7 +18,7 @@ type BootstrapResult = {
  *
  * Guardem:
  * - `permissions_defaults/v1` amb el catàleg base (mòduls/submòduls)
- * - `user_access_assignments/{userId}` amb rol base + dept + overrides buits
+ * - `user_access_assignments/{userId}` existents amb rol base + dept, preservant overrides
  */
 export async function POST() {
   const auth = await requireAuth()
@@ -54,25 +54,14 @@ export async function POST() {
     const userId = String(u.id || '').trim()
     if (!userId) continue
 
-    const role = normalizeRole(typeof u.role === 'string' ? u.role : undefined)
-    const department = typeof u.department === 'string' ? u.department : undefined
-
     const ref = assignmentsCol.doc(userId)
-    batch.set(
-      ref,
-      {
-        userId,
-        base: {
-          role,
-          department: department ?? null,
-        },
-        permissionSets: [],
-        overrides: [],
-        updatedAt: new Date().toISOString(),
-        updatedBy: auth.user.id,
-      },
-      { merge: true }
-    )
+    const existing = await ref.get()
+    if (!existing.exists) continue
+
+    const update = buildBootstrapAssignmentUpdate(u, auth.user.id, new Date().toISOString())
+    if (!update) continue
+
+    batch.set(ref, update, { merge: true })
 
     usersWritten += 1
     batchOps += 1

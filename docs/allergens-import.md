@@ -23,6 +23,8 @@
 - `Tipus` es desa a `category/categoryLabel`.
 - `Grup` es desa a `family/familyLabel`.
 - Les columnes de menus marcades amb `x` es desen a `menus`.
+- Les traduccions ESP/ENG es detecten a la fila de capçalera o a la subcapçalera immediata.
+- Les columnes de menu es calculen dinamicament despres de `VEGA`/`VEGETARIA` (sense dependre que la capçalera sigui la fila 0).
 - Els 14 al.lergens base es regeneren a cada importacio completa.
 
 ## On revisar conflictes

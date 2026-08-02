@@ -8,11 +8,11 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { Loader2, Home, X, ExternalLink, FileText, ChevronRight } from 'lucide-react'
+import { Loader2, Home, X } from 'lucide-react'
 
 import { db } from '@/lib/firebaseClient'
 import { doc, getDoc } from 'firebase/firestore'
-import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
+import SpaceMediaGallery from '@/components/spaces/SpaceMediaGallery'
 
 /**
  * EventSpacesModal
@@ -28,9 +28,6 @@ interface Props {
   onClose: () => void
   fincaId: string | null
   eventSummary?: string
-  /** Per obrir documents de l’esdeveniment des del modal */
-  eventId?: string | null
-  eventCode?: string | null
 }
 
 type ProduccioRecord = Record<string, unknown>
@@ -52,6 +49,7 @@ const PRODUCCIO_BASE_KEYS = [
   'observacions',
   'fitxaUrl',
   'images',
+  'media',
   'updatedAt',
 ] as const
 
@@ -99,12 +97,9 @@ export default function EventSpacesModal({
   onClose,
   fincaId,
   eventSummary,
-  eventId,
-  eventCode,
 }: Props) {
   const [loading, setLoading] = useState(false)
   const [finca, setFinca] = useState<FincaData | null>(null)
-  const [docsOpen, setDocsOpen] = useState(false)
 
   useEffect(() => {
     if (!open || !fincaId) return
@@ -131,10 +126,6 @@ export default function EventSpacesModal({
     load()
   }, [open, fincaId])
 
-  useEffect(() => {
-    if (!open) setDocsOpen(false)
-  }, [open])
-
   const produccio = useMemo<ProduccioRecord>(() => {
     const p = finca?.produccio
     return p && typeof p === 'object' ? (p as ProduccioRecord) : {}
@@ -157,16 +148,8 @@ export default function EventSpacesModal({
   const hasAperitiu = hasText(aperitiuText)
   const hasObs = hasText(obsText)
   const mainAllEmpty = !hasOffice && !hasAperitiu && !hasObs
-  const showMainEmptyMessage = mainAllEmpty && extraKeysWithContent.length === 0
+  const showProductionEmptyNote = mainAllEmpty && extraKeysWithContent.length === 0
   const showMainGrid = !mainAllEmpty
-
-  const openFullSpace = () => {
-    if (!finca?.id) return
-    window.open(`/menu/spaces/info/${finca.id}`, '_blank', 'noopener,noreferrer')
-    onClose()
-  }
-
-  const showDocsRow = Boolean(eventId && String(eventId).trim())
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -194,6 +177,7 @@ export default function EventSpacesModal({
         </div>
 
         {/* ================= Body ================= */}
+        {open ? (
         <div className="px-4 py-3 sm:px-5 sm:py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-4 pb-[max(1rem,env(safe-area-inset-bottom))] touch-pan-y">
           {loading && (
             <div className="flex items-center justify-center py-10">
@@ -212,8 +196,8 @@ export default function EventSpacesModal({
                   Informació de producció
                 </h2>
 
-                {showMainEmptyMessage ? (
-                  <p className="text-sm text-gray-500">Sense informació</p>
+                {showProductionEmptyNote ? (
+                  <p className="text-sm text-gray-500">Sense informació de producció</p>
                 ) : null}
 
                 {showMainGrid ? (
@@ -273,52 +257,11 @@ export default function EventSpacesModal({
                 ) : null}
               </div>
 
-              {finca.id && (
-                <div className="flex flex-col gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={openFullSpace}
-                    className="inline-flex items-center gap-2 min-h-11 px-1 py-2 text-base sm:text-sm font-semibold text-blue-600 hover:underline w-full sm:w-fit justify-center sm:justify-start rounded-lg active:bg-blue-50 touch-manipulation"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    Veure fitxa completa de l’espai
-                  </button>
-
-                  {showDocsRow && (
-                    <>
-                      <div className="border-t border-slate-200" />
-                      <button
-                        type="button"
-                        onClick={() => setDocsOpen(true)}
-                        className="flex w-full min-h-[3rem] items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-left text-base sm:text-sm hover:bg-slate-50 active:bg-slate-100 transition touch-manipulation"
-                      >
-                        <span className="flex items-center gap-2 min-w-0">
-                          <FileText className="w-4 h-4 text-blue-600 shrink-0" />
-                          <span className="font-medium text-slate-900">Veure documents</span>
-                        </span>
-                        <span className="flex items-center gap-2 shrink-0">
-                          <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-200">
-                            Docs
-                          </span>
-                          <ChevronRight className="w-4 h-4 text-slate-400" />
-                        </span>
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
+              <SpaceMediaGallery produccio={produccio} />
             </>
           )}
         </div>
-
-        {showDocsRow && (
-          <EventDocumentsSheet
-            eventId={String(eventId)}
-            eventCode={eventCode ?? null}
-            open={docsOpen}
-            onOpenChange={setDocsOpen}
-          />
-        )}
+        ) : null}
       </DialogContent>
     </Dialog>
   )

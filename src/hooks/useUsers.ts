@@ -1,5 +1,6 @@
 // file: src/hooks/useUsers.ts
 import { useState, useEffect } from 'react'
+import type { UserAccessAssignmentInput } from '@/lib/permissions/types'
 
 export type User = {
   id: string
@@ -27,6 +28,7 @@ export type User = {
 /** Form/API payloads may use `workerRank` as a plain string. */
 export type SaveUserInput = Partial<Omit<User, 'workerRank'>> & {
   workerRank?: User['workerRank'] | string
+  accessAssignment?: UserAccessAssignmentInput
 }
 
 export function useUsers() {
@@ -61,9 +63,8 @@ export function useUsers() {
     const workerRank: User['workerRank'] | undefined =
       rankRaw === 'equip' || rankRaw === 'responsable' ? rankRaw : undefined
 
-    const payload: Partial<User> = {
+    const payload: SaveUserInput = {
       name:       data.name,
-      password:   data.password,
       role:       data.role,
       isAdmin:    data.isAdmin,
       department: data.department,
@@ -79,6 +80,10 @@ export function useUsers() {
       canRespondSurveys: data.canRespondSurveys,
       isDepartmentRobaLead: data.isDepartmentRobaLead,
       isTransportLead: data.isTransportLead,
+      accessAssignment: data.accessAssignment,
+    }
+    if (data.password?.trim()) {
+      payload.password = data.password.trim()
     }
 
     let res: Response

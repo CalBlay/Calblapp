@@ -2,18 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
-import { getAblyClient } from '@/lib/ablyClient'
+import { bindAblyChannelSubscriptions, publishAblyEvent } from '@/lib/ablyClient'
 import { toast } from '@/components/ui/use-toast'
 import MessageList from '@/app/menu/missatgeria/components/MessageList'
 import Composer from '@/app/menu/missatgeria/components/Composer'
 import type { Member, Message, PendingImage } from '@/app/menu/missatgeria/types'
 import { compressRasterImageWithMeta, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
+import { cn } from '@/lib/utils'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 type Props = {
   channelId: string
   userId?: string
+  embedded?: boolean
+  /** Xat tancat: només lectura de missatges, sense composer ni esborrat. */
+  consultOnly?: boolean
   canCreateTaskFromHash?: boolean
   onCreateTaskFromHash?: (text: string) => Promise<{ title: string }>
   onOperationalDocumentCreated?: (document: {
@@ -28,12 +32,11 @@ type Props = {
   }) => void
 }
 
-type RealtimeMessage = { data?: Message }
-type TypingRealtimeMessage = { data?: { userId?: string } }
-
 export default function ProjectRoomOpsChat({
   channelId,
   userId,
+  embedded = false,
+  consultOnly = false,
   canCreateTaskFromHash = false,
   onCreateTaskFromHash,
   onOperationalDocumentCreated,
@@ -54,6 +57,8 @@ export default function ProjectRoomOpsChat({
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesCache = useRef<Map<string, Message[]>>(new Map())
   const typingThrottleRef = useRef<number>(0)
+  const markedMessageIdsRef = useRef<Set<string>>(new Set())
+  const lastChannelReadRef = useRef<string>('')
 
   const { data: messagesData, mutate: refreshMessages } = useSWR(
     channelId ? `/api/messaging/channels/${channelId}/messages?limit=20` : null,
@@ -77,7 +82,9 @@ export default function ProjectRoomOpsChat({
     () => (Array.isArray(messagesData?.messages) ? messagesData.messages : []),
     [messagesData?.messages]
   )
-  const isReadOnly = String(channelData?.channel?.status || '').toLowerCase() === 'archived'
+  const isReadOnly =
+    consultOnly ||
+    String(channelData?.channel?.status || '').toLowerCase() === 'archived'
 
   const notifyOperationalDocument = useMemo(
     () => (message: Partial<Message> | null | undefined) => {
@@ -121,50 +128,69 @@ export default function ProjectRoomOpsChat({
 
   useEffect(() => {
     if (!channelId) return
+    markedMessageIdsRef.current = new Set()
+    lastChannelReadRef.current = ''
     const cached = messagesCache.current.get(channelId)
     if (cached?.length) setMessagesState(cached)
   }, [channelId])
 
   useEffect(() => {
-    if (!channelId || !messagesState.length) return
-    const ids = messagesState.map((m) => m.id).filter(Boolean)
-    fetch('/api/messaging/messages/read', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messageIds: ids }),
-    }).catch(() => {})
+    if (!channelId) return
+    if (lastChannelReadRef.current === channelId) return
+    lastChannelReadRef.current = channelId
     fetch(`/api/messaging/channels/${channelId}/read`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
     }).catch(() => {})
+  }, [channelId])
+
+  useEffect(() => {
+    if (!channelId || !messagesState.length) return
+    const newIds = messagesState
+      .map((message) => message.id)
+      .filter((id): id is string => Boolean(id) && !markedMessageIdsRef.current.has(id))
+    if (newIds.length === 0) return
+
+    const timer = window.setTimeout(() => {
+      newIds.forEach((id) => markedMessageIdsRef.current.add(id))
+      fetch('/api/messaging/messages/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageIds: newIds }),
+      }).catch(() => {})
+    }, 800)
+
+    return () => window.clearTimeout(timer)
   }, [channelId, messagesState])
 
   useEffect(() => {
     if (!channelId) return
-    const client = getAblyClient()
-    const channel = client.channels.get(`chat:${channelId}`)
 
-    const handleMessage = (msg: RealtimeMessage) => {
-      const data = msg?.data
+    const handleMessage = (msg: { data?: unknown }) => {
+      const data = msg?.data as Message | undefined
       if (!data || data.channelId !== channelId) return
       notifyOperationalDocument(data)
-      refreshMessages()
+      setMessagesState((current) => {
+        if (current.some((item) => item.id === data.id)) return current
+        return [data, ...current]
+      })
     }
 
-    const handleTyping = (msg: TypingRealtimeMessage) => {
-      const data = msg?.data
+    const handleTyping = (msg: { data?: unknown }) => {
+      const data = msg?.data as { userId?: string } | undefined
       if (!data?.userId || data.userId === userId) return
       setTypingUsers((prev) => ({ ...prev, [data.userId!]: Date.now() }))
     }
 
-    channel.subscribe('message', handleMessage)
-    channel.subscribe('typing', handleTyping)
-
-    return () => {
-      channel.unsubscribe('message', handleMessage)
-      channel.unsubscribe('typing', handleTyping)
-    }
-  }, [channelId, notifyOperationalDocument, refreshMessages, userId])
+    return bindAblyChannelSubscriptions({
+      channelName: `chat:${channelId}`,
+      userId,
+      subscriptions: [
+        { eventName: 'message', handler: handleMessage },
+        { eventName: 'typing', handler: handleTyping },
+      ],
+    })
+  }, [channelId, notifyOperationalDocument, userId])
 
   useEffect(() => {
     const now = Date.now()
@@ -326,9 +352,12 @@ export default function ProjectRoomOpsChat({
     const now = Date.now()
     if (now - typingThrottleRef.current < 1500) return
     typingThrottleRef.current = now
-    const client = getAblyClient()
-    const channel = client.channels.get(`chat:${channelId}`)
-    channel.publish('typing', { userId })
+    publishAblyEvent({
+      channelName: `chat:${channelId}`,
+      eventName: 'typing',
+      data: { userId },
+      userId,
+    })
   }
 
   const updateMentionState = (value: string) => {
@@ -401,10 +430,13 @@ export default function ProjectRoomOpsChat({
   )
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <div
         ref={scrollRef}
-        className="flex-1 space-y-3 overflow-y-auto px-5 py-4"
+        className={cn(
+          'min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 py-3 sm:px-5 sm:py-4',
+          embedded ? 'pb-2' : 'pb-32 lg:pb-4'
+        )}
         onScroll={(event) => {
           if (event.currentTarget.scrollTop < 40) loadMore()
         }}
@@ -415,6 +447,7 @@ export default function ProjectRoomOpsChat({
           canCreateTicket={false}
           creatingTicketId={null}
           ticketTypePickerId={null}
+          readOnly={isReadOnly}
           onDelete={deleteMessage}
           onCreateTicket={() => {}}
           onPickTicketType={() => {}}
@@ -422,7 +455,12 @@ export default function ProjectRoomOpsChat({
         />
       </div>
 
-      <Composer
+      {isReadOnly && embedded ? (
+        <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs text-slate-500">
+          Xat tancat — només consulta
+        </div>
+      ) : (
+        <Composer
         typingUsers={typingUsers}
         pendingImage={pendingImage}
         pendingFileName={pendingFile?.name || null}
@@ -449,7 +487,9 @@ export default function ProjectRoomOpsChat({
         fileInputRef={fileInputRef}
         onFileChange={handleAttachmentPick}
         fileAccept="*/*"
+        embedded={embedded}
       />
-    </>
+      )}
+    </div>
   )
 }

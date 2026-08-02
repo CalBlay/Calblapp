@@ -97,23 +97,6 @@ export default function SpaceGrid({
   }
 
   const handleEventClick = (ev: RawSpaceEvent) => {
-    const isManual =
-      ev.isManual === true ||
-      readString(ev.stage).toLowerCase() === 'lila'
-
-    if (typeof window !== 'undefined') {
-      const isMobile = window.innerWidth < 768
-      const targetCode = readString(ev.code) || readString(ev.Code) || readString(ev.id)
-
-      // En mÃ²bil obrim en una finestra nova per no tapar la graella
-      if (isMobile && targetCode && !isManual) {
-        const url = `/menu/events/${targetCode}`
-        window.open(url, '_blank', 'noopener,noreferrer')
-        return
-      }
-    }
-
-    // Desktop o sense identificador: modal in-place
     setSelectedEvent(ev)
     setModalOpen(true)
   }
@@ -145,17 +128,21 @@ export default function SpaceGrid({
   }
 
   return (
-    <div className="overflow-x-auto overflow-y-auto max-h-[80vh] snap-x scroll-smooth mt-4 w-full">
-      <table className="min-w-full md:min-w-[960px] lg:min-w-[1200px] text-[10px] sm:text-xs border-collapse text-center w-full table-fixed">
+    <div className="mt-4 w-full">
+      <p className="mb-2 px-2 text-[11px] text-slate-500 sm:px-0 lg:hidden">
+        Llisca horizontalment per veure tots els dies de la setmana.
+      </p>
+      <div className="overflow-x-auto overflow-y-auto max-h-[calc(100dvh-14rem)] snap-x scroll-smooth sm:max-h-[72vh] lg:max-h-[calc(100vh-11rem)] xl:max-h-[calc(100vh-10rem)] w-full px-1 sm:px-2 lg:px-0 [-webkit-overflow-scrolling:touch]">
+      <table className="min-w-[920px] w-full text-xs sm:text-sm border-collapse text-center">
         <colgroup>
-          <col className="w-[160px]" />
+          <col className="w-[128px]" />
           {days.map((_, i) => (
-            <col key={`col-${i}`} className="w-[150px]" />
+            <col key={`col-${i}`} className="w-[112px]" />
           ))}
         </colgroup>
         <thead className="sticky top-0 z-20">
           <tr className="bg-gray-100">
-            <th className="p-2 text-left bg-white sticky left-0 top-0 shadow-sm z-30 w-[160px] min-w-[160px] max-w-[160px]">
+            <th className="p-2 lg:p-3 text-left bg-white sticky left-0 top-0 shadow-sm z-30 min-w-[128px] lg:min-w-[180px]">
               Finca
             </th>
 
@@ -195,18 +182,18 @@ export default function SpaceGrid({
               return (
                 <th
                   key={`head-${i}`}
-                  className={`p-2 border transition-colors sticky top-0 z-20 w-[150px] min-w-[150px] max-w-[150px] ${
+                  className={`p-2 lg:p-3 border transition-colors sticky top-0 z-20 ${
                     shouldHighlight
                       ? 'bg-red-100 text-red-700 font-semibold'
                       : 'bg-gray-100 text-gray-700'
                   }`}
                 >
                   <div className="flex flex-col items-center leading-tight">
-                    <span className="text-xs font-medium">{dia}</span>
-                    <span className="text-[11px] mb-1">{dataDia}</span>
+                    <span className="text-xs font-medium capitalize">{dia}</span>
+                    <span className="text-[11px] lg:text-xs mb-1">{dataDia}</span>
 
                     <div
-                      className={`flex items-center gap-2 text-[11px] font-medium ${
+                      className={`hidden sm:flex items-center gap-2 text-[11px] lg:text-xs font-medium ${
                         shouldHighlight
                           ? 'text-red-700'
                           : 'text-green-700'
@@ -215,6 +202,13 @@ export default function SpaceGrid({
                       <span>Pax: {totalPaxScoped}</span>
                       <span className="opacity-40">|</span>
                       <span>Events: {totalEventsScoped}</span>
+                    </div>
+                    <div
+                      className={`sm:hidden text-[10px] font-semibold leading-tight ${
+                        shouldHighlight ? 'text-red-700' : 'text-green-700'
+                      }`}
+                    >
+                      {totalPaxScoped}p · {totalEventsScoped}ev
                     </div>
                   </div>
                 </th>
@@ -228,7 +222,7 @@ export default function SpaceGrid({
             data.map((row, rIdx) => (
               <tr key={`row-${rIdx}`} className="border-t align-top">
                 {/* FINCA */}
-                <td className="p-2 text-left font-semibold sticky left-0 bg-white border-r shadow-sm z-10 w-[160px] min-w-[160px] max-w-[160px]">
+                <td className="p-2 lg:p-3 text-left font-semibold sticky left-0 bg-white border-r shadow-sm z-10 min-w-[128px] lg:min-w-[180px] text-xs lg:text-sm">
                   {row.fincaId ? (
                     <a
                       href={`/menu/spaces/info/${row.fincaId}?readonly=1`}
@@ -256,7 +250,7 @@ export default function SpaceGrid({
                 {(row.dies ?? []).map((cell, cIdx) => (
                   <td
                     key={`cell-${rIdx}-${cIdx}`}
-                    className="p-1 space-y-1 w-[150px] min-w-[150px] max-w-[150px]"
+                    className="min-w-[112px] p-1 lg:p-1.5 space-y-1 align-top"
                   >
                     {(cell?.events ?? []).map((ev: RawSpaceEvent, eIdx: number) => {
                       const cellEvent = adaptEventForCell(ev)
@@ -291,6 +285,7 @@ export default function SpaceGrid({
           )}
         </tbody>
       </table>
+      </div>
 
       {/* MODAL */}
       <SpaceEventModal

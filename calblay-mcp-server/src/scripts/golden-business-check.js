@@ -224,6 +224,13 @@ async function main() {
   const skipped = results.filter((r) => r.skipped).length;
   const passed = results.filter((r) => r.ok && !r.skipped).length;
   const failed = results.filter((r) => !r.ok).length;
+  const failedCases = results
+    .filter((r) => !r.ok)
+    .map((r) => ({
+      id: r.id,
+      question: r.question,
+      failures: r.failures || []
+    }));
   const report = {
     generatedAt: new Date().toISOString(),
     source: {
@@ -235,17 +242,19 @@ async function main() {
       total: results.length,
       passed,
       skipped,
-      failed
+      failed,
+      failedCases
     },
     results
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   if (failed > 0) {
-    const failedCases = results.filter((r) => !r.ok);
     const summary = failedCases
       .map((r) => {
-        const firstFailure = Array.isArray(r.failures) && r.failures.length ? r.failures[0] : "unknown failure";
-        return `- ${r.id}: ${firstFailure}`;
+        const failureLines = Array.isArray(r.failures) && r.failures.length
+          ? r.failures.map((f) => `    ${f}`).join("\n")
+          : "    unknown failure";
+        return `- ${r.id}: ${r.question}\n${failureLines}`;
       })
       .join("\n");
     // eslint-disable-next-line no-console

@@ -9,6 +9,9 @@ type MachineRow = {
   code: string
   name: string
   label: string
+  center: string
+  location: string
+  zone: string
   active: boolean
 }
 
@@ -30,6 +33,9 @@ export async function GET() {
             code,
             name,
             label: code && name ? `${code} · ${name}` : code || name,
+            center: String(data.center || '').trim(),
+            location: String(data.location || '').trim(),
+            zone: String(data.zone || '').trim(),
             active: data.active !== false,
           }
         })
@@ -44,8 +50,8 @@ export async function GET() {
     const filePath = fs.existsSync(primaryPath)
       ? primaryPath
       : fs.existsSync(fallbackPath)
-      ? fallbackPath
-      : null
+        ? fallbackPath
+        : null
 
     if (!filePath) {
       return NextResponse.json(

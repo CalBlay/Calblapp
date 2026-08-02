@@ -4,13 +4,20 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import useSWR from 'swr'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Shield } from 'lucide-react'
+import ModuleHeader from '@/components/layout/ModuleHeader'
 import { normalizeRole, type Role } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MODULES } from '@/lib/accessControl'
+import { applyOverrideEffects } from '@/lib/permissions/overrideState'
 import { CALENDAR_EDIT_IMPLIED_ACTIONS, PERM } from '@/lib/permissionKeys'
+import {
+  PERMISSION_ACTION_GROUPS,
+  actionGroupDefaultExpanded,
+  shouldShowActionGroup,
+} from '@/lib/permissions/matrixConfig'
 
 type AssignmentOverride = {
   permission: string
@@ -56,6 +63,26 @@ type MatrixRow = {
   level: 'module' | 'submodule'
 }
 
+const MAINTENANCE_VISIBILITY_GROUPS: Array<{
+  id: string
+  label: string
+  description: string
+  paths: string[]
+}> = [
+  {
+    id: 'maintenance_tickets',
+    label: 'Tickets',
+    description: 'Veure el mòdul de tickets de manteniment.',
+    paths: ['/menu/manteniment/tickets'],
+  },
+  {
+    id: 'maintenance_preventius',
+    label: 'Preventius',
+    description: 'Veure planificador i jornada de preventius.',
+    paths: ['/menu/manteniment/preventius', '/menu/manteniment/preventius/fulls'],
+  },
+]
+
 const compareLabels = (a: string, b: string) =>
   a.localeCompare(b, 'ca', { sensitivity: 'base' })
 
@@ -83,145 +110,6 @@ const buildRows = (): MatrixRow[] => {
   }
   return rows
 }
-
-const MEDIA_SOURCES: Array<{ id: string; label: string }> = [
-  { id: 'incidents', label: 'Incidències' },
-  { id: 'maintenance', label: 'Manteniment' },
-  { id: 'messaging', label: 'Missatgeria' },
-  { id: 'audits', label: 'Auditories' },
-  { id: 'spaces', label: 'Espais' },
-]
-
-const ACTION_GROUPS: Array<{
-  id: string
-  title: string
-  subtitle?: string
-  visibleWhen: { path: string }
-  actions: Array<{ key: string; label: string }>
-}> = [
-  {
-    id: 'mediaSources',
-    title: 'Imatges · Fonts',
-    subtitle: 'Tria quines fonts pot veure (filtre i resultats).',
-    visibleWhen: { path: '/menu/media' },
-    actions: MEDIA_SOURCES.map((s) => ({
-      key: PERM.action('/menu/media', `source:${s.id}`),
-      label: s.label,
-    })),
-  },
-  {
-    id: 'mediaDelete',
-    title: 'Imatges · Accions',
-    subtitle: 'Accions amb impacte (eliminar fitxers i referències).',
-    visibleWhen: { path: '/menu/media' },
-    actions: [{ key: PERM.action('/menu/media', 'delete'), label: 'Eliminar imatges' }],
-  },
-  {
-    id: 'allergensBbddActions',
-    title: 'Al·lèrgens · BBDD plats · Accions',
-    subtitle: 'Botons especials dins de BBDD plats.',
-    visibleWhen: { path: '/menu/allergens/bbdd' },
-    actions: [
-      { key: PERM.action('/menu/allergens/bbdd', 'import'), label: 'Importar' },
-      { key: PERM.action('/menu/allergens/bbdd', 'replace'), label: 'Reemplaçar' },
-      { key: PERM.action('/menu/allergens/bbdd', 'export'), label: 'Exportar' },
-    ],
-  },
-  {
-    id: 'calendarActions',
-    title: 'Calendar · Accions',
-    subtitle: 'Accions de calendari (esdeveniments manuals i documents).',
-    visibleWhen: { path: '/menu/calendar' },
-    actions: [
-      { key: PERM.action('/menu/calendar', 'manual:create'), label: 'Crear esdeveniment manual' },
-      { key: PERM.action('/menu/calendar', 'manual:update'), label: 'Editar esdeveniment manual' },
-      { key: PERM.action('/menu/calendar', 'manual:delete'), label: 'Eliminar esdeveniment manual' },
-      { key: PERM.action('/menu/calendar', 'attach:sharepoint'), label: 'Adjuntar documents (SharePoint)' },
-      { key: PERM.action('/menu/calendar', 'sync:zoho'), label: 'Sync Zoho' },
-      { key: PERM.action('/menu/calendar', 'sync:ada'), label: 'Sync Ada' },
-    ],
-  },
-  {
-    id: 'eventsActions',
-    title: 'Esdeveniments · Accions',
-    subtitle: 'Accions de gestió amb impacte.',
-    visibleWhen: { path: '/menu/events' },
-    actions: [
-      { key: PERM.action('/menu/events', 'docs:view'), label: 'Veure documents' },
-      { key: PERM.action('/menu/events', 'docs:attach:kitchen'), label: 'Adjuntar documents de cuina' },
-      { key: PERM.action('/menu/events', 'modifications:register'), label: 'Registrar modificacions' },
-      { key: PERM.action('/menu/events', 'event:close'), label: 'Tancar esdeveniment' },
-    ],
-  },
-  {
-    id: 'reservaComercialsActions',
-    title: 'Reserva comercials · Accions',
-    subtitle:
-      'Per defecte: Sol·licitud si pot veure el submòdul; Validació només admin i cap de transports. Marca/desmarca per override; cal desar.',
-    visibleWhen: { path: '/menu/logistica/reserva-comercials' },
-    actions: [
-      {
-        key: PERM.action('/menu/logistica/reserva-comercials', 'request'),
-        label: 'Sol·licitud (crear i anul·lar pròpies)',
-      },
-      {
-        key: PERM.action('/menu/logistica/reserva-comercials', 'validate'),
-        label: 'Validació (aprovar / rebutjar)',
-      },
-    ],
-  },
-  {
-    id: 'quadrantsActions',
-    title: 'Quadrants · Accions',
-    subtitle:
-      'Accions especials dins del mòdul Quadrants. «Premisses» permet el botó i editar la configuració (models, equips, condicions). Per defecte: administració, direcció i caps (el cap només el seu departament a l’API). Marca/desmarca per override; cal desar.',
-    visibleWhen: { path: '/menu/quadrants' },
-    actions: [
-      {
-        key: PERM.action('/menu/quadrants', 'premisses:edit'),
-        label: 'Premisses (configuració)',
-      },
-      { key: PERM.action('/menu/quadrants', 'save'), label: 'Desar quadrant' },
-      { key: PERM.action('/menu/quadrants', 'confirm'), label: 'Confirmar quadrant' },
-      { key: PERM.action('/menu/quadrants', 'draft:save'), label: 'Esborranys · desar' },
-      { key: PERM.action('/menu/quadrants', 'draft:confirm'), label: 'Esborranys · confirmar' },
-      { key: PERM.action('/menu/quadrants', 'draft:unconfirm'), label: 'Esborranys · desconfirmar' },
-      { key: PERM.action('/menu/quadrants', 'draft:delete'), label: 'Esborranys · eliminar' },
-    ],
-  },
-  {
-    id: 'spacesBbddActions',
-    title: 'Espais · Consulta BBDD · Accions',
-    subtitle:
-      'Opcional: restringeix export o CRUD dins del submòdul. Per defecte, «Veure» permet consulta i export; «Editar» al submòdul Consulta BBDD implica crear/editar (segons rol), llevat de denegació explícita. Eliminar només admin i cap producció.',
-    visibleWhen: { path: '/menu/spaces/info' },
-    actions: [
-      {
-        key: PERM.action('/menu/spaces/info', 'bbdd:export'),
-        label: 'Exportar (Excel / PDF)',
-      },
-      {
-        key: PERM.action('/menu/spaces/info', 'bbdd:create'),
-        label: 'Crear espai',
-      },
-      {
-        key: PERM.action('/menu/spaces/info', 'bbdd:update'),
-        label: 'Editar espai (i pujar imatges)',
-      },
-      {
-        key: PERM.action('/menu/spaces/info', 'bbdd:delete'),
-        label: 'Eliminar espai',
-      },
-    ],
-  },
-]
-
-/** Accions només es configuren quan l’usuari té veure i editar al path del submòdul. */
-const shouldShowActionGroup = (viewAllowed: boolean, editAllowed: boolean): boolean =>
-  viewAllowed && editAllowed
-
-const actionGroupDefaultExpanded = (viewAllowed: boolean, editAllowed: boolean): boolean =>
-  shouldShowActionGroup(viewAllowed, editAllowed)
 
 function PermissionActionGroupCard({
   title,
@@ -325,24 +213,36 @@ export default function PermisosUserPage() {
     return baseAllowed
   }
 
-  const setOverrideEffect = (permission: string, effect: 'allow' | 'deny' | null) => {
-    setOverrides((prev) => {
-      const next = prev.filter(
-        (o) => !(o.permission === permission && (o.scope || 'client') === 'client' && !o.scopeId)
-      )
-      if (!effect) return next
-      return [
-        ...next,
-        {
-          permission,
-          effect,
-          scope: 'client',
-          scopeId: null,
-          note: 'UI matrix',
-        },
-      ]
-    })
+  const setOverrideEffects = (
+    updates: Array<{ permission: string; effect: 'allow' | 'deny' | null }>
+  ) => {
+    setOverrides((prev) => applyOverrideEffects(prev, updates))
   }
+
+  const setOverrideEffect = (permission: string, effect: 'allow' | 'deny' | null) => {
+    setOverrideEffects([{ permission, effect }])
+  }
+
+  const setPathVisibility = (paths: string[], desired: boolean) => {
+    const updates: Array<{ permission: string; effect: 'allow' | 'deny' | null }> = []
+    for (const path of paths) {
+      const base = baseFor(path)
+      updates.push({
+        permission: PERM.view(path),
+        effect: desired === base.view ? null : desired ? 'allow' : 'deny',
+      })
+      if (!desired) {
+        updates.push({ permission: PERM.edit(path), effect: null })
+      }
+    }
+    setOverrideEffects(updates)
+  }
+
+  const isPathGroupVisible = (paths: string[]) =>
+    paths.every((path) => {
+      const base = baseFor(path)
+      return effectiveAllowed(PERM.view(path), base.view)
+    })
 
   useEffect(() => {
     if (!data) return
@@ -405,41 +305,40 @@ export default function PermisosUserPage() {
   if (role !== 'admin') return null
 
   return (
-    <section className="w-full max-w-5xl mx-auto p-4 space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold">Permisos · Usuari</h1>
-          <div className="space-y-0.5">
-            {isLoading ? (
-              <p className="text-sm text-muted-foreground">Carregant nom…</p>
+    <div className="w-full max-w-5xl mx-auto flex flex-col gap-4 px-4 pb-8">
+      <ModuleHeader
+        icon={<Shield className="h-6 w-6 text-slate-700" />}
+        mainHref="/menu/settings"
+        actions={
+          <>
+            <Button variant="outline" onClick={discardChanges} disabled={saving || isLoading}>
+              Desfer canvis
+            </Button>
+            <Button onClick={save} disabled={saving || isLoading}>
+              {saving ? 'Desant…' : 'Desar'}
+            </Button>
+          </>
+        }
+      />
+
+      <div className="space-y-1">
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Carregant nom…</p>
+        ) : (
+          <p className="text-lg font-medium">
+            {data?.name?.trim() ? (
+              <>
+                <span className="text-muted-foreground font-normal">Nom: </span>
+                {data.name.trim()}
+              </>
             ) : (
-              <p className="text-lg font-medium">
-                {data?.name?.trim() ? (
-                  <>
-                    <span className="text-muted-foreground font-normal">Nom: </span>
-                    {data.name.trim()}
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">Nom no disponible</span>
-                )}
-              </p>
+              <span className="text-muted-foreground">Nom no disponible</span>
             )}
-            <p className="text-xs text-muted-foreground font-mono truncate" title={userId}>
-              {userId}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.push('/menu/settings/permisos')}>
-            Tornar
-          </Button>
-          <Button variant="outline" onClick={discardChanges} disabled={saving || isLoading}>
-            Desfer canvis
-          </Button>
-          <Button onClick={save} disabled={saving || isLoading}>
-            {saving ? 'Desant…' : 'Desar'}
-          </Button>
-        </div>
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground font-mono truncate" title={userId}>
+          {userId}
+        </p>
       </div>
 
       {error && (
@@ -518,15 +417,28 @@ export default function PermisosUserPage() {
                       checked={viewChecked}
                       onChange={(e) => {
                         const desired = e.target.checked
-                        // si coincideix amb base, traiem override; si no, posem allow/deny
-                        setOverrideEffect(
-                          PERM.view(r.path),
-                          desired === base.view ? null : desired ? 'allow' : 'deny'
-                        )
+                        const updates: Array<{ permission: string; effect: 'allow' | 'deny' | null }> =
+                          [
+                            {
+                              permission: PERM.view(r.path),
+                              effect: desired === base.view ? null : desired ? 'allow' : 'deny',
+                            },
+                          ]
                         if (!desired) {
-                          // si traiem view, no té sentit tenir edit allow
-                          setOverrideEffect(PERM.edit(r.path), null)
+                          updates.push({ permission: PERM.edit(r.path), effect: null })
+                          if (r.level === 'module') {
+                            const mod = MODULES.find((m) => m.path === r.path)
+                            for (const sub of mod?.submodules || []) {
+                              const subBase = baseFor(sub.path)
+                              updates.push({
+                                permission: PERM.view(sub.path),
+                                effect: subBase.view ? 'deny' : null,
+                              })
+                              updates.push({ permission: PERM.edit(sub.path), effect: null })
+                            }
+                          }
                         }
+                        setOverrideEffects(updates)
                       }}
                     />
                   </div>
@@ -570,15 +482,49 @@ export default function PermisosUserPage() {
         </div>
       </div>
 
-      {ACTION_GROUPS.map((group) => {
+      <div className="rounded-xl border border-border bg-background p-4 space-y-3">
+        <h2 className="font-semibold">Accessos ràpids · Manteniment</h2>
+        <p className="text-sm text-muted-foreground">
+          Dreceres per decidir ràpidament qui veu només tickets, només preventius o tots dos.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {MAINTENANCE_VISIBILITY_GROUPS.map((group) => {
+            const checked = isPathGroupVisible(group.paths)
+            return (
+              <label
+                key={group.id}
+                className="flex items-start gap-3 rounded-xl border border-border p-3"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => setPathVisibility(group.paths, e.target.checked)}
+                  className="mt-1"
+                />
+                <span className="space-y-1">
+                  <span className="block text-sm font-medium">{group.label}</span>
+                  <span className="block text-xs text-muted-foreground">{group.description}</span>
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      </div>
+
+      {PERMISSION_ACTION_GROUPS.map((group) => {
         const p = group.visibleWhen.path
         const base = baseFor(p)
         const viewAllowed = effectiveAllowed(PERM.view(p), base.view)
         const editAllowed = effectiveAllowed(PERM.edit(p), base.edit)
 
-        if (!shouldShowActionGroup(viewAllowed, editAllowed)) return null
+        if (!shouldShowActionGroup(viewAllowed, editAllowed, group.requireViewOnly)) return null
 
-        const defaultExpanded = actionGroupDefaultExpanded(viewAllowed, editAllowed)
+        const defaultExpanded = actionGroupDefaultExpanded(
+          viewAllowed,
+          editAllowed,
+          group.requireViewOnly
+        )
         const expanded = actionGroupExpandedManual[group.id] ?? defaultExpanded
 
         return (
@@ -612,7 +558,6 @@ export default function PermisosUserPage() {
           </PermissionActionGroupCard>
         )
       })}
-    </section>
+    </div>
   )
 }
-

@@ -11,8 +11,15 @@ import {
   VehicleAssignment,
   logisticPhaseOptions,
 } from '../phaseConfig'
-import { normalizeTransportType } from '@/lib/transportTypes'
+import { normalizeTransportType, normalizeTransportPlateKey } from '@/lib/transportTypes'
 import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
+import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
+import { hydrateLogisticPhaseFromDraft } from '../lib/hydrateLogisticPhasesFromDraft'
+import { extractDraftResponsible } from '../lib/quadrantPayloadShared'
+import {
+  ensureLogisticRoleLines,
+  syncLogisticPhaseFromRoleLines,
+} from '../lib/logisticPhaseRoleLines'
 
 const extractDate = (iso = '') => iso.split('T')[0] || ''
 
@@ -21,6 +28,7 @@ type PhaseFormParams = {
   endDate: string
   startTime: string
   endTime: string
+  arrivalTime?: string
   workers: number
   drivers: number
   meetingPoint: string
@@ -40,6 +48,7 @@ const createPhaseForms = (params: PhaseFormParams) =>
       endDate: params.endDate,
       startTime: params.startTime,
       endTime: params.endTime,
+      arrivalTime: params.arrivalTime || '',
       workers: params.workers,
       drivers: params.drivers,
       meetingPoint: params.meetingPoint,
@@ -93,12 +102,15 @@ type UseLogisticsPhasesStateOptions = {
   endDate: string
   startTime: string
   endTime: string
+  arrivalTime?: string
   meetingPoint: string
   location: string
   totalWorkers: number
   numDrivers: number
   availableConductors: AvailableConductor[]
   quadrantMode?: 'auto' | 'semi' | 'manual'
+  modalOpen?: boolean
+  existingDraft?: EditorDraftInput | null
 }
 
 export type UseLogisticsPhasesStateResult = {
@@ -112,6 +124,7 @@ export type UseLogisticsPhasesStateResult = {
   updatePhaseResponsible: (key: LogisticPhaseKey, value: string) => void
   phaseVehicleAssignments: Record<LogisticPhaseKey, VehicleAssignment[]>
   updatePhaseVehicleAssignment: (key: LogisticPhaseKey, index: number, patch: Partial<VehicleAssignment>) => void
+  replacePhaseVehicleAssignments: (key: LogisticPhaseKey, assignments: VehicleAssignment[]) => void
   availableVehicles: AvailableVehicle[]
   availableConductors: AvailableConductor[]
   loadingVehicles: boolean
@@ -131,13 +144,17 @@ export function useLogisticsPhasesState({
   endDate,
   startTime,
   endTime,
+  arrivalTime = '',
   meetingPoint,
   location: _location,
   totalWorkers,
   numDrivers,
   availableConductors,
   quadrantMode = 'semi',
+  modalOpen = false,
+  existingDraft,
 }: UseLogisticsPhasesStateOptions): UseLogisticsPhasesStateResult {
+  const isLogistica = department.toLowerCase() === 'logistica'
   const requestedPhaseKey = normalizePhaseKey(event.phaseKey || event.phaseType || event.phaseLabel)
   const baseMeetingPoint = meetingPoint || 'CENTRAL'
   const initialPhaseParams: PhaseFormParams = {
@@ -145,6 +162,7 @@ export function useLogisticsPhasesState({
     endDate: extractDate(event.start),
     startTime: startTime || '',
     endTime: endTime || '',
+    arrivalTime: arrivalTime || event.arrivalTime || '',
     workers: totalWorkers,
     drivers: numDrivers,
     meetingPoint: baseMeetingPoint,
@@ -213,23 +231,68 @@ export function useLogisticsPhasesState({
       endDate: extractDate(event.start),
       startTime: startTime || '',
       endTime: endTime || '',
+      arrivalTime: arrivalTime || event.arrivalTime || '',
       workers: totalWorkers,
       drivers: numDrivers,
       meetingPoint: baseMeetingPoint,
     }
+
+    if (isLogistica && existingDraft && modalOpen) {
+      const baseForms = createPhaseForms(params)
+      const nextForms = { ...baseForms }
+      const nextAssignments = createPhaseVehicleAssignments()
+
+      for (const phase of logisticPhaseOptions) {
+        const hydrated = hydrateLogisticPhaseFromDraft(existingDraft, phase.key, baseForms[phase.key])
+        if (hydrated) {
+          nextForms[phase.key] = hydrated.form
+          nextAssignments[phase.key] = hydrated.assignments
+        }
+      }
+
+      setPhaseForms(nextForms)
+      setPhaseVehicleAssignments(nextAssignments)
+      setPhaseVisibility(createPhaseVisibility(requestedPhaseKey))
+      setPhaseSettings(createPhaseSettings(requestedPhaseKey))
+
+      const { id: responsableId } = extractDraftResponsible(existingDraft)
+      setPhaseResponsibles(() => {
+        const next = createPhaseResponsibles()
+        const draftPhaseKey = normalizePhaseKey(
+          existingDraft.phaseType ||
+            event.phaseKey ||
+            event.phaseType ||
+            event.phaseLabel
+        )
+        const targetKey = draftPhaseKey || requestedPhaseKey || 'event'
+        if (responsableId) {
+          next[targetKey] = responsableId
+        }
+        return next
+      })
+      return
+    }
+
     setPhaseForms(createPhaseForms(params))
     setPhaseVisibility(createPhaseVisibility(requestedPhaseKey))
     setPhaseSettings(createPhaseSettings(requestedPhaseKey))
     setPhaseResponsibles(createPhaseResponsibles())
     setPhaseVehicleAssignments(createPhaseVehicleAssignments())
   }, [
+    arrivalTime,
     baseMeetingPoint,
     endTime,
+    event.arrivalTime,
     event.id,
     event.phaseKey,
     event.phaseLabel,
     event.phaseType,
     event.start,
+    existingDraft?.id,
+    existingDraft?.updatedAt,
+    existingDraft,
+    isLogistica,
+    modalOpen,
     numDrivers,
     requestedPhaseKey,
     startTime,
@@ -244,9 +307,22 @@ export function useLogisticsPhasesState({
   useEffect(() => {
     setPhaseVehicleAssignments((prev) =>
       logisticPhaseOptions.reduce((acc, phase) => {
-        const desired = Math.max(0, Number(phaseForms[phase.key]?.drivers ?? 0) || 0)
+        const form = phaseForms[phase.key]
+        if (Array.isArray(form?.roleLines) && form.roleLines.length > 0) {
+          const existing = prev[phase.key] || []
+          const { assignments: synced } = syncLogisticPhaseFromRoleLines(
+            form,
+            form.roleLines,
+            existing
+          )
+          acc[phase.key] = synced
+          return acc
+        }
+
+        const desired = Math.max(0, Number(form?.drivers ?? 0) || 0)
         const existing = prev[phase.key] || []
         acc[phase.key] = Array.from({ length: desired }).map((_, idx) => ({
+          slotId: existing[idx]?.slotId || `vehicle-slot-${phase.key}-${idx}`,
           vehicleType: existing[idx]?.vehicleType || '',
           vehicleId: existing[idx]?.vehicleId || '',
           plate: existing[idx]?.plate || '',
@@ -257,6 +333,49 @@ export function useLogisticsPhasesState({
       }, {} as Record<LogisticPhaseKey, VehicleAssignment[]>)
     )
   }, [phaseDriversFingerprint, phaseForms])
+
+  useEffect(() => {
+    if (!availableVehicles.length) return
+    setPhaseVehicleAssignments((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const phase of logisticPhaseOptions) {
+        const updated = (prev[phase.key] || []).map((assignment) => {
+          let result = assignment
+
+          if (!assignment.vehicleId && assignment.plate) {
+            const plateKey = normalizeTransportPlateKey(assignment.plate)
+            const matched = availableVehicles.find(
+              (vehicle) => normalizeTransportPlateKey(vehicle.plate) === plateKey
+            )
+            if (matched) {
+              changed = true
+              result = {
+                ...result,
+                vehicleId: matched.id,
+                plate: result.plate || matched.plate || '',
+                vehicleType:
+                  normalizeTransportType(result.vehicleType || matched.type || '') ||
+                  result.vehicleType,
+              }
+            }
+          }
+
+          if (assignment.vehicleId && !assignment.plate) {
+            const matched = availableVehicles.find((vehicle) => vehicle.id === assignment.vehicleId)
+            if (matched?.plate) {
+              changed = true
+              result = { ...result, plate: matched.plate }
+            }
+          }
+
+          return result
+        })
+        next[phase.key] = updated
+      }
+      return changed ? next : prev
+    })
+  }, [availableVehicles])
 
   const logisticWorkersFingerprint = useMemo(
     () => logisticPhaseOptions.map((p) => String(phaseForms[p.key]?.workers ?? '')).join('|'),
@@ -365,6 +484,13 @@ export function useLogisticsPhasesState({
     })
   }
 
+  const replacePhaseVehicleAssignments = (
+    key: LogisticPhaseKey,
+    assignments: VehicleAssignment[]
+  ) => {
+    setPhaseVehicleAssignments((prev) => ({ ...prev, [key]: assignments }))
+  }
+
   const isVehicleIdAssigned = useCallback(
     (vehicleId: string, currentPhase: LogisticPhaseKey, currentIndex: number) => {
       if (!vehicleId) return false
@@ -387,26 +513,37 @@ export function useLogisticsPhasesState({
 
   const buildVehiclesPayloadForPhase = useCallback(
     (phaseKey: LogisticPhaseKey) => {
+      const form = phaseForms[phaseKey]
       const assignments = phaseVehicleAssignments[phaseKey] || []
+      const conductorLines = ensureLogisticRoleLines(form, assignments).filter(
+        (line) => line.role === 'conductor'
+      )
+
       return assignments.flatMap((assignment) => {
+        const line = conductorLines.find((entry) => entry.slotId === assignment.slotId)
         const vehicleId = assignment.vehicleId || ''
         const matched = availableVehicles.find((vehicle) => vehicle.id === vehicleId)
         const vehicleType =
           normalizeVehicleType(assignment.vehicleType || matched?.type || '') ||
           normalizeVehicleType(matched?.type || '')
-        if (!vehicleType && !vehicleId && !assignment.conductorId) return []
+        const plate = assignment.plate || matched?.plate || ''
+        const conductorId =
+          assignment.conductorId || line?.personId || matched?.conductorId || null
+
+        if (!vehicleType && !vehicleId && !plate && !conductorId) return []
+
         return [
           {
             id: vehicleId,
-            plate: assignment.plate || matched?.plate || '',
+            plate,
             vehicleType,
-            conductorId: assignment.conductorId || matched?.conductorId || null,
+            conductorId,
             arrivalTime: assignment.arrivalTime || '',
           },
         ]
       })
     },
-    [phaseVehicleAssignments, availableVehicles]
+    [phaseVehicleAssignments, phaseForms, availableVehicles]
   )
 
   const buildVehiclesPayload = useCallback(
@@ -439,6 +576,7 @@ export function useLogisticsPhasesState({
     updatePhaseResponsible,
     phaseVehicleAssignments,
     updatePhaseVehicleAssignment,
+    replacePhaseVehicleAssignments,
     availableVehicles,
     availableConductors,
     loadingVehicles,

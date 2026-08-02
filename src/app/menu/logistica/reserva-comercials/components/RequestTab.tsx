@@ -8,6 +8,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { COMMERCIAL_RESERVATION_STATUS_LABELS, getCommercialReservationEndDate, type CommercialReservation } from '@/lib/commercialReservations'
+import {
+  CorporateFilterBadgeGroup,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
 import { cn } from '@/lib/utils'
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import { dayAvailabilityVisual, isoDate, reservationDateLabel } from '../utils'
@@ -138,49 +142,34 @@ export default function RequestTab({
               </Badge>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
-                <SmartFilters
-                  modeDefault="week"
-                  modeOptions={['week', 'month', 'year', 'day', 'range']}
-                  role="Treballador"
-                  showDepartment={false}
-                  showWorker={false}
-                  showLocation={false}
-                  showStatus={false}
-                  onChange={onRequestDatesChange}
-                  initialStart={requestFilters.start}
-                  initialEnd={requestFilters.end}
-                />
-
-                <div className="flex flex-nowrap gap-2 lg:ml-auto">
-                  {[
-                    { value: '__all__', label: 'Totes' },
-                    { value: 'pending', label: 'Pendents' },
-                    { value: 'confirmed', label: 'Confirmades' },
-                    { value: 'cancelled', label: 'Cancel·lades' },
-                    { value: 'rejected', label: 'Rebutjades' },
-                  ].map((option) => {
-                    const active = (requestFilters.status ?? '__all__') === option.value
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => onRequestStatusChange(option.value)}
-                        className={cn(
-                          'min-h-10 rounded-full border px-4 text-sm font-semibold transition',
-                          active
-                            ? 'border-sky-600 bg-sky-600 text-white'
-                            : 'border-slate-200 bg-white text-slate-700 hover:border-sky-200 hover:bg-sky-50'
-                        )}
-                      >
-                        {option.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
+            <CorporateFiltersShell variant="toolbar" className="mt-4" showHeader={false}>
+              <SmartFilters
+                modeDefault="week"
+                modeOptions={['week', 'month', 'year', 'day', 'range']}
+                role="Treballador"
+                showDepartment={false}
+                showWorker={false}
+                showLocation={false}
+                showStatus={false}
+                compact
+                onChange={onRequestDatesChange}
+                initialStart={requestFilters.start}
+                initialEnd={requestFilters.end}
+              />
+              <CorporateFilterBadgeGroup
+                className="lg:ml-auto"
+                value={requestFilters.status ?? '__all__'}
+                onChange={onRequestStatusChange}
+                allLabel="Totes"
+                allValue="__all__"
+                options={[
+                  { value: 'pending', label: 'Pendents' },
+                  { value: 'confirmed', label: 'Confirmades' },
+                  { value: 'cancelled', label: 'Cancel·lades' },
+                  { value: 'rejected', label: 'Rebutjades' },
+                ]}
+              />
+            </CorporateFiltersShell>
 
             <div className="mt-4 space-y-3">
               {loading ? <div className="text-sm text-slate-500">Carregant...</div> : null}

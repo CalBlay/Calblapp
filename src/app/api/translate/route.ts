@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 export const runtime = 'nodejs'
 
 export async function POST(req: Request) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+
   try {
     const body = await req.json()
     const text = (body?.text as string) || ''

@@ -26,6 +26,11 @@ type Params = {
   userByName: Map<string, ResponsibleOption>
   departmentResponsibleOptions: (department?: string | string[]) => ResponsibleOption[]
   taskResponsibleOptions: (department?: string, blockId?: string) => ResponsibleOption[]
+  onMeetingCreated?: (payload: {
+    scope: 'block' | 'task'
+    blockId: string
+    taskId?: string
+  }) => void
 }
 
 const mergeResponsibleOptions = (items: ResponsibleOption[]) => {
@@ -47,6 +52,7 @@ export function useProjectMeetings({
   userByName,
   departmentResponsibleOptions,
   taskResponsibleOptions,
+  onMeetingCreated,
 }: Params) {
   const [sendingMeeting, setSendingMeeting] = useState(false)
   const [meetingTarget, setMeetingTarget] = useState<ProjectMeetingTarget | null>(null)
@@ -129,7 +135,7 @@ export function useProjectMeetings({
     notes: string
     attendees: ProjectMeetingAttendee[]
     attachments?: File[]
-  }) => {
+  }): Promise<boolean> => {
     try {
       setSendingMeeting(true)
       const form = new FormData()
@@ -153,6 +159,7 @@ export function useProjectMeetings({
         error?: string
         warning?: string
         blocks?: ProjectData['blocks']
+        meeting?: { scope?: 'block' | 'task' }
       }
       if (!res.ok) {
         throw new Error(response.error || 'No s ha pogut enviar la convocatoria')
@@ -166,17 +173,24 @@ export function useProjectMeetings({
       }
 
       setMeetingTarget(null)
+      onMeetingCreated?.({
+        scope: payload.scope,
+        blockId: payload.blockId,
+        taskId: payload.taskId,
+      })
       toast({
         title: response.warning ? 'Convocatòria creada amb avis' : 'Convocatòria enviada',
         description: response.warning || undefined,
         variant: response.warning ? 'destructive' : 'default',
       })
+      return true
     } catch (err: unknown) {
       toast({
         title: 'Error enviant la convocatòria',
         description: err instanceof Error ? err.message : 'Error inesperat',
         variant: 'destructive',
       })
+      return false
     } finally {
       setSendingMeeting(false)
     }

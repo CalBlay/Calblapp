@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import SharePointPicker from './SharePointFilePicker'
 import { Paperclip } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 
 type Props = {
   collection: 'stage_verd' | 'stage_taronja' | 'stage_taronja'
@@ -59,6 +59,7 @@ export default function AttachFileButton({
           collection,
           field: nextKey,
           url: publicUrl,
+          name: item.name,
         }),
       })
       if (!res.ok) throw new Error('Error desant el fitxer')
@@ -81,7 +82,7 @@ export default function AttachFileButton({
 
   return (
     <>
-      <motion.div {...scaleAnimation}>
+      <MotionDiv {...scaleAnimation}>
         <Button
           size="sm"
           className={`w-full sm:w-auto shadow-sm font-medium flex items-center gap-2
@@ -98,7 +99,7 @@ export default function AttachFileButton({
           <Paperclip className="h-4 w-4" />
           {saving ? 'Desant...' : 'Adjuntar fitxer (SharePoint)'}
         </Button>
-      </motion.div>
+      </MotionDiv>
 
       <SharePointPicker open={open} onOpenChange={setOpen} onSelected={handleSelected} />
     </>

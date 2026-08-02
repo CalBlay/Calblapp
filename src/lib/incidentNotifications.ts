@@ -1,5 +1,6 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 
 type IncidentNotificationPayload = {
   type: 'incident_marketing_9xx_new'
@@ -20,7 +21,7 @@ export async function notifyMarketingManagersFor9xxIncident(params: {
   baseUrl?: string | null
   excludeIds?: string[]
 }) {
-  const { payload, baseUrl, excludeIds = [] } = params
+  const { payload, excludeIds = [] } = params
   const snap = await db.collection('users').get()
   const targets = snap.docs
     .filter((doc) => {
@@ -49,12 +50,16 @@ export async function notifyMarketingManagersFor9xxIncident(params: {
     })
   }
   await batch.commit()
+  const { afterNotificationsCommitted } = await import('@/lib/notifications/writeUserNotification')
+  await afterNotificationsCommitted(
+    targets.map((uid) => ({ userId: uid, type: String(payload.type || '') }))
+  )
 
   const apiKey = process.env.ABLY_API_KEY
   if (apiKey) {
     try {
-      const Ably = (await import('ably')).default
-      const rest = new Ably.Rest({ key: apiKey })
+      const { getAblyRest } = await import('@/lib/server/ablyRest')
+      const rest = getAblyRest()
       await Promise.all(
         targets.map((uid) =>
           rest.channels.get(`user:${uid}:notifications`).publish('created', {
@@ -69,23 +74,10 @@ export async function notifyMarketingManagersFor9xxIncident(params: {
     }
   }
 
-  if (baseUrl) {
-    await Promise.all(
-      targets.map((userId) =>
-        fetch(`${baseUrl}/api/push/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId,
-            title: payload.title,
-            body: payload.body,
-            url: '/menu/incidents',
-          }),
-        }).catch((err) => {
-          console.error('[incidentNotifications] push error', err)
-        })
-      )
-    )
-  }
+  await sendPushToUsers(targets, {
+    title: payload.title,
+    body: payload.body,
+    url: '/menu/incidents',
+  })
 }
 

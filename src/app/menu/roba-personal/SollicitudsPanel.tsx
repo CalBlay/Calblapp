@@ -22,10 +22,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ChevronDown, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, Trash2 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import FilterButton from '@/components/ui/filter-button'
+import {
+  CorporateFilterField,
+  CorporateFilterSearch,
+  CorporateFilterSelect,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
 import { useSession } from 'next-auth/react'
@@ -283,11 +289,11 @@ export function SollicitudsPanel({
 
   const robaFiltersSlidePanel = useMemo(
     () => (
-      <div className="p-4 flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-sm text-gray-600">Departament</label>
-          <select
-            className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-900"
+      <div className="flex flex-col gap-4 p-4">
+        <CorporateFilterField label="Departament">
+          <CorporateFilterSelect
+            className="w-full"
+            minWidthClassName="min-w-0"
             value={listFilterDept}
             onChange={(e) => setListFilterDept(e.target.value)}
           >
@@ -297,12 +303,12 @@ export function SollicitudsPanel({
                 {d}
               </option>
             ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-sm text-gray-600">Estat</label>
-          <select
-            className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-900"
+          </CorporateFilterSelect>
+        </CorporateFilterField>
+        <CorporateFilterField label="Estat">
+          <CorporateFilterSelect
+            className="w-full"
+            minWidthClassName="min-w-0"
             value={listFilterStatus}
             onChange={(e) => setListFilterStatus(e.target.value)}
           >
@@ -312,8 +318,8 @@ export function SollicitudsPanel({
                 {label}
               </option>
             ))}
-          </select>
-        </div>
+          </CorporateFilterSelect>
+        </CorporateFilterField>
         <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
           <ResetFilterButton
             onClick={() => {
@@ -1595,7 +1601,7 @@ export function SollicitudsPanel({
         <h2 className="font-semibold text-base">
           {isPrepareMode ? 'Sol·licituds per preparar' : isPickupMode ? 'Recepcions' : 'Sol·licituds'}
         </h2>
-        <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+        <CorporateFiltersShell showHeader={false} variant="toolbar" className="mb-3 border-0 shadow-none">
           <SmartFilters
             modeDefault="week"
             modeOptions={['week', 'day', 'range']}
@@ -1611,25 +1617,19 @@ export function SollicitudsPanel({
             initialStart={listRangeStart}
             initialEnd={listRangeEnd}
           />
-          <div className="relative flex min-w-[12rem] flex-1 basis-[14rem] max-w-md">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
-            />
-            <Input
-              className="h-10 rounded-xl border-gray-300 bg-white pl-9 dark:bg-background"
-              placeholder="Cercar ref., nom, producte…"
-              value={listSearch}
-              onChange={(e) => setListSearch(e.target.value)}
-              aria-label="Cercar sol·licituds"
-            />
-          </div>
+          <CorporateFilterSearch
+            className="min-w-[12rem] max-w-md flex-1 basis-[14rem]"
+            placeholder="Cercar ref., nom, producte…"
+            value={listSearch}
+            onChange={(e) => setListSearch(e.target.value)}
+            aria-label="Cercar sol·licituds"
+          />
           <FilterButton
             onClick={() => {
               setContent(robaFiltersSlidePanel)
             }}
           />
-        </div>
+        </CorporateFiltersShell>
 
         {filteredListRows.length === 0 ? (
           <p className="text-center text-muted-foreground py-10 text-sm">

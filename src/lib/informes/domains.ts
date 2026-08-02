@@ -36,7 +36,7 @@ export const INFORMES_DOMAINS: InformesDomainMeta[] = [
     id: 'events',
     label: 'Esdeveniments',
     sources: ['app', 'hybrid'],
-    comingSoon: true,
+    comingSoon: false,
   },
 ]
 

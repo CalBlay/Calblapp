@@ -5,6 +5,7 @@ import { computeQuadrantsGet } from '@/lib/api/quadrantsGetRange'
 import { QUADRANTS_LIST_CACHE_TAG } from '@/lib/quadrantsListCache'
 import { listQuadrantEventsInRange } from '@/lib/quadrantEvents'
 import { listSurveyKeysByDepartmentAndRange } from '@/lib/quadrantSurveys'
+import { requireQuadrantsModuleRead } from '@/lib/server/quadrantsReadAuth'
 
 export const runtime = 'nodejs'
 
@@ -36,6 +37,9 @@ const getDashboardCached = unstable_cache(
 )
 
 export async function GET(req: NextRequest) {
+  const auth = await requireQuadrantsModuleRead()
+  if (!auth.ok) return auth.res
+
   try {
     const { searchParams } = new URL(req.url)
     const start = searchParams.get('start')

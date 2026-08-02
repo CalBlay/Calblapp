@@ -19,6 +19,8 @@ type AvailablePerson = {
   meetingPoint?: string
   isDriver?: boolean
   isJamonero?: boolean
+  status?: 'available' | 'conflict' | 'notfound'
+  reason?: string
 }
 
 type AvailableVehicle = {
@@ -76,6 +78,29 @@ function useIsDesktop() {
 const normalizeType = (t?: string) => normalizeTransportType(t)
 
 const normPerson = (value?: string) => (value || '').toString().trim().toLowerCase()
+
+const availabilityOrder = (status?: AvailablePerson['status']) => {
+  if (status === 'available') return 0
+  if (status === 'conflict') return 1
+  return 2
+}
+
+const formatPersonOptionLabel = (person: AvailablePerson) => {
+  const name = (person.name || person.alias || person.id || '').trim()
+  if (person.status === 'conflict') {
+    const hint = person.reason ? ` — ${person.reason}` : ' — ocupat'
+    return `${name}${hint}`
+  }
+  if (person.status === 'notfound') return `${name} — sense disponibilitat`
+  return `${name} · disponible`
+}
+
+const sortPeopleByAvailability = (people: AvailablePerson[]) =>
+  [...people].sort((a, b) => {
+    const byStatus = availabilityOrder(a.status) - availabilityOrder(b.status)
+    if (byStatus !== 0) return byStatus
+    return (a.name || a.alias || '').localeCompare(b.name || b.alias || '', 'ca')
+  })
 
 function mergeUniquePeople(...groups: Array<AvailablePerson[] | undefined>): AvailablePerson[] {
   const map = new Map<string, AvailablePerson>()
@@ -272,7 +297,7 @@ function EditorFields({
   )
   const selectedRoleValue: RoleSelectValue =
     row.role === 'treballador' && row.isJamonero ? 'jamonero' : row.role
-  const list: AvailablePerson[] =
+  const list: AvailablePerson[] = sortPeopleByAvailability(
     row.isJamonero === true
       ? jamoneroWorkerCandidates
       : row.role === 'responsable'
@@ -280,6 +305,7 @@ function EditorFields({
       : row.role === 'conductor'
       ? available?.conductors || []
       : workerCandidates
+  )
 
 
   // --- RESPONSABLE / CONDUCTOR / TREBALLADOR ---
@@ -370,12 +396,22 @@ function EditorFields({
             >
               <option value="">
                 {selectedRoleValue === 'jamonero'
-                  ? 'Selecciona jamonero'
-                  : `Selecciona ${selectedRoleValue}`}
+                  ? 'Selecciona jamonero…'
+                  : `Selecciona ${selectedRoleValue}…`}
               </option>
               {list.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name || p.alias || p.id}
+                <option
+                  key={p.id}
+                  value={p.id}
+                  className={
+                    p.status === 'conflict'
+                      ? 'text-amber-800'
+                      : p.status === 'available'
+                      ? 'text-emerald-900'
+                      : undefined
+                  }
+                >
+                  {formatPersonOptionLabel(p)}
                 </option>
               ))}
             </select>

@@ -4,8 +4,12 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import { requireAuth, type AuthSuccess } from '@/lib/server/apiAuth'
+import { canEditUiPath } from '@/lib/server/permissions'
+
+const PERSONNEL_UI_PATH = '/menu/personnel'
 
 
 import { canRequestMaintenancePersonnelByQuery, normalizeDept } from '@/lib/accessControl'
@@ -239,9 +243,19 @@ export async function GET(request: NextRequest) {
 /*                                   POST NEW                                 */
 /* -------------------------------------------------------------------------- */
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+
+  const sessionUser = (auth as AuthSuccess).session.user as { isAdmin?: boolean }
+  const canEdit =
+    auth.role === 'admin' ||
+    sessionUser?.isAdmin ||
+    (await canEditUiPath({ user: auth.user, path: PERSONNEL_UI_PATH }))
+  if (!canEdit) {
+    return NextResponse.json(
+      { success: false, error: 'Permís denegat', message: 'No tens permís per crear personal' },
+      { status: 403 }
+    )
   }
 
   try {

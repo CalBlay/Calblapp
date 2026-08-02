@@ -13,6 +13,7 @@ import {
   FileSignature,
   FileBarChart2,
   Sparkles,
+  Video,
   X,
   ChevronRight,
   Home,
@@ -28,7 +29,9 @@ import {
 } from '@/components/ui/dialog'
 
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
+import { prefetchEventDocuments } from '@/hooks/events/useEventDocuments'
 import EventKitchenDocumentsModal from '@/components/events/EventKitchenDocumentsModal'
+import EventVisitVideoModal from '@/components/events/EventVisitVideoModal'
 import EventPersonnelModal from './EventPersonnelModal'
 import { useEventPersonnel } from '@/hooks/useEventPersonnel'
 import EventIncidentsModal from './EventIncidentsModal'
@@ -40,6 +43,7 @@ import EventClosingModal from './EventClosingModal'
 import { normalizeAuditDepartment } from '@/lib/auditDepartment'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
+import { baseCanAttachEventVisitVideo } from '@/lib/eventVisitVideoPermissions'
 
 /** ───────────────────────── Helpers ───────────────────────── */
 const norm = (s?: string | number | null) =>
@@ -221,12 +225,27 @@ export default function EventMenuModal({
   const [showClosing, setShowClosing] = useState(false)
   const [showBudget, setShowBudget] = useState(false)
   const [showKitchenDocs, setShowKitchenDocs] = useState(false)
+  const [showVisitVideo, setShowVisitVideo] = useState(false)
 
 
   // ✅ Nou botó: Espais (placeholder fins que ens diguis on ha d'anar)
   const [showEspais, setShowEspais] = useState(false)
 
-  const { data: personnelData, loading: personnelLoading } = useEventPersonnel(event?.id)
+  const {
+    data: personnelData,
+    loading: personnelLoading,
+    validating: personnelValidating,
+    error: personnelError,
+    mutate: refreshPersonnel,
+  } = useEventPersonnel(event?.id, showPersonnel)
+
+  const personnelIsEmpty =
+    !personnelData?.responsables?.length &&
+    !personnelData?.conductors?.length &&
+    !personnelData?.treballadors?.length
+
+  const personnelModalLoading =
+    personnelLoading || (showPersonnel && personnelValidating && personnelIsEmpty && !personnelError)
   const responsablesPersons =
     personnelData?.responsables?.map((responsable) => ({
       id: responsable.id,
@@ -259,31 +278,9 @@ const treballadorsPersons =
   })) ?? []
 
   useEffect(() => {
-    const eventId = String(event?.id ?? '').trim()
-    if (!eventId) return
-
-    const warm = () => {
-      const incidentsQs = new URLSearchParams()
-      incidentsQs.set('eventId', eventId)
-      incidentsQs.set('limit', '80')
-      void fetch(`/api/incidents?${incidentsQs}`, { cache: 'no-store' }).catch(() => {})
-
-      const dept = normalizeAuditDepartment(user.department)
-      if (dept) {
-        const auditQs = new URLSearchParams({ eventId, department: dept })
-        const eventDay = String(event?.start || '').slice(0, 10)
-        if (eventDay) auditQs.set('eventDay', eventDay)
-        void fetch(`/api/auditoria/executions?${auditQs}`, { cache: 'no-store' }).catch(() => {})
-      }
-    }
-
-    if (typeof requestIdleCallback !== 'undefined') {
-      const id = requestIdleCallback(warm, { timeout: 1200 })
-      return () => cancelIdleCallback(id)
-    }
-    const t = window.setTimeout(warm, 120)
-    return () => clearTimeout(t)
-  }, [event?.id, event?.start, user.department])
+    if (!showPersonnel || !event?.id) return
+    void refreshPersonnel()
+  }, [showPersonnel, event?.id, refreshPersonnel])
 
   const roleN = norm(user?.role)
   const deptN = norm(user?.department)
@@ -300,6 +297,8 @@ const treballadorsPersons =
 
 
 
+  const baseCanAttachVisitVideo = baseCanAttachEventVisitVideo(user)
+
   const canSeeIncidents = isAdmin || isDireccio || isCapDept || roleN === 'comercial'
   const baseCanSeeKitchenDocs = isAdmin || isDireccio || isCuina
 
@@ -309,6 +308,28 @@ const treballadorsPersons =
     roleN === 'comercial' ||
     isCapDept ||
       isWorkerResponsible
+
+  useEffect(() => {
+    const eventId = String(event?.id ?? '').trim()
+    if (!eventId || !canCreateIncident) return
+
+    const dept = normalizeAuditDepartment(user.department)
+    if (!dept) return
+
+    const warmAudit = () => {
+      const auditQs = new URLSearchParams({ eventId, department: dept })
+      const eventDay = String(event?.start || '').slice(0, 10)
+      if (eventDay) auditQs.set('eventDay', eventDay)
+      void fetch(`/api/auditoria/executions?${auditQs}`, { cache: 'no-store' }).catch(() => {})
+    }
+
+    if (typeof requestIdleCallback !== 'undefined') {
+      const id = requestIdleCallback(warmAudit, { timeout: 2000 })
+      return () => cancelIdleCallback(id)
+    }
+    const t = window.setTimeout(warmAudit, 300)
+    return () => clearTimeout(t)
+  }, [canCreateIncident, event?.id, event?.start, user.department])
 
   const DEPT_TO_LN: Record<string, LnKey> = {
     empresa: 'empresa',
@@ -351,11 +372,28 @@ const treballadorsPersons =
     if (!permsReady) return true
     return uiActions[PERM.action('/menu/events', 'event:close')] === true
   }, [permsReady, uiActions])
+  const canUiAttachVisitVideo = useMemo(() => {
+    if (!permsReady) return true
+    return uiActions[PERM.action('/menu/events', 'docs:attach:visit-video')] === true
+  }, [permsReady, uiActions])
 
   const canDocs = canUiViewDocs
   const canSeeKitchenDocs = baseCanSeeKitchenDocs && canUiKitchenDocs
+  const canAttachVisitVideo = baseCanAttachVisitVideo && canUiAttachVisitVideo
+  const canOpenVisitVideo = canAttachVisitVideo || canDocs
   const canCreateModificationPerm = canCreateModification && canUiRegisterModifications
   const canCloseEventPerm = canCloseEvent && canUiCloseEvent
+
+  const openDocuments = useCallback(() => {
+    if (event?.id) {
+      prefetchEventDocuments(
+        String(event.id),
+        event.eventCode || event.code || undefined,
+        'all'
+      )
+    }
+    setPendingDocsOpen(true)
+  }, [event?.id, event?.eventCode, event?.code])
 
   const navigateTo = useCallback(
     (path: string) => {
@@ -504,7 +542,7 @@ const recursos = useMemo(
           icon: FileText,
           tone: 'info' as const,
           onClick: () => {
-            setPendingDocsOpen(true)
+            openDocuments()
           },
         }
       : null,
@@ -518,8 +556,18 @@ const recursos = useMemo(
             onClick: () => setShowKitchenDocs(true),
           }
         : null,
+      canOpenVisitVideo
+        ? {
+            key: 'visit-video',
+            label: canAttachVisitVideo ? 'Vídeo visita comercial' : 'Veure vídeo visita',
+            badge: 'Visita',
+            icon: Video,
+            tone: 'info' as const,
+            onClick: () => setShowVisitVideo(true),
+          }
+        : null,
     ].filter(Boolean) as MenuActionItem[],
-  [event, canSeeKitchenDocs, canDocs]
+  [event, canSeeKitchenDocs, canDocs, canOpenVisitVideo, canAttachVisitVideo, openDocuments]
 )
 
   const economic = useMemo(
@@ -711,20 +759,31 @@ const recursos = useMemo(
         open={showKitchenDocs}
         onOpenChange={setShowKitchenDocs}
       />
+      <EventVisitVideoModal
+        eventId={String(event.id)}
+        eventCode={event.eventCode || event.code || null}
+        eventSummary={event.summary}
+        open={showVisitVideo}
+        onOpenChange={setShowVisitVideo}
+        canUpload={canAttachVisitVideo}
+      />
 
 
       {/* ─────────── MODALS INTERNES EXISTENTS ─────────── */}
-     <EventPersonnelModal
-  open={showPersonnel}
-  onClose={() => setShowPersonnel(false)}
-  eventName={event.summary}
-  code={String(event.id)}
-  responsables={responsablesPersons}
-  conductors={conductorsPersons}
-  treballadors={treballadorsPersons}
-
-  loading={personnelLoading}
-/>
+      <EventPersonnelModal
+        open={showPersonnel}
+        onClose={() => setShowPersonnel(false)}
+        eventName={event.summary}
+        code={event.eventCode || event.code || String(event.id)}
+        responsables={responsablesPersons}
+        conductors={conductorsPersons}
+        treballadors={treballadorsPersons}
+        loading={personnelModalLoading}
+        error={personnelError}
+        onRetry={() => {
+          void refreshPersonnel()
+        }}
+      />
 
 
       <EventIncidentsModal
@@ -766,8 +825,6 @@ const recursos = useMemo(
   onClose={() => setShowEspais(false)}
   fincaId={(event.fincaId || event.fincaCode || '').trim() || null}
   eventSummary={event.summary}
-  eventId={event.id != null ? String(event.id) : null}
-  eventCode={event.eventCode ?? event.code ?? null}
 />
       <EventClosingModal
         open={showClosing}

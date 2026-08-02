@@ -1,11 +1,11 @@
 'use client'
 
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import { RoleGuard } from '@/lib/withRoleGuard'
+import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
 
 export default function MaintenanceWorkPage() {
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+    <MaintenancePermissionGate>
       <div className="space-y-5 px-4 pb-8">
         <ModuleHeader title="Deco" subtitle="Fulls legacy" mainHref="/menu/deco" />
         <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
@@ -13,6 +13,6 @@ export default function MaintenanceWorkPage() {
           com a ruta legacy mentre es simplifica l'arquitectura del sistema de tickets.
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

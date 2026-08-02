@@ -2,46 +2,93 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import { RoleGuard } from '@/lib/withRoleGuard'
+import {
+  getMaintenanceCenterOptions,
+  getMaintenanceLocationsForCenter,
+  getMaintenanceZones,
+  type MaintenanceCenterHierarchyRow,
+} from '@/lib/maintenanceLocationCatalog'
+import MaintenancePermissionGate from '../../../components/MaintenancePermissionGate'
 
 type PersonnelApiItem = { name?: string }
 
 export default function PlantillaNewPage() {
+  const [centers, setCenters] = useState<MaintenanceCenterHierarchyRow[]>([])
   const [operators, setOperators] = useState<string[]>([])
   const [name, setName] = useState('')
   const [periodicity, setPeriodicity] = useState('monthly')
   const [lastDone, setLastDone] = useState('')
+  const [center, setCenter] = useState('')
   const [location, setLocation] = useState('')
+  const [zone, setZone] = useState('')
   const [primaryOperator, setPrimaryOperator] = useState('')
   const [backupOperator, setBackupOperator] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    const loadOperators = async () => {
+    const loadData = async () => {
       try {
-        const res = await fetch('/api/personnel?department=manteniment', { cache: 'no-store' })
-        if (!res.ok) {
+        const [operatorsRes, centersRes] = await Promise.all([
+          fetch('/api/personnel?department=manteniment', { cache: 'no-store' }),
+          fetch('/api/maintenance/data/centers', { cache: 'no-store' }),
+        ])
+
+        if (!operatorsRes.ok) {
           setOperators([])
+        } else {
+          const json = await operatorsRes.json()
+          const list = Array.isArray(json?.data) ? json.data : []
+          const names = list
+            .map((item: PersonnelApiItem) => String(item?.name || '').trim())
+            .filter(Boolean)
+            .sort((a: string, b: string) => a.localeCompare(b))
+          setOperators(Array.from(new Set(names)))
+        }
+
+        if (!centersRes.ok) {
+          setCenters([])
           return
         }
-        const json = await res.json()
-        const list = Array.isArray(json?.data) ? json.data : []
-        const names = list
-          .map((item: PersonnelApiItem) => String(item?.name || '').trim())
-          .filter(Boolean)
-          .sort((a: string, b: string) => a.localeCompare(b))
-        setOperators(Array.from(new Set(names)))
+        const centersJson = await centersRes.json()
+        setCenters(Array.isArray(centersJson?.centers) ? centersJson.centers : [])
       } catch {
         setOperators([])
+        setCenters([])
       }
     }
-    loadOperators()
+    void loadData()
   }, [])
 
   const backupOptions = useMemo(
     () => operators.filter((operator) => operator !== primaryOperator),
     [operators, primaryOperator]
   )
+  const centerOptions = useMemo(() => getMaintenanceCenterOptions(centers), [centers])
+  const locationOptions = useMemo(
+    () => getMaintenanceLocationsForCenter(centers, center),
+    [center, centers]
+  )
+  const zoneOptions = useMemo(
+    () => {
+      const options = getMaintenanceZones(centers, center, location)
+      const currentZone = String(zone || '').trim()
+      if (!currentZone || options.includes(currentZone)) return options
+      return [currentZone, ...options]
+    },
+    [center, centers, location, zone]
+  )
+
+  useEffect(() => {
+    if (location && !locationOptions.includes(location)) {
+      setLocation('')
+    }
+  }, [location, locationOptions])
+
+  useEffect(() => {
+    if (zone && !zoneOptions.includes(zone)) {
+      setZone('')
+    }
+  }, [zone, zoneOptions])
 
   const create = async () => {
     if (!name.trim()) {
@@ -57,7 +104,9 @@ export default function PlantillaNewPage() {
           name: name.trim(),
           periodicity,
           lastDone: lastDone || null,
+          center,
           location,
+          zone,
           primaryOperator,
           backupOperator,
           sections: [],
@@ -79,7 +128,7 @@ export default function PlantillaNewPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
+    <MaintenancePermissionGate>
       <div className="w-full max-w-5xl mx-auto p-4 space-y-5">
         <ModuleHeader subtitle="Nova plantilla" />
 
@@ -120,14 +169,66 @@ export default function PlantillaNewPage() {
             </label>
           </div>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-gray-600">Ubicacio</span>
-            <input
-              className="h-10 rounded-xl border px-3"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-            />
-          </label>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-gray-600">Centre</span>
+              <select
+                className="h-10 rounded-xl border px-3"
+                value={center}
+                onChange={(e) => {
+                  setCenter(e.target.value)
+                  setLocation('')
+                  setZone('')
+                }}
+              >
+                <option value="">Sense centre</option>
+                {centerOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-gray-600">Ubicacio</span>
+              <select
+                className="h-10 rounded-xl border px-3"
+                value={location}
+                onChange={(e) => {
+                  setLocation(e.target.value)
+                  setZone('')
+                }}
+                disabled={locationOptions.length === 0}
+              >
+                <option value="">{center ? 'Sense ubicacio' : 'Selecciona centre'}</option>
+                {locationOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-gray-600">Zona</span>
+              <select
+                className="h-10 rounded-xl border px-3"
+                value={zone}
+                onChange={(e) => setZone(e.target.value)}
+                disabled={zoneOptions.length === 0}
+              >
+                <option value="">
+                  {location ? 'Sense zona' : center ? 'Selecciona ubicacio' : 'Selecciona centre'}
+                </option>
+                {zoneOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <label className="flex flex-col gap-1">
@@ -182,6 +283,6 @@ export default function PlantillaNewPage() {
           </div>
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

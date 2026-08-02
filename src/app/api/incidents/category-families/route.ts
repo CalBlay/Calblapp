@@ -1,11 +1,9 @@
 export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
-import { canManageIncidentCategories } from '@/lib/incidentPolicy'
+import { requireIncidentsTypologiesManage } from '@/lib/server/incidentsApiAuth'
 import { mergeFamilyLabels, normalizeFamilyPrefix } from '@/lib/incidentTypology'
 
 const DOC_PATH = 'incident_settings'
@@ -13,12 +11,8 @@ const DOC_ID = 'category_families'
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canManageIncidentCategories(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsTypologiesManage()
+    if (!auth.ok) return auth.res
 
     const ref = firestoreAdmin.collection(DOC_PATH).doc(DOC_ID)
     const snap = await ref.get()
@@ -34,12 +28,8 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canManageIncidentCategories(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsTypologiesManage()
+    if (!auth.ok) return auth.res
 
     const body = (await req.json()) as { labels?: Record<string, string> }
     const incoming = body.labels

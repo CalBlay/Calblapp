@@ -28,6 +28,8 @@ interface EventPersonnelModalProps {
   conductors?: Person[]
   treballadors?: Person[]
   loading?: boolean
+  error?: string | null
+  onRetry?: () => void
 }
 
 function roleIcon(role?: string) {
@@ -139,6 +141,8 @@ export default function EventPersonnelModal({
   conductors = [],
   treballadors = [],
   loading = false,
+  error = null,
+  onRetry,
 }: EventPersonnelModalProps) {
   if (!open) return null
 
@@ -199,7 +203,21 @@ export default function EventPersonnelModal({
         </DialogHeader>
 
         <div className="space-y-4">
-          {allWorkers.length === 0 ? (
+          {error ? (
+            <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <p>No s&apos;ha pogut carregar el personal assignat.</p>
+              <p className="text-xs text-red-600">{error}</p>
+              {onRetry ? (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-100"
+                >
+                  Torna-ho a provar
+                </button>
+              ) : null}
+            </div>
+          ) : allWorkers.length === 0 ? (
             <div className="rounded-lg border p-3 text-sm text-gray-500">
               Sense personal assignat en aquest esdeveniment.
             </div>
@@ -222,20 +240,18 @@ export default function EventPersonnelModal({
                     return (
                       <li
                         key={worker.id || `${index}-${worker.name}`}
-                        className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-3 last:border-0"
+                        className="flex flex-col gap-2 border-b border-slate-100 px-3 py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                       >
-                        <div className="min-w-0 flex flex-1 items-center gap-2">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="text-base" aria-hidden>
-                              {roleIcon(worker.role)}
-                            </span>
-                            <span className="truncate text-sm font-semibold text-slate-900">
-                              {worker.name || '-'}
-                            </span>
-                          </div>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="text-base" aria-hidden>
+                            {roleIcon(worker.role)}
+                          </span>
+                          <span className="text-sm font-semibold text-slate-900 sm:truncate">
+                            {worker.name || '-'}
+                          </span>
                         </div>
 
-                        <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto text-xs">
+                        <div className="flex flex-wrap items-center gap-1.5 pl-7 text-xs sm:shrink-0 sm:justify-end sm:pl-0">
                           {worker.role === 'conductor' && worker.plate ? (
                             <span className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700 whitespace-nowrap">
                               {worker.plate}

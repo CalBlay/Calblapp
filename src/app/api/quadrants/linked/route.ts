@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { unstable_cache } from 'next/cache'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { QUADRANTS_LIST_CACHE_TAG } from '@/lib/quadrantsListCache'
+import { requireQuadrantsModuleRead } from '@/lib/server/quadrantsReadAuth'
 
 export const runtime = 'nodejs'
 
@@ -89,6 +90,9 @@ const fetchLinkedCached = unstable_cache(
 )
 
 export async function GET(req: Request) {
+  const auth = await requireQuadrantsModuleRead()
+  if (!auth.ok) return auth.res
+
   try {
     const { searchParams } = new URL(req.url)
     const startRaw = searchParams.get('start') || ''

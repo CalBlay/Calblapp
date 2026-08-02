@@ -1,12 +1,14 @@
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import type { CommercialReservation, CommercialReservationStatus } from '@/lib/commercialReservations'
+import type { KeysHandoverRow } from './utils'
 
-export type TabId = 'sollicitud' | 'validacio'
+export type TabId = 'sollicitud' | 'validacio' | 'claus'
 
 export type SessionUser = {
   id?: string
   role?: string | null
   name?: string | null
+  department?: string | null
   isTransportLead?: boolean | null
 }
 
@@ -17,6 +19,8 @@ export type AssignmentRow = {
   vehicleType?: string
   name?: string
   label?: string
+  department?: string
+  location?: string
   startDate?: string
   endDate?: string
   startTime?: string
@@ -46,6 +50,7 @@ export type ReservationPageState = {
   tab: TabId
   canRequest: boolean
   canValidate: boolean
+  canKeys: boolean
   filters: FiltersState
   requestFilters: FiltersState
   monthDate: Date
@@ -72,6 +77,12 @@ export type ReservationPageState = {
   todayIso: string
   assignmentItems: AssignmentItem[]
   pendingReservationsByDay: Map<string, number>
+  keysFilters: FiltersState
+  keysHandoverWithPlate: KeysHandoverRow[]
+  keysHandoverWithoutPlate: KeysHandoverRow[]
+  keysLoading: boolean
+  keysShowsDateColumn: boolean
+  totalFleetVehicles: number
 }
 
 export type ValidationAction = (id: string, status: CommercialReservationStatus) => Promise<void>

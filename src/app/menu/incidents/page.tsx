@@ -4,7 +4,9 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
-import { AlertTriangle, FileText } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { AlertTriangle, Clock3, FileText } from 'lucide-react'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import {
@@ -16,23 +18,41 @@ import {
 } from '@/components/ui/select'
 
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import { CorporateFiltersShell } from '@/components/layout/corporate-filters'
+import { corporateFilterBadgeClass } from '@/lib/corporate-filters'
 import SmartFilters, { SmartFiltersChange } from '@/components/filters/SmartFilters'
 import { useIncidents } from '@/hooks/useIncidents'
 import IncidentsTable from './components/IncidentsTable'
+import IncidentsLnFilterBadges from './components/IncidentsLnFilterBadges'
+import { incidentMatchesLnFilter } from '@/lib/incidentLn'
+import {
+  INCIDENTS_CATEGORY_EDIT_PERM,
+  INCIDENTS_COMMAND_BOARD_PERM,
+  INCIDENTS_ACCIONS_PATH,
+  INCIDENTS_MEETING_MINUTES_PERM,
+  INCIDENTS_TYPOLOGIES_MANAGE_PERM,
+  INCIDENTS_QUADRE_PATH,
+} from '@/lib/incidentsPermissions'
 import FilterButton from '@/components/ui/filter-button'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
 import ExportMenu from '@/components/export/ExportMenu'
 import { Button } from '@/components/ui/button'
 import MeetingMinutesDialog from './components/MeetingMinutesDialog'
+import MeetingMinutesHistoryDialog from './components/MeetingMinutesHistoryDialog'
+import IncidentNotificationsBell from './components/IncidentNotificationsBell'
 import {
   canDeleteIncident,
-  canManageIncidentCategories,
   normalizeIncidentStatus,
 } from '@/lib/incidentPolicy'
 import { normalizeDept } from '@/lib/accessControl'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
+
+const INCIDENT_DATE_MODE_LABELS: Record<'all' | 'event', string> = {
+  all: 'Sense filtre de data',
+  event: 'Data de l’esdeveniment',
+}
 
 const MARKETING_DEFAULT_CATEGORY_FILTER = '9XX'
 const MARKETING_DEPARTMENTS = new Set(['marqueting', 'marketing'])
@@ -62,6 +82,11 @@ function incidentStatusDisplayLabel(raw?: string | null) {
 }
 
 export default function IncidentsPage() {
+  const searchParams = useSearchParams()
+  const searchParamsSafe = useMemo(
+    () => searchParams ?? new URLSearchParams(),
+    [searchParams]
+  )
   const { data: session, status: sessionStatus } = useSession()
   const sessionUser = session?.user as {
     id?: string
@@ -83,21 +108,89 @@ export default function IncidentsPage() {
   )
   const isMarketingUser = MARKETING_DEPARTMENTS.has(normalizeDept(accessUser.department || ''))
   const actaAuthorLabel = sessionUser?.name?.trim() || sessionUser?.email?.trim()
-  const canEditTipologies = canManageIncidentCategories(
-    accessUser
-  )
+  const { ready: uiPermsReady, hasAction } = useUiPermissions()
+  const canSeeQuadre = uiPermsReady && hasAction(INCIDENTS_COMMAND_BOARD_PERM)
+  const canMeetingMinutes = uiPermsReady && hasAction(INCIDENTS_MEETING_MINUTES_PERM)
+  const canEditIncidentCategory = uiPermsReady && hasAction(INCIDENTS_CATEGORY_EDIT_PERM)
+  const canEditTipologies = uiPermsReady && hasAction(INCIDENTS_TYPOLOGIES_MANAGE_PERM)
   const [meetingMinutesOpen, setMeetingMinutesOpen] = useState(false)
+  const [meetingMinutesHistoryOpen, setMeetingMinutesHistoryOpen] = useState(false)
+  const [meetingActaStatus, setMeetingActaStatus] = useState<'draft' | 'finalized' | null>(null)
+  const [activeMeetingSessionId, setActiveMeetingSessionId] = useState<string | null>(null)
+  const [selectedMeetingSessionId, setSelectedMeetingSessionId] = useState<string | null>(null)
+  const [selectedMeetingSession, setSelectedMeetingSession] = useState<import('@/lib/incidentMeetingSession').IncidentMeetingSession | null>(null)
+  const [incidentCategoryOptions, setIncidentCategoryOptions] = useState<Array<{ id: string; label: string }>>([])
   const initialRange = useMemo(() => thisWeekRange(), [])
+
+  useEffect(() => {
+    if (!canMeetingMinutes) return
+    void fetch('/api/incidents/meeting-minutes', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((json) => {
+        const status = json?.session?.status
+        const sessionId = String(json?.session?.id || '').trim()
+        setMeetingActaStatus(status === 'finalized' ? 'finalized' : status === 'draft' ? 'draft' : null)
+        setActiveMeetingSessionId(sessionId || null)
+      })
+      .catch(() => {
+        setMeetingActaStatus(null)
+        setActiveMeetingSessionId(null)
+      })
+  }, [canMeetingMinutes, meetingMinutesHistoryOpen, meetingMinutesOpen, selectedMeetingSessionId])
+
+  useEffect(() => {
+    if (!canEditIncidentCategory) {
+      setIncidentCategoryOptions([])
+      return
+    }
+    void fetch('/api/incidents/categories', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((json) => {
+        const rows = Array.isArray(json?.categories) ? json.categories : []
+        setIncidentCategoryOptions(
+          rows
+            .filter((row: { active?: boolean }) => row.active !== false)
+            .map((row: { id?: string; label?: string }) => ({
+              id: String(row.id || '').trim(),
+              label: String(row.label || row.id || '').trim(),
+            }))
+            .filter((row: { id: string; label: string }) => row.id && row.label)
+        )
+      })
+      .catch(() => setIncidentCategoryOptions([]))
+  }, [canEditIncidentCategory])
+
+  const handleMeetingMinutesOpenChange = (next: boolean) => {
+    setMeetingMinutesOpen(next)
+    if (!next) {
+      setSelectedMeetingSessionId(null)
+      setSelectedMeetingSession(null)
+    }
+  }
+
+  const openActiveMeetingMinutes = () => {
+    setSelectedMeetingSessionId(null)
+    setSelectedMeetingSession(null)
+    setMeetingMinutesOpen(true)
+  }
+
+  const openMeetingSessionFromHistory = (session: import('@/lib/incidentMeetingSession').IncidentMeetingSession) => {
+    setSelectedMeetingSession(session)
+    setSelectedMeetingSessionId(session.id)
+    setMeetingMinutesOpen(true)
+  }
   const [dateResetSignal, setDateResetSignal] = useState(0)
   const [defaultFiltersReady, setDefaultFiltersReady] = useState(false)
   const [marketingDefaultSuppressed, setMarketingDefaultSuppressed] = useState(false)
   const [filters, setFilters] = useState({
     from: initialRange.from as string | undefined,
     to: initialRange.to as string | undefined,
+    dateMode: 'event' as 'all' | 'event',
     department: undefined as string | undefined,
     importance: 'all' as string,
     categoryLabel: 'all' as string,
     status: 'all' as 'all' | 'obert' | 'en_curs' | 'resolt' | 'tancat',
+    ln: 'all' as string,
   })
 
   const effectiveCategoryLabel =
@@ -105,7 +198,35 @@ export default function IncidentsPage() {
       ? MARKETING_DEFAULT_CATEGORY_FILTER
       : filters.categoryLabel
 
-  const { incidents, rawIncidents, loading, isRefreshing, error, updateIncident, deleteIncident } = useIncidents({
+  const deepLinkIncidentId = searchParamsSafe.get('incidentId')?.trim() || ''
+  const shouldExpandOps = searchParamsSafe.get('ops') === '1'
+
+  useEffect(() => {
+    if (searchParamsSafe.get('dateMode') !== 'all') return
+    setFilters((prev) =>
+      prev.dateMode === 'all'
+        ? prev
+        : {
+            ...prev,
+            dateMode: 'all',
+            from: undefined,
+            to: undefined,
+          }
+    )
+  }, [searchParamsSafe])
+
+  const {
+    incidents,
+    rawIncidents,
+    actionsByIncident,
+    loading,
+    isRefreshing,
+    error,
+    updateIncident,
+    deleteIncident,
+    patchIncidentLocal,
+    patchIncidentActionsLocal,
+  } = useIncidents({
     ...filters,
     categoryLabel: effectiveCategoryLabel,
     limit: 800,
@@ -146,7 +267,12 @@ export default function IncidentsPage() {
     setDefaultFiltersReady(true)
   }, [sessionStatus])
 
-  const totalIncidencies = incidents.length
+  const visibleIncidents = useMemo(
+    () => incidents.filter((inc) => incidentMatchesLnFilter(inc.ln, filters.ln)),
+    [incidents, filters.ln]
+  )
+
+  const totalIncidencies = visibleIncidents.length
 
   const canDeleteRow = React.useCallback(
     (incident: import('@/hooks/useIncidents').Incident) =>
@@ -164,23 +290,59 @@ export default function IncidentsPage() {
     [deleteIncident]
   )
 
-  const handleFilterChange = (f: SmartFiltersChange) => {
-    setFilters(prev => ({
-      ...prev,
-      from: f.start,
-      to: f.end,
-      department: f.department,
-      importance: f.importance || 'all',
-      categoryLabel:
-        f.categoryId === undefined ? prev.categoryLabel : f.categoryId !== 'all' ? f.categoryId : 'all',
-    }))
-  }
+  const handleFilterChange = React.useCallback((f: SmartFiltersChange) => {
+    setFilters((prev) => {
+      const nextCategoryLabel =
+        f.categoryId === undefined ? prev.categoryLabel : f.categoryId !== 'all' ? f.categoryId : 'all'
+      const nextFrom = f.start
+      const nextTo = f.end
+      const nextDepartment = f.department
+      const nextImportance = f.importance || 'all'
+
+      if (
+        prev.from === nextFrom &&
+        prev.to === nextTo &&
+        prev.department === nextDepartment &&
+        prev.importance === nextImportance &&
+        prev.categoryLabel === nextCategoryLabel
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        from: nextFrom,
+        to: nextTo,
+        department: nextDepartment,
+        importance: nextImportance,
+        categoryLabel: nextCategoryLabel,
+      }
+    })
+  }, [])
 
   const { setContent, setOpen } = useFilters()
 
   const openFiltersPanel = () => {
     setContent(
-      <div className="p-4 space-y-4">
+      <div key={`incidents-filters-${filters.dateMode}-${dateResetSignal}`} className="p-4 space-y-4">
+        <div className="space-y-2">
+          <label className={typography('label')}>Tipus de data</label>
+          <Select
+            value={filters.dateMode}
+            onValueChange={(v) =>
+              setFilters((prev) => ({ ...prev, dateMode: v as typeof prev.dateMode }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="event">Data de l’esdeveniment</SelectItem>
+              <SelectItem value="all">Sense filtre de data</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="space-y-2">
           <label className={typography('label')}>Departament</label>
           <Select
@@ -287,10 +449,12 @@ export default function IncidentsPage() {
               setFilters({
                 from: range.from,
                 to: range.to,
+                dateMode: 'event',
                 department: undefined,
                 importance: 'all',
                 categoryLabel: 'all',
                 status: 'all',
+                ln: 'all',
               })
             }}
           />
@@ -308,11 +472,14 @@ export default function IncidentsPage() {
     setOpen(true)
   }
 
-  const exportBase = `incidencies-${filters.from || 'start'}-${filters.to || 'end'}`
+  const exportBase =
+    filters.dateMode === 'all'
+      ? 'incidencies-totes'
+      : `incidencies-${filters.from || 'start'}-${filters.to || 'end'}`
 
   const exportRows = useMemo(
     () =>
-      incidents.map((i) => ({
+      visibleIncidents.map((i) => ({
         DataEvent: (i.eventDate || '').slice(0, 10),
         Event: i.eventTitle || '',
         Codi: i.eventCode || '',
@@ -328,7 +495,7 @@ export default function IncidentsPage() {
         Pax: i.pax ?? '',
         Servei: i.serviceType || '',
       })),
-    [incidents]
+    [visibleIncidents]
   )
 
   const handleExportExcel = async () => {
@@ -434,12 +601,21 @@ export default function IncidentsPage() {
         subtitle="Tauler de treball setmanal"
         actions={
           <div className="flex flex-wrap items-center gap-2 justify-end">
+            <IncidentNotificationsBell />
             <Link
-              href="/menu/incidents/quadre"
+              href={INCIDENTS_ACCIONS_PATH}
               className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
             >
-              Quadre de comandament
+              Les meves accions
             </Link>
+            {canSeeQuadre ? (
+              <Link
+                href={INCIDENTS_QUADRE_PATH}
+                className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
+              >
+                Quadre de comandament
+              </Link>
+            ) : null}
             {canEditTipologies ? (
               <Link
                 href="/menu/incidents/tipologies"
@@ -448,31 +624,60 @@ export default function IncidentsPage() {
                 Tipologies
               </Link>
             ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="whitespace-nowrap gap-1.5"
-              disabled={loading}
-              onClick={() => setMeetingMinutesOpen(true)}
-            >
-              <FileText className="h-4 w-4 shrink-0" aria-hidden />
-              Acta reunió
-            </Button>
+            {canMeetingMinutes ? (
+              <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="whitespace-nowrap gap-1.5"
+                disabled={loading}
+                onClick={openActiveMeetingMinutes}
+              >
+                <FileText className="h-4 w-4 shrink-0" aria-hidden />
+                {meetingActaStatus === 'draft'
+                  ? 'Apunts reunió'
+                  : meetingActaStatus === 'finalized'
+                  ? 'Tancar acta'
+                  : 'Acta reunió'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="whitespace-nowrap gap-1.5"
+                onClick={() => setMeetingMinutesHistoryOpen(true)}
+              >
+                <Clock3 className="h-4 w-4 shrink-0" aria-hidden />
+                Historial actes
+              </Button>
+              </>
+            ) : null}
             <ExportMenu items={exportItems} />
           </div>
         }
       />
 
-      <MeetingMinutesDialog
-        open={meetingMinutesOpen}
-        onOpenChange={setMeetingMinutesOpen}
-        incidents={incidents}
-        filters={{ ...filters, categoryLabel: effectiveCategoryLabel }}
-        generatedByLabel={actaAuthorLabel}
-      />
+      {canMeetingMinutes ? (
+        <>
+          <MeetingMinutesDialog
+            open={meetingMinutesOpen}
+            onOpenChange={handleMeetingMinutesOpenChange}
+            defaultFilters={{ ...filters, categoryLabel: effectiveCategoryLabel }}
+            generatedByLabel={actaAuthorLabel}
+            onSessionStatusChange={selectedMeetingSessionId ? undefined : setMeetingActaStatus}
+            sessionId={selectedMeetingSessionId}
+            initialSession={selectedMeetingSession}
+          />
+          <MeetingMinutesHistoryDialog
+            open={meetingMinutesHistoryOpen}
+            onOpenChange={setMeetingMinutesHistoryOpen}
+            onPickSession={openMeetingSessionFromHistory}
+            activeSessionId={activeMeetingSessionId}
+          />
+        </>
+      ) : null}
 
-      {/* Total incidències de la setmana */}
       <div className={`px-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${typography('bodyMd')}`}>
         <span>Total incidències: {totalIncidencies}</span>
         {isRefreshing ? (
@@ -480,8 +685,12 @@ export default function IncidentsPage() {
         ) : null}
       </div>
 
-      {/* Barra compacta: només dates + botó filtres */}
-      <div className="mb-2 flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:flex-nowrap">
+      <CorporateFiltersShell variant="toolbar" className="mb-2">
+        <div className="flex min-w-[200px] flex-wrap items-center gap-2">
+          <span className={corporateFilterBadgeClass(true)}>
+            {INCIDENT_DATE_MODE_LABELS[filters.dateMode]}
+          </span>
+        </div>
 
         <SmartFilters
           modeDefault="week"
@@ -496,13 +705,15 @@ export default function IncidentsPage() {
           categoryOptions={categoryOptions}
           showAdvanced={false}
           compact
-          initialStart={filters.from}
-          initialEnd={filters.to}
           resetSignal={dateResetSignal}
+        />
+        <IncidentsLnFilterBadges
+          value={filters.ln}
+          onChange={(ln) => setFilters((prev) => ({ ...prev, ln }))}
         />
         <div className="min-w-[8px] flex-1" />
         <FilterButton onClick={openFiltersPanel} />
-      </div>
+      </CorporateFiltersShell>
 
       {/* Contingut */}
       {loading && (
@@ -515,10 +726,17 @@ export default function IncidentsPage() {
       {!loading && !error && (
         <div id="incidencies-print-root" className="w-full">
           <IncidentsTable
-            incidents={incidents}
+            incidents={visibleIncidents}
+            actionsByIncident={actionsByIncident}
+            daySort={filters.dateMode === 'event' ? 'chronological' : 'proximity'}
+            expandIncidentId={shouldExpandOps ? deepLinkIncidentId : undefined}
             onUpdate={updateIncident}
+            onLocalPatch={patchIncidentLocal}
+            onActionsLocalPatch={patchIncidentActionsLocal}
             onDelete={handleDeleteIncident}
             canDeleteIncident={canDeleteRow}
+            canEditCategory={canEditIncidentCategory}
+            categoryOptions={incidentCategoryOptions}
           />
         </div>
       )}

@@ -1,0 +1,480 @@
+{
+  "file": "C:\\dev\\cal-blay-webapp\\Articles APP.xlsx",
+  "sheets": [
+    {
+      "name": "Hoja1",
+      "totalRows": 9127,
+      "nonEmptyRows": 9127,
+      "headerRowIndex": 1,
+      "headers": [
+        "Codi",
+        "Nom",
+        "U.Compra",
+        "Codi Magatzem",
+        "Grup",
+        "Nom Grup Magatzem",
+        "Familia",
+        "Nom familia",
+        "Codi Subfamilia",
+        "Nom Subfamilia",
+        "",
+        ""
+      ],
+      "guessedColumns": {
+        "code": 3,
+        "name": 1,
+        "unit": 2,
+        "warehouse": 3,
+        "family": 4
+      },
+      "dataRowCount": 9126,
+      "sampleRows": [
+        {
+          "code": "42",
+          "name": "BARQUETA HOT DOG KRAFT 21X7X3",
+          "warehouse": "42",
+          "unit": "UN",
+          "raw": [
+            "M1220200644",
+            "BARQUETA HOT DOG KRAFT 21X7X3",
+            "UN",
+            "42",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "11",
+          "name": "KIT-MB1175/A1188 (1+3)",
+          "warehouse": "11",
+          "unit": "UN",
+          "raw": [
+            "M1240000190",
+            "KIT-MB1175/A1188 (1+3)",
+            "UN",
+            "11",
+            "M124",
+            "MATERIAL OFICINA",
+            "M124",
+            "MATERIAL OFICINA",
+            "M124000",
+            "M124000-MATERIAL OFICINA",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "38",
+          "name": "TOPMATIC SHIELD E SPECIAL 12K",
+          "warehouse": "38",
+          "unit": "G",
+          "raw": [
+            "M1250000470",
+            "TOPMATIC SHIELD E SPECIAL 12K",
+            "G",
+            "38",
+            "M125",
+            "PRODUCTES NETEJA",
+            "M1250",
+            "MATERIAL NETEJA",
+            "M125000",
+            "M125000-PRODUCTES NETEJA",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "01",
+          "name": "ENVAS 25 LLAUNA",
+          "warehouse": "01",
+          "unit": "UN",
+          "raw": [
+            "M0690000010",
+            "ENVAS 25 LLAUNA",
+            "UN",
+            "01",
+            "M06",
+            "MP PRODUCTES VI GAMMA - ALTRES",
+            "M0690",
+            "VARIS2",
+            "M069000",
+            "M069000-VARIS",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "01",
+          "name": "SHOCOBOLAS BLANQUES 1 KILO",
+          "warehouse": "01",
+          "unit": "B",
+          "raw": [
+            "M0600035258",
+            "SHOCOBOLAS BLANQUES 1 KILO",
+            "B",
+            "01",
+            "M06",
+            "MP PRODUCTES VI GAMMA - ALTRES",
+            "M0600",
+            "LÀCTICS I PASTISSERIA",
+            "M060003",
+            "M060003-XOCOLATES",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "43",
+          "name": "ESPATULA CUINA 12,5 CM INOX",
+          "warehouse": "43",
+          "unit": "UN",
+          "raw": [
+            "M1220200756",
+            "ESPATULA CUINA 12,5 CM INOX",
+            "UN",
+            "43",
+            "M12",
+            "MP ENVASOS I ALTRES APROVISIONAMENTS",
+            "M1220",
+            "MATERIAL DE SERVEI",
+            "M122020",
+            "M122020-COMPLEMENTS",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "42",
+          "name": "CB GOT DE SIDRA PLASTIC 500ML(B LLIURE)",
+          "warehouse": "42",
+          "unit": "UN",
+          "raw": [
+            "Z0106000050",
+            "CB GOT DE SIDRA PLASTIC 500ML(B LLIURE)",
+            "UN",
+            "42",
+            "Z01",
+            "MATERIAL DE SERVEI DE CATERING",
+            "Z0106",
+            "COMPLEMENTS",
+            "Z010600",
+            "COMPLEMENTS 1 US",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "42",
+          "name": "AMPOLLA EXPRIM. 946ML REF.3263C",
+          "warehouse": "42",
+          "unit": "UN",
+          "raw": [
+            "M1220200747",
+            "AMPOLLA EXPRIM. 946ML REF.3263C",
+            "UN",
+            "42",
+            "M12",
+            "MP ENVASOS I ALTRES APROVISIONAMENTS",
+            "M1220",
+            "MATERIAL DE SERVEI",
+            "M122020",
+            "M122020-COMPLEMENTS",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "11",
+          "name": "FUNDA MULTITALADRE Q-CONNECT FOLI 80MC VIDRE CAIX",
+          "warehouse": "11",
+          "unit": "C",
+          "raw": [
+            "M1240000038",
+            "FUNDA MULTITALADRE Q-CONNECT FOLI 80MC VIDRE CAIX",
+            "C",
+            "11",
+            "M124",
+            "MATERIAL OFICINA",
+            "M124",
+            "MATERIAL OFICINA",
+            "M124000",
+            "M124000-MATERIAL OFICINA",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "01",
+          "name": "LLAÇOS MANTEGA 1,7KG",
+          "warehouse": "01",
+          "unit": "C",
+          "raw": [
+            "M0600025406",
+            "LLAÇOS MANTEGA 1,7KG",
+            "C",
+            "01",
+            "M06",
+            "MP PRODUCTES VI GAMMA - ALTRES",
+            "M0600",
+            "LÀCTICS I PASTISSERIA",
+            "M060002",
+            "M060002-PASTES I BRIOXERIA",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "11",
+          "name": "FULLS SENSE IMPRIMIR INURO RECICLAT 250",
+          "warehouse": "11",
+          "unit": "UN",
+          "raw": [
+            "M1240000062",
+            "FULLS SENSE IMPRIMIR INURO RECICLAT 250",
+            "UN",
+            "11",
+            "M124",
+            "MATERIAL OFICINA",
+            "M124",
+            "MATERIAL OFICINA",
+            "M124000",
+            "M124000-MATERIAL OFICINA",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "04",
+          "name": "AIGUA BEZOYA 1,5 L.",
+          "warehouse": "04",
+          "unit": "A",
+          "raw": [
+            "0930022068",
+            "AIGUA BEZOYA 1,5 L.",
+            "A",
+            "04",
+            "09",
+            "BEGUDES",
+            "0930",
+            "REFRESCS, AIGÜES I ALTRES",
+            "093002",
+            "093002-AIGÜES",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "01",
+          "name": "VARIS 21percent",
+          "warehouse": "01",
+          "unit": "UN",
+          "raw": [
+            "TEST_Delsys",
+            "VARIS 21percent",
+            "UN",
+            "01",
+            "0600",
+            "PRODUCTES VI GAMMA ALTRES",
+            "06200",
+            "PRODUCTES DE VENDA",
+            "06200",
+            "ALTRES PRODUCTES VENDA",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "11",
+          "name": "BLOC DE NOTES ADHESIVES 50X75",
+          "warehouse": "11",
+          "unit": "PC",
+          "raw": [
+            "M1240000091",
+            "BLOC DE NOTES ADHESIVES 50X75",
+            "PC",
+            "11",
+            "M124",
+            "MATERIAL OFICINA",
+            "M124",
+            "MATERIAL OFICINA",
+            "M124000",
+            "M124000-MATERIAL OFICINA",
+            "",
+            ""
+          ]
+        },
+        {
+          "code": "11",
+          "name": "PLATO LLANO 27CM GOURMET",
+          "warehouse": "11",
+          "unit": "UN",
+          "raw": [
+            "M1220200563",
+            "PLATO LLANO 27CM GOURMET",
+            "UN",
+            "11",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ]
+        }
+      ],
+      "stats": {
+        "uniqueCodes": 34,
+        "emptyCodes": 0,
+        "emptyNames": 0,
+        "duplicateCodeCount": 20,
+        "topDuplicates": [
+          {
+            "code": "04",
+            "count": 1795
+          },
+          {
+            "code": "01",
+            "count": 1433
+          },
+          {
+            "code": "03",
+            "count": 1267
+          },
+          {
+            "code": "02",
+            "count": 827
+          },
+          {
+            "code": "42",
+            "count": 802
+          },
+          {
+            "code": "06",
+            "count": 800
+          },
+          {
+            "code": "07",
+            "count": 359
+          },
+          {
+            "code": "39",
+            "count": 357
+          },
+          {
+            "code": "38",
+            "count": 333
+          },
+          {
+            "code": "11",
+            "count": 330
+          },
+          {
+            "code": "09",
+            "count": 189
+          },
+          {
+            "code": "43",
+            "count": 141
+          },
+          {
+            "code": "08",
+            "count": 104
+          },
+          {
+            "code": "05",
+            "count": 92
+          },
+          {
+            "code": "44",
+            "count": 50
+          },
+          {
+            "code": "10",
+            "count": 46
+          },
+          {
+            "code": "59",
+            "count": 28
+          },
+          {
+            "code": "47",
+            "count": 21
+          },
+          {
+            "code": "19",
+            "count": 19
+          },
+          {
+            "code": "35",
+            "count": 18
+          }
+        ]
+      },
+      "uniqueWarehouses": [
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06",
+        "07",
+        "08",
+        "09",
+        "10",
+        "11",
+        "12",
+        "13",
+        "16",
+        "17",
+        "19",
+        "20",
+        "22",
+        "26",
+        "29",
+        "32",
+        "34",
+        "35",
+        "36",
+        "37",
+        "38",
+        "39",
+        "42",
+        "43",
+        "44",
+        "45",
+        "47",
+        "59",
+        "60"
+      ],
+      "uniqueUnits": [
+        "A",
+        "B",
+        "BA",
+        "BIB",
+        "C",
+        "G",
+        "KG",
+        "LI",
+        "LLP",
+        "M",
+        "MA",
+        "P",
+        "PC",
+        "POM",
+        "S",
+        "TIJA",
+        "UN"
+      ],
+      "warehouseCount": 34,
+      "unitCount": 17
+    }
+  ]
+}

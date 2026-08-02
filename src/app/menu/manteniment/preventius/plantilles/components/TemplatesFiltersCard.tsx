@@ -9,8 +9,17 @@ type Props = {
   filteredCount: number
   periodicity: string
   search: string
+  centerFilter: string
+  locationFilter: string
+  zoneFilter: string
+  centerOptions: string[]
+  locationOptions: string[]
+  zoneOptions: string[]
   onSearchChange: (value: string) => void
   onPeriodicityChange: (value: string) => void
+  onCenterFilterChange: (value: string) => void
+  onLocationFilterChange: (value: string) => void
+  onZoneFilterChange: (value: string) => void
 }
 
 export default function TemplatesFiltersCard({
@@ -18,8 +27,17 @@ export default function TemplatesFiltersCard({
   filteredCount,
   periodicity,
   search,
+  centerFilter,
+  locationFilter,
+  zoneFilter,
+  centerOptions,
+  locationOptions,
+  zoneOptions,
   onSearchChange,
   onPeriodicityChange,
+  onCenterFilterChange,
+  onLocationFilterChange,
+  onZoneFilterChange,
 }: Props) {
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -44,13 +62,49 @@ export default function TemplatesFiltersCard({
         </div>
 
         <div className="flex items-center gap-2 lg:min-w-[420px]">
-          <div className="w-full">
+          <div className="grid w-full gap-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,0.8fr))]">
             <input
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-              placeholder="Cerca per nom, ubicacio o operari"
+              placeholder="Cerca per nom, centre, ubicacio, zona o operari"
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
             />
+            <select
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              value={centerFilter}
+              onChange={(event) => onCenterFilterChange(event.target.value)}
+            >
+              <option value="">Tots els centres</option>
+              {centerOptions.map((option, index) => (
+                <option key={`${option}-${index}`} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              value={locationFilter}
+              onChange={(event) => onLocationFilterChange(event.target.value)}
+            >
+              <option value="">Totes les ubicacions</option>
+              {locationOptions.map((option, index) => (
+                <option key={`${option}-${index}`} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              value={zoneFilter}
+              onChange={(event) => onZoneFilterChange(event.target.value)}
+            >
+              <option value="">Totes les zones</option>
+              {zoneOptions.map((option, index) => (
+                <option key={`${option}-${index}`} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           </div>
           {!embedded ? (
             <div className="hidden shrink-0 lg:block">

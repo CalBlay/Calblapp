@@ -26,7 +26,9 @@ export function UserTable({ users, onEdit, onDelete }: UserTableProps) {
           {users.map((u, idx) => (
             <tr key={u.id || idx}>
               <td className="px-4 py-2">{u.name}</td>
-              <td className="px-4 py-2">{u.password}</td>
+              <td className="px-4 py-2 font-mono text-sm text-gray-800">
+                {u.password || '—'}
+              </td>
               <td className="px-4 py-2">{u.role}</td>
               <td className="px-4 py-2">{u.department}</td>
               <td className="px-4 py-2">{u.commercialName || '-'}</td>

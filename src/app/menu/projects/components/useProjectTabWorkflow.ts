@@ -1,6 +1,6 @@
 'use client'
 
-import { type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useState, type Dispatch, type SetStateAction } from 'react'
 import type { ProjectData } from './project-shared'
 import type {
   createBlockDraft,
@@ -11,9 +11,15 @@ import type {
 type BlockDraft = ReturnType<typeof createBlockDraft>
 type TaskDraft = ReturnType<typeof createTaskDraft>
 
+export type UnsavedTabPrompt = {
+  fromTab: WorkspaceTab
+  toTab: WorkspaceTab
+}
+
 type Params = {
   activeTab: WorkspaceTab
   addTaskToBlock: (blockId: string) => void
+  applyTabChange: (tab: WorkspaceTab) => void
   blockDraft: BlockDraft
   createBlock: () => void
   dirtyBlocks: boolean
@@ -25,17 +31,17 @@ type Params = {
   saveBlocks: () => Promise<boolean>
   saveDocuments: () => Promise<boolean>
   saveOverview: () => Promise<boolean>
-  setActiveTab: Dispatch<SetStateAction<WorkspaceTab>>
-  setDirtyBlocksState: Dispatch<SetStateAction<boolean>>
   setProject: Dispatch<SetStateAction<ProjectData>>
   showBlockComposer: boolean
   showTaskComposer: boolean
   taskDraft: TaskDraft
+  canCreateSprints?: boolean
 }
 
 export function useProjectTabWorkflow({
   activeTab,
   addTaskToBlock,
+  applyTabChange,
   blockDraft,
   createBlock,
   dirtyBlocks,
@@ -47,46 +53,47 @@ export function useProjectTabWorkflow({
   saveBlocks,
   saveDocuments,
   saveOverview,
-  setActiveTab,
-  setDirtyBlocksState,
   setProject,
   showBlockComposer,
   showTaskComposer,
   taskDraft,
+  canCreateSprints = false,
 }: Params) {
+  const [unsavedPrompt, setUnsavedPrompt] = useState<UnsavedTabPrompt | null>(null)
+  const [resolvingUnsaved, setResolvingUnsaved] = useState(false)
+
   const hasPendingBlockDraft =
     showBlockComposer &&
     Boolean(
       String(blockDraft.name || '').trim() ||
-      String(blockDraft.summary || '').trim() ||
-      String(blockDraft.department || '').trim() ||
-      String(blockDraft.owner || '').trim() ||
-      String(blockDraft.deadline || '').trim() ||
-      String(blockDraft.budget || '').trim() ||
-      String(blockDraft.dependsOn || '').trim()
+        String(blockDraft.summary || '').trim() ||
+        String(blockDraft.department || '').trim() ||
+        String(blockDraft.owner || '').trim() ||
+        String(blockDraft.deadline || '').trim() ||
+        String(blockDraft.budget || '').trim() ||
+        String(blockDraft.dependsOn || '').trim()
     )
 
   const hasPendingTaskDraft =
     showTaskComposer &&
     Boolean(
-      String(taskDraft.blockId || '').trim() && String(taskDraft.blockId || '').trim() !== 'none' &&
-      (
-        String(taskDraft.title || '').trim() ||
-        String(taskDraft.description || '').trim() ||
-        String(taskDraft.department || '').trim() ||
-        String(taskDraft.owner || '').trim() ||
-        String(taskDraft.deadline || '').trim() ||
-        String(taskDraft.sprintId || '').trim()
-      )
+      String(taskDraft.blockId || '').trim() &&
+        String(taskDraft.blockId || '').trim() !== 'none' &&
+        (String(taskDraft.title || '').trim() ||
+          String(taskDraft.description || '').trim() ||
+          String(taskDraft.department || '').trim() ||
+          String(taskDraft.owner || '').trim() ||
+          String(taskDraft.deadline || '').trim() ||
+          String(taskDraft.sprintId || '').trim())
     )
 
   const hasPendingDocumentDraft =
     Boolean(pendingDocumentFile) || Boolean(String(documentDraft.label || '').trim())
 
   const createSprint = (name: string) => {
+    if (!canCreateSprints) return
     const nextName = String(name || '').trim()
     if (!nextName) return
-    setDirtyBlocksState(true)
     setProject((current) => {
       if (current.sprints.some((sprint) => sprint.name.toLowerCase() === nextName.toLowerCase())) {
         return current
@@ -114,39 +121,71 @@ export function useProjectTabWorkflow({
     return false
   }
 
-  const handleTabChange = async (nextTab: WorkspaceTab) => {
+  const saveActiveTab = useCallback(
+    async (tab: WorkspaceTab) => {
+      if (tab === 'overview') {
+        return saveOverview()
+      }
+      if (tab === 'blocks') {
+        if (hasPendingBlockDraft) createBlock()
+        if (hasPendingTaskDraft && quickTaskBlockId) addTaskToBlock(quickTaskBlockId)
+        return saveBlocks()
+      }
+      if (tab === 'tasks') {
+        if (hasPendingTaskDraft && taskDraft.blockId && taskDraft.blockId !== 'none') {
+          addTaskToBlock(taskDraft.blockId)
+        }
+        return saveBlocks()
+      }
+      if (tab === 'documents') {
+        return saveDocuments()
+      }
+      return true
+    },
+    [
+      addTaskToBlock,
+      createBlock,
+      hasPendingBlockDraft,
+      hasPendingTaskDraft,
+      quickTaskBlockId,
+      saveBlocks,
+      saveDocuments,
+      saveOverview,
+      taskDraft.blockId,
+    ]
+  )
+
+  const handleTabChange = (nextTab: WorkspaceTab) => {
     if (nextTab === activeTab) return
     if (!shouldWarnBeforeLeavingTab(activeTab)) {
-      setActiveTab(nextTab)
+      applyTabChange(nextTab)
       return
     }
+    setUnsavedPrompt({ fromTab: activeTab, toTab: nextTab })
+  }
 
-    const confirmed = window.confirm('Tens canvis pendents. Vols guardar abans de sortir?')
-    if (!confirmed) return
+  const cancelUnsavedPrompt = () => {
+    if (resolvingUnsaved) return
+    setUnsavedPrompt(null)
+  }
 
-    let saved = true
+  const discardUnsavedPrompt = () => {
+    if (!unsavedPrompt || resolvingUnsaved) return
+    applyTabChange(unsavedPrompt.toTab)
+    setUnsavedPrompt(null)
+  }
 
-    if (activeTab === 'overview') {
-      saved = await saveOverview()
-    } else if (activeTab === 'blocks') {
-      if (hasPendingBlockDraft) {
-        createBlock()
+  const saveUnsavedPrompt = async () => {
+    if (!unsavedPrompt || resolvingUnsaved) return
+    setResolvingUnsaved(true)
+    try {
+      const saved = await saveActiveTab(unsavedPrompt.fromTab)
+      if (saved) {
+        applyTabChange(unsavedPrompt.toTab)
+        setUnsavedPrompt(null)
       }
-      if (hasPendingTaskDraft && quickTaskBlockId) {
-        addTaskToBlock(quickTaskBlockId)
-      }
-      saved = await saveBlocks()
-    } else if (activeTab === 'tasks') {
-      if (hasPendingTaskDraft && taskDraft.blockId && taskDraft.blockId !== 'none') {
-        addTaskToBlock(taskDraft.blockId)
-      }
-      saved = await saveBlocks()
-    } else if (activeTab === 'documents') {
-      saved = await saveDocuments()
-    }
-
-    if (saved) {
-      setActiveTab(nextTab)
+    } finally {
+      setResolvingUnsaved(false)
     }
   }
 
@@ -156,5 +195,10 @@ export function useProjectTabWorkflow({
     hasPendingBlockDraft,
     hasPendingDocumentDraft,
     hasPendingTaskDraft,
+    unsavedPrompt,
+    resolvingUnsaved,
+    cancelUnsavedPrompt,
+    discardUnsavedPrompt,
+    saveUnsavedPrompt,
   }
 }

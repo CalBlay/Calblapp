@@ -2,13 +2,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { Timestamp } from 'firebase-admin/firestore'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { normalizeRole } from '@/lib/roles'
 
 export const runtime = 'nodejs'
 
+const norm = (value?: string | null) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
+
+async function canEditAviso(
+  avisoId: string,
+  auth: { user: { id: string; name?: string | null; role?: string | null } }
+) {
+  const role = normalizeRole(auth.user.role)
+  if (role === 'admin' || role === 'direccio') return true
+
+  const snap = await db.collection('avisos').doc(avisoId).get()
+  if (!snap.exists) return false
+  const createdBy = (snap.data()?.createdBy || {}) as { name?: string }
+  return norm(createdBy.name) === norm(auth.user.name)
+}
+
 /* ======================================================
-   GET — Llistar avisos per codi d’esdeveniment
+   GET — Llistar avisos per codi d'esdeveniment
    ====================================================== */
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
 
@@ -22,7 +47,7 @@ export async function GET(req: NextRequest) {
     .orderBy('createdAt', 'desc')
     .get()
 
-  const avisos = snap.docs.map(doc => {
+  const avisos = snap.docs.map((doc) => {
     const d = doc.data()
     return {
       id: doc.id,
@@ -32,9 +57,7 @@ export async function GET(req: NextRequest) {
       createdAt: d.createdAt?.toDate
         ? d.createdAt.toDate().toISOString()
         : d.createdAt,
-      editedAt: d.editedAt?.toDate
-        ? d.editedAt.toDate().toISOString()
-        : null,
+      editedAt: d.editedAt?.toDate ? d.editedAt.toDate().toISOString() : null,
     }
   })
 
@@ -45,9 +68,12 @@ export async function GET(req: NextRequest) {
    POST — Crear un nou avís
    ====================================================== */
 export async function POST(req: NextRequest) {
-  const { code, content, userName, department } = await req.json()
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
 
-  if (!code || !content || !userName || !department) {
+  const { code, content } = await req.json()
+
+  if (!code || !content) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
   }
 
@@ -57,8 +83,8 @@ export async function POST(req: NextRequest) {
     createdAt: Timestamp.now(),
     editedAt: null,
     createdBy: {
-      name: userName,
-      department,
+      name: auth.user.name || 'Desconegut',
+      department: auth.user.department || '',
     },
   })
 
@@ -69,15 +95,20 @@ export async function POST(req: NextRequest) {
    PUT — Editar un avís existent
    ====================================================== */
 export async function PUT(req: NextRequest) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+
   const { id, content } = await req.json()
 
   if (!id || !content) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
   }
 
-  const docRef = db.collection('avisos').doc(id)
+  if (!(await canEditAviso(String(id), auth))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
-  await docRef.update({
+  await db.collection('avisos').doc(String(id)).update({
     content,
     editedAt: Timestamp.now(),
   })
@@ -89,12 +120,19 @@ export async function PUT(req: NextRequest) {
    DELETE — Eliminar un avís
    ====================================================== */
 export async function DELETE(req: NextRequest) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+
   const { id } = await req.json()
 
   if (!id) {
     return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   }
 
-  await db.collection('avisos').doc(id).delete()
+  if (!(await canEditAviso(String(id), auth))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  await db.collection('avisos').doc(String(id)).delete()
   return NextResponse.json({ ok: true })
 }

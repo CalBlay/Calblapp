@@ -1,12 +1,12 @@
 export type JourneyStatus =
   | 'nou'
   | 'assignat'
+  | 'reassignat'
   | 'en_curs'
   | 'espera'
   | 'fet'
   | 'no_fet'
   | 'validat'
-  | 'resolut'
 
 export type StatusHistoryEntry = {
   status?: string
@@ -27,7 +27,81 @@ export const needsStartOnNextStatus = (status: JourneyStatus) =>
 
 export const needsCompletionPhotos = (status: JourneyStatus) => status === 'fet'
 
-export const needsNoteOnNextStatus = (status: JourneyStatus) => status === 'no_fet'
+export const needsNoteOnNextStatus = (status: JourneyStatus) =>
+  status === 'no_fet' || status === 'espera'
+
+function normalizeJourneyTimeValue(value?: string | null) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const match = raw.match(/^(\d{1,2}):(\d{1,2})$/)
+  if (!match) return raw
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (
+    !Number.isFinite(hours) ||
+    !Number.isFinite(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return raw
+  }
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+export function deriveJourneyTransitionTimes(params: {
+  currentStatus: JourneyStatus
+  nextStatus?: JourneyStatus
+  startTime?: string | null
+  endTime?: string | null
+  previousSegmentEndTime?: string | null
+  hasStaleOpenSegment?: boolean
+}) {
+  const effectiveStatus = params.nextStatus || params.currentStatus
+  const closesPrevious = needsClosePreviousSegment(params.currentStatus)
+  const opensNextSegment = needsStartOnNextStatus(effectiveStatus)
+  const terminalEnd =
+    effectiveStatus === 'fet' || effectiveStatus === 'no_fet' || effectiveStatus === 'validat'
+
+  const closeSegmentEndTime =
+    closesPrevious || terminalEnd
+      ? params.hasStaleOpenSegment
+        ? normalizeJourneyTimeValue(params.previousSegmentEndTime)
+        : normalizeJourneyTimeValue(params.endTime)
+      : undefined
+
+  const sameDayStatusHandoff =
+    !params.hasStaleOpenSegment &&
+    closesPrevious &&
+    opensNextSegment &&
+    effectiveStatus !== params.currentStatus
+
+  const newSegmentStartTime =
+    opensNextSegment || terminalEnd
+      ? sameDayStatusHandoff
+        ? closeSegmentEndTime
+        : normalizeJourneyTimeValue(params.startTime)
+      : undefined
+
+  const newSegmentEndTime =
+    effectiveStatus === 'fet'
+      ? normalizeJourneyTimeValue(params.endTime)
+      : terminalEnd
+        ? normalizeJourneyTimeValue(params.endTime)
+        : undefined
+
+  return {
+    effectiveStatus,
+    closesPrevious,
+    opensNextSegment,
+    terminalEnd,
+    closeSegmentEndTime,
+    newSegmentStartTime,
+    newSegmentEndTime,
+    sameDayStatusHandoff,
+  }
+}
 
 export function getOpenSegmentStart(
   history: StatusHistoryEntry[] | undefined,
@@ -126,11 +200,15 @@ export function validateJourneyStatusPayload(params: {
 
   if (nextStatus === 'fet') {
     const count = params.completionImageCount ?? 0
-    if (count < 1) return 'Cal adjuntar com a minim una foto (maxim 3).'
+    if (count < 1) {
+      return "Cal adjuntar com a minim una foto o fitxer nou de l'operari per marcar Fet."
+    }
   }
 
-  if (nextStatus === 'no_fet' && !note) {
-    return 'Cal indicar el motiu en observacions.'
+  if ((nextStatus === 'no_fet' || nextStatus === 'espera') && !note) {
+    return nextStatus === 'espera'
+      ? "Cal indicar el motiu de l'espera en observacions."
+      : 'Cal indicar el motiu en observacions.'
   }
 
   return null

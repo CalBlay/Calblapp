@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/server/apiAuth'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { getVisibleModules, MODULES, type AccessUser } from '@/lib/accessControl'
-import { baseCanValidateReservaComercials, RESERVA_COMERCIALS_UI_PATH } from '@/lib/reservaComercialsPermissions'
+import {
+  baseCanKeysHandoverReservaComercials,
+  baseCanValidateReservaComercials,
+  RESERVA_COMERCIALS_UI_PATH,
+} from '@/lib/reservaComercialsPermissions'
 import {
   QUADRANTS_ACTION,
   QUADRANTS_UI_PATH,
@@ -22,6 +26,42 @@ import {
   baseCanMutateSpacesBbdd,
 } from '@/lib/spacesPermissions'
 import { normalizeRole } from '@/lib/roles'
+import { buildUiViewMap } from '@/lib/permissions/buildUiViewMap'
+import type { UserAccessAssignmentDoc } from '@/lib/permissions/types'
+import {
+  INCIDENTS_ACTION,
+  INCIDENTS_CATEGORY_EDIT_PERM,
+  INCIDENTS_COMMAND_BOARD_PERM,
+  INCIDENTS_MEETING_MINUTES_PERM,
+  INCIDENTS_QUADRE_PATH,
+  INCIDENTS_TYPOLOGIES_MANAGE_PERM,
+  INCIDENTS_UI_PATH,
+  incidentsActionBaseAccess,
+} from '@/lib/incidentsPermissions'
+import {
+  EVENTS_COMANDA_CREATE_PERM,
+  EVENTS_COMANDA_PREPARE_PERM,
+  EVENTS_UI_PATH,
+  EVENTS_WAREHOUSE_COMANDA_ONLY_PERM,
+  eventsWarehouseComandaActionBaseAccess,
+} from '@/lib/eventComandaPermissions'
+import {
+  PREPARATION_IMPORT_ACTION,
+  PREPARATION_IMPORT_PERM,
+  PREPARATION_UI_PATH,
+  PREPARATION_WAREHOUSE_PERMISSION_KEYS,
+  resolvePreparationImportUiAction,
+} from '@/lib/logistics/preparationPermissions'
+import {
+  MAINTENANCE_TICKETS_ACTION,
+  MAINTENANCE_TICKETS_DELETE_PERM,
+  MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
+  MAINTENANCE_TICKETS_INBOX_PERM,
+  MAINTENANCE_TICKETS_MANAGE_PERM,
+  MAINTENANCE_TICKETS_REOPEN_PERM,
+  MAINTENANCE_TICKETS_UI_PATH,
+  MAINTENANCE_TICKETS_VALIDATE_PERM,
+} from '@/lib/maintenanceTicketsPermissions'
 import {
   CALENDAR_EDIT_IMPLIED_ACTIONS,
   PERM,
@@ -30,7 +70,6 @@ import {
   isActionPerm,
   isEditPerm,
   isViewPerm,
-  viewPathFromPerm,
 } from '@/lib/permissionKeys'
 
 type UiPermissionMap = Record<string, boolean>
@@ -56,17 +95,37 @@ const ACTION_CATALOG: Array<{ path: string; action: string }> = [
   { path: '/menu/media', action: 'source:messaging' },
   { path: '/menu/media', action: 'source:audits' },
   { path: '/menu/media', action: 'source:spaces' },
+  { path: '/menu/media', action: 'source:events' },
   { path: '/menu/media', action: 'delete' },
   { path: '/menu/calendar', action: 'manual:create' },
   { path: '/menu/calendar', action: 'manual:update' },
   { path: '/menu/calendar', action: 'manual:delete' },
   { path: '/menu/calendar', action: 'attach:sharepoint' },
+  { path: '/menu/calendar', action: 'email:send-documents' },
+  { path: '/menu/calendar', action: 'mail-groups:manage' },
   { path: '/menu/calendar', action: 'sync:zoho' },
   { path: '/menu/calendar', action: 'sync:ada' },
   { path: '/menu/events', action: 'docs:view' },
   { path: '/menu/events', action: 'docs:attach:kitchen' },
+  { path: '/menu/events', action: 'docs:attach:visit-video' },
   { path: '/menu/events', action: 'modifications:register' },
   { path: '/menu/events', action: 'event:close' },
+  { path: '/menu/events', action: 'comanda:create' },
+  { path: '/menu/events', action: 'comanda:prepare' },
+  { path: '/menu/events', action: 'warehouse:comanda-only' },
+  { path: PREPARATION_UI_PATH, action: PREPARATION_IMPORT_ACTION },
+  ...PREPARATION_WAREHOUSE_PERMISSION_KEYS.map((key) => {
+    const action = key.replace(`ui:action:${PREPARATION_UI_PATH}:`, '')
+    return { path: PREPARATION_UI_PATH, action }
+  }),
+  { path: INCIDENTS_UI_PATH, action: 'command-board' },
+  { path: INCIDENTS_UI_PATH, action: 'meeting-minutes' },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.DELETE },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.MANAGE },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.VALIDATE },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.REOPEN },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.EXTERNALIZE },
+  { path: MAINTENANCE_TICKETS_UI_PATH, action: MAINTENANCE_TICKETS_ACTION.INBOX },
   { path: '/menu/quadrants', action: 'save' },
   { path: '/menu/quadrants', action: 'confirm' },
   { path: '/menu/quadrants', action: 'draft:save' },
@@ -144,19 +203,13 @@ export async function GET() {
 
   // Overrides guardats per usuari (client-scope)
   const aSnap = await firestoreAdmin.collection('user_access_assignments').doc(auth.user.id).get()
-  const assignment = (aSnap.exists ? (aSnap.data() as UserAccessAssignment) : null) as UserAccessAssignment | null
+  const assignment: UserAccessAssignmentDoc = aSnap.exists
+    ? (aSnap.data() as UserAccessAssignmentDoc)
+    : null
 
-  const map: UiPermissionMap = {}
+  const map: UiPermissionMap = buildUiViewMap(accessUser, assignment)
   const edit: UiEditMap = {}
   const actions: UiActionMap = {}
-
-  // Default: tot el catàleg UI (mòduls + submòduls) segons lògica base
-  for (const mod of MODULES) {
-    map[mod.path] = baseVisiblePaths.has(mod.path)
-    for (const sub of mod.submodules || []) {
-      map[sub.path] = baseVisiblePaths.has(sub.path)
-    }
-  }
 
   // Default: edició per rol (només si el path és visible per base)
   const roleNorm = normalizeRole(accessUser.role)
@@ -180,22 +233,8 @@ export async function GET() {
       if (String(o?.scope || 'client') !== 'client') continue
       if (String(o?.scopeId || '').trim()) continue
 
-      // View overrides
+      // View overrides (ja aplicats a `map` via buildUiViewMap)
       if (isViewPerm(o?.permission)) {
-        const path = viewPathFromPerm(String(o?.permission || ''))
-        if (!path) continue
-        map[path] = o.effect === 'deny' ? false : true
-
-        // Si és un submòdul permès, assegurem el mòdul pare visible (el primer prefix de /menu/xxx)
-        if (o.effect !== 'deny' && path.startsWith('/menu/')) {
-          const parts = path.split('/').filter(Boolean) // ['menu', 'allergens', 'bbdd']
-          if (parts.length >= 2) {
-            const parent = `/${parts[0]}/${parts[1]}`
-            if (parent.startsWith('/menu/')) {
-              map[parent] = true
-            }
-          }
-        }
         continue
       }
 
@@ -217,12 +256,12 @@ export async function GET() {
     }
   }
 
-  // Si un submòdul és visible, el mòdul pare també (encara que hi hagi un deny anterior al pare)
-  for (const mod of MODULES) {
-    for (const sub of mod.submodules || []) {
-      if (map[sub.path] === true) {
-        map[mod.path] = true
-      }
+  // Settings: edició al pare implica edició als submòduls (llevat de deny explícit)
+  if (edit['/menu/settings'] === true) {
+    const settingsMod = MODULES.find((m) => m.path === '/menu/settings')
+    for (const sub of settingsMod?.submodules || []) {
+      if (effectFor(assignment, PERM.edit(sub.path)) === 'deny') continue
+      edit[sub.path] = true
     }
   }
 
@@ -324,10 +363,137 @@ export async function GET() {
     actions[PERM.action(QUADRANTS_UI_PATH, QUADRANTS_ACTION.PREMISSES_EDIT)] = true
   }
 
+  // Incidències: quadre i acta només amb allow explícit (Settings → permisos)
+  const incidentsActionBase = {
+    canViewIncidents: map[INCIDENTS_UI_PATH] === true,
+    canEditIncidents: edit[INCIDENTS_UI_PATH] === true,
+    canViewQuadrePath: map[INCIDENTS_QUADRE_PATH] === true,
+  }
+
+  if (
+    effectFor(assignment, INCIDENTS_MEETING_MINUTES_PERM) === 'allow' &&
+    incidentsActionBaseAccess(accessUser, incidentsActionBase, INCIDENTS_ACTION.MEETING_MINUTES)
+  ) {
+    actions[INCIDENTS_MEETING_MINUTES_PERM] = true
+  }
+
+  if (
+    effectFor(assignment, INCIDENTS_COMMAND_BOARD_PERM) === 'allow' &&
+    incidentsActionBaseAccess(accessUser, incidentsActionBase, INCIDENTS_ACTION.COMMAND_BOARD)
+  ) {
+    actions[INCIDENTS_COMMAND_BOARD_PERM] = true
+  }
+
+  if (
+    effectFor(assignment, INCIDENTS_CATEGORY_EDIT_PERM) === 'allow' &&
+    incidentsActionBase.canViewIncidents &&
+    incidentsActionBase.canEditIncidents
+  ) {
+    actions[INCIDENTS_CATEGORY_EDIT_PERM] = true
+  }
+
+  if (
+    effectFor(assignment, INCIDENTS_TYPOLOGIES_MANAGE_PERM) === 'allow' &&
+    incidentsActionBase.canViewIncidents &&
+    incidentsActionBase.canEditIncidents
+  ) {
+    actions[INCIDENTS_TYPOLOGIES_MANAGE_PERM] = true
+  }
+
+  if (
+    effectFor(assignment, EVENTS_COMANDA_CREATE_PERM) === 'allow' &&
+    eventsWarehouseComandaActionBaseAccess({ canViewEvents: map[EVENTS_UI_PATH] === true })
+  ) {
+    actions[EVENTS_COMANDA_CREATE_PERM] = true
+  }
+
+  if (
+    (effectFor(assignment, EVENTS_COMANDA_PREPARE_PERM) === 'allow' ||
+      effectFor(assignment, EVENTS_WAREHOUSE_COMANDA_ONLY_PERM) === 'allow') &&
+    eventsWarehouseComandaActionBaseAccess({ canViewEvents: map[EVENTS_UI_PATH] === true })
+  ) {
+    actions[EVENTS_COMANDA_PREPARE_PERM] = true
+    if (effectFor(assignment, EVENTS_WAREHOUSE_COMANDA_ONLY_PERM) === 'allow') {
+      actions[EVENTS_WAREHOUSE_COMANDA_ONLY_PERM] = true
+    }
+  }
+
+  if (map[PREPARATION_UI_PATH] === true) {
+    for (const key of PREPARATION_WAREHOUSE_PERMISSION_KEYS) {
+      if (effectFor(assignment, key) === 'allow') {
+        actions[key] = true
+      }
+      if (effectFor(assignment, key) === 'deny') {
+        actions[key] = false
+      }
+    }
+    actions[PREPARATION_IMPORT_PERM] = resolvePreparationImportUiAction({
+      canViewPreparation: true,
+      role: accessUser.role || '',
+      overrideEffect: effectFor(assignment, PREPARATION_IMPORT_PERM),
+    })
+  } else {
+    actions[PREPARATION_IMPORT_PERM] = false
+  }
+
+  if (map[MAINTENANCE_TICKETS_UI_PATH] === true) {
+    const inboxEff = effectFor(assignment, MAINTENANCE_TICKETS_INBOX_PERM)
+    const deleteEff = effectFor(assignment, MAINTENANCE_TICKETS_DELETE_PERM)
+    const manageEff = effectFor(assignment, MAINTENANCE_TICKETS_MANAGE_PERM)
+    const validateEff = effectFor(assignment, MAINTENANCE_TICKETS_VALIDATE_PERM)
+    const reopenEff = effectFor(assignment, MAINTENANCE_TICKETS_REOPEN_PERM)
+    const externalizeEff = effectFor(assignment, MAINTENANCE_TICKETS_EXTERNALIZE_PERM)
+    if (inboxEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_INBOX_PERM] = false
+    } else if (inboxEff === 'allow') {
+      actions[MAINTENANCE_TICKETS_INBOX_PERM] = true
+    }
+
+    if (deleteEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_DELETE_PERM] = false
+    } else if (deleteEff === 'allow') {
+      actions[MAINTENANCE_TICKETS_DELETE_PERM] = true
+    }
+
+    if (manageEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_MANAGE_PERM] = false
+    } else if (manageEff === 'allow') {
+      actions[MAINTENANCE_TICKETS_MANAGE_PERM] = true
+    }
+
+    if (validateEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_VALIDATE_PERM] = false
+    } else if (validateEff === 'allow') {
+      actions[MAINTENANCE_TICKETS_VALIDATE_PERM] = true
+    }
+
+    if (reopenEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_REOPEN_PERM] = false
+    } else if (reopenEff === 'allow') {
+      actions[MAINTENANCE_TICKETS_REOPEN_PERM] = true
+    }
+
+    if (externalizeEff === 'deny') {
+      actions[MAINTENANCE_TICKETS_EXTERNALIZE_PERM] = false
+    } else if (externalizeEff === 'allow') {
+      actions[MAINTENANCE_TICKETS_EXTERNALIZE_PERM] = true
+    }
+  }
+
+  // si és admin, sempre true a tot el catàleg
+  if (map[INCIDENTS_UI_PATH] === true || map[INCIDENTS_QUADRE_PATH] === true) {
+    if (actions[INCIDENTS_COMMAND_BOARD_PERM] === true) {
+      map[INCIDENTS_QUADRE_PATH] = true
+    } else if (actions[INCIDENTS_COMMAND_BOARD_PERM] === false) {
+      map[INCIDENTS_QUADRE_PATH] = false
+    }
+  }
+
   // Reserva comercials: veure el submòdul implica sol·licitud; validació només admin / cap transports
   if (map[RESERVA_COMERCIALS_UI_PATH] === true) {
     const requestKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, 'request')
     const validateKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, 'validate')
+    const keysKey = PERM.action(RESERVA_COMERCIALS_UI_PATH, 'keys')
     if (effectFor(assignment, requestKey) !== 'deny') actions[requestKey] = true
     if (
       baseCanValidateReservaComercials({
@@ -337,6 +503,18 @@ export async function GET() {
       effectFor(assignment, validateKey) !== 'deny'
     ) {
       actions[validateKey] = true
+    }
+    if (
+      baseCanKeysHandoverReservaComercials({
+        role: accessUser.role,
+        department: accessUser.department,
+        isTransportLead: accessUser.isTransportLead,
+      }) &&
+      effectFor(assignment, keysKey) !== 'deny'
+    ) {
+      actions[keysKey] = true
+    } else if (effectFor(assignment, keysKey) === 'allow') {
+      actions[keysKey] = true
     }
   }
 

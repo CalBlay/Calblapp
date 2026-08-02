@@ -7,7 +7,9 @@ export type Template = {
   name: string
   periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'semestral' | 'yearly' | null
   lastDone?: string | null
+  center?: string
   location?: string
+  zone?: string
   primaryOperator?: string
   backupOperator?: string
   sections: TemplateSection[]
@@ -18,7 +20,9 @@ export type ImportModel = 'A' | 'B' | 'C' | 'D' | 'UNKNOWN'
 export type ImportCandidate = {
   name: string
   periodicity?: Template['periodicity']
+  center?: string
   location?: string
+  zone?: string
   sections: TemplateSection[]
 }
 

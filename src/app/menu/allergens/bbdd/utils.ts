@@ -28,11 +28,18 @@ export const normalize = (value: string) =>
 export const slugify = (value: string) => normalize(value).replace(/\s+/g, '-')
 
 export const parseMenus = (value: string) => {
-  const raw = normalize(value)
-  if (!raw) return []
+  const trimmed = value.trim()
+  if (!trimmed) return []
 
-  const tokens = raw.split(/\s+/).filter(Boolean)
   const menus = new Set<string>()
+
+  trimmed.split(/[|,;]+/).forEach(part => {
+    const label = part.trim()
+    if (label) menus.add(label)
+  })
+
+  const raw = normalize(trimmed)
+  const tokens = raw.split(/\s+/).filter(Boolean)
 
   for (const token of tokens) {
     if (/^c\d+$/i.test(token)) {

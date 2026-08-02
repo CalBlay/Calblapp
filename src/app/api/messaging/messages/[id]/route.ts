@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { buildUnreadDecrement } from '@/lib/messaging/channelUnread'
 
 export const runtime = 'nodejs'
 
@@ -17,6 +18,7 @@ type MessageRecord = Record<string, unknown> & {
   imagePath?: string
   body?: string
   createdAt?: number
+  visibility?: 'channel' | 'direct'
 }
 
 type ChannelMemberRecord = Record<string, unknown> & {
@@ -74,9 +76,9 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
       const readId = `${id}_${uid}`
       const wasRead = readMap.get(readId)
       if (wasRead) continue
-      const current = Number(data?.unreadCount || 0)
-      const next = Math.max(0, current - 1)
-      batch.set(doc.ref, { unreadCount: next }, { merge: true })
+      const visibility = msg.visibility === 'direct' ? 'direct' : 'channel'
+      const nextUnread = buildUnreadDecrement(visibility, data)
+      batch.set(doc.ref, nextUnread, { merge: true })
     }
 
     await batch.commit()

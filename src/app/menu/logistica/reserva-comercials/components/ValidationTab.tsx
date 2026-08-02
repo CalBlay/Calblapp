@@ -7,6 +7,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import type { FiltersState } from '@/components/layout/FiltersBar'
 import { getCommercialReservationEndDate, type CommercialReservation, type CommercialReservationStatus } from '@/lib/commercialReservations'
 import { TRANSPORT_TYPE_LABELS } from '@/lib/transportTypes'
+import {
+  CorporateFilterBadgeGroup,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
 import { cn } from '@/lib/utils'
 import { CheckCircle2, XCircle } from 'lucide-react'
 import { reservationDateLabel } from '../utils'
@@ -46,47 +50,32 @@ export default function ValidationTab({
 }: Props) {
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-start lg:gap-4">
-          <SmartFilters
-            modeDefault="week"
-            modeOptions={['week', 'month', 'year', 'day', 'range']}
-            role="Treballador"
-            showDepartment={false}
-            showWorker={false}
-            showLocation={false}
-            showStatus={false}
-            onChange={onValidationDatesChange}
-            initialStart={filters.start}
-            initialEnd={filters.end}
-          />
-
-          <div className="flex flex-nowrap gap-2 lg:ml-auto">
-            {[
-              { value: '__all__', label: 'Totes' },
-              { value: 'pending', label: 'Pendents' },
-              { value: 'confirmed', label: 'Confirmades' },
-            ].map((option) => {
-              const active = (filters.status ?? '__all__') === option.value
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => onValidationStatusChange(option.value)}
-                  className={cn(
-                    'min-h-10 rounded-full border px-4 text-sm font-semibold transition',
-                    active
-                      ? 'border-sky-600 bg-sky-600 text-white'
-                      : 'border-slate-200 bg-white text-slate-700 hover:border-sky-200 hover:bg-sky-50'
-                  )}
-                >
-                  {option.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      </div>
+      <CorporateFiltersShell variant="toolbar" showHeader={false}>
+        <SmartFilters
+          modeDefault="week"
+          modeOptions={['week', 'month', 'year', 'day', 'range']}
+          role="Treballador"
+          showDepartment={false}
+          showWorker={false}
+          showLocation={false}
+          showStatus={false}
+          compact
+          onChange={onValidationDatesChange}
+          initialStart={filters.start}
+          initialEnd={filters.end}
+        />
+        <CorporateFilterBadgeGroup
+          className="lg:ml-auto"
+          value={filters.status ?? '__all__'}
+          onChange={onValidationStatusChange}
+          allLabel="Totes"
+          allValue="__all__"
+          options={[
+            { value: 'pending', label: 'Pendents' },
+            { value: 'confirmed', label: 'Confirmades' },
+          ]}
+        />
+      </CorporateFiltersShell>
 
       <Card className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
         <CardContent className="px-4 py-4 sm:px-5">

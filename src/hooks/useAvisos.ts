@@ -18,7 +18,7 @@ export interface Aviso {
 }
 
 /* ───────────────────────── HOOK ───────────────────────── */
-export function useAvisos(eventCode: string | null) {
+export function useAvisos(eventCode: string | null, enabled = true) {
   const [avisos, setAvisos] = useState<Aviso[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -110,8 +110,9 @@ const updateAviso = async (id: string, content: string) => {
 
   /* ================= INIT ================= */
   useEffect(() => {
+    if (!enabled) return
     void loadAvisos()
-  }, [loadAvisos])
+  }, [enabled, loadAvisos])
 
   return {
     avisos,

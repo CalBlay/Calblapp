@@ -8,8 +8,11 @@ import { useRouter } from 'next/navigation'
 import { endOfWeek, format, startOfWeek } from 'date-fns'
 import { AlertTriangle, LayoutDashboard, ListChecks } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import { CorporateFiltersShell } from '@/components/layout/corporate-filters'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import FilterButton from '@/components/ui/filter-button'
+import IncidentsLnFilterBadges from '../components/IncidentsLnFilterBadges'
+import { incidentMatchesLnFilter } from '@/lib/incidentLn'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
 import { Input } from '@/components/ui/input'
@@ -21,11 +24,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  canAccessIncidentsModule,
   normalizeIncidentActionStatus,
   normalizeIncidentStatus,
   type IncidentWorkflowStatus,
 } from '@/lib/incidentPolicy'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import { INCIDENTS_COMMAND_BOARD_PERM, INCIDENTS_UI_PATH } from '@/lib/incidentsPermissions'
 import { normalizeDept } from '@/lib/accessControl'
 import { INCIDENT_ORIGIN_DEPARTMENTS } from '@/lib/incidentOriginDepartments'
 import {
@@ -43,6 +47,7 @@ import {
 import { formatDateString } from '@/lib/formatDate'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
+import IncidentNotificationsBell from '../components/IncidentNotificationsBell'
 
 const IncidentsQuadreCharts = dynamic(
   () => import('./IncidentsQuadreCharts'),
@@ -91,9 +96,12 @@ function incidentMatchesSearch(inc: IncidentDashboardRow, q: string) {
 export default function IncidentsQuadrePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const user = session?.user as { role?: string; department?: string } | undefined
-  const canSee = canAccessIncidentsModule(user || {})
-  const isMarketingUser = MARKETING_DEPARTMENTS.has(normalizeDept(user?.department || ''))
+  const { ready: uiPermsReady, canViewPath, canEditPath, hasAction } = useUiPermissions()
+  const canSeeQuadre = uiPermsReady && hasAction(INCIDENTS_COMMAND_BOARD_PERM)
+  const canSeeBoard = uiPermsReady && canViewPath(INCIDENTS_UI_PATH) && canEditPath(INCIDENTS_UI_PATH)
+  const isMarketingUser = MARKETING_DEPARTMENTS.has(
+    normalizeDept((session?.user as { department?: string } | undefined)?.department || '')
+  )
 
   const { setContent, setOpen } = useFilters()
 
@@ -118,6 +126,7 @@ export default function IncidentsQuadrePage() {
   )
   const [actionDepartment, setActionDepartment] = useState('all')
   const [actionSearch, setActionSearch] = useState('')
+  const [lnFilter, setLnFilter] = useState('all')
 
   const [incidents, setIncidents] = useState<IncidentDashboardRow[]>([])
   const [actions, setActions] = useState<BatchActionRow[]>([])
@@ -136,10 +145,10 @@ export default function IncidentsQuadrePage() {
       router.replace('/login')
       return
     }
-    if (!canSee) {
+    if (uiPermsReady && !canSeeQuadre) {
       router.replace('/menu')
     }
-  }, [status, session, router, canSee])
+  }, [status, session, router, uiPermsReady, canSeeQuadre])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -199,9 +208,9 @@ export default function IncidentsQuadrePage() {
   }, [from, to, apiDepartment, importance, effectiveCategoryLabel])
 
   useEffect(() => {
-    if (status === 'loading' || !session || !canSee) return
+    if (status === 'loading' || !session || !uiPermsReady || !canSeeQuadre) return
     load()
-  }, [status, session, canSee, load])
+  }, [status, session, uiPermsReady, canSeeQuadre, load])
 
   const departmentOptions = useMemo(() => {
     const set = new Set<string>(INCIDENT_ORIGIN_DEPARTMENTS)
@@ -233,12 +242,15 @@ export default function IncidentsQuadrePage() {
 
   const visibleIncidents = useMemo(() => {
     return incidents.filter((inc) => {
+      if (!incidentMatchesLnFilter(inc.ln, lnFilter)) {
+        return false
+      }
       if (incidentStatus !== 'all' && normalizeIncidentStatus(inc.status) !== incidentStatus) {
         return false
       }
       return incidentMatchesSearch(inc, incidentSearch)
     })
-  }, [incidents, incidentStatus, incidentSearch])
+  }, [incidents, lnFilter, incidentStatus, incidentSearch])
 
   const visibleIncidentIds = useMemo(() => {
     return new Set(visibleIncidents.map((i) => String(i.id || '').trim()).filter(Boolean))
@@ -433,6 +445,7 @@ export default function IncidentsQuadrePage() {
               setActionStatus('all')
               setActionDepartment('all')
               setActionSearch('')
+              setLnFilter('all')
             }}
           />
           <button
@@ -473,7 +486,7 @@ export default function IncidentsQuadrePage() {
 
   const loadedCount = incidents.length
   const hasClientIncidentFilters =
-    incidentStatus !== 'all' || incidentSearch.trim().length > 0
+    lnFilter !== 'all' || incidentStatus !== 'all' || incidentSearch.trim().length > 0
   const hasActionFilters =
     actionStatus !== 'all' || actionDepartment !== 'all' || actionSearch.trim().length > 0
   const hasServerFilters =
@@ -491,7 +504,7 @@ export default function IncidentsQuadrePage() {
   const catHeight = Math.min(480, 48 + stats.catChart.length * 28)
   const actionDeptHeight = Math.min(420, 48 + actionStats.deptChart.length * 32)
 
-  if (status === 'loading' || (session && !canSee)) {
+  if (status === 'loading' || !uiPermsReady || (session && !canSeeQuadre)) {
     return <p className={cn('text-center py-16', typography('bodySm'))}>Carregant…</p>
   }
 
@@ -501,19 +514,23 @@ export default function IncidentsQuadrePage() {
         icon={<AlertTriangle className="w-7 h-7 text-yellow-600" />}
         title="Quadre de comandament"
         subtitle="Indicadors segons data d’esdeveniment (mateix criteri que el tauler setmanal)"
-        mainHref="/menu/incidents"
+        mainHref={canSeeBoard ? INCIDENTS_UI_PATH : undefined}
         actions={
-          <Link
-            href="/menu/incidents"
-            className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
-          >
-            Tauler de treball
-          </Link>
+          <div className="flex flex-wrap items-center gap-2 justify-end">
+            <IncidentNotificationsBell />
+            {canSeeBoard ? (
+              <Link
+                href={INCIDENTS_UI_PATH}
+                className={cn(typography('bodyMd'), 'font-medium hover:underline whitespace-nowrap')}
+              >
+                Tauler de treball
+              </Link>
+            ) : null}
+          </div>
         }
       />
 
-      {/* Barra compacta: dates (SmartFilters) + botó filtres — mateix patró que Incidències / Modificacions */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm mb-2 flex flex-wrap items-center gap-3 sm:flex-nowrap">
+      <CorporateFiltersShell variant="toolbar" className="mb-2">
         <SmartFilters
           modeDefault="week"
           modeOptions={['week', 'month', 'year', 'range']}
@@ -530,9 +547,10 @@ export default function IncidentsQuadrePage() {
           initialEnd={to}
           resetSignal={dateResetSignal}
         />
-        <div className="flex-1 min-w-[8px]" />
+        <IncidentsLnFilterBadges value={lnFilter} onChange={setLnFilter} />
+        <div className="min-w-[8px] flex-1" />
         <FilterButton onClick={openFiltersPanel} />
-      </div>
+      </CorporateFiltersShell>
 
       <div className={`px-1 flex flex-col gap-1 ${typography('bodySm')}`}>
         <p>

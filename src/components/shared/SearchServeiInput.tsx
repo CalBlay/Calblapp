@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Input } from '@/components/ui/input'
 import { Search } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { LazyAnimatePresence, MotionDiv } from '@/lib/lazyMotion'
 
 interface Servei {
   nom: string
@@ -82,9 +82,9 @@ export default function SearchServeiInput({ value, onChange }: Props) {
      {/* 📋 Desplegable amb animació */}
 {mounted && inputRef.current && results.length > 0 &&
   createPortal(
-    <AnimatePresence>
+    <LazyAnimatePresence>
       {open && (
-        <motion.div
+        <MotionDiv
           key="servei-dropdown"
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
@@ -115,9 +115,9 @@ export default function SearchServeiInput({ value, onChange }: Props) {
               <div className="text-xs text-gray-500">{s.codi}</div>
             </div>
           ))}
-        </motion.div>
+        </MotionDiv>
       )}
-    </AnimatePresence>,
+    </LazyAnimatePresence>,
     document.body
   )}
 

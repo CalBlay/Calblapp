@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
+import type { DriverCrewPremise } from '@/services/premises'
 import { loadDepartmentPremises } from '../components/quadrantModalApi'
 
 type UseServeisVestimentParams = {
@@ -14,6 +15,7 @@ type UseServeisVestimentResult = {
   serveisVestimentModels: string[]
   vestimentModelChoice: string
   setVestimentModelChoice: React.Dispatch<React.SetStateAction<string>>
+  driverCrews: DriverCrewPremise[]
 }
 
 export function useServeisVestiment({
@@ -23,6 +25,7 @@ export function useServeisVestiment({
 }: UseServeisVestimentParams): UseServeisVestimentResult {
   const [serveisVestimentModels, setServeisVestimentModels] = useState<string[]>([])
   const [vestimentModelChoice, setVestimentModelChoice] = useState<string>('__none__')
+  const [driverCrews, setDriverCrews] = useState<DriverCrewPremise[]>([])
 
   useEffect(() => {
     if (!open || !isServeis) return
@@ -34,11 +37,15 @@ export function useServeisVestiment({
     let cancelled = false
     ;(async () => {
       try {
-        const { vestimentModels: models } = await loadDepartmentPremises('serveis')
+        const { vestimentModels: models, driverCrews: crews } = await loadDepartmentPremises('serveis')
         if (cancelled) return
         setServeisVestimentModels(models)
+        setDriverCrews(crews)
       } catch {
-        if (!cancelled) setServeisVestimentModels([])
+        if (!cancelled) {
+          setServeisVestimentModels([])
+          setDriverCrews([])
+        }
       }
     })()
     return () => {
@@ -50,5 +57,6 @@ export function useServeisVestiment({
     serveisVestimentModels,
     vestimentModelChoice,
     setVestimentModelChoice,
+    driverCrews,
   }
 }

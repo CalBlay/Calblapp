@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { syncZohoDealsToFirestore } from '@/services/zoho/sync'
 import { requireAuth } from '@/lib/server/apiAuth'
+import { requireCronAuth } from '@/lib/server/internalApiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import { isAllowedByClientOverride } from '@/lib/server/permissions'
 
@@ -11,13 +12,19 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url)
     const mode = url.searchParams.get('mode')
+    const includeAttachments =
+      url.searchParams.get('includeAttachments') === '1' ||
+      url.searchParams.get('includeAttachments') === 'true'
 
-    // Si es cron, saltem auth completament
     if (mode === 'cron') {
-      const result = await syncZohoDealsToFirestore()
+      const cronDenied = requireCronAuth(req)
+      if (cronDenied) return cronDenied
+
+      const result = await syncZohoDealsToFirestore({ includeAttachments })
       return NextResponse.json({
         ok: true,
         mode: 'cron',
+        includeAttachments,
         ...result,
         timestamp: new Date().toISOString(),
       })
@@ -32,11 +39,12 @@ export async function GET(req: Request) {
     })
     if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    const result = await syncZohoDealsToFirestore()
+    const result = await syncZohoDealsToFirestore({ includeAttachments })
 
     return NextResponse.json({
       ok: true,
       mode: 'manual',
+      includeAttachments,
       ...result,
       timestamp: new Date().toISOString(),
     })
@@ -48,4 +56,3 @@ export async function GET(req: Request) {
     )
   }
 }
-

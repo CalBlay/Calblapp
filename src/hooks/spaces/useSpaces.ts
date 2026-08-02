@@ -69,6 +69,9 @@ export function useSpaces(
         ;(filters.finca ?? []).forEach((value) => filteredParams.append('finca', value))
         ;(filters.comercial ?? []).forEach((value) => filteredParams.append('comercial', value))
         ;(filters.ln ?? []).forEach((value) => filteredParams.append('ln', value))
+        if (filters.excludeGrupsRestaurants) {
+          filteredParams.append('excludeGrupsRestaurants', '1')
+        }
         if (typeof filters.month === 'number') filteredParams.append('month', String(filters.month))
         if (typeof filters.year === 'number') filteredParams.append('year', String(filters.year))
         if (filters.baseDate) filteredParams.append('baseDate', filters.baseDate)
@@ -137,6 +140,7 @@ export function useSpaces(
     filters.comercial,
     filters.finca,
     filters.ln,
+    filters.excludeGrupsRestaurants,
     filters.month,
     filters.stage,
     filters.year,

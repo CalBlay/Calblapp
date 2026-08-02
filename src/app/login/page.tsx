@@ -33,12 +33,13 @@ function LoginInner() {
     const username = user.trim()
     const password = pass
 
-    let res: Awaited<ReturnType<typeof signIn>>
+    let res: Awaited<ReturnType<typeof signIn>> | null = null
     try {
       res = await signIn('credentials', {
         redirect: false,
         username,
         password,
+        callbackUrl,
       })
     } catch (err) {
       console.error('[AUTH] signIn exception', err)
@@ -47,9 +48,18 @@ function LoginInner() {
       return
     }
 
-    // NextAuth v4: cal comprovar `ok`; a vegades `error` ve buit però `ok === false`.
-    if (!res || res.ok === false) {
-      const rawError = (res?.error as string | undefined) || ''
+    if (!res || typeof res !== 'object') {
+      console.error('[AUTH] signIn resposta buida o invàlida', res)
+      setLoading(false)
+      setError(
+        'El servidor d’autenticació no ha respost. Reinicieu `npm run dev` i comproveu que NEXTAUTH_SECRET està definit a .env.local.'
+      )
+      return
+    }
+
+    // NextAuth v4: només continuar quan `ok === true`.
+    if (res.ok !== true) {
+      const rawError = (res.error as string | undefined) || ''
       const isCreds =
         rawError === 'CredentialsSignin' ||
         rawError === 'credentials' ||
@@ -71,12 +81,7 @@ function LoginInner() {
             : 'No s’ha pogut iniciar sessió. Comproveu usuari i contrasenya o torneu a provar.'
       }
 
-      console.error('[AUTH] signIn failed', {
-        ok: res?.ok,
-        status: res?.status,
-        error: res?.error,
-        url: res?.url,
-      })
+      console.error('[AUTH] signIn failed', JSON.stringify(res))
       setLoading(false)
       setError(friendly)
       return
@@ -94,81 +99,79 @@ function LoginInner() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-gray-50 flex items-center justify-center px-4 pb-6">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-sm bg-white rounded-2xl shadow-sm p-5 flex flex-col gap-5"
-        noValidate
+    <form
+      onSubmit={handleSubmit}
+      className="w-full rounded-2xl bg-white p-5 shadow-sm flex flex-col gap-5"
+      noValidate
+    >
+      <div className="text-center">
+        <h1 className="text-2xl font-bold">Inicia sessio</h1>
+      </div>
+
+      {error && (
+        <p className="text-sm text-red-600" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <label htmlFor="username" className="font-medium">
+          Usuari
+        </label>
+        <input
+          id="username"
+          name="username"
+          type="text"
+          inputMode="text"
+          autoCapitalize="none"
+          autoCorrect="off"
+          autoComplete="username"
+          value={user}
+          onChange={(e) => setUser(e.target.value)}
+          required
+          className="h-12 w-full rounded-lg border border-gray-300 px-3 outline-none focus:ring-2 focus:ring-blue-500"
+          aria-invalid={!!error}
+        />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <label htmlFor="password" className="font-medium">
+          Contrasenya
+        </label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          value={pass}
+          onChange={(e) => setPass(e.target.value)}
+          required
+          className="h-12 w-full rounded-lg border border-gray-300 px-3 outline-none focus:ring-2 focus:ring-blue-500"
+          aria-invalid={!!error}
+        />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <label htmlFor="remember" className="flex items-center gap-2 text-sm">
+          <input
+            id="remember"
+            type="checkbox"
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+            className="h-4 w-4"
+          />
+          Recorda'm
+        </label>
+      </div>
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="h-12 w-full rounded-lg bg-blue-600 text-white font-medium transition active:translate-y-px disabled:opacity-60"
       >
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Inicia sessio</h1>
-        </div>
-
-        {error && (
-          <p className="text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        )}
-
-        <div className="flex flex-col gap-2">
-          <label htmlFor="username" className="font-medium">
-            Usuari
-          </label>
-          <input
-            id="username"
-            name="username"
-            type="text"
-            inputMode="text"
-            autoCapitalize="none"
-            autoCorrect="off"
-            autoComplete="username"
-            value={user}
-            onChange={(e) => setUser(e.target.value)}
-            required
-            className="w-full h-12 rounded-lg border border-gray-300 px-3 outline-none focus:ring-2 focus:ring-blue-500"
-            aria-invalid={!!error}
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label htmlFor="password" className="font-medium">
-            Contrasenya
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-            required
-            className="w-full h-12 rounded-lg border border-gray-300 px-3 outline-none focus:ring-2 focus:ring-blue-500"
-            aria-invalid={!!error}
-          />
-        </div>
-
-        <div className="flex items-center justify-between">
-          <label htmlFor="remember" className="flex items-center gap-2 text-sm">
-            <input
-              id="remember"
-              type="checkbox"
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-              className="h-4 w-4"
-            />
-            Recorda'm
-          </label>
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full h-12 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-60 active:translate-y-px transition"
-        >
-          {loading ? 'Entrant...' : 'Entrar'}
-        </button>
-      </form>
-    </div>
+        {loading ? 'Entrant...' : 'Entrar'}
+      </button>
+    </form>
   )
 }
 

@@ -4,11 +4,18 @@ import { useEffect, useState } from 'react'
 import { normalizeRole } from '@/lib/roles'
 import type { ResponsibleOption } from './project-workspace-helpers'
 
-export function useProjectUsersCatalog() {
-  const [usersCatalog, setUsersCatalog] = useState<ResponsibleOption[]>([])
-  const [responsibles, setResponsibles] = useState<ResponsibleOption[]>([])
+export function useProjectUsersCatalog(initialCatalog?: ResponsibleOption[]) {
+  const [usersCatalog, setUsersCatalog] = useState<ResponsibleOption[]>(initialCatalog ?? [])
+  const [responsibles, setResponsibles] = useState<ResponsibleOption[]>(() =>
+    (initialCatalog ?? []).filter(
+      (user) => user.role === 'admin' || user.role === 'direccio' || user.role === 'cap'
+    )
+  )
+  const hasInitialCatalog = Boolean(initialCatalog && initialCatalog.length > 0)
 
   useEffect(() => {
+    if (hasInitialCatalog) return
+
     let cancelled = false
 
     ;(async () => {
@@ -53,7 +60,7 @@ export function useProjectUsersCatalog() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [hasInitialCatalog])
 
   return { usersCatalog, responsibles }
 }

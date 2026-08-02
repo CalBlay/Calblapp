@@ -31,11 +31,12 @@ const normalizeStatus = (value?: string | null) => {
     .trim()
     .toLowerCase()
   if (v === 'assignat') return 'assignat'
+  if (v === 'reassignat') return 'reassignat'
   if (v === 'en_curs' || v === 'en curs') return 'en_curs'
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut') return 'resolut'
+  if (v === 'resolut') return 'fet'
   if (v === 'validat') return 'validat'
   return 'nou'
 }
@@ -63,7 +64,7 @@ export function isTicketHandled(ticket: TicketAlertSnapshot): boolean {
   if (ticket.externalized) return true
 
   const status = normalizeStatus(ticket.status)
-  if (['validat', 'resolut', 'fet'].includes(status)) return true
+  if (['validat', 'fet'].includes(status)) return true
 
   const assignedIds = Array.isArray(ticket.assignedToIds) ? ticket.assignedToIds : []
   if (assignedIds.length > 0) return true
@@ -96,7 +97,7 @@ export function isExternalizedAwaitingProvider(ticket: TicketAlertSnapshot): boo
   if (extStatus === 'answered' || extStatus === 'closed') return false
 
   const status = normalizeStatus(ticket.status)
-  if (['validat', 'resolut', 'fet'].includes(status)) return false
+  if (['validat', 'fet'].includes(status)) return false
   if (stage === 'closed' || stage === 'resolved_planner' || stage === 'resolved_admin') return false
 
   return true

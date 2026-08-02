@@ -1,87 +1,21 @@
 import { loadXlsx } from '@/lib/loadXlsx'
 import type { ParsedImportRow } from './types'
-import { normalize, slugify } from './utils'
-
-const GROUP_BY_SHEET: Record<string, string> = {
-  'aperitius okay x enviar 13 05': 'Plat Esdeveniments',
-  'cuina del felix': 'Plat Cuina Felix',
-  'barquetes ametller': 'Plat Ametller',
-}
-
-const TYPE_LABEL_NORMALIZERS: Record<string, string> = {
-  snack: 'SNACKS',
-  snacks: 'SNACKS',
-}
-
-const IMPORT_ALLERGEN_HEADERS: Record<string, string> = {
-  gluten: 'gluten',
-  crustacis: 'crustacis',
-  ou: 'ou',
-  peix: 'peix',
-  cacauet: 'cacauet',
-  soja: 'soja',
-  lactosa: 'lactosa',
-  'fruits secs': 'fruitsSecs',
-  api: 'api',
-  mostassa: 'mostassa',
-  sesam: 'sesam',
-  sulfits: 'sulfits',
-  tramus: 'tramus',
-  moluscs: 'moluscs',
-  'mol luscs': 'moluscs',
-}
-
-const findColumnIndex = (headers: string[], candidates: string[]) => {
-  for (const candidate of candidates) {
-    const idx = headers.findIndex(
-      header => header === candidate || header.startsWith(candidate)
-    )
-    if (idx >= 0) return idx
-  }
-  return -1
-}
-
-const inferHeaderRowIndex = (rows: string[][]) =>
-  rows.findIndex(row => {
-    const normalizedRow = row.map(cell => normalize(String(cell || '')))
-    const allergenCount = normalizedRow.filter(cell => IMPORT_ALLERGEN_HEADERS[cell]).length
-    const hasCode = normalizedRow.some(cell => cell === 'num codi' || cell === 'codi')
-    const hasName = normalizedRow.some(cell =>
-      ['referencies', 'articles', 'article'].some(candidate => cell.startsWith(candidate))
-    )
-    return allergenCount >= 4 && hasCode && hasName
-  })
-
-const normalizeTypeLabel = (value: string) => {
-  const raw = value.trim()
-  if (!raw || raw === '-') return ''
-  return TYPE_LABEL_NORMALIZERS[normalize(raw)] || raw
-}
-
-const getGroupLabelForSheet = (sheetKey: string) =>
-  GROUP_BY_SHEET[normalize(sheetKey)] || sheetKey.trim()
-
-const isMarkedMenuCell = (value: string) => {
-  const raw = normalize(value)
-  return raw === 'x' || raw === 'si' || raw === 's'
-}
-
-const parseAptImport = (value: string) => {
-  const raw = normalize(value)
-  if (!raw) return null
-  if (raw.includes('no apte')) return false
-  if (raw.includes('apte')) return true
-  return null
-}
-
-const parseAllergenImportValue = (value: string) => {
-  const raw = value.trim().toUpperCase()
-  if (!raw) return null
-  if (raw.startsWith('S')) return 'SI'
-  if (raw.startsWith('N')) return 'NO'
-  if (raw.startsWith('T')) return 'T'
-  return null
-}
+import {
+  buildMenuColumns,
+  getGroupLabelForSheet,
+  inferHeaderRowIndex,
+  isMarkedMenuCell,
+  normalize,
+  normalizeTypeLabel,
+  parseAllergenImportValue,
+  parseAptImport,
+  resolveTranslationColumns,
+  IMPORT_ALLERGEN_HEADERS,
+  findColumnIndex,
+  findOnEstanColumn,
+  parseMenusFromRawText,
+} from './importWorkbookParse'
+import { slugify } from './utils'
 
 export async function parseImportWorkbook(file: File) {
   const XLSX = await loadXlsx()
@@ -106,14 +40,15 @@ export async function parseImportWorkbook(file: File) {
     if (headerRowIndex === -1) continue
 
     const headers = (rows[headerRowIndex] || []).map(cell => normalize(String(cell || '')))
+    const translationCols = resolveTranslationColumns(rows, headerRowIndex)
     const cols = {
       code: findColumnIndex(headers, ['num codi', 'codi']),
       nameCa: findColumnIndex(headers, ['referencies', 'articles', 'article']),
       type: findColumnIndex(headers, ['tipus']),
       vegetarian: findColumnIndex(headers, ['vegetaria']),
       vegan: findColumnIndex(headers, ['vega']),
-      nameEs: findColumnIndex(headers, ['esp']),
-      nameEn: findColumnIndex(headers, ['eng']),
+      nameEs: translationCols.nameEs,
+      nameEn: translationCols.nameEn,
     }
     if (cols.code === -1 || cols.nameCa === -1) continue
 
@@ -123,18 +58,11 @@ export async function parseImportWorkbook(file: File) {
       if (key) allergenCols[key] = index
     })
 
-    const topHeaders = rows[0] || []
-    const menuHeaders = rows[1] || []
-    const typeCol = findColumnIndex(topHeaders.map(cell => normalize(String(cell || ''))), ['tipus'])
-    const startIndex = typeCol >= 0 ? typeCol + 17 : 19
-    const menuColumns: Array<{ index: number; label: string }> = []
-    if (headerRowIndex === 0 && rows.length >= 2) {
-      for (let index = startIndex; index < menuHeaders.length; index++) {
-        const label = String(menuHeaders[index] || '').trim()
-        if (!label || label === 'ESP' || label === 'ENG') continue
-        menuColumns.push({ index, label })
-      }
-    }
+    const onEstanCol = findOnEstanColumn(headers)
+    const menuColumns =
+      onEstanCol >= 0
+        ? []
+        : buildMenuColumns(rows, headerRowIndex, headers, allergenCols)
 
     const familyLabel = getGroupLabelForSheet(sheetKey)
     const familyId = slugify(familyLabel)
@@ -150,9 +78,12 @@ export async function parseImportWorkbook(file: File) {
       const categoryId = typeLabel ? slugify(typeLabel) : ''
       if (categoryId) categoryMap.set(categoryId, typeLabel)
 
-      const menus = menuColumns
+      const menusFromMarks = menuColumns
         .filter(({ index }) => isMarkedMenuCell(String(row[index] || '')))
         .map(({ label }) => label)
+      const menuText = onEstanCol >= 0 ? String(row[onEstanCol] || '').trim() : ''
+      const menusFromText = parseMenusFromRawText(menuText)
+      const menus = Array.from(new Set([...menusFromMarks, ...menusFromText]))
       menus.forEach(menu => menuMap.set(menu, menu))
 
       const allergens: Record<string, string | null> = {}
@@ -161,7 +92,9 @@ export async function parseImportWorkbook(file: File) {
       })
 
       const vegan = parseAptImport(String(cols.vegan >= 0 ? row[cols.vegan] || '' : ''))
-      let vegetarian = parseAptImport(String(cols.vegetarian >= 0 ? row[cols.vegetarian] || '' : ''))
+      let vegetarian = parseAptImport(
+        String(cols.vegetarian >= 0 ? row[cols.vegetarian] || '' : '')
+      )
       if (vegan === true) vegetarian = true
 
       parsedRows.push({
@@ -182,7 +115,7 @@ export async function parseImportWorkbook(file: File) {
           family: familyId || null,
           familyLabel: familyLabel || null,
           menus,
-          onEstanRaw: menus.length ? menus.join(' | ') : null,
+          onEstanRaw: menuText || (menus.length ? menus.join(' | ') : null),
           allergens,
           consumption: {
             vegan: vegan ?? null,

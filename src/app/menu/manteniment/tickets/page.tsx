@@ -1,32 +1,69 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import useSWR from 'swr'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { endOfWeek, format, startOfWeek } from 'date-fns'
-import { RoleGuard } from '@/lib/withRoleGuard'
+import { CalendarCheck2 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import MaintenanceToolbar from '../components/MaintenanceToolbar'
+import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
-import FilterButton from '@/components/ui/filter-button'
+import {
+  CorporateActiveFilterChip,
+  CorporateFiltersActiveRow,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
-import { normalizeRole } from '@/lib/roles'
-import { canManageMaintenanceTickets } from '@/lib/accessControl'
 import {
+  MAINTENANCE_TICKETS_DELETE_PERM,
+  MAINTENANCE_TICKETS_INBOX_PERM,
+  MAINTENANCE_TICKETS_MANAGE_PERM,
+} from '@/lib/maintenanceTicketsPermissions'
+import {
+  getCurrentMaintenanceWeekRange,
+  type MaintenanceDateFilterMode,
+} from '@/lib/maintenanceDateFilter'
+import {
+  canCreateMaintenanceTicketsAsReporter,
   isCuinaCentralDepartment,
   isMaintenanceTicketCreatorOnlyUser,
-  isRestaurantOpsDepartment,
+  type MaintenanceTicketScope,
 } from '@/lib/maintenanceTicketCreators'
-import { OPS_CHANNEL_LOCATIONS } from '@/lib/opsMessagingChannels'
+import { isQualitatCuinaCentralTicketViewer } from '@/lib/accessControl'
 import { markTicketSeen } from '@/lib/maintenanceSeen'
-import { formatDateOnly, formatDateTimeValue } from '@/lib/date-format'
+import { formatDateTimeValue } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
+import {
+  MAINTENANCE_PRIORITY_BADGE_CLASSES,
+  MAINTENANCE_PRIORITY_LABELS,
+  MAINTENANCE_STATUS_BADGE_CLASSES,
+  MAINTENANCE_STATUS_LABELS,
+} from '@/lib/maintenanceStatus'
+import {
+  getMaintenanceCenterOptions,
+  getMaintenanceLocationsForCenter,
+  getMaintenanceZones,
+  resolveMaintenanceSite,
+} from '@/lib/maintenanceLocationCatalog'
+import { matchesMaintenanceTicketDateFilter } from '@/lib/maintenanceDateFilter'
 import { useMaintenanceTickets } from './useMaintenanceTickets'
 import type { Ticket, TicketPriority, TicketStatus } from './types'
 import TicketsList from './components/TicketsList'
 import CreateTicketModal from './components/CreateTicketModal'
 import AssignTicketModal from './components/AssignTicketModal'
 import ResolveTicketModal from './components/ResolveTicketModal'
+import OpsWorkspacePanel from '@/components/messaging/OpsWorkspacePanel'
+import { createMaintenanceOpsWorkspaceConfig } from '@/lib/messaging/maintenanceOpsWorkspace'
+import MaintenanceNotificationsBell from '../components/MaintenanceNotificationsBell'
+
+const opsRoomsFetcher = (url: string) => fetch(url).then((r) => r.json())
+
+const STATUS_LABELS = MAINTENANCE_STATUS_LABELS
+const PRIORITY_LABELS = MAINTENANCE_PRIORITY_LABELS
 
 type SessionUser = {
   id?: string
@@ -42,96 +79,80 @@ const normalizeDept = (raw?: string) =>
     .toLowerCase()
     .trim()
 
-const STATUS_LABELS: Record<TicketStatus, string> = {
-  nou: 'Nou',
-  assignat: 'Assignat',
-  en_curs: 'En curs',
-  espera: 'Espera',
-  fet: 'Fet',
-  no_fet: 'No fet',
-  resolut: 'Resolt',
-  validat: 'Validat',
-}
-
-const PRIORITY_LABELS: Record<TicketPriority, string> = {
-  urgent: 'Urgent',
-  alta: 'Alta',
-  normal: 'Normal',
-  baixa: 'Baixa',
-}
-
-const DATE_MODE_LABELS: Record<'all' | 'planned' | 'created' | 'updated' | 'completed', string> = {
-  all: 'Sense filtre de data',
-  planned: 'Data planificada',
-  created: 'Data creacio',
-  updated: 'Ultim canvi',
-  completed: 'Data tancament',
-}
-
-const statusBadgeClasses: Record<TicketStatus, string> = {
-  nou: 'bg-emerald-100 text-emerald-800',
-  assignat: 'bg-blue-100 text-blue-800',
-  en_curs: 'bg-amber-100 text-amber-800',
-  espera: 'bg-slate-100 text-slate-700',
-  fet: 'bg-green-100 text-green-800',
-  no_fet: 'bg-rose-100 text-rose-700',
-  resolut: 'bg-teal-100 text-teal-800',
-  validat: 'bg-purple-100 text-purple-800',
-}
-
-const priorityBadgeClasses: Record<TicketPriority, string> = {
-  urgent: 'bg-red-100 text-red-700',
-  alta: 'bg-orange-100 text-orange-700',
-  normal: 'bg-slate-100 text-slate-700',
-  baixa: 'bg-blue-100 text-blue-700',
-}
-
 const KPI_STYLES = {
   inbox: 'border-amber-200 bg-amber-50/70',
   planned: 'border-sky-200 bg-sky-50/70',
-  active: 'border-blue-200 bg-blue-50/70',
+  in_progress: 'border-blue-200 bg-blue-50/70',
+  waiting: 'border-slate-300 bg-slate-50/80',
   validation: 'border-emerald-200 bg-emerald-50/70',
   external: 'border-violet-200 bg-violet-50/70',
+  closed: 'border-fuchsia-200 bg-fuchsia-50/70',
 } as const
 
+const INTERNAL_BUCKET_LABELS = {
+  inbox: 'Nous i reoberts',
+  planned: 'Planificats',
+  in_progress: 'En curs',
+  waiting: 'En espera',
+  validation: 'Pendents validar',
+  external: 'Externalitzats',
+  closed: 'Validats',
+} as const
+
+const EXTERNAL_BUCKET_LABELS = {
+  nou: 'Nous',
+  assignat: 'Assignats',
+  fet: 'Fets',
+  externalitzat: 'Externalitzats',
+} as const
+
+const EXTERNAL_KPI_STYLES = {
+  nou: KPI_STYLES.inbox,
+  assignat: KPI_STYLES.in_progress,
+  fet: KPI_STYLES.validation,
+  externalitzat: KPI_STYLES.external,
+} as const
+
+const TICKET_SCOPE_LABELS: Record<MaintenanceTicketScope, string> = {
+  restaurants: 'Restaurants',
+  cuina_central: 'Cuina Central',
+  centres_propis: 'Centres Propis',
+}
+
+const MAINTENANCE_PLANNER_PATH = '/menu/manteniment/preventius/planificador'
+
 export default function MaintenanceTicketsPage() {
-  const { data: session, status } = useSession()
+  const { data: session } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setContent } = useFilters()
+  const { isPathAllowed, hasAction } = useUiPermissions()
+  const canViewPlanner = isPathAllowed(MAINTENANCE_PLANNER_PATH)
   const sessionUser = (session?.user || {}) as SessionUser
   const department = normalizeDept(sessionUser.department || '')
-  const userRole = normalizeRole(sessionUser.role || '')
-  const isMaintenance = department === 'manteniment'
-  const isMaintenanceWorker = userRole === 'treballador' && isMaintenance
   const isOwnTicketsOnly = isMaintenanceTicketCreatorOnlyUser(sessionUser)
-  const canManageAllTickets = canManageMaintenanceTickets({
-    role: userRole,
-    department,
-  })
-  const hasAccess =
-    !isMaintenanceWorker &&
-    (userRole === 'admin' ||
-      userRole === 'direccio' ||
-      userRole === 'cap' ||
-      userRole === 'treballador' ||
-      userRole === 'comercial' ||
-      userRole === 'usuari')
+  const isQualitatViewer = isQualitatCuinaCentralTicketViewer(sessionUser)
+  const canCreateNewTicket = canCreateMaintenanceTicketsAsReporter(sessionUser)
+  const canManageInbox = hasAction(MAINTENANCE_TICKETS_INBOX_PERM)
+  const canDeleteAnyTicket = hasAction(MAINTENANCE_TICKETS_DELETE_PERM)
+  const canManageAllTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM)
+  const canSeeMaintenanceBell =
+    canManageAllTickets || canManageInbox || canCreateNewTicket || isPathAllowed('/menu/manteniment/tickets')
+  const canManageInboxTickets = canManageInbox
 
   const formatDateTime = (value?: number | string | null) => formatDateTimeValue(value, '')
   const [dateResetSignal, setDateResetSignal] = useState(0)
   const [resolveTicket, setResolveTicket] = useState<Ticket | null>(null)
   const [resolveBusy, setResolveBusy] = useState(false)
-
-  useEffect(() => {
-    if (status === 'loading') return
-    if (!hasAccess) router.replace('/menu')
-  }, [hasAccess, router, status])
+  const [opsTicket, setOpsTicket] = useState<Ticket | null>(null)
+  const maintenanceOpsConfig = useMemo(() => createMaintenanceOpsWorkspaceConfig(), [])
 
   const {
-    role: ticketRole,
     userId,
+    isExternalReporter,
     canValidate,
+    canCapValidateTicket,
+    canCreatorValidateTicket,
     canReopen,
     canExternalize,
     tickets,
@@ -142,33 +163,52 @@ export default function MaintenanceTicketsPage() {
     filters,
     setFilters,
     locations: catalogLocations,
+    centers: catalogCenters,
     machines,
     showCreate,
     setShowCreate,
+    openCreate,
+    createCenter,
+    setCreateCenter,
+    centerQuery,
+    setCenterQuery,
     createLocation,
     setCreateLocation,
+    createZone,
+    setCreateZone,
     createMachine,
     setCreateMachine,
     locationQuery,
     setLocationQuery,
+    zoneQuery,
+    setZoneQuery,
     machineQuery,
     setMachineQuery,
+    showCenterList,
+    setShowCenterList,
     showLocationList,
     setShowLocationList,
+    showZoneList,
+    setShowZoneList,
     showMachineList,
     setShowMachineList,
     createDescription,
     setCreateDescription,
+    createWorkerName,
+    setCreateWorkerName,
+    needsWorkerName,
     createPriority,
     setCreatePriority,
-    createImagePreviews,
-    createImageCount,
-    maxTicketImages,
+    createAttachmentPreviews,
+    createAttachmentCount,
+    maxTicketAttachments,
     createBusy,
-    imageError,
+    attachmentCompressing,
+    attachmentError,
     formError,
     canCreateTicket,
-    removeImage,
+    handleAttachmentChange,
+    removeAttachment,
     selected,
     setSelected,
     assignBusy,
@@ -198,7 +238,6 @@ export default function MaintenanceTicketsPage() {
     setDetailsPriority,
     maintenanceUsers,
     furgonetes,
-    handleImageChange,
     handleCreateTicket,
     handleAssign,
     handleStatusChange,
@@ -208,106 +247,263 @@ export default function MaintenanceTicketsPage() {
     handleExternalize,
     handleSendToPlanner,
     handleDirectResolution,
+    handleCreatorValidate,
     handleDelete,
     fetchMoreTickets,
     groupedTickets,
     ticketSummary,
+    externalReporterSummary,
+    ticketScopeSummary,
   } = useMaintenanceTickets()
 
-  const normalizeLocationKey = (value: string) =>
-    value
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .toLowerCase()
-      .trim()
+  const toggleExternalBucket = useCallback(
+    (bucket: keyof typeof EXTERNAL_BUCKET_LABELS) => {
+      setFilters((prev) => ({
+        ...prev,
+        ticketBucket: prev.ticketBucket === bucket ? '__all__' : bucket,
+      }))
+    },
+    [setFilters]
+  )
 
-  const createLocations = useMemo(() => {
-    if (!isRestaurantOpsDepartment(department)) return catalogLocations
-    const restaurantKeys = new Set(
-      OPS_CHANNEL_LOCATIONS.filter((entry) => entry.source === 'restaurants').map((entry) =>
-        normalizeLocationKey(entry.location)
+  const toggleInternalBucket = useCallback(
+    (bucket: keyof typeof INTERNAL_BUCKET_LABELS) => {
+      setFilters((prev) => ({
+        ...prev,
+        ticketBucket: prev.ticketBucket === bucket ? '__all__' : bucket,
+      }))
+    },
+    [setFilters]
+  )
+
+  const createCenters = catalogCenters
+  const dateScopedSites = useMemo(() => {
+    const sites = tickets
+      .filter((ticket) =>
+        matchesMaintenanceTicketDateFilter({
+          mode: (filters.dateMode ?? 'planned') as MaintenanceDateFilterMode,
+          start: filters.start,
+          end: filters.end,
+          plannedStart: ticket.plannedStart,
+          createdAt: ticket.createdAt,
+        })
       )
-    )
-    return catalogLocations.filter((loc) => restaurantKeys.has(normalizeLocationKey(loc)))
-  }, [catalogLocations, department])
+      .map((ticket) => resolveMaintenanceSite(catalogCenters, ticket.workLocation, ticket.location))
+
+    const centerMap = new Map<string, string>()
+    const locationMap = new Map<string, string>()
+    const zoneMap = new Map<string, string>()
+
+    sites.forEach((site) => {
+      if (site.center) centerMap.set(site.center.toLowerCase(), site.center)
+      if (site.location) locationMap.set(`${site.center}__${site.location}`.toLowerCase(), site.location)
+      if (site.zone) zoneMap.set(`${site.center}__${site.location}__${site.zone}`.toLowerCase(), site.zone)
+    })
+
+    return {
+      centers: [...centerMap.values()].sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' })),
+      sites,
+    }
+  }, [catalogCenters, filters.dateMode, filters.end, filters.start, tickets])
+  const filterCenters = useMemo(
+    () => dateScopedSites.centers,
+    [dateScopedSites.centers]
+  )
+  const filterLocations = useMemo(
+    () => {
+      const selectedCenter = filters.center && filters.center !== '__all__' ? filters.center : ''
+      if (!selectedCenter) {
+        const unique = new Map<string, string>()
+        dateScopedSites.sites.forEach((site) => {
+          if (!site.location) return
+          unique.set(site.location.toLowerCase(), site.location)
+        })
+        return [...unique.values()].sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }))
+      }
+      const unique = new Map<string, string>()
+      dateScopedSites.sites
+        .filter((site) => site.center === selectedCenter)
+        .forEach((site) => {
+          if (!site.location) return
+          unique.set(site.location.toLowerCase(), site.location)
+        })
+      return [...unique.values()].sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }))
+    },
+    [dateScopedSites.sites, filters.center]
+  )
+  const filterZones = useMemo(
+    () => {
+      const selectedCenter = filters.center && filters.center !== '__all__' ? filters.center : ''
+      const selectedLocation = filters.location && filters.location !== '__all__' ? filters.location : ''
+      const unique = new Map<string, string>()
+      dateScopedSites.sites
+        .filter((site) => !selectedCenter || site.center === selectedCenter)
+        .filter((site) => !selectedLocation || site.location === selectedLocation)
+        .forEach((site) => {
+          if (!site.zone) return
+          unique.set(site.zone.toLowerCase(), site.zone)
+        })
+      return [...unique.values()].sort((a, b) => a.localeCompare(b, 'ca', { sensitivity: 'base' }))
+    },
+    [dateScopedSites.sites, filters.center, filters.location]
+  )
 
   useEffect(() => {
     setContent(
-      <div key={`tickets-filters-${filters.dateMode ?? 'all'}-${dateResetSignal}`} className="space-y-4 p-4">
-        <label className="space-y-2 text-sm text-slate-700">
-          <span className="font-medium">Tipus de data</span>
-          <select
-            value={filters.dateMode ?? 'all'}
-            onChange={(e) => setFilters((prev) => ({ ...prev, dateMode: e.target.value as typeof prev.dateMode }))}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-          >
-            <option value="all">Sense filtre de data</option>
-            <option value="planned">Data planificada</option>
-            <option value="created">Data creacio</option>
-            <option value="updated">Ultim canvi</option>
-            <option value="completed">Data tancament</option>
-          </select>
+      <div key={`tickets-filters-${filters.dateMode ?? 'planned'}-${dateResetSignal}`} className="space-y-4 p-4">
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={(filters.dateMode ?? 'planned') !== 'all'}
+            onChange={(e) =>
+              setFilters((prev) => ({
+                ...prev,
+                dateMode: (e.target.checked ? 'planned' : 'all') as MaintenanceDateFilterMode,
+              }))
+            }
+          />
+          Aplicar filtre de dates
         </label>
-        <label className="space-y-2 text-sm text-slate-700">
-          <span className="font-medium">Estat</span>
-          <select
-            value={filters.status ?? '__all__'}
-            onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-          >
-            <option value="__all__">Tots</option>
-            <option value="nou">{STATUS_LABELS.nou}</option>
-            <option value="assignat">{STATUS_LABELS.assignat}</option>
-            <option value="en_curs">{STATUS_LABELS.en_curs}</option>
-            <option value="espera">{STATUS_LABELS.espera}</option>
-            <option value="fet">{STATUS_LABELS.fet}</option>
-            <option value="no_fet">{STATUS_LABELS.no_fet}</option>
-            <option value="resolut">{STATUS_LABELS.resolut}</option>
-            {canValidate ? <option value="validat">{STATUS_LABELS.validat}</option> : null}
-          </select>
-        </label>
-        <label className="space-y-2 text-sm text-slate-700">
-          <span className="font-medium">Importancia</span>
-          <select
-            value={filters.priority ?? '__all__'}
-            onChange={(e) => setFilters((prev) => ({ ...prev, priority: e.target.value }))}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-          >
-            <option value="__all__">Totes</option>
-            <option value="urgent">{PRIORITY_LABELS.urgent}</option>
-            <option value="alta">{PRIORITY_LABELS.alta}</option>
-            <option value="normal">{PRIORITY_LABELS.normal}</option>
-            <option value="baixa">{PRIORITY_LABELS.baixa}</option>
-          </select>
-        </label>
-        <label className="space-y-2 text-sm text-slate-700">
-          <span className="font-medium">Ubicació</span>
-          <select
-            value={filters.location ?? '__all__'}
-            onChange={(e) => setFilters((prev) => ({ ...prev, location: e.target.value }))}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
-          >
-            <option value="__all__">Totes</option>
-            {catalogLocations.map((location) => (
-              <option key={location} value={location}>
-                {location}
-              </option>
-            ))}
-          </select>
-        </label>
+        {isExternalReporter ? (
+          <label className="space-y-2 text-sm text-slate-700">
+            <span className="font-medium">Estat</span>
+            <select
+              value={filters.ticketBucket ?? '__all__'}
+              onChange={(e) => setFilters((prev) => ({ ...prev, ticketBucket: e.target.value }))}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+            >
+              <option value="__all__">Tots</option>
+              <option value="nou">{EXTERNAL_BUCKET_LABELS.nou}</option>
+              <option value="assignat">{EXTERNAL_BUCKET_LABELS.assignat}</option>
+              <option value="fet">{EXTERNAL_BUCKET_LABELS.fet}</option>
+              <option value="externalitzat">{EXTERNAL_BUCKET_LABELS.externalitzat}</option>
+            </select>
+          </label>
+        ) : (
+          <>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Estat</span>
+              <select
+                value={filters.status ?? '__all__'}
+                onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Tots</option>
+                <option value="nou">{STATUS_LABELS.nou}</option>
+                <option value="assignat">{STATUS_LABELS.assignat}</option>
+                <option value="en_curs">{STATUS_LABELS.en_curs}</option>
+                <option value="espera">{STATUS_LABELS.espera}</option>
+                <option value="fet">{STATUS_LABELS.fet}</option>
+                <option value="reassignat">{STATUS_LABELS.reassignat}</option>
+                <option value="no_fet">{STATUS_LABELS.no_fet}</option>
+                {canValidate ? <option value="validat">{STATUS_LABELS.validat}</option> : null}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Importancia</span>
+              <select
+                value={filters.priority ?? '__all__'}
+                onChange={(e) => setFilters((prev) => ({ ...prev, priority: e.target.value }))}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Totes</option>
+                <option value="urgent">{PRIORITY_LABELS.urgent}</option>
+                <option value="alta">{PRIORITY_LABELS.alta}</option>
+                <option value="normal">{PRIORITY_LABELS.normal}</option>
+                <option value="baixa">{PRIORITY_LABELS.baixa}</option>
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Origen</span>
+              <select
+                value={filters.ticketScope ?? '__all__'}
+                onChange={(e) => setFilters((prev) => ({ ...prev, ticketScope: e.target.value }))}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Tots</option>
+                {(Object.keys(TICKET_SCOPE_LABELS) as MaintenanceTicketScope[]).map((scope) => (
+                  <option key={scope} value={scope}>
+                    {TICKET_SCOPE_LABELS[scope]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Centre</span>
+              <select
+                value={filters.center ?? '__all__'}
+                onChange={(e) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    center: e.target.value,
+                    location: '__all__',
+                    zone: '__all__',
+                  }))
+                }
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Tots</option>
+                {filterCenters.map((center) => (
+                  <option key={center} value={center}>
+                    {center}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Ubicacio</span>
+              <select
+                value={filters.location ?? '__all__'}
+                onChange={(e) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    location: e.target.value,
+                    zone: '__all__',
+                  }))
+                }
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Totes</option>
+                {filterLocations.map((location) => (
+                  <option key={location} value={location}>
+                    {location}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="font-medium">Zona</span>
+              <select
+                value={filters.zone ?? '__all__'}
+                onChange={(e) => setFilters((prev) => ({ ...prev, zone: e.target.value }))}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900"
+              >
+                <option value="__all__">Totes</option>
+                {filterZones.map((zone) => (
+                  <option key={zone} value={zone}>
+                    {zone}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
         <div className="flex justify-end">
           <ResetFilterButton
             onClick={() => {
-              const start = startOfWeek(new Date(), { weekStartsOn: 1 })
-              const end = endOfWeek(new Date(), { weekStartsOn: 1 })
+              const { start, end } = getCurrentMaintenanceWeekRange()
               const next = {
                 ...filters,
-                start: format(start, 'yyyy-MM-dd'),
-                end: format(end, 'yyyy-MM-dd'),
+                start,
+                end,
                 status: '__all__',
                 priority: '__all__',
+                center: '__all__',
                 location: '__all__',
-                dateMode: 'all' as const,
+                zone: '__all__',
+                ticketBucket: '__all__',
+                ticketScope: '__all__',
+                dateMode: 'planned' as const,
               }
               setFilters(next)
               setDateResetSignal((current) => current + 1)
@@ -318,7 +514,17 @@ export default function MaintenanceTicketsPage() {
     )
 
     return () => setContent(null)
-  }, [canValidate, catalogLocations, dateResetSignal, filters, setContent, setFilters])
+  }, [
+    canValidate,
+    dateResetSignal,
+    filterCenters,
+    filterLocations,
+    filterZones,
+    filters,
+    isExternalReporter,
+    setContent,
+    setFilters,
+  ])
 
   const displayStatusLabels: Record<TicketStatus, string> = canValidate
     ? STATUS_LABELS
@@ -328,13 +534,14 @@ export default function MaintenanceTicketsPage() {
       }
 
   const displayStatusBadgeClasses: Record<TicketStatus, string> = canValidate
-    ? statusBadgeClasses
+    ? MAINTENANCE_STATUS_BADGE_CLASSES
     : {
-        ...statusBadgeClasses,
-        validat: statusBadgeClasses.validat,
+        ...MAINTENANCE_STATUS_BADGE_CLASSES,
+        validat: MAINTENANCE_STATUS_BADGE_CLASSES.validat,
       }
 
   const queryTicketId = (searchParams?.get('ticketId') || '').trim()
+  const queryOpenOps = searchParams?.get('ops') === '1'
   const queryStart = (searchParams?.get('start') || '').trim()
   const queryEnd = (searchParams?.get('end') || '').trim()
 
@@ -391,46 +598,92 @@ export default function MaintenanceTicketsPage() {
 
   const canResolveDirectly = useCallback(
     (ticket: Ticket) =>
-      canManageAllTickets &&
+      canManageInboxTickets &&
       !ticket.externalized &&
       (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
       ticket.status !== 'validat' &&
-      ticket.status !== 'resolut',
-    [canManageAllTickets]
+      ticket.status !== 'fet',
+    [canManageInboxTickets]
   )
 
   const canPlanifyDirectly = useCallback(
     (ticket: Ticket) =>
-      canManageAllTickets &&
+      canManageInboxTickets &&
       !ticket.externalized &&
       (ticket.workflowStage || 'tickets_inbox') === 'tickets_inbox' &&
       ticket.status !== 'validat' &&
-      ticket.status !== 'resolut',
-    [canManageAllTickets]
+      ticket.status !== 'fet',
+    [canManageInboxTickets]
   )
 
-  if (!hasAccess && status !== 'loading') return null
+  const canDeleteTicket = useCallback(() => canDeleteAnyTicket, [canDeleteAnyTicket])
+
+  const canShowTicketOps = useCallback(
+    (ticket: Ticket) => {
+      if (canManageAllTickets) return true
+      if (userId && ticket.createdById === userId) return true
+      return false
+    },
+    [canManageAllTickets, userId]
+  )
+
+  const openTicketOps = useCallback((ticket: Ticket) => {
+    setOpsTicket(ticket)
+  }, [])
+
+  useEffect(() => {
+    if (!queryOpenOps || !queryTicketId) return
+    const ticket =
+      tickets.find((entry) => String(entry.id) === queryTicketId) ||
+      (selected?.id === queryTicketId ? selected : null)
+    if (!ticket || !canShowTicketOps(ticket)) return
+    if (opsTicket?.id === ticket.id) return
+    setOpsTicket(ticket)
+  }, [canShowTicketOps, opsTicket?.id, queryOpenOps, queryTicketId, selected, tickets])
+
+  const { data: selectedOpsData } = useSWR<{ rooms?: Array<{ unreadCount?: number }> }>(
+    selected && canShowTicketOps(selected)
+      ? `/api/maintenance/tickets/${encodeURIComponent(selected.id)}/ops/rooms`
+      : null,
+    opsRoomsFetcher
+  )
+  const selectedOpsUnread = Number(selectedOpsData?.rooms?.[0]?.unreadCount || 0)
 
   return (
-      <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador', 'comercial', 'usuari']}>
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 pb-8">
+      <MaintenancePermissionGate path="/menu/manteniment/tickets">
+      <div className="flex w-full max-w-none flex-col gap-5 p-4 pb-8">
         <ModuleHeader
           title="Manteniment"
           subtitle="Tickets"
           mainHref="/menu/manteniment"
           actions={
-            hasAccess && (canManageAllTickets || isOwnTicketsOnly) ? (
-              <button
-                className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-                onClick={() => setShowCreate(true)}
-              >
-                + Nou ticket
-              </button>
+            canViewPlanner || (canManageAllTickets || canCreateNewTicket) || canSeeMaintenanceBell ? (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {canSeeMaintenanceBell ? <MaintenanceNotificationsBell /> : null}
+                {canViewPlanner ? (
+                  <Link
+                    href={MAINTENANCE_PLANNER_PATH}
+                    className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-white px-4 py-2 text-sm font-semibold text-teal-800 shadow-sm hover:bg-teal-50"
+                  >
+                    <CalendarCheck2 className="h-4 w-4" />
+                    Planificador
+                  </Link>
+                ) : null}
+                {canManageAllTickets || canCreateNewTicket ? (
+                  <button
+                    type="button"
+                    className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                    onClick={() => openCreate()}
+                  >
+                    + Nou ticket
+                  </button>
+                ) : null}
+              </div>
             ) : undefined
           }
         />
 
-        {isOwnTicketsOnly ? (
+        {!isExternalReporter && isOwnTicketsOnly ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
             {isCuinaCentralDepartment(department)
               ? 'Veus nomes els teus tickets. En crear-ne un de nou, es deriva al planificador de manteniment i aqui en pots seguir l evolucio.'
@@ -438,9 +691,18 @@ export default function MaintenanceTicketsPage() {
           </div>
         ) : null}
 
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex flex-wrap items-center gap-3 xl:flex-nowrap">
-            <div className="shrink-0">
+        {isQualitatViewer ? (
+          <div className="rounded-2xl border border-teal-200 bg-teal-50/80 px-4 py-3 text-sm text-teal-950">
+            Consulta tots els tickets de manteniment de Cuina Central i en pots crear de nous. Rebràs
+            notificacions dels teus tickets.
+          </div>
+        ) : null}
+
+        <CorporateFiltersShell variant="toolbar" bodyClassName="p-0">
+          <MaintenanceToolbar
+            className="border-0 bg-transparent px-0 py-0 shadow-none"
+            bodyClassName="flex-col items-stretch gap-0 xl:flex-row xl:flex-wrap xl:items-center"
+            leftSlot={
               <SmartFilters
                 modeDefault="week"
                 modeOptions={['week', 'month', 'year', 'day', 'range']}
@@ -450,6 +712,7 @@ export default function MaintenanceTicketsPage() {
                 showWorker={false}
                 showLocation={false}
                 showStatus={false}
+                compact
                 onChange={(next: SmartFiltersChange) =>
                   setFilters((prev) => ({
                     ...prev,
@@ -460,86 +723,131 @@ export default function MaintenanceTicketsPage() {
                 initialStart={filters.start}
                 initialEnd={filters.end}
               />
-            </div>
-            <div className="flex min-w-[260px] flex-1 items-center gap-2">
-              <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                {DATE_MODE_LABELS[filters.dateMode ?? 'all']}
-              </span>
-              {(filters.dateMode ?? 'all') !== 'all' && filters.start && filters.end ? (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                  {filters.start === filters.end
-                    ? formatDateOnly(filters.start, filters.start)
-                    : `${formatDateOnly(filters.start, filters.start)} - ${formatDateOnly(filters.end, filters.end)}`}
-                </span>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <FilterButton />
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {filters.status && filters.status !== '__all__' ? (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                {STATUS_LABELS[filters.status as TicketStatus]}
-              </span>
-            ) : null}
-            {filters.priority && filters.priority !== '__all__' ? (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                {PRIORITY_LABELS[filters.priority as TicketPriority]}
-              </span>
-            ) : null}
-            {filters.location && filters.location !== '__all__' ? (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                {filters.location}
-              </span>
-            ) : null}
-            {(filters.dateMode ?? 'all') !== 'all' ? (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                {DATE_MODE_LABELS[filters.dateMode ?? 'all']}
-              </span>
-            ) : null}
-          </div>
-        </div>
+            }
+            onOpenFilters={() => undefined}
+            bottomSlot={
+              <div className="flex flex-col gap-3">
+                {!isExternalReporter ? (
+                  <div className="flex flex-wrap gap-2">
+                    {(Object.keys(TICKET_SCOPE_LABELS) as MaintenanceTicketScope[]).map((scope) => {
+                      const active = (filters.ticketScope ?? '__all__') === scope
+                      return (
+                        <button
+                          key={scope}
+                          type="button"
+                          onClick={() =>
+                            setFilters((prev) => ({
+                              ...prev,
+                              ticketScope: prev.ticketScope === scope ? '__all__' : scope,
+                            }))
+                          }
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] transition ${
+                            active
+                              ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
+                              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                          }`}
+                        >
+                          <span>{TICKET_SCOPE_LABELS[scope]}</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] tracking-normal text-slate-700">
+                            {ticketScopeSummary[scope]}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
+                <CorporateFiltersActiveRow>
+                  {isExternalReporter && filters.ticketBucket && filters.ticketBucket !== '__all__' ? (
+                    <CorporateActiveFilterChip>
+                      {EXTERNAL_BUCKET_LABELS[filters.ticketBucket as keyof typeof EXTERNAL_BUCKET_LABELS]}
+                    </CorporateActiveFilterChip>
+                  ) : null}
+                  {!isExternalReporter && filters.ticketBucket && filters.ticketBucket !== '__all__' ? (
+                    <CorporateActiveFilterChip>
+                      {INTERNAL_BUCKET_LABELS[filters.ticketBucket as keyof typeof INTERNAL_BUCKET_LABELS]}
+                    </CorporateActiveFilterChip>
+                  ) : null}
+                  {!isExternalReporter && filters.status && filters.status !== '__all__' ? (
+                    <CorporateActiveFilterChip>
+                      {STATUS_LABELS[filters.status as TicketStatus]}
+                    </CorporateActiveFilterChip>
+                  ) : null}
+                  {!isExternalReporter && filters.priority && filters.priority !== '__all__' ? (
+                    <CorporateActiveFilterChip>
+                      {PRIORITY_LABELS[filters.priority as TicketPriority]}
+                    </CorporateActiveFilterChip>
+                  ) : null}
+                  {!isExternalReporter && filters.center && filters.center !== '__all__' ? (
+                    <CorporateActiveFilterChip>{filters.center}</CorporateActiveFilterChip>
+                  ) : null}
+                  {!isExternalReporter && filters.location && filters.location !== '__all__' ? (
+                    <CorporateActiveFilterChip>{filters.location}</CorporateActiveFilterChip>
+                  ) : null}
+                  {!isExternalReporter && filters.zone && filters.zone !== '__all__' ? (
+                    <CorporateActiveFilterChip>{filters.zone}</CorporateActiveFilterChip>
+                  ) : null}
+                </CorporateFiltersActiveRow>
+              </div>
+            }
+          />
+        </CorporateFiltersShell>
 
         {loading && <p className="text-sm text-gray-500">Carregant...</p>}
         {error && <p className="text-sm text-red-500">{error}</p>}
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.inbox}`}>
-            <div className={typography('eyebrow')}>
-              Nous i reoberts
-            </div>
-            <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.inbox}</div>
-          </div>
-          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.planned}`}>
-            <div className={typography('eyebrow')}>
-              Planificats
-            </div>
-            <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.planned}</div>
-          </div>
-          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.active}`}>
-            <div className={typography('eyebrow')}>
-              En curs / espera
-            </div>
-            <div className={`mt-2 ${typography('kpiValue')}`}>{ticketSummary.active}</div>
-          </div>
-          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.validation}`}>
-            <div className={typography('eyebrow')}>
-              Pendents validar
-            </div>
-            <div className={`mt-2 ${typography('kpiValue')}`}>
-              {ticketSummary.pendingValidation}
-            </div>
-          </div>
-          <div className={`rounded-2xl border px-4 py-3 ${KPI_STYLES.external}`}>
-            <div className={typography('eyebrow')}>
-              Externalitzats
-            </div>
-            <div className={`mt-2 ${typography('kpiValue')}`}>
-              {ticketSummary.externalized}
-            </div>
-          </div>
-        </section>
+        {isExternalReporter ? (
+          <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {(Object.keys(EXTERNAL_BUCKET_LABELS) as Array<keyof typeof EXTERNAL_BUCKET_LABELS>).map(
+              (bucket) => {
+                const active = filters.ticketBucket === bucket
+                return (
+                  <button
+                    key={bucket}
+                    type="button"
+                    onClick={() => toggleExternalBucket(bucket)}
+                    className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                      EXTERNAL_KPI_STYLES[bucket]
+                    } ${active ? 'ring-2 ring-emerald-500 ring-offset-1' : 'hover:brightness-[0.98]'}`}
+                  >
+                    <div className={typography('eyebrow')}>{EXTERNAL_BUCKET_LABELS[bucket]}</div>
+                    <div className="mt-1 text-3xl font-semibold leading-none text-slate-900">
+                      {externalReporterSummary[bucket]}
+                    </div>
+                  </button>
+                )
+              }
+            )}
+          </section>
+        ) : (
+          <section className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
+            {(
+              [
+                { key: 'inbox', value: ticketSummary.inbox, style: KPI_STYLES.inbox },
+                { key: 'planned', value: ticketSummary.planned, style: KPI_STYLES.planned },
+                { key: 'in_progress', value: ticketSummary.inProgress, style: KPI_STYLES.in_progress },
+                { key: 'waiting', value: ticketSummary.waiting, style: KPI_STYLES.waiting },
+                { key: 'validation', value: ticketSummary.pendingValidation, style: KPI_STYLES.validation },
+                { key: 'external', value: ticketSummary.externalized, style: KPI_STYLES.external },
+                { key: 'closed', value: ticketSummary.closed, style: KPI_STYLES.closed },
+              ] as const
+            ).map((item) => {
+              const active = filters.ticketBucket === item.key
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => toggleInternalBucket(item.key)}
+                  className={`rounded-xl border px-3 py-2.5 text-left transition ${item.style} ${
+                    active ? 'ring-2 ring-emerald-500 ring-offset-1' : 'hover:brightness-[0.98]'
+                  }`}
+                >
+                  <div className={typography('eyebrow')}>{INTERNAL_BUCKET_LABELS[item.key]}</div>
+                  <div className="mt-1 text-3xl font-semibold leading-none text-slate-900">{item.value}</div>
+                </button>
+              )
+            })}
+          </section>
+        )}
 
         {!loading && groupedTickets.length === 0 && (
           <p className="text-sm text-gray-500">No hi ha tickets encara.</p>
@@ -547,6 +855,7 @@ export default function MaintenanceTicketsPage() {
 
         <TicketsList
           groupedTickets={groupedTickets}
+          externalReporterView={isExternalReporter}
           onResolve={(ticket) => {
             if (!canResolveDirectly(ticket)) return
             markTicketSeen(ticket.id, 'maquinaria')
@@ -560,17 +869,16 @@ export default function MaintenanceTicketsPage() {
           canResolveDirectly={canResolveDirectly}
           canPlanifyDirectly={canPlanifyDirectly}
           onDelete={handleDelete}
-          canDelete={(ticket) =>
-            ticket.createdById === userId ||
-            ticketRole === 'admin' ||
-            ticketRole === 'direccio' ||
-            (ticketRole === 'cap' && isMaintenance)
-          }
+          canDelete={canDeleteTicket}
+          canCreatorValidate={canCreatorValidateTicket}
+          onCreatorValidate={handleCreatorValidate}
+          canShowOps={canShowTicketOps}
+          onOpenOps={openTicketOps}
           formatDateTime={formatDateTime}
           statusBadgeClasses={displayStatusBadgeClasses}
-          priorityBadgeClasses={priorityBadgeClasses}
+          priorityBadgeClasses={MAINTENANCE_PRIORITY_BADGE_CLASSES}
           statusLabels={displayStatusLabels}
-          priorityLabels={PRIORITY_LABELS}
+          priorityLabels={MAINTENANCE_PRIORITY_LABELS}
         />
 
         {hasMoreTickets && (
@@ -587,36 +895,52 @@ export default function MaintenanceTicketsPage() {
         )}
 
         {showCreate && (
-          <CreateTicketModal
-            locations={createLocations}
+        <CreateTicketModal
+            centers={createCenters}
             machines={machines}
             createPriority={createPriority}
             setCreatePriority={setCreatePriority}
+            centerQuery={centerQuery}
+            setCenterQuery={setCenterQuery}
+            createCenter={createCenter}
+            setCreateCenter={setCreateCenter}
             locationQuery={locationQuery}
             setLocationQuery={setLocationQuery}
             createLocation={createLocation}
             setCreateLocation={setCreateLocation}
+            zoneQuery={zoneQuery}
+            setZoneQuery={setZoneQuery}
+            createZone={createZone}
+            setCreateZone={setCreateZone}
+            showCenterList={showCenterList}
+            setShowCenterList={setShowCenterList}
+            showZoneList={showZoneList}
+            setShowZoneList={setShowZoneList}
             machineQuery={machineQuery}
             setMachineQuery={setMachineQuery}
             createMachine={createMachine}
             setCreateMachine={setCreateMachine}
             createDescription={createDescription}
             setCreateDescription={setCreateDescription}
+            createWorkerName={createWorkerName}
+            setCreateWorkerName={setCreateWorkerName}
+            needsWorkerName={needsWorkerName}
             showLocationList={showLocationList}
             setShowLocationList={setShowLocationList}
             showMachineList={showMachineList}
             setShowMachineList={setShowMachineList}
-            priorityLabels={PRIORITY_LABELS}
+            priorityLabels={MAINTENANCE_PRIORITY_LABELS}
             onClose={() => setShowCreate(false)}
             onCreate={handleCreateTicket}
             createBusy={createBusy}
+            attachmentCompressing={attachmentCompressing}
             canCreate={canCreateTicket}
-            onImageChange={handleImageChange}
-            imagePreviews={createImagePreviews}
-            imageCount={createImageCount}
-            maxImages={maxTicketImages}
-            onRemoveImage={removeImage}
-            imageError={imageError}
+            onAttachmentChange={handleAttachmentChange}
+            attachmentPreviews={createAttachmentPreviews}
+            attachmentCount={createAttachmentCount}
+            maxAttachments={maxTicketAttachments}
+            onRemoveAttachment={removeAttachment}
+            attachmentError={attachmentError}
             formError={formError}
           />
         )}
@@ -650,41 +974,64 @@ export default function MaintenanceTicketsPage() {
             setDetailsDescription={setDetailsDescription}
             detailsPriority={detailsPriority}
             setDetailsPriority={setDetailsPriority}
-            canValidate={canValidate}
-            canReopen={canReopen}
-            canExternalize={canExternalize}
+            canValidate={canManageInboxTickets && canValidate}
+            canCapValidate={canManageInboxTickets ? canCapValidateTicket : undefined}
+            onCapValidate={
+              canManageInboxTickets
+                ? (ticket, meta) => void handleStatusChange(ticket, 'validat', meta)
+                : undefined
+            }
+            canReopen={canManageInboxTickets && canReopen}
+            canExternalize={canManageInboxTickets && canExternalize}
             externalizeBusy={externalizeBusy}
-            onUpdateDetails={handleUpdateDetails}
+            onUpdateDetails={canManageInboxTickets ? handleUpdateDetails : async () => undefined}
             formatDateTime={formatDateTime}
             statusLabels={displayStatusLabels}
             showHistory={showHistory}
             setShowHistory={setShowHistory}
             setSelected={setSelected}
-            onAssign={handleAssign}
-            onStatusChange={handleStatusChange}
-            onAssignVehicle={handleAssignVehicle}
-            onReopen={handleReopen}
-            onExternalize={handleExternalize}
-            canResolveInCurrentModule={(selected.workflowStage || 'tickets_inbox') === 'tickets_inbox'}
+            onAssign={canManageInboxTickets ? handleAssign : async () => undefined}
+            onStatusChange={canManageInboxTickets ? handleStatusChange : async () => undefined}
+            onAssignVehicle={canManageInboxTickets ? handleAssignVehicle : async () => undefined}
+            onReopen={canManageInboxTickets ? handleReopen : async () => undefined}
+            onExternalize={canManageInboxTickets ? handleExternalize : async () => undefined}
+            canResolveInCurrentModule={
+              canManageInboxTickets && (selected.workflowStage || 'tickets_inbox') === 'tickets_inbox'
+            }
             resolveArea="administracio"
-            onResolveTicket={handleDirectResolution}
-            onSendToPlanner={handleSendToPlanner}
+            onResolveTicket={canManageInboxTickets ? handleDirectResolution : undefined}
+            onSendToPlanner={canManageInboxTickets ? handleSendToPlanner : undefined}
+            showOpsButton={canShowTicketOps(selected)}
+            opsUnreadCount={selectedOpsUnread}
+            onOpenOps={() => openTicketOps(selected)}
             onClose={closeSelectedTicket}
           />
         )}
+
+        {opsTicket ? (
+          <OpsWorkspacePanel
+            open
+            initialRoomId={opsTicket.id}
+            config={maintenanceOpsConfig}
+            onOpenChange={(open) => {
+              if (!open) setOpsTicket(null)
+            }}
+          />
+        ) : null}
 
         {resolveTicket && (
           <ResolveTicketModal
             ticket={resolveTicket}
             busy={resolveBusy}
             onClose={() => setResolveTicket(null)}
-            onSubmit={async ({ category, note }) => {
+            onSubmit={async ({ category, note, completionImages }) => {
               try {
                 setResolveBusy(true)
                 await handleDirectResolution(resolveTicket, {
                   area: 'administracio',
                   category,
                   note,
+                  completionImages,
                 })
                 setResolveTicket(null)
               } finally {
@@ -694,6 +1041,7 @@ export default function MaintenanceTicketsPage() {
           />
         )}
       </div>
-    </RoleGuard>
+      </MaintenancePermissionGate>
   )
 }
+

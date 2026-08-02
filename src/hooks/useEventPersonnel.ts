@@ -27,32 +27,42 @@ export interface EventPersonnel {
 }
 
 const fetcher = async (url: string): Promise<EventPersonnel> => {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`Error HTTP ${res.status}`)
+  const res = await fetch(url, { cache: 'no-store' })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null
+    throw new Error(body?.error || `Error HTTP ${res.status}`)
+  }
   return (await res.json()) as EventPersonnel
 }
 
-export function useEventPersonnel(eventId?: string | number) {
-  const url = useMemo(() => {
-    if (!eventId) return null
-    return `/api/events/personnel?eventId=${encodeURIComponent(String(eventId))}`
-  }, [eventId])
+export function canonicalEventId(value?: string | number | null) {
+  return String(value || '')
+    .trim()
+    .split('__')[0]
+    .trim()
+}
 
-  const { data, error, isLoading } = useSWR<EventPersonnel>(url, fetcher, {
-    /**
-     * Personal d'un esdeveniment canvia poc; deduplicacio agressiva
-     * entre components de la mateixa pagina i revalidacio en focus
-     * per detectar canvis sense forçar refetch constants.
-     */
-    revalidateOnFocus: true,
+export function useEventPersonnel(eventId?: string | number, enabled = true) {
+  const canonicalId = useMemo(() => canonicalEventId(eventId), [eventId])
+
+  const url = useMemo(() => {
+    if (!canonicalId || !enabled) return null
+    return `/api/events/personnel?eventId=${encodeURIComponent(canonicalId)}`
+  }, [canonicalId, enabled])
+
+  const { data, error, isLoading, isValidating, mutate } = useSWR<EventPersonnel>(url, fetcher, {
+    revalidateOnFocus: false,
     revalidateOnReconnect: true,
-    dedupingInterval: 60_000,
-    keepPreviousData: true,
+    dedupingInterval: 30_000,
   })
+
+  const loading = Boolean(url) && !data && !error && (isLoading || isValidating)
 
   return {
     data: data ?? null,
-    loading: isLoading,
+    loading,
+    validating: Boolean(url) && isValidating,
     error: error instanceof Error ? error.message : null,
+    mutate,
   }
 }

@@ -83,10 +83,12 @@ export async function POST(req: NextRequest) {
     const byEvent = await collection.where('eventId', '==', String(canonicalEventId)).get()
 
     if (directSnap.exists) {
-      if (phaseKey) {
-        const data = directSnap.data() as QuadrantDraftSnap
-        const phases = Array.isArray(data?.logisticaPhases) ? data.logisticaPhases : []
-        const target = String(phaseKey).toLowerCase().trim()
+      const data = directSnap.data() as QuadrantDraftSnap
+      const phases = Array.isArray(data?.logisticaPhases) ? data.logisticaPhases : []
+      const deptNorm = norm(department)
+      const target = String(phaseKey || '').toLowerCase().trim()
+
+      if (phaseKey && deptNorm === 'logistica' && phases.length > 0) {
         const next = phases.filter((phase) => {
           const key = (phase?.key || phase?.label || '').toString().toLowerCase().trim()
           return key !== target

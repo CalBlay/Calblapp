@@ -15,6 +15,7 @@ import { compressRasterImageForUpload } from '@/lib/file-optimization'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
 import { INCIDENT_ORIGIN_DEPARTMENTS } from '@/lib/incidentOriginDepartments'
+import { isIncidentCategoryGroup2xx } from '@/lib/incidentTypology'
 
 interface CreateIncidentModalProps {
   open: boolean
@@ -147,6 +148,8 @@ export default function CreateIncidentModal({
     return list
   }, [normalizedUserDepartment])
 
+  const requiresAttachment = category ? isIncidentCategoryGroup2xx(category.id) : false
+
   const handleImageChange = async (fileList: FileList | null) => {
     const selected = fileList ? Array.from(fileList) : []
     if (!selected.length) return
@@ -225,6 +228,10 @@ export default function CreateIncidentModal({
     e.preventDefault()
     if (!category) {
       setError('Selecciona una categoria')
+      return
+    }
+    if (requiresAttachment && images.length === 0) {
+      setError('Les incidències del grup 2XX (Maquinària) requereixen adjuntar com a mínim una foto o fitxer.')
       return
     }
     setLoading(true)
@@ -360,7 +367,9 @@ export default function CreateIncidentModal({
 
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
-                <label className={typography('bodyXs')}>Adjuntar fins a 3 fotos</label>
+                <label className={typography('bodyXs')}>
+                  {requiresAttachment ? 'Adjuntar foto o fitxer *' : 'Adjuntar fins a 3 fotos'}
+                </label>
                 <label
                   className={cn(
                     'min-h-[44px] cursor-pointer rounded-full border px-4 py-2',
@@ -402,6 +411,11 @@ export default function CreateIncidentModal({
                 </span>
                 {imageError && <span className={cn(typography('bodySm'), 'text-red-600')}>{imageError}</span>}
               </div>
+              {requiresAttachment && images.length === 0 ? (
+                <p className={cn(typography('bodyXs'), 'text-amber-700')}>
+                  Obligatori per incidències de maquinària (grup 2XX).
+                </p>
+              ) : null}
 
               {images.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
@@ -443,7 +457,7 @@ export default function CreateIncidentModal({
                 type="submit"
                 className="w-full"
                 variant="primary"
-                disabled={loading || !category || categoriesLoading}
+                disabled={loading || !category || categoriesLoading || (requiresAttachment && images.length === 0)}
               >
                 {loading ? 'Creant...' : 'Crear incidencia'}
               </Button>

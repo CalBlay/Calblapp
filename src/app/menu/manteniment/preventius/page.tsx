@@ -2,37 +2,17 @@
 
 import Link from 'next/link'
 import { CalendarRange, ListChecks } from 'lucide-react'
-import { useSession } from 'next-auth/react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import { RoleGuard } from '@/lib/withRoleGuard'
-import { normalizeRole } from '@/lib/roles'
-import { isMaintenanceCapDepartment } from '@/lib/accessControl'
-
-type SessionUser = {
-  role?: string
-  department?: string
-}
-
-const normalizeDept = (raw?: string) =>
-  (raw || '')
-    .toString()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .trim()
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
 
 export default function PreventiusIndexPage() {
-  const { data: session } = useSession()
-  const sessionUser = (session?.user || {}) as SessionUser
-  const userRole = normalizeRole(sessionUser.role || '')
-  const userDepartment = normalizeDept(sessionUser.department || '')
-
-  const isMaintenanceWorker = userRole === 'treballador' && userDepartment === 'manteniment'
-  const isMaintenanceCap = userRole === 'cap' && isMaintenanceCapDepartment(userDepartment)
-  const isAdmin = userRole === 'admin' || userRole === 'direccio'
+  const { canViewPath } = useUiPermissions()
+  const canViewPlanner = canViewPath('/menu/manteniment/preventius/planificador')
+  const canViewJourney = canViewPath('/menu/manteniment/preventius/fulls')
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+    <MaintenancePermissionGate path="/menu/manteniment/preventius">
       <div className="mx-auto w-full max-w-6xl space-y-5 p-4">
         <ModuleHeader subtitle="Preventius i neteges (nou)" />
 
@@ -44,7 +24,7 @@ export default function PreventiusIndexPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {(isAdmin || isMaintenanceCap) && (
+          {canViewPlanner && (
             <Link
               href="/menu/manteniment/preventius/planificador"
               className="rounded-2xl border bg-gradient-to-br from-teal-50 to-cyan-100 p-5 hover:shadow-sm"
@@ -61,7 +41,7 @@ export default function PreventiusIndexPage() {
             </Link>
           )}
 
-          {(isAdmin || isMaintenanceCap || isMaintenanceWorker) && (
+          {canViewJourney && (
             <Link
               href="/menu/manteniment/preventius/fulls"
               className="rounded-2xl border bg-gradient-to-br from-emerald-50 to-green-100 p-5 hover:shadow-sm"
@@ -80,6 +60,6 @@ export default function PreventiusIndexPage() {
 
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }
