@@ -26,21 +26,21 @@ export function useUiPermissions() {
   const { data, error, isLoading, mutate } = useSWR<UiPermissionsResponse>(
     userId ? '/api/permissions/ui' : null,
     fetcher,
-    { revalidateOnFocus: false }
+    { revalidateOnFocus: true, revalidateOnReconnect: true }
   )
 
   const map = useMemo(() => (data?.map || {}) as Record<string, boolean>, [data])
   const edit = useMemo(() => (data?.edit || {}) as Record<string, boolean>, [data])
   const actions = useMemo(() => (data?.actions || {}) as Record<string, boolean>, [data])
 
-  const canViewPath = useCallback((path: string) => map[path] !== false, [map])
+  const canViewPath = useCallback((path: string) => map[path] === true, [map])
   const isPathBlocked = useCallback((path: string) => isUiPathBlocked(path, map), [map])
   const isPathAllowed = useCallback((path: string) => isUiPathAllowed(path, map), [map])
   const canEditPath = useCallback(
     (path: string) => map[path] !== false && edit[path] !== false,
     [map, edit]
   )
-  const hasAction = useCallback((key: string) => actions[key] !== false, [actions])
+  const hasAction = useCallback((key: string) => actions[key] === true, [actions])
 
   const ready = Boolean(userId) && !isLoading && !error && Boolean(data)
 

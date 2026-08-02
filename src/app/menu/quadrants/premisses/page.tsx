@@ -146,15 +146,47 @@ const toEditableDriverCrews = (
     driverId:
       crew.driverId && ids.has(crew.driverId)
         ? crew.driverId
-        : people.find((item) => item.isDriver && item.name === crew.driverName)?.id || '',
+        : people.find(
+            (item) => item.isDriver && norm(item.name) === norm(crew.driverName)
+          )?.id || '',
     companionIds: (crew.companions || [])
       .map((companion) =>
         companion.id && ids.has(companion.id)
           ? companion.id
-          : people.find((item) => item.name === companion.name)?.id || ''
+          : people.find((item) => norm(item.name) === norm(companion.name))?.id || ''
       )
       .filter(Boolean),
   }))
+}
+
+/** Fusiona equips resolts des de Firestore amb edicions locals (p. ex. equips nous sense desar). */
+const mergeEditableDriverCrews = (
+  premises: Premises,
+  people: PersonnelOption[],
+  current: EditableDriverCrew[]
+): EditableDriverCrew[] => {
+  const resolved = toEditableDriverCrews(premises, people)
+  const resolvedIds = new Set(resolved.map((crew) => crew.id))
+  const extraLocal = current.filter((crew) => !resolvedIds.has(crew.id))
+
+  const merged = resolved.map((crew) => {
+    const existing = current.find((item) => item.id === crew.id)
+    if (!existing) return crew
+
+    const driverId =
+      existing.driverId && people.some((person) => person.id === existing.driverId)
+        ? existing.driverId
+        : crew.driverId
+
+    const companionIds =
+      existing.companionIds.length > 0
+        ? existing.companionIds.filter((id) => people.some((person) => person.id === id))
+        : crew.companionIds
+
+    return { ...crew, driverId, companionIds }
+  })
+
+  return [...merged, ...extraLocal]
 }
 
 const toEditableSurveyGroups = (premises: Premises): EditableSurveyGroup[] =>
@@ -212,6 +244,11 @@ export default function QuadrantPremisesPage() {
   }, [status, permsReady, canPremisses, router, canSelectDepartment, sessionDept])
 
   useEffect(() => {
+    setPeople([])
+    setDriverCrews([])
+  }, [department])
+
+  useEffect(() => {
     if (status !== 'authenticated' || !department || !ALLOWED_DEPARTMENTS.has(department)) return
 
     let cancelled = false
@@ -233,24 +270,13 @@ export default function QuadrantPremisesPage() {
         const nextConditions = toEditableConditions(nextPremises)
         const nextDefaultCharacteristicsText = (nextPremises.defaultCharacteristics || []).join(', ')
         const nextVestimentModelsText = (nextPremises.vestimentModels || []).join('\n')
-        const nextDriverCrews = toEditableDriverCrews(nextPremises, people)
         const nextSurveyGroups = toEditableSurveyGroups(nextPremises)
         setPremises(nextPremises)
         setConditions(nextConditions)
-        setDriverCrews(nextDriverCrews)
         setSurveyGroups(nextSurveyGroups)
         setDefaultCharacteristicsText(nextDefaultCharacteristicsText)
         setVestimentModelsText(nextVestimentModelsText)
         setMeta(json?.meta || null)
-        lastSavedSnapshotRef.current = buildSnapshot({
-          department,
-          premises: nextPremises,
-          defaultCharacteristicsText: nextDefaultCharacteristicsText,
-          vestimentModelsText: nextVestimentModelsText,
-          conditions: nextConditions,
-          driverCrews: nextDriverCrews,
-          surveyGroups: nextSurveyGroups,
-        })
       } catch (err) {
         if (cancelled) return
         setError(err instanceof Error ? err.message : 'Error carregant premisses')
@@ -263,7 +289,6 @@ export default function QuadrantPremisesPage() {
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- recarrega premises quan canvia dept, no quan canvia people
   }, [status, department])
 
   useEffect(() => {
@@ -283,31 +308,33 @@ export default function QuadrantPremisesPage() {
 
         const nextPeople = Array.isArray(json?.people) ? (json.people as PersonnelOption[]) : []
         setPeople(nextPeople)
-        setConditions((prev) =>
-          prev.map((condition) => {
-            if (condition.responsibleId) return condition
-            const matched = nextPeople.find(
-              (person) => norm(person.name) === norm(condition.responsible)
-            )
-            return matched
-              ? {
-                  ...condition,
-                  responsibleId: matched.id,
-                  responsible: matched.name,
-                }
-              : condition
-          })
-        )
-        const nextDriverCrews = driverCrews.length > 0
-          ? driverCrews.map((crew) => ({
-              ...crew,
-              driverId: nextPeople.some((item) => item.id === crew.driverId) ? crew.driverId : '',
-              companionIds: crew.companionIds.filter((id) =>
-                nextPeople.some((item) => item.id === id)
-              ),
-            }))
-          : toEditableDriverCrews(premises, nextPeople)
+        if (norm(premises.department) !== norm(department)) return
+
+        const nextConditions = conditions.map((condition) => {
+          if (condition.responsibleId) return condition
+          const matched = nextPeople.find(
+            (person) => norm(person.name) === norm(condition.responsible)
+          )
+          return matched
+            ? {
+                ...condition,
+                responsibleId: matched.id,
+                responsible: matched.name,
+              }
+            : condition
+        })
+        setConditions(nextConditions)
+        const nextDriverCrews = mergeEditableDriverCrews(premises, nextPeople, driverCrews)
         setDriverCrews(nextDriverCrews)
+        lastSavedSnapshotRef.current = buildSnapshot({
+          department,
+          premises,
+          defaultCharacteristicsText,
+          vestimentModelsText,
+          conditions: nextConditions,
+          driverCrews: nextDriverCrews,
+          surveyGroups,
+        })
       } catch {
         if (!cancelled) {
           setPeople([])

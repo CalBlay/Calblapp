@@ -4,6 +4,7 @@ import { FileSpreadsheet, Printer, Trash2 } from 'lucide-react'
 import { typography } from '@/lib/typography'
 import { formatDateOnly } from '@/lib/date-format'
 import { displayMaintenanceTemplateName } from '@/lib/maintenanceTemplateDisplay'
+import { formatMaintenanceTemplateSite } from '@/lib/maintenanceTemplateSite'
 import type { Template } from '../types'
 
 type Props = {
@@ -43,7 +44,7 @@ export default function TemplatesListCard({
                   >
                     <span>Temporalitat: {template.periodicity || '-'}</span>
                     <span>Ultima revisio: {formatDateOnly(template.lastDone)}</span>
-                    <span>Ubicacio: {template.location || '-'}</span>
+                    <span>Emplacament: {formatMaintenanceTemplateSite(template) || '-'}</span>
                     <span>Seccions: {(template.sections || []).length}</span>
                   </div>
                 </div>

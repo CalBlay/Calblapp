@@ -11,18 +11,28 @@ import { LogOut, Settings } from 'lucide-react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { normalizeRole } from '@/lib/roles'
 import {
-  getVisibleModules,
   MODULES,
   isLogisticsMaintenanceTicketsManager,
   isMaintenanceWorkerSpacesBlocked,
 } from '@/lib/accessControl'
-import { isUiPathBlocked } from '@/lib/uiPathAccess'
+import { isUiPathAllowed } from '@/lib/uiPathAccess'
+import { resolveModuleMenuHref } from '@/lib/moduleMenuNavigation'
 import { FiltersProvider } from '@/context/FiltersContext'
 import FilterSlideOver from '@/components/ui/filter-slide-over'
 import PWARegister from '@/components/PWARegister'
+import PushNotificationHandler from '@/components/PushNotificationHandler'
+import DocumentTitle from '@/components/DocumentTitle'
 import useSWR from 'swr'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
+function FullScreenStatus({ message }: { message: string }) {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4 text-center text-sm text-muted-foreground">
+      <p>{message}</p>
+    </div>
+  )
+}
 
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
@@ -35,9 +45,11 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     <Providers>
       <TooltipProvider>
         <FiltersProvider>
+          <DocumentTitle />
           <InnerLayout>{children}</InnerLayout>
           <FilterSlideOver />
           <PWARegister />
+          <PushNotificationHandler />
         </FiltersProvider>
       </TooltipProvider>
     </Providers>
@@ -91,32 +103,16 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, status, user, router])
 
-  const role = normalizeRole(user?.role)
-  const department = user?.department || ''
   const username = user?.name || user?.email || 'Usuari'
   const avatarLetter = username[0]?.toUpperCase() ?? 'U'
 
-  const baseVisibleModules = useMemo(() => {
-    if (!user) return []
-    return getVisibleModules({
-      role,
-      department,
-      canRespondSurveys: user.canRespondSurveys,
-      isDepartmentRobaLead: user.isDepartmentRobaLead,
-      robaLinkedPersonnelId: user.robaLinkedPersonnelId,
-      opsProjectsConfigurable: user.opsProjectsConfigurable,
-    })
-  }, [user, role, department])
-
   const filteredVisibleModules = useMemo(() => {
-    if (!uiPermData) return baseVisibleModules
-    return MODULES
-      .filter((m) => uiMap[m.path] === true)
-      .map((m) => ({
-        ...m,
-        submodules: (m.submodules || []).filter((s) => uiMap[s.path] === true),
-      }))
-  }, [uiPermData, baseVisibleModules, uiMap])
+    if (!uiPermData) return []
+    return MODULES.filter((m) => uiMap[m.path] === true).map((m) => ({
+      ...m,
+      submodules: (m.submodules || []).filter((s) => uiMap[s.path] === true),
+    }))
+  }, [uiPermData, uiMap])
 
   const lastStableVisibleModulesRef = useRef(filteredVisibleModules)
   useEffect(() => {
@@ -127,7 +123,7 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
 
   const stableVisibleModules = uiPermData
     ? filteredVisibleModules
-    : lastStableVisibleModulesRef.current ?? baseVisibleModules
+    : lastStableVisibleModulesRef.current ?? []
 
   const sortedVisibleModules = [...stableVisibleModules].sort((a, b) =>
     a.label.localeCompare(b.label, 'ca', { sensitivity: 'base' })
@@ -136,20 +132,30 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
   // Si estem en una ruta que l'usuari ha denegat via overrides UI, redirigim a /menu
   useEffect(() => {
     if (!uiPermData || isLogin) return
-    if (isUiPathBlocked(pathname, uiMap)) router.replace('/menu')
+    if (pathname?.startsWith('/menu/') && !isUiPathAllowed(pathname, uiMap)) {
+      router.replace('/menu')
+    }
   }, [uiPermData, uiMap, pathname, router, isLogin])
 
   /* 🔓 Pantalla login sense layout */
   if (isLogin) {
     return (
-      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background text-foreground">
-        <Image src="/logo.png" alt="Cal Blay" width={200} height={80} />
-        {children}
+      <div className="flex min-h-[100dvh] items-center justify-center bg-gray-50 px-4 py-8 text-foreground">
+        <div className="flex w-full max-w-sm flex-col items-center gap-6">
+          <Image src="/logo.png" alt="Cal Blay" width={200} height={80} priority />
+          <div className="w-full">{children}</div>
+        </div>
       </div>
     )
   }
 
-  if (!user) return null
+  if (status === 'loading') {
+    return <FullScreenStatus message="Carregant sessio..." />
+  }
+
+  if (!user) {
+    return <FullScreenStatus message="Redirigint a l'inici de sessio..." />
+  }
 
   return (
       <div className="min-h-[100dvh] bg-background text-foreground">
@@ -206,7 +212,7 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
               {sortedVisibleModules.map(mod => (
                 <Link
                   key={mod.path}
-                  href={mod.path}
+                  href={resolveModuleMenuHref(mod, uiMap)}
                   onClick={() => setMenuOpen(false)}
                   className="px-3 py-2 rounded-md hover:bg-muted"
                 >
@@ -233,13 +239,25 @@ function InnerLayout({ children }: { children: React.ReactNode }) {
           pathname.startsWith('/menu/quadrants') ||
           pathname.startsWith('/menu/modifications') ||
           pathname.startsWith('/menu/incidents') ||
+          pathname.startsWith('/menu/auditoria') ||
           pathname.startsWith('/menu/projects') ||
+          pathname.startsWith('/menu/events') ||
+          pathname.startsWith('/menu/pissarra') ||
+          pathname.startsWith('/menu/logistica/preparacio') ||
+          pathname.startsWith('/menu/logistica/assignacions') ||
           pathname.startsWith('/menu/manteniment/preventius/planificador') ||
           pathname.startsWith('/menu/manteniment/seguiment') ||
+          pathname.startsWith('/menu/manteniment/dades') ||
+          pathname.startsWith('/menu/manteniment/informes') ||
           pathname.startsWith('/menu/manteniment/tickets') ||
+          pathname.startsWith('/menu/reports') ||
           pathname.startsWith('/menu/documentacio') ||
-          pathname.startsWith('/menu/roba-personal')
-            ? 'h-auto w-full max-w-none overflow-visible px-2 pb-6 sm:px-4'
+          pathname.startsWith('/menu/roba-personal') ||
+          pathname.startsWith('/menu/spaces') ||
+          pathname.startsWith('/menu/calendar') ||
+          pathname.startsWith('/menu/settings/articles') ||
+          pathname.startsWith('/menu/settings/magatzems')
+            ? 'h-auto w-full max-w-none overflow-visible px-2 pb-6 sm:px-4 lg:px-6 xl:px-8'
             : 'mx-auto h-auto max-w-7xl overflow-visible px-2 pb-6 sm:px-4'
         }
       >

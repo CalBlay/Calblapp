@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react'
 import { usePathname, useRouter } from 'next/navigation'
 import { normalizeRole } from '@/lib/roles'
 import { getVisibleModules } from '@/lib/accessControl'
-import { isUiPathBlocked } from '@/lib/uiPathAccess'
+import { isUiPathAllowed } from '@/lib/uiPathAccess'
 import useSWR from 'swr'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -29,9 +29,8 @@ interface RoleGuardProps {
 }
 
 /**
- * ÐY"' Component de protecciÇü dƒ?TaccÇ¸s per rols i departaments
- * - Mostra ƒ?oCarregantƒ?Ýƒ?? mentre la sessiÇü sƒ?TestÇÿ carregant.
- * - Redirigeix a /menu si lƒ?Tusuari no tÇ¸ accÇ¸s.
+ * Protecció d'accés per rols i permisos UI (Settings → permisos).
+ * Quan els permisos UI estan carregats, són l'autoritat per a rutes /menu/*.
  */
 export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
   const { data: session, status } = useSession()
@@ -44,18 +43,29 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
     [uiPermData?.map]
   )
 
-  // Normalitzem la llista per si arriba algun rol amb majÇ§scules o accents
   const normalizedAllowed = React.useMemo(
     () => allowedRoles.map((r) => normalizeRole(r)),
     [allowedRoles]
   )
 
+  const isMenuRoute = Boolean(pathname?.startsWith('/menu/'))
+  const awaitingUiPermissions = isMenuRoute && Boolean(user?.id) && !uiPermData && status !== 'loading'
+
   React.useEffect(() => {
     if (status === 'loading') return
+    if (!session) {
+      router.replace('/menu')
+      return
+    }
+
+    if (uiPermData && isMenuRoute) {
+      if (!isUiPathAllowed(pathname || '', uiMap)) {
+        router.replace('/menu')
+      }
+      return
+    }
 
     const role = normalizeRole(user?.role || '')
-
-    // Si el mÇ?dul actual ja surt com a visible, deixem passar encara que hi hagi desajust als allowedRoles
     const visibleModules = getVisibleModules({
       role,
       department: user?.department || undefined,
@@ -74,21 +84,24 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
         })
       : false
 
-    // Overrides UI (per sobre del codi base)
-    if (uiPermData) {
-      if (pathname && isUiPathBlocked(pathname, uiMap)) {
-        router.replace('/menu')
-        return
-      }
-    }
-
-    if (!session || (!normalizedAllowed.includes(role) && !hasModuleAccess)) {
+    if (!normalizedAllowed.includes(role) && !hasModuleAccess) {
       router.replace('/menu')
-      return
     }
-  }, [status, session, user, router, normalizedAllowed, pathname, uiPermData, uiMap])
+  }, [
+    status,
+    session,
+    user,
+    router,
+    normalizedAllowed,
+    pathname,
+    uiPermData,
+    uiMap,
+    isMenuRoute,
+  ])
 
-  if (status === 'loading') return <p>Carregantƒ?Ý</p>
+  if (status === 'loading' || awaitingUiPermissions) {
+    return <p>Carregant…</p>
+  }
 
   return <>{children}</>
 }

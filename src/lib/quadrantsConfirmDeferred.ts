@@ -6,6 +6,10 @@ import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import type { Timestamp as AdminTimestamp } from 'firebase-admin/firestore'
 import { ensureEventChatChannel } from '@/lib/messaging/eventChat'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
+import { formatTornNotificationLabel } from '@/lib/date-format'
+import { resolveEventDisplayName } from '@/lib/eventDisplayName'
 
 export const QUADRANT_TRAINING_COLLECTION = 'quadrantTrainingSamples'
 
@@ -338,11 +342,9 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
     /* ignore */
   }
 
-  const st = ctx.stageData
-  const eventNameGuess = safeString(st?.eventName ?? st?.Nom ?? '')
+  const validUsers = await resolveValidUsersFromQuadrant(ctx.firstPrev)
 
-  const [validUsers] = await Promise.all([
-    resolveValidUsersFromQuadrant(ctx.firstPrev),
+  await Promise.all([
     (async () => {
       try {
         await db.collection(QUADRANT_TRAINING_COLLECTION).doc().set(buildTrainingSamplePayload(ctx))
@@ -360,9 +362,15 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
   ])
 
   try {
-    const eventName = eventNameGuess || 'Nou esdeveniment'
+    const doc = ctx.firstPrev || {}
+    const eventName =
+      resolveEventDisplayName(
+        ctx.stageData,
+        safeString(doc.eventName),
+        safeString(doc.summary)
+      ) || 'Nou esdeveniment'
     const pushTitle = 'Tens un nou torn assignat'
-    const pushBody = `${eventName} – ${ctx.firstPrev?.startDate ?? ''} ${ctx.firstPrev?.startTime ?? ''}`
+    const pushBody = formatTornNotificationLabel(eventName, ctx.firstPrev?.startDate)
     if (validUsers.length === 0) return
 
     const notifBatch = db.batch()
@@ -381,23 +389,40 @@ export async function deferQuadrantConfirmSideEffects(ctx: {
         type: 'torn',
         eventId: String(ctx.eventId),
         eventDate: ctx.firstPrev?.startDate || null,
+        eventName,
       })
     }
     await notifBatch.commit()
+    const { afterNotificationsCommitted } = await import('@/lib/notifications/writeUserNotification')
+    await afterNotificationsCommitted(
+      validUsers.map((u) => ({ userId: u.userId, type: 'torn' }))
+    )
 
-    await Promise.all(
-      validUsers.map((u) =>
-        fetch(`${ctx.requestOrigin}/api/push/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: u.userId,
-            title: pushTitle,
-            body: pushBody,
-            url: `/menu/torns?open=${ctx.eventId}`,
-          }),
-        }).catch(() => {})
-      )
+    if (hasAblyApiKey()) {
+      try {
+        const rest = getAblyRest()
+        await Promise.all(
+          validUsers.map((u) =>
+            rest.channels.get(`user:${u.userId}:notifications`).publish('created', {
+              type: 'torn',
+              eventId: String(ctx.eventId),
+              eventDate: ctx.firstPrev?.startDate || null,
+              createdAt: now,
+            })
+          )
+        )
+      } catch (err) {
+        console.warn('[quadrantsConfirmDeferred] Ably publish error', err)
+      }
+    }
+
+    await sendPushToUsers(
+      validUsers.map((u) => u.userId),
+      {
+        title: pushTitle,
+        body: pushBody,
+        url: `/menu/torns?open=${ctx.eventId}`,
+      }
     )
   } catch (err) {
     console.warn('[quadrantsConfirmDeferred] notifications/push failed', err)

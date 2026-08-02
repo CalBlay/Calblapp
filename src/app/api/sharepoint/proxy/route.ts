@@ -1,11 +1,15 @@
 // file: src/app/api/sharepoint/proxy/route.ts
 import { NextResponse } from 'next/server'
 import { downloadFileContent } from '@/services/sharepoint/graph'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 export const runtime = 'nodejs'
 
 export async function GET(req: Request) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const { searchParams } = new URL(req.url)
     const itemId = searchParams.get('itemId')
 
@@ -28,7 +32,6 @@ export async function GET(req: Request) {
       headers: {
         'Content-Type': contentType,
         'Content-Disposition': contentDisposition,
-        'Access-Control-Allow-Origin': '*',
       },
     })
   } catch (err: unknown) {

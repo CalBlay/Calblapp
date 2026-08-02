@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
+import type { IncidentActionStatus } from '@/lib/incidentPolicy'
 
 export interface Incident {
   id: string
@@ -37,6 +38,28 @@ export interface Incident {
     path?: string | null
     meta?: { size?: number; type?: string } | null
   }>
+  hasActions?: boolean
+  actionsCount?: number
+  openActionsCount?: number
+  meetingMinutesActionsText?: string
+}
+
+export interface IncidentAction {
+  id: string
+  incidentId: string
+  title: string
+  description: string
+  status: IncidentActionStatus
+  assignedToId?: string
+  assignedToName: string
+  department: string
+  dueAt: string
+  createdAt: string
+  closedAt: string
+  createdById?: string
+  createdByName?: string
+  updatedAt?: string
+  closedByName?: string
 }
 
 const CATEGORY_PREFIX_9XX = '9XX'
@@ -87,10 +110,63 @@ function normalizeIncidentRow(inc: Record<string, unknown>): Incident {
   } as Incident
 }
 
+function summarizeActions(actions: Array<{ status: string }>) {
+  let total = 0
+  let open = 0
+  for (const action of actions) {
+    total += 1
+    if (action.status === 'open' || action.status === 'in_progress') open += 1
+  }
+  return { total, open }
+}
+
+function groupActionsByIncident(actions: IncidentAction[], incidentIds?: string[]) {
+  const grouped: Record<string, IncidentAction[]> = {}
+  if (Array.isArray(incidentIds)) {
+    for (const incidentId of incidentIds) grouped[incidentId] = []
+  }
+  for (const action of actions) {
+    const incidentId = String(action.incidentId || '').trim()
+    if (!incidentId) continue
+    if (!grouped[incidentId]) grouped[incidentId] = []
+    grouped[incidentId].push(action)
+  }
+  for (const incidentId of Object.keys(grouped)) {
+    grouped[incidentId].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
+  }
+  return grouped
+}
+
+function applyActionSummaries(incidents: Incident[], actions: Array<{ incidentId: string; status: string }>): Incident[] {
+  const summary = new Map<string, { total: number; open: number }>()
+  for (const action of actions) {
+    const incidentId = String(action.incidentId || '').trim()
+    if (!incidentId) continue
+    const current = summary.get(incidentId) || { total: 0, open: 0 }
+    current.total += 1
+    if (action.status === 'open' || action.status === 'in_progress') current.open += 1
+    summary.set(incidentId, current)
+  }
+
+  return incidents.map((incident) => {
+    const counts = summary.get(incident.id) || { total: 0, open: 0 }
+    return normalizeIncidentRow({
+      ...incident,
+      hasActions: counts.total > 0,
+      actionsCount: counts.total,
+      openActionsCount: counts.open,
+    })
+  })
+}
+
+export type IncidentsDateFilterMode = 'all' | 'event'
+
 export function useIncidents(_filters: {
   eventId?: string
   from?: string
   to?: string
+  /** `event`: aplica from/to; `all`: sense filtre de dates (com tickets). */
+  dateMode?: IncidentsDateFilterMode
   department?: string
   importance?: string
   categoryLabel?: string
@@ -109,6 +185,7 @@ export function useIncidents(_filters: {
 }) {
   /** Dades de l’API (sense filtre client d’estat). */
   const [rawIncidents, setRawIncidents] = useState<Incident[]>([])
+  const [actionsByIncident, setActionsByIncident] = useState<Record<string, IncidentAction[]>>({})
   const [loading, setLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -122,6 +199,7 @@ export function useIncidents(_filters: {
       eventId: _filters.eventId,
       from: _filters.from,
       to: _filters.to,
+      dateMode: _filters.dateMode ?? 'event',
       department: _filters.department,
       importance: _filters.importance,
       categoryLabel: _filters.categoryLabel,
@@ -135,6 +213,7 @@ export function useIncidents(_filters: {
       _filters.eventId,
       _filters.from,
       _filters.to,
+      _filters.dateMode,
       _filters.department,
       _filters.importance,
       _filters.categoryLabel,
@@ -160,6 +239,7 @@ export function useIncidents(_filters: {
       if (!filters.enabled) {
         if (!cancel) {
           setRawIncidents([])
+          setActionsByIncident({})
           setLoading(false)
           setIsRefreshing(false)
           hadDataRef.current = false
@@ -182,8 +262,10 @@ export function useIncidents(_filters: {
 
         if (filters.eventId) qs.set('eventId', filters.eventId)
 
-        if (filters.from) qs.set('from', filters.from)
-        if (filters.to) qs.set('to', filters.to)
+        if (filters.dateMode !== 'all') {
+          if (filters.from) qs.set('from', filters.from)
+          if (filters.to) qs.set('to', filters.to)
+        }
         if (filters.department) qs.set('department', filters.department)
         if (filters.importance && filters.importance !== 'all')
           qs.set('importance', filters.importance)
@@ -216,6 +298,24 @@ export function useIncidents(_filters: {
             normalizeIncidentRow((inc && typeof inc === 'object' ? inc : {}) as Record<string, unknown>)
           ) as Incident[]
           setRawIncidents(normalized)
+          const incidentIds = normalized.map((incident) => incident.id).filter(Boolean)
+          if (incidentIds.length > 0) {
+            void fetch('/api/incidents/actions/batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ incidentIds }),
+            })
+              .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+              .then((payload) => {
+                if (cancel) return
+                const actions = Array.isArray(payload?.actions) ? payload.actions : []
+                setActionsByIncident(groupActionsByIncident(actions, incidentIds))
+                setRawIncidents((prev) => applyActionSummaries(prev, actions))
+              })
+              .catch(() => {})
+          } else {
+            setActionsByIncident({})
+          }
           hadDataRef.current = normalized.length > 0
         }
       } catch (err: unknown) {
@@ -236,6 +336,7 @@ export function useIncidents(_filters: {
     filters.eventId,
     filters.from,
     filters.to,
+    filters.dateMode,
     filters.department,
     filters.importance,
     filters.categoryLabel,
@@ -313,5 +414,40 @@ export function useIncidents(_filters: {
     }
   }, [])
 
-  return { incidents, rawIncidents, loading, isRefreshing, error, updateIncident, deleteIncident }
+  const patchIncidentLocal = useCallback((id: string, data: Partial<Incident>) => {
+    setRawIncidents((prev) =>
+      prev.map((inc) => (inc.id === id ? normalizeIncidentRow({ ...inc, ...data }) : inc))
+    )
+  }, [])
+
+  const patchIncidentActionsLocal = useCallback((id: string, actions: IncidentAction[]) => {
+    const normalizedActions = [...actions].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
+    const { total, open } = summarizeActions(normalizedActions)
+    setActionsByIncident((prev) => ({ ...prev, [id]: normalizedActions }))
+    setRawIncidents((prev) =>
+      prev.map((inc) =>
+        inc.id === id
+          ? normalizeIncidentRow({
+              ...inc,
+              hasActions: total > 0,
+              actionsCount: total,
+              openActionsCount: open,
+            })
+          : inc
+      )
+    )
+  }, [])
+
+  return {
+    incidents,
+    rawIncidents,
+    actionsByIncident,
+    loading,
+    isRefreshing,
+    error,
+    updateIncident,
+    deleteIncident,
+    patchIncidentLocal,
+    patchIncidentActionsLocal,
+  }
 }

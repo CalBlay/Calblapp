@@ -6,23 +6,34 @@ import { usePathname } from 'next/navigation'
 interface Props {
   title?: string | React.ReactNode
   subtitle?: string
+  breadcrumbSubtitle?: string
   icon?: React.ReactNode
   actions?: React.ReactNode
   mainHref?: string
 }
 
-export default function ModuleHeader({ title, subtitle, icon, actions, mainHref }: Props) {
-  const pathname = usePathname() ?? ''
+const normalizeLabel = (value?: string) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
 
-  // Exemple: /menu/spaces/reserves Ã¢â€ â€™ ['','menu','spaces','reserves']
+export default function ModuleHeader({
+  title,
+  subtitle,
+  breadcrumbSubtitle,
+  icon,
+  actions,
+  mainHref,
+}: Props) {
+  const pathname = usePathname() ?? ''
   const segments = pathname.split('/').filter(Boolean)
 
-  // Identifiquem el mòdul (spaces, torns, quadrants, etc.)
   const moduleKey = segments[1] || ''
   const submodule = segments[2] || ''
   const subsubmodule = segments[3] || ''
 
-  // Map colors automàtics
   const colorMap: Record<string, string> = {
     personnel: 'from-green-100 to-lime-100',
     events: 'from-yellow-100 to-orange-100',
@@ -37,11 +48,10 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     documentacio: 'from-teal-100 to-cyan-50',
     'roba-personal': 'from-sky-100 to-indigo-50',
     reports: 'from-cyan-100 to-indigo-50',
+    projects: 'from-violet-100 to-fuchsia-50',
+    settings: 'from-slate-100 to-gray-50',
   }
 
-  const color = colorMap[moduleKey] ?? 'from-gray-50 to-gray-100'
-
-  // Traducció Ã¢â‚¬Å“mòdul Ã¢â€ â€™ nom visibleÃ¢â‚¬Â
   const moduleLabels: Record<string, string> = {
     projects: 'Projectes',
     spaces: 'Espais',
@@ -57,12 +67,9 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     documentacio: 'Documentació',
     'roba-personal': 'Roba personal',
     reports: 'Informes',
+    settings: 'Settings',
   }
 
-  const mainLabel = title || moduleLabels[moduleKey] || moduleKey
-  const resolvedMainHref = mainHref || (moduleKey ? `/menu/${moduleKey}` : '')
-
-  // Traducció Ã¢â‚¬Å“submòdul Ã¢â€ â€™ nom visibleÃ¢â‚¬Â
   const subLabels: Record<string, string> = {
     reserves: 'Reserves',
     operativa: 'Operativa',
@@ -80,15 +87,22 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
     plantilles: 'Plantilles',
     valoracio: 'Avaluacio',
     consulta: 'Consulta',
-    fulls: 'Full de Treball',
+    fulls: 'Full de treball',
     seguiment: 'Seguiment',
     historial: 'Historial',
     quadre: 'Quadre de comandament',
     tipologies: 'Tipologies',
+    permisos: 'Permisos',
+    magatzems: 'Magatzems',
+    articles: 'Articles comanda',
+    serveis: 'Serveis',
   }
 
+  const color = colorMap[moduleKey] ?? 'from-gray-50 to-gray-100'
+  const mainLabel = title || moduleLabels[moduleKey] || moduleKey
+  const resolvedMainHref = mainHref || (moduleKey ? `/menu/${moduleKey}` : '')
   const subKey = subLabels[subsubmodule] ? subsubmodule : submodule
-  const subLabel = subtitle || subLabels[subKey] || ''
+  const subLabel = breadcrumbSubtitle || subtitle || subLabels[subKey] || ''
   const subHref =
     subLabel && subKey === subsubmodule && submodule && subsubmodule
       ? `/menu/${moduleKey}/${submodule}/${subsubmodule}`
@@ -96,58 +110,69 @@ export default function ModuleHeader({ title, subtitle, icon, actions, mainHref 
         ? `/menu/${moduleKey}/${submodule}`
         : ''
 
+  const repeatedSubtitle =
+    Boolean(subtitle) && normalizeLabel(subtitle) === normalizeLabel(subLabel)
+  const mobileSubtitle = repeatedSubtitle ? '' : subtitle || subLabel
+
   return (
-    <div className={`w-full bg-gradient-to-r ${color} border-b border-gray-200 px-4 py-3`}>
-      <div className="flex items-center justify-between">
+    <div
+      className={`w-full rounded-[28px] border border-white/70 bg-gradient-to-r ${color} px-4 py-4 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)] sm:rounded-[32px] sm:px-5`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          {icon ? (
+            <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/80 shadow-sm backdrop-blur-sm">
+              {icon}
+            </div>
+          ) : null}
 
-        {/* LEFT SIDE */}
-        <div className="flex items-center gap-2">
-          {icon && <div>{icon}</div>}
-
-          <div className="flex flex-col">
-
-            {/* BREADCRUMB AUTOMÃƒâ‚¬TIC */}
-            <div className="flex items-center gap-1 text-sm font-semibold">
-              
-              {/* MÃƒâ€™DUL PRINCIPAL (clicable) */}
-              {title ? (
-                resolvedMainHref ? (
-                  <a href={resolvedMainHref} className="text-gray-800 hover:underline">
-                    {mainLabel}
-                  </a>
-                ) : (
-                  <span className="text-gray-800">{mainLabel}</span>
-                )
-              ) : (
-                <a href={`/menu/${moduleKey}`} className="text-gray-800 hover:underline">
-                  {mainLabel}
-                </a>
-              )}
-
-              {/* SEPARADOR */}
-              {subLabel && <span className="text-gray-500">/</span>}
-
-              {/* SUBMÃƒâ€™DUL (clicable) */}
-              {subLabel && (
-                <a
-                  href={subHref}
-                  className="text-gray-700 hover:underline"
-                >
-                  {subLabel}
-                </a>
-              )}
+          <div className="min-w-0">
+            <div className="sm:hidden">
+              <div className="truncate text-[1.1rem] font-semibold text-slate-900">
+                {mainLabel}
+              </div>
+              {mobileSubtitle ? (
+                <div className="mt-1 line-clamp-2 text-sm text-slate-600">
+                  {mobileSubtitle}
+                </div>
+              ) : null}
             </div>
 
-            {/* SUBTÃƒÂTOL OPCIONAL */}
-            {subtitle && (
-              <div className="text-xs italic text-gray-600">{subtitle}</div>
-            )}
+            <div className="hidden sm:flex sm:flex-col">
+              <div className="flex items-center gap-1 text-sm font-semibold">
+                {title ? (
+                  resolvedMainHref ? (
+                    <a href={resolvedMainHref} className="text-gray-800 hover:underline">
+                      {mainLabel}
+                    </a>
+                  ) : (
+                    <span className="text-gray-800">{mainLabel}</span>
+                  )
+                ) : (
+                  <a href={`/menu/${moduleKey}`} className="text-gray-800 hover:underline">
+                    {mainLabel}
+                  </a>
+                )}
+                {subLabel ? <span className="text-gray-500">/</span> : null}
+                {subLabel ? (
+                  <a href={subHref} className="text-gray-700 hover:underline">
+                    {subLabel}
+                  </a>
+                ) : null}
+              </div>
 
+              {subtitle && !repeatedSubtitle ? (
+                <div className="text-xs italic text-gray-600">{subtitle}</div>
+              ) : null}
+            </div>
           </div>
         </div>
 
-        {/* RIGHT SIDE */}
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {actions ? (
+          <div className="flex shrink-0 items-center gap-2 rounded-2xl bg-white/70 p-1.5 shadow-sm backdrop-blur-sm sm:bg-transparent sm:p-0 sm:shadow-none">
+            {actions}
+          </div>
+        ) : null}
       </div>
     </div>
   )

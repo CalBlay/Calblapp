@@ -1,3 +1,4 @@
+import admin from 'firebase-admin'
 import {
   buildGroupedDraftPersistence,
   normalizeDepartmentKey,
@@ -6,6 +7,7 @@ import {
   type EditorRole,
   type EditorRow,
 } from '@/lib/quadrantsDraftEditor'
+import { resolveGroupedDraftTargetDocId } from '@/lib/quadrantsDraftDocResolve'
 
 type FirestoreDb = typeof import('@/lib/firebaseAdmin').firestoreAdmin
 
@@ -18,6 +20,7 @@ type SaveDraftContext = {
   rows: EditorRow[]
   groups?: EditorGroup[]
   vestimentModel?: string | null
+  docMeta?: Record<string, unknown>
 }
 
 type SaveDraftResult = {
@@ -38,6 +41,29 @@ type Line = {
   arrivalTime: string
   vehicleType: string
   plate: string
+}
+
+const buildDocMetaPatch = (docMeta?: Record<string, unknown>) => {
+  if (!docMeta || typeof docMeta !== 'object') return {}
+  const patch: Record<string, unknown> = {}
+  const copyString = (key: string) => {
+    const value = docMeta[key]
+    if (typeof value === 'string' && value.trim()) patch[key] = value.trim()
+  }
+  copyString('phaseType')
+  copyString('phaseLabel')
+  copyString('phaseDate')
+  copyString('code')
+  copyString('eventName')
+  copyString('meetingPoint')
+  copyString('startDate')
+  copyString('endDate')
+  copyString('startTime')
+  copyString('endTime')
+  if (typeof docMeta.location === 'string' && docMeta.location.trim()) {
+    patch.location = docMeta.location.trim()
+  }
+  return patch
 }
 
 const toLine = (p: EditorRow): Line => ({
@@ -141,10 +167,12 @@ const persistServeisDraft = async ({
   db,
   coll,
   department,
+  sourceDocId,
   canonicalEventId,
   rows,
   groups,
   vestimentModel,
+  docMeta,
 }: SaveDraftContext) => {
   const departmentKey = normalizeDepartmentKey(department)
   const normalizedRows = normalizeRowsForDepartmentSave({ rows })
@@ -155,9 +183,39 @@ const persistServeisDraft = async ({
   }
 
   const eventDocsSnap = await db.collection(coll).where('eventId', '==', canonicalEventId).get()
-  const existingDocs = eventDocsSnap.docs
+  const eventDocPrefix = `${canonicalEventId}__event__`
+  const prefixedDocsSnap = await db
+    .collection(coll)
+    .orderBy(admin.firestore.FieldPath.documentId())
+    .startAt(eventDocPrefix)
+    .endAt(`${eventDocPrefix}\uf8ff`)
+    .get()
+  const directDocIds = Array.from(
+    new Set([String(sourceDocId || '').trim(), String(canonicalEventId || '').trim()].filter(Boolean))
+  )
+  const directDocSnaps = await Promise.all(
+    directDocIds.map(async (docId) => {
+      const snap = await db.collection(coll).doc(docId).get()
+      return snap.exists ? snap : null
+    })
+  )
+  const existingDocs = [
+    ...eventDocsSnap.docs,
+    ...prefixedDocsSnap.docs.filter(
+      (doc) => !eventDocsSnap.docs.some((eventDoc) => eventDoc.id === doc.id)
+    ),
+    ...directDocSnaps.filter(
+      (snap): snap is FirebaseFirestore.DocumentSnapshot =>
+        snap !== null &&
+        !eventDocsSnap.docs.some((doc) => doc.id === snap.id) &&
+        !prefixedDocsSnap.docs.some((doc) => doc.id === snap.id)
+    ),
+  ]
   const baseDoc: Record<string, unknown> = existingDocs[0]?.data() || {}
-  const existingByGroup = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>()
+  const existingByGroup = new Map<
+    string,
+    FirebaseFirestore.DocumentSnapshot | FirebaseFirestore.QueryDocumentSnapshot
+  >()
 
   existingDocs.forEach((doc) => {
     const data = doc.data() as Record<string, unknown>
@@ -203,8 +261,13 @@ const persistServeisDraft = async ({
     const fallbackResponsible =
       explicitResponsables[0] ??
       (group.wantsResponsible !== false ? conductorsRows[0] ?? null : null)
-    const responsables = fallbackResponsible ? [fallbackResponsible] : []
-    const mainResponsable = fallbackResponsible
+    const responsables =
+      explicitResponsables.length > 0
+        ? explicitResponsables
+        : fallbackResponsible
+        ? [fallbackResponsible]
+        : []
+    const mainResponsable = responsables[0] ?? fallbackResponsible
     const responsibleActsAsDriver = !!mainResponsable?.isDriver
     const conductorsForSave = [
       ...(responsibleActsAsDriver && mainResponsable ? [mainResponsable] : []),
@@ -236,6 +299,34 @@ const persistServeisDraft = async ({
       group.meetingPoint || timingAnchor?.meetingPoint || groupRows[0]?.meetingPoint || previous?.meetingPoint || ''
     const totalWorkers = names.size + extraCount
     const numDrivers = conductorsForSave.length
+    const roleLines = [...responsables, ...conductorsForSave, ...treballadorsRows].map(
+      (row, lineIndex) => ({
+        slotId:
+          `${groupId}-line-${lineIndex + 1}`,
+        role: row.isJamonero ? 'jamonero' : row.role,
+        personId: row.id || '',
+        personName: row.name || '',
+        serviceDate: row.startDate || groupDate || previous?.startDate || '',
+        meetingPoint: row.meetingPoint || meetingPoint,
+        startTime: row.startTime || startTime,
+        endTime: row.endTime || endTime,
+        arrivalTime: row.arrivalTime || arrivalTime || '',
+      })
+    )
+    const manualWorkers = treballadorsRows.map((row) => ({
+      id: row.id || '',
+      name: row.name || '',
+      groupId: row.groupId || groupId,
+      meetingPoint: row.meetingPoint || meetingPoint,
+      isJamonero: row.isJamonero === true,
+      startDate: row.startDate || groupDate || previous?.startDate || '',
+      startTime: row.startTime || startTime,
+      endDate: row.endDate || row.startDate || groupDate || previous?.startDate || '',
+      endTime: row.endTime || endTime,
+      arrivalTime: row.arrivalTime || arrivalTime || '',
+      vehicleType: row.vehicleType || '',
+      plate: row.plate || '',
+    }))
     const docId =
       baseGroupDoc?.id ||
       `${canonicalEventId}__event__${groupDate || previous?.startDate || 'nodate'}__${sanitizeGroupId(groupId)}`
@@ -246,6 +337,7 @@ const persistServeisDraft = async ({
       db.collection(coll).doc(docId),
       {
         ...previous,
+        ...buildDocMetaPatch(docMeta),
         department: departmentKey,
         eventId: canonicalEventId,
         startDate: groupDate || previous?.startDate || '',
@@ -290,6 +382,8 @@ const persistServeisDraft = async ({
               null,
             responsibleId: mainResponsable?.id || null,
             responsibleName: mainResponsable?.name || null,
+            roleLines,
+            manualWorkers,
           },
         ],
         createdAt: coerceDocDate(previous?.createdAt, new Date()),
@@ -310,6 +404,54 @@ const persistServeisDraft = async ({
   } satisfies SaveDraftResult
 }
 
+const loadEventDraftDocCandidates = async (
+  db: FirestoreDb,
+  coll: string,
+  canonicalEventId: string
+) => {
+  const snap = await db.collection(coll).where('eventId', '==', canonicalEventId).get()
+  return snap.docs.map((doc) => {
+    const data = (doc.data() || {}) as Record<string, unknown>
+    return {
+      id: doc.id,
+      phaseDate: typeof data.phaseDate === 'string' ? data.phaseDate : null,
+      startDate: typeof data.startDate === 'string' ? data.startDate : null,
+    }
+  })
+}
+
+const resolveSingleDocDraftRef = async ({
+  db,
+  coll,
+  sourceDocId,
+  canonicalEventId,
+  docMeta,
+}: {
+  db: FirestoreDb
+  coll: string
+  sourceDocId: string
+  canonicalEventId: string
+  docMeta?: Record<string, unknown>
+}) => {
+  const needsLookup =
+    !String(sourceDocId || '').includes('__') &&
+    Boolean(String(docMeta?.phaseDate || docMeta?.startDate || '').trim())
+
+  const existingDocs = needsLookup
+    ? await loadEventDraftDocCandidates(db, coll, canonicalEventId)
+    : []
+
+  const targetDocId = resolveGroupedDraftTargetDocId({
+    sourceDocId,
+    canonicalEventId,
+    phaseDate: typeof docMeta?.phaseDate === 'string' ? docMeta.phaseDate : null,
+    startDate: typeof docMeta?.startDate === 'string' ? docMeta.startDate : null,
+    existingDocs,
+  })
+
+  return db.collection(coll).doc(targetDocId)
+}
+
 const persistGenericGroupedDraft = async ({
   db,
   coll,
@@ -318,8 +460,15 @@ const persistGenericGroupedDraft = async ({
   canonicalEventId,
   rows,
   groups,
+  docMeta,
 }: SaveDraftContext) => {
-  const ref = db.collection(coll).doc(sourceDocId || canonicalEventId)
+  const ref = await resolveSingleDocDraftRef({
+    db,
+    coll,
+    sourceDocId,
+    canonicalEventId,
+    docMeta,
+  })
   const snap = await ref.get()
   let createdAt = new Date()
   const existing = snap.exists ? (snap.data() as Record<string, unknown>) : null
@@ -338,6 +487,7 @@ const persistGenericGroupedDraft = async ({
   const nextUpdateData: Record<string, unknown> = {
     ...updateData,
     createdAt,
+    ...buildDocMetaPatch(docMeta),
   }
 
   if (normalizedRows.some((row) => row.groupId)) {
@@ -385,8 +535,15 @@ const persistCuinaDraft = async ({
   canonicalEventId,
   rows,
   groups,
+  docMeta,
 }: SaveDraftContext) => {
-  const ref = db.collection(coll).doc(sourceDocId || canonicalEventId)
+  const ref = await resolveSingleDocDraftRef({
+    db,
+    coll,
+    sourceDocId,
+    canonicalEventId,
+    docMeta,
+  })
   const snap = await ref.get()
   let createdAt = new Date()
   const existing = snap.exists ? (snap.data() as Record<string, unknown>) : null
@@ -405,6 +562,7 @@ const persistCuinaDraft = async ({
   const nextUpdateData: Record<string, unknown> = {
     ...updateData,
     createdAt,
+    ...buildDocMetaPatch(docMeta),
   }
 
   const groupedRows = new Map<string, EditorRow[]>()
@@ -469,6 +627,27 @@ const persistCuinaDraft = async ({
       if (!name || name === 'Extra') return
       uniqueNames.add(name.toLowerCase())
     })
+    const roleLines = [...responsables, ...conductors, ...treballadors].map((row, index) => ({
+      slotId: `${groupId}-line-${index + 1}`,
+      role: row.role,
+      personId: row.id || '',
+      personName: row.name || '',
+      serviceDate: row.startDate || groupMeta.serviceDate || previousGroup.serviceDate || existing?.startDate || '',
+      meetingPoint:
+        row.meetingPoint ||
+        groupMeta.meetingPoint ||
+        previousGroup.meetingPoint ||
+        existing?.meetingPoint ||
+        '',
+      startTime: row.startTime || groupMeta.startTime || previousGroup.startTime || existing?.startTime || '',
+      endTime: row.endTime || groupMeta.endTime || previousGroup.endTime || existing?.endTime || '',
+      arrivalTime:
+        row.arrivalTime ??
+        groupMeta.arrivalTime ??
+        previousGroup.arrivalTime ??
+        existing?.arrivalTime ??
+        '',
+    }))
 
     return {
       ...previousGroup,
@@ -508,6 +687,7 @@ const persistCuinaDraft = async ({
       drivers: conductors.length,
       responsibleName: responsables[0]?.name || null,
       responsibleId: responsables[0]?.id || null,
+      roleLines,
     }
   })
 

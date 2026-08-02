@@ -142,7 +142,7 @@ export default function SpacesManualReserveModal({
     const dataInici = form.DataInici.trim()
 
     if (!comercial || !nomClient || !ubicacio || !dataInici) {
-      alert('Omple tots els camps obligatoris.')
+      alert('Omple tots els camps obligatoris (inclòs el client de la llista).')
       return
     }
 

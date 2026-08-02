@@ -1,11 +1,11 @@
 'use client'
 
-import { RoleGuard } from '@/lib/withRoleGuard'
+import MaintenancePermissionGate from '../components/MaintenancePermissionGate'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 
 export default function MaintenanceTicketsDecoPage() {
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+    <MaintenancePermissionGate>
       <div className="space-y-5 px-4 pb-8">
         <ModuleHeader title="Deco" subtitle="Tickets legacy" mainHref="/menu/deco" />
         <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
@@ -13,6 +13,6 @@ export default function MaintenanceTicketsDecoPage() {
           del frontend actiu per reduir complexitat i consolidar el modul principal de manteniment.
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

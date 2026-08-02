@@ -12,16 +12,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { DataSourceLegend } from '@/components/informes/DataSourceLegend'
 import { MaintenanceInformesVisualCharts } from '@/components/informes/MaintenanceInformesVisualCharts'
 import { useRegisterModuleExportMenu } from '@/components/export/ModuleExportMenuContext'
-import { INFORMES_DOMAINS } from '@/lib/informes/domains'
 import type { MaintenanceOverview } from '@/lib/informes/maintenanceOverview'
 import { normalizeMaintenanceOverview } from '@/lib/informes/normalizeMaintenanceOverview'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { toast } from '@/components/ui/use-toast'
-
-const MAINTENANCE_META = INFORMES_DOMAINS.find((domain) => domain.id === 'maintenance')!
 
 type ExportSnap = {
   tab: 'kpis' | 'custom'
@@ -52,6 +48,19 @@ function formatMinutes(minutes: number) {
   return `${h} h ${m} min`
 }
 
+function formatDateTime(value?: string) {
+  if (!value) return '—'
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed)) return value
+  return new Date(parsed).toLocaleString('ca-ES', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export function MaintenanceInformesPanel() {
   const [tab, setTab] = useState<'kpis' | 'custom'>('kpis')
   const [days, setDays] = useState('30')
@@ -64,8 +73,11 @@ export function MaintenanceInformesPanel() {
   const [customDateTo, setCustomDateTo] = useState(defRange.to)
   const [customStatus, setCustomStatus] = useState('')
   const [customPriority, setCustomPriority] = useState('')
+  const [customCenter, setCustomCenter] = useState('')
   const [customLocation, setCustomLocation] = useState('')
+  const [customZone, setCustomZone] = useState('')
   const [customTicketType, setCustomTicketType] = useState('')
+  const [customInterventionType, setCustomInterventionType] = useState('')
   const [customAssigneeId, setCustomAssigneeId] = useState('')
   const [customOptions, setCustomOptions] = useState<MaintenanceOverview['filterOptions'] | null>(null)
   const [customData, setCustomData] = useState<MaintenanceOverview | null>(null)
@@ -108,8 +120,11 @@ export function MaintenanceInformesPanel() {
     customDateTo,
     customStatus,
     customPriority,
+    customCenter,
     customLocation,
+    customZone,
     customTicketType,
+    customInterventionType,
     customAssigneeId,
   ])
 
@@ -143,8 +158,11 @@ export function MaintenanceInformesPanel() {
       params.set('dateTo', customDateTo)
       if (customStatus) params.set('status', customStatus)
       if (customPriority) params.set('priority', customPriority)
+      if (customCenter) params.set('center', customCenter)
       if (customLocation) params.set('location', customLocation)
+      if (customZone) params.set('zone', customZone)
       if (customTicketType) params.set('ticketType', customTicketType)
+      if (customInterventionType) params.set('interventionType', customInterventionType)
       if (customAssigneeId) {
         params.set('operatorId', customAssigneeId)
         params.set('assigneeId', customAssigneeId)
@@ -166,8 +184,11 @@ export function MaintenanceInformesPanel() {
     customDateTo,
     customStatus,
     customPriority,
+    customCenter,
     customLocation,
+    customZone,
     customTicketType,
+    customInterventionType,
     customAssigneeId,
   ])
 
@@ -196,6 +217,7 @@ export function MaintenanceInformesPanel() {
         Tipus: row.kind === 'preventiu' ? 'Preventiu' : 'Ticket',
         Codi: row.code,
         Creat: row.createdAt,
+        Ultim: row.lastActivityAt || '',
         Ubicacio: row.location,
         Maquina: row.machine || '—',
         Estat: row.status,
@@ -242,7 +264,8 @@ export function MaintenanceInformesPanel() {
       {
         label: tab === 'custom' ? 'Excel (.xlsx) — vista A mida' : 'Excel (.xlsx) — vista KPIs',
         onClick: () => void handleExportXlsx(),
-        disabled: (tab === 'kpis' ? kpiLoading : customLoading) || !(tab === 'kpis' ? kpiData : customData),
+        disabled:
+          (tab === 'kpis' ? kpiLoading : customLoading) || !(tab === 'kpis' ? kpiData : customData),
       },
     ],
     [tab, handleExportXlsx, kpiLoading, customLoading, kpiData, customData]
@@ -261,48 +284,35 @@ export function MaintenanceInformesPanel() {
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setTab('kpis')}
-          className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-            tab === 'kpis'
-              ? 'border-indigo-200 bg-indigo-50 text-indigo-800'
-              : 'border-border bg-card hover:bg-muted/50'
-          }`}
-        >
-          KPIs
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('custom')}
-          className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-            tab === 'custom'
-              ? 'border-indigo-200 bg-indigo-50 text-indigo-800'
-              : 'border-border bg-card hover:bg-muted/50'
-          }`}
-        >
-          A mida
-        </button>
-      </div>
-
       <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">Manteniment</h2>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Tickets, hores de treball registrades i temps de desplaçament per centre (configurat a
-              Dades → Centres). Pensat per informes de productivitat i costos operatius.
-            </p>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setTab('kpis')}
+              className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                tab === 'kpis'
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-800'
+                  : 'border-border bg-card hover:bg-muted/50'
+              }`}
+            >
+              KPIs
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('custom')}
+              className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                tab === 'custom'
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-800'
+                  : 'border-border bg-card hover:bg-muted/50'
+              }`}
+            >
+              A mida
+            </button>
           </div>
-          <DataSourceLegend sources={MAINTENANCE_META.sources} />
-        </div>
-      </div>
 
-      {tab === 'kpis' ? (
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-2">
+          {tab === 'kpis' ? (
+            <div className="min-w-[220px] space-y-2 xl:w-[260px]">
               <Label htmlFor="kpi-days">Període</Label>
               <Select value={days} onValueChange={setDays}>
                 <SelectTrigger id="kpi-days">
@@ -316,11 +326,13 @@ export function MaintenanceInformesPanel() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          ) : null}
         </div>
-      ) : (
+      </div>
+
+      {tab === 'custom' ? (
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-2">
               <Label htmlFor="custom-from">Data inici</Label>
               <Input
@@ -378,6 +390,25 @@ export function MaintenanceInformesPanel() {
               </Select>
             </div>
             <div className="space-y-2">
+              <Label htmlFor="custom-intervention-type">Gestió</Label>
+              <Select
+                value={customInterventionType || '__all__'}
+                onValueChange={(v) => setCustomInterventionType(selectAll(v))}
+              >
+                <SelectTrigger id="custom-intervention-type">
+                  <SelectValue placeholder="Totes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Totes</SelectItem>
+                  {(customOptions?.interventionTypes || []).map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="custom-location">Ubicació</Label>
               <Select
                 value={customLocation || '__all__'}
@@ -415,7 +446,7 @@ export function MaintenanceInformesPanel() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2 xl:col-span-2">
+            <div className="space-y-2">
               <Label htmlFor="custom-assignee">Operari</Label>
               <Select
                 value={customAssigneeId || '__all__'}
@@ -439,7 +470,7 @@ export function MaintenanceInformesPanel() {
             {customLoading ? 'Generant…' : 'Generar informe'}
           </Button>
         </div>
-      )}
+      ) : null}
 
       {activeError ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
@@ -487,8 +518,11 @@ export function MaintenanceInformesPanel() {
                       <div>
                         <p className="text-sm font-medium text-foreground">{row.location}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          {row.tickets} tickets · {row.preventius ?? 0} preventius · treball{' '}
-                          {formatMinutes(row.workMinutes)} · desplaçament {formatMinutes(row.travelMinutes)}
+                          {row.tickets} tickets
+                          {row.externalizedTickets ? ` · ${row.externalizedTickets} externalitzats` : ''}
+                          {' · '}
+                          {row.preventius ?? 0} preventius · treball {formatMinutes(row.workMinutes)} ·
+                          desplaçament {formatMinutes(row.travelMinutes)}
                         </p>
                       </div>
                       <span className="text-sm font-semibold text-emerald-700">
@@ -514,8 +548,10 @@ export function MaintenanceInformesPanel() {
                       <div>
                         <p className="text-sm font-medium text-foreground">{row.name}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          {row.tickets} tickets · {row.preventius ?? 0} preventius · treball{' '}
-                          {formatMinutes(row.workMinutes)}
+                          {row.tickets} tickets
+                          {row.externalizedTickets ? ` · ${row.externalizedTickets} externalitzats` : ''}
+                          {' · '}
+                          {row.preventius ?? 0} preventius · treball {formatMinutes(row.workMinutes)}
                         </p>
                       </div>
                       <span className="text-sm font-semibold text-indigo-700">
@@ -545,6 +581,7 @@ export function MaintenanceInformesPanel() {
                   <TableRow>
                     <TableHead>Tipus</TableHead>
                     <TableHead>Codi</TableHead>
+                    <TableHead>Data últim</TableHead>
                     <TableHead>Ubicació</TableHead>
                     <TableHead>Estat</TableHead>
                     <TableHead>Prioritat</TableHead>
@@ -559,9 +596,14 @@ export function MaintenanceInformesPanel() {
                     activeData.entries.slice(0, 200).map((row) => (
                       <TableRow key={`${row.kind}-${row.id}`}>
                         <TableCell>
-                          {row.kind === 'preventiu' ? 'Preventiu' : 'Ticket'}
+                          {row.kind === 'preventiu'
+                            ? 'Preventiu'
+                            : row.externalized
+                              ? 'Ticket externalitzat'
+                              : 'Ticket intern'}
                         </TableCell>
                         <TableCell className="font-medium">{row.code}</TableCell>
+                        <TableCell>{formatDateTime(row.lastActivityAt)}</TableCell>
                         <TableCell>{row.location || '—'}</TableCell>
                         <TableCell>{row.status}</TableCell>
                         <TableCell>{row.priority}</TableCell>
@@ -573,7 +615,7 @@ export function MaintenanceInformesPanel() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={9} className="py-6 text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="py-6 text-center text-muted-foreground">
                         Cap intervenció al període.
                       </TableCell>
                     </TableRow>
@@ -583,7 +625,8 @@ export function MaintenanceInformesPanel() {
             </div>
             {activeData.entries.length > 200 ? (
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Es mostren les primeres 200 intervencions. Exporta a Excel per veure el llistat complet.
+                Es mostren les primeres 200 intervencions. Exporta a Excel per veure el llistat
+                complet.
               </p>
             ) : null}
           </div>

@@ -4,8 +4,12 @@ import {
   listQuadrantCollectionIds,
   quadrantCollectionToDept,
 } from '@/lib/firestoreCollections'
+import { requireQuadrantsModuleRead } from '@/lib/server/quadrantsReadAuth'
 
 export async function GET() {
+  const auth = await requireQuadrantsModuleRead()
+  if (!auth.ok) return auth.res
+
   try {
     const ids = await listQuadrantCollectionIds()
     const set = new Set<string>()

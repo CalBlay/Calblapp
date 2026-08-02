@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
 import { deriveProjectPhase, getBlockDepartments, type ProjectData } from './project-shared'
 import {
   deriveKickoffAttendees,
   ensureProjectRooms,
   sameStringSet,
+  serializeAutoSyncFingerprint,
   serializeRoomsState,
-  syncBlockBudgets,
 } from './project-workspace-state'
 import type { ResponsibleOption } from './project-workspace-helpers'
 
@@ -24,6 +24,8 @@ export function useProjectAutoSync({
   usersCatalog,
   userByName,
 }: Params) {
+  const fingerprint = useMemo(() => serializeAutoSyncFingerprint(project), [project])
+
   useEffect(() => {
     setProject((current) => {
       const nextDepartments = [
@@ -75,15 +77,6 @@ export function useProjectAutoSync({
         }
       }
 
-      const budgetCandidate = syncBlockBudgets(nextProject)
-      const sameBudgets =
-        budgetCandidate.blocks.length === nextProject.blocks.length &&
-        budgetCandidate.blocks.every((block, index) => block.budget === nextProject.blocks[index]?.budget)
-
-      if (!sameBudgets) {
-        nextProject = budgetCandidate
-      }
-
       const sprintIds = new Set((nextProject.sprints || []).map((sprint) => String(sprint.id || '').trim()))
       const blocksWithValidSprint = nextProject.blocks.map((block) => ({
         ...block,
@@ -96,7 +89,10 @@ export function useProjectAutoSync({
       const sameTaskSprintRefs =
         blocksWithValidSprint.length === nextProject.blocks.length &&
         blocksWithValidSprint.every((block, blockIndex) =>
-          block.tasks.every((task, taskIndex) => task.sprintId === nextProject.blocks[blockIndex]?.tasks[taskIndex]?.sprintId)
+          block.tasks.every(
+            (task, taskIndex) =>
+              task.sprintId === nextProject.blocks[blockIndex]?.tasks[taskIndex]?.sprintId
+          )
         )
 
       if (!sameTaskSprintRefs) {
@@ -117,16 +113,5 @@ export function useProjectAutoSync({
 
       return nextProject === current ? current : nextProject
     })
-  }, [
-    project.blocks,
-    project.owner,
-    project.sponsor,
-    project.kickoff.date,
-    project.kickoff.startTime,
-    project.kickoff.status,
-    project.kickoff.attendees.length,
-    usersCatalog,
-    userByName,
-    setProject,
-  ])
+  }, [fingerprint, usersCatalog, userByName, setProject])
 }

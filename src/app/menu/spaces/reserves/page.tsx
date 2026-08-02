@@ -3,12 +3,18 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 import { useSpaces, type SpaceApiRow } from '@/hooks/spaces/useSpaces'
 import SpaceGrid from '@/components/spaces/SpaceGrid'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 
 import FilterButton from '@/components/ui/filter-button'
+import {
+  CorporateFilterField,
+  CorporateFilterSelect,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
+import { corporateFilterChipClass } from '@/lib/corporate-filters'
 import { useFilters } from '@/context/FiltersContext'
 import SpacesFilters, { type SpacesFilterState } from '@/components/spaces/SpacesFilters'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
@@ -25,10 +31,6 @@ import {
   DEFAULT_SPACES_HEADER_RULE,
   type SpacesHeaderRuleConfig,
 } from '@/lib/spacesHeaderRule'
-
-function getDefaultLnSelection(lns: string[]): string[] {
-  return lns.filter((ln) => !ln.toLowerCase().includes('restaurant'))
-}
 
 export default function SpacesPage() {
   const { ready: permsReady, canEditPath, uiActions } = useUiPermissions()
@@ -53,6 +55,7 @@ export default function SpacesPage() {
       finca: [],
       comercial: [],
       ln: [],
+      excludeGrupsRestaurants: true,
       baseDate: toISODate(today),  // Setmana inicial
       month: today.getMonth(),
       year: today.getFullYear(),
@@ -78,22 +81,6 @@ const {
     uiActions[
       PERM.action(SPACES_RESERVES_PATH, SPACES_ACTION.RESERVES_MANUAL_CREATE)
     ] === true
-
-  useEffect(() => {
-    if (lns.length === 0) return
-
-    setFilters((prev) => {
-      if ((prev.ln ?? []).length > 0) return prev
-
-      const defaultLn = getDefaultLnSelection(lns)
-      if (defaultLn.length === 0) return prev
-
-      return {
-        ...prev,
-        ln: defaultLn,
-      }
-    })
-  }, [lns])
 
   const normalizedSpaces: Array<{
     fincaId?: string
@@ -216,13 +203,13 @@ const {
   return (
     <SpacesSectionGate subpath={SPACES_RESERVES_PATH}>
       <ModuleHeader
-        title="Espais / Reserves"
-        subtitle="Disponibilitat setmanal de finques"
+        title="Espais"
+        subtitle="Reserves · Disponibilitat setmanal de finques"
         actions={
           canPremisses ? (
             <Link
               href="/menu/spaces/premisses"
-              className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               Premisses
             </Link>
@@ -230,91 +217,89 @@ const {
         }
       />
 
-      <section className="relative w-full h-full bg-white">
+      <section className="relative w-full min-h-0 bg-white pb-24 sm:pb-8">
 
-        {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-             ðŸ“… Controls de setmana + Filtres
-           â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-        <div className="flex items-center justify-between mt-4 mb-2 px-4">
-
-          {/* Controls esquerra */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => shiftWeek('prev')}
-                className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-sm"
-              >
-                {'<'}
-              </button>
-
-              <span className="font-semibold text-gray-700 text-sm sm:text-base">
-                Setmana: {weekLabel}
-              </span>
-
-              <button
-                onClick={() => shiftWeek('next')}
-                className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-sm"
-              >
-                {'>'}
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-gray-500">Mes</span>
-              <select
-                value={filters.month}
-                onChange={(e) => updateMonth(Number(e.target.value))}
-                className="border rounded-md px-2 py-1 text-xs bg-white"
-              >
-                {monthOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-
-              <span className="text-xs font-semibold text-gray-500">Any</span>
-              <select
-                value={filters.year}
-                onChange={(e) => updateYear(Number(e.target.value))}
-                className="border rounded-md px-2 py-1 text-xs bg-white"
-              >
-                {yearOptions.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-            </div>
+        <CorporateFiltersShell
+          variant="toolbar"
+          className="mx-2 mb-2 mt-3 sm:mx-4 lg:mt-4"
+          bodyClassName="flex-col gap-3 lg:flex-row lg:items-end"
+        >
+          <div className="flex items-center justify-between gap-2 sm:justify-start sm:gap-3">
+            <button
+              type="button"
+              onClick={() => shiftWeek('prev')}
+              aria-label="Setmana anterior"
+              className={corporateFilterChipClass}
+            >
+              {'<'}
+            </button>
+            <span className="flex-1 text-center text-sm font-semibold text-slate-800 sm:flex-none sm:text-base">
+              Setmana: {weekLabel}
+            </span>
+            <button
+              type="button"
+              onClick={() => shiftWeek('next')}
+              aria-label="Setmana següent"
+              className={corporateFilterChipClass}
+            >
+              {'>'}
+            </button>
           </div>
 
-          {/* BotÃ³ filtres */}
-          <FilterButton
-            onClick={() => {
-              setFiltersContent(
-                <SpacesFilters
-                  value={filters}
-                  fincas={fincas}
-                  comercials={comercials}
-                  lns={lns} 
-                  onChange={(patch) =>
-                    setFilters(prev => ({
-                      ...prev,
-                      ...patch
-                    }))
-                  }
-                />
-              )
-              openFilters(true)
-            }}
-          />
-        </div>
+          <CorporateFilterField label="Mes" className="shrink-0">
+            <CorporateFilterSelect
+              value={String(filters.month)}
+              onChange={(e) => updateMonth(Number(e.target.value))}
+            >
+              {monthOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </CorporateFilterSelect>
+          </CorporateFilterField>
+
+          <CorporateFilterField label="Any" className="shrink-0">
+            <CorporateFilterSelect
+              value={String(filters.year)}
+              onChange={(e) => updateYear(Number(e.target.value))}
+            >
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </CorporateFilterSelect>
+          </CorporateFilterField>
+
+          <div className="flex justify-end lg:ml-auto">
+            <FilterButton
+              onClick={() => {
+                setFiltersContent(
+                  <SpacesFilters
+                    value={filters}
+                    fincas={fincas}
+                    comercials={comercials}
+                    lns={lns}
+                    onChange={(patch) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        ...patch,
+                      }))
+                    }
+                  />
+                )
+                openFilters(true)
+              }}
+            />
+          </div>
+        </CorporateFiltersShell>
 
         {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
              â³ Loading
            â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {loading && (
-          <motion.div
+          <MotionDiv
             className="mt-10 flex flex-col gap-3 items-center"
             initial={{ opacity: 0.3 }}
             animate={{ opacity: 1 }}
@@ -322,7 +307,7 @@ const {
           >
             <div className="h-6 w-40 bg-gray-200 rounded" />
             <div className="h-4 w-60 bg-gray-100 rounded" />
-          </motion.div>
+          </MotionDiv>
         )}
 
         {/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

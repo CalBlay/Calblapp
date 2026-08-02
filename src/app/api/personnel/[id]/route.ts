@@ -1,8 +1,24 @@
 // src/app/api/personnel/[id]/route.ts
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { requireAuth, type AuthSuccess } from '@/lib/server/apiAuth'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import { canEditUiPath } from '@/lib/server/permissions'
+
+const PERSONNEL_UI_PATH = '/menu/personnel'
+
+async function requirePersonnelEdit(auth: AuthSuccess): Promise<NextResponse | null> {
+  const sessionUser = auth.session.user as { isAdmin?: boolean }
+  if (auth.role === 'admin' || sessionUser?.isAdmin) return null
+
+  const canEdit = await canEditUiPath({ user: auth.user, path: PERSONNEL_UI_PATH })
+  if (!canEdit) {
+    return NextResponse.json(
+      { error: 'Permís denegat', message: 'No tens permís per editar personal' },
+      { status: 403 }
+    )
+  }
+  return null
+}
 
 
 /** Estructura mínima d’un document de personnel */
@@ -25,6 +41,9 @@ export async function GET(
   _req: Request,
   context: { params: { id: string } | Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+
   const { params } = context
   const { id: personnelId } = await params
   if (!personnelId) {
@@ -63,12 +82,13 @@ export async function PUT(
   request: Request,
   context: { params: { id: string } | Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+  const denied = await requirePersonnelEdit(auth)
+  if (denied) return denied
+
   const { params } = context
   const { id: personnelId } = await params
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
 
   try {
     const body = await request.json()
@@ -101,12 +121,13 @@ export async function DELETE(
   _req: Request,
   context: { params: { id: string } | Promise<{ id: string }> }
 ) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.res
+  const denied = await requirePersonnelEdit(auth)
+  if (denied) return denied
+
   const { params } = context
   const { id: personnelId } = await params
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
 
   try {
     await firestoreAdmin.collection('personnel').doc(personnelId).delete()

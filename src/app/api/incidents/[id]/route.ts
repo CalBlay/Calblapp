@@ -1,11 +1,12 @@
 // File: src/app/api/incidents/[id]/route.ts
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin, storageAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
 import { deleteMediaIndexByPath } from '@/lib/media/storageMediaIndex'
-import { canAccessIncidentsModule, canDeleteIncident, normalizeIncidentStatus } from '@/lib/incidentPolicy'
+import { canDeleteIncident, normalizeIncidentStatus } from '@/lib/incidentPolicy'
+import { requireIncidentsCategoryEdit, requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
 
 function normalizeTimestamp(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -31,6 +32,7 @@ const PATCHABLE = new Set([
   'priority',
   'status',
   'resolutionNote',
+  'category',
 ])
 
 async function buildIncidentImagePayload(
@@ -76,12 +78,8 @@ async function buildIncidentImagePayload(
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canAccessIncidentsModule(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsModuleView()
+    if (!auth.ok) return auth.res
 
     const { id } = await ctx.params
     const incidentId = String(id || '').trim()
@@ -128,18 +126,19 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canAccessIncidentsModule(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsModuleView()
+    if (!auth.ok) return auth.res
 
     const { id } = await ctx.params
     const incidentId = String(id || '').trim()
     if (!incidentId) return NextResponse.json({ error: 'Id invalid' }, { status: 400 })
 
     const payload = (await req.json()) as Record<string, unknown>
+    const wantsCategoryEdit = 'category' in payload
+    if (wantsCategoryEdit) {
+      const catAuth = await requireIncidentsCategoryEdit()
+      if (!catAuth.ok) return catAuth.res
+    }
 
     const docRef = firestoreAdmin.collection('incidents').doc(incidentId)
     const snap = await docRef.get()
@@ -177,6 +176,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
       if (key === 'resolutionNote' && typeof val === 'string') {
         cleaned.resolutionNote = val.trim()
+        hasPatch = true
+      }
+      if (key === 'category' && val && typeof val === 'object') {
+        const category = val as { id?: unknown; label?: unknown }
+        const id = String(category.id || '').trim()
+        const label = String(category.label || '').trim()
+        if (!id || !label) {
+          return NextResponse.json({ error: 'Categoria no vàlida' }, { status: 400 })
+        }
+        cleaned.category = { id, label }
         hasPatch = true
       }
     }

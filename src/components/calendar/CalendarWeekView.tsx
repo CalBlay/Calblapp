@@ -8,8 +8,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import CalendarModal from './CalendarModal'
 import type { Deal } from '@/hooks/useCalendarData'
 import { colorByLN } from '@/lib/colors'
+import {
+  CALENDAR_BADGE_TEXT,
+  CALENDAR_EVENT_TEXT,
+  CALENDAR_WEEK_HEADER,
+} from '@/lib/calendarTypography'
+import { useCalendarVisibleLanes } from '@/hooks/useCalendarVisibleLanes'
 
-const VISIBLE_LANES_DESKTOP = 6
 const VISIBLE_LANES_MOBILE = 4
 const BREAKPOINT_TABLET = 1024
 const BREAKPOINT_MOBILE = 640
@@ -59,11 +64,13 @@ export default function CalendarWeekView({
   start,
   onCreated,
   showCodeStatus,
+  onRequestPanel,
 }: {
   deals: Deal[]
   start?: string
   onCreated?: () => void
   showCodeStatus?: boolean
+  onRequestPanel?: (deal: Deal) => void
 }) {
   const [layout, setLayout] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
 
@@ -119,9 +126,11 @@ export default function CalendarWeekView({
     return spans
   }, [deals, weekDays])
 
+  const dynamicLanes = useCalendarVisibleLanes({ mode: 'week' })
+
   const maxLane = spans.reduce((m, s) => Math.max(m, s.lane), -1)
   const laneCount = maxLane + 1
-  const laneLimit = layout === 'mobile' ? VISIBLE_LANES_MOBILE : VISIBLE_LANES_DESKTOP
+  const laneLimit = layout === 'mobile' ? VISIBLE_LANES_MOBILE : dynamicLanes
   const visibleLaneCount = Math.min(laneLimit, laneCount)
   const visibleSpans = spans.filter((s) => s.lane < visibleLaneCount)
 
@@ -143,19 +152,31 @@ export default function CalendarWeekView({
   const gridCols = `repeat(${weekDays.length}, minmax(0, 1fr))`
 
   return (
-    <div className="w-full overflow-x-auto pb-2">
+    <div className="w-full overflow-x-auto pb-2 [-webkit-overflow-scrolling:touch]">
+      {layout === 'mobile' && (
+        <p className="mb-2 px-1 text-[11px] text-slate-500">
+          Llisca horizontalment per veure tots els dies.
+        </p>
+      )}
       <div
         className="relative min-w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
         style={{ minHeight, minWidth: gridMinWidth }}
       >
         {/* Header */}
         <div
-          className="grid border-b bg-slate-50 text-[10px] text-gray-600 sm:text-xs"
+          className={`grid border-b bg-slate-50 ${CALENDAR_WEEK_HEADER} text-gray-600`}
           style={{ gridTemplateColumns: gridCols }}
         >
           {weekDays.map((d) => (
-            <div key={d.toISOString()} className="py-1 text-center font-medium sm:py-2">
-              {format(d, 'EEE d', { locale: es })}
+            <div
+              key={d.toISOString()}
+              className={`min-h-11 py-2 text-center font-medium leading-tight ${
+                layout === 'mobile' ? 'whitespace-pre-line text-[11px]' : ''
+              }`}
+            >
+              {layout === 'mobile'
+                ? `${format(d, 'EEE', { locale: es })}\n${format(d, 'd', { locale: es })}`
+                : format(d, 'EEE d', { locale: es })}
             </div>
           ))}
         </div>
@@ -185,6 +206,7 @@ export default function CalendarWeekView({
                   key={`${span.ev.id}-${idx}`}
                   deal={span.ev}
                   onSaved={onCreated}
+                  onRequestPanel={onRequestPanel}
                   trigger={
                     <div
                       onClick={(e) => e.stopPropagation()}
@@ -195,7 +217,7 @@ export default function CalendarWeekView({
                         rounded-md
                         ring-1 ring-inset ring-slate-200
                         flex items-center gap-2
-                        text-[11px] font-medium sm:text-[12px]
+                        ${CALENDAR_EVENT_TEXT}
                         ${colorByLN(span.ev.LN)}
                       `}
                       style={{
@@ -211,7 +233,7 @@ export default function CalendarWeekView({
                       </span>
                       {badge && (
                         <span
-                          className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] text-[10px] font-semibold ${badge.className}`}
+                          className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
                         >
                           {badge.label}
                         </span>
@@ -244,6 +266,7 @@ export default function CalendarWeekView({
                     date={d}
                     events={hidden.map((h) => h.ev)}
                     showCodeStatus={showCodeStatus}
+                    onRequestPanel={onRequestPanel}
                   />
                 </div>
               )
@@ -259,10 +282,12 @@ function MoreEventsPopup({
   date,
   events,
   showCodeStatus,
+  onRequestPanel,
 }: {
   date: Date
   events: Deal[]
   showCodeStatus?: boolean
+  onRequestPanel?: (deal: Deal) => void
 }) {
   const [open, setOpen] = useState(false)
 
@@ -270,7 +295,7 @@ function MoreEventsPopup({
     <Dialog open={open} onOpenChange={setOpen}>
       <button
         type="button"
-        className="rounded px-2 py-1 text-xs italic text-gray-400 hover:text-blue-500"
+        className="min-h-9 rounded-md px-2 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-50"
         onClick={(e) => {
           e.stopPropagation()
           setOpen(true)
@@ -293,17 +318,18 @@ function MoreEventsPopup({
               <CalendarModal
                 key={`more-${ev.id}`}
                 deal={ev}
+                onRequestPanel={onRequestPanel}
                 trigger={
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="flex items-center gap-2 truncate rounded-md ring-1 ring-inset ring-slate-200 bg-white px-2 py-1 text-[11px] sm:text-[12px]"
+                    className={`flex items-center gap-2 truncate rounded-md ring-1 ring-inset ring-slate-200 bg-white px-2 py-1 ${CALENDAR_EVENT_TEXT}`}
                     style={{ transform: 'translateZ(0)' }}
                   >
                     <span className={`h-2 w-2 shrink-0 rounded-full ${dotColorByCollection(ev.collection)}`} />
                     <span className="truncate flex-1">{ev.NomEvent}</span>
                     {badge && (
                       <span
-                        className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] text-[10px] font-semibold ${badge.className}`}
+                        className={`ml-1 shrink-0 rounded-full border px-1.5 py-[1px] ${CALENDAR_BADGE_TEXT} font-semibold ${badge.className}`}
                       >
                         {badge.label}
                       </span>

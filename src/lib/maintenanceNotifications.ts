@@ -1,6 +1,12 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { formatDateTimeValue } from '@/lib/date-format'
 import { normalizeRole } from '@/lib/roles'
 import { isMaintenanceCapDepartment } from '@/lib/accessControl'
+import { listMaintenanceTicketInboxRecipientIds } from '@/lib/server/maintenanceTicketInboxRecipients'
+import {
+  defaultPushUrlForNotificationType,
+  sendPushToUsers,
+} from '@/lib/notifications/sendUserPush.server'
 import {
   getLastExternalFollowUpAt,
   getTicketAgeDays,
@@ -16,6 +22,8 @@ type NotificationPayload = {
   type:
     | 'maintenance_ticket_new'
     | 'maintenance_ticket_assigned'
+    | 'maintenance_ticket_resolved'
+    | 'maintenance_ticket_pending_cap_validation'
     | 'maintenance_ticket_validated'
     | 'maintenance_ticket_stale'
     | 'maintenance_ticket_external_stale'
@@ -42,10 +50,7 @@ function externalStaleNotificationDocId(ticketId: string, userId: string) {
 }
 
 async function getLogisticsTicketUserIds(): Promise<string[]> {
-  const snap = await db.collection('users').where('departmentLower', '==', 'logistica').get()
-  return snap.docs
-    .filter((doc) => normalizeRole(String((doc.data() as { role?: string })?.role || '')) === 'usuari')
-    .map((doc) => doc.id)
+  return listMaintenanceTicketInboxRecipientIds()
 }
 
 async function getMaintenanceCapUserIds(): Promise<string[]> {
@@ -131,6 +136,23 @@ export async function notifyTicketCreator(params: {
   await createNotifications([uid], payload)
 }
 
+/** Gestor ha tancat directament el ticket: el creador ha de validar. */
+export async function notifyTicketResolvedForCreator(params: {
+  uid?: string | null
+  payload: NotificationPayload
+  excludeIds?: string[]
+}) {
+  await notifyTicketCreator(params)
+}
+
+/** Creador validat: avisa el cap de manteniment per completar la validació. */
+export async function notifyTicketPendingCapValidation(params: {
+  payload: NotificationPayload
+  excludeIds?: string[]
+}) {
+  await notifyMaintenanceManagers(params)
+}
+
 async function createNotifications(uids: string[], payload: NotificationPayload, docId?: string) {
   if (!uids.length) return
 
@@ -154,25 +176,34 @@ async function createNotifications(uids: string[], payload: NotificationPayload,
   }
 
   await batch.commit()
+  const { afterNotificationsCommitted } = await import('@/lib/notifications/writeUserNotification')
+  await afterNotificationsCommitted(
+    uids.map((uid) => ({ userId: uid, type: String(payload.type || '') }))
+  )
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (!apiKey) return
-
-  try {
-    const Ably = (await import('ably')).default
-    const rest = new Ably.Rest({ key: apiKey })
-    await Promise.all(
-      uids.map((uid) =>
-        rest.channels.get(`user:${uid}:notifications`).publish('created', {
-          type: payload.type,
-          ticketId: payload.ticketId,
-          createdAt: now,
-        })
+  if (process.env.ABLY_API_KEY) {
+    try {
+      const { getAblyRest } = await import('@/lib/server/ablyRest')
+      const rest = getAblyRest()
+      await Promise.all(
+        uids.map((uid) =>
+          rest.channels.get(`user:${uid}:notifications`).publish('created', {
+            type: payload.type,
+            ticketId: payload.ticketId,
+            createdAt: now,
+          })
+        )
       )
-    )
-  } catch (err) {
-    console.error('[maintenanceNotifications] Ably publish error', err)
+    } catch (err) {
+      console.error('[maintenanceNotifications] Ably publish error', err)
+    }
   }
+
+  await sendPushToUsers(uids, {
+    title: payload.title,
+    body: payload.body,
+    url: defaultPushUrlForNotificationType(payload.type, { ticketId: payload.ticketId }),
+  })
 }
 
 export function buildTicketBody(params: {
@@ -184,6 +215,24 @@ export function buildTicketBody(params: {
     (params.machine || '').trim(),
     (params.location || '').trim(),
     (params.description || '').trim(),
+  ].filter(Boolean)
+
+  return parts.join(' \u00B7 ')
+}
+
+export function buildAssignedTicketBodyForCreator(params: {
+  machine?: string | null
+  location?: string | null
+  description?: string | null
+  operatorNames?: Array<string | null | undefined>
+  plannedStart?: number | string | null
+}) {
+  const operators = (params.operatorNames || []).map((name) => String(name || '').trim()).filter(Boolean)
+  const planned = formatDateTimeValue(params.plannedStart, '')
+  const parts = [
+    buildTicketBody(params),
+    operators.length ? `Operari: ${operators.join(', ')}` : '',
+    planned ? `Previst: ${planned}` : '',
   ].filter(Boolean)
 
   return parts.join(' \u00B7 ')

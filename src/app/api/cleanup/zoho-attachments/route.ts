@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { cleanupZohoAttachmentsForStageVerd } from '@/services/zoho/cleanup'
+import { requireCronAuth } from '@/lib/server/internalApiAuth'
 
 export const runtime = 'nodejs'
 
@@ -16,17 +17,10 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url)
     const mode = url.searchParams.get('mode')
-    const cronSecret = process.env.CRON_SECRET
-
-    if (mode === 'cron' && cronSecret) {
-      const incoming =
-        req.headers.get('x-cron-secret') ||
-        req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ||
-        ''
-      if (incoming !== cronSecret) {
-        return NextResponse.json({ error: 'Unauthorized cron' }, { status: 401 })
-      }
-    } else if (mode !== 'cron') {
+    if (mode === 'cron') {
+      const cronDenied = requireCronAuth(req)
+      if (cronDenied) return cronDenied
+    } else {
       const session = await getServerSession(authOptions)
       const sessionUser = session?.user as SessionUser | undefined
       const role = normalize(String(session?.user?.role || ''))

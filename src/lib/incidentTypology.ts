@@ -49,3 +49,8 @@ export function familyLabelForCategoryId(
   if (!prefix) return '—'
   return families[prefix] ?? `Grup ${prefix}XX`
 }
+
+/** Grup 2XX (Maquinària): cal adjuntar com a mínim una foto o fitxer. */
+export function isIncidentCategoryGroup2xx(categoryId: string): boolean {
+  return normalizeFamilyPrefix(categoryId || '') === '2'
+}

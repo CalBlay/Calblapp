@@ -16,12 +16,19 @@ type Props = {
 
 export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose, onSaved }: Props) {
   const form = useTicketJourneyForm({ ticket, onSaved })
-  const options = allowedNext(form.currentStatus)
+  const options = allowedNext(form.currentStatus).filter((status) => status !== 'validat')
+  const effectiveOptions =
+    form.hasStaleOpenSegment && form.currentStatus === 'en_curs'
+      ? ([form.currentStatus, ...options] as JourneyStatus[])
+      : options
+  const showWorkFieldsByDefault =
+    !form.nextStatus && (form.currentStatus === 'en_curs' || form.currentStatus === 'espera')
+  const canSaveWithoutChangingStage =
+    form.currentStatus === 'en_curs' || form.currentStatus === 'espera'
   const title = ticket.ticketCode || ticket.incidentNumber || 'Ticket'
   const subtitle = [
     `Estat actual: ${STATUS_LABELS[form.currentStatus]}`,
-    ticket.location,
-    ticket.machine,
+    ticket.location || ticket.workLocation,
   ]
     .filter(Boolean)
     .join(' · ')
@@ -29,6 +36,10 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
   const handleClose = () => {
     if (form.isDirty && !window.confirm('Vols sortir sense guardar el canvi d estat?')) return
     onClose()
+  }
+
+  const badgeLabel = (status: JourneyStatus) => {
+    return STATUS_LABELS[status]
   }
 
   const footer = (
@@ -45,9 +56,9 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
         type="button"
         className="min-h-[48px] w-full rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
         onClick={() => void form.handleSave()}
-        disabled={form.busy || !form.nextStatus}
+        disabled={form.busy || (!form.nextStatus && !canSaveWithoutChangingStage)}
       >
-        {form.busy ? 'Guardant...' : 'Guardar canvi'}
+        {form.busy ? 'Guardant...' : 'Guardar'}
       </button>
     </div>
   )
@@ -55,56 +66,104 @@ export default function TicketJourneyStatusModal({ ticket, allowedNext, onClose,
   return (
     <TicketJourneyModalShell title={title} subtitle={subtitle} onClose={handleClose} footer={footer}>
       <div className="space-y-5">
-        <div>
-          <div className="text-sm font-medium text-gray-700">Nou estat</div>
-
-          {!form.nextStatus ? (
-            <div className="mt-3 grid grid-cols-1 gap-2">
-              {options.map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => form.handleSelectStatus(status)}
-                  className="min-h-[52px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-900 touch-manipulation active:bg-slate-50"
-                >
-                  {STATUS_LABELS[status]}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-3 space-y-2">
-              <div className="flex min-h-[52px] items-center rounded-2xl border border-emerald-600 bg-emerald-600 px-4 py-3 text-sm font-semibold text-white">
-                {STATUS_LABELS[form.nextStatus]}
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="grid grid-cols-1 gap-3 text-sm text-slate-700 sm:grid-cols-2">
+            {ticket.workLocation ? (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Ubicació</div>
+                <div>{ticket.workLocation}</div>
               </div>
-              <button
-                type="button"
-                className="text-sm font-medium text-emerald-700 underline-offset-2 hover:underline"
-                onClick={form.clearStatusSelection}
-              >
-                Canviar estat
-              </button>
-            </div>
-          )}
+            ) : null}
+            {ticket.workerName ? (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Treballador</div>
+                <div>{ticket.workerName}</div>
+              </div>
+            ) : null}
+          </div>
         </div>
 
-        {form.nextStatus ? (
+        {form.existingImages.length > 0 ? (
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-gray-700">Fotos/adjunts del ticket</div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {form.existingImages.map((url, index) => (
+                <a
+                  key={`${url}-${index}`}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`Foto ticket ${index + 1}`}
+                    className="aspect-[4/3] w-full object-cover"
+                  />
+                </a>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {(form.nextStatus || showWorkFieldsByDefault) ? (
           <TicketJourneyStatusFields
-            nextStatus={form.nextStatus}
+            nextStatus={form.nextStatus || form.currentStatus}
             horaInici={form.horaInici}
             horaFi={form.horaFi}
+            previousSegmentEndTime={form.previousSegmentEndTime}
+            openSegmentDateLabel={form.openSegmentDateLabel}
+            openSegmentStartTimeLabel={form.openSegmentStartTimeLabel}
+            todayDateLabel={form.todayDateLabel}
+            hasStaleOpenSegment={form.hasStaleOpenSegment}
             note={form.note}
-            showPhotos={form.showPhotos}
-            existingImages={form.existingImages}
-            previews={form.previews}
+            showPhotos
+            existingCompletionAttachments={form.existingCompletionAttachments}
+            pendingAttachments={form.pendingAttachments}
             imageCount={form.imageCount}
             maxCompletionImages={form.maxCompletionImages}
             imageError={form.imageError}
             onHoraIniciChange={form.setHoraInici}
             onHoraFiChange={form.setHoraFi}
+            onPreviousSegmentEndTimeChange={form.setPreviousSegmentEndTime}
             onNoteChange={form.setNote}
             onImageChange={form.handleImageChange}
             onRemoveImage={form.removeImage}
           />
+        ) : null}
+
+        {effectiveOptions.length > 0 ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {effectiveOptions.map((status) => {
+                const selected = form.nextStatus === status
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => (selected ? form.clearStatusSelection() : form.handleSelectStatus(status))}
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                      selected
+                        ? 'border-emerald-600 bg-emerald-600 text-white'
+                        : 'border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    {badgeLabel(status)}
+                  </button>
+                )
+              })}
+            </div>
+            {form.nextStatus ? (
+              <div className="text-xs text-slate-500">
+                En guardar es marcara com a {badgeLabel(form.nextStatus).toLowerCase()}.
+              </div>
+            ) : (
+              <div className="text-xs text-slate-500">
+                Si no marques cap etapa, es guardara mantenint {badgeLabel(form.currentStatus).toLowerCase()}.
+              </div>
+            )}
+          </div>
         ) : null}
 
         {form.formError ? <p className="text-sm text-red-600">{form.formError}</p> : null}

@@ -3,20 +3,34 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { QuadrantEvent } from '@/types/QuadrantEvent'
 import type {
-  CuinaDriverAssignment,
   CuinaEttState,
   CuinaGroup,
   QuadrantMode,
 } from '../components/quadrantModalTypes'
 import { extractDate, makeGroupId } from '../components/quadrantModalUtils'
+import { useAvailableVehicles } from '@/hooks/logistics/useAvailableVehicles'
+import { normalizeTransportType } from '@/lib/transportTypes'
+import {
+  ensureCuinaVehicleAssignments,
+  syncCuinaGroupFromRoleLines,
+  countCuinaStaffTotals,
+  type CuinaStaffTotals,
+} from '../lib/cuinaGroupRoleLines'
+
+import type { EditorDraftInput } from '@/lib/quadrantsDraftEditor'
+import { hydrateCuinaGroupsFromDraft } from '../lib/hydrateCuinaGroupsFromDraft'
 
 type ConductorOption = { id: string; name?: string }
 
 type UseCuinaStateParams = {
   open: boolean
   isCuina: boolean
+  department: string
   mode: QuadrantMode
   event: QuadrantEvent
+  existingDraft?: EditorDraftInput | null
+  startDate: string
+  endDate: string
   totalWorkers: string | number
   numDrivers: string | number
   meetingPoint: string
@@ -36,7 +50,7 @@ type UseCuinaStateResult = {
   setCuinaGroups: React.Dispatch<React.SetStateAction<CuinaGroup[]>>
   cuinaEtt: CuinaEttState
   setCuinaEtt: React.Dispatch<React.SetStateAction<CuinaEttState>>
-  cuinaTotals: { workers: number; drivers: number; responsables: number }
+  cuinaTotals: CuinaStaffTotals
   isManualResponsibleConductor: boolean
   cuinaVehiclesPayload: Array<{
     id: string
@@ -45,6 +59,11 @@ type UseCuinaStateResult = {
     conductorId: string | null
     arrivalTime: string
   }>
+  availableVehicles: ReturnType<typeof useAvailableVehicles>['vehicles']
+  availableVehicleCount: number
+  isVehicleIdAssigned: (vehicleId: string, groupId: string, slotId: string) => boolean
+  toggleCuinaEtt: () => void
+  updateCuinaEtt: (patch: Partial<CuinaEttState['data']>) => void
   addCuinaGroup: () => void
   updateCuinaGroup: (id: string, patch: Partial<CuinaGroup>) => void
   removeCuinaGroup: (id: string) => void
@@ -53,8 +72,12 @@ type UseCuinaStateResult = {
 export function useCuinaState({
   open,
   isCuina,
-  mode,
+  department,
+  mode: _mode,
   event,
+  existingDraft,
+  startDate,
+  endDate,
   totalWorkers,
   numDrivers,
   meetingPoint,
@@ -68,12 +91,14 @@ export function useCuinaState({
   manualResp,
   availableConductors,
 }: UseCuinaStateParams): UseCuinaStateResult {
+  const eventServiceDate = extractDate(event.start)
+
   const buildDriverAssignments = useCallback(
     (
       drivers: number,
-      existing?: CuinaDriverAssignment[],
+      existing?: CuinaGroup['driverAssignments'],
       fallback?: Partial<CuinaGroup>
-    ): CuinaDriverAssignment[] => {
+    ): NonNullable<CuinaGroup['driverAssignments']> => {
       const count = Math.max(0, Number(drivers) || 0)
       const source = Array.isArray(existing) ? existing : []
       return Array.from({ length: count }, (_, idx) => ({
@@ -86,6 +111,13 @@ export function useCuinaState({
 
   const normalizeGroupDrivers = useCallback(
     (group: CuinaGroup): CuinaGroup => {
+      if (Array.isArray(group.roleLines) && group.roleLines.length > 0) {
+        return syncCuinaGroupFromRoleLines(
+          group,
+          group.roleLines,
+          ensureCuinaVehicleAssignments(group)
+        )
+      }
       const normalizedDrivers = Math.max(0, Number(group.drivers) || 0)
       const driverAssignments = buildDriverAssignments(normalizedDrivers, group.driverAssignments, group)
       return {
@@ -109,6 +141,7 @@ export function useCuinaState({
       return normalizeGroupDrivers({
         id: seed.id || makeGroupId(),
         meetingPoint: seed.meetingPoint || meetingPoint || 'CENTRAL',
+        serviceDate: seed.serviceDate || eventServiceDate,
         startTime: seed.startTime ?? startTime ?? '',
         arrivalTime: seed.arrivalTime ?? arrivalTime ?? '',
         endTime: seed.endTime ?? endTime ?? '',
@@ -122,16 +155,28 @@ export function useCuinaState({
         driverAssignments,
         workerIds: Array.isArray(seed.workerIds) ? [...seed.workerIds] : [],
         workerDetails: seed.workerDetails ? { ...seed.workerDetails } : {},
+        roleLines: seed.roleLines,
+        vehicleAssignments: seed.vehicleAssignments,
       })
     },
-    [arrivalTime, meetingPoint, numDrivers, startTime, endTime, totalWorkers, buildDriverAssignments, normalizeGroupDrivers]
+    [
+      arrivalTime,
+      eventServiceDate,
+      meetingPoint,
+      numDrivers,
+      startTime,
+      endTime,
+      totalWorkers,
+      buildDriverAssignments,
+      normalizeGroupDrivers,
+    ]
   )
 
   const [cuinaGroups, setCuinaGroups] = useState<CuinaGroup[]>(() => [createCuinaGroup()])
   const [cuinaEtt, setCuinaEtt] = useState<CuinaEttState>(() => ({
     open: false,
     data: {
-      serviceDate: extractDate(event.start),
+      serviceDate: eventServiceDate,
       meetingPoint: 'CENTRAL',
       startTime: event.startTime || '',
       endTime: event.endTime || '',
@@ -140,13 +185,29 @@ export function useCuinaState({
   }))
   const cuinaTotalsRef = useRef({ workers: Number(totalWorkers) || 0, drivers: Number(numDrivers) || 0 })
 
+  const totalWorkersNumber = Number(totalWorkers) || 0
+  const numDriversNumber = Number(numDrivers) || 0
+
+  const { vehicles: availableVehicles, loading: loadingVehicles } = useAvailableVehicles({
+    startDate,
+    startTime,
+    endDate,
+    endTime,
+    department,
+    enabled:
+      isCuina &&
+      department.toLowerCase() === 'cuina' &&
+      Boolean(startDate && startTime && endDate && endTime),
+  })
+
+  const availableVehicleCount = useMemo(
+    () => availableVehicles.filter((vehicle) => vehicle.available).length,
+    [availableVehicles]
+  )
+
   const cuinaTotals = useMemo(
-    () => ({
-      workers: cuinaGroups.reduce((sum, group) => sum + group.workers, 0),
-      drivers: cuinaGroups.reduce((sum, group) => sum + group.drivers, 0),
-      responsables: cuinaGroups.filter((group) => group.wantsResponsible).length,
-    }),
-    [cuinaGroups]
+    () => countCuinaStaffTotals(cuinaGroups, manualResp),
+    [cuinaGroups, manualResp]
   )
 
   const isManualResponsibleConductor = useMemo(() => {
@@ -156,36 +217,61 @@ export function useCuinaState({
 
   const cuinaVehiclesPayload = useMemo(
     () =>
-      cuinaGroups
-        .flatMap((group) =>
-          (group.driverAssignments || []).map((assignment) => {
-            let conductorId: string | null = null
-            if (assignment.driverMode === '__responsable__') {
-              conductorId =
-                group.responsibleId ||
-                (manualResp && manualResp !== '__auto__' ? manualResp : null)
-            } else if (assignment.driverMode && assignment.driverMode !== '__auto__') {
-              conductorId = assignment.driverMode
-            }
-
-            return {
-              id: '',
-              plate: '',
-              vehicleType: assignment.vehicleType || '',
-              conductorId,
-              arrivalTime: group.arrivalTime || '',
-            }
-          })
-        )
-        .filter((vehicle) => Boolean(vehicle.id || vehicle.vehicleType || vehicle.conductorId)),
-    [cuinaGroups, manualResp]
+      cuinaGroups.flatMap((group) =>
+        ensureCuinaVehicleAssignments(group).flatMap((assignment) => {
+          const matched = availableVehicles.find((vehicle) => vehicle.id === assignment.vehicleId)
+          const vehicleType =
+            normalizeTransportType(assignment.vehicleType || matched?.type || '') ||
+            normalizeTransportType(matched?.type || '')
+          if (!vehicleType && !assignment.vehicleId && !assignment.conductorId) return []
+          return [
+            {
+              id: assignment.vehicleId || '',
+              plate: assignment.plate || matched?.plate || '',
+              vehicleType,
+              conductorId: assignment.conductorId || null,
+              arrivalTime: assignment.arrivalTime || group.arrivalTime || '',
+            },
+          ]
+        })
+      ),
+    [availableVehicles, cuinaGroups]
   )
 
-  // Si hi ha un sol grup i els totals "tracen" l'última sincronització, propaga els canvis.
+  const isVehicleIdAssigned = useCallback(
+    (vehicleId: string, groupId: string, slotId: string) => {
+      if (!vehicleId) return false
+      return cuinaGroups.some((group) =>
+        ensureCuinaVehicleAssignments(group).some(
+          (assignment) =>
+            assignment.vehicleId === vehicleId &&
+            !(group.id === groupId && assignment.slotId === slotId)
+        )
+      )
+    },
+    [cuinaGroups]
+  )
+
+  useEffect(() => {
+    if (!isCuina || !open) return
+    if (!existingDraft?.id) return
+    setCuinaGroups(
+      hydrateCuinaGroupsFromDraft({
+        draft: existingDraft,
+        fallback: createCuinaGroup(),
+      })
+    )
+  }, [
+    createCuinaGroup,
+    existingDraft,
+    isCuina,
+    open,
+  ])
+
   useEffect(() => {
     if (!isCuina) return
-    const targetWorkers = Number(totalWorkers) || 0
-    const targetDrivers = Number(numDrivers) || 0
+    const targetWorkers = totalWorkersNumber
+    const targetDrivers = numDriversNumber
     setCuinaGroups((prev) => {
       if (!prev.length) {
         return [createCuinaGroup({ workers: targetWorkers, drivers: targetDrivers })]
@@ -203,44 +289,16 @@ export function useCuinaState({
     createCuinaGroup,
     isCuina,
     normalizeGroupDrivers,
-    totalWorkers,
-    numDrivers,
-    meetingPoint,
-    startTime,
-    arrivalTime,
-    endTime,
+    totalWorkersNumber,
+    numDriversNumber,
   ])
 
-  /** Cuina manual: sincronitza slots de treballadors amb el nombre (mateix patró que Serveis). */
-  useEffect(() => {
-    if (!isCuina || mode !== 'manual') return
-    setCuinaGroups((prev) => {
-      let changed = false
-      const next = prev.map((g) => {
-        const w = Math.max(0, Number(g.workers) || 0)
-        let ids = Array.isArray(g.workerIds) ? [...g.workerIds] : []
-        const details = { ...(g.workerDetails || {}) }
-        if (ids.length === w) return g
-        changed = true
-        if (ids.length > w) {
-          ids.slice(w).filter(Boolean).forEach((id) => delete details[id])
-          ids = ids.slice(0, w)
-        } else {
-          ids = [...ids, ...Array.from({ length: w - ids.length }, () => '')]
-        }
-        return { ...g, workerIds: ids, workerDetails: details }
-      })
-      return changed ? next : prev
-    })
-  }, [isCuina, mode])
-
-  // Reseteja l'estat ETT cada vegada que canvia l'esdeveniment o s'obre el modal.
   useEffect(() => {
     if (!isCuina) return
     setCuinaEtt({
       open: false,
       data: {
-        serviceDate: extractDate(event.start),
+        serviceDate: eventServiceDate,
         meetingPoint: 'CENTRAL',
         startTime: event.startTime || '',
         endTime: event.endTime || '',
@@ -256,9 +314,9 @@ export function useCuinaState({
     event.endTime,
     event.location,
     event.eventLocation,
+    eventServiceDate,
   ])
 
-  // El meetingPoint del primer grup mana sobre el del modal.
   useEffect(() => {
     if (!isCuina) return
     const firstPoint = cuinaGroups[0]?.meetingPoint || ''
@@ -267,7 +325,6 @@ export function useCuinaState({
     }
   }, [cuinaGroups, isCuina, meetingPoint, setMeetingPoint])
 
-  // Si tens un sol grup amb responsable demanat, autoassigna el manualResp.
   useEffect(() => {
     if (!isCuina) return
     if (cuinaGroups.length !== 1) return
@@ -281,14 +338,17 @@ export function useCuinaState({
     )
   }, [isCuina, cuinaGroups, manualResp])
 
-  // Sincronitza les hores del primer grup cap a les hores globals del modal.
   useEffect(() => {
     if (!isCuina) return
     const firstGroup = cuinaGroups[0]
     if (!firstGroup) return
-    if (firstGroup.startTime !== startTime) setStartTime(firstGroup.startTime)
-    if (firstGroup.endTime !== endTime) setEndTime(firstGroup.endTime)
-    if (firstGroup.arrivalTime !== arrivalTime) setArrivalTime(firstGroup.arrivalTime)
+    if (firstGroup.startTime && firstGroup.startTime !== startTime) setStartTime(firstGroup.startTime)
+    else if (!startTime && firstGroup.startTime) setStartTime(firstGroup.startTime)
+    if (firstGroup.endTime && firstGroup.endTime !== endTime) setEndTime(firstGroup.endTime)
+    else if (!endTime && firstGroup.endTime) setEndTime(firstGroup.endTime)
+    if (firstGroup.arrivalTime && firstGroup.arrivalTime !== arrivalTime) {
+      setArrivalTime(firstGroup.arrivalTime)
+    }
   }, [
     cuinaGroups,
     isCuina,
@@ -300,13 +360,59 @@ export function useCuinaState({
     setArrivalTime,
   ])
 
-  const updateCuinaGroup = useCallback((id: string, patch: Partial<CuinaGroup>) => {
-    setCuinaGroups((prev) =>
-      prev.map((group) =>
-        group.id === id ? normalizeGroupDrivers({ ...group, ...patch }) : group
+  useEffect(() => {
+    if (!isCuina || !availableVehicles.length) return
+    setCuinaGroups((prev) => {
+      let changed = false
+      const next = prev.map((group) => {
+        const assignments = ensureCuinaVehicleAssignments(group)
+        const updated = assignments.map((assignment) => {
+          if (assignment.vehicleId || !assignment.plate) return assignment
+          const matched = availableVehicles.find((vehicle) => vehicle.plate === assignment.plate)
+          if (!matched) return assignment
+          changed = true
+          return {
+            ...assignment,
+            vehicleId: matched.id,
+            vehicleType: assignment.vehicleType || matched.type || '',
+          }
+        })
+        if (!changed) return group
+        return { ...group, vehicleAssignments: updated }
+      })
+      return changed ? next : prev
+    })
+  }, [availableVehicles, isCuina])
+
+  void loadingVehicles
+
+  const updateCuinaGroup = useCallback(
+    (id: string, patch: Partial<CuinaGroup>) => {
+      setCuinaGroups((prev) =>
+        prev.map((group) => {
+          if (group.id !== id) return group
+          const merged = { ...group, ...patch }
+          const vehicleOnlyPatch =
+            Boolean(patch.vehicleAssignments) &&
+            patch.roleLines === undefined &&
+            patch.workerIds === undefined &&
+            patch.workerDetails === undefined &&
+            patch.driverAssignments === undefined
+
+          if (Array.isArray(merged.roleLines) && merged.roleLines.length > 0) {
+            if (vehicleOnlyPatch) return merged
+            return syncCuinaGroupFromRoleLines(
+              merged,
+              merged.roleLines,
+              merged.vehicleAssignments || ensureCuinaVehicleAssignments(merged)
+            )
+          }
+          return normalizeGroupDrivers(merged)
+        })
       )
-    )
-  }, [normalizeGroupDrivers])
+    },
+    [normalizeGroupDrivers]
+  )
 
   const addCuinaGroup = useCallback(() => {
     setCuinaGroups((prev) => [
@@ -332,6 +438,14 @@ export function useCuinaState({
     [createCuinaGroup]
   )
 
+  const toggleCuinaEtt = useCallback(() => {
+    setCuinaEtt((prev) => ({ ...prev, open: !prev.open }))
+  }, [])
+
+  const updateCuinaEtt = useCallback((patch: Partial<CuinaEttState['data']>) => {
+    setCuinaEtt((prev) => ({ ...prev, data: { ...prev.data, ...patch } }))
+  }, [])
+
   return {
     cuinaGroups,
     setCuinaGroups,
@@ -340,6 +454,11 @@ export function useCuinaState({
     cuinaTotals,
     isManualResponsibleConductor,
     cuinaVehiclesPayload,
+    availableVehicles,
+    availableVehicleCount,
+    isVehicleIdAssigned,
+    toggleCuinaEtt,
+    updateCuinaEtt,
     addCuinaGroup,
     updateCuinaGroup,
     removeCuinaGroup,

@@ -1,7 +1,7 @@
 export const runtime = 'nodejs'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { FieldValue, Timestamp } from 'firebase-admin/firestore'
+import { FieldPath, FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import type { SessionUserForApi } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
@@ -13,14 +13,13 @@ import { DEFAULT_ALLERGENS } from '@/data/allergens'
 
 const ALLERGENS_BBDD_PATH = '/menu/allergens/bbdd'
 
-const COLLECTIONS_TO_CLEAR = [
-  'plats',
-  'categories',
-  'family',
-  'menus',
-  'allergens',
-  'allergens_import_conflicts',
-] as const
+type ImportCollectionName =
+  | 'plats'
+  | 'categories'
+  | 'family'
+  | 'menus'
+  | 'allergens'
+  | 'allergens_import_conflicts'
 
 function buildAccessUser(authUser: SessionUserForApi): AccessUser & { id: string } {
   return {
@@ -38,7 +37,7 @@ function buildAccessUser(authUser: SessionUserForApi): AccessUser & { id: string
   }
 }
 
-async function clearCollection(name: (typeof COLLECTIONS_TO_CLEAR)[number] | 'allergens_import_conflicts') {
+async function clearCollection(name: ImportCollectionName | 'allergens_import_conflicts') {
   while (true) {
     const snap = await firestoreAdmin.collection(name).limit(450).get()
     if (snap.empty) break
@@ -49,6 +48,90 @@ async function clearCollection(name: (typeof COLLECTIONS_TO_CLEAR)[number] | 'al
 
     if (snap.size < 450) break
   }
+}
+
+async function deleteDocsNotInCollection(
+  name: ImportCollectionName,
+  keepIds: Set<string>
+) {
+  let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null
+
+  while (true) {
+    let query: FirebaseFirestore.Query = firestoreAdmin
+      .collection(name)
+      .orderBy(FieldPath.documentId())
+      .limit(450)
+
+    if (lastDoc) query = query.startAfter(lastDoc)
+
+    const snap = await query.get()
+    if (snap.empty) break
+
+    const batch = firestoreAdmin.batch()
+    let batchCount = 0
+
+    for (const docSnap of snap.docs) {
+      if (keepIds.has(docSnap.id)) continue
+      batch.delete(docSnap.ref)
+      batchCount++
+    }
+
+    if (batchCount > 0) await batch.commit()
+    lastDoc = snap.docs[snap.docs.length - 1]
+    if (snap.size < 450) break
+  }
+}
+
+function entryIds(entries: Array<[string, string]>): Set<string> {
+  return new Set(
+    entries
+      .map(([id]) => String(id || '').trim())
+      .filter((id) => id.length > 0)
+  )
+}
+
+function conflictIds(conflicts: ImportConflictItem[]): Set<string> {
+  return new Set(
+    conflicts
+      .map((conflict) => String(conflict.id || '').trim())
+      .filter((id) => id.length > 0)
+  )
+}
+
+async function deleteStaleReplaceDocs({
+  rowsToImport,
+  familyEntries,
+  categoryEntries,
+  menuEntries,
+  duplicateConflicts,
+  existingConflicts,
+}: {
+  rowsToImport: ParsedImportRow[]
+  familyEntries: Array<[string, string]>
+  categoryEntries: Array<[string, string]>
+  menuEntries: Array<[string, string]>
+  duplicateConflicts: ImportConflictItem[]
+  existingConflicts: ImportConflictItem[]
+}) {
+  await deleteDocsNotInCollection(
+    'plats',
+    new Set(
+      rowsToImport
+        .map((row) => String(row.code || '').trim())
+        .filter((id) => id.length > 0)
+    )
+  )
+  await deleteDocsNotInCollection('family', entryIds(familyEntries))
+  await deleteDocsNotInCollection('categories', entryIds(categoryEntries))
+  await deleteDocsNotInCollection('menus', entryIds(menuEntries))
+  await deleteDocsNotInCollection(
+    'allergens',
+    new Set(DEFAULT_ALLERGENS.map((allergen) => allergen.key))
+  )
+  await deleteDocsNotInCollection(
+    'allergens_import_conflicts',
+    new Set([...conflictIds(duplicateConflicts), ...conflictIds(existingConflicts)])
+  )
 }
 
 async function seedDefaultAllergens() {
@@ -217,8 +300,11 @@ export async function POST(req: NextRequest) {
     const source = String(body?.source || '').trim() || 'manual-import.xlsx'
 
     if (mode === 'replace') {
-      for (const collectionName of COLLECTIONS_TO_CLEAR) {
-        await clearCollection(collectionName)
+      if (rowsToImport.length === 0) {
+        return NextResponse.json(
+          { ok: false, error: 'No rows to replace' },
+          { status: 400 }
+        )
       }
     } else {
       await clearCollection('allergens_import_conflicts')
@@ -231,6 +317,17 @@ export async function POST(req: NextRequest) {
     await writeConflictDocs(duplicateConflicts, source)
     await writeConflictDocs(existingConflicts, source)
     await writePlats(rowsToImport, mode === 'replace')
+
+    if (mode === 'replace') {
+      await deleteStaleReplaceDocs({
+        rowsToImport,
+        familyEntries,
+        categoryEntries,
+        menuEntries,
+        duplicateConflicts,
+        existingConflicts,
+      })
+    }
 
     return NextResponse.json({
       ok: true,

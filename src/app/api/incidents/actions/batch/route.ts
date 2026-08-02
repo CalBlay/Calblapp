@@ -1,10 +1,9 @@
 export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
-import { canAccessIncidentsModule, normalizeIncidentActionStatus } from '@/lib/incidentPolicy'
+import { normalizeIncidentActionStatus } from '@/lib/incidentPolicy'
+import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
 
 function tsToIso(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -24,12 +23,8 @@ const MAX_IDS = 1000
  */
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canAccessIncidentsModule(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsModuleView()
+    if (!auth.ok) return auth.res
 
     let body: { incidentIds?: unknown }
     try {

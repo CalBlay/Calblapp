@@ -3,11 +3,21 @@ import { addMaintenanceTravelToWorkMinutes } from '@/lib/maintenanceCenterTravel
 import { loadMaintenancePreventiusForInformes } from '@/lib/informes/loadMaintenancePreventiusForInformes'
 import { loadMaintenanceTravelIndexForInformes } from '@/lib/informes/loadMaintenanceTravelIndex'
 import {
+  flattenMaintenanceLocationNodes,
+  getMaintenanceCenterOptions,
+  getMaintenanceLocationsForCenter,
+  getMaintenanceZones,
+  matchesMaintenanceSiteFilters,
+  sanitizeMaintenanceInternalLocations,
+  sanitizeMaintenanceLocationNodes,
+} from '@/lib/maintenanceLocationCatalog'
+import {
   resolvePreventiuWorkMinutesForReport,
   resolveTicketWorkMinutesForReport,
   workInvolvesOperator,
   type StatusHistoryEntry,
 } from '@/lib/informes/maintenanceTicketMetrics'
+import type { MaintenanceWorkLogEntry } from '@/lib/maintenanceWorkLogs'
 import type {
   MaintenanceAssigneeRow,
   MaintenanceKpiCard,
@@ -27,8 +37,11 @@ type BuildParams = {
   dateTo?: string
   status?: string
   priority?: string
+  center?: string
   location?: string
+  zone?: string
   ticketType?: string
+  interventionType?: string
   assigneeId?: string
   operatorId?: string
 }
@@ -42,10 +55,13 @@ type TicketRecord = Record<string, unknown> & {
   priority?: string
   ticketType?: string
   createdAt?: string | number | { toDate?: () => Date }
+  plannedStart?: string | number | { toDate?: () => Date } | null
+  resolvedAt?: string | number | { toDate?: () => Date } | null
   externalized?: boolean
   assignedToNames?: string[]
   assignedToIds?: string[]
   statusHistory?: StatusHistoryEntry[]
+  workLogs?: MaintenanceWorkLogEntry[]
 }
 
 type InternalWorkItem = {
@@ -54,14 +70,17 @@ type InternalWorkItem = {
   code: string
   eventAtMs: number
   createdAt: string
+  lastActivityAt?: string
   location: string
   machine: string
   status: string
   priority: string
   category: string
+  originalWorkerIds?: string[]
   workerIds: string[]
   workerNames: string[]
   statusHistory: StatusHistoryEntry[]
+  workLogs?: MaintenanceWorkLogEntry[]
   rawWorkMinutes: number
   plannedMinutes: number
   externalized: boolean
@@ -70,11 +89,11 @@ type InternalWorkItem = {
 const STATUS_LABELS: Record<string, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
+  reassignat: 'Reassignat',
   en_curs: 'En curs',
   espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
-  resolut: 'Resolt',
   validat: 'Validat',
 }
 
@@ -85,7 +104,7 @@ const PRIORITY_LABELS: Record<string, string> = {
   baixa: 'Baixa',
 }
 
-const CLOSED_STATUSES = new Set(['validat', 'resolut', 'fet'])
+const CLOSED_STATUSES = new Set(['validat', 'fet'])
 
 function normalizeText(value?: string | null) {
   return String(value || '')
@@ -109,12 +128,32 @@ function parseCreatedAtMs(value: TicketRecord['createdAt']): number {
   return 0
 }
 
+function parseAnyTimestampMs(
+  value?: string | number | { toDate?: () => Date } | null
+): number {
+  if (value && typeof value === 'object' && typeof value.toDate === 'function') {
+    return value.toDate().getTime()
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 1e12 ? value * 1000 : value
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 0
+}
+
 function toYmd(ms: number): string {
   const d = new Date(ms)
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+function toIsoOrEmpty(ms: number): string {
+  return ms > 0 ? new Date(ms).toISOString() : ''
 }
 
 function ymdToMsStart(ymd: string): number {
@@ -144,6 +183,128 @@ function uniqueLabeledOptions(
     .map((value) => ({ value, label: labelFor(value) }))
 }
 
+async function loadMaintenanceCentersForReports() {
+  const snap = await db.collection('finques').get()
+  return snap.docs
+    .map((doc) => {
+      const data = doc.data() as Record<string, unknown>
+      const locationNodes = sanitizeMaintenanceLocationNodes(
+        data.maintenanceLocationNodes,
+        data.maintenanceInternalLocations
+      )
+      return {
+        id: doc.id,
+        name: String(data.nom || data.name || '').trim(),
+        code: String(data.codi || data.code || doc.id || '').trim(),
+        tipus: String(data.tipus || '').trim(),
+        internalLocations: locationNodes.length
+          ? flattenMaintenanceLocationNodes(locationNodes)
+          : sanitizeMaintenanceInternalLocations(data.maintenanceInternalLocations),
+        locationNodes,
+      }
+    })
+    .filter((row) => row.name)
+}
+
+function resolveAssigneeNamesForAggregation(
+  item: InternalWorkItem,
+  operatorId: string,
+  personnelOptions: MaintenanceSelectOption[]
+): string[] {
+  if (!operatorId) {
+    return item.workerNames.length ? item.workerNames : ['Sense assignar']
+  }
+
+  const matchedNames = item.workerIds
+    .map((id, index) => (id === operatorId ? item.workerNames[index] || '' : ''))
+    .map((name) => String(name || '').trim())
+    .filter(Boolean)
+
+  if (matchedNames.length > 0) return matchedNames
+
+  const fallback = personnelOptions.find((option) => option.value === operatorId)?.label?.trim() || ''
+  return fallback ? [fallback] : ['Sense assignar']
+}
+
+function parseEntryAtMs(entry?: { at?: number | string | null } | null): number {
+  if (!entry) return 0
+  const raw = entry.at
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw < 1e12 ? raw * 1000 : raw
+  if (typeof raw === 'string') {
+    const parsed = Date.parse(raw)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 0
+}
+
+function resolveTicketLastActivityMs(data: TicketRecord): number {
+  const createdAtMs = parseCreatedAtMs(data.createdAt)
+  const plannedStartMs = parseAnyTimestampMs(data.plannedStart)
+  const resolvedAtMs = parseAnyTimestampMs(data.resolvedAt)
+  const latestStatusMs = Array.isArray(data.statusHistory)
+    ? data.statusHistory.reduce((max, entry) => {
+        const atMs = parseEntryAtMs(entry)
+        return atMs > max ? atMs : max
+      }, 0)
+    : 0
+  const latestWorkLogMs = Array.isArray(data.workLogs)
+    ? data.workLogs.reduce((max, entry) => {
+        const atMs = parseEntryAtMs(entry)
+        return atMs > max ? atMs : max
+      }, 0)
+    : 0
+
+  return Math.max(createdAtMs, plannedStartMs, resolvedAtMs, latestStatusMs, latestWorkLogMs)
+}
+
+function resolveOperatorDisplayName(
+  item: InternalWorkItem,
+  operatorId: string,
+  personnelOptions: MaintenanceSelectOption[]
+): string {
+  const index = item.workerIds.findIndex((id) => id === operatorId)
+  const fromItem = index >= 0 ? String(item.workerNames[index] || '').trim() : ''
+  if (fromItem) return fromItem
+  return personnelOptions.find((option) => option.value === operatorId)?.label?.trim() || operatorId
+}
+
+function applyOperatorProjection(
+  item: InternalWorkItem,
+  operatorId: string,
+  personnelOptions: MaintenanceSelectOption[]
+): InternalWorkItem {
+  if (!operatorId) return item
+
+  const operatorName = resolveOperatorDisplayName(item, operatorId, personnelOptions)
+  const lastStatusEntry = item.statusHistory
+    .filter((entry) => String(entry?.byId || '').trim() === operatorId)
+    .map((entry) => ({
+      status: normalizeText((entry as StatusHistoryEntry & { status?: string }).status) || item.status,
+      atMs: parseEntryAtMs(entry),
+    }))
+    .sort((a, b) => a.atMs - b.atMs)
+    .at(-1)
+
+  const lastWorkLogAtMs = Array.isArray(item.workLogs)
+    ? item.workLogs
+        .filter((entry) => String(entry?.byId || '').trim() === operatorId)
+        .map((entry) => parseEntryAtMs(entry))
+        .reduce((max, value) => (value > max ? value : max), 0)
+    : 0
+
+  const operatorActivityAtMs = Math.max(lastStatusEntry?.atMs || 0, lastWorkLogAtMs)
+  const lastActivityAtMs = operatorActivityAtMs > 0 ? operatorActivityAtMs : item.eventAtMs
+
+  return {
+    ...item,
+    eventAtMs: lastActivityAtMs,
+    lastActivityAt: toIsoOrEmpty(lastActivityAtMs),
+    status: lastStatusEntry?.status || item.status,
+    workerIds: operatorName ? [operatorId] : item.workerIds,
+    workerNames: operatorName ? [operatorName] : item.workerNames,
+  }
+}
+
 function resolveWindow(params: BuildParams): { fromMs: number; toMs: number; context: MaintenanceReportContext } {
   const now = Date.now()
   if (params.mode === 'rolling') {
@@ -168,8 +329,11 @@ function resolveWindow(params: BuildParams): { fromMs: number; toMs: number; con
         dateTo,
         status: params.status || undefined,
         priority: params.priority || undefined,
+        center: params.center || undefined,
         location: params.location || undefined,
+        zone: params.zone || undefined,
         ticketType: params.ticketType || undefined,
+        interventionType: params.interventionType || undefined,
         assigneeId: operatorId || undefined,
         operatorId: operatorId || undefined,
       },
@@ -189,6 +353,7 @@ function toReportRow(item: InternalWorkItem & {
     kind: item.kind,
     code: item.code,
     createdAt: item.createdAt,
+    lastActivityAt: item.lastActivityAt || item.createdAt,
     location: item.location,
     machine: item.machine,
     status: STATUS_LABELS[item.status] || item.status,
@@ -224,17 +389,19 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
   const operatorId = String(params.operatorId || params.assigneeId || '').trim()
   const travelIndex = await loadMaintenanceTravelIndexForInformes()
 
-  const [ticketSnap, preventiusRaw, personnelOperators] = await Promise.all([
+  const [ticketSnap, preventiusRaw, personnelOperators, maintenanceCenters] = await Promise.all([
     db.collection('maintenanceTickets').get(),
     loadMaintenancePreventiusForInformes(),
     loadMaintenancePersonnelOptions(),
+    loadMaintenanceCentersForReports(),
   ])
 
   const allItems: InternalWorkItem[] = []
 
   for (const doc of ticketSnap.docs) {
     const data = doc.data() as TicketRecord
-    const eventAtMs = parseCreatedAtMs(data.createdAt)
+    const createdAtMs = parseCreatedAtMs(data.createdAt)
+    const eventAtMs = resolveTicketLastActivityMs(data) || createdAtMs
     const assigneeNames = Array.isArray(data.assignedToNames)
       ? data.assignedToNames.map((n) => String(n || '').trim()).filter(Boolean)
       : []
@@ -246,15 +413,18 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       id: doc.id,
       code: String(data.ticketCode || data.incidentNumber || doc.id).trim(),
       eventAtMs,
-      createdAt: eventAtMs ? new Date(eventAtMs).toISOString() : '',
+      createdAt: createdAtMs ? new Date(createdAtMs).toISOString() : '',
+      lastActivityAt: eventAtMs ? new Date(eventAtMs).toISOString() : '',
       location: String(data.location || '').trim(),
       machine: String(data.machine || '').trim(),
       status: normalizeText(data.status) || 'nou',
       priority: normalizeText(data.priority) || 'normal',
       category: normalizeText(data.ticketType) || 'maquinaria',
+      originalWorkerIds: assigneeIds,
       workerIds: assigneeIds,
       workerNames: assigneeNames,
       statusHistory: Array.isArray(data.statusHistory) ? data.statusHistory : [],
+      workLogs: Array.isArray(data.workLogs) ? (data.workLogs as MaintenanceWorkLogEntry[]) : [],
       rawWorkMinutes: 0,
       plannedMinutes: 0,
       externalized: Boolean(data.externalized),
@@ -273,6 +443,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       status: preventiu.status,
       priority: preventiu.priority,
       category: 'preventiu',
+      originalWorkerIds: preventiu.workerIds,
       workerIds: preventiu.workerIds,
       workerNames: preventiu.workerNames,
       statusHistory: preventiu.statusHistory,
@@ -287,22 +458,28 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
   const inWindow = allItems.filter((item) => item.eventAtMs >= fromMs && item.eventAtMs <= toMs)
 
   const withMetrics = inWindow.map((item) => {
+    const scopedItem = applyOperatorProjection(item, operatorId, personnelOperators)
     const workMinutesRaw =
-      item.kind === 'ticket'
-        ? resolveTicketWorkMinutesForReport(item.statusHistory, item.workerIds, operatorId || undefined)
+      scopedItem.kind === 'ticket'
+        ? resolveTicketWorkMinutesForReport(
+            scopedItem.statusHistory,
+            scopedItem.workerIds,
+            operatorId || undefined,
+            scopedItem.workLogs
+          )
         : resolvePreventiuWorkMinutesForReport(
-            item.statusHistory,
-            item.workerIds,
-            item.plannedMinutes,
+            scopedItem.statusHistory,
+            scopedItem.workerIds,
+            scopedItem.plannedMinutes,
             operatorId || undefined
           )
     const travelBreakdown = addMaintenanceTravelToWorkMinutes(
       workMinutesRaw,
-      item.location,
+      scopedItem.location,
       travelIndex
     )
     return {
-      ...item,
+      ...scopedItem,
       workMinutes: travelBreakdown.workMinutes,
       travelMinutes: travelBreakdown.travelMinutes,
       totalMinutes: travelBreakdown.totalMinutes,
@@ -313,12 +490,33 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     if (params.mode !== 'custom') return true
     if (params.status && item.status !== normalizeText(params.status)) return false
     if (params.priority && item.priority !== normalizeText(params.priority)) return false
-    if (params.location && item.location !== params.location) return false
+    if (
+      !matchesMaintenanceSiteFilters(
+        maintenanceCenters,
+        {
+          center: params.center || '',
+          location: params.location || '',
+          zone: params.zone || '',
+        },
+        item.location
+      )
+    ) {
+      return false
+    }
+    if (params.interventionType) {
+      const type = normalizeText(params.interventionType)
+      if (type === 'preventiu' && item.kind !== 'preventiu') return false
+      if (type === 'ticket_internal' && (item.kind !== 'ticket' || item.externalized)) return false
+      if (type === 'ticket_externalized' && (item.kind !== 'ticket' || !item.externalized)) return false
+    }
     if (params.ticketType) {
       if (item.kind !== 'ticket') return false
       if (item.category !== normalizeText(params.ticketType)) return false
     }
-    if (operatorId && !workInvolvesOperator(item.workerIds, item.statusHistory, operatorId)) {
+    if (
+      operatorId &&
+      !workInvolvesOperator(item.originalWorkerIds || item.workerIds, item.statusHistory, operatorId, item.workLogs)
+    ) {
       return false
     }
     if (operatorId && item.workMinutes <= 0 && item.travelMinutes <= 0) return false
@@ -376,6 +574,7 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     const locRow = locationMap.get(locKey) || {
       location: locKey,
       tickets: 0,
+      externalizedTickets: 0,
       preventius: 0,
       workMinutes: 0,
       travelMinutes: 0,
@@ -383,22 +582,25 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     }
     if (item.kind === 'ticket') locRow.tickets += 1
     else locRow.preventius += 1
+    if (item.kind === 'ticket' && item.externalized) locRow.externalizedTickets += 1
     locRow.workMinutes += item.workMinutes
     locRow.travelMinutes += item.travelMinutes
     locRow.totalMinutes += item.totalMinutes
     locationMap.set(locKey, locRow)
 
-    const names = item.workerNames.length ? item.workerNames : ['Sense assignar']
+    const names = resolveAssigneeNamesForAggregation(item, operatorId, personnelOperators)
     for (const name of names) {
       const row = assigneeMap.get(name) || {
         name,
         tickets: 0,
+        externalizedTickets: 0,
         preventius: 0,
         workMinutes: 0,
         totalMinutes: 0,
       }
       if (item.kind === 'ticket') row.tickets += 1
       else row.preventius += 1
+      if (item.kind === 'ticket' && item.externalized) row.externalizedTickets += 1
       row.workMinutes += item.workMinutes
       row.totalMinutes += item.totalMinutes
       assigneeMap.set(name, row)
@@ -451,6 +653,11 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       hint: 'Incidències al període',
     },
     {
+      label: 'Tickets interns',
+      value: ticketCount - externalizedCount,
+      hint: 'Gestionats internament',
+    },
+    {
       label: 'Preventius',
       value: preventiuCount,
       hint: 'Planificats al període (data tancament o planificada)',
@@ -458,12 +665,12 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
     {
       label: 'Oberts',
       value: openCount,
-      hint: 'Encara no tancats (fet/resolt/validat)',
+      hint: 'Encara no tancats (fet/validat)',
     },
     {
       label: 'Tancats',
       value: closedCount,
-      hint: 'Estat fet, resolt o validat',
+      hint: 'Estat fet o validat',
     },
     {
       label: 'Externalitzats',
@@ -519,10 +726,17 @@ export async function buildMaintenanceOverview(params: BuildParams): Promise<Mai
       optionSource.map((t) => t.priority),
       (value) => PRIORITY_LABELS[value] || value
     ),
+    centers: uniqueLabeledOptions(getMaintenanceCenterOptions(maintenanceCenters), (value) => value),
+    interventionTypes: [
+      { value: 'ticket_internal', label: 'Tickets interns' },
+      { value: 'ticket_externalized', label: 'Tickets externalitzats' },
+      { value: 'preventiu', label: 'Preventius' },
+    ],
     locations: uniqueLabeledOptions(
-      optionSource.map((t) => t.location).filter(Boolean),
+      getMaintenanceLocationsForCenter(maintenanceCenters),
       (value) => value
     ),
+    zones: uniqueLabeledOptions(getMaintenanceZones(maintenanceCenters), (value) => value),
     ticketTypes: uniqueLabeledOptions(
       optionSource.filter((t) => t.kind === 'ticket').map((t) => t.category),
       (value) => (value === 'deco' ? 'Decoració' : 'Maquinària')

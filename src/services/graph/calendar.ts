@@ -107,6 +107,14 @@ type CreateTaskDeadlineEventInput = {
   deadline: string
 }
 
+type CreateIncidentActionDeadlineEventInput = {
+  assigneeEmail: string
+  actionTitle: string
+  incidentNumber?: string | null
+  deadline: string
+  department?: string | null
+}
+
 type SendProjectMissedActivityEmailInput = {
   senderEmail: string
   recipient: ProjectRecipient
@@ -127,6 +135,7 @@ type SendMaintenanceSupplierEmailInput = {
   recipient: ProjectRecipient
   subject: string
   ticketCode: string
+  center?: string
   location: string
   machine?: string
   description: string
@@ -888,6 +897,59 @@ export async function createTaskDeadlineCalendarEvent(input: CreateTaskDeadlineE
   }
 }
 
+export async function createIncidentActionDeadlineCalendarEvent(
+  input: CreateIncidentActionDeadlineEventInput
+): Promise<{ id: string; webLink: string }> {
+  const deadline = String(input.deadline || '').trim()
+  const assigneeEmail = String(input.assigneeEmail || '').trim()
+  if (!deadline || !assigneeEmail) {
+    return { id: '', webLink: '' }
+  }
+
+  const incidentLabel = String(input.incidentNumber || '').trim() || 'Incidència'
+  const accessToken = await getAccessToken()
+  const endDate = addOneDay(deadline)
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        subject: `Acció incidència · ${input.actionTitle || 'Acció'} · ${incidentLabel}`,
+        body: {
+          contentType: 'HTML',
+          content: buildIncidentActionDeadlineEventHtml(input),
+        },
+        start: {
+          dateTime: `${deadline}T00:00:00`,
+          timeZone: 'Europe/Madrid',
+        },
+        end: {
+          dateTime: `${endDate}T00:00:00`,
+          timeZone: 'Europe/Madrid',
+        },
+        isAllDay: true,
+        isReminderOn: true,
+      }),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`No s'ha pogut crear l'acció d'incidència al calendari: ${response.status} ${text}`)
+  }
+
+  const data = (await response.json()) as GraphEventResponse
+  return {
+    id: data.id || '',
+    webLink: data.webLink || '',
+  }
+}
+
 export async function sendProjectMissedActivityEmail(input: SendProjectMissedActivityEmailInput) {
   const recipientEmail = String(input.recipient.email || '').trim()
   const senderEmail = String(input.senderEmail || '').trim()
@@ -930,10 +992,101 @@ export async function sendProjectMissedActivityEmail(input: SendProjectMissedAct
   }
 }
 
+type MaintenanceTicketCalendarEventInput = {
+  assigneeEmail: string
+  eventId?: string
+  subject: string
+  bodyHtml: string
+  startDateTime: string
+  endDateTime: string
+}
+
+export async function upsertMaintenanceTicketCalendarEvent(
+  input: MaintenanceTicketCalendarEventInput
+): Promise<{ id: string; webLink: string }> {
+  const assigneeEmail = String(input.assigneeEmail || '').trim()
+  const startDateTime = String(input.startDateTime || '').trim()
+  const endDateTime = String(input.endDateTime || '').trim()
+  if (!assigneeEmail || !startDateTime || !endDateTime) {
+    return { id: '', webLink: '' }
+  }
+
+  const accessToken = await getAccessToken()
+  const eventId = String(input.eventId || '').trim()
+  const payload = {
+    subject: input.subject,
+    body: {
+      contentType: 'HTML',
+      content: input.bodyHtml,
+    },
+    start: {
+      dateTime: startDateTime,
+      timeZone: 'Europe/Madrid',
+    },
+    end: {
+      dateTime: endDateTime,
+      timeZone: 'Europe/Madrid',
+    },
+    isReminderOn: true,
+  }
+
+  const response = await fetch(
+    eventId
+      ? `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events/${encodeURIComponent(eventId)}`
+      : `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
+    {
+      method: eventId ? 'PATCH' : 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(
+      `No s'ha pogut ${eventId ? 'actualitzar' : 'crear'} el ticket al calendari Outlook: ${response.status} ${text}`
+    )
+  }
+
+  const data = (await response.json()) as GraphEventResponse
+  return {
+    id: data.id || eventId || '',
+    webLink: data.webLink || '',
+  }
+}
+
+export async function deleteOutlookCalendarEvent(assigneeEmail: string, eventId: string) {
+  const email = String(assigneeEmail || '').trim()
+  const id = String(eventId || '').trim()
+  if (!email || !id) return
+
+  const accessToken = await getAccessToken()
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}/events/${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: 'no-store',
+    }
+  )
+
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text()
+    throw new Error(`No s'ha pogut eliminar l'esdeveniment del calendari: ${response.status} ${text}`)
+  }
+}
+
 export async function sendMaintenanceSupplierEmail(input: SendMaintenanceSupplierEmailInput) {
   const recipientEmail = String(input.recipient.email || '').trim()
   const senderEmail = String(input.senderEmail || '').trim()
   const subject = String(input.subject || '').trim()
+  const adminlogEmail = 'adminlog@calblay.com'
   if (!recipientEmail || !senderEmail || !subject) return
 
   const attachments = await buildMailAttachments(input.attachments || [])
@@ -959,6 +1112,14 @@ export async function sendMaintenanceSupplierEmail(input: SendMaintenanceSupplie
               emailAddress: {
                 address: recipientEmail,
                 name: input.recipient.name || recipientEmail,
+              },
+            },
+          ],
+          ccRecipients: [
+            {
+              emailAddress: {
+                address: adminlogEmail,
+                name: adminlogEmail,
               },
             },
           ],
@@ -1263,6 +1424,16 @@ function buildTaskDeadlineEventHtml(projectName: string, blockName: string, task
   `
 }
 
+function buildIncidentActionDeadlineEventHtml(input: CreateIncidentActionDeadlineEventInput) {
+  const dept = String(input.department || '').trim()
+  return `
+    <p>Data limit de l'acció <strong>${escapeHtml(input.actionTitle || 'Acció')}</strong> d'incidència.</p>
+    <p><strong>Incidència:</strong> ${escapeHtml(String(input.incidentNumber || '').trim() || '—')}</p>
+    ${dept ? `<p><strong>Departament:</strong> ${escapeHtml(dept)}</p>` : ''}
+    <p><strong>Data limit:</strong> ${escapeHtml(formatBarcelonaDate(input.deadline))}</p>
+  `
+}
+
 function buildProjectMissedActivityEmailHtml(input: SendProjectMissedActivityEmailInput) {
   const lines = input.messages
     .slice(0, 6)
@@ -1293,12 +1464,15 @@ function buildMaintenanceSupplierEmailHtml(input: SendMaintenanceSupplierEmailIn
   const createdLabel = formatFlexibleBarcelonaDate(input.createdAt)
   const reference = String(input.reference || '').trim()
   const priority = String(input.priority || '').trim()
+  const center = String(input.center || '').trim()
+  const location = String(input.location || '').trim()
   const machine = String(input.machine || '').trim()
   const message = String(input.message || '').trim()
   const description = String(input.description || '').trim()
   const lines = [
     `<p style="margin:0 0 8px"><strong>Ticket:</strong> ${escapeHtml(input.ticketCode || 'TIC')}</p>`,
-    `<p style="margin:0 0 8px"><strong>Ubicacio:</strong> ${escapeHtml(input.location || '-')}</p>`,
+    `<p style="margin:0 0 8px"><strong>Centre:</strong> ${escapeHtml(center || '-')}</p>`,
+    `<p style="margin:0 0 8px"><strong>Ubicacio:</strong> ${escapeHtml(location || '-')}</p>`,
     machine ? `<p style="margin:0 0 8px"><strong>Maquinaria:</strong> ${escapeHtml(machine)}</p>` : '',
     `<p style="margin:0 0 8px"><strong>Prioritat:</strong> ${escapeHtml(priority || 'normal')}</p>`,
     createdLabel ? `<p style="margin:0 0 8px"><strong>Creat:</strong> ${escapeHtml(createdLabel)}</p>` : '',

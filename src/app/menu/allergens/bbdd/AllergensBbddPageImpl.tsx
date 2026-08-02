@@ -14,22 +14,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { DEFAULT_ALLERGENS, sortAllergensByStandardOrder } from '@/data/allergens'
-import { db } from '@/lib/firebaseClient'
+import { DEFAULT_ALLERGENS } from '@/data/allergens'
 import {
-  collection,
-  deleteDoc,
-  deleteField,
-  doc,
-  getDoc,
-  getDocs,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  writeBatch,
-} from 'firebase/firestore'
+  deleteAllergen,
+  deletePlat,
+  fetchAllergensCatalog,
+  fetchAllPlatsForExport,
+  fetchPlatByCode,
+  patchPlat,
+  savePlat,
+  seedDefaultAllergens,
+  upsertAllergen,
+} from '@/lib/allergens/bbddClient'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { parseImportWorkbook } from './manualImport'
 import type {
@@ -37,7 +33,6 @@ import type {
   AllergenValue,
   FormState,
   ImportConflictItem,
-  NamedLabelDoc,
   NameMeta,
   OptionItem,
   PlatDocData,
@@ -117,6 +112,11 @@ export default function AllergensBbddPage() {
     return combined
   }, [menusCatalog, form.menus])
 
+  const selectedMenuItems = useMemo(
+    () => menuItems.filter(menu => form.menus.includes(menu.id)),
+    [menuItems, form.menus]
+  )
+
   const allergenItems = useMemo(() => {
     const known = new Set(allergensCatalog.map(item => item.key))
     const combined = [...allergensCatalog]
@@ -162,76 +162,22 @@ export default function AllergensBbddPage() {
     return [...starts, ...contains].slice(0, 8)
   }, [platsIndex, searchQuery])
 
+  const applyCatalog = (catalog: Awaited<ReturnType<typeof fetchAllergensCatalog>>) => {
+    setCategories(catalog.categories)
+    setFamilies(catalog.families)
+    setMenusCatalog(catalog.menus)
+    setAllergensCatalog(catalog.allergens)
+    setAllergensSource(catalog.allergensSource)
+    setPlatsIndex(catalog.platsIndex)
+    setImportConflicts(catalog.importConflicts)
+  }
+
   useEffect(() => {
-    const loadOptions = async () => {
-      const [categorySnap, familySnap, menuSnap, allergenSnap, platsSnap, conflictSnap] = await Promise.all([
-        getDocs(query(collection(db, 'categories'), orderBy('label'))),
-        getDocs(query(collection(db, 'family'), orderBy('label'))),
-        getDocs(query(collection(db, 'menus'), orderBy('label'))),
-        getDocs(query(collection(db, 'allergens'), orderBy('label'))),
-        getDocs(collection(db, 'plats')),
-        getDocs(collection(db, 'allergens_import_conflicts')),
-      ])
-
-      setCategories(
-        categorySnap.docs.map(docSnap => ({
-          id: docSnap.id,
-          label: ((docSnap.data() as NamedLabelDoc).label || docSnap.id) as string,
-        }))
-      )
-      setFamilies(
-        familySnap.docs.map(docSnap => ({
-          id: docSnap.id,
-          label: ((docSnap.data() as NamedLabelDoc).label || docSnap.id) as string,
-        }))
-      )
-      setMenusCatalog(
-        menuSnap.docs.map(docSnap => ({
-          id: docSnap.id,
-          label: ((docSnap.data() as NamedLabelDoc).label || docSnap.id) as string,
-        }))
-      )
-
-      const dbAllergens = allergenSnap.docs.map(docSnap => ({
-        key: docSnap.id,
-        label: ((docSnap.data() as NamedLabelDoc).label || docSnap.id) as string,
-      }))
-
-      if (dbAllergens.length) {
-        setAllergensCatalog(sortAllergensByStandardOrder(dbAllergens))
-        setAllergensSource('db')
-      } else {
-        setAllergensCatalog([...DEFAULT_ALLERGENS])
-        setAllergensSource('default')
-      }
-
-      setPlatsIndex(
-        platsSnap.docs.map(docSnap => {
-          const data = docSnap.data() as PlatDocData
-          return {
-            id: docSnap.id,
-            code: String(data.code || docSnap.id),
-            nameCa: String(data.name?.ca || ''),
-            nameEs: String(data.name?.es || ''),
-            nameEn: String(data.name?.en || ''),
-          }
-        })
-      )
-
-      setImportConflicts(
-        conflictSnap.docs.map(docSnap => {
-          const data = docSnap.data() as Omit<ImportConflictItem, 'id'>
-          return {
-            id: docSnap.id,
-            ...data,
-          }
-        })
-      )
-    }
-
-    loadOptions().catch(err => {
-      console.error(err)
-    })
+    fetchAllergensCatalog()
+      .then(applyCatalog)
+      .catch(err => {
+        console.error(err)
+      })
   }, [])
 
   useEffect(() => {
@@ -351,19 +297,11 @@ export default function AllergensBbddPage() {
     }
   }
 
-  const seedDefaultAllergens = async () => {
+  const seedDefaultAllergensLocal = async () => {
     setLoading(true)
     setStatus('')
     try {
-      await Promise.all(
-        DEFAULT_ALLERGENS.map(allergen =>
-          setDoc(
-            doc(db, 'allergens', allergen.key),
-            { label: allergen.label, updatedAt: serverTimestamp(), source: 'default' },
-            { merge: true }
-          )
-        )
-      )
+      await seedDefaultAllergens()
       setAllergensCatalog([...DEFAULT_ALLERGENS])
       setAllergensSource('db')
       setStatus('Allergens base guardats.')
@@ -398,14 +336,10 @@ export default function AllergensBbddPage() {
 
     try {
       if (allergensSource === 'default') {
-        await seedDefaultAllergens()
+        await seedDefaultAllergensLocal()
       }
 
-      await setDoc(
-        doc(db, 'allergens', key),
-        { label, updatedAt: serverTimestamp(), source: 'manual' },
-        { merge: true }
-      )
+      await upsertAllergen(key, label)
 
       setAllergensCatalog(prev => [...prev, { key, label }])
       setExtraAllergens(prev => prev.filter(item => item.key !== key))
@@ -427,31 +361,6 @@ export default function AllergensBbddPage() {
     }
   }
 
-  const removeAllergenFromPlats = async (key: string) => {
-    const snap = await getDocs(collection(db, 'plats'))
-    let batch = writeBatch(db)
-    let batchCount = 0
-
-    const commitBatch = async () => {
-      if (batchCount === 0) return
-      await batch.commit()
-      batch = writeBatch(db)
-      batchCount = 0
-    }
-
-    snap.forEach(docSnap => {
-      const data = docSnap.data() as PlatDocData
-      if (!data?.allergens || !(key in data.allergens)) return
-      batch.update(docSnap.ref, { [`allergens.${key}`]: deleteField() })
-      batchCount++
-      if (batchCount >= 450) {
-        commitBatch().catch(err => console.error(err))
-      }
-    })
-
-    await commitBatch()
-  }
-
   const handleDeleteAllergen = async (item: AllergenItem) => {
     if (DEFAULT_ALLERGEN_KEYS.has(item.key)) {
       setStatus('Aquest allergen forma part dels 14 base.')
@@ -471,7 +380,7 @@ export default function AllergensBbddPage() {
     setStatus('')
 
     try {
-      await deleteDoc(doc(db, 'allergens', item.key))
+      await deleteAllergen(item.key, alsoRemove)
 
       setAllergensCatalog(prev => prev.filter(allergen => allergen.key !== item.key))
       setExtraAllergens(prev => prev.filter(allergen => allergen.key !== item.key))
@@ -485,10 +394,6 @@ export default function AllergensBbddPage() {
         delete next[item.key]
         return next
       })
-
-      if (alsoRemove) {
-        await removeAllergenFromPlats(item.key)
-      }
 
       setStatus(
         alsoRemove
@@ -638,44 +543,8 @@ export default function AllergensBbddPage() {
         throw new Error(result?.error || 'Import failed')
       }
 
-      await Promise.all([
-        getDocs(query(collection(db, 'categories'), orderBy('label'))).then(snap =>
-          setCategories(snap.docs.map(docSnap => ({
-            id: docSnap.id,
-            label: ((docSnap.data() as NamedLabelDoc).label || docSnap.id) as string,
-          })))
-        ),
-        getDocs(query(collection(db, 'family'), orderBy('label'))).then(snap =>
-          setFamilies(snap.docs.map(docSnap => ({
-            id: docSnap.id,
-            label: ((docSnap.data() as NamedLabelDoc).label || docSnap.id) as string,
-          })))
-        ),
-        getDocs(query(collection(db, 'menus'), orderBy('label'))).then(snap =>
-          setMenusCatalog(snap.docs.map(docSnap => ({
-            id: docSnap.id,
-            label: ((docSnap.data() as NamedLabelDoc).label || docSnap.id) as string,
-          })))
-        ),
-        getDocs(collection(db, 'plats')).then(snap =>
-          setPlatsIndex(snap.docs.map(docSnap => {
-            const data = docSnap.data() as PlatDocData
-            return {
-              id: docSnap.id,
-              code: String(data.code || docSnap.id),
-              nameCa: String(data.name?.ca || ''),
-              nameEs: String(data.name?.es || ''),
-              nameEn: String(data.name?.en || ''),
-            }
-          }))
-        ),
-        getDocs(collection(db, 'allergens_import_conflicts')).then(snap =>
-          setImportConflicts(snap.docs.map(docSnap => ({
-            id: docSnap.id,
-            ...(docSnap.data() as Omit<ImportConflictItem, 'id'>),
-          })))
-        ),
-      ])
+      const catalog = await fetchAllergensCatalog()
+      applyCatalog(catalog)
 
       setStatus(
         `Importacio manual completada. Plats importats: ${result.imported || 0}. ` +
@@ -716,13 +585,13 @@ export default function AllergensBbddPage() {
     setStatus('')
 
     try {
-      const snap = await getDoc(doc(db, 'plats', code))
-      if (!snap.exists()) {
+      let data: PlatDocData
+      try {
+        data = await fetchPlatByCode(code)
+      } catch {
         setStatus("No s'ha trobat cap plat amb aquest codi.")
         return
       }
-
-      const data = snap.data() as PlatDocData
       const loadedMenus = Array.isArray(data.menus) && data.menus.length
         ? data.menus
         : parseMenus(data.onEstanRaw || '')
@@ -806,7 +675,7 @@ export default function AllergensBbddPage() {
     setStatus('')
 
     try {
-      await deleteDoc(doc(db, 'plats', code))
+      await deletePlat(code)
       handleReset()
       setStatus('Plat eliminat.')
     } catch (err) {
@@ -876,36 +745,22 @@ export default function AllergensBbddPage() {
         vegan: Boolean(form.vegan),
         vegetarian: form.vegan ? true : Boolean(form.vegetarian),
       },
-      updatedAt: serverTimestamp(),
     }
 
     try {
-      const docRef = doc(db, 'plats', payload.code)
-      await setDoc(docRef, payload, { merge: true })
-
-      if (categoryId) {
-        await setDoc(
-          doc(db, 'categories', categoryId),
-          { label: categoryLabel, updatedAt: serverTimestamp(), source: 'manual' },
-          { merge: true }
-        )
-      }
-
-      if (familyId) {
-        await setDoc(
-          doc(db, 'family', familyId),
-          { label: familyLabel, updatedAt: serverTimestamp(), source: 'manual' },
-          { merge: true }
-        )
-      }
-
-      if (newMenuId) {
-        await setDoc(
-          doc(db, 'menus', newMenuId),
-          { label: newMenuLabel || newMenuId, updatedAt: serverTimestamp(), source: 'manual' },
-          { merge: true }
-        )
-      }
+      await savePlat({
+        code: payload.code,
+        payload,
+        taxonomy: {
+          category: categoryId
+            ? { id: categoryId, label: categoryLabel, source: 'manual' }
+            : null,
+          family: familyId ? { id: familyId, label: familyLabel, source: 'manual' } : null,
+          menu: newMenuId
+            ? { id: newMenuId, label: newMenuLabel || newMenuId, source: 'manual' }
+            : null,
+        },
+      })
 
       if (newCategory.trim() && categoryId) {
         setCategories(prev =>
@@ -986,8 +841,7 @@ export default function AllergensBbddPage() {
 
             if (Object.keys(updates).length) {
               updates.nameMeta = metaUpdates
-              updates.updatedAt = serverTimestamp()
-              await updateDoc(doc(db, 'plats', savedCode), updates)
+              await patchPlat(savedCode, updates)
             }
           } catch (err) {
             console.error(err)
@@ -1003,15 +857,12 @@ export default function AllergensBbddPage() {
   }
 
   const loadAllPlatsForExport = async (): Promise<PlatExport[]> => {
-    const snap = await getDocs(collection(db, 'plats'))
-    return snap.docs.map(docSnap => {
-      const data = docSnap.data() as Omit<PlatExport, 'id'>
-      return {
-        id: docSnap.id,
-        ...data,
-        code: data.code || docSnap.id,
-      }
-    })
+    const plats = await fetchAllPlatsForExport()
+    return plats.map(row => ({
+      ...(row as Omit<PlatExport, 'id'>),
+      id: String(row.id),
+      code: String(row.code || row.id),
+    }))
   }
 
   const buildExportRows = (plats: PlatExport[]) =>
@@ -1150,7 +1001,7 @@ export default function AllergensBbddPage() {
     <>
       <ModuleHeader subtitle="Alta i edicio de plats per allergens i menus." />
 
-      <section className="w-full max-w-5xl mx-auto p-6 flex flex-col gap-6">
+      <section className="w-full max-w-none p-4 xl:p-6 flex flex-col gap-6">
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
             <h2 className="text-lg font-semibold text-slate-800">Dades basiques</h2>
@@ -1260,7 +1111,7 @@ export default function AllergensBbddPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-4">
             <div>
               <label className="text-sm font-medium text-slate-700">Codi *</label>
               <Input
@@ -1397,7 +1248,7 @@ export default function AllergensBbddPage() {
           <h2 className="text-lg font-semibold text-slate-800 mb-4">Classificacio</h2>
 
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6 gap-4">
               <div>
                 <label className="text-sm font-medium text-slate-700">Grup</label>
                 <Select
@@ -1466,28 +1317,24 @@ export default function AllergensBbddPage() {
             <div>
               <label className="text-sm font-medium text-slate-700">Menus</label>
 
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {menuItems.length > 0 ? (
-                  menuItems.map(menu => (
+              <div className="mt-2 flex flex-wrap items-center gap-2 xl:gap-3">
+                {selectedMenuItems.length > 0 ? (
+                  selectedMenuItems.map(menu => (
                     <button
                       key={menu.id}
                       type="button"
                       onClick={() => toggleMenu(menu.id)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium border transition ${
-                        form.menus.includes(menu.id)
-                          ? 'bg-amber-100 border-amber-300 text-amber-800'
-                          : 'bg-white border-slate-200 text-slate-600'
-                      }`}
+                      className="px-3 py-1 rounded-full text-xs font-medium border transition bg-amber-100 border-amber-300 text-amber-800"
                     >
                       {menu.label}
                     </button>
                   ))
                 ) : (
-                  <p className="text-xs text-slate-500">Encara no hi ha menus registrats.</p>
+                  <p className="text-xs text-slate-500">No s'ha detectat cap menu per a aquest plat.</p>
                 )}
 
                 <Input
-                  className="min-w-[240px] flex-1 max-w-md"
+                  className="min-w-[240px] flex-1 xl:max-w-xl"
                   value={newMenu}
                   onChange={e => setNewMenu(e.target.value)}
                   placeholder="Nou menu (C1, CH2, CELIAC)"
@@ -1541,7 +1388,7 @@ export default function AllergensBbddPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6 gap-4">
             {allergenItems.map(allergen => (
               <div key={allergen.key}>
                 <label className="text-sm font-medium text-slate-700">{allergen.label}</label>
@@ -1684,4 +1531,3 @@ export default function AllergensBbddPage() {
     </>
   )
 }
-

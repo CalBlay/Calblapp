@@ -1,19 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { compressRasterImageForUpload, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
+import { compressVideoForUpload } from '@/lib/media/compressVideoForUpload'
 import {
   resolveManualTicketRouting,
   type ManualTicketRouting,
 } from '@/lib/maintenanceTicketCreators'
+import {
+  DEFAULT_MAX_VIDEO_UPLOAD_BYTES,
+  formatTicketAttachmentLimitMb,
+  isTicketImageMime,
+  isTicketVideoMime,
+  MAX_TICKET_ATTACHMENTS,
+  MAX_UPLOAD_VIDEO_BYTES,
+  MAX_VIDEO_INPUT_BYTES,
+} from '@/lib/media/ticketAttachments'
 import type { TicketPriority } from './types'
-
-const MAX_TICKET_IMAGES = 3
 
 type Params = {
   refreshTickets?: () => Promise<void>
   /** Valors per defecte en obrir el modal (p. ex. Cuina central). */
+  defaultCenter?: string
+  defaultWorkerName?: string
   defaultLocation?: string
+  defaultZone?: string
   defaultMachine?: string
+  requireLocation?: boolean
   /** Força encaminament cuina central encara que el departament de sessió sigui admin. */
   routingOverride?: ManualTicketRouting
 }
@@ -22,128 +34,207 @@ type SessionUser = {
   department?: string | null
 }
 
-type PendingImage = {
+export type PendingTicketAttachment = {
   file: File
   preview: string
+  kind: 'image' | 'video'
 }
 
 export function useMaintenanceTicketComposer({
   refreshTickets = async () => {},
+  defaultCenter = '',
+  defaultWorkerName = '',
   defaultLocation = '',
+  defaultZone = '',
   defaultMachine = '',
+  requireLocation = true,
   routingOverride,
 }: Params) {
   const { data: session } = useSession()
   const sessionUser = (session?.user || {}) as SessionUser
   const [showCreate, setShowCreate] = useState(false)
+  const [createCenter, setCreateCenter] = useState('')
   const [createLocation, setCreateLocation] = useState('')
+  const [createZone, setCreateZone] = useState('')
   const [createMachine, setCreateMachine] = useState('')
+  const [centerQuery, setCenterQuery] = useState('')
   const [locationQuery, setLocationQuery] = useState('')
+  const [zoneQuery, setZoneQuery] = useState('')
   const [machineQuery, setMachineQuery] = useState('')
+  const [showCenterList, setShowCenterList] = useState(false)
   const [showLocationList, setShowLocationList] = useState(false)
+  const [showZoneList, setShowZoneList] = useState(false)
   const [showMachineList, setShowMachineList] = useState(false)
   const [createDescription, setCreateDescription] = useState('')
+  const [createWorkerName, setCreateWorkerName] = useState('')
   const [createPriority, setCreatePriority] = useState<TicketPriority>('normal')
-  const [createImages, setCreateImages] = useState<PendingImage[]>([])
+  const [createAttachments, setCreateAttachments] = useState<PendingTicketAttachment[]>([])
   const [createBusy, setCreateBusy] = useState(false)
-  const [imageError, setImageError] = useState<string | null>(null)
+  const [attachmentCompressing, setAttachmentCompressing] = useState(false)
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
-  const imagesRef = useRef<PendingImage[]>([])
+  const attachmentsRef = useRef<PendingTicketAttachment[]>([])
+
+  const needsWorkerName = true
+
+  useEffect(() => {
+    setCenterQuery(createCenter)
+  }, [createCenter])
 
   useEffect(() => {
     setLocationQuery(createLocation)
   }, [createLocation])
 
   useEffect(() => {
+    setZoneQuery(createZone)
+  }, [createZone])
+
+  useEffect(() => {
     setMachineQuery(createMachine)
   }, [createMachine])
 
   useEffect(() => {
-    imagesRef.current = createImages
-  }, [createImages])
+    if (!showCreate) return
+    if (createCenter.trim() || centerQuery.trim()) return
+    if (!defaultCenter.trim()) return
+
+    setCreateCenter(defaultCenter)
+    setCenterQuery(defaultCenter)
+  }, [
+    centerQuery,
+    createCenter,
+    defaultCenter,
+    setCreateCenter,
+    setCenterQuery,
+    showCreate,
+  ])
+
+  useEffect(() => {
+    attachmentsRef.current = createAttachments
+  }, [createAttachments])
 
   useEffect(() => {
     return () => {
-      imagesRef.current.forEach((item) => URL.revokeObjectURL(item.preview))
+      attachmentsRef.current.forEach((item) => URL.revokeObjectURL(item.preview))
     }
   }, [])
 
-  const applyDefaults = (preset?: { location?: string; machine?: string }) => {
+  const applyDefaults = (preset?: { center?: string; location?: string; zone?: string; machine?: string }) => {
+    const center = preset?.center ?? defaultCenter
     const loc = preset?.location ?? defaultLocation
+    const zone = preset?.zone ?? defaultZone
     const mac = preset?.machine ?? defaultMachine
+    setCreateCenter(center)
     setCreateLocation(loc)
+    setCreateZone(zone)
     setCreateMachine(mac)
+    setCenterQuery(center)
     setLocationQuery(loc)
+    setZoneQuery(zone)
     setMachineQuery(mac)
+    setCreateWorkerName(center ? '' : defaultWorkerName)
   }
 
-  const openCreate = (preset?: { location?: string; machine?: string }) => {
+  const openCreate = (preset?: { center?: string; location?: string; zone?: string; machine?: string }) => {
     applyDefaults(preset)
     setShowCreate(true)
   }
 
   const resetCreateState = () => {
     setShowCreate(false)
+    setCreateCenter('')
     setCreateLocation('')
+    setCreateZone('')
     setCreateMachine('')
+    setCenterQuery('')
     setLocationQuery('')
+    setZoneQuery('')
     setMachineQuery('')
+    setShowCenterList(false)
     setShowLocationList(false)
+    setShowZoneList(false)
     setShowMachineList(false)
     setCreateDescription('')
+    setCreateWorkerName('')
     setCreatePriority('normal')
-    createImages.forEach((item) => URL.revokeObjectURL(item.preview))
-    setCreateImages([])
-    setImageError(null)
+    createAttachments.forEach((item) => URL.revokeObjectURL(item.preview))
+    setCreateAttachments([])
+    setAttachmentError(null)
     setFormError(null)
   }
 
-  const handleImageChange = async (fileList: FileList | null) => {
+  const handleAttachmentChange = async (fileList: FileList | null) => {
     const selected = fileList ? Array.from(fileList) : []
     if (!selected.length) return
 
-    const remainingSlots = MAX_TICKET_IMAGES - createImages.length
+    const remainingSlots = MAX_TICKET_ATTACHMENTS - createAttachments.length
     if (remainingSlots <= 0) {
-      setImageError(`Nomes pots adjuntar fins a ${MAX_TICKET_IMAGES} fotos.`)
+      setAttachmentError(`Només pots adjuntar fins a ${MAX_TICKET_ATTACHMENTS} fitxers.`)
       return
     }
 
     const nextFiles = selected.slice(0, remainingSlots)
 
     try {
-      const compressed = await Promise.all(
-        nextFiles.map(async (file) => {
-          if (!file.type.startsWith('image/')) {
-            throw new Error('Nomes es permeten imatges.')
+      const prepared: PendingTicketAttachment[] = []
+      for (const file of nextFiles) {
+        if (isTicketVideoMime(file.type)) {
+          if (file.size > MAX_VIDEO_INPUT_BYTES) {
+            throw new Error(
+              `El video supera el limit de ${formatTicketAttachmentLimitMb(MAX_VIDEO_INPUT_BYTES)} abans de comprimir.`
+            )
           }
-          const optimized = await compressRasterImageForUpload(
-            file,
-            DEFAULT_MAX_IMAGE_UPLOAD_BYTES
-          )
-          if (optimized.size > DEFAULT_MAX_IMAGE_UPLOAD_BYTES) {
-            throw new Error('Una imatge encara supera 1MB despres de comprimir-se.')
+          setAttachmentCompressing(true)
+          const optimized = await compressVideoForUpload(file, DEFAULT_MAX_VIDEO_UPLOAD_BYTES)
+          if (optimized.size > MAX_UPLOAD_VIDEO_BYTES) {
+            throw new Error(
+              `El video comprimit encara supera ${formatTicketAttachmentLimitMb(MAX_UPLOAD_VIDEO_BYTES)}.`
+            )
           }
-          return {
+          prepared.push({
             file: optimized,
             preview: URL.createObjectURL(optimized),
-          }
-        })
-      )
+            kind: 'video',
+          })
+          continue
+        }
 
-      setImageError(
+        if (!isTicketImageMime(file.type)) {
+          throw new Error('Només es permeten imatges o vídeos.')
+        }
+
+        const optimized = await compressRasterImageForUpload(
+          file,
+          DEFAULT_MAX_IMAGE_UPLOAD_BYTES
+        )
+        if (optimized.size > DEFAULT_MAX_IMAGE_UPLOAD_BYTES) {
+          throw new Error('Una imatge encara supera 1 MB després de comprimir-se.')
+        }
+        prepared.push({
+          file: optimized,
+          preview: URL.createObjectURL(optimized),
+          kind: 'image',
+        })
+      }
+
+      setAttachmentError(
         selected.length > remainingSlots
-          ? `Nomes s'han afegit les primeres ${MAX_TICKET_IMAGES} fotos.`
+          ? `Només s'han afegit els primers ${MAX_TICKET_ATTACHMENTS} fitxers.`
           : null
       )
       setFormError(null)
-      setCreateImages((current) => [...current, ...compressed].slice(0, MAX_TICKET_IMAGES))
+      setCreateAttachments((current) =>
+        [...current, ...prepared].slice(0, MAX_TICKET_ATTACHMENTS)
+      )
     } catch (err) {
-      setImageError(err instanceof Error ? err.message : 'Error preparant les imatges')
+      setAttachmentError(err instanceof Error ? err.message : 'Error preparant els adjunts')
+    } finally {
+      setAttachmentCompressing(false)
     }
   }
 
-  const removeImage = (index: number) => {
-    setCreateImages((current) => {
+  const removeAttachment = (index: number) => {
+    setCreateAttachments((current) => {
       const target = current[index]
       if (target) URL.revokeObjectURL(target.preview)
       return current.filter((_, currentIndex) => currentIndex !== index)
@@ -151,18 +242,18 @@ export function useMaintenanceTicketComposer({
     setFormError(null)
   }
 
-  const uploadImages = async () => {
+  const uploadAttachments = async () => {
     const uploaded = await Promise.all(
-      createImages.map(async (image) => {
+      createAttachments.map(async (attachment) => {
         const form = new FormData()
-        form.append('file', image.file)
+        form.append('file', attachment.file)
         const res = await fetch('/api/maintenance/upload-image', {
           method: 'POST',
           body: form,
         })
         if (!res.ok) {
           const json = await res.json().catch(() => ({}))
-          throw new Error(String(json?.error || "No s'ha pogut pujar una de les imatges"))
+          throw new Error(String(json?.error || "No s'ha pogut pujar un dels adjunts"))
         }
         const json = await res.json()
         return {
@@ -179,7 +270,10 @@ export function useMaintenanceTicketComposer({
   const getEffectiveMachine = () => createMachine.trim() || machineQuery.trim()
 
   const validateCreateForm = () => {
-    if (!createLocation.trim()) {
+    if (!createCenter.trim()) {
+      return 'Selecciona un centre.'
+    }
+    if (requireLocation && !createLocation.trim()) {
       return 'Selecciona una ubicacio.'
     }
     if (!getEffectiveMachine()) {
@@ -188,8 +282,11 @@ export function useMaintenanceTicketComposer({
     if (!createDescription.trim()) {
       return 'La descripcio es obligatoria.'
     }
-    if (createImages.length < 1) {
-      return 'Cal adjuntar com a minim una foto (maxim 3).'
+    if (!createWorkerName.trim()) {
+      return 'Indica el nom del treballador que reporta el ticket.'
+    }
+    if (createAttachments.length < 1) {
+      return `Cal adjuntar com a minim una foto o video (maxim ${MAX_TICKET_ATTACHMENTS}).`
     }
     return null
   }
@@ -204,26 +301,29 @@ export function useMaintenanceTicketComposer({
     try {
       setCreateBusy(true)
       setFormError(null)
-      const uploadedImages = await uploadImages()
-      if (uploadedImages.length < 1) {
-        throw new Error('Cal adjuntar com a minim una foto valida.')
+      const uploadedAttachments = await uploadAttachments()
+      if (uploadedAttachments.length < 1) {
+        throw new Error('Cal adjuntar com a minim un adjunt valid.')
       }
 
-      const primary = uploadedImages[0]
+      const primary = uploadedAttachments[0]
       const routing =
         routingOverride ||
         resolveManualTicketRouting({
           department: sessionUser.department,
-          location: createLocation.trim(),
+          location: createCenter.trim(),
         })
       const res = await fetch('/api/maintenance/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          location: createLocation.trim(),
+          location: createCenter.trim(),
+          workLocation: createLocation.trim() || null,
+          zone: createZone.trim() || null,
           machine: getEffectiveMachine(),
           operatorTitle: getEffectiveMachine(),
           description: createDescription.trim(),
+          workerName: createWorkerName.trim() || null,
           priority: createPriority,
           ticketType: 'maquinaria',
           source: routing.source,
@@ -231,7 +331,7 @@ export function useMaintenanceTicketComposer({
           imageUrl: primary?.url || null,
           imagePath: primary?.path || null,
           imageMeta: primary?.meta || null,
-          images: uploadedImages,
+          images: uploadedAttachments,
         }),
       })
       if (!res.ok) {
@@ -249,41 +349,71 @@ export function useMaintenanceTicketComposer({
   }
 
   const canCreateTicket =
-    Boolean(createLocation.trim()) &&
+    Boolean(createCenter.trim()) &&
+    (!requireLocation || Boolean(createLocation.trim())) &&
     Boolean(getEffectiveMachine()) &&
     Boolean(createDescription.trim()) &&
-    createImages.length >= 1 &&
-    createImages.length <= MAX_TICKET_IMAGES
+    Boolean(createWorkerName.trim()) &&
+    createAttachments.length >= 1 &&
+    createAttachments.length <= MAX_TICKET_ATTACHMENTS
 
   return {
     showCreate,
     setShowCreate,
+    createCenter,
+    setCreateCenter,
+    centerQuery,
+    setCenterQuery,
     createLocation,
     setCreateLocation,
+    createZone,
+    setCreateZone,
     createMachine,
     setCreateMachine,
     locationQuery,
     setLocationQuery,
+    zoneQuery,
+    setZoneQuery,
     machineQuery,
     setMachineQuery,
+    showCenterList,
+    setShowCenterList,
     showLocationList,
     setShowLocationList,
+    showZoneList,
+    setShowZoneList,
     showMachineList,
     setShowMachineList,
     createDescription,
     setCreateDescription,
+    createWorkerName,
+    setCreateWorkerName,
+    needsWorkerName,
     createPriority,
     setCreatePriority,
-    createImages,
-    createImageCount: createImages.length,
-    maxTicketImages: MAX_TICKET_IMAGES,
+    createAttachments,
+    createAttachmentCount: createAttachments.length,
+    maxTicketAttachments: MAX_TICKET_ATTACHMENTS,
     createBusy,
-    imageError,
+    attachmentCompressing,
+    attachmentError,
     formError,
     canCreateTicket,
-    handleImageChange,
-    removeImage,
+    handleAttachmentChange,
+    removeAttachment,
     handleCreateTicket,
     openCreate,
+    /** @deprecated use createAttachments */
+    createImages: createAttachments,
+    /** @deprecated */
+    createImageCount: createAttachments.length,
+    /** @deprecated */
+    maxTicketImages: MAX_TICKET_ATTACHMENTS,
+    /** @deprecated */
+    imageError: attachmentError,
+    /** @deprecated */
+    handleImageChange: handleAttachmentChange,
+    /** @deprecated */
+    removeImage: removeAttachment,
   }
 }

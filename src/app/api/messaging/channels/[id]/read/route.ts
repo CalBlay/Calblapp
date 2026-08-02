@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 
@@ -19,14 +19,9 @@ export async function PATCH(_req: Request, ctx: { params: Promise<{ id: string }
 
   const user = session.user as SessionUser
   const userId = user.id
-  const role = normalizeRole(user.role || '')
   const { id } = await ctx.params
 
   try {
-    if (role === 'admin' || role === 'direccio') {
-      return NextResponse.json({ success: true })
-    }
-
     const snap = await db
       .collection('channelMembers')
       .where('channelId', '==', id)
@@ -41,6 +36,8 @@ export async function PATCH(_req: Request, ctx: { params: Promise<{ id: string }
     await snap.docs[0].ref.set(
       {
         unreadCount: 0,
+        directUnreadCount: 0,
+        channelUnreadCount: 0,
         projectMissedActivityPending: false,
         projectMissedActivityLastReadAt: Date.now(),
       },

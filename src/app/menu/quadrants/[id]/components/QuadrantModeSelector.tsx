@@ -19,11 +19,11 @@ export default function QuadrantModeSelector({
           <div className="grid grid-cols-3 gap-2 max-w-[520px]">
             <Button
               type="button"
-              variant={mode === 'auto' ? 'default' : 'secondary'}
+              variant={mode === 'manual' ? 'default' : 'secondary'}
               className="h-9 rounded-full px-4 w-full justify-center whitespace-nowrap"
-              onClick={() => onModeChange('auto')}
+              onClick={() => onModeChange('manual')}
             >
-              Auto
+              Manual
             </Button>
             <Button
               type="button"
@@ -35,11 +35,11 @@ export default function QuadrantModeSelector({
             </Button>
             <Button
               type="button"
-              variant={mode === 'manual' ? 'default' : 'secondary'}
+              variant={mode === 'auto' ? 'default' : 'secondary'}
               className="h-9 rounded-full px-4 w-full justify-center whitespace-nowrap"
-              onClick={() => onModeChange('manual')}
+              onClick={() => onModeChange('auto')}
             >
-              Manual
+              Auto
             </Button>
           </div>
         </div>

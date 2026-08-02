@@ -8,6 +8,7 @@ import {
   aggregateMedia,
   cleanText,
   collectAuditRefs,
+  collectEventVisitVideoRefs,
   collectIncidentRefs,
   collectMaintenanceRefs,
   collectMessagingRefs,
@@ -53,7 +54,14 @@ async function allowedMediaSources(auth: { user: { id: string; role?: string } }
   return allowed
 }
 
-const MEDIA_SOURCES: MediaSource[] = ['incidents', 'maintenance', 'messaging', 'audits', 'spaces']
+const MEDIA_SOURCES: MediaSource[] = [
+  'incidents',
+  'maintenance',
+  'messaging',
+  'audits',
+  'spaces',
+  'events',
+]
 
 function parseMediaSource(raw: string | null): MediaSource | null {
   const v = cleanText(raw || '')
@@ -61,14 +69,15 @@ function parseMediaSource(raw: string | null): MediaSource | null {
 }
 
 async function loadLegacyMediaAggregated() {
-  const [incidents, maintenance, messaging, audits, spaces] = await Promise.all([
+  const [incidents, maintenance, messaging, audits, spaces, events] = await Promise.all([
     collectIncidentRefs(),
     collectMaintenanceRefs(),
     collectMessagingRefs(),
     collectAuditRefs(),
     collectSpaceRefs(),
+    collectEventVisitVideoRefs(),
   ])
-  return aggregateMedia([...incidents, ...maintenance, ...messaging, ...audits, ...spaces])
+  return aggregateMedia([...incidents, ...maintenance, ...messaging, ...audits, ...spaces, ...events])
 }
 
 async function clearIncidentRefs(path: string) {
@@ -159,6 +168,36 @@ async function clearSpaceRefs(path: string) {
   return updated
 }
 
+async function clearEventVisitVideoRefs(path: string) {
+  const snap = await db.collection('stage_verd').get()
+  let updated = 0
+
+  await Promise.all(
+    snap.docs.map(async (doc) => {
+      const data = doc.data() as Record<string, unknown>
+      const patch: Record<string, unknown> = {}
+      let changed = false
+
+      for (const key of Object.keys(data)) {
+        if (!/^visitVideo\d+$/i.test(key)) continue
+        if (cleanText(data[key]) !== path) continue
+        patch[key] = null
+        patch[`${key}Name`] = null
+        patch[`${key}MimeType`] = null
+        patch[`${key}At`] = null
+        patch[`${key}By`] = null
+        changed = true
+      }
+
+      if (!changed) return
+      updated += 1
+      await doc.ref.set({ ...patch, updatedAt: new Date().toISOString() }, { merge: true })
+    })
+  )
+
+  return updated
+}
+
 export async function GET(req: Request) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.res
@@ -210,6 +249,7 @@ export async function GET(req: Request) {
     }
     const auditEventId = cleanText(searchParams.get('auditEventId'))
     const incidentEventId = cleanText(searchParams.get('incidentEventId'))
+    const eventEventId = cleanText(searchParams.get('eventEventId'))
 
     const { items, nextCursor } = await loadMediaIndexPage({
       limit,
@@ -217,6 +257,7 @@ export async function GET(req: Request) {
       source,
       auditEventId: auditEventId || null,
       incidentEventId: incidentEventId || null,
+      eventEventId: eventEventId || null,
     })
 
     const filtered = items.filter((it: AggregatedMediaItem) =>
@@ -260,12 +301,13 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Missing path' }, { status: 400 })
     }
 
-    const [incidents, maintenance, messaging, audits, spaces] = await Promise.all([
+    const [incidents, maintenance, messaging, audits, spaces, events] = await Promise.all([
       clearIncidentRefs(path),
       clearMaintenanceRefs(path),
       clearMessagingRefs(path),
       clearAuditRefs(path),
       clearSpaceRefs(path),
+      clearEventVisitVideoRefs(path),
     ])
 
     try {
@@ -286,6 +328,7 @@ export async function DELETE(req: Request) {
           messaging,
           audits,
           spaces,
+          events,
         },
       },
       { status: 200 }

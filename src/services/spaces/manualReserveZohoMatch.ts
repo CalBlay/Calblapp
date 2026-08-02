@@ -4,7 +4,7 @@
  *
  * Coincidència (4 criteris):
  * - Comercial (trim, sense accents, case-insensitive)
- * - Nom client (NomClient manual = NomEvent Zoho, normalitzat)
+ * - Nom client (NomClient manual = primer segment de Deal_Name Zoho, abans de " / data / pax")
  * - Dia d'event (DataInici, yyyy-MM-dd)
  * - Ubicació (nom finca sense codi entre parèntesis)
  *
@@ -27,6 +27,8 @@ export interface ZohoDealMatchInput {
   idZoho: string
   Comercial: string
   NomEvent: string
+  /** Nom de client extret (Account_Name o primer segment de Deal_Name). */
+  NomClient?: string
   Ubicacio: string
   DataInici: string | null
 }
@@ -74,12 +76,55 @@ export function normalizeUbicacioKey(raw: unknown): string {
 const LEGAL_ENTITY_SUFFIX =
   /,?\s*(s\.?\s*a\.?(?:\s*u\.?)?|s\.?\s*l\.?(?:\s*u\.?)?|s\.?\s*c\.?|sa|sl|slu|sc|sau|ltd|inc|corp)\.?\s*$/i
 
-export function normalizeClientNameKey(raw: unknown): string {
+function normalizeLegalEntitySuffix(raw: string): string {
+  return unaccent(raw).toLowerCase().replace(/[^a-z]/g, '')
+}
+
+function splitClientNameKey(raw: unknown): { base: string; suffix: string } {
   let value = unaccent(String(raw || '').trim().toLowerCase())
   value = value.replace(/\s+/g, ' ').trim()
-  value = value.replace(LEGAL_ENTITY_SUFFIX, '').trim()
+  const suffixMatch = value.match(LEGAL_ENTITY_SUFFIX)
+  const suffix = suffixMatch?.[1]
+    ? normalizeLegalEntitySuffix(suffixMatch[1])
+    : ''
+  if (suffixMatch) value = value.slice(0, suffixMatch.index).trim()
   value = value.replace(/[,.\s]+$/g, '').trim()
-  return value
+  return { base: value, suffix }
+}
+
+export function normalizeClientNameKey(raw: unknown): string {
+  return splitClientNameKey(raw).base
+}
+
+/**
+ * Zoho Deal_Name sol ser "CLIENT / dd/mm/yy / pax". Per matching manual només el segment client.
+ * Si comença per data (p. ex. "/ 03/10/26 / finca") no hi ha client al Deal_Name → cadena buida.
+ */
+export function zohoDealClientNameForMatch(nomEvent: unknown): string {
+  const raw = String(nomEvent || '').trim()
+  if (!raw) return ''
+  const firstSegment = raw.split(/\s*\/\s*/)[0]?.trim() ?? ''
+  return firstSegment
+}
+
+export function resolveZohoDealClientName(deal: {
+  NomClient?: string
+  NomEvent?: string
+}): string {
+  const explicit = String(deal.NomClient || '').trim()
+  if (explicit) return explicit
+  return zohoDealClientNameForMatch(deal.NomEvent)
+}
+
+export function clientNamesMatch(manualRaw: unknown, dealRaw: unknown): boolean {
+  const manual = splitClientNameKey(manualRaw)
+  const deal = splitClientNameKey(dealRaw)
+  if (!manual.base || !deal.base) return false
+  if (manual.base !== deal.base) return false
+  if (manual.suffix && deal.suffix && manual.suffix !== deal.suffix) {
+    return false
+  }
+  return true
 }
 
 /** Normalitza qualsevol valor de createdAt (string, Timestamp, ms) a ISO. */
@@ -138,10 +183,9 @@ export function manualReserveMatchesZohoDeal(
   if (!ubicManual || !ubicDeal) return false
   if (ubicManual !== ubicDeal) return false
 
-  const clientManual = normalizeClientNameKey(manual.NomClient)
-  const clientDeal = normalizeClientNameKey(deal.NomEvent)
-  if (!clientManual || !clientDeal) return false
-  if (clientManual !== clientDeal) return false
+  if (!clientNamesMatch(manual.NomClient, resolveZohoDealClientName(deal))) {
+    return false
+  }
 
   return true
 }
@@ -291,8 +335,7 @@ export function stripInvalidManualMerge(
   const storedClient = existing.mergedFromManualNomClient
   if (
     storedClient &&
-    normalizeClientNameKey(storedClient) !==
-      normalizeClientNameKey(deal.NomEvent)
+    !clientNamesMatch(storedClient, resolveZohoDealClientName(deal))
   ) {
     const {
       mergedFromManualId: _mergedFromManualId,

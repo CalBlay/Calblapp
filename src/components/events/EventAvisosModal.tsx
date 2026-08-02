@@ -32,7 +32,7 @@ interface Props {
 }
 
 export default function EventAvisosModal({ open, onClose, eventCode, user, onAvisosStateChange }: Props) {
-  const { avisos, loading, error, createAviso, updateAviso, deleteAviso } = useAvisos(eventCode)
+  const { avisos, loading, error, createAviso, updateAviso, deleteAviso } = useAvisos(eventCode, open)
 
   const [text, setText] = useState('')
   const [editing, setEditing] = useState<Aviso | null>(null)

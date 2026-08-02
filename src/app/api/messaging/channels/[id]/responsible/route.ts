@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
 
@@ -16,10 +16,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
 
   const user = session.user as SessionUser
+  const userId = user.id
   const role = normalizeRole(user.role || '')
-  if (role !== 'admin' && role !== 'direccio') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const { id } = await ctx.params
   const body = (await req.json()) as { userId?: string }
@@ -29,6 +27,26 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
 
   try {
+    const channelSnap = await db.collection('channels').doc(id).get()
+    if (!channelSnap.exists) {
+      return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
+    }
+    const channel = channelSnap.data() as {
+      responsibleUserId?: string | null
+      requesterUserId?: string | null
+    }
+    const responsibleUserId = String(
+      channel.responsibleUserId || channel.requesterUserId || ''
+    ).trim()
+
+    const canEdit =
+      role === 'admin' ||
+      role === 'direccio' ||
+      (responsibleUserId.length > 0 && responsibleUserId === userId)
+    if (!canEdit) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const memberSnap = await db
       .collection('channelMembers')
       .where('channelId', '==', id)

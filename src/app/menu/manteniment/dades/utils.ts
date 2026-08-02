@@ -1,16 +1,17 @@
 import type { Ticket } from '@/app/menu/manteniment/tickets/types'
+import { computeWorkLogMinutes } from '@/lib/maintenanceWorkLogs'
 import { formatDateTimeValue, parseDateValue } from '@/lib/date-format'
 import type { MachineRow, MachineTimelineItem, MachineView } from './types'
 
 export const STATUS_LABELS: Record<string, string> = {
   nou: 'Nou',
   assignat: 'Assignat',
+  reassignat: 'Reassignat',
   en_curs: 'En curs',
-  espera: 'En espera',
+  espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
   validat: 'Validat',
-  resolut: 'Validat',
 }
 
 export const normalizeText = (value?: string | null) =>
@@ -46,7 +47,12 @@ export const getMinutesFromRange = (start?: string | null, end?: string | null) 
 }
 
 export const getTrackedMinutes = (ticket: Ticket) =>
-  (ticket.statusHistory || []).reduce((total, item) => total + getMinutesFromRange(item.startTime, item.endTime), 0)
+  ticket.workLogs?.length
+    ? computeWorkLogMinutes(ticket.workLogs)
+    : (ticket.statusHistory || []).reduce(
+        (total, item) => total + getMinutesFromRange(item.startTime, item.endTime),
+        0
+      )
 
 export const getPlannedMinutes = (ticket: Ticket) => {
   const plannedStart = parseDate(ticket.plannedStart)
@@ -80,7 +86,9 @@ export const buildMachineForm = (item: MachineRow): MachineView => ({
   id: item.id,
   code: item.code || '',
   name: item.name || '',
+  center: item.center || '',
   location: item.location || '',
+  zone: item.zone || '',
   brand: item.brand || '',
   model: item.model || '',
   serialNumber: item.serialNumber || '',

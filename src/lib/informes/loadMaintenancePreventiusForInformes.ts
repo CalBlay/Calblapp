@@ -72,7 +72,8 @@ function normalizePreventiuStatus(value?: string | null) {
   if (raw === 'espera') return 'espera'
   if (raw === 'fet') return 'fet'
   if (raw === 'no_fet' || raw === 'no fet') return 'no_fet'
-  if (raw === 'resolut' || raw === 'validat') return 'validat'
+  if (raw === 'resolut') return 'fet'
+  if (raw === 'validat') return 'validat'
   return 'assignat'
 }
 

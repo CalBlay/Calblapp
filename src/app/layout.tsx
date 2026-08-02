@@ -9,7 +9,10 @@ import './globals.css'
 /* ------------------------------------------------------------------ */
 
 export const metadata: Metadata = {
-  title: 'Cal Blay App',
+  title: {
+    default: 'Cal Blay App',
+    template: '%s · Cal Blay App',
+  },
   description:
     'WebApp operativa de Cal Blay – esdeveniments, personal, quadrants i incidències.',
 

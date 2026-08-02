@@ -3,6 +3,7 @@ import {
   processStaleExternalizedTicketNotifications,
   processStaleMaintenanceTicketNotifications,
 } from '@/lib/maintenanceNotifications'
+import { requireCronAuth } from '@/lib/server/internalApiAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,6 +15,9 @@ export async function GET(req: Request) {
   if (mode !== 'cron') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+
+  const cronDenied = requireCronAuth(req)
+  if (cronDenied) return cronDenied
 
   try {
     const [inboxPlanner, externalized] = await Promise.all([

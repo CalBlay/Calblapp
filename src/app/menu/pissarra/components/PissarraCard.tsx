@@ -2,6 +2,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Input } from '@/components/ui/input'
 import { formatDateString } from '@/lib/formatDate'
 import { colorByLN } from '@/lib/colors'
@@ -20,6 +21,8 @@ interface Props {
   item: PissarraItem
   canEdit: boolean
   onUpdate: (id: string, payload: Partial<PissarraItem>) => Promise<void>
+  canOpenQuadrants?: boolean
+  quadrantsHref?: string
 }
 
 const formatEventTitle = (title?: string) => {
@@ -35,7 +38,13 @@ const formatEventTitle = (title?: string) => {
  * - Icones Lucide
  * - Compacta i clara per mòbil-first
  */
-export default function PissarraCard({ item, canEdit, onUpdate }: Props) {
+export default function PissarraCard({
+  item,
+  canEdit,
+  onUpdate,
+  canOpenQuadrants = false,
+  quadrantsHref,
+}: Props) {
   const [local, setLocal] = useState(item)
   const [editing, setEditing] = useState<string | null>(null)
 
@@ -85,12 +94,26 @@ export default function PissarraCard({ item, canEdit, onUpdate }: Props) {
               className="h-6 text-[12px]"
             />
           ) : (
-            <span
-              onClick={() => canEdit && setEditing('eventName')}
-              className={canEdit ? 'cursor-text hover:underline' : ''}
-            >
-              {formatEventTitle(local.eventName)}
-            </span>
+            <>
+              {canOpenQuadrants && quadrantsHref ? (
+                <Link
+                  href={quadrantsHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="cursor-pointer hover:underline"
+                  title="Obre el quadrant (nova pestanya)"
+                >
+                  {formatEventTitle(local.eventName)}
+                </Link>
+              ) : (
+                <span
+                  onClick={() => canEdit && setEditing('eventName')}
+                  className={canEdit ? 'cursor-text hover:underline' : ''}
+                >
+                  {formatEventTitle(local.eventName)}
+                </span>
+              )}
+            </>
           )}
         </div>
 

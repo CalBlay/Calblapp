@@ -4,7 +4,7 @@
 import { useSession, signOut } from 'next-auth/react'
 import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
@@ -137,6 +137,7 @@ export default function ConfiguracioPage() {
         setName(data.name || '')
         setEmail(data.email || '')
         setPhone(data.phone || '')
+        setPushEnabled(data.pushEnabled === true)
         if (userRole !== 'admin' && Array.isArray(data.opsChannelsConfigurable)) {
           const allowed = data.opsChannelsConfigurable.map(String).filter(Boolean)
           setSelectedChannels((prev) => prev.filter((id) => allowed.includes(id)))
@@ -222,7 +223,7 @@ export default function ConfiguracioPage() {
       <h1 className="text-2xl font-bold text-center mb-4">Configuració</h1>
 
       {/* Push */}
-      <motion.div
+      <MotionDiv
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         className="p-4 rounded-2xl bg-white shadow border border-gray-200 space-y-3"
@@ -250,10 +251,10 @@ export default function ConfiguracioPage() {
             Has bloquejat les notificacions. Caldrà activar-les als ajustos del navegador.
           </p>
         )}
-      </motion.div>
+      </MotionDiv>
 
       {/* Perfil i contrasenya */}
-      <motion.div
+      <MotionDiv
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         className="p-4 rounded-2xl bg-white shadow border border-gray-200 space-y-3"
@@ -313,10 +314,10 @@ export default function ConfiguracioPage() {
             </div>
           </div>
         )}
-      </motion.div>
+      </MotionDiv>
 
       {/* Subscripcions missatgeria */}
-      <motion.div
+      <MotionDiv
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         className="p-4 rounded-2xl bg-white shadow border border-gray-200 space-y-3"
@@ -452,9 +453,10 @@ export default function ConfiguracioPage() {
             {savingSubs ? 'Desant...' : 'Desar subscripcions'}
           </Button>
         </div>
-      </motion.div>
+      </MotionDiv>
+
 {/* Integracions placeholder */}
-      <motion.div
+      <MotionDiv
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         className="p-4 rounded-2xl bg-white shadow border border-gray-200 space-y-3"
@@ -464,12 +466,12 @@ export default function ConfiguracioPage() {
           <h2 className="font-semibold text-lg">Integracions</h2>
         </div>
         <p className="text-sm text-gray-600">
-          Properament: connexió amb Google Calendar i Outlook per sincronitzar esdeveniments i torns.
+          Les integracions externes s&apos;estan revisant abans d&apos;activar noves sincronitzacions.
         </p>
-      </motion.div>
+      </MotionDiv>
 
       {/* Privadesa i compte */}
-      <motion.div
+      <MotionDiv
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         className="p-4 rounded-2xl bg-white shadow border border-gray-200 space-y-4"
@@ -507,8 +509,7 @@ export default function ConfiguracioPage() {
           <LogOut className="w-5 h-5" />
           Tancar sessió
         </button>
-      </motion.div>
+      </MotionDiv>
     </section>
   )
 }
-

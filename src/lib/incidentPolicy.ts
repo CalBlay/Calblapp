@@ -1,7 +1,10 @@
 import { normalizeRole } from '@/lib/roles'
 import { isProductionWorker, normalizeDept } from '@/lib/accessControl'
 
-/** Mateix criteri que el mòdul Incidències al menú (API / pantalles). */
+/**
+ * Criteri base rol/departament (client i comprovacions síncrones).
+ * Les APIs han d’usar `requireIncidentsModuleView` (inclou overrides de Settings).
+ */
 export function canAccessIncidentsModule(user: { role?: string | null; department?: string | null }): boolean {
   const role = normalizeRole(user.role || '')
   const dept = normalizeDept(user.department || '')
@@ -37,6 +40,11 @@ export function canManageIncidentCategories(user: { role?: string | null; depart
   if (role === 'admin' || role === 'direccio') return true
   if (role === 'cap' && dept === 'produccio') return true
   return false
+}
+
+/** Mateix criteri que el catàleg de tipologies, però aplicat al canvi de categoria d'una incidència. */
+export function canEditIncidentCategory(user: { role?: string | null; department?: string | null }): boolean {
+  return canManageIncidentCategories(user)
 }
 
 function normalizeIdentity(value?: string | null) {

@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { Input } from '@/components/ui/input'
 import { Search } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { LazyAnimatePresence, MotionDiv } from '@/lib/lazyMotion'
 import { getDialogComboboxPortalContainer } from '@/lib/dialogComboboxPortal'
+
+const MIN_QUERY_LENGTH = 2
 
 interface Props {
   value?: string
@@ -13,9 +15,16 @@ interface Props {
   disabled?: boolean
 }
 
+function fold(s: string) {
+  return s
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+}
+
 /**
- * Cerca de clients (noms Zoho desats a Firestore) amb entrada lliure.
- * Dins modals Radix, el desplegable es renderitza dins DialogContent (no a body).
+ * Cerca intel·ligent de clients (camp `nom` de spaces_zoho_accounts
+ * i spaces_zoho_clients). Només es pot triar un registre de la llista.
  */
 export default function SearchZohoClientInput({
   value = '',
@@ -23,13 +32,16 @@ export default function SearchZohoClientInput({
   disabled = false,
 }: Props) {
   const [query, setQuery] = useState(value)
-  const [results, setResults] = useState<string[]>([])
+  const [allClients, setAllClients] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const selectingRef = useRef(false)
+  const loadedRef = useRef(false)
 
   useEffect(() => {
     if (!selectingRef.current) {
@@ -39,90 +51,123 @@ export default function SearchZohoClientInput({
 
   useEffect(() => setMounted(true), [])
 
+  const loadClients = useCallback(async () => {
+    if (loadedRef.current || loading) return
+    setLoading(true)
+    setLoadError(false)
+    try {
+      const res = await fetch('/api/spaces/clients')
+      if (!res.ok) throw new Error('fetch failed')
+      const json = await res.json()
+      const data = Array.isArray(json.data) ? json.data : []
+      setAllClients(
+        data.filter((nom: unknown) => typeof nom === 'string' && nom.trim())
+      )
+      loadedRef.current = true
+    } catch (err) {
+      console.error('Error carregant clients:', err)
+      setLoadError(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [loading])
+
   const updateDropdownPosition = useCallback(() => {
     if (!inputRef.current) return
+    const container = getDialogComboboxPortalContainer(inputRef.current)
+    if (!container) return
     const r = inputRef.current.getBoundingClientRect()
+    const c = container.getBoundingClientRect()
     setPos({
-      top: r.bottom,
-      left: r.left,
+      top: r.bottom - c.top + 4,
+      left: r.left - c.left,
       width: r.width,
     })
-    setPortalContainer(getDialogComboboxPortalContainer(inputRef.current))
+    setPortalContainer(container)
   }, [])
 
+  const filtered = useMemo(() => {
+    const q = fold(query.trim())
+    if (q.length < MIN_QUERY_LENGTH) return []
+    return allClients.filter((nom) => fold(nom).includes(q))
+  }, [allClients, query])
+
+  const canShowDropdown =
+    open && query.trim().length >= MIN_QUERY_LENGTH && (loading || loadError || loadedRef.current)
+
   useEffect(() => {
-    if (!open) return
+    if (!canShowDropdown) return
     updateDropdownPosition()
-  }, [open, results.length, updateDropdownPosition])
+  }, [canShowDropdown, filtered.length, loading, updateDropdownPosition])
 
-  useEffect(() => {
-    if (!open) return
-    const t = setTimeout(async () => {
-      try {
-        const trimmed = query.trim()
-        const url =
-          trimmed.length >= 1
-            ? `/api/spaces/clients?q=${encodeURIComponent(trimmed)}`
-            : '/api/spaces/clients'
-        const res = await fetch(url)
-        const json = await res.json()
-        const data = Array.isArray(json.data) ? json.data : []
-        setResults(data.slice(0, 50))
-      } catch (err) {
-        console.error('Error cercant clients:', err)
-        setResults([])
-      }
-    }, 200)
-    return () => clearTimeout(t)
-  }, [query, open])
-
-  const handleSelect = (name: string) => {
+  const handleSelect = (nom: string) => {
     selectingRef.current = true
-    onChange(name)
-    setQuery(name)
+    onChange(nom)
+    setQuery(nom)
     setOpen(false)
     requestAnimationFrame(() => {
       selectingRef.current = false
     })
   }
 
-  const dropdown =
-    open && results.length > 0 ? (
-      <AnimatePresence>
-        <motion.div
-          key="zoho-client-dropdown"
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.15, ease: 'easeOut' }}
-          className="fixed z-[120] bg-white border border-gray-200 rounded-lg shadow-lg max-h-[220px] overflow-y-auto"
-          data-zoho-client-dropdown
-          style={{
-            top: pos.top,
-            left: pos.left,
-            width: pos.width,
-          }}
-          onMouseDown={(e) => e.preventDefault()}
-          onPointerDown={(e) => e.preventDefault()}
-        >
-          {results.map((name) => (
+  const handleFocus = () => {
+    setOpen(true)
+    void loadClients()
+    requestAnimationFrame(() => updateDropdownPosition())
+  }
+
+  const dropdown = canShowDropdown ? (
+    <LazyAnimatePresence>
+      <MotionDiv
+        key="zoho-client-dropdown"
+        initial={{ opacity: 0, y: -4 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -4 }}
+        transition={{ duration: 0.15, ease: 'easeOut' }}
+        className="absolute z-[120] bg-white border border-gray-200 rounded-lg shadow-lg max-h-[250px] overflow-y-auto"
+        data-zoho-client-dropdown
+        style={{
+          top: pos.top,
+          left: pos.left,
+          width: pos.width,
+        }}
+        onMouseDown={(e) => e.preventDefault()}
+        onPointerDown={(e) => e.preventDefault()}
+      >
+        {loading ? (
+          <div className="px-3 py-2 text-sm text-gray-500">Carregant clients…</div>
+        ) : loadError ? (
+          <div className="px-3 py-2 text-sm text-red-600">
+            No s&apos;han pogut carregar els clients.
+          </div>
+        ) : allClients.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-gray-500">
+            Cap client disponible. Cal importar oportunitats de Zoho.
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-gray-500">
+            Cap client coincideix amb la cerca.
+          </div>
+        ) : (
+          filtered.slice(0, 80).map((nom) => (
             <div
-              key={name}
+              key={nom}
               role="option"
-              aria-selected={name === query.trim()}
+              aria-selected={nom === value.trim()}
               onPointerDown={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                handleSelect(name)
+                handleSelect(nom)
               }}
               className="px-3 py-2 text-sm cursor-pointer transition-colors hover:bg-blue-100"
             >
-              {name}
+              {nom}
             </div>
-          ))}
-        </motion.div>
-      </AnimatePresence>
-    ) : null
+          ))
+        )}
+      </MotionDiv>
+    </LazyAnimatePresence>
+  ) : null
 
   return (
     <div className="relative w-full" data-zoho-client-search>
@@ -135,19 +180,20 @@ export default function SearchZohoClientInput({
         value={query}
         disabled={disabled}
         onChange={(e) => {
-          const next = e.target.value
-          setQuery(next)
-          onChange(next)
+          setQuery(e.target.value)
           setOpen(true)
+          requestAnimationFrame(() => updateDropdownPosition())
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={handleFocus}
         onBlur={() => {
           if (selectingRef.current) return
           setTimeout(() => {
-            if (!selectingRef.current) setOpen(false)
+            if (selectingRef.current) return
+            setOpen(false)
+            setQuery(value || '')
           }, 150)
         }}
-        placeholder="Cerca o escriu el nom del client…"
+        placeholder="Cerca client (mín. 2 lletres)…"
         className="pl-8 w-full text-sm sm:text-base rounded-md border-gray-300 focus:ring-2 focus:ring-blue-500"
       />
 

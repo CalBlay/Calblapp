@@ -5,6 +5,39 @@ import type { DueTemplate, ScheduledItem, TicketCard } from '../types'
 import { isTicketStaleAlert, STALE_TICKET_CARD_CLASS_COMPACT } from '@/lib/maintenanceTicketAlerts'
 import { formatTicketCreatedAt, getAgeBadgeClass, getAgeLabel } from '../utils'
 
+function normalizeExternalizedTicketStatus(value?: string | null) {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'validat') return 'validat'
+  if (normalized === 'fet' || normalized === 'resolut') return 'fet'
+  if (normalized === 'espera') return 'espera'
+  if (normalized === 'en_curs' || normalized === 'en curs') return 'en_curs'
+  if (normalized === 'assignat') return 'assignat'
+  if (normalized === 'reassignat') return 'reassignat'
+  if (normalized === 'no_fet' || normalized === 'no fet') return 'no_fet'
+  return 'nou'
+}
+
+function getExternalizedTicketStatusMeta(status?: string | null) {
+  switch (normalizeExternalizedTicketStatus(status)) {
+    case 'validat':
+      return { label: 'Validat', className: 'bg-violet-100 text-violet-800' }
+    case 'fet':
+      return { label: 'Fet', className: 'bg-emerald-100 text-emerald-800' }
+    case 'espera':
+      return { label: 'Espera', className: 'bg-slate-200 text-slate-800' }
+    case 'en_curs':
+      return { label: 'En curs', className: 'bg-amber-100 text-amber-800' }
+    case 'assignat':
+      return { label: 'Assignat', className: 'bg-sky-100 text-sky-800' }
+    case 'reassignat':
+      return { label: 'Reassignat', className: 'bg-orange-100 text-orange-800' }
+    case 'no_fet':
+      return { label: 'No fet', className: 'bg-rose-100 text-rose-800' }
+    default:
+      return { label: 'Nou', className: 'bg-emerald-100 text-emerald-800' }
+  }
+}
+
 function dayLabelForItem(dayIndex: number, dayLabels?: string[]) {
   const label = dayLabels?.[dayIndex]
   if (label != null && label !== '') return label
@@ -12,7 +45,7 @@ function dayLabelForItem(dayIndex: number, dayLabels?: string[]) {
 }
 
 type Props = {
-  tab: 'preventius' | 'tickets'
+  tab: 'preventius' | 'tickets' | 'externalized'
   visibleItems: DueTemplate[] | TicketCard[]
   externalizedItems?: TicketCard[]
   scheduledItems: ScheduledItem[]
@@ -47,7 +80,7 @@ type Props = {
 export default function PlannerSidebar({
   tab,
   visibleItems,
-  externalizedItems = [],
+  externalizedItems: _externalizedItems = [],
   scheduledItems,
   dayLabels,
   showScheduledInSidebar,
@@ -67,9 +100,9 @@ export default function PlannerSidebar({
   }, [tab, visibleItems])
 
   const externalizedTickets = useMemo(() => {
-    if (tab !== 'tickets') return []
-    return externalizedItems
-  }, [externalizedItems, tab])
+    if (tab === 'externalized') return visibleItems as TicketCard[]
+    return []
+  }, [tab, visibleItems])
 
   const scheduledPreventiusOnCalendar = useMemo(() => {
     if (tab !== 'preventius') return []
@@ -81,9 +114,10 @@ export default function PlannerSidebar({
   }, [tab, scheduledItems])
 
   const scheduledTicketsOnCalendar = useMemo(() => {
-    if (tab !== 'tickets') return []
+    if (tab !== 'tickets' && tab !== 'externalized') return []
     return [...scheduledItems]
       .filter((s) => s.kind === 'ticket')
+      .filter((s) => (tab === 'externalized' ? s.workflowStage === 'externalized' : s.workflowStage !== 'externalized'))
       .sort((a, b) =>
         a.dayIndex !== b.dayIndex ? a.dayIndex - b.dayIndex : a.start.localeCompare(b.start)
       )
@@ -91,6 +125,13 @@ export default function PlannerSidebar({
 
   const scheduledCountForTab =
     tab === 'preventius' ? scheduledPreventiusOnCalendar.length : scheduledTicketsOnCalendar.length
+
+  const sidebarTitle =
+    tab === 'preventius'
+      ? 'Preventius pendents'
+      : tab === 'externalized'
+        ? 'Tickets externalitzats'
+        : 'Tickets pendents'
 
   const wrapperClass = desktop
     ? 'flex h-full min-h-0 flex-col rounded-2xl border bg-white p-3'
@@ -118,7 +159,7 @@ export default function PlannerSidebar({
           : undefined
       }
     >
-      <div className={titleClass}>{tab === 'preventius' ? 'Preventius pendents' : 'Tickets pendents'}</div>
+      <div className={titleClass}>{sidebarTitle}</div>
       {scheduledCountForTab > 0 ? (
         <button
           type="button"
@@ -153,6 +194,16 @@ export default function PlannerSidebar({
                 ? 'Cap ticket pendent per afegir; els planificats son a la llista de sota.'
                 : 'Cap ticket pendent per afegir. Els planificats son al calendari; prem "Mostrar planificats" per veure la llista.'
               : 'No hi ha tickets pendents de planificar o ja estan al calendari.'}
+          </p>
+        ) : null}
+
+        {tab === 'externalized' && externalizedTickets.length === 0 ? (
+          <p className="py-4 text-center text-xs leading-relaxed text-gray-500">
+            {scheduledTicketsOnCalendar.length > 0
+              ? showScheduledInSidebar
+                ? 'Cap ticket externalitzat pendent de revisar; els marcats aquesta setmana son a la llista de sota.'
+                : 'Cap ticket externalitzat pendent de revisar. Els marcats aquesta setmana son al calendari; prem "Mostrar planificats" per veure la llista.'
+              : 'No hi ha tickets externalitzats per mostrar en aquest període.'}
           </p>
         ) : null}
 
@@ -362,7 +413,9 @@ export default function PlannerSidebar({
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Externalitzats
             </div>
-            {externalizedTickets.map((item) => (
+            {externalizedTickets.map((item) => {
+              const statusMeta = getExternalizedTicketStatusMeta(item.status)
+              return (
               <button
                 key={`external-${item.id}`}
                 type="button"
@@ -382,13 +435,21 @@ export default function PlannerSidebar({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="font-semibold leading-snug">{item.code} - {item.title}</div>
-                  <span className="rounded-full border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
-                    Obrir
-                  </span>
+                  <div className="flex flex-wrap items-center justify-end gap-1">
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${statusMeta.className}`}>
+                      {statusMeta.label}
+                    </span>
+                    <span className="rounded-full border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
+                      Obrir
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-1 text-[11px] text-violet-800">
                   {item.location || '-'}{item.machine ? ` · ${item.machine}` : ''}
                 </div>
+                {item.supplierName ? (
+                  <div className="mt-1 text-[11px] font-medium text-violet-900">Proveidor: {item.supplierName}</div>
+                ) : null}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className="inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
                     {item.externalStatus === 'closed'
@@ -409,9 +470,70 @@ export default function PlannerSidebar({
                   ) : null}
                 </div>
               </button>
-            ))}
+              )
+            })}
           </div>
         ) : null}
+
+        {tab === 'externalized' &&
+          externalizedTickets.map((item) => {
+            const statusMeta = getExternalizedTicketStatusMeta(item.status)
+            return (
+            <button
+              key={`external-only-${item.id}`}
+              type="button"
+              onClick={() =>
+                onOpenPendingItem({
+                  kind: 'ticket',
+                  id: item.id,
+                  title: `${item.code} - ${item.title}`.trim(),
+                  minutes: item.minutes,
+                  priority: item.priority,
+                  location: item.location || '',
+                  machine: item.machine || '',
+                  createdAt: item.createdAt || null,
+                })
+              }
+              className="w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-left text-xs text-violet-900 transition hover:bg-violet-100"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-semibold leading-snug">{item.code} - {item.title}</div>
+                <div className="flex flex-wrap items-center justify-end gap-1">
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${statusMeta.className}`}>
+                    {statusMeta.label}
+                  </span>
+                  <span className="rounded-full border border-violet-200 bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
+                    Obrir
+                  </span>
+                </div>
+              </div>
+              <div className="mt-1 text-[11px] text-violet-800">
+                {item.location || '-'}{item.machine ? ` · ${item.machine}` : ''}
+              </div>
+              {item.supplierName ? (
+                <div className="mt-1 text-[11px] font-medium text-violet-900">Proveidor: {item.supplierName}</div>
+              ) : null}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700">
+                  {item.externalStatus === 'closed'
+                    ? 'Tancat'
+                    : item.externalStatus === 'resent'
+                      ? 'Reenviat'
+                      : item.externalStatus === 'answered'
+                        ? 'Resposta'
+                        : 'Enviat'}
+                </span>
+                {(item.externalStatus === 'sent' || item.externalStatus === 'resent') && item.ageDays >= 3 ? (
+                  <span
+                    className={`rounded-full px-2 py-1 text-[10px] font-semibold ${getAgeBadgeClass(item.ageBucket)}`}
+                  >
+                    {getAgeLabel(item.ageDays)} sense resposta
+                  </span>
+                ) : null}
+              </div>
+            </button>
+            )
+          })}
 
         {tab === 'preventius' && showScheduledInSidebar && scheduledPreventiusOnCalendar.length > 0 ? (
           <div className={desktop ? 'mt-3 border-t border-slate-200 pt-3' : 'mt-6 border-t border-slate-200 pt-4'}>
@@ -440,7 +562,9 @@ export default function PlannerSidebar({
           </div>
         ) : null}
 
-        {tab === 'tickets' && showScheduledInSidebar && scheduledTicketsOnCalendar.length > 0 ? (
+        {(tab === 'tickets' || tab === 'externalized') &&
+        showScheduledInSidebar &&
+        scheduledTicketsOnCalendar.length > 0 ? (
           <div className={desktop ? 'mt-3 border-t border-slate-200 pt-3' : 'mt-6 border-t border-slate-200 pt-4'}>
             <div className={desktop ? 'text-[11px] font-semibold text-slate-700' : 'text-xs font-semibold text-slate-700'}>
               Al calendari (aquesta setmana)

@@ -565,7 +565,7 @@ export default function AuditoriaValoracioPage() {
 
   return (
     <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
-      <div className="w-full max-w-7xl 2xl:max-w-[1600px] mx-auto p-3 sm:p-4 space-y-4">
+      <div className="w-full max-w-none p-3 sm:p-4 space-y-4">
         <div className="w-full bg-gradient-to-r from-cyan-100 to-teal-100 border-b border-gray-200 px-4 py-3">
           <div className="text-sm font-semibold text-gray-800">
             <Link href="/menu/auditoria" className="hover:underline">Auditoria</Link>

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/server/apiAuth'
+import { isAllowedSharePointFetchUrl } from '@/lib/server/sharepointUrlAllowlist'
 
 export const runtime = 'nodejs'
 
@@ -8,9 +10,16 @@ export const runtime = 'nodejs'
  */
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const url = req.nextUrl.searchParams.get('url')
     if (!url) {
       return NextResponse.json({ error: 'Missing url' }, { status: 400 })
+    }
+
+    if (!isAllowedSharePointFetchUrl(url)) {
+      return NextResponse.json({ error: 'URL no permesa' }, { status: 403 })
     }
 
     // 🔐 IMPORTANT: SharePoint no permet accedir a PDF públics
@@ -37,8 +46,6 @@ export async function GET(req: NextRequest) {
       headers: {
         'Content-Type': 'application/pdf',
         // ✨ Clau: ara ES POT carregar en iframe
-        'X-Frame-Options': 'ALLOWALL',
-        'Access-Control-Allow-Origin': '*',
         'Content-Disposition': 'inline',
       },
     })

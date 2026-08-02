@@ -26,6 +26,8 @@ type Props = {
   onReopenKickoff?: () => void
   onRemoveKickoffAttendee: (key: string) => void
   showSendButton?: boolean
+  showTitle?: boolean
+  variant?: 'default' | 'dialog'
   headerAction?: ReactNode
 }
 
@@ -41,6 +43,8 @@ export default function ProjectKickoffTab({
   onReopenKickoff,
   onRemoveKickoffAttendee,
   showSendButton = true,
+  showTitle = true,
+  variant = 'default',
   headerAction,
 }: Props) {
   const kickoffMinDate =
@@ -59,11 +63,20 @@ export default function ProjectKickoffTab({
     String(project.kickoff.status || '').trim() || String(project.kickoff.graphWebLink || '').trim()
   )
 
+  const showHeader =
+    showTitle ||
+    headerAction ||
+    (kickoffLocked && onReopenKickoff) ||
+    (showSendButton && !kickoffLocked)
+
+  const isDialog = variant === 'dialog'
+
   return (
-    <div className="space-y-6">
-      <section className="space-y-5 rounded-[24px] bg-white/75 p-5">
+    <div className={isDialog ? 'space-y-5' : 'space-y-6'}>
+      <section className={isDialog ? 'space-y-4' : 'space-y-5 rounded-[24px] bg-white/75 p-5'}>
+        {showHeader ? (
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <h2 className={projectSectionTitleClass}>Reunió d'arrencada</h2>
+          {showTitle ? <h2 className={projectSectionTitleClass}>Reunió d'arrencada</h2> : <div />}
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             {headerAction}
             {kickoffLocked && onReopenKickoff ? (
@@ -84,8 +97,15 @@ export default function ProjectKickoffTab({
             ) : null}
           </div>
         </div>
+        ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-[1.7fr_0.9fr_0.9fr]">
+        <div
+          className={
+            isDialog
+              ? 'grid grid-cols-1 gap-4 sm:grid-cols-[1.4fr_1fr_0.9fr]'
+              : 'grid gap-4 lg:grid-cols-[1.7fr_0.9fr_0.9fr]'
+          }
+        >
           <div className="space-y-2">
             <Label>Data</Label>
             <Input
@@ -94,7 +114,7 @@ export default function ProjectKickoffTab({
               min={kickoffMinDate}
               onChange={(event) => onKickoffFieldChange('date', event.target.value)}
               disabled={kickoffLocked}
-              className="h-14 rounded-2xl"
+              className={isDialog ? 'h-10 rounded-xl' : 'h-14 rounded-2xl'}
             />
             {kickoffSelectedDate ? (
               <div className="px-1 text-xs text-slate-500 capitalize">{formattedKickoffDate}</div>
@@ -108,7 +128,7 @@ export default function ProjectKickoffTab({
               value={project.kickoff.startTime}
               onChange={(event) => onKickoffFieldChange('startTime', event.target.value)}
               disabled={kickoffLocked}
-              className="h-14 rounded-2xl"
+              className={isDialog ? 'h-10 rounded-xl' : 'h-14 rounded-2xl'}
             />
           </div>
 
@@ -118,7 +138,11 @@ export default function ProjectKickoffTab({
               value={String(project.kickoff.durationMinutes || 60)}
               onChange={(event) => onKickoffFieldChange('durationMinutes', Number(event.target.value))}
               disabled={kickoffLocked}
-              className="h-14 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none focus:border-violet-400"
+              className={
+                isDialog
+                  ? 'h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-violet-400'
+                  : 'h-14 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none focus:border-violet-400'
+              }
             >
               {[30, 45, 60, 90, 120].map((value) => (
                 <option key={value} value={String(value)}>
@@ -130,19 +154,29 @@ export default function ProjectKickoffTab({
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="space-y-2 rounded-[24px] bg-white/75 p-5">
+      <section
+        className={
+          isDialog
+            ? 'grid min-w-0 grid-cols-1 gap-5 md:grid-cols-[1.35fr_1fr]'
+            : 'grid gap-5 xl:grid-cols-[0.95fr_1.05fr]'
+        }
+      >
+        <div className={isDialog ? 'min-w-0 space-y-2' : 'space-y-2 rounded-[24px] bg-white/75 p-5'}>
           <Label>Notes de la convocatòria</Label>
           <Textarea
             value={project.kickoff.notes}
             onChange={(event) => onKickoffFieldChange('notes', event.target.value)}
             readOnly={kickoffLocked}
-            className="min-h-[220px] rounded-2xl"
+            className={isDialog ? 'min-h-[260px] w-full resize-y rounded-xl' : 'min-h-[220px] rounded-2xl'}
             placeholder="Context, abast i punts a revisar"
           />
         </div>
 
-        <div className="space-y-4 rounded-[24px] bg-slate-50/80 p-5">
+        <div
+          className={
+            isDialog ? 'min-w-0 space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4' : 'space-y-4 rounded-[24px] bg-slate-50/80 p-5'
+          }
+        >
           <h2 className={projectSectionTitleClass}>Assistents</h2>
 
           <div className="rounded-[22px] bg-white/90 p-4">

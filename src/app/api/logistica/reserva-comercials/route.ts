@@ -13,6 +13,7 @@ import { PERM } from '@/lib/permissionKeys'
 import { normalizeRole } from '@/lib/roles'
 import { RESERVA_COMERCIALS_UI_PATH } from '@/lib/reservaComercialsPermissions'
 import { canViewUiPath, isUiPermissionGranted } from '@/lib/server/permissions'
+import { notifyReservaComercialUser } from '@/lib/logistica/reservaComercialNotifications'
 
 const RESERVA_UI_PATH = RESERVA_COMERCIALS_UI_PATH
 
@@ -92,16 +93,7 @@ async function createUserNotification(params: {
   url: string
   reservationId: string
 }) {
-  if (!params.userId) return
-  await db.collection('users').doc(params.userId).collection('notifications').add({
-    type: params.type,
-    title: params.title,
-    body: params.body,
-    url: params.url,
-    reservationId: params.reservationId,
-    createdAt: Date.now(),
-    read: false,
-  })
+  await notifyReservaComercialUser(params)
 }
 
 export async function GET() {

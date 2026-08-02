@@ -1,11 +1,9 @@
 import {
   Blocks,
   CalendarRange,
-  FileText,
   FolderOpen,
   LayoutDashboard,
   TimerReset,
-  UsersRound,
 } from 'lucide-react'
 
 export type WorkspaceTab =
@@ -14,8 +12,21 @@ export type WorkspaceTab =
   | 'tasks'
   | 'planning'
   | 'documents'
-  | 'rooms'
   | 'tracking'
+
+const WORKSPACE_TABS = new Set<WorkspaceTab>([
+  'overview',
+  'blocks',
+  'tasks',
+  'planning',
+  'documents',
+  'tracking',
+])
+
+export function parseWorkspaceTab(value?: string | null): WorkspaceTab | undefined {
+  const tab = String(value || '').trim() as WorkspaceTab
+  return WORKSPACE_TABS.has(tab) ? tab : undefined
+}
 
 export type ResponsibleOption = {
   id: string
@@ -30,13 +41,10 @@ export const workspaceTabs: Array<{
   label: string
   icon: typeof LayoutDashboard
 }> = [
-  { id: 'overview', label: 'Fitxa del projecte', icon: LayoutDashboard },
+  { id: 'tracking', label: 'Resum Projecte', icon: FolderOpen },
   { id: 'blocks', label: 'Blocs', icon: Blocks },
   { id: 'tasks', label: 'Tasques', icon: TimerReset },
-  { id: 'rooms', label: 'Sales', icon: UsersRound },
   { id: 'planning', label: 'Planificació', icon: CalendarRange },
-  { id: 'tracking', label: 'Seguiment', icon: FolderOpen },
-  { id: 'documents', label: 'Documents', icon: FileText },
 ]
 
 export const createBlockDraft = () => ({

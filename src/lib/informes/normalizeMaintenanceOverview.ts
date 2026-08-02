@@ -27,6 +27,7 @@ function normalizeEntry(row: LegacyRow): MaintenanceWorkReportRow {
     kind,
     code: String(row.code || row.ticketCode || row.id || '').trim(),
     createdAt: String(row.createdAt || ''),
+    lastActivityAt: String(row.lastActivityAt || ''),
     location: String(row.location || ''),
     machine: String(row.machine || ''),
     status: String(row.status || ''),
@@ -55,6 +56,7 @@ function normalizeLocationRow(row: MaintenanceLocationRow): MaintenanceLocationR
   return {
     ...row,
     tickets: Number(row.tickets) || 0,
+    externalizedTickets: Number(row.externalizedTickets) || 0,
     preventius: Number(row.preventius) || 0,
     workMinutes: Number(row.workMinutes) || 0,
     travelMinutes: Number(row.travelMinutes) || 0,
@@ -66,6 +68,7 @@ function normalizeAssigneeRow(row: MaintenanceAssigneeRow): MaintenanceAssigneeR
   return {
     ...row,
     tickets: Number(row.tickets) || 0,
+    externalizedTickets: Number(row.externalizedTickets) || 0,
     preventius: Number(row.preventius) || 0,
     workMinutes: Number(row.workMinutes) || 0,
     totalMinutes: Number(row.totalMinutes) || 0,
@@ -94,8 +97,11 @@ export function normalizeMaintenanceOverview(
     filterOptions: data.filterOptions ?? {
       statuses: [],
       priorities: [],
+      centers: [],
       locations: [],
+      zones: [],
       ticketTypes: [],
+      interventionTypes: [],
       assignees: [],
     },
   }

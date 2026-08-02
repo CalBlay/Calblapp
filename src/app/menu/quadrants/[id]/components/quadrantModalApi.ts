@@ -1,3 +1,4 @@
+import type { DriverCrewPremise } from '@/services/premises'
 import type {
   PremisesResponse,
   SubmitQuadrantResponse,
@@ -6,11 +7,13 @@ import type {
 
 const surveyPremisesCache = new Map<string, Array<{ id: string; name: string; workerIds: string[] }>>()
 const surveyPremisesModelsCache = new Map<string, string[]>()
+const surveyPremisesDriverCrewsCache = new Map<string, DriverCrewPremise[]>()
 const surveyPremisesPromiseCache = new Map<
   string,
   Promise<{
     groups: Array<{ id: string; name: string; workerIds: string[] }>
     vestimentModels: string[]
+    driverCrews: DriverCrewPremise[]
   }>
 >()
 const surveyPeopleCache = new Map<string, Array<{ id: string; name: string }>>()
@@ -67,11 +70,39 @@ export const confirmSavedQuadrants = async (params: {
   return { ok: true as const }
 }
 
+export const deleteQuadrantDraft = async (params: {
+  department: string
+  eventId: string
+  phaseKey?: string
+}) => {
+  const res = await fetch('/api/quadrantsDraft/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      department: params.department,
+      eventId: params.eventId,
+      phaseKey: params.phaseKey,
+    }),
+  })
+  const text = await res.text()
+  let data: { ok?: boolean; error?: string }
+  try {
+    data = text ? (JSON.parse(text) as { ok?: boolean; error?: string }) : {}
+  } catch {
+    throw new Error('Resposta invàlida del servidor')
+  }
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || `Error ${res.status}`)
+  }
+  return data
+}
+
 export const loadDepartmentPremises = async (department: string) => {
   const cachedGroups = surveyPremisesCache.get(department)
   const cachedModels = surveyPremisesModelsCache.get(department)
-  if (cachedGroups && cachedModels) {
-    return { groups: cachedGroups, vestimentModels: cachedModels }
+  const cachedDriverCrews = surveyPremisesDriverCrewsCache.get(department)
+  if (cachedGroups && cachedModels && cachedDriverCrews) {
+    return { groups: cachedGroups, vestimentModels: cachedModels, driverCrews: cachedDriverCrews }
   }
 
   let request = surveyPremisesPromiseCache.get(department)
@@ -87,9 +118,25 @@ export const loadDepartmentPremises = async (department: string) => {
               .map((m) => String(m || '').trim())
               .filter(Boolean)
           : []
+        const driverCrews = Array.isArray(json?.premises?.driverCrews)
+          ? json.premises.driverCrews
+              .map((crew, index) => ({
+                id: String(crew?.id || `crew-${index}`),
+                driverId: String(crew?.driverId || '').trim(),
+                driverName: String(crew?.driverName || '').trim(),
+                companions: Array.isArray(crew?.companions)
+                  ? crew.companions.map((companion) => ({
+                      id: String(companion?.id || '').trim(),
+                      name: String(companion?.name || '').trim(),
+                    }))
+                  : [],
+              }))
+              .filter((crew) => crew.driverId || crew.driverName || crew.companions.length > 0)
+          : []
         surveyPremisesCache.set(department, groups)
         surveyPremisesModelsCache.set(department, vestimentModels)
-        return { groups, vestimentModels }
+        surveyPremisesDriverCrewsCache.set(department, driverCrews)
+        return { groups, vestimentModels, driverCrews }
       })
       .finally(() => {
         surveyPremisesPromiseCache.delete(department)

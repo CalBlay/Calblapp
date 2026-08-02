@@ -4,8 +4,15 @@ import type { DefaultJWT } from "next-auth/jwt"
 
 // Extensió del tipus Session
 declare module "next-auth" {
+  interface AuthOptions {
+    trustHost?: boolean
+  }
+
+  interface NextAuthOptions {
+    trustHost?: boolean
+  }
+
   interface Session extends DefaultSession {
-    accessToken?: string
     user?: {
       id?: string
       name?: string
@@ -17,6 +24,7 @@ declare module "next-auth" {
       deptLower?: string
       commercialName?: string
       isTransportLead?: boolean
+      opsProjectsConfigurable?: boolean
     } & DefaultSession["user"]
   }
 }
@@ -24,13 +32,13 @@ declare module "next-auth" {
 // Extensió del tipus JWT
 declare module "next-auth/jwt" {
   interface JWT extends DefaultJWT {
-    accessToken?: string
     role?: string
     isAdmin?: boolean
     department?: string
     deptLower?: string
     commercialName?: string
     isTransportLead?: boolean
+    opsProjectsConfigurable?: boolean
   }
 }
 

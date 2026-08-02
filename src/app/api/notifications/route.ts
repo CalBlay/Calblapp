@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import type { Query } from 'firebase-admin/firestore'
+import { formatTornNotificationBody, formatTornNotificationLabel } from '@/lib/date-format'
+import { resolveEventDisplayName } from '@/lib/eventDisplayName'
+import { decrementUnreadFromNotificationDocs } from '@/lib/notifications/unreadCounts'
+import { userNotificationsCollectionByAuthId } from '@/lib/notifications/userNotificationsRef'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -21,6 +25,61 @@ type NotificationFirestoreDoc = Record<string, unknown> & {
 
 type NotificationListItem = { id: string } & NotificationFirestoreDoc
 
+function formatNotificationForClient(item: NotificationListItem): NotificationListItem {
+  const type = String(item.type || '').trim()
+  if (type !== 'torn' && type !== 'NEW_SHIFTS') return item
+  const eventDate =
+    typeof item.eventDate === 'string'
+      ? item.eventDate
+      : typeof item.eventDate === 'number'
+        ? String(item.eventDate)
+        : null
+  const eventName = String(item.eventName || '').trim()
+  return {
+    ...item,
+    body: eventName
+      ? formatTornNotificationLabel(eventName, eventDate)
+      : formatTornNotificationBody(String(item.body || ''), eventDate),
+  }
+}
+
+async function enrichTornNotificationNames(items: NotificationListItem[]): Promise<NotificationListItem[]> {
+  const eventIds = new Set<string>()
+  for (const item of items) {
+    const type = String(item.type || '').trim()
+    if (type !== 'torn' && type !== 'NEW_SHIFTS') continue
+    if (String(item.eventName || '').trim()) continue
+    const eventId = String(item.eventId || '').trim()
+    if (eventId) eventIds.add(eventId)
+  }
+  if (eventIds.size === 0) return items
+
+  const nameById = new Map<string, string>()
+  await Promise.all(
+    [...eventIds].map(async (eventId) => {
+      try {
+        const snap = await db.collection('stage_verd').doc(eventId).get()
+        if (!snap.exists) return
+        const name = resolveEventDisplayName(snap.data() as Record<string, unknown>)
+        if (name) nameById.set(eventId, name)
+      } catch {
+        /* ignore lookup errors */
+      }
+    })
+  )
+
+  if (nameById.size === 0) return items
+
+  return items.map((item) => {
+    const type = String(item.type || '').trim()
+    if (type !== 'torn' && type !== 'NEW_SHIFTS') return item
+    if (String(item.eventName || '').trim()) return item
+    const eventId = String(item.eventId || '').trim()
+    const eventName = eventId ? nameById.get(eventId) : ''
+    return eventName ? { ...item, eventName } : item
+  })
+}
+
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user) {
@@ -37,10 +96,7 @@ export async function GET(req: Request) {
   const type = (searchParams.get('type') || '').trim()
 
   try {
-    const notificationsRef = db
-      .collection('users')
-      .doc(userId)
-      .collection('notifications')
+    const notificationsRef = await userNotificationsCollectionByAuthId(userId)
     let baseRef: Query = notificationsRef
 
     if (type) {
@@ -48,8 +104,8 @@ export async function GET(req: Request) {
     }
 
     if (mode === 'count') {
-      const snap = await baseRef.where('read', '==', false).get()
-      return NextResponse.json({ count: snap.size })
+      const snap = await baseRef.where('read', '==', false).count().get()
+      return NextResponse.json({ count: snap.data().count })
     }
 
     let listDocs: NotificationListItem[] = []
@@ -72,6 +128,8 @@ export async function GET(req: Request) {
         return { id: d.id, ...data }
       })
     }
+    listDocs = await enrichTornNotificationNames(listDocs)
+    listDocs = listDocs.map(formatNotificationForClient)
     return NextResponse.json({ notifications: listDocs })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
@@ -104,10 +162,7 @@ export async function PATCH(req: Request) {
     const requestId = (body.requestId || '').trim()
     const deliveryId = (body.deliveryId || '').trim()
 
-    const notificationsRef = db
-      .collection('users')
-      .doc(userId)
-      .collection('notifications')
+    const notificationsRef = await userNotificationsCollectionByAuthId(userId)
     let baseRef: Query = notificationsRef
 
     if (type) {
@@ -119,12 +174,17 @@ export async function PATCH(req: Request) {
       const batch = db.batch()
       snap.docs.forEach(d => batch.update(d.ref, { read: true }))
       await batch.commit()
+      await decrementUnreadFromNotificationDocs(userId, snap.docs)
       return NextResponse.json({ success: true })
     }
 
     if (action === 'markRead') {
       if (!notificationId) {
         return NextResponse.json({ error: 'notificationId required' }, { status: 400 })
+      }
+      const existing = await notificationsRef.doc(notificationId).get()
+      if (existing.exists) {
+        await decrementUnreadFromNotificationDocs(userId, [existing])
       }
       await notificationsRef.doc(notificationId).delete()
       return NextResponse.json({ success: true })
@@ -140,6 +200,7 @@ export async function PATCH(req: Request) {
         commercialTypes.has(String((doc.data() as NotificationFirestoreDoc).type || '').trim())
       )
       if (matches.length > 0) {
+        await decrementUnreadFromNotificationDocs(userId, matches)
         const batch = db.batch()
         matches.forEach((doc) => batch.delete(doc.ref))
         await batch.commit()

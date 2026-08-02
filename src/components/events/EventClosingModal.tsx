@@ -1,11 +1,10 @@
-// file: src/components/events/EventClosingModal.tsx
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { TriangleAlert, XCircle } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { useEventPersonnel, type Person } from '@/hooks/useEventPersonnel'
 
 type Props = {
@@ -31,12 +30,13 @@ export default function EventClosingModal({ open, onClose, eventId, eventName, u
   const [selectedDept, setSelectedDept] = useState<string>('')
   const [rows, setRows] = useState<Row[]>([])
   const [saving, setSaving] = useState(false)
+  const [bulkHour, setBulkHour] = useState('')
 
   const departments = useMemo(() => {
     const set = new Set<string>()
-    data?.responsables?.forEach((p) => p.department && set.add(norm(p.department)))
-    data?.conductors?.forEach((p) => p.department && set.add(norm(p.department)))
-    data?.treballadors?.forEach((p) => p.department && set.add(norm(p.department)))
+    data?.responsables?.forEach(p => p.department && set.add(norm(p.department)))
+    data?.conductors?.forEach(p => p.department && set.add(norm(p.department)))
+    data?.treballadors?.forEach(p => p.department && set.add(norm(p.department)))
     return Array.from(set)
   }, [data])
 
@@ -55,7 +55,7 @@ export default function EventClosingModal({ open, onClose, eventId, eventName, u
     const list: Row[] = []
     const pushRows = (arr?: Person[], role?: string) => {
       if (!Array.isArray(arr)) return
-      arr.forEach((p) => {
+      arr.forEach(p => {
         if (norm(p.department) !== selectedDept) return
         list.push({ ...p, role: p.role || role })
       })
@@ -71,22 +71,30 @@ export default function EventClosingModal({ open, onClose, eventId, eventName, u
   const isDireccio = roleN === 'direccio' || roleN === 'direccion'
   const isCap = roleN.includes('cap')
   const canEdit = isAdmin || isDireccio || isCap || norm(user?.department) === selectedDept
+  const canSwitchDepartment = isAdmin || isDireccio || isCap
 
-  const applyHourToAll = (value: string) => {
-    setRows((prev) => prev.map((r) => ({ ...r, endTimeReal: value })))
+  const handleApplyHourToAll = () => {
+    if (!bulkHour) return
+    setRows(prev =>
+      prev.map(row => (row.noShow ? row : { ...row, endTimeReal: bulkHour }))
+    )
+  }
+
+  const patchRow = (index: number, patch: Partial<Row>) => {
+    setRows(prev => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)))
   }
 
   const handleSave = async () => {
     if (!canEdit || !selectedDept) return
     setSaving(true)
     try {
-      const updates = rows.map((r) => ({
-        name: r.name || '',
-        role: r.role,
-        endTimeReal: r.endTimeReal || '',
-        notes: r.notes || '',
-        noShow: !!r.noShow,
-        leftEarly: !!r.leftEarly,
+      const updates = rows.map(row => ({
+        name: row.name || '',
+        role: row.role,
+        endTimeReal: row.endTimeReal || '',
+        notes: row.notes || '',
+        noShow: !!row.noShow,
+        leftEarly: !!row.leftEarly,
       }))
 
       const res = await fetch('/api/quadrants/closing', {
@@ -108,163 +116,191 @@ export default function EventClosingModal({ open, onClose, eventId, eventName, u
       onClose()
     } catch (err: unknown) {
       console.error('[EventClosingModal] save error', err)
-      alert(err instanceof Error ? err.message : 'No s’ha pogut desar')
+      alert(err instanceof Error ? err.message : 'No s ha pogut desar')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl w-[95vw]">
-        <DialogHeader>
-          <DialogTitle className="text-base font-semibold">
-            Tancament — {eventName || eventId}
-          </DialogTitle>
+    <Dialog open={open} onOpenChange={next => !next && onClose()}>
+      <DialogContent className="h-[92dvh] w-[100vw] max-w-none translate-x-[-50%] translate-y-[-50%] rounded-none border-0 p-0 sm:h-auto sm:max-h-[92vh] sm:w-[96vw] sm:max-w-5xl sm:rounded-2xl">
+        <DialogHeader className="sticky top-0 z-20 border-b border-slate-200 bg-white px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <DialogTitle className="truncate text-left text-base font-semibold text-slate-900 sm:text-lg">
+                {eventName || 'Tancament'}
+              </DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
 
-        {loading && <p className="text-sm text-gray-500">Carregant personal…</p>}
-        {error && <p className="text-sm text-red-600">Error: {error}</p>}
+        {loading && <p className="px-4 py-6 text-sm text-gray-500">Carregant personal...</p>}
+        {error && <p className="px-4 py-6 text-sm text-red-600">Error: {error}</p>}
 
         {!loading && !error && (
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3 rounded-xl border bg-white px-3 py-3 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-800">Departament</span>
-                  <select
-                    value={selectedDept}
-                    onChange={(e) => setSelectedDept(e.target.value)}
-                    className="border rounded-md px-3 py-2 text-sm bg-white shadow"
-                  >
-                    {departments.map((d) => (
-                      <option key={d} value={d}>
-                        {d || '—'}
-                      </option>
+          <div className="flex h-full min-h-0 flex-col bg-slate-50">
+            <div className="border-b border-slate-200 bg-white px-4 py-3">
+              <div className="flex flex-col gap-2.5">
+                {canSwitchDepartment ? (
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {departments.map(dept => (
+                      <button
+                        key={dept}
+                        type="button"
+                        onClick={() => setSelectedDept(dept)}
+                        className={[
+                          'rounded-full border px-3 py-1.5 text-sm font-medium transition',
+                          selectedDept === dept
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-200 bg-white text-slate-700',
+                        ].join(' ')}
+                      >
+                        {dept || '-'}
+                      </button>
                     ))}
-                  </select>
-                </div>
+                  </div>
+                ) : null}
 
-                {canEdit && (
-                  <div className="flex items-center gap-2 sm:ml-auto bg-slate-50 border rounded-md px-2 py-1 shadow-inner">
-                    <span className="text-sm text-gray-700">Hora per a tots</span>
+                <div className="grid gap-2 sm:grid-cols-[140px_auto]">
+                  <div className="min-w-0">
                     <Input
                       type="time"
-                      className="w-28 h-9"
-                      onChange={(e) => applyHourToAll(e.target.value)}
+                      className="h-11 rounded-xl border-slate-200 bg-white text-base font-semibold text-slate-900"
+                      disabled={!canEdit}
+                      value={bulkHour}
+                      onChange={e => setBulkHour(e.target.value)}
                     />
                   </div>
-                )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!canEdit || !bulkHour}
+                    onClick={handleApplyHourToAll}
+                    className="h-11 rounded-xl px-4"
+                  >
+                    Aplicar a tots
+                  </Button>
+                </div>
               </div>
             </div>
 
-            <div className="rounded-xl border shadow-sm divide-y bg-white">
-              <div className="grid grid-cols-12 gap-2 px-3 py-2 text-[11px] font-semibold text-slate-600 uppercase tracking-wide bg-slate-50">
-                <div className="col-span-3">Persona</div>
-                <div className="col-span-2">Previst</div>
-                <div className="col-span-2">Sortida real</div>
-                <div className="col-span-2">Estat</div>
-                <div className="col-span-3">Notes</div>
-              </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+              {rows.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
+                  Cap persona per aquest departament.
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {rows.map((row, idx) => {
+                    const showNote = row.noShow || row.leftEarly
+                    return (
+                      <article
+                        key={`${row.name}-${idx}`}
+                        className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
+                      >
+                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_148px_92px] sm:items-center">
+                          <div className="min-w-0">
+                            <p className="truncate text-base font-semibold text-slate-900">
+                              {row.name || 'Sense nom'}
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-slate-500">
+                              {row.endTime ? <span>Previst {row.endTime}</span> : null}
+                              {row.time ? <span>Inici {row.time}</span> : null}
+                              {!canEdit ? <span>Lectura</span> : null}
+                              {!row.time && !row.endTime ? (
+                                <span className="capitalize">{row.role || row.department || '-'}</span>
+                              ) : null}
+                            </div>
+                          </div>
 
-              {rows.length === 0 && (
-                <p className="p-4 text-sm text-gray-500">Cap persona per aquest departament.</p>
+                          <div>
+                            <Input
+                              type="time"
+                              className="h-12 rounded-xl border-slate-200 bg-white text-center text-base font-semibold text-slate-900"
+                              disabled={!canEdit || row.noShow}
+                              value={row.endTimeReal || ''}
+                              onChange={e => patchRow(idx, { endTimeReal: e.target.value })}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 sm:justify-self-end">
+                            <button
+                              type="button"
+                              aria-label="No ha vingut"
+                              title="No ha vingut"
+                              disabled={!canEdit}
+                              onClick={() =>
+                                patchRow(idx, {
+                                  noShow: !row.noShow,
+                                  endTimeReal: !row.noShow ? '' : row.endTimeReal,
+                                  notes: !row.noShow ? row.notes : '',
+                                })
+                              }
+                              className={[
+                                'flex h-12 w-full items-center justify-center rounded-xl border transition sm:w-10',
+                                row.noShow
+                                  ? 'border-red-300 bg-red-50 text-red-700'
+                                  : 'border-slate-200 bg-white text-slate-600',
+                              ].join(' ')}
+                            >
+                              <XCircle className="h-4.5 w-4.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              aria-label="Ha marxat abans"
+                              title="Ha marxat abans"
+                              disabled={!canEdit}
+                              onClick={() =>
+                                patchRow(idx, {
+                                  leftEarly: !row.leftEarly,
+                                  notes: !row.leftEarly ? row.notes : '',
+                                })
+                              }
+                              className={[
+                                'flex h-12 w-full items-center justify-center rounded-xl border transition sm:w-10',
+                                row.leftEarly
+                                  ? 'border-amber-300 bg-amber-50 text-amber-700'
+                                  : 'border-slate-200 bg-white text-slate-600',
+                              ].join(' ')}
+                            >
+                              <TriangleAlert className="h-4.5 w-4.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {showNote ? (
+                          <div className="mt-2">
+                            <Input
+                              placeholder="Nota"
+                              disabled={!canEdit}
+                              value={row.notes || ''}
+                              onChange={e => patchRow(idx, { notes: e.target.value })}
+                              className="h-11 rounded-xl border-slate-200 text-sm"
+                            />
+                          </div>
+                        ) : null}
+                      </article>
+                    )
+                  })}
+                </div>
               )}
-
-              {rows.map((row, idx) => (
-                <div
-                  key={`${row.name}-${idx}`}
-                  className="grid grid-cols-12 gap-2 px-3 py-3 items-center hover:bg-slate-50 transition"
-                >
-                  <div className="col-span-3">
-                    <p className="font-semibold text-sm text-slate-800">{row.name}</p>
-                    <p className="text-xs text-gray-500 capitalize">{row.role || row.department}</p>
-                  </div>
-
-                  <div className="col-span-2">
-                    <p className="text-xs text-gray-600">
-                      {row.time ? `Inici previst: ${row.time}` : '—'}
-                    </p>
-                    {row.endTime && (
-                      <p className="text-[11px] text-gray-400">Fi previst: {row.endTime}</p>
-                    )}
-                  </div>
-
-                  <div className="col-span-2">
-                    <Input
-                      type="time"
-                      className="w-full h-10"
-                      disabled={!canEdit}
-                      value={row.endTimeReal || ''}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          prev.map((r, i) => (i === idx ? { ...r, endTimeReal: e.target.value } : r))
-                        )
-                      }
-                    />
-                  </div>
-
-                  <div className="col-span-2 flex flex-col gap-1 text-xs text-gray-700">
-                    <label className="inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        disabled={!canEdit}
-                        className="w-4 h-4"
-                        checked={!!row.noShow}
-                        onChange={(e) =>
-                          setRows((prev) =>
-                            prev.map((r, i) => (i === idx ? { ...r, noShow: e.target.checked } : r))
-                          )
-                        }
-                      />
-                      No ha vingut
-                    </label>
-                    <label className="inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        disabled={!canEdit}
-                        className="w-4 h-4"
-                        checked={!!row.leftEarly}
-                        onChange={(e) =>
-                          setRows((prev) =>
-                            prev.map((r, i) =>
-                              i === idx ? { ...r, leftEarly: e.target.checked } : r
-                            )
-                          )
-                        }
-                      />
-                      Ha marxat abans
-                    </label>
-                  </div>
-
-                  <div className="col-span-3">
-                    <Textarea
-                      placeholder="Notes"
-                      disabled={!canEdit}
-                      value={row.notes || ''}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          prev.map((r, i) => (i === idx ? { ...r, notes: e.target.value } : r))
-                        )
-                      }
-                      className="text-sm min-h-[64px]"
-                    />
-                  </div>
-                </div>
-              ))}
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={onClose} className="px-4">
-                Cancel·la
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={!canEdit || saving}
-                className="px-4 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:bg-blue-400"
-              >
-                {saving ? 'Desant…' : 'Desa'}
-              </Button>
+            <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white px-4 py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
+                  Cancel.la
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={!canEdit || saving}
+                  className="w-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:bg-blue-400 sm:w-auto"
+                >
+                  {saving ? 'Desant...' : 'Desa tancament'}
+                </Button>
+              </div>
             </div>
           </div>
         )}

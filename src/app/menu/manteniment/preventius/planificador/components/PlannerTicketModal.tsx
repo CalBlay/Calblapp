@@ -2,10 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { differenceInCalendarDays, parseISO } from 'date-fns'
-import { useSession } from 'next-auth/react'
 import { useTransports } from '@/hooks/useTransports'
-import { isMaintenanceCapDepartment } from '@/lib/accessControl'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { formatDateTimeValue } from '@/lib/date-format'
+import {
+  MAINTENANCE_TICKETS_DELETE_PERM,
+  MAINTENANCE_TICKETS_EXTERNALIZE_PERM,
+  MAINTENANCE_TICKETS_MANAGE_PERM,
+  MAINTENANCE_TICKETS_REOPEN_PERM,
+  MAINTENANCE_TICKETS_VALIDATE_PERM,
+} from '@/lib/maintenanceTicketsPermissions'
 import { normalizeRole } from '@/lib/roles'
 import AssignTicketModal from '@/app/menu/manteniment/tickets/components/AssignTicketModal'
 import type {
@@ -16,11 +22,6 @@ import type {
   UserItem,
 } from '@/app/menu/manteniment/tickets/types'
 import { minutesFromTime, normalizeName, timeFromMinutes } from '../utils'
-
-type SessionUser = {
-  role?: string
-  department?: string
-}
 
 type Props = {
   ticketId: string
@@ -65,7 +66,7 @@ const STATUS_LABELS = {
   espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
-  resolut: 'Resolt',
+  reassignat: 'Reassignat',
   validat: 'Validat',
 } as const
 
@@ -86,20 +87,12 @@ export default function PlannerTicketModal({
   onClose,
   onRefresh,
 }: Props) {
-  const { data: session } = useSession()
-  const sessionUser = (session?.user || {}) as SessionUser
-  const role = normalizeRole(sessionUser.role || '')
-  const department = normalizeDept(sessionUser.department || '')
-  const canValidate = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
-  const canReopen = role === 'admin' || (role === 'cap' && isMaintenanceCapDepartment(department))
-  const canExternalize =
-    role === 'admin' ||
-    role === 'direccio' ||
-    (role === 'cap' &&
-      (isMaintenanceCapDepartment(department) ||
-        department === 'decoracio' ||
-        department === 'decoracions' ||
-        department === 'decoracion'))
+  const { hasAction } = useUiPermissions()
+  const canManagePlannerTickets = hasAction(MAINTENANCE_TICKETS_MANAGE_PERM)
+  const canDeleteAnyTicket = hasAction(MAINTENANCE_TICKETS_DELETE_PERM)
+  const canValidate = canManagePlannerTickets && hasAction(MAINTENANCE_TICKETS_VALIDATE_PERM)
+  const canReopen = canManagePlannerTickets && hasAction(MAINTENANCE_TICKETS_REOPEN_PERM)
+  const canExternalize = canManagePlannerTickets && hasAction(MAINTENANCE_TICKETS_EXTERNALIZE_PERM)
 
   const [selected, setSelected] = useState<Ticket | null>(initialTicket || null)
   const [assignBusy, setAssignBusy] = useState(false)
@@ -120,6 +113,7 @@ export default function PlannerTicketModal({
   const [detailsMachine, setDetailsMachine] = useState('')
   const [detailsDescription, setDetailsDescription] = useState('')
   const [detailsPriority, setDetailsPriority] = useState<TicketPriority>('normal')
+  const canDeleteSelectedTicket = canDeleteAnyTicket
   const { data: transports } = useTransports()
 
   const maintenanceUsers = useMemo(
@@ -239,6 +233,7 @@ export default function PlannerTicketModal({
   ])
 
   const handleAssign = async (ticket: Ticket, assignedIds: string[], assignedNames: string[]) => {
+    if (!canManagePlannerTickets) return
     try {
       setAssignBusy(true)
       const { plannedStart, plannedEnd, estimatedMinutes } = computePlanning()
@@ -266,6 +261,7 @@ export default function PlannerTicketModal({
   }
 
   const handleDeleteTicket = useCallback(async () => {
+    if (!canDeleteAnyTicket) return
     const currentTicketId = String(selected?.id || ticketId || '').trim()
     if (!currentTicketId) return
     if (!window.confirm('Estas segur que vols eliminar el ticket?')) return
@@ -279,10 +275,10 @@ export default function PlannerTicketModal({
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "No s'ha pogut eliminar el ticket")
     }
-  }, [onClose, onRefresh, selected?.id, ticketId])
+  }, [canDeleteAnyTicket, onClose, onRefresh, selected?.id, ticketId])
 
   const handleUnplanTicket = useCallback(async () => {
-    if (!onDeletePlanned) return
+    if (!canManagePlannerTickets || !onDeletePlanned) return
     if (
       !window.confirm(
         'Estas segur que vols treure el ticket del planificador? El ticket continuara existint.'
@@ -295,10 +291,10 @@ export default function PlannerTicketModal({
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "No s'ha pogut treure del planificador")
     }
-  }, [onDeletePlanned])
+  }, [canManagePlannerTickets, onDeletePlanned])
 
   const destructiveAction = useMemo(() => {
-    if (deleteMode === 'delete-ticket') {
+    if (deleteMode === 'delete-ticket' && canDeleteSelectedTicket) {
       return {
         label: 'Eliminar ticket',
         title: 'Eliminar ticket',
@@ -306,7 +302,7 @@ export default function PlannerTicketModal({
         onClick: handleDeleteTicket,
       }
     }
-    if (deleteMode === 'unplan-ticket' && onDeletePlanned) {
+    if (deleteMode === 'unplan-ticket' && canManagePlannerTickets && onDeletePlanned) {
       return {
         label: 'Treure del planificador',
         title: 'Treure del planificador',
@@ -315,7 +311,7 @@ export default function PlannerTicketModal({
       }
     }
     return null
-  }, [deleteMode, handleDeleteTicket, handleUnplanTicket, onDeletePlanned])
+  }, [canDeleteSelectedTicket, canManagePlannerTickets, deleteMode, handleDeleteTicket, handleUnplanTicket, onDeletePlanned])
 
   const handleAssignVehicle = async (
     ticket: Ticket,
@@ -323,6 +319,7 @@ export default function PlannerTicketModal({
     vehicleType: string | null,
     plate: string | null
   ) => {
+    if (!canManagePlannerTickets) return
     try {
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
         method: 'PATCH',
@@ -347,7 +344,7 @@ export default function PlannerTicketModal({
   }
 
   const handleUpdateDetails = async () => {
-    if (!selected) return
+    if (!selected || !canManagePlannerTickets) return
     try {
       const res = await fetch(`/api/maintenance/tickets/${selected.id}`, {
         method: 'PATCH',
@@ -370,6 +367,7 @@ export default function PlannerTicketModal({
   }
 
   const handleReopen = async (ticket: Ticket) => {
+    if (!canManagePlannerTickets) return
     try {
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
         method: 'PATCH',
@@ -390,6 +388,7 @@ export default function PlannerTicketModal({
     status: keyof typeof STATUS_LABELS,
     meta?: { supplierResolvedAt?: number | null; note?: string | null }
   ) => {
+    if (!canManagePlannerTickets) return
     try {
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
         method: 'PATCH',
@@ -424,6 +423,7 @@ export default function PlannerTicketModal({
       }>
     }
   ) => {
+    if (!canManagePlannerTickets) return
     try {
       setExternalizeBusy(true)
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}/externalize`, {
@@ -444,8 +444,18 @@ export default function PlannerTicketModal({
 
   const handleDirectResolution = async (
     ticket: Ticket,
-    payload: { area: 'administracio' | 'manteniment'; category: string; note: string }
+    payload: {
+      area: 'administracio' | 'manteniment'
+      category: string
+      note: string
+      completionImages?: Array<{
+        url?: string | null
+        path?: string | null
+        meta?: { size?: number; type?: string; name?: string } | null
+      }>
+    }
   ) => {
+    if (!canManagePlannerTickets) return
     try {
       const res = await fetch(`/api/maintenance/tickets/${ticket.id}`, {
         method: 'PATCH',
@@ -456,6 +466,7 @@ export default function PlannerTicketModal({
           resolutionCategory: payload.category.trim() || null,
           resolutionNote: payload.note.trim() || null,
           statusNote: payload.note.trim() || 'Resolt des del planificador',
+          completionImages: payload.completionImages,
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -501,20 +512,20 @@ export default function PlannerTicketModal({
       canValidate={canValidate}
       canReopen={canReopen}
       canExternalize={canExternalize}
-      onUpdateDetails={handleUpdateDetails}
+      onUpdateDetails={canManagePlannerTickets ? handleUpdateDetails : async () => undefined}
       formatDateTime={formatDateTime}
       statusLabels={STATUS_LABELS}
       showHistory={showHistory}
       setShowHistory={setShowHistory}
       setSelected={setSelected}
-      onAssign={handleAssign}
-      onStatusChange={handleStatusChange}
-      onAssignVehicle={handleAssignVehicle}
-      onReopen={handleReopen}
-      onExternalize={handleExternalize}
-      canResolveInCurrentModule
+      onAssign={canManagePlannerTickets ? handleAssign : async () => undefined}
+      onStatusChange={canManagePlannerTickets ? handleStatusChange : async () => undefined}
+      onAssignVehicle={canManagePlannerTickets ? handleAssignVehicle : async () => undefined}
+      onReopen={canManagePlannerTickets ? handleReopen : async () => undefined}
+      onExternalize={canManagePlannerTickets ? handleExternalize : async () => undefined}
+      canResolveInCurrentModule={canManagePlannerTickets}
       resolveArea="manteniment"
-      onResolveTicket={handleDirectResolution}
+      onResolveTicket={canManagePlannerTickets ? handleDirectResolution : undefined}
       destructiveAction={destructiveAction}
       onClose={onClose}
     />

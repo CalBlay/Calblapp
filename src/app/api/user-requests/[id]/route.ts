@@ -4,6 +4,7 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
+import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 
 
 
@@ -16,6 +17,11 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const denied = requireRoles(auth, ['admin'])
+    if (denied) return denied.res
+
     const { id } = await ctx.params
     console.log('📥 GET /api/user-requests/:id', id)
 

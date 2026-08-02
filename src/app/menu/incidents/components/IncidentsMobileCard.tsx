@@ -1,10 +1,11 @@
 'use client'
 
 import React from 'react'
-import { Camera, ListChecks, Trash2 } from 'lucide-react'
+import { Camera, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import IncidentOperationsPanel from './IncidentOperationsPanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -12,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { Incident } from '@/hooks/useIncidents'
+import type { Incident, IncidentAction } from '@/hooks/useIncidents'
 import { normalizeIncidentStatus } from '@/lib/incidentPolicy'
 import { typography } from '@/lib/typography'
 import { cn } from '@/lib/utils'
@@ -22,19 +23,28 @@ interface Props {
   isEditing: boolean
   beginEdit: (row: Incident) => void
   applyPatch: (id: string, d: Partial<Incident>) => void | Promise<unknown>
-  openOps: (row: Incident) => void
+  opsExpanded: boolean
+  onToggleOps: (row: Incident) => void
+  onIncidentPatch: (id: string, d: Partial<Incident>) => Promise<unknown>
+  onIncidentLocalPatch: (id: string, d: Partial<Incident>) => void
+  initialActions?: IncidentAction[]
+  onIncidentActionsLocalPatch: (id: string, actions: IncidentAction[]) => void
   openImages: (row: Incident) => void
   canDelete: boolean
+  canEditCategory: boolean
+  categoryOptions: Array<{ id: string; label: string }>
   onDelete: (row: Incident) => void
   editValues: {
     description?: string
     originDepartment?: string
     priority?: string
+    status?: string
+    categoryId?: string
   }
   setEditValues: (
     updater: (
-      prev: { description?: string; originDepartment?: string; priority?: string }
-    ) => { description?: string; originDepartment?: string; priority?: string }
+      prev: { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
+    ) => { description?: string; originDepartment?: string; priority?: string; status?: string; categoryId?: string }
   ) => void
 }
 
@@ -43,9 +53,16 @@ export default function IncidentsMobileCard({
   isEditing,
   beginEdit,
   applyPatch,
-  openOps,
+  opsExpanded,
+  onToggleOps,
+  onIncidentPatch,
+  onIncidentLocalPatch,
+  initialActions,
+  onIncidentActionsLocalPatch,
   openImages,
   canDelete,
+  canEditCategory,
+  categoryOptions,
   onDelete,
   editValues,
   setEditValues,
@@ -80,9 +97,11 @@ export default function IncidentsMobileCard({
 
   return (
     <article
-      className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+      id={`incident-row-${inc.id}`}
+      className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
       onClick={() => !isEditing && beginEdit(inc)}
     >
+      <div className="p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <p className={cn(typography('bodyXs'), 'font-mono text-slate-500')}>
@@ -96,20 +115,24 @@ export default function IncidentsMobileCard({
           </p>
         </div>
         <div className="flex items-center gap-1">
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 text-slate-600"
-            title="Seguiment i accions"
-            aria-label="Seguiment i accions"
             onClick={(e) => {
               e.stopPropagation()
-              openOps(inc)
+              onToggleOps(inc)
             }}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50"
+            title={opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'}
+            aria-label={opsExpanded ? 'Plegar seguiment' : 'Desplegar seguiment i accions'}
+            aria-expanded={opsExpanded}
           >
-            <ListChecks className="h-4 w-4" />
-          </Button>
+            {opsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+          {inc.actionsCount ? (
+            <span className={cn(typography('bodyXs'), 'rounded-full bg-violet-100 px-2 py-0.5 font-semibold text-violet-700')}>
+              {inc.actionsCount} acc.
+            </span>
+          ) : null}
           {inc.hasImages ? (
             <Button
               type="button"
@@ -176,10 +199,12 @@ export default function IncidentsMobileCard({
 
       <div className="mt-3 space-y-3">
         <div>
-          <p className={cn(typography('label'), 'mb-1 text-slate-500')}>Incidència</p>
+          <p className={cn(typography('label'), 'mb-1.5 text-slate-500')}>Incidència</p>
           {isEditing ? (
-            <Input
+            <Textarea
               value={editValues.description}
+              rows={4}
+              className="max-h-48 min-h-[3.5rem] resize-y text-base font-medium leading-relaxed text-slate-900"
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => setEditValues((v) => ({ ...v, description: e.target.value }))}
               onBlur={(e) => {
@@ -189,11 +214,43 @@ export default function IncidentsMobileCard({
               }}
             />
           ) : (
-            <p className={cn(typography('bodySm'), 'text-slate-800')}>{inc.description || '—'}</p>
+            <div
+              className="max-h-48 min-h-[3rem] overflow-y-auto overscroll-contain rounded-xl border border-slate-100/90 bg-slate-50/60 px-3.5 py-3 text-base font-medium leading-relaxed text-slate-900 whitespace-pre-wrap"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {inc.description || '—'}
+            </div>
           )}
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <p className={cn(typography('label'), 'mb-1 text-slate-500')}>Categoria</p>
+            {isEditing && canEditCategory ? (
+              <Select
+                value={editValues.categoryId || inc.category?.id || ''}
+                onValueChange={(val) => {
+                  setEditValues((v) => ({ ...v, categoryId: val }))
+                  const selected = categoryOptions.find((option) => option.id === val)
+                  if (!selected) return
+                  void applyPatch(inc.id, { category: { id: selected.id, label: selected.label } })
+                }}
+              >
+                <SelectTrigger onClick={(e) => e.stopPropagation()}>
+                  <SelectValue placeholder="Categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categoryOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p className={cn(typography('bodySm'), 'text-slate-800')}>{inc.category?.label || inc.category?.id || '—'}</p>
+            )}
+          </div>
           <div>
             <p className={cn(typography('label'), 'mb-1 text-slate-500')}>Origen</p>
             {isEditing ? (
@@ -217,6 +274,39 @@ export default function IncidentsMobileCard({
               </Select>
             ) : (
               <p className={cn(typography('bodySm'), 'text-slate-800')}>{inc.originDepartment || '—'}</p>
+            )}
+          </div>
+          <div>
+            <p className={cn(typography('label'), 'mb-1 text-slate-500')}>Estat</p>
+            {isEditing ? (
+              <Select
+                value={editValues.status || workflow}
+                onValueChange={(val) => {
+                  setEditValues((v) => ({ ...v, status: val }))
+                  void applyPatch(inc.id, { status: val })
+                }}
+              >
+                <SelectTrigger onClick={(e) => e.stopPropagation()}>
+                  <SelectValue placeholder="Estat" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="obert">Obert</SelectItem>
+                  <SelectItem value="en_curs">En curs</SelectItem>
+                  <SelectItem value="resolt">Resolt</SelectItem>
+                  <SelectItem value="tancat">Tancat</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <button
+                type="button"
+                className={cn(typography('bodySm'), 'text-left text-slate-800 hover:underline')}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  beginEdit(inc)
+                }}
+              >
+                {statusLabel}
+              </button>
             )}
           </div>
           <div>
@@ -245,6 +335,19 @@ export default function IncidentsMobileCard({
           </div>
         </div>
       </div>
+      </div>
+
+      {opsExpanded ? (
+        <div className="border-t border-slate-200 bg-slate-50/50 px-3 py-2">
+          <IncidentOperationsPanel
+            incident={inc}
+            onIncidentPatch={onIncidentPatch}
+            onIncidentLocalPatch={onIncidentLocalPatch}
+            initialActions={initialActions}
+            onIncidentActionsLocalPatch={onIncidentActionsLocalPatch}
+          />
+        </div>
+      ) : null}
     </article>
   )
 }

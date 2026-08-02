@@ -2,8 +2,9 @@ export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { storageAdmin } from '@/lib/firebaseAdmin'
+import { isLikelyImageFile } from '@/lib/media/isLikelyImageFile'
 import { processUploadedImageFile } from '@/lib/media/uploadImagePipeline'
 import { MAX_UPLOAD_IMAGE_BYTES } from '@/lib/media/uploadLimits'
 type SessionUser = { id?: string }
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing data' }, { status: 400 })
     }
 
-    if (!file.type.startsWith('image/')) {
+    if (!isLikelyImageFile(file)) {
       return NextResponse.json({ error: 'Only images are allowed' }, { status: 400 })
     }
     if (file.size > MAX_UPLOAD_IMAGE_BYTES) {

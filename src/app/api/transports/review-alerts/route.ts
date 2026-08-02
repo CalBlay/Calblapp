@@ -3,22 +3,16 @@ export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { processTransportReviewNotifications } from '@/lib/transportReviewNotifications'
+import { requireCronAuth } from '@/lib/server/internalApiAuth'
 
 export async function POST(req: Request) {
   const url = new URL(req.url)
   const mode = url.searchParams.get('mode')
-  const cronSecret = process.env.CRON_SECRET
-
-  if (mode === 'cron' && cronSecret) {
-    const incoming =
-      req.headers.get('x-cron-secret') ||
-      req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ||
-      ''
-    if (incoming !== cronSecret) {
-      return NextResponse.json({ error: 'Unauthorized cron' }, { status: 401 })
-    }
+  if (mode === 'cron') {
+    const cronDenied = requireCronAuth(req)
+    if (cronDenied) return cronDenied
   } else {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {

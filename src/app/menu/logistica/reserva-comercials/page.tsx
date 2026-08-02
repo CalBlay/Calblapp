@@ -9,6 +9,7 @@ import { useUiPermissions } from '@/hooks/useUiPermissions'
 import RequestTab from './components/RequestTab'
 import ReservationDialog from './components/ReservationDialog'
 import ValidationTab from './components/ValidationTab'
+import KeysHandoverTab from './components/KeysHandoverTab'
 import { useReservaComercialsPage } from './hooks/useReservaComercialsPage'
 
 const RESERVA_PATH = '/menu/logistica/reserva-comercials'
@@ -64,6 +65,20 @@ export default function ReservaComercialsPage() {
               }
             >
               Validació
+            </button>
+          ) : null}
+
+          {page.canKeys ? (
+            <button
+              type="button"
+              onClick={() => page.setTabAndUrl('claus')}
+              className={
+                page.tab === 'claus'
+                  ? 'rounded-full bg-sky-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition'
+                  : 'rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-100'
+              }
+            >
+              Lliurament de claus
             </button>
           ) : null}
         </div>
@@ -130,6 +145,18 @@ export default function ReservaComercialsPage() {
             onValidation={page.handleValidation}
             onCancelReservation={page.handleCancelReservation}
             getVehicleOptions={page.availableVehiclesForReservation}
+          />
+        ) : null}
+
+        {page.tab === 'claus' && page.canKeys ? (
+          <KeysHandoverTab
+            keysFilters={page.keysFilters}
+            loading={page.loading || page.keysLoading}
+            withPlate={page.keysHandoverWithPlate}
+            withoutPlate={page.keysHandoverWithoutPlate}
+            showsDateColumn={page.keysShowsDateColumn}
+            totalFleetVehicles={page.totalFleetVehicles}
+            onKeysDatesChange={page.handleKeysDatesChange}
           />
         ) : null}
       </section>

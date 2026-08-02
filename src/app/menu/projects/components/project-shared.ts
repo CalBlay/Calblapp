@@ -131,7 +131,7 @@ export type ProjectDocument = {
 export type ProjectRoom = {
   id: string
   name: string
-  kind: 'block' | 'manual'
+  kind: 'block' | 'manual' | 'general'
   blockId?: string
   opsChannelId?: string
   opsChannelName?: string
@@ -189,6 +189,7 @@ export type ProjectMeetingRecord = {
   notes: string
   attendees: ProjectMeetingAttendee[]
   organizerEmail?: string
+  organizerUserId?: string
   attachments?: Array<Exclude<ProjectDocument, null>>
   invitedAt?: number
   graphEventId?: string
@@ -214,6 +215,7 @@ export type KickoffData = {
   status?: string
   graphWebLink?: string
   organizerEmail?: string
+  organizerUserId?: string
   invitedAt?: number
   graphEventId?: string
   graphJoinUrl?: string
@@ -246,6 +248,12 @@ export type ProjectData = {
   kickoff: KickoffData
 }
 
+export type ProjectTaskDependencyMeta = {
+  dependencyTask: ProjectTask
+  dependencyBlock: ProjectBlock
+  isResolved: boolean
+}
+
 export const EMPTY_KICKOFF: KickoffData = {
   date: '',
   startTime: '',
@@ -273,6 +281,218 @@ export const EMPTY_SPRINT: ProjectSprint = {
 
 export const statusLabel = (status?: string) =>
   PROJECT_STATUS_OPTIONS.find((item) => item.value === status)?.label || status || 'Sense estat'
+
+export const normalizeTaskWorkflowStatus = (status?: string | null) =>
+  String(status || 'pending').trim().toLowerCase() || 'pending'
+
+export const getTaskDependencyMeta = (
+  blocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>,
+  taskOrDependencyId: Pick<ProjectTask, 'dependsOn'> | string
+): ProjectTaskDependencyMeta | null => {
+  const dependencyId =
+    typeof taskOrDependencyId === 'string'
+      ? String(taskOrDependencyId || '').trim()
+      : String(taskOrDependencyId.dependsOn || '').trim()
+
+  if (!dependencyId) return null
+
+  for (const block of blocks) {
+    const dependencyTask = (block.tasks || []).find((task) => String(task.id || '').trim() === dependencyId)
+    if (!dependencyTask) continue
+
+    return {
+      dependencyTask,
+      dependencyBlock: block as ProjectBlock,
+      isResolved: normalizeTaskWorkflowStatus(dependencyTask.status) === 'done',
+    }
+  }
+
+  return null
+}
+
+export const canTaskAdvanceFromPending = (
+  task: Pick<ProjectTask, 'dependsOn'>,
+  blocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>
+) => {
+  const dependency = getTaskDependencyMeta(blocks, task)
+  return !dependency || dependency.isResolved
+}
+
+export const hasUnresolvedTaskDependency = (
+  task: Pick<ProjectTask, 'dependsOn'>,
+  blocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>
+) => !canTaskAdvanceFromPending(task, blocks)
+
+export const canChangeTaskStatus = (
+  task: Pick<ProjectTask, 'dependsOn' | 'status'>,
+  nextStatus: string,
+  blocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>
+) => {
+  const next = normalizeTaskWorkflowStatus(nextStatus)
+  if (hasUnresolvedTaskDependency(task, blocks)) {
+    return next === 'blocked'
+  }
+  return true
+}
+
+export const resolveTaskStatusWithDependencies = (
+  task: ProjectTask,
+  blocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>
+): ProjectTask => {
+  const status = normalizeTaskWorkflowStatus(task.status)
+  if (status === 'done') return task
+
+  if (hasUnresolvedTaskDependency(task, blocks)) {
+    return status === 'blocked' ? task : { ...task, status: 'blocked' }
+  }
+
+  if (status === 'blocked') {
+    return { ...task, status: 'pending' }
+  }
+
+  return task
+}
+
+export const applyDependencyLocksToBlocks = <T extends Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>(
+  blocks: T[]
+): T[] =>
+  blocks.map((block) => ({
+    ...block,
+    tasks: (Array.isArray(block.tasks) ? block.tasks : []).map((task) =>
+      resolveTaskStatusWithDependencies(task as ProjectTask, blocks)
+    ),
+  }))
+
+export type ProjectTaskDependencyOption = {
+  id: string
+  label: string
+}
+
+const taskStatusLabel = (status?: string | null) =>
+  TASK_STATUS_OPTIONS.find((item) => item.value === normalizeTaskWorkflowStatus(status))?.label ||
+  status ||
+  'Pendent'
+
+export const findTaskBlockId = (
+  blocks: Array<Pick<ProjectBlock, 'id' | 'tasks'>>,
+  taskId: string
+): string => {
+  const normalizedTaskId = String(taskId || '').trim()
+  if (!normalizedTaskId) return ''
+
+  for (const block of blocks) {
+    const hasTask = (Array.isArray(block.tasks) ? block.tasks : []).some(
+      (task) => String(task.id || '').trim() === normalizedTaskId
+    )
+    if (hasTask) return String(block.id || '').trim()
+  }
+
+  return ''
+}
+
+export const getBlockTaskDependencyOptions = (
+  block: Pick<ProjectBlock, 'id' | 'name' | 'tasks'> | null | undefined,
+  options?: { excludeTaskId?: string; includeTaskId?: string }
+): ProjectTaskDependencyOption[] => {
+  if (!block) return []
+
+  const excludeTaskId = String(options?.excludeTaskId || '').trim()
+  const includeTaskId = String(options?.includeTaskId || '').trim()
+
+  return (Array.isArray(block.tasks) ? block.tasks : [])
+    .filter((task) => {
+      const taskId = String(task.id || '').trim()
+      if (!taskId) return false
+      if (excludeTaskId && taskId === excludeTaskId) return false
+      if (includeTaskId && taskId === includeTaskId) return true
+      return normalizeTaskWorkflowStatus(task.status) !== 'done'
+    })
+    .map((task) => {
+      const title = String(task.title || '').trim() || 'Tasca'
+
+      return {
+        id: task.id,
+        label: `${title} (${taskStatusLabel(task.status)})`,
+      }
+    })
+}
+
+export const getProjectBlocksWithDependencyCandidates = (
+  blocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>,
+  options?: { excludeTaskId?: string; includeTaskId?: string }
+) =>
+  blocks.filter((block) => getBlockTaskDependencyOptions(block, options).length > 0)
+
+export const getProjectTaskDependencyOptions = (
+  blocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>,
+  options?: { excludeTaskId?: string; includeTaskId?: string }
+): ProjectTaskDependencyOption[] => {
+  return blocks.flatMap((block) => {
+    const blockName = String(block.name || '').trim()
+
+    return getBlockTaskDependencyOptions(block, options).map((option) => ({
+      id: option.id,
+      label: blockName ? `${option.label} · ${blockName}` : option.label,
+    }))
+  })
+}
+
+export const summarizeBlockTasks = (block: Pick<ProjectBlock, 'tasks' | 'meetings'>) => {
+  const tasks = Array.isArray(block.tasks) ? block.tasks : []
+
+  return {
+    taskPending: tasks.filter((task) => normalizeTaskWorkflowStatus(task.status) === 'pending').length,
+    taskInProgress: tasks.filter((task) => normalizeTaskWorkflowStatus(task.status) === 'in_progress').length,
+    taskBlocked: tasks.filter((task) => normalizeTaskWorkflowStatus(task.status) === 'blocked').length,
+    taskDone: tasks.filter((task) => normalizeTaskWorkflowStatus(task.status) === 'done').length,
+    taskTotal: tasks.length,
+    meetingCount: Array.isArray(block.meetings) ? block.meetings.length : 0,
+  }
+}
+
+export const getBlockStatusExplanation = (
+  block: Pick<ProjectBlock, 'tasks' | 'status'>,
+  allBlocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>
+): string | null => {
+  const tasks = Array.isArray(block.tasks) ? block.tasks : []
+  const blockedTasks = tasks.filter((task) => normalizeTaskWorkflowStatus(task.status) === 'blocked')
+
+  if (blockedTasks.length > 0) {
+    const titles = blockedTasks
+      .map((task) => `"${String(task.title || '').trim() || 'Tasca'}"`)
+      .join(', ')
+
+    return blockedTasks.length === 1
+      ? `El bloc està bloquejat perquè la tasca ${titles} està bloquejada.`
+      : `El bloc està bloquejat perquè les tasques ${titles} estan bloquejades.`
+  }
+
+  const waitingOnDependency = tasks.filter((task) => {
+    if (normalizeTaskWorkflowStatus(task.status) === 'done') return false
+    const dependency = getTaskDependencyMeta(allBlocks, task)
+    return Boolean(dependency && !dependency.isResolved)
+  })
+
+  if (waitingOnDependency.length > 0 && normalizeTaskWorkflowStatus(block.status) === 'blocked') {
+    const titles = waitingOnDependency
+      .map((task) => `"${String(task.title || '').trim() || 'Tasca'}"`)
+      .join(', ')
+    return `El bloc està bloquejat mentre ${titles} espera dependències.`
+  }
+
+  return null
+}
+
+export const getTaskDependencyHint = (
+  allBlocks: Array<Pick<ProjectBlock, 'id' | 'name' | 'tasks'>>,
+  task: Pick<ProjectTask, 'dependsOn' | 'status' | 'title'>
+): string | null => {
+  const dependency = getTaskDependencyMeta(allBlocks, task)
+  if (!dependency || dependency.isResolved) return null
+
+  const dependencyTitle = String(dependency.dependencyTask.title || '').trim() || 'la tasca prèvia'
+  return `Esperant que "${dependencyTitle}" estigui feta.`
+}
 
 export const phaseLabel = (phase?: string) =>
   PROJECT_PHASE_OPTIONS.find((item) => item.value === phase)?.label || phase || 'Inicial'

@@ -1,4 +1,12 @@
-export type TicketStatus = 'nou' | 'assignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat' | 'resolut'
+export type TicketStatus =
+  | 'nou'
+  | 'assignat'
+  | 'reassignat'
+  | 'en_curs'
+  | 'espera'
+  | 'fet'
+  | 'no_fet'
+  | 'validat'
 export type TicketPriority = 'urgent' | 'alta' | 'normal' | 'baixa'
 export type TicketType = 'maquinaria' | 'deco'
 export type TicketIntakeChannel =
@@ -25,6 +33,7 @@ export type Ticket = {
   incidentNumber?: string | null
   location: string
   workLocation?: string | null
+  zone?: string | null
   machine: string
   description: string
   operatorTitle?: string | null
@@ -43,6 +52,8 @@ export type Ticket = {
   createdAt: number | string
   createdById?: string
   createdByName?: string
+  /** Nom real del treballador quan el compte de sessió és genèric (restaurants). */
+  workerName?: string | null
   assignedToIds?: string[]
   assignedToNames?: string[]
   assignedAt?: number | null
@@ -52,6 +63,11 @@ export type Ticket = {
   estimatedMinutes?: number | null
   imageUrl?: string | null
   imageUrls?: string[] | null
+  completionAttachments?: Array<{
+    url?: string | null
+    path?: string | null
+    meta?: { size?: number; type?: string; name?: string } | null
+  }> | null
   imagePath?: string | null
   imageMeta?: { size?: number; type?: string } | null
   needsVehicle?: boolean
@@ -64,12 +80,21 @@ export type Ticket = {
   externalStatus?: 'sent' | 'resent' | 'answered' | 'closed' | null
   intakeChannel?: TicketIntakeChannel | null
   workflowStage?: TicketWorkflowStage | null
+  opsChannelId?: string | null
+  opsManagerUserId?: string | null
   resolutionCategory?: string | null
   resolutionNote?: string | null
   resolvedByArea?: TicketResolutionArea | null
   resolvedAt?: number | string | null
   resolvedById?: string | null
   resolvedByName?: string | null
+  requiresCreatorValidation?: boolean | null
+  creatorValidatedAt?: number | string | null
+  creatorValidatedById?: string | null
+  creatorValidatedByName?: string | null
+  capValidatedAt?: number | string | null
+  capValidatedById?: string | null
+  capValidatedByName?: string | null
   externalSentAt?: number | string | null
   externalSentById?: string | null
   externalSentByName?: string | null
@@ -105,6 +130,16 @@ export type Ticket = {
     endTime?: string | null
     note?: string | null
   }>
+  workLogs?: Array<{
+    at: number
+    byId?: string | null
+    byName?: string | null
+    startTime?: string | null
+    endTime?: string | null
+    note?: string | null
+    sourceStatus?: string | null
+    closedByStatus?: string | null
+  }>
 }
 
 export type UserItem = {
@@ -119,6 +154,9 @@ export type MachineItem = {
   code: string
   name: string
   label: string
+  center?: string
+  location?: string
+  zone?: string
 }
 
 export type TransportItem = {

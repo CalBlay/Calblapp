@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { normalizeRole, type Role } from '@/lib/roles'
+import { buildBootstrapAssignmentUpdate } from '@/lib/permissions/bootstrapAssignments'
 
 type AssignmentOverride = {
   permission: string
@@ -37,13 +38,6 @@ function parseOverrideInput(raw: unknown): AssignmentOverride | null {
   return { permission, effect, scope, scopeId, note }
 }
 
-async function getUserName(userId: string): Promise<string | undefined> {
-  const uSnap = await firestoreAdmin.collection('users').doc(userId).get()
-  if (!uSnap.exists) return undefined
-  const data = uSnap.data() as Record<string, unknown>
-  return typeof data.name === 'string' && data.name.trim() ? data.name.trim() : undefined
-}
-
 export async function GET(
   _req: Request,
   ctx: { params: Promise<{ userId: string }> }
@@ -58,13 +52,31 @@ export async function GET(
   if (!id) return NextResponse.json({ error: 'Bad Request' }, { status: 400 })
 
   const ref = firestoreAdmin.collection('user_access_assignments').doc(id)
-  const [snap, name] = await Promise.all([ref.get(), getUserName(id)])
+  const [snap, userSnap] = await Promise.all([
+    ref.get(),
+    firestoreAdmin.collection('users').doc(id).get(),
+  ])
+  const userData = (userSnap.exists ? (userSnap.data() as Record<string, unknown>) : {}) as Record<
+    string,
+    unknown
+  >
+  const name = typeof userData.name === 'string' && userData.name.trim() ? userData.name.trim() : undefined
 
   if (!snap.exists) {
+    const base = buildBootstrapAssignmentUpdate(
+      {
+        id,
+        role: userData.role,
+        department: userData.department,
+      },
+      auth.user.id,
+      new Date().toISOString()
+    )?.base
+
     return NextResponse.json({
       userId: id,
       name,
-      base: { role: 'treballador', department: null },
+      base: base ?? { role: 'treballador', department: null },
       permissionSets: [],
       overrides: [],
     } satisfies UserAccessAssignment)

@@ -1,11 +1,11 @@
 export const runtime = 'nodejs'
 
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import admin from 'firebase-admin'
-import { canAccessIncidentsModule, normalizeIncidentActionStatus } from '@/lib/incidentPolicy'
+import { normalizeIncidentActionStatus } from '@/lib/incidentPolicy'
+import { requireIncidentsModuleView } from '@/lib/server/incidentsApiAuth'
+import { handleIncidentActionAssigneeSideEffects } from '@/lib/incidentActionNotifications'
 
 function tsToIso(ts: unknown): string {
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
@@ -18,12 +18,8 @@ function tsToIso(ts: unknown): string {
 
 export async function GET(req: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as { id?: string; role?: string; department?: string } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canAccessIncidentsModule(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsModuleView()
+    if (!auth.ok) return auth.res
 
     const incidentId = new URL(req.url).searchParams.get('incidentId')?.trim()
     if (!incidentId) {
@@ -44,6 +40,7 @@ export async function GET(req: Request) {
           title: String(d.title || ''),
           description: String(d.description || ''),
           status: normalizeIncidentActionStatus(String(d.status || 'open')),
+          assignedToId: String(d.assignedToId || ''),
           assignedToName: String(d.assignedToName || ''),
           department: String(d.department || ''),
           dueAt: tsToIso(d.dueAt),
@@ -66,23 +63,15 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    const user = session?.user as {
-      id?: string
-      role?: string
-      department?: string
-      name?: string | null
-      email?: string | null
-    } | undefined
-    if (!user?.id) return NextResponse.json({ error: 'No autenticat' }, { status: 401 })
-    if (!canAccessIncidentsModule(user)) {
-      return NextResponse.json({ error: 'Sense permisos' }, { status: 403 })
-    }
+    const auth = await requireIncidentsModuleView()
+    if (!auth.ok) return auth.res
+    const user = auth.user
 
     const body = (await req.json()) as {
       incidentId?: string
       title?: string
       description?: string
+      assignedToId?: string
       assignedToName?: string
       department?: string
       dueAt?: string | null
@@ -98,6 +87,8 @@ export async function POST(req: Request) {
     if (!incSnap.exists) {
       return NextResponse.json({ error: 'Incidencia no trobada' }, { status: 404 })
     }
+    const incData = incSnap.data() as Record<string, unknown>
+    const incidentNumber = String(incData.incidentNumber || '').trim() || null
 
     const now = admin.firestore.Timestamp.now()
     const dueRaw = body.dueAt ? Date.parse(body.dueAt) : NaN
@@ -105,13 +96,16 @@ export async function POST(req: Request) {
       Number.isFinite(dueRaw) && dueRaw > 0 ? admin.firestore.Timestamp.fromMillis(dueRaw) : null
 
     const createdByName = (user.name || user.email || '').trim() || 'Usuari'
+    const assignedToId = String(body.assignedToId || '').trim()
+    const assignedToName = String(body.assignedToName || '').trim()
 
     const docRef = await firestoreAdmin.collection('incident_actions').add({
       incidentId,
       title,
       description: String(body.description || '').trim(),
       status: 'open',
-      assignedToName: String(body.assignedToName || '').trim(),
+      assignedToId,
+      assignedToName,
       department: String(body.department || '').trim(),
       dueAt,
       createdAt: now,
@@ -120,7 +114,38 @@ export async function POST(req: Request) {
       updatedAt: now,
       closedAt: null,
       closedByName: '',
+      outlookEventId: '',
+      outlookAssigneeEmail: '',
     })
+
+    const dueAtIso = dueAt ? dueAt.toDate().toISOString() : null
+    if (assignedToId || assignedToName) {
+      try {
+        const outlook = await handleIncidentActionAssigneeSideEffects({
+          actionId: docRef.id,
+          incidentId,
+          incidentNumber,
+          actionTitle: title,
+          assignedToId,
+          assignedToName,
+          dueAtIso,
+          department: String(body.department || '').trim(),
+          createdById: user.id,
+          notifyAssignment: true,
+        })
+        if (outlook.outlookEventId || outlook.outlookEmail) {
+          await docRef.set(
+            {
+              outlookEventId: outlook.outlookEventId || '',
+              outlookAssigneeEmail: outlook.outlookEmail || '',
+            },
+            { merge: true }
+          )
+        }
+      } catch (err) {
+        console.error('[incidents/actions POST] assignee side effects error', err)
+      }
+    }
 
     const created = await docRef.get()
     const d = created.data() as Record<string, unknown>
@@ -133,6 +158,7 @@ export async function POST(req: Request) {
           title: String(d.title || ''),
           description: String(d.description || ''),
           status: normalizeIncidentActionStatus(String(d.status || 'open')),
+          assignedToId: String(d.assignedToId || ''),
           assignedToName: String(d.assignedToName || ''),
           department: String(d.department || ''),
           dueAt: tsToIso(d.dueAt),

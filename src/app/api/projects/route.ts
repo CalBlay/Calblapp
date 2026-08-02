@@ -3,11 +3,24 @@ export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
 import { canAccessProjects, sessionToAccessUser } from '@/lib/projectAccess'
+import {
+  userHasGlobalProjectListAccess,
+} from '@/lib/projectParticipation'
 import { deriveProjectPhase } from '@/app/menu/projects/components/project-shared'
-import Ably from 'ably'
+import {
+  buildProjectListFilterMeta,
+  filterProjectsByQuery,
+  filterVisibleProjects,
+  paginateProjects,
+  parseProjectListQuery,
+  toProjectListRecord,
+} from '@/lib/projects/listQuery'
+import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 
 type SessionUser = {
   id: string
@@ -108,7 +121,7 @@ async function notifyProjectOwner(params: {
   projectName: string
   baseUrl: string
 }) {
-  const { userId, projectId, projectName, baseUrl } = params
+  const { userId, projectId, projectName } = params
   const title = "T'han assignat un projecte"
   const body = `Ara ets responsable del projecte: ${projectName || 'Projecte'}`
   const now = Date.now()
@@ -121,11 +134,11 @@ async function notifyProjectOwner(params: {
     type: 'project_assignment',
     projectId,
   })
+  await incrementUserUnreadCount(userId, 'project_assignment', 1)
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (apiKey) {
+  if (hasAblyApiKey()) {
     try {
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await rest.channels.get(`user:${userId}:notifications`).publish('created', {
         type: 'project_assignment',
         projectId,
@@ -136,34 +149,40 @@ async function notifyProjectOwner(params: {
     }
   }
 
-  try {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        title,
-        body,
-        url: `/menu/projects/${projectId}`,
-      }),
-    })
-  } catch (err) {
-    console.error('[projects] push error', err)
-  }
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: `/menu/projects/${projectId}`,
+  })
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
 
   try {
+    const query = parseProjectListQuery(new URL(req.url).searchParams)
     const snap = await db.collection('projects').orderBy('updatedAt', 'desc').get()
-    const projects = snap.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Record<string, unknown>),
-    }))
+    const projects = snap.docs.map((doc) => toProjectListRecord(doc.id, doc.data() as Record<string, unknown>))
+    const accessUser = {
+      id: auth.user.id,
+      name: auth.user.name,
+      role: auth.user.role,
+      department: auth.user.department,
+    }
+    const visibleProjects = filterVisibleProjects(projects, accessUser, query.scope || 'mine')
+    const filteredProjects = filterProjectsByQuery(visibleProjects, query)
+    const paged = paginateProjects(filteredProjects, query.page || 0, query.limit || 12)
+    const filterMeta = buildProjectListFilterMeta(visibleProjects)
 
-    return NextResponse.json({ projects })
+    return NextResponse.json({
+      projects: paged.projects,
+      total: paged.total,
+      page: paged.page,
+      limit: paged.limit,
+      canViewAllProjects: userHasGlobalProjectListAccess(accessUser),
+      filterMeta,
+    })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -200,7 +219,7 @@ export async function POST(req: Request) {
 
     const payload = {
       name: clean(form.get('name')),
-      sponsor: clean(form.get('sponsor')),
+      sponsor: clean(form.get('sponsor')) || String(auth.user.name || '').trim(),
       owner,
       ownerUserId: ownerUser?.id || '',
       context: clean(form.get('context')),

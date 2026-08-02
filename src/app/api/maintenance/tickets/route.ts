@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
-import { normalizeRole } from '@/lib/roles'
-import { canManageMaintenanceTickets } from '@/lib/accessControl'
+import {
+  canManageAllMaintenanceTickets,
+  canManageMaintenanceTicketInbox,
+  canViewQualitatCuinaCentralMaintenanceTickets,
+} from '@/lib/server/maintenanceTicketsAccess'
+import {
+  MAINTENANCE_TICKETS_PATH,
+  requireMaintenanceTicketApiCreate,
+  requireMaintenanceTicketApiView,
+} from '@/lib/server/maintenanceApiAuth'
 import {
   buildTicketBody,
   notifyForNewMaintenanceTicket,
@@ -11,6 +17,12 @@ import {
 import { registerMediaRef } from '@/lib/media/storageMediaIndex'
 import { resolveOpsChannelByLocationName } from '@/lib/opsMessagingChannels'
 import { resolveManualTicketRouting } from '@/lib/maintenanceTicketCreators'
+import {
+  fetchQualitatCuinaCentralTicketDocs,
+  getCuinaCentralUserIds,
+  isQualitatVisibleCuinaCentralTicket,
+} from '@/lib/server/qualitatCuinaCentralTickets'
+import { getMaintenanceDateRangeMs } from '@/lib/maintenanceDateFilter'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -30,9 +42,12 @@ type TicketImagePayload = {
 
 type TicketPayload = {
   location?: string
+  workLocation?: string | null
+  zone?: string | null
   machine?: string
   description?: string
   operatorTitle?: string | null
+  workerName?: string | null
   priority?: 'urgent' | 'alta' | 'normal' | 'baixa'
   ticketType?: 'maquinaria' | 'deco'
   imageUrl?: string | null
@@ -62,10 +77,29 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   status?: string
   priority?: string
   ticketType?: string
+  location?: string | null
+  source?: string | null
+  intakeChannel?: string | null
+  createdById?: string | null
   createdAt?: string | number | { toDate?: () => Date }
   plannedStart?: string | number | null
   assignedAt?: string | number | null
+  externalized?: boolean
+  workflowStage?: string | null
+  externalSentAt?: string | number | { toDate?: () => Date } | null
+  supplierName?: string | null
+  supplierEmail?: string | null
+  externalizationHistory?: unknown[]
   statusHistory?: Array<{ status?: string; at?: string | number | { toDate?: () => Date } | null }>
+}
+
+const hasExternalizationTrace = (ticket: MaintenanceTicketRecord) => {
+  if (ticket.externalized === true) return true
+  if (String(ticket.workflowStage || '').trim() === 'externalized') return true
+  if (ticket.externalSentAt != null && String(ticket.externalSentAt).trim() !== '') return true
+  if (String(ticket.supplierName || '').trim()) return true
+  if (String(ticket.supplierEmail || '').trim()) return true
+  return Array.isArray(ticket.externalizationHistory) && ticket.externalizationHistory.length > 0
 }
 
 const normalizePriority = (value?: string) => {
@@ -79,11 +113,12 @@ const normalizePriority = (value?: string) => {
 const normalizeStatus = (value?: string) => {
   const v = (value || '').trim().toLowerCase()
   if (v === 'assignat') return 'assignat'
+  if (v === 'reassignat') return 'reassignat'
   if (v === 'en_curs' || v === 'en curs') return 'en_curs'
   if (v === 'espera') return 'espera'
   if (v === 'fet') return 'fet'
   if (v === 'no_fet' || v === 'no fet') return 'no_fet'
-  if (v === 'resolut') return 'resolut'
+  if (v === 'resolut') return 'fet'
   if (v === 'validat') return 'validat'
   return 'nou'
 }
@@ -195,7 +230,7 @@ function getTicketDateByMode(
     return null
   }
 
-  if (mode === 'planned') return toMs(ticket.plannedStart)
+  if (mode === 'planned') return toMs(ticket.plannedStart) ?? toMs(ticket.createdAt)
   if (mode === 'created') return toMs(ticket.createdAt)
   if (mode === 'updated') {
     const history = Array.isArray(ticket.statusHistory) ? ticket.statusHistory : []
@@ -219,25 +254,12 @@ function getTicketDateByMode(
 
 export async function GET(req: Request) {
   const startedAt = Date.now()
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireMaintenanceTicketApiView()
+  if (!auth.ok) return auth.res
 
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
+  const user = auth.user as SessionUser
+  const role = auth.role
   const sessionName = normalizeName(user.name || '')
-  const deptRaw = (user.department || '').toString()
-  if (
-    role !== 'admin' &&
-    role !== 'direccio' &&
-    role !== 'cap' &&
-    role !== 'treballador' &&
-    role !== 'comercial' &&
-    role !== 'usuari'
-  ) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const { searchParams } = new URL(req.url)
   const status = (searchParams.get('status') || 'all').toLowerCase()
@@ -257,7 +279,12 @@ export async function GET(req: Request) {
   const cursorCreatedAt = Number(searchParams.get('cursorCreatedAt') || 0)
   const limit = Math.max(1, Math.min(200, Number(searchParams.get('limit') || 100)))
 
-  const canViewAllTickets = canManageMaintenanceTickets({ role, department: deptRaw })
+  const canViewAllTickets =
+    (await canManageAllMaintenanceTickets(user)) || (await canManageMaintenanceTicketInbox(user))
+  const canViewQualitatCuinaCentral = canViewQualitatCuinaCentralMaintenanceTickets(user)
+  const cuinaCentralUserIds = canViewQualitatCuinaCentral
+    ? new Set(await getCuinaCentralUserIds())
+    : null
 
   try {
     let ref: FirebaseFirestore.Query = db.collection('maintenanceTickets')
@@ -269,9 +296,11 @@ export async function GET(req: Request) {
       ref = ref.where('ticketType', '==', 'deco')
     }
 
+    const qualitatScopedQuery = canViewQualitatCuinaCentral && !canViewAllTickets
+
     if (assignedToId && canViewAllTickets) {
       ref = ref.where('assignedToIds', 'array-contains', assignedToId)
-    } else if (!canViewAllTickets && !assignedToId && user.id) {
+    } else if (!qualitatScopedQuery && !canViewAllTickets && !assignedToId && user.id) {
       ref = ref.where('createdById', '==', user.id)
     }
 
@@ -290,27 +319,60 @@ export async function GET(req: Request) {
           status: normalizeStatus(data.status),
           priority: normalizePriority(data.priority),
           ticketType: (data.ticketType || 'maquinaria').toString().toLowerCase(),
+          externalized: hasExternalizationTrace(data),
           createdAt,
         }
       })
 
     let rawTickets: MaintenanceTicketRecord[] = []
-    try {
-      let orderedRef = ref.orderBy('createdAt', 'desc')
-      if (cursorCreatedAt > 0) orderedRef = orderedRef.startAfter(cursorCreatedAt)
-      const snap = await orderedRef.limit(Math.max(limit + 1, 100)).get()
-      rawTickets = mapTickets(snap)
-    } catch (queryErr: unknown) {
-      const message = queryErr instanceof Error ? queryErr.message : ''
-      const needsIndex = message.toLowerCase().includes('index')
-      if (!needsIndex) throw queryErr
-      let orderedFallbackRef = fallbackRef.orderBy('createdAt', 'desc')
-      if (cursorCreatedAt > 0) orderedFallbackRef = orderedFallbackRef.startAfter(cursorCreatedAt)
-      const fallbackSnap = await orderedFallbackRef.limit(Math.max(limit + 1, 500)).get()
-      rawTickets = mapTickets(fallbackSnap)
+    if (qualitatScopedQuery) {
+      const docs = await fetchQualitatCuinaCentralTicketDocs({
+        baseRef: ref,
+        cuinaCentralUserIds: Array.from(cuinaCentralUserIds || []),
+        viewerUserId: user.id,
+        limit,
+      })
+      rawTickets = docs.map((doc) => {
+        const data = doc.data() as MaintenanceTicketRecord
+        const createdAtSource = data.createdAt
+        const createdAt =
+          createdAtSource && typeof createdAtSource === 'object' && typeof createdAtSource.toDate === 'function'
+            ? createdAtSource.toDate().toISOString()
+            : data.createdAt || ''
+        return {
+          id: doc.id,
+          ...data,
+          status: normalizeStatus(data.status),
+          priority: normalizePriority(data.priority),
+          ticketType: (data.ticketType || 'maquinaria').toString().toLowerCase(),
+          externalized: hasExternalizationTrace(data),
+          createdAt,
+        }
+      })
+    } else {
+      try {
+        let orderedRef = ref.orderBy('createdAt', 'desc')
+        if (cursorCreatedAt > 0) orderedRef = orderedRef.startAfter(cursorCreatedAt)
+        const snap = await orderedRef.limit(Math.max(limit + 1, 100)).get()
+        rawTickets = mapTickets(snap)
+      } catch (queryErr: unknown) {
+        const message = queryErr instanceof Error ? queryErr.message : ''
+        const needsIndex = message.toLowerCase().includes('index')
+        if (!needsIndex) throw queryErr
+        let orderedFallbackRef = fallbackRef.orderBy('createdAt', 'desc')
+        if (cursorCreatedAt > 0) orderedFallbackRef = orderedFallbackRef.startAfter(cursorCreatedAt)
+        const fallbackSnap = await orderedFallbackRef.limit(Math.max(limit + 1, 500)).get()
+        rawTickets = mapTickets(fallbackSnap)
+      }
     }
 
     let tickets = rawTickets
+
+    if (qualitatScopedQuery && cuinaCentralUserIds) {
+      tickets = tickets.filter((ticket) =>
+        isQualitatVisibleCuinaCentralTicket(ticket, cuinaCentralUserIds, user.id)
+      )
+    }
 
     if (code) {
       tickets = tickets.filter((t) => {
@@ -335,8 +397,8 @@ export async function GET(req: Request) {
       tickets = tickets.filter((t) => String(t.ticketType || '').toLowerCase() === ticketType)
     }
     if ((start || end) && dateMode !== 'all') {
-      const startMs = start ? new Date(`${start}T00:00:00.000Z`).getTime() : null
-      const endMs = end ? new Date(`${end}T23:59:59.999Z`).getTime() : null
+      const { startMs, endMs } =
+        start && end ? getMaintenanceDateRangeMs(start, end) : { startMs: null, endMs: null }
       tickets = tickets.filter((t) => {
         const timelineMs = getTicketDateByMode(t, dateMode)
         if (timelineMs === null) return false
@@ -394,29 +456,19 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireMaintenanceTicketApiCreate(MAINTENANCE_TICKETS_PATH)
+  if (!auth.ok) return auth.res
 
-  const user = session.user as SessionUser
-  const role = normalizeRole(user.role || '')
-  if (
-    role !== 'admin' &&
-    role !== 'direccio' &&
-    role !== 'cap' &&
-    role !== 'treballador' &&
-    role !== 'comercial' &&
-    role !== 'usuari'
-  ) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const user = auth.user as SessionUser
 
   try {
     const body = (await req.json()) as TicketPayload
     const location = (body.location || '').trim()
+    const workLocation = String(body.workLocation || '').trim() || null
+    const zone = String(body.zone || '').trim() || null
     const machine = (body.machine || '').trim()
     const description = (body.description || '').trim()
+    const workerName = String(body.workerName || '').trim()
     const priority = normalizePriority(body.priority)
     const status = normalizeStatus(body.status)
     const ticketType =
@@ -435,6 +487,7 @@ export async function POST(req: Request) {
     const intakeChannel = manualRouting
       ? manualRouting.intakeChannel
       : normalizeIntakeChannel(body.intakeChannel, body.source)
+    const requiresWorkerName = !isWhatsBlapp && !isIncidencia
     const sourceChannelId =
       String(body.sourceChannelId || '').trim() || opsChannel?.channelId || null
     const images = normalizeTicketImages(body)
@@ -444,15 +497,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Falten camps obligatoris' }, { status: 400 })
     }
 
+    if (requiresWorkerName && !workerName) {
+      return NextResponse.json({ error: 'Cal indicar el nom del treballador' }, { status: 400 })
+    }
+
     if (requiresManualImages) {
       if (images.length < 1) {
         return NextResponse.json(
-          { error: 'Cal adjuntar com a minim una foto (maxim 3).' },
+          { error: 'Cal adjuntar com a minim una foto o video (maxim 3).' },
           { status: 400 }
         )
       }
       if (images.length > MAX_TICKET_IMAGES) {
-        return NextResponse.json({ error: 'Com a maxim es permeten 3 fotos.' }, { status: 400 })
+        return NextResponse.json({ error: 'Com a maxim es permeten 3 adjunts.' }, { status: 400 })
       }
     }
 
@@ -475,7 +532,8 @@ export async function POST(req: Request) {
       ticketCode,
       incidentNumber: incidentNumber || null,
       location,
-      workLocation: null,
+      workLocation,
+      zone,
       machine: machine || '',
       description,
       operatorTitle: String(body.operatorTitle || body.machine || '').trim() || null,
@@ -484,6 +542,7 @@ export async function POST(req: Request) {
       createdAt: now,
       createdById: user.id,
       createdByName: user.name || '',
+      workerName: workerName || null,
       assignedToIds: [],
       assignedToNames: [],
       assignedAt: null,
@@ -528,6 +587,7 @@ export async function POST(req: Request) {
           byName: user.name || '',
         },
       ],
+      workLogs: [],
     })
 
     await notifyForNewMaintenanceTicket({
@@ -535,7 +595,12 @@ export async function POST(req: Request) {
       payload: {
         type: 'maintenance_ticket_new',
         title: 'Nou ticket de manteniment',
-        body: buildTicketBody({ machine, location, description }),
+        body: [
+          buildTicketBody({ machine, location, description }),
+          workerName ? `Treballador: ${workerName}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
         ticketId: doc.id,
         ticketCode,
         status,

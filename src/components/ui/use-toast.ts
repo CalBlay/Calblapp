@@ -20,7 +20,7 @@ export function useToast() {
     }, options.duration ?? 3000)
 
     if (options.variant === 'destructive') {
-      console.error('❌', options.title || '', options.description || '')
+      console.warn('⚠️', options.title || '', options.description || '')
     } else {
       console.log('✅', options.title || '', options.description || '')
     }
@@ -31,7 +31,7 @@ export function useToast() {
 
 // Shortcut global (com a import directe)
 export const toast = (options: ToastOptions) => {
-  const msg = `${options.title ?? ''} ${options.description ?? ''}`
-  if (options.variant === 'destructive') console.error('❌', msg)
-  else console.log('✅', msg)
+  const msg = `${options.title ?? ''} ${options.description ?? ''}`.trim()
+  if (options.variant === 'destructive') console.warn('⚠️', msg)
+  else if (msg) console.log('✅', msg)
 }

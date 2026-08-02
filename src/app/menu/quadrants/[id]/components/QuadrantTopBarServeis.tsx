@@ -1,235 +1,252 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { useState, type ReactNode } from 'react'
+import { GraduationCap, Shirt } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import GenerationScopeToggle from './GenerationScopeToggle'
-import type { GenerationScope, QuadrantMode } from './quadrantModalTypes'
-import type { ServiceJamoneroAssignment } from '../phaseConfig'
+import QuadrantEditorIconActions from './QuadrantEditorIconActions'
+import type { AutoPreviewResponse, GenerationScope, QuadrantMode } from './quadrantModalTypes'
 import type { ResponsableAvailabilityOption } from '../hooks/useQuadrantFormState'
+import { mergeResponsibleCandidatePools } from '../lib/quadrantPayloadShared'
+import { isResponsiblePerson } from '@/lib/personnelRoles'
 
-type IdName = { id: string; name: string }
-
-type ServiceTotals = {
-  workers: number
-  drivers: number
-  responsables: number
-  jamoneros: number
+type EditorActionsProps = {
+  loading: boolean
+  canAutoGen: boolean
+  mode: QuadrantMode
+  isQuadrantCoreDept: boolean
+  autoPreview: AutoPreviewResponse | null
+  autoPreviewLoading: boolean
+  onDelete: () => void | Promise<void>
+  onSave: (confirmAfterSave: boolean) => void
+  deleting?: boolean
+  hasPersistedDraft?: boolean
 }
 
 type Props = {
   mode: QuadrantMode
-  startTime: string
-  setStartTime: (value: string) => void
-  endTime: string
-  setEndTime: (value: string) => void
   manualResp: string
   setManualResp: (value: string) => void
   availableResponsables: ResponsableAvailabilityOption[]
-  availableJamoneros: IdName[]
-  serviceJamoneroAssignments: ServiceJamoneroAssignment[]
-  setServiceJamoneroCount: (count: number) => void
-  updateServiceJamoneroAssignment: (
-    id: string,
-    patch: Partial<ServiceJamoneroAssignment>
-  ) => void
-  showJamoneroDetails: boolean
-  setShowJamoneroDetails: React.Dispatch<React.SetStateAction<boolean>>
-  vestimentModelChoice: string
-  setVestimentModelChoice: (value: string) => void
-  serveisVestimentModels: string[]
-  serviceTotals: ServiceTotals
+  availableConductors?: Array<{ id: string; name: string }>
   isMultiDayEvent: boolean
   generationScope: GenerationScope
   setGenerationScope: (value: GenerationScope) => void
+  vestimentModelChoice: string
+  setVestimentModelChoice: (value: string) => void
+  serveisVestimentModels: string[]
+  surveySlot?: ReactNode
+  editorActions?: EditorActionsProps
+  embedded?: boolean
 }
 
 export default function QuadrantTopBarServeis({
   mode,
-  startTime,
-  setStartTime,
-  endTime,
-  setEndTime,
   manualResp,
   setManualResp,
   availableResponsables,
-  availableJamoneros,
-  serviceJamoneroAssignments,
-  setServiceJamoneroCount,
-  updateServiceJamoneroAssignment,
-  showJamoneroDetails,
-  setShowJamoneroDetails,
-  vestimentModelChoice,
-  setVestimentModelChoice,
-  serveisVestimentModels,
-  serviceTotals,
+  availableConductors = [],
   isMultiDayEvent,
   generationScope,
   setGenerationScope,
+  vestimentModelChoice,
+  setVestimentModelChoice,
+  serveisVestimentModels,
+  surveySlot,
+  editorActions,
+  embedded = false,
 }: Props) {
-  const topResponsibleOptions = availableResponsables.filter((resp) => resp.status === 'available')
-  const topResponsibleIds = new Set(topResponsibleOptions.map((resp) => resp.id))
-  const topResponsibleValue =
+  const [vestimentOpen, setVestimentOpen] = useState(false)
+  const [responsibleOpen, setResponsibleOpen] = useState(false)
+  const vestimentActive = vestimentModelChoice !== '__none__' && Boolean(vestimentModelChoice)
+
+  const topResponsibleOptions = availableResponsables.filter(
+    (resp) => resp.status === 'available' && isResponsiblePerson(resp)
+  )
+  const responsibleCandidatePools = mergeResponsibleCandidatePools(
+    topResponsibleOptions,
+    availableConductors
+  )
+  const topResponsibleIds = new Set(responsibleCandidatePools.map((resp) => resp.id))
+  const normalizeResponsible = (value?: string) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+      .trim()
+  const manualRespKey = normalizeResponsible(manualResp)
+  const matchedResponsible = responsibleCandidatePools.find(
+    (resp) => resp.id === manualResp || normalizeResponsible(resp.name) === manualRespKey
+  )
+  const responsibleActive =
     mode === 'manual'
-      ? topResponsibleIds.has(manualResp)
-        ? manualResp
-        : ''
-      : topResponsibleIds.has(manualResp)
-        ? manualResp
-        : '__auto__'
+      ? Boolean(manualResp && matchedResponsible)
+      : manualResp === '__auto__' || topResponsibleIds.has(manualResp)
+  const selectedResponsibleName =
+    matchedResponsible?.name ||
+    (manualResp && manualResp !== '__auto__' && !topResponsibleIds.has(manualResp)
+      ? String(manualResp).trim()
+      : null) ||
+    null
+  const responsibleLabel =
+    mode !== 'manual' && manualResp === '__auto__'
+      ? 'Automàtic'
+      : selectedResponsibleName || (mode === 'manual' ? 'Sense responsable' : 'Sense assignar')
+  const vestimentLabel =
+    vestimentActive && vestimentModelChoice !== '__none__' ? vestimentModelChoice : 'Sense vestiment'
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,148px)_minmax(0,120px)_minmax(0,120px)_minmax(0,170px)_minmax(0,1fr)_auto] md:items-end md:justify-items-stretch md:gap-x-3 md:gap-y-0">
-        <div className="min-w-0">
-          <Label>Responsable</Label>
-          <Select value={topResponsibleValue} onValueChange={setManualResp}>
-            <SelectTrigger className="h-10 w-full max-w-full">
-              <SelectValue
-                placeholder={mode === 'manual' ? 'Selecciona un responsable...' : 'Automatic'}
-                className="min-w-0 truncate text-left [&>span]:truncate"
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {mode !== 'manual' && <SelectItem value="__auto__">Automatic</SelectItem>}
-              {topResponsibleOptions.map((resp) => (
-                <SelectItem key={resp.id} value={resp.id}>
-                  {resp.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="min-w-0">
-          <Label>Hora Inici</Label>
-          <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-        </div>
-        <div className="min-w-0">
-          <Label>Hora Fi</Label>
-          <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-        </div>
-        <div className="min-w-0">
-          <Label>Jamoneros</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={0}
-              className="w-[88px] text-center tabular-nums"
-              value={serviceJamoneroAssignments.length}
-              onChange={(e) =>
-                setServiceJamoneroCount(
-                  Number.isNaN(Number(e.target.value)) ? 0 : Math.max(0, Number(e.target.value))
-                )
-              }
+    <div
+      className={
+        embedded
+          ? 'border-b border-slate-200 bg-slate-50/60 px-2 py-1.5'
+          : 'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm'
+      }
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {isMultiDayEvent ? (
+            <GenerationScopeToggle
+              isMultiDayEvent={isMultiDayEvent}
+              generationScope={generationScope}
+              setGenerationScope={setGenerationScope}
             />
-            <Button
+          ) : (
+            <span className="inline-flex h-8 items-center rounded-md bg-blue-600 px-2.5 text-xs font-medium text-white">
+              1 dia
+            </span>
+          )}
+
+          {surveySlot ? <div className="flex items-center">{surveySlot}</div> : null}
+
+          <div className="relative">
+            <button
               type="button"
-              variant="secondary"
-              className="h-10 px-3"
-              disabled={
-                serviceJamoneroAssignments.length === 0 ||
-                (mode !== 'semi' && mode !== 'manual')
-              }
-              onClick={() => setShowJamoneroDetails((prev) => !prev)}
+              title={`Responsable: ${responsibleLabel}`}
+              aria-label={`Responsable: ${responsibleLabel}`}
+              onClick={() => {
+                setResponsibleOpen((prev) => !prev)
+                setVestimentOpen(false)
+              }}
+              className={cn(
+                'relative inline-flex h-8 max-w-[11rem] items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium shadow-sm transition',
+                responsibleActive
+                  ? 'border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              )}
             >
-              {showJamoneroDetails ? 'Amaga' : 'Detall'}
-            </Button>
-          </div>
-        </div>
-        <div className="min-w-0">
-          <Label htmlFor="vestiment-model-serveis">Model de vestimenta</Label>
-          <div className="mt-1 flex flex-col gap-1.5 md:mt-0 md:flex-row md:items-end md:gap-2">
-            <Select value={vestimentModelChoice} onValueChange={setVestimentModelChoice}>
-              <SelectTrigger
-                id="vestiment-model-serveis"
-                className="h-10 w-full shrink-0 md:w-[168px]"
-              >
-                <SelectValue
-                  placeholder="Selecciona..."
-                  className="min-w-0 flex-1 truncate text-left [&>span]:truncate"
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">-- Cap --</SelectItem>
-                {vestimentModelChoice !== '__none__' &&
-                !serveisVestimentModels.includes(vestimentModelChoice) ? (
-                  <SelectItem value={vestimentModelChoice}>{vestimentModelChoice}</SelectItem>
-                ) : null}
-                {serveisVestimentModels.map((model) => (
-                  <SelectItem key={model} value={model}>
-                    {model}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="min-w-0 flex-1 text-[11px] leading-snug text-slate-600 md:pb-px">
-              <span className="font-semibold text-slate-700">Fase serveis</span>{' '}
-              <span className="text-slate-500">
-                · Treballadors {serviceTotals.workers} · Conductors {serviceTotals.drivers} · Fases{' '}
-                {serviceTotals.responsables}
-                {serviceTotals.jamoneros > 0 ? ` · Jamoneros ${serviceTotals.jamoneros}` : ''}
-              </span>
-            </p>
-          </div>
-        </div>
-        <div className="flex min-w-0 shrink-0 items-end justify-end md:justify-self-end">
-          <GenerationScopeToggle
-            isMultiDayEvent={isMultiDayEvent}
-            generationScope={generationScope}
-            setGenerationScope={setGenerationScope}
-          />
-        </div>
-      </div>
-      {showJamoneroDetails &&
-        (mode === 'semi' || mode === 'manual') &&
-        serviceJamoneroAssignments.length > 0 && (
-          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {serviceJamoneroAssignments.map((assignment, index) => (
-                <div key={assignment.id}>
-                  <Label>Jamonero {index + 1}</Label>
-                  <Select
-                    value={
-                      assignment.mode === 'manual' && assignment.personnelId
-                        ? assignment.personnelId
-                        : '__auto__'
-                    }
-                    onValueChange={(value) =>
-                      updateServiceJamoneroAssignment(assignment.id, {
-                        mode: value === '__auto__' ? 'auto' : 'manual',
-                        personnelId: value === '__auto__' ? '' : value,
-                      })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Automatic" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__auto__">Automatic</SelectItem>
-                      {availableJamoneros.map((person) => (
-                        <SelectItem key={person.id} value={person.id}>
-                          {person.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <GraduationCap className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="truncate">{responsibleLabel}</span>
+            </button>
+
+            {responsibleOpen ? (
+              <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                <div className="sticky top-0 bg-white pb-1 text-[11px] font-medium text-slate-600">
+                  Responsable (tot el quadrant)
                 </div>
-              ))}
-            </div>
+                <div className="space-y-0.5">
+                  {mode !== 'manual' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualResp('__auto__')
+                        setResponsibleOpen(false)
+                      }}
+                      className={cn(
+                        'w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100',
+                        manualResp === '__auto__' && 'bg-blue-50 font-medium text-blue-800'
+                      )}
+                    >
+                      Automàtic
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualResp('')
+                      setResponsibleOpen(false)
+                    }}
+                    className={cn(
+                      'w-full rounded-md px-2 py-1.5 text-left text-sm text-slate-500 hover:bg-slate-100',
+                      !manualResp && 'bg-blue-50 font-medium text-blue-800'
+                    )}
+                  >
+                    {mode === 'manual' ? 'Sense responsable' : 'Sense assignar'}
+                  </button>
+                  {topResponsibleOptions.map((resp) => (
+                    <button
+                      key={resp.id}
+                      type="button"
+                      onClick={() => {
+                        setManualResp(resp.id)
+                        setResponsibleOpen(false)
+                      }}
+                      className={cn(
+                        'w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-100',
+                        (manualResp === resp.id ||
+                          normalizeResponsible(manualResp) === normalizeResponsible(resp.name)) &&
+                          'bg-blue-50 font-medium text-blue-800'
+                      )}
+                    >
+                      {resp.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
-        )}
-      {serveisVestimentModels.length === 0 && (
-        <p className="text-xs text-amber-700">
-          No hi ha models definits. Defineix-los a Premisses (Serveis).
-        </p>
-      )}
+
+          <div className="relative">
+            <button
+              type="button"
+              title={`Vestiment: ${vestimentLabel}`}
+              aria-label={`Vestiment: ${vestimentLabel}`}
+              onClick={() => {
+                setVestimentOpen((prev) => !prev)
+                setResponsibleOpen(false)
+              }}
+              className={cn(
+                'relative inline-flex h-8 max-w-[11rem] items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium shadow-sm transition',
+                vestimentActive
+                  ? 'border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              )}
+            >
+              <Shirt className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="truncate">{vestimentLabel}</span>
+            </button>
+
+            {vestimentOpen ? (
+              <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                <label className="mb-1 block text-[11px] font-medium text-slate-600">
+                  Vestiment (tot el quadrant)
+                </label>
+                <select
+                  value={vestimentModelChoice}
+                  onChange={(e) => {
+                    setVestimentModelChoice(e.target.value)
+                    setVestimentOpen(false)
+                  }}
+                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm"
+                >
+                  <option value="__none__">— Cap —</option>
+                  {vestimentModelChoice !== '__none__' &&
+                  !serveisVestimentModels.includes(vestimentModelChoice) ? (
+                    <option value={vestimentModelChoice}>{vestimentModelChoice}</option>
+                  ) : null}
+                  {serveisVestimentModels.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {editorActions ? <QuadrantEditorIconActions {...editorActions} /> : null}
+      </div>
     </div>
   )
 }

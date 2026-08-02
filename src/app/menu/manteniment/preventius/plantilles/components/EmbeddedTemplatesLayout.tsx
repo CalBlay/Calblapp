@@ -139,10 +139,24 @@ export default function EmbeddedTemplatesLayout({
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                  <div className={typography('label')}>Ubicacio</div>
-                  <div className={`mt-1 ${typography('bodyMd').replace('text-slate-700', 'text-slate-900')}`}>
-                    {selectedTemplate.location || 'Sense ubicacio definida'}
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <div className={typography('label')}>Centre</div>
+                    <div className={`mt-1 ${typography('bodyMd').replace('text-slate-700', 'text-slate-900')}`}>
+                      {selectedTemplate.center || 'Sense centre definit'}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <div className={typography('label')}>Ubicacio</div>
+                    <div className={`mt-1 ${typography('bodyMd').replace('text-slate-700', 'text-slate-900')}`}>
+                      {selectedTemplate.location || 'Sense ubicacio definida'}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                    <div className={typography('label')}>Zona</div>
+                    <div className={`mt-1 ${typography('bodyMd').replace('text-slate-700', 'text-slate-900')}`}>
+                      {selectedTemplate.zone || 'Sense zona definida'}
+                    </div>
                   </div>
                 </div>
                 <div className="rounded-2xl bg-slate-50 px-4 py-3">

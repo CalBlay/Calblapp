@@ -1,6 +1,7 @@
 //filename: src/app/api/quadrants/details/route.ts
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { requireQuadrantsModuleRead } from '@/lib/server/quadrantsReadAuth'
 
 type StageData = {
   comercial: string
@@ -20,6 +21,9 @@ function asRecord(data: unknown): Record<string, unknown> {
 }
 
 export async function GET(req: Request) {
+  const auth = await requireQuadrantsModuleRead()
+  if (!auth.ok) return auth.res
+
   try {
     const { searchParams } = new URL(req.url)
     const code = (searchParams.get('code') || '').trim().toUpperCase()

@@ -15,7 +15,7 @@ import {
   type CommercialReservationStatus,
 } from '@/lib/commercialReservations'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
-import { baseCanValidateReservaComercials } from '@/lib/reservaComercialsPermissions'
+import { baseCanKeysHandoverReservaComercials, baseCanValidateReservaComercials } from '@/lib/reservaComercialsPermissions'
 import { PERM } from '@/lib/permissionKeys'
 import type {
   AssignmentItem,
@@ -25,6 +25,7 @@ import type {
   TabId,
 } from '../types'
 import {
+  buildKeysHandoverRowsForRange,
   ensureSetMapValue,
   isoDate,
   monthBounds,
@@ -50,6 +51,7 @@ type UseReservaComercialsPageResult = ReservationPageState & {
   setSelectedVehicleByReservation: React.Dispatch<React.SetStateAction<Record<string, string>>>
   handleValidationDatesChange: (next: SmartFiltersChange) => void
   handleRequestDatesChange: (next: SmartFiltersChange) => void
+  handleKeysDatesChange: (next: SmartFiltersChange) => void
   handleOpenReservation: (dayIso: string) => void
   handleSubmit: () => Promise<void>
   handleValidation: (id: string, status: CommercialReservationStatus) => Promise<void>
@@ -59,9 +61,96 @@ type UseReservaComercialsPageResult = ReservationPageState & {
   assignmentRowsByDay: Map<string, AssignmentRow[]>
   freeCapacityRatioByDay: Map<string, number>
   pendingReservationsByDay: Map<string, number>
+  keysFilters: FiltersState
+  keysHandoverWithPlate: ReturnType<typeof buildKeysHandoverRowsForRange>['withPlate']
+  keysHandoverWithoutPlate: ReturnType<typeof buildKeysHandoverRowsForRange>['withoutPlate']
+  keysLoading: boolean
+  keysShowsDateColumn: boolean
+  totalFleetVehicles: number
+  setKeysFilters: React.Dispatch<React.SetStateAction<FiltersState>>
 }
 
 const RESERVA_UI_PATH = '/menu/logistica/reserva-comercials'
+
+function buildCommercialAssignmentRows(
+  assignmentItems: AssignmentItem[],
+  commercialFleet: Array<{ plate?: string | null; type?: string | null }>
+): AssignmentRow[] {
+  const commercialPlates = new Set(
+    commercialFleet.map((vehicle) => String(vehicle.plate || '').trim().toUpperCase())
+  )
+
+  return assignmentItems
+    .filter((item) => item.source !== 'commercialReservation')
+    .flatMap((item) =>
+      (Array.isArray(item.rows) ? item.rows : [])
+        .filter((row) => {
+          const plate = String(row.plate || '').trim().toUpperCase()
+          return (
+            String(row.vehicleType || '').trim() === 'comercial' ||
+            String(row.vehicleType || '').trim() === 'furgonetaPetita' ||
+            commercialPlates.has(plate)
+          )
+        })
+        .map(
+          (row): AssignmentRow => ({
+            id: row.id,
+            date: String(row.startDate || item.day || '').trim(),
+            endDate: String(row.endDate || row.startDate || item.day || '').trim(),
+            startTime: String(row.startTime || item.eventStartTime || '').trim(),
+            endTime: String(
+              row.endTime || item.eventEndTime || row.startTime || item.eventStartTime || ''
+            ).trim(),
+            plate: String(row.plate || '').trim(),
+            vehicleType: String(row.vehicleType || '').trim(),
+            name: String(row.name || '').trim(),
+            label: String(item.eventName || '').trim() || 'Assignació',
+          })
+        )
+    )
+    .filter((row) => row.date && row.startTime)
+}
+
+const KEYS_EVENT_DEPARTMENTS = new Set(['cuina', 'logistica'])
+
+function normalizeKeysEventDepartment(value?: string) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function buildKeysHandoverAssignmentRows(assignmentItems: AssignmentItem[]): AssignmentRow[] {
+  return assignmentItems
+    .filter((item) => item.source !== 'commercialReservation')
+    .flatMap((item) =>
+      (Array.isArray(item.rows) ? item.rows : [])
+        .filter((row) => {
+          const department = normalizeKeysEventDepartment(row.department)
+          const plate = String(row.plate || '').trim()
+          return KEYS_EVENT_DEPARTMENTS.has(department) && plate
+        })
+        .map(
+          (row): AssignmentRow => ({
+            id: row.id,
+            date: String(row.startDate || item.day || '').trim(),
+            endDate: String(row.endDate || row.startDate || item.day || '').trim(),
+            startTime: String(row.startTime || item.eventStartTime || '').trim(),
+            endTime: String(
+              row.endTime || item.eventEndTime || row.startTime || item.eventStartTime || ''
+            ).trim(),
+            plate: String(row.plate || '').trim(),
+            vehicleType: String(row.vehicleType || '').trim(),
+            name: String(row.name || '').trim(),
+            department: String(row.department || '').trim(),
+            label: String(item.eventName || '').trim() || 'Esdeveniment',
+            location: String(item.location || '').trim(),
+          })
+        )
+    )
+    .filter((row) => row.date && row.startTime)
+}
 
 export function useReservaComercialsPage(): UseReservaComercialsPageResult {
   const searchParams = useSearchParams()
@@ -72,6 +161,11 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
 
   const legacyCanValidate = baseCanValidateReservaComercials({
     role: user.role,
+    isTransportLead: user.isTransportLead,
+  })
+  const legacyCanKeys = baseCanKeysHandoverReservaComercials({
+    role: user.role,
+    department: user.department,
     isTransportLead: user.isTransportLead,
   })
 
@@ -85,6 +179,11 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     return uiActions[PERM.action(RESERVA_UI_PATH, 'validate')] === true
   }, [permsReady, uiActions, legacyCanValidate])
 
+  const canKeys = useMemo(() => {
+    if (!permsReady) return legacyCanKeys
+    return uiActions[PERM.action(RESERVA_UI_PATH, 'keys')] === true
+  }, [permsReady, uiActions, legacyCanKeys])
+
   const initialFilters = useMemo<FiltersState>(() => {
     const start = startOfWeek(new Date(), { weekStartsOn: 1 })
     const end = endOfWeek(new Date(), { weekStartsOn: 1 })
@@ -96,8 +195,21 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     }
   }, [])
 
+  const initialKeysFilters = useMemo<FiltersState>(() => {
+    const today = isoDate(new Date())
+    return {
+      start: today,
+      end: today,
+      mode: 'day',
+    }
+  }, [])
+
   const initialTab: TabId =
-    searchParams?.get('tab') === 'validacio' && canValidate ? 'validacio' : 'sollicitud'
+    searchParams?.get('tab') === 'validacio' && canValidate
+      ? 'validacio'
+      : searchParams?.get('tab') === 'claus' && canKeys
+        ? 'claus'
+        : 'sollicitud'
 
   const [tab, setTab] = useState<TabId>(initialTab)
   const [filters, setFilters] = useState<FiltersState>(initialFilters)
@@ -117,6 +229,9 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [selectedVehicleByReservation, setSelectedVehicleByReservation] = useState<Record<string, string>>({})
+  const [keysFilters, setKeysFilters] = useState<FiltersState>(initialKeysFilters)
+  const [keysAssignmentItems, setKeysAssignmentItems] = useState<AssignmentItem[]>([])
+  const [keysLoading, setKeysLoading] = useState(false)
   const todayIso = useMemo(() => isoDate(new Date()), [])
 
   const { data: transports = [] } = useTransports()
@@ -159,9 +274,27 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
       )
       if (!res.ok) throw new Error('No s han pogut carregar les assignacions')
       const data = await res.json()
-      setAssignmentItems(Array.isArray(data?.items) ? data.items : [])
+      return Array.isArray(data?.items) ? (data.items as AssignmentItem[]) : []
     } catch {
-      setAssignmentItems([])
+      return []
+    }
+  }
+
+  const loadKeysAssignmentItems = async (start: string, end: string) => {
+    if (!start || !end) return
+    try {
+      setKeysLoading(true)
+      const res = await fetch(
+        `/api/transports/assignacions?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+        { cache: 'no-store' }
+      )
+      if (!res.ok) throw new Error('No s han pogut carregar les assignacions')
+      const data = await res.json()
+      setKeysAssignmentItems(Array.isArray(data?.items) ? data.items : [])
+    } catch {
+      setKeysAssignmentItems([])
+    } finally {
+      setKeysLoading(false)
     }
   }
 
@@ -179,12 +312,21 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
   }, [user.id])
 
   useEffect(() => {
-    void loadAssignmentItems(monthDate)
+    void (async () => {
+      const items = await loadAssignmentItems(monthDate)
+      setAssignmentItems(items)
+    })()
   }, [monthDate])
 
   useEffect(() => {
-    if (!canValidate && tab !== 'sollicitud') setTab('sollicitud')
-  }, [canValidate, tab])
+    if (!canKeys || !keysFilters.start || !keysFilters.end) return
+    void loadKeysAssignmentItems(keysFilters.start, keysFilters.end)
+  }, [canKeys, keysFilters.end, keysFilters.start])
+
+  useEffect(() => {
+    if (!canValidate && tab === 'validacio') setTab('sollicitud')
+    if (!canKeys && tab === 'claus') setTab('sollicitud')
+  }, [canKeys, canValidate, tab])
 
   const setTabAndUrl = (nextTab: TabId) => {
     setTab(nextTab)
@@ -215,35 +357,36 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     }))
   }
 
-  const assignmentRows = useMemo(() => {
-    const commercialPlates = new Set(
-      commercialFleet.map((vehicle) => String(vehicle.plate || '').trim().toUpperCase())
-    )
+  const handleKeysDatesChange = (next: SmartFiltersChange) => {
+    if (!next.start || !next.end) return
+    setKeysFilters((prev) => ({
+      ...prev,
+      start: next.start || prev.start,
+      end: next.end || prev.end,
+      mode: (next.mode as FiltersState['mode']) || prev.mode,
+    }))
+  }
 
-    return assignmentItems
-      .filter((item) => item.source !== 'commercialReservation')
-      .flatMap((item) =>
-        (Array.isArray(item.rows) ? item.rows : [])
-          .filter((row) => {
-            const plate = String(row.plate || '').trim().toUpperCase()
-            return String(row.vehicleType || '').trim() === 'comercial' || commercialPlates.has(plate)
-          })
-          .map(
-            (row): AssignmentRow => ({
-              id: row.id,
-              date: String(row.startDate || item.day || '').trim(),
-              endDate: String(row.endDate || row.startDate || item.day || '').trim(),
-              startTime: String(row.startTime || item.eventStartTime || '').trim(),
-              endTime: String(row.endTime || item.eventEndTime || row.startTime || item.eventStartTime || '').trim(),
-              plate: String(row.plate || '').trim(),
-              vehicleType: String(row.vehicleType || '').trim(),
-              name: String(row.name || '').trim(),
-              label: String(item.eventName || '').trim() || 'Assignació',
-            })
-          )
-      )
-      .filter((row) => row.date && row.startTime)
+  const assignmentRows = useMemo(() => {
+    return buildCommercialAssignmentRows(assignmentItems, commercialFleet)
   }, [assignmentItems, commercialFleet])
+
+  const keysAssignmentRows = useMemo(() => {
+    return buildKeysHandoverAssignmentRows(keysAssignmentItems)
+  }, [keysAssignmentItems])
+
+  const keysShowsDateColumn = keysFilters.start !== keysFilters.end
+
+  const { withPlate: keysHandoverWithPlate, withoutPlate: keysHandoverWithoutPlate } = useMemo(
+    () =>
+      buildKeysHandoverRowsForRange({
+        start: keysFilters.start || isoDate(new Date()),
+        end: keysFilters.end || keysFilters.start || isoDate(new Date()),
+        reservations,
+        assignmentRows: keysAssignmentRows,
+      }),
+    [keysAssignmentRows, keysFilters.end, keysFilters.start, reservations]
+  )
 
   const reservationsByDay = useMemo(() => {
     const map = new Map<string, CommercialReservation[]>()
@@ -648,6 +791,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     tab,
     canRequest,
     canValidate,
+    canKeys,
     filters,
     requestFilters,
     monthDate,
@@ -687,6 +831,7 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     setSelectedVehicleByReservation,
     handleValidationDatesChange,
     handleRequestDatesChange,
+    handleKeysDatesChange,
     handleOpenReservation,
     handleSubmit,
     handleValidation,
@@ -696,5 +841,12 @@ export function useReservaComercialsPage(): UseReservaComercialsPageResult {
     assignmentRowsByDay,
     freeCapacityRatioByDay,
     pendingReservationsByDay,
+    keysFilters,
+    keysHandoverWithPlate,
+    keysHandoverWithoutPlate,
+    keysLoading,
+    keysShowsDateColumn,
+    totalFleetVehicles: transports.length,
+    setKeysFilters,
   }
 }

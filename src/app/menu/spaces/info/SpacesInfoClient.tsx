@@ -2,7 +2,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
+import { MotionH1 } from '@/lib/lazyMotion'
 import { useRouter } from 'next/navigation'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import ExportMenu from '@/components/export/ExportMenu'
@@ -167,13 +167,13 @@ export default function SpacesInfoClient({ espais, lnOptions }: Props) {
         }
       `}</style>
       <div id="spaces-print-root" className="space-y-4">
-        <motion.h1
+        <MotionH1
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         className="text-xl font-semibold text-gray-800 mb-4"
       >
         Consultar espais
-      </motion.h1>
+      </MotionH1>
 
       {/* FILTRES */}
       <div className="flex flex-wrap gap-3 mb-4">

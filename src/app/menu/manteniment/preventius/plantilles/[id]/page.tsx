@@ -4,7 +4,14 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Trash2 } from 'lucide-react'
 import ModuleHeader from '@/components/layout/ModuleHeader'
-import { RoleGuard } from '@/lib/withRoleGuard'
+import {
+  getMaintenanceCenterOptions,
+  getMaintenanceLocationsForCenter,
+  getMaintenanceZones,
+  type MaintenanceCenterHierarchyRow,
+} from '@/lib/maintenanceLocationCatalog'
+import { normalizeMaintenanceTemplateSite } from '@/lib/maintenanceTemplateSite'
+import MaintenancePermissionGate from '../../../components/MaintenancePermissionGate'
 
 type TemplateSection = { location: string; items: { label: string }[] }
 type EditableSection = { id: string; location: string; items: { id: string; label: string }[] }
@@ -16,7 +23,9 @@ type Template = {
   source: string
   periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'semestral' | 'yearly'
   lastDone?: string | null
+  center?: string
   location?: string
+  zone?: string
   primaryOperator?: string
   backupOperator?: string
   active?: boolean
@@ -45,12 +54,15 @@ export default function PlantillaDetailPage() {
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string)
 
   const [template, setTemplate] = useState<Template | null>(null)
+  const [centers, setCenters] = useState<MaintenanceCenterHierarchyRow[]>([])
   const [operators, setOperators] = useState<string[]>([])
   const [form, setForm] = useState<{
     name?: string
     periodicity?: Template['periodicity']
     lastDone?: string | null
+    center?: string
     location?: string
+    zone?: string
     primaryOperator?: string
     backupOperator?: string
     active?: boolean
@@ -70,11 +82,14 @@ export default function PlantillaDetailPage() {
       const found = (json?.template as Template) || null
       setTemplate(found)
       if (found) {
+        const site = normalizeMaintenanceTemplateSite(found)
         setForm({
           name: found.name || '',
           periodicity: found.periodicity,
           lastDone: found.lastDone || '',
-          location: found.location || '',
+          center: site.center,
+          location: site.location,
+          zone: site.zone,
           primaryOperator: found.primaryOperator || '',
           backupOperator: found.backupOperator || '',
           active: found.active !== false,
@@ -100,25 +115,37 @@ export default function PlantillaDetailPage() {
   }, [id])
 
   useEffect(() => {
-    const loadOperators = async () => {
+    const loadCatalogs = async () => {
       try {
-        const res = await fetch('/api/personnel?department=manteniment', { cache: 'no-store' })
-        if (!res.ok) {
+        const [operatorsRes, centersRes] = await Promise.all([
+          fetch('/api/personnel?department=manteniment', { cache: 'no-store' }),
+          fetch('/api/maintenance/data/centers', { cache: 'no-store' }),
+        ])
+
+        if (!operatorsRes.ok) {
           setOperators([])
+        } else {
+          const json = await operatorsRes.json()
+          const list = Array.isArray(json?.data) ? json.data : []
+          const names = list
+            .map((item: PersonnelApiItem) => String(item?.name || '').trim())
+            .filter(Boolean)
+            .sort((a: string, b: string) => a.localeCompare(b))
+          setOperators(Array.from(new Set(names)))
+        }
+
+        if (!centersRes.ok) {
+          setCenters([])
           return
         }
-        const json = await res.json()
-        const list = Array.isArray(json?.data) ? json.data : []
-        const names = list
-          .map((item: PersonnelApiItem) => String(item?.name || '').trim())
-          .filter(Boolean)
-          .sort((a: string, b: string) => a.localeCompare(b))
-        setOperators(Array.from(new Set(names)))
+        const centersJson = await centersRes.json()
+        setCenters(Array.isArray(centersJson?.centers) ? centersJson.centers : [])
       } catch {
         setOperators([])
+        setCenters([])
       }
     }
-    loadOperators()
+    void loadCatalogs()
   }, [])
 
   useEffect(() => {
@@ -131,9 +158,7 @@ export default function PlantillaDetailPage() {
         if (!res.ok) return
         const json = await res.json()
         const list = Array.isArray(json?.records) ? json.records : []
-        const resolved = list.find(
-          (r: CompletedRecord) => r.status === 'validat' || r.status === 'resolut'
-        )
+        const resolved = list.find((r: CompletedRecord) => r.status === 'validat' || r.status === 'fet')
         if (resolved?.completedAt) {
           const date = new Date(resolved.completedAt)
           const yyyy = date.getFullYear()
@@ -154,6 +179,32 @@ export default function PlantillaDetailPage() {
     () => operators.filter((operator) => operator !== (form.primaryOperator || '')),
     [operators, form.primaryOperator]
   )
+  const centerOptions = useMemo(() => getMaintenanceCenterOptions(centers), [centers])
+  const locationOptions = useMemo(
+    () => getMaintenanceLocationsForCenter(centers, form.center),
+    [centers, form.center]
+  )
+  const zoneOptions = useMemo(
+    () => {
+      const options = getMaintenanceZones(centers, form.center, form.location)
+      const currentZone = String(form.zone || '').trim()
+      if (!currentZone || options.includes(currentZone)) return options
+      return [currentZone, ...options]
+    },
+    [centers, form.center, form.location, form.zone]
+  )
+
+  useEffect(() => {
+    if (form.location && !locationOptions.includes(form.location)) {
+      setForm((prev) => ({ ...prev, location: '', zone: '' }))
+    }
+  }, [form.location, locationOptions])
+
+  useEffect(() => {
+    if (form.zone && !zoneOptions.includes(form.zone)) {
+      setForm((prev) => ({ ...prev, zone: '' }))
+    }
+  }, [form.zone, zoneOptions])
 
   const save = async () => {
     const cleanSections: TemplateSection[] = sections
@@ -177,7 +228,9 @@ export default function PlantillaDetailPage() {
           name: form.name || '',
           periodicity: form.periodicity || null,
           lastDone: form.lastDone || null,
+          center: form.center || '',
           location: form.location || '',
+          zone: form.zone || '',
           primaryOperator: form.primaryOperator || '',
           backupOperator: form.backupOperator || '',
           active: form.active !== false,
@@ -294,14 +347,14 @@ export default function PlantillaDetailPage() {
 
   if (!template) {
     return (
-      <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
+      <MaintenancePermissionGate>
         <div className="p-6 text-sm text-gray-600">Plantilla no trobada.</div>
-      </RoleGuard>
+      </MaintenancePermissionGate>
     )
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap']}>
+    <MaintenancePermissionGate>
       <div className="min-h-screen w-full bg-white flex flex-col">
         <ModuleHeader subtitle={form.name || template.name} />
 
@@ -391,12 +444,72 @@ export default function PlantillaDetailPage() {
                   />
                 </label>
                 <label className="flex flex-col gap-1">
+                  <span className="text-xs text-gray-600">Centre</span>
+                  <select
+                    className="h-10 rounded-xl border px-3"
+                    value={form.center || ''}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        center: e.target.value,
+                        location: '',
+                        zone: '',
+                      }))
+                    }
+                  >
+                    <option value="">Sense centre</option>
+                    {centerOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Ubicacio</span>
-                  <input
+                  <select
                     className="h-10 rounded-xl border px-3"
                     value={form.location || ''}
-                    onChange={(e) => setForm((prev) => ({ ...prev, location: e.target.value }))}
-                  />
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        location: e.target.value,
+                        zone: '',
+                      }))
+                    }
+                    disabled={locationOptions.length === 0}
+                  >
+                    <option value="">
+                      {form.center ? 'Sense ubicacio' : 'Selecciona centre'}
+                    </option>
+                    {locationOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-gray-600">Zona</span>
+                  <select
+                    className="h-10 rounded-xl border px-3"
+                    value={form.zone || ''}
+                    onChange={(e) => setForm((prev) => ({ ...prev, zone: e.target.value }))}
+                    disabled={zoneOptions.length === 0}
+                  >
+                    <option value="">
+                      {form.location
+                        ? 'Sense zona'
+                        : form.center
+                          ? 'Selecciona ubicacio'
+                          : 'Selecciona centre'}
+                    </option>
+                    {zoneOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-gray-600">Operari assignat</span>
@@ -537,6 +650,6 @@ export default function PlantillaDetailPage() {
           </button>
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

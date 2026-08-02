@@ -3,19 +3,28 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
+import { formatDateOnly } from '@/lib/date-format'
 import { startOfWeek, endOfWeek, format } from 'date-fns'
 import { CalendarDays } from 'lucide-react'
 
 import useEvents from '@/hooks/events/useEvents'
 import type { EventData } from '@/hooks/events/useEvents'
 import EventsDayGroup from '@/components/events/EventsDayGroup'
+import EventOpsPanel from '@/components/events/EventOpsPanel'
 import EventMenuModal from '@/components/events/EventMenuModal'
 import EventDocumentsSheet from '@/components/events/EventDocumentsSheet'
 import EventAvisosReadOnlyModal from '@/components/events/EventAvisosReadOnlyModal'
 import ModuleHeader from '@/components/layout/ModuleHeader'
 import { isProductionWorker } from '@/lib/accessControl'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
+import EventNotificationsBell from './components/EventNotificationsBell'
+import {
+  EVENTS_COMANDA_CREATE_PERM,
+  hasEventComandaPrepareAction,
+  isEventsComandaPreparerOnlyView,
+} from '@/lib/eventComandaPermissions'
 
 const EventAuditExecutionModal = dynamic(
   () => import('@/components/events/EventAuditExecutionModal'),
@@ -34,7 +43,8 @@ const EventAuditExecutionModal = dynamic(
     ),
   }
 )
-import FiltersBar, { FiltersState } from '@/components/layout/FiltersBar'
+import EventsFiltersBar from '@/components/events/EventsFiltersBar'
+import type { FiltersState } from '@/components/layout/FiltersBar'
 
 const normalize = (s?: string | null) =>
   (s || '')
@@ -88,9 +98,20 @@ type EnhancedEvent = EventData & {
 export default function EventsPage() {
   const { data: session, status: sessionStatus } = useSession()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { hasAction, ready: permsReady, canEditPath } = useUiPermissions()
 
   const role = String(session?.user?.role || '').toLowerCase()
   const isAdmin = role === 'admin' || role === 'direccio'
+  const comandaPreparerOnly =
+    permsReady &&
+    isEventsComandaPreparerOnlyView({
+      hasPrepareComandaAction: hasEventComandaPrepareAction(hasAction),
+      hasCreateComandaAction: hasAction(EVENTS_COMANDA_CREATE_PERM),
+      isAdminOrDireccio: isAdmin,
+      canEditEvents: canEditPath('/menu/events'),
+    })
+
   const userDept = String((session?.user as SessionUser)?.department || 'total').toLowerCase()
   const isCasamentsCommercialDept = normalize(
     String((session?.user as SessionUser)?.department || '')
@@ -110,7 +131,15 @@ export default function EventsPage() {
   }, [])
 
   const [filters, setFilters] = useState<FiltersState>(initial)
+  const [filterResetSignal, setFilterResetSignal] = useState(0)
   const [commercialFilterInitialized, setCommercialFilterInitialized] = useState(false)
+  const [preparerHistoryMode, setPreparerHistoryMode] = useState(
+    () => searchParams?.get('history') === '1'
+  )
+
+  useEffect(() => {
+    setPreparerHistoryMode(searchParams?.get('history') === '1')
+  }, [searchParams])
 
   const fromISO = `${filters.start}T00:00:00.000Z`
   const toISO = `${filters.end}T23:59:59.999Z`
@@ -123,18 +152,19 @@ export default function EventsPage() {
   const { data: channelsData } = useSWR<MessagingChannelsResponse>(
     isAuth ? '/api/messaging/channels?scope=mine' : null,
     fetcher,
-    { refreshInterval: isAuth ? 15000 : 0 }
+    { refreshInterval: isAuth ? 90000 : 0 }
   )
 
   const eventChatUnread = useMemo(() => {
     const map = new Map<string, number>()
     const channels = Array.isArray(channelsData?.channels) ? channelsData.channels : []
     channels.forEach((c) => {
-      if (c?.source !== 'events') return
+      if (c?.source !== 'events' && c?.source !== 'event_comanda') return
       const eventId = String(c?.eventId || '').trim()
       if (!eventId) return
       const unread = Number(c?.unreadCount || 0)
-      map.set(eventId, Number.isNaN(unread) ? 0 : unread)
+      const safeUnread = Number.isNaN(unread) ? 0 : unread
+      map.set(eventId, (map.get(eventId) || 0) + safeUnread)
     })
     return map
   }, [channelsData])
@@ -143,7 +173,7 @@ export default function EventsPage() {
     const set = new Set<string>()
     const channels = Array.isArray(channelsData?.channels) ? channelsData.channels : []
     channels.forEach((c) => {
-      if (c?.source !== 'events') return
+      if (c?.source !== 'events' && c?.source !== 'event_comanda') return
       const eventId = String(c?.eventId || '').trim()
       if (eventId) set.add(eventId)
     })
@@ -166,6 +196,12 @@ export default function EventsPage() {
   const [isAvisosOpen, setAvisosOpen] = useState(false)
   const [avisosEventCode, setAvisosEventCode] = useState<string | null>(null)
   const [avisosState, setAvisosState] = useState<Record<string, { hasAvisos: boolean; lastAvisoDate?: string }>>({})
+  const [opsPanel, setOpsPanel] = useState<{
+    eventId: string
+    eventTitle: string
+    initialRoomId?: string | null
+    initialChannelId?: string | null
+  } | null>(null)
 
   let filteredEvents = events
 
@@ -192,6 +228,64 @@ export default function EventsPage() {
     filteredEvents = filteredEvents.filter(
       ev => normalize(ev.locationShort) === normalize(filters.location)
     )
+  }
+
+  const eventIdsForWarehouseFilter = useMemo(
+    () =>
+      comandaPreparerOnly
+        ? filteredEvents.map((ev) => String(ev.id)).filter(Boolean)
+        : [],
+    [comandaPreparerOnly, filteredEvents]
+  )
+
+  const { data: warehouseComandaData, isLoading: warehouseComandaLoading } = useSWR<{
+    events?: EventData[]
+    eventIds?: string[]
+  }>(
+    comandaPreparerOnly
+      ? ['event-comanda-warehouse-events', filters.start, filters.end, preparerHistoryMode]
+      : null,
+    async ([, start, end, history]) => {
+      const res = await fetch('/api/event-comanda/warehouse-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start, end, history: Boolean(history) }),
+      })
+      if (!res.ok) throw new Error('warehouse-events load failed')
+      return res.json()
+    },
+    { revalidateOnFocus: true }
+  )
+
+  const { data: warehouseEventsData, isLoading: warehouseEventsLoading } = useSWR<{
+    eventIds?: string[]
+  }>(
+    !comandaPreparerOnly && eventIdsForWarehouseFilter.length
+      ? ['event-comanda-warehouse-events-legacy', eventIdsForWarehouseFilter]
+      : null,
+    async ([, eventIds]) => {
+      const res = await fetch('/api/event-comanda/warehouse-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventIds }),
+      })
+      if (!res.ok) throw new Error('warehouse-events filter failed')
+      return res.json()
+    },
+    { revalidateOnFocus: false }
+  )
+
+  const warehouseEventIdSet = useMemo(() => {
+    if (comandaPreparerOnly) return null
+    const ids = warehouseEventsData?.eventIds
+    if (!Array.isArray(ids)) return null
+    return new Set(ids.map((id) => String(id)))
+  }, [comandaPreparerOnly, warehouseEventsData])
+
+  if (comandaPreparerOnly) {
+    filteredEvents = (warehouseComandaData?.events || []) as EventData[]
+  } else if (warehouseEventIdSet) {
+    filteredEvents = filteredEvents.filter((ev) => warehouseEventIdSet.has(String(ev.id)))
   }
 
   const enhancedEvents = filteredEvents.map((ev): EnhancedEvent => {
@@ -248,29 +342,38 @@ export default function EventsPage() {
     setMenuOpen(true)
   }
 
-  const handleEventChat = async (ev: EnhancedEvent) => {
-    const code = String(ev?.eventCode || '').trim()
-    const commercial = String(ev?.commercial || '').trim()
-    if (!code || !commercial) return
-    try {
-      const res = await fetch('/api/messaging/events/ensure', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: String(ev.id) }),
-      })
-      if (!res.ok) return
-      const json = await res.json()
-      if (!json?.channelId) return
-      const returnTo = encodeURIComponent(`/menu/events?start=${filters.start}&end=${filters.end}`)
-      const url = `/menu/missatgeria?channel=${json.channelId}&event=1&returnTo=${returnTo}`
-      if (typeof window !== 'undefined') {
-        window.open(url, '_blank', 'noopener')
-        return
-      }
-      router.push(url)
-    } catch {
-      // silent
+  const handleEventChat = (ev: EnhancedEvent) => {
+    const title = String(ev.summary || ev.name || 'Esdeveniment').trim()
+    setOpsPanel({
+      eventId: String(ev.id),
+      eventTitle: title,
+      initialRoomId: null,
+      initialChannelId: `event_${String(ev.id)}`,
+    })
+  }
+
+  const handleEventComanda = (ev: EnhancedEvent) => {
+    const title = ev.summary || ev.name || 'Esdeveniment'
+    const meta = [
+      formatDateOnly(ev.start?.slice(0, 10)),
+      ev.horaInici,
+      ev.locationShort || ev.location,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(`event-comanda-title:${ev.id}`, title)
+      sessionStorage.setItem(`event-comanda-meta:${ev.id}`, meta)
     }
+
+    const historySuffix = preparerHistoryMode ? '&history=1' : ''
+    const returnTo = encodeURIComponent(
+      `/menu/events?start=${filters.start}&end=${filters.end}${historySuffix}`
+    )
+    router.push(
+      `/menu/events/${encodeURIComponent(String(ev.id))}/comanda?returnTo=${returnTo}${historySuffix}`
+    )
   }
 
   const userForModal = {
@@ -390,67 +493,153 @@ export default function EventsPage() {
     )
   }, [events, responsablesDetailed])
 
+  const lnOptionsForFilter = useMemo(
+    () =>
+      Array.from(
+        new Set(events.map((e) => e.lnKey).filter((value): value is LnKey => Boolean(value)))
+      ).sort(),
+    [events]
+  )
+
+  const commercialsForFilter = useMemo(
+    () =>
+      Array.from(
+        new Set(events.map((e) => e.commercial).filter((value): value is string => Boolean(value)))
+      ).sort((a, b) => a.localeCompare(b, 'ca')),
+    [events]
+  )
+
+  const locationsForFilter = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          events
+            .map((e) => e.locationShort || e.location)
+            .filter((value): value is string => Boolean(value))
+        )
+      ).sort((a, b) => a.localeCompare(b, 'ca')),
+    [events]
+  )
+
+  const handleHistoryModeChange = useCallback(
+    (next: boolean) => {
+      setPreparerHistoryMode(next)
+      const params = new URLSearchParams(searchParams?.toString() ?? '')
+      if (next) {
+        params.set('history', '1')
+      } else {
+        params.delete('history')
+      }
+      const query = params.toString()
+      router.replace(query ? `/menu/events?${query}` : '/menu/events', { scroll: false })
+    },
+    [router, searchParams]
+  )
+
+  const handleFiltersReset = useCallback(() => {
+    const s = startOfWeek(new Date(), { weekStartsOn: 1 })
+    const e = endOfWeek(new Date(), { weekStartsOn: 1 })
+    setFilters({
+      start: format(s, 'yyyy-MM-dd'),
+      end: format(e, 'yyyy-MM-dd'),
+      mode: 'week',
+      ln: undefined,
+      responsable: undefined,
+      commercial: undefined,
+      location: undefined,
+    })
+    setFilterResetSignal((value) => value + 1)
+    setCommercialFilterInitialized(false)
+    setPreparerHistoryMode(false)
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    params.delete('history')
+    const query = params.toString()
+    router.replace(query ? `/menu/events?${query}` : '/menu/events', { scroll: false })
+  }, [router, searchParams])
+
+  const visibleEventCount = comandaPreparerOnly
+    ? warehouseComandaLoading
+      ? 0
+      : filteredEvents.length
+    : filteredEvents.length
+
+  const eventsListLoading = comandaPreparerOnly
+    ? warehouseComandaLoading
+    : loading || (eventIdsForWarehouseFilter.length > 0 && warehouseEventsLoading)
+
   return (
-    <div className={`space-y-5 px-4 pb-8 ${suppressMenuInteraction ? 'pointer-events-none select-none' : ''}`}>
+    <div
+      className={`flex w-full max-w-none flex-col gap-4 px-3 pb-6 sm:px-4 lg:gap-3 lg:px-2 lg:pb-8 xl:px-0 ${suppressMenuInteraction ? 'pointer-events-none select-none' : ''}`}
+    >
       <ModuleHeader
         icon={<CalendarDays className="h-6 w-6 text-indigo-600" />}
         title="Esdeveniments"
-        subtitle="Consulta i gestiona els esdeveniments"
+        subtitle={
+          comandaPreparerOnly
+            ? preparerHistoryMode
+              ? 'Historial de comandes enviades'
+              : 'Comandes del magatzem assignat'
+            : 'Consulta i gestiona els esdeveniments'
+        }
+        actions={
+          <>
+            <EventNotificationsBell />
+            {!eventsListLoading && !error && visibleEventCount > 0 ? (
+              <span className="rounded-full bg-indigo-600 px-3 py-1 text-sm font-bold text-white">
+                {visibleEventCount} visibles
+              </span>
+            ) : null}
+          </>
+        }
       />
 
-      <FiltersBar
+      <EventsFiltersBar
         filters={filters}
-        setFilters={f => setFilters(prev => ({ ...prev, ...f }))}
-        visibleFilters={[]}
-        hiddenFilters={['ln', 'responsable', 'location']}
-        showResponsableFilter
-        lnOptions={Array.from(
-          new Set(
-            filteredEvents
-              .map(e => e.lnKey)
-              .filter((value): value is LnKey => Boolean(value))
-          )
-        ).sort()}
+        setFilters={(next) => setFilters((prev) => ({ ...prev, ...next }))}
+        onReset={handleFiltersReset}
+        resetSignal={filterResetSignal}
+        lnOptions={lnOptionsForFilter}
         responsables={responsablesForFilter}
-        commercials={Array.from(
-          new Set(
-            events
-              .map(e => e.commercial)
-              .filter((value): value is string => Boolean(value))
-          )
-        ).sort((a, b) => a.localeCompare(b))}
-        locations={Array.from(
-          new Set(
-            filteredEvents
-              .map(e => e.locationShort || e.location)
-              .filter((value): value is string => Boolean(value))
-          )
-        ).sort()}
+        commercials={commercialsForFilter}
+        locations={locationsForFilter}
+        minimal={comandaPreparerOnly}
+        historyMode={preparerHistoryMode}
+        onHistoryModeChange={comandaPreparerOnly ? handleHistoryModeChange : undefined}
       />
 
       <div>
-        {loading && <p className="text-gray-500">Carregant esdeveniments...</p>}
+        {eventsListLoading && <p className="text-gray-500">Carregant esdeveniments...</p>}
         {error && <p className="text-red-600">{String(error)}</p>}
 
-        {!loading && !error && filteredEvents.length === 0 && (
-          <p>No hi ha esdeveniments per mostrar.</p>
+        {!eventsListLoading && !error && visibleEventCount === 0 && (
+          <p>
+            {comandaPreparerOnly
+              ? preparerHistoryMode
+                ? 'No hi ha comandes enviades al teu magatzem assignat en aquest període.'
+                : 'No hi ha esdeveniments amb comanda al teu magatzem assignat.'
+              : 'No hi ha esdeveniments per mostrar.'}
+          </p>
         )}
 
-        {!loading && !error && filteredEvents.length > 0 && (
-          <div className="space-y-4">
-            {Object.entries(grouped)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([day, evs]) => (
-                <EventsDayGroup
-                  key={day}
-                  date={day}
-                  events={evs}
-                  onEventClick={handleEventClick}
-                  onEventChat={handleEventChat}
-                  isAdmin={isAdmin}
-                />
-              ))}
-          </div>
+        {!eventsListLoading && !error && visibleEventCount > 0 && (
+          <section className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:rounded-xl">
+            <div className="space-y-4 p-3 sm:space-y-5 sm:p-4 lg:space-y-3 lg:p-3 xl:p-4">
+              {Object.entries(grouped)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([day, evs]) => (
+                  <EventsDayGroup
+                    key={day}
+                    date={day}
+                    events={evs}
+                    onEventClick={comandaPreparerOnly ? undefined : handleEventClick}
+                    onEventChat={handleEventChat}
+                    onEventComanda={handleEventComanda}
+                    isAdmin={isAdmin}
+                    comandaOnly={comandaPreparerOnly}
+                  />
+                ))}
+            </div>
+          </section>
         )}
       </div>
 
@@ -499,6 +688,19 @@ export default function EventsPage() {
         eventCode={avisosEventCode}
         onAvisosStateChange={handleAvisosStateChange}
       />
+
+      {opsPanel ? (
+        <EventOpsPanel
+          eventId={opsPanel.eventId}
+          eventTitle={opsPanel.eventTitle}
+          open
+          initialRoomId={opsPanel.initialRoomId}
+          initialChannelId={opsPanel.initialChannelId}
+          onOpenChange={(open) => {
+            if (!open) setOpsPanel(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

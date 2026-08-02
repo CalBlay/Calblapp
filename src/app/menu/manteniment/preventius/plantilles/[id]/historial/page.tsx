@@ -9,13 +9,16 @@ import ModuleHeader from '@/components/layout/ModuleHeader'
 import { printBrandedHtmlInNewWindow } from '@/lib/exportBranding'
 import { loadXlsx } from '@/lib/loadXlsx'
 import { maintenanceStatusBadge } from '@/lib/colors'
-import { RoleGuard } from '@/lib/withRoleGuard'
+import { formatMaintenanceTemplateSite } from '@/lib/maintenanceTemplateSite'
+import MaintenancePermissionGate from '../../../../components/MaintenancePermissionGate'
 
 type Template = {
   id: string
   name: string
   periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'semestral' | 'yearly'
+  center?: string
   location?: string
+  zone?: string
   primaryOperator?: string
   backupOperator?: string
 }
@@ -51,7 +54,6 @@ const STATUS_LABELS: Record<string, string> = {
   espera: 'Espera',
   fet: 'Fet',
   no_fet: 'No fet',
-  resolut: 'Validat',
   validat: 'Validat',
 }
 
@@ -143,7 +145,7 @@ export default function PlantillaHistorialPage() {
   }, [id])
 
   const validatedCount = useMemo(
-    () => records.filter((record) => ['validat', 'resolut'].includes(String(record.status || ''))).length,
+    () => records.filter((record) => ['validat', 'fet'].includes(String(record.status || ''))).length,
     [records]
   )
 
@@ -172,7 +174,10 @@ export default function PlantillaHistorialPage() {
       {
         Plantilla: template?.name || 'Plantilla',
         Periodicitat: PERIODICITY_LABELS[String(template?.periodicity || '')] || '-',
+        Centre: template?.center || '-',
         Ubicacio: template?.location || '-',
+        Zona: template?.zone || '-',
+        Emplacament: formatMaintenanceTemplateSite(template || {}) || '-',
         OperariPrincipal: template?.primaryOperator || '-',
         Backup: template?.backupOperator || '-',
         Validats: validatedCount,
@@ -219,7 +224,9 @@ export default function PlantillaHistorialPage() {
     <h1>${escapeHtml(template?.name || 'Historial plantilla')}</h1>
     <div class="meta">
       Periodicitat: ${escapeHtml(PERIODICITY_LABELS[String(template?.periodicity || '')] || '-')}
+      | Centre: ${escapeHtml(template?.center || '-')}
       | Ubicacio: ${escapeHtml(template?.location || '-')}
+      | Zona: ${escapeHtml(template?.zone || '-')}
       | Registres: ${escapeHtml(String(records.length))}
     </div>
     <table>
@@ -255,7 +262,7 @@ export default function PlantillaHistorialPage() {
   ]
 
   return (
-    <RoleGuard allowedRoles={['admin', 'direccio', 'cap', 'treballador']}>
+    <MaintenancePermissionGate>
       <div className="min-h-screen space-y-5 px-4 pb-8">
         <style>{`
           @media print {
@@ -280,7 +287,7 @@ export default function PlantillaHistorialPage() {
                     Periodicitat: {PERIODICITY_LABELS[String(template?.periodicity || '')] || '-'}
                   </span>
                   <span className="rounded-full bg-white/80 px-3 py-1">
-                    Ubicacio: {template?.location || '-'}
+                    Emplacament: {formatMaintenanceTemplateSite(template || {}) || '-'}
                   </span>
                   <span className="rounded-full bg-white/80 px-3 py-1">
                     Validats: {validatedCount}
@@ -355,6 +362,6 @@ export default function PlantillaHistorialPage() {
           </section>
         </div>
       </div>
-    </RoleGuard>
+    </MaintenancePermissionGate>
   )
 }

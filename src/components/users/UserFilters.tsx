@@ -1,11 +1,16 @@
-// file: src/components/users/UserFilters.tsx
-// file: src/components/users/UserFilters.tsx
 'use client'
 
 import React, { useMemo } from 'react'
+import {
+  CorporateFilterField,
+  CorporateFilterSearch,
+  CorporateFilterSelect,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
+import { corporateFilterBadgeClass } from '@/lib/corporate-filters'
 
-// ❗ Tipus definit aquí (no importem de page.tsx)
 export interface UserFiltersState {
+  search?: string
   department?: string
   role?: string
 }
@@ -16,6 +21,8 @@ type Props = {
   departmentOptions: string[]
   roleOptions: string[]
   users: { department?: string; role?: string }[]
+  totalCount?: number
+  filteredCount?: number
 }
 
 export default function UserFilters({
@@ -24,11 +31,11 @@ export default function UserFilters({
   departmentOptions,
   roleOptions,
   users,
+  totalCount,
+  filteredCount,
 }: Props) {
-  // 🔒 Evitar recrear arrays
   const safeUsers = useMemo(() => users || [], [users])
 
-  // 🔽 Rols dinàmics filtrats
   const dynamicRoles = useMemo(() => {
     let base = safeUsers
     if (filters.department && filters.department !== '__all__') {
@@ -39,7 +46,6 @@ export default function UserFilters({
     return roles.length ? Array.from(new Set(roles)) : roleOptions
   }, [filters.department, safeUsers, roleOptions])
 
-  // 🔽 Departaments dinàmics filtrats
   const dynamicDepartments = useMemo(() => {
     let base = safeUsers
     if (filters.role && filters.role !== '__all__') {
@@ -47,53 +53,84 @@ export default function UserFilters({
     }
 
     const depts = base.map((u) => u.department).filter(Boolean) as string[]
-    return depts.length
-      ? Array.from(new Set(depts))
-      : departmentOptions
+    return depts.length ? Array.from(new Set(depts)) : departmentOptions
   }, [filters.role, safeUsers, departmentOptions])
 
-  // Reset
+  const hasActiveFilters =
+    Boolean(String(filters.search || '').trim()) ||
+    (filters.department && filters.department !== '__all__') ||
+    (filters.role && filters.role !== '__all__')
+
   const clearFilters = () => {
-    setFilters({ department: '__all__', role: '__all__' })
+    setFilters({ search: '', department: '__all__', role: '__all__' })
   }
 
   return (
-    <div className="flex flex-wrap gap-3 items-center bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-      {/* Departament */}
-      <select
-        value={filters.department || '__all__'}
-        onChange={(e) => setFilters({ department: e.target.value })}
-        className="rounded-lg border px-3 py-2 text-sm"
-      >
-        <option value="__all__">🌐 Tots els departaments</option>
-        {dynamicDepartments.map((dep) => (
-          <option key={dep} value={dep}>
-            {dep}
-          </option>
-        ))}
-      </select>
+    <CorporateFiltersShell
+      bodyClassName="flex-col items-stretch gap-4"
+    >
+      <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <CorporateFilterField label="Cerca intel·ligent" className="md:col-span-2 xl:col-span-2">
+          <CorporateFilterSearch
+            id="users-search"
+            placeholder="Nom, email, telèfon, comercial, rol, departament..."
+            value={filters.search || ''}
+            onChange={(e) => setFilters({ search: e.target.value })}
+            autoComplete="off"
+          />
+        </CorporateFilterField>
 
-      {/* Rol */}
-      <select
-        value={filters.role || '__all__'}
-        onChange={(e) => setFilters({ role: e.target.value })}
-        className="rounded-lg border px-3 py-2 text-sm"
-      >
-        <option value="__all__">👥 Tots els rols</option>
-        {dynamicRoles.map((role) => (
-          <option key={role} value={role}>
-            {role}
-          </option>
-        ))}
-      </select>
+        <CorporateFilterField label="Departament">
+          <CorporateFilterSelect
+            id="users-department"
+            className="w-full"
+            minWidthClassName="min-w-0"
+            value={filters.department || '__all__'}
+            onChange={(e) => setFilters({ department: e.target.value })}
+          >
+            <option value="__all__">Tots els departaments</option>
+            {dynamicDepartments.map((dep) => (
+              <option key={dep} value={dep}>
+                {dep}
+              </option>
+            ))}
+          </CorporateFilterSelect>
+        </CorporateFilterField>
 
-      {/* Botó Neteja */}
-      <button
-        onClick={clearFilters}
-        className="ml-auto px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50 transition"
-      >
-        Neteja
-      </button>
-    </div>
+        <CorporateFilterField label="Rol">
+          <CorporateFilterSelect
+            id="users-role"
+            className="w-full"
+            minWidthClassName="min-w-0"
+            value={filters.role || '__all__'}
+            onChange={(e) => setFilters({ role: e.target.value })}
+          >
+            <option value="__all__">Tots els rols</option>
+            {dynamicRoles.map((role) => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+          </CorporateFilterSelect>
+        </CorporateFilterField>
+      </div>
+
+      <div className="flex w-full flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+        <p className="text-xs text-slate-500">
+          Cerca sense accents; es poden usar diverses paraules.
+          {typeof totalCount === 'number' && typeof filteredCount === 'number' ? (
+            <>
+              {' '}
+              Mostrant {filteredCount} de {totalCount} usuaris.
+            </>
+          ) : null}
+        </p>
+        {hasActiveFilters ? (
+          <button type="button" onClick={clearFilters} className={corporateFilterBadgeClass(false)}>
+            Neteja filtres
+          </button>
+        ) : null}
+      </div>
+    </CorporateFiltersShell>
   )
 }

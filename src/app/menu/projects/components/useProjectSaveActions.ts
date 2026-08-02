@@ -34,15 +34,14 @@ type Params = {
   saveProject: SaveProject
   sessionUserName: string
   setDeletingProject: Dispatch<SetStateAction<boolean>>
-  setDirtyBlocksState: Dispatch<SetStateAction<boolean>>
-  setDirtyOverviewState: Dispatch<SetStateAction<boolean>>
   setDocumentDraft: Dispatch<SetStateAction<{ category: string; label: string }>>
   setPendingDocumentFile: Dispatch<SetStateAction<File | null>>
   setProject: Dispatch<SetStateAction<ProjectData>>
   setSavingBlocks: Dispatch<SetStateAction<boolean>>
   setSavingOverview: Dispatch<SetStateAction<boolean>>
-  syncRoomsWithOps: (sourceProject: ProjectData, roomIds?: string[]) => Promise<void>
   userByName: Map<string, ResponsibleOption>
+  markOverviewSaved: (source: ProjectData) => void
+  markBlocksSaved: (source: ProjectData) => void
 }
 
 export function useProjectSaveActions({
@@ -54,15 +53,14 @@ export function useProjectSaveActions({
   saveProject,
   sessionUserName,
   setDeletingProject,
-  setDirtyBlocksState,
-  setDirtyOverviewState,
   setDocumentDraft,
   setPendingDocumentFile,
   setProject,
   setSavingBlocks,
   setSavingOverview,
-  syncRoomsWithOps,
   userByName,
+  markOverviewSaved,
+  markBlocksSaved,
 }: Params) {
   const saveOverview = async () => {
     try {
@@ -70,7 +68,7 @@ export function useProjectSaveActions({
       const nextProject = ensureProjectRooms(project, userByName)
       setProject(nextProject)
       const storedDocument = await saveProject('Projecte guardat', nextProject, {
-        sections: ['overview', 'departments', 'rooms', 'documents'],
+        sections: ['overview', 'departments', 'rooms', 'documents', 'kickoff'],
       })
       const finalProject =
         storedDocument && pendingFile
@@ -80,8 +78,8 @@ export function useProjectSaveActions({
               documents: [...nextProject.documents, storedDocument],
             }
           : nextProject
-      await syncRoomsWithOps(finalProject)
-      setDirtyOverviewState(false)
+      setProject(finalProject)
+      markOverviewSaved(finalProject)
       return true
     } catch (err: unknown) {
       toast({
@@ -99,24 +97,26 @@ export function useProjectSaveActions({
     try {
       setSavingBlocks(true)
       const timestamp = new Date().toISOString()
-      const nextProject = ensureProjectRooms({
-        ...project,
-        kickoff: {
-          ...project.kickoff,
-          minutesAuthor: String(project.kickoff.minutes || '').trim()
-            ? sessionUserName
-            : project.kickoff.minutesAuthor,
-          minutesUpdatedAt: String(project.kickoff.minutes || '').trim()
-            ? timestamp
-            : project.kickoff.minutesUpdatedAt,
+      const nextProject = ensureProjectRooms(
+        {
+          ...project,
+          kickoff: {
+            ...project.kickoff,
+            minutesAuthor: String(project.kickoff.minutes || '').trim()
+              ? sessionUserName
+              : project.kickoff.minutesAuthor,
+            minutesUpdatedAt: String(project.kickoff.minutes || '').trim()
+              ? timestamp
+              : project.kickoff.minutesUpdatedAt,
+          },
         },
-      }, userByName)
+        userByName
+      )
       setProject(nextProject)
       await saveProject('Blocs guardats', nextProject, {
         sections: ['departments', 'blocks', 'rooms', 'kickoff'],
       })
-      await syncRoomsWithOps(nextProject)
-      setDirtyBlocksState(false)
+      markBlocksSaved(nextProject)
       return true
     } catch (err: unknown) {
       toast({
@@ -144,10 +144,14 @@ export function useProjectSaveActions({
         sections: ['documents'],
         onUploaded: (stored) => {
           if (!stored) return
-          setProject((current) => ({
-            ...current,
-            documents: [...current.documents, stored],
-          }))
+          setProject((current) => {
+            const next = {
+              ...current,
+              documents: [...current.documents, stored],
+            }
+            markOverviewSaved(next)
+            return next
+          })
         },
       })
 
@@ -226,6 +230,11 @@ export function useProjectSaveActions({
               ? ['rooms']
               : ['blocks'],
       })
+      if (!source || source.type === 'project') {
+        markOverviewSaved(nextProject)
+      } else {
+        markBlocksSaved(nextProject)
+      }
     } catch (err: unknown) {
       toast({
         title: 'Error eliminant el document',
@@ -253,6 +262,7 @@ export function useProjectSaveActions({
       await saveProject('Acta eliminada', nextProject, {
         sections: ['kickoff'],
       })
+      markBlocksSaved(nextProject)
     } catch (err: unknown) {
       toast({
         title: 'Error eliminant l acta',
@@ -265,9 +275,6 @@ export function useProjectSaveActions({
   }
 
   const handleDeleteProject = async () => {
-    const confirmed = window.confirm('Vols eliminar aquest projecte? Aquesta accio no es pot desfer.')
-    if (!confirmed) return
-
     try {
       setDeletingProject(true)
       const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' })

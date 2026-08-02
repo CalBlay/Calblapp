@@ -20,6 +20,7 @@ import {
   UtensilsCrossed
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useUiPermissions } from '@/hooks/useUiPermissions'
 
 /* 🎨 Icones de rol */
 const roleIcon: Record<string, React.ReactNode> = {
@@ -63,8 +64,10 @@ type Props = {
 
 export default function PersonnelList({ personnel, mutate, onEdit }: Props) {
   const { deletePersonnel, requestUser } = usePersonnel()
+  const { ready: uiPermsReady, canViewPath } = useUiPermissions()
   const [loadingMap, setLoadingMap] = React.useState<Record<string, boolean>>({})
   const today = new Date().toISOString().slice(0, 10)
+  const canRequestUsers = uiPermsReady && canViewPath('/menu/personnel')
 
   // 🔥 Accions
   async function handleDelete(p: Personnel) {
@@ -83,7 +86,6 @@ export default function PersonnelList({ personnel, mutate, onEdit }: Props) {
     if (!p.name?.trim()) missing.push('nom')
     if (!p.role?.toString().trim()) missing.push('rol')
     if (!p.department?.toString().trim()) missing.push('departament')
-    if (!p.email?.toString().trim()) missing.push('email')
     if (!p.phone?.toString().trim()) missing.push('telèfon')
     const deptLower = (p.department || '')
       .normalize('NFD')
@@ -94,9 +96,12 @@ export default function PersonnelList({ personnel, mutate, onEdit }: Props) {
       const hasType = p.driver.camioGran || p.driver.camioPetit
       if (!hasType) missing.push('tipus conductor')
     }
-    if (missing.length) {
+    const blockingMissing = missing.filter(
+      (field) => field !== 'email' && !field.toLowerCase().startsWith('tel')
+    )
+    if (blockingMissing.length) {
       alert(
-        `Falten camps obligatoris per demanar usuari: ${missing.join(', ')}`
+        `Falten camps obligatoris per demanar usuari: ${blockingMissing.join(', ')}`
       )
       return
     }
@@ -252,7 +257,7 @@ export default function PersonnelList({ personnel, mutate, onEdit }: Props) {
                 </div>
               )}
 
-              {!p.hasUser && p.requestStatus === 'rejected' && (
+              {canRequestUsers && !p.hasUser && p.requestStatus === 'rejected' && (
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-red-600 text-xs font-medium">
                     <XCircle size={16} /> Sol·licitud rebutjada
@@ -270,7 +275,7 @@ export default function PersonnelList({ personnel, mutate, onEdit }: Props) {
                 </div>
               )}
 
-              {!p.hasUser && p.requestStatus === 'approved' && (
+              {canRequestUsers && !p.hasUser && p.requestStatus === 'approved' && (
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-amber-600 text-xs font-medium">
                     <XCircle size={16} /> Usuari eliminat
@@ -288,7 +293,7 @@ export default function PersonnelList({ personnel, mutate, onEdit }: Props) {
                 </div>
               )}
 
-              {!p.hasUser && p.requestStatus === 'none' && (
+              {canRequestUsers && !p.hasUser && p.requestStatus === 'none' && (
                 <Button
                   size="sm"
                   variant="ghost"

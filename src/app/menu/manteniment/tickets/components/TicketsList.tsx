@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react'
-import Image from 'next/image'
+import TicketAttachmentTile from '@/components/maintenance/TicketAttachmentTile'
+import { isTicketVideoUrl } from '@/lib/media/ticketAttachments'
 import { ChevronDown, ChevronUp, MessageCircle, Trash2 } from 'lucide-react'
 import { differenceInCalendarDays } from 'date-fns'
 import { formatDateOnly } from '@/lib/date-format'
 import { typography } from '@/lib/typography'
 import { isTicketStaleAlert, STALE_TICKET_CARD_CLASS } from '@/lib/maintenanceTicketAlerts'
-import { resolveOpsChannelByLocationName } from '@/lib/opsMessagingChannels'
+import { getExternalReporterTicketBucket, formatTicketReporterDetail, formatTicketReporterLabel } from '@/lib/maintenanceTicketCreators'
+import { getMaintenanceTicketValidationSummary } from '@/lib/maintenanceTicketValidation'
 import type { Ticket, TicketPriority, TicketStatus } from '../types'
 
 type TicketSection = {
@@ -23,11 +25,16 @@ type Props = {
   canPlanifyDirectly: (ticket: Ticket) => boolean
   onDelete: (ticket: Ticket) => void
   canDelete: (ticket: Ticket) => boolean
+  canCreatorValidate?: (ticket: Ticket) => boolean
+  onCreatorValidate?: (ticket: Ticket) => void
+  canShowOps?: (ticket: Ticket) => boolean
+  onOpenOps?: (ticket: Ticket) => void
   formatDateTime: (value?: number | string | null) => string
   statusBadgeClasses: Record<TicketStatus, string>
   priorityBadgeClasses: Record<TicketPriority, string>
   statusLabels: Record<TicketStatus, string>
   priorityLabels: Record<TicketPriority, string>
+  externalReporterView?: boolean
 }
 
 type PlanningHistoryEntry = NonNullable<Ticket['planningHistory']>[number]
@@ -63,6 +70,36 @@ const SECTION_STYLES: Record<string, { header: string; card: string; expanded: s
     card: 'border-slate-200 bg-slate-50/60',
     expanded: 'border-slate-100 bg-slate-50/40',
   },
+  assigned: {
+    header: 'text-blue-900',
+    card: 'border-blue-200/80 bg-blue-50/55',
+    expanded: 'border-blue-100 bg-blue-50/35',
+  },
+  resolved: {
+    header: 'text-emerald-900',
+    card: 'border-emerald-200/80 bg-emerald-50/55',
+    expanded: 'border-emerald-100 bg-emerald-50/35',
+  },
+  nou: {
+    header: 'text-amber-900',
+    card: 'border-amber-200/80 bg-amber-50/55',
+    expanded: 'border-amber-100 bg-amber-50/35',
+  },
+  assignat: {
+    header: 'text-blue-900',
+    card: 'border-blue-200/80 bg-blue-50/55',
+    expanded: 'border-blue-100 bg-blue-50/35',
+  },
+  fet: {
+    header: 'text-emerald-900',
+    card: 'border-emerald-200/80 bg-emerald-50/55',
+    expanded: 'border-emerald-100 bg-emerald-50/35',
+  },
+  externalitzat: {
+    header: 'text-violet-900',
+    card: 'border-violet-200/80 bg-violet-50/55',
+    expanded: 'border-violet-100 bg-violet-50/35',
+  },
 }
 
 const DAYS_BADGE_STYLES = {
@@ -89,48 +126,6 @@ const normalizeText = (value: string) =>
     .toLowerCase()
     .trim()
 
-const getOpsAccessLink = (ticket: Ticket) => {
-  const location = String(ticket.location || ticket.workLocation || '').trim()
-  let channelId = String(ticket.sourceChannelId || '').trim()
-  let intake = String(ticket.intakeChannel || '').toLowerCase()
-
-  if (!channelId) {
-    const resolved = resolveOpsChannelByLocationName(location)
-    if (resolved) {
-      channelId = resolved.channelId
-      if (!intake || intake === 'manual_tickets') intake = resolved.intakeChannel
-    }
-  }
-
-  if (!channelId) return null
-
-  const href = `/menu/missatgeria?channel=${encodeURIComponent(channelId)}`
-  const isRestaurant =
-    intake === 'restaurant' || channelId.startsWith('restaurants_')
-  const isFinca =
-    intake === 'finca' ||
-    intake === 'ops' ||
-    channelId.startsWith('finques_')
-
-  const ariaLabel = isRestaurant
-    ? location
-      ? `Obrir OPS restaurant · ${location}`
-      : 'Obrir OPS restaurant'
-    : isFinca
-      ? location
-        ? `Obrir OPS finca · ${location}`
-        : 'Obrir OPS finca'
-      : location
-        ? `Obrir OPS · ${location}`
-        : 'Obrir OPS'
-
-  if (isRestaurant || isFinca || ticket.source === 'whatsblapp') {
-    return { href, ariaLabel }
-  }
-
-  return null
-}
-
 const getDaysOpen = (value?: number | string | null) => {
   if (!value && value !== 0) return null
   const date = typeof value === 'number' ? new Date(value) : new Date(value)
@@ -155,6 +150,46 @@ const getPlannedSummary = (ticket: Ticket, formatDateTime: Props['formatDateTime
   return parts.join(' - ')
 }
 
+const getExternalReporterStatusSummary = (
+  ticket: Ticket,
+  formatDateTime: Props['formatDateTime']
+): string | null => {
+  const bucket = getExternalReporterTicketBucket(ticket)
+
+  if (bucket === 'externalitzat') {
+    const supplier = String(ticket.supplierName || '').trim()
+    return supplier ? `Externalitzat: ${supplier}` : 'Externalitzat'
+  }
+
+  if (bucket === 'fet') {
+    const validation = getMaintenanceTicketValidationSummary(ticket)
+    const resolvedAt = (ticket.statusHistory || [])
+      .filter((entry) => entry.status === 'fet' || entry.status === 'validat')
+      .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0]?.at
+    if (ticket.status === 'validat') {
+      return resolvedAt ? `Validat: ${formatDateTime(resolvedAt)}` : 'Validat'
+    }
+    if (validation.requiresCreatorValidation && validation.pendingCreator) {
+      return 'Resolt · Pendent la teva validacio'
+    }
+    if (validation.requiresCreatorValidation && validation.creatorDone && validation.pendingCap) {
+      return 'Validat per tu · Pendent manteniment'
+    }
+    const label = 'Resolt'
+    return resolvedAt ? `${label}: ${formatDateTime(resolvedAt)}` : label
+  }
+
+  if (bucket !== 'assignat') return null
+
+  const operators = (ticket.assignedToNames || []).filter(Boolean).join(', ')
+  const planned = ticket.plannedStart ? formatDateTime(ticket.plannedStart) : ''
+  const segments: string[] = []
+  if (operators) segments.push(`Operari ${operators}`)
+  if (planned) segments.push(`Previst ${planned}`)
+  if (!segments.length) return 'Assignat'
+  return `Assignat: ${segments.join(' · ')}`
+}
+
 const getPlanningActionLabel = (action: PlanningHistoryEntry['action']) => {
   if (action === 'planificat') return 'Planificat'
   if (action === 'replanificat') return 'Replanificat'
@@ -169,11 +204,16 @@ export default function TicketsList({
   canPlanifyDirectly,
   onDelete,
   canDelete,
+  canCreatorValidate,
+  onCreatorValidate,
+  canShowOps,
+  onOpenOps,
   formatDateTime,
   statusBadgeClasses,
   priorityBadgeClasses,
   statusLabels,
   priorityLabels,
+  externalReporterView = false,
 }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
@@ -232,17 +272,22 @@ export default function TicketsList({
             </header>
 
             {!isCollapsed ? (
-              <div className="space-y-2">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {section.items.map((ticket) => {
                   const expanded = expandedId === ticket.id
                   const codeLabel = codeLabelById.get(ticket.id) || 'TIC'
                   const daysOpen = getDaysOpen(ticket.createdAt)
                   const eventLabel = String(ticket.sourceEventTitle || '').trim()
-                  const creatorLabel = String(ticket.createdByName || '').trim() || 'Sense usuari'
+                  const creatorLabel = formatTicketReporterLabel(ticket)
+                  const creatorDetail = formatTicketReporterDetail(ticket)
                   const locationLabel =
                     String(ticket.workLocation || ticket.location || '').trim() || 'Sense ubicacio'
                   const machineLabel = String(ticket.machine || '').trim() || 'Sense maquinaria'
                   const plannedSummary = getPlannedSummary(ticket, formatDateTime)
+                  const externalStatusSummary = externalReporterView
+                    ? getExternalReporterStatusSummary(ticket, formatDateTime)
+                    : null
+                  const assignmentSummary = externalStatusSummary
                   const history = (ticket.statusHistory || [])
                     .slice()
                     .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))
@@ -253,12 +298,13 @@ export default function TicketsList({
                   const ticketImages = getTicketImages(ticket)
                   const cardTitle = getCardTitle(ticket)
                   const cardDescription = getCardDescription(ticket)
-                  const opsAccessLink = getOpsAccessLink(ticket)
+                  const showOps = Boolean(canShowOps?.(ticket) && onOpenOps)
+                  const showCreatorValidate = Boolean(canCreatorValidate?.(ticket) && onCreatorValidate)
 
                   return (
                     <article
                       key={ticket.id}
-                      className={`overflow-hidden rounded-2xl border shadow-sm transition hover:shadow-md ${
+                      className={`flex h-full flex-col overflow-hidden rounded-2xl border shadow-sm transition hover:shadow-md ${
                         isStale ? STALE_TICKET_CARD_CLASS : sectionStyle.card
                       }`}
                     >
@@ -279,30 +325,41 @@ export default function TicketsList({
                             >
                               {priorityLabels[ticket.priority]}
                             </span>
-                            {daysOpen !== null ? (
+                            {!externalReporterView && daysOpen !== null ? (
                               <span
                                 className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getDaysBadgeClass(daysOpen, isStale)}`}
                               >
                                 {daysOpen} dies
                               </span>
                             ) : null}
-                            {ticket.externalized ? (
+                            {!externalReporterView && ticket.externalized ? (
                               <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-800">
                                 Proveidor
                               </span>
                             ) : null}
                           </div>
 
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
-                          <span>Creat per: {creatorLabel}</span>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                          {!externalReporterView ? <span>{creatorDetail}</span> : null}
                           <span>Ubicacio: {locationLabel}</span>
-                          {eventLabel ? <span>Esdeveniment: {eventLabel}</span> : null}
+                          {!externalReporterView && eventLabel ? (
+                            <span>Esdeveniment: {eventLabel}</span>
+                          ) : null}
                         </div>
                         {cardDescription ? (
-                          <p className="line-clamp-2 text-sm text-slate-600">{cardDescription}</p>
+                          <div className="mt-1 rounded-xl border border-white/80 bg-white/90 px-3.5 py-2.5 shadow-sm">
+                            <p className="line-clamp-3 text-base font-medium leading-relaxed text-slate-900 md:text-[17px]">
+                              {cardDescription}
+                            </p>
+                          </div>
                         ) : null}
 
-                          {plannedSummary ? (
+                          {externalReporterView && assignmentSummary ? (
+                            <div className="rounded-2xl border border-blue-100 bg-white/90 px-3 py-2 text-sm font-medium text-blue-950 shadow-sm">
+                              {assignmentSummary}
+                            </div>
+                          ) : null}
+                          {!externalReporterView && plannedSummary ? (
                             <div className="inline-flex rounded-full bg-white/80 px-3 py-1 text-sm text-slate-600 shadow-sm">
                               Planificat: {plannedSummary}
                             </div>
@@ -310,7 +367,35 @@ export default function TicketsList({
                         </div>
 
                         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                          {canResolveDirectly(ticket) ? (
+                          {showCreatorValidate ? (
+                            <button
+                              type="button"
+                              title="Validar resolucio"
+                              aria-label="Validar resolucio del ticket"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onCreatorValidate?.(ticket)
+                              }}
+                              className="rounded-full border border-violet-300 bg-white/85 px-3 py-2 text-xs font-semibold text-violet-700 shadow-sm hover:bg-white"
+                            >
+                              Validar
+                            </button>
+                          ) : null}
+                          {showOps ? (
+                            <button
+                              type="button"
+                              title="Ops"
+                              aria-label="Obrir Ops del ticket"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onOpenOps?.(ticket)
+                              }}
+                              className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:bg-amber-100"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </button>
+                          ) : null}
+                          {!externalReporterView && canResolveDirectly(ticket) ? (
                             <button
                               type="button"
                               onClick={() => onResolve(ticket)}
@@ -319,7 +404,7 @@ export default function TicketsList({
                               Resoldre
                             </button>
                           ) : null}
-                          {canPlanifyDirectly(ticket) ? (
+                          {!externalReporterView && canPlanifyDirectly(ticket) ? (
                             <button
                               type="button"
                               onClick={() => onPlanify(ticket)}
@@ -354,7 +439,7 @@ export default function TicketsList({
                       </div>
 
                       {expanded ? (
-                        <div className={`border-t px-4 py-4 ${sectionStyle.expanded}`}>
+                        <div className={`mt-auto border-t px-4 py-4 ${sectionStyle.expanded}`}>
                           <div className="space-y-4">
                             <div className="space-y-2">
                               <div className={typography('eyebrow')}>Context</div>
@@ -367,22 +452,7 @@ export default function TicketsList({
                                 </div>
                                 <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
                                   <div className={typography('eyebrow')}>Ubicacio</div>
-                                  <div className="mt-1 flex items-center justify-between gap-2">
-                                    <span className="min-w-0 text-sm text-slate-800">{locationLabel}</span>
-                                    {opsAccessLink ? (
-                                      <a
-                                        href={opsAccessLink.href}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        aria-label={opsAccessLink.ariaLabel}
-                                        title={opsAccessLink.ariaLabel}
-                                        className="inline-flex shrink-0 rounded-lg p-1 text-amber-600 transition hover:bg-amber-50"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <MessageCircle className="h-4 w-4" />
-                                      </a>
-                                    ) : null}
-                                  </div>
+                                  <div className="mt-1 text-sm text-slate-800">{locationLabel}</div>
                                 </div>
                                 <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
                                   <div className={typography('eyebrow')}>Maquinaria</div>
@@ -400,9 +470,9 @@ export default function TicketsList({
                                   </div>
                                 </div>
                               ) : null}
-                              <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
+                              <div className="rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
                                 <div className={typography('eyebrow')}>Descripcio</div>
-                                <div className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
+                                <div className="mt-2 whitespace-pre-wrap text-base font-medium leading-relaxed text-slate-900 md:text-lg">
                                   {String(ticket.description || '').trim() || '-'}
                                 </div>
                               </div>
@@ -410,32 +480,53 @@ export default function TicketsList({
 
                             {ticketImages.length > 0 ? (
                               <div className="space-y-2">
-                                <div className={typography('eyebrow')}>Imatges adjuntes</div>
+                                <div className={typography('eyebrow')}>Adjunts</div>
                                 <div
                                   className={`grid gap-3 ${ticketImages.length > 1 ? 'sm:grid-cols-2 lg:grid-cols-3' : ''}`}
                                 >
-                                  {ticketImages.map((imageUrl, index) => (
-                                    <a
-                                      key={`${imageUrl}-${index}`}
-                                      href={imageUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="flex max-h-40 items-center justify-center overflow-hidden rounded-2xl border border-white/80 bg-slate-100/90 p-2 shadow-sm"
-                                    >
-                                      <Image
-                                        src={imageUrl}
-                                        alt={`Imatge del ticket ${index + 1}`}
-                                        width={640}
-                                        height={360}
-                                        className="max-h-36 w-auto max-w-full object-contain"
-                                        unoptimized
-                                      />
-                                    </a>
-                                  ))}
+                                  {ticketImages.map((imageUrl, index) => {
+                                    const wrapperClass =
+                                      'flex max-h-40 items-center justify-center overflow-hidden rounded-2xl border border-white/80 bg-slate-100/90 p-2 shadow-sm'
+                                    if (isTicketVideoUrl(imageUrl)) {
+                                      return (
+                                        <div key={`${imageUrl}-${index}`} className={wrapperClass}>
+                                          <TicketAttachmentTile
+                                            url={imageUrl}
+                                            alt={`Adjunt del ticket ${index + 1}`}
+                                          />
+                                        </div>
+                                      )
+                                    }
+                                    return (
+                                      <a
+                                        key={`${imageUrl}-${index}`}
+                                        href={imageUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className={wrapperClass}
+                                      >
+                                        <TicketAttachmentTile
+                                          url={imageUrl}
+                                          alt={`Adjunt del ticket ${index + 1}`}
+                                        />
+                                      </a>
+                                    )
+                                  })}
                                 </div>
                               </div>
                             ) : null}
 
+                            {externalReporterView ? (
+                              <div className="space-y-2">
+                                <div className={typography('eyebrow')}>Seguiment</div>
+                                <div className="rounded-xl border border-white/80 bg-white/90 px-3 py-3 text-sm text-slate-800 shadow-sm">
+                                  {externalStatusSummary ||
+                                    'Pendent de gestio. Rebràs una notificacio quan manteniment assigni el ticket.'}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {!externalReporterView ? (
                             <div className="space-y-2">
                               <div className={typography('eyebrow')}>Historial</div>
                               <div className="space-y-2">
@@ -523,6 +614,7 @@ export default function TicketsList({
                                 )}
                               </div>
                             </div>
+                            ) : null}
 
                           </div>
                         </div>

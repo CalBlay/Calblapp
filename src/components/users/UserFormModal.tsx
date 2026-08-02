@@ -20,6 +20,18 @@ import {
   getUserDepartmentSelectOptions,
 } from '@/data/departments'
 import useSWR from 'swr'
+import type { AccessUser } from '@/lib/accessControl'
+import type { AssignmentOverride } from '@/lib/permissions/types'
+import { UserPermissionsEditor } from '@/components/permissions/UserPermissionsEditor'
+import { buildEffectiveBaseMap, baseForPath } from '@/lib/permissions/effectiveBase'
+import { applyOverrideEffect } from '@/lib/permissions/overrideState'
+import { buildMatrixRows } from '@/lib/permissions/matrixConfig'
+import { PERM } from '@/lib/permissionKeys'
+import {
+  cloneAssignmentOverrides,
+  type UserConfigTemplate,
+  type UserConfigTemplateProfile,
+} from '@/lib/permissions/userConfigTemplate'
 
 export interface User {
   id?: string
@@ -61,6 +73,9 @@ export interface NewUserPayload {
   workerRank?: string
   phone?: string
   email?: string
+  accessAssignment?: {
+    overrides: AssignmentOverride[]
+  }
 }
 
 type Props = {
@@ -77,9 +92,32 @@ type MessagingChannel = {
   name?: string
 }
 
+type PermissionUserOption = {
+  id: string
+  name?: string
+  email?: string
+  role?: string
+  department?: string
+}
+
+type PermissionUsersResponse = {
+  users?: PermissionUserOption[]
+}
+
 type ApproveUserRequestResponse = {
   error?: string
   user?: User
+}
+
+async function fetchUserConfigTemplate(userId: string): Promise<UserConfigTemplate> {
+  const res = await fetch(`/api/admin/permissions/templates/${encodeURIComponent(userId)}`, {
+    cache: 'no-store',
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(String(json?.error || 'No s’ha pogut carregar la plantilla'))
+  }
+  return json as UserConfigTemplate
 }
 
 const ROLES = [
@@ -121,6 +159,114 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
   const [canRespondSurveys, setCanRespondSurveys] = React.useState(false)
   const [isDepartmentRobaLead, setIsDepartmentRobaLead] = React.useState(false)
   const [isTransportLead, setIsTransportLead] = React.useState(false)
+  const [step, setStep] = React.useState<1 | 2>(1)
+  const [permissionOverrides, setPermissionOverrides] = React.useState<AssignmentOverride[]>([])
+  const [templateUserId, setTemplateUserId] = React.useState('')
+  const [templateSourceName, setTemplateSourceName] = React.useState('')
+  const [templateLoading, setTemplateLoading] = React.useState(false)
+
+  const isPendingApproval = Boolean(user?.personId)
+  const isNewUser = !user?.id && !isPendingApproval
+  const canUseConfigTemplate = isSessionAdmin && (isNewUser || isPendingApproval)
+  const showPermissionsStep = isSessionAdmin && (isNewUser || isPendingApproval) && !isAdmin
+
+  const previewAccessUser = React.useMemo<AccessUser>(
+    () => ({
+      role,
+      department,
+      canRespondSurveys,
+      isDepartmentRobaLead,
+      isTransportLead,
+      opsProjectsConfigurable,
+    }),
+    [
+      role,
+      department,
+      canRespondSurveys,
+      isDepartmentRobaLead,
+      isTransportLead,
+      opsProjectsConfigurable,
+    ]
+  )
+
+  React.useEffect(() => {
+    setStep(1)
+    setPermissionOverrides([])
+    setTemplateUserId('')
+    setTemplateSourceName('')
+  }, [user])
+
+  const { data: permissionUsersData } = useSWR<PermissionUsersResponse>(
+    canUseConfigTemplate ? '/api/admin/permissions/users' : null,
+    (url: string) => fetch(url).then((r) => r.json())
+  )
+
+  const templateUserOptions = React.useMemo(() => {
+    const list = Array.isArray(permissionUsersData?.users) ? permissionUsersData.users : []
+    return [...list].sort((a, b) =>
+      String(a.name || a.email || '').localeCompare(String(b.name || b.email || ''), 'ca', {
+        sensitivity: 'base',
+      })
+    )
+  }, [permissionUsersData])
+
+  function formatTemplateUserLabel(option: PermissionUserOption): string {
+    const name = String(option.name || option.email || option.id).trim()
+    const role = String(option.role || '').trim()
+    const dept = String(option.department || '').trim()
+    const meta = [role, dept].filter(Boolean).join(' · ')
+    return meta ? `${name} (${meta})` : name
+  }
+
+  function applyProfileFromTemplate(profile: UserConfigTemplateProfile) {
+    setOpsChannelsConfigurable(profile.opsChannelsConfigurable)
+    setOpsEventsConfigurable(profile.opsEventsConfigurable)
+    setOpsProjectsConfigurable(profile.opsProjectsConfigurable)
+    setCanRespondSurveys(profile.canRespondSurveys)
+    setIsDepartmentRobaLead(profile.isDepartmentRobaLead)
+    setIsTransportLead(profile.isTransportLead)
+    setAvailable(profile.available)
+    setIsDriver(profile.isDriver)
+    setWorkerRank(profile.workerRank)
+  }
+
+  function buildDefaultPermissionDenies(): AssignmentOverride[] {
+    const baseMap = buildEffectiveBaseMap(previewAccessUser)
+    let initialDenies: AssignmentOverride[] = []
+    for (const row of buildMatrixRows()) {
+      if (baseForPath(baseMap, row.path).view) {
+        initialDenies = applyOverrideEffect(initialDenies, PERM.view(row.path), 'deny')
+      }
+    }
+    return initialDenies
+  }
+
+  async function applySelectedTemplate(options?: { permissionsOnly?: boolean }) {
+    const sourceId = String(templateUserId || '').trim()
+    if (!sourceId) return false
+
+    setTemplateLoading(true)
+    try {
+      const template = await fetchUserConfigTemplate(sourceId)
+      if (!options?.permissionsOnly) {
+        applyProfileFromTemplate(template.profile)
+      }
+      setPermissionOverrides(cloneAssignmentOverrides(template.overrides))
+      setTemplateSourceName(template.sourceName)
+      return true
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'No s’ha pogut carregar la plantilla')
+      return false
+    } finally {
+      setTemplateLoading(false)
+    }
+  }
+
+  React.useEffect(() => {
+    if (!showPermissionsStep && step === 2) {
+      setStep(1)
+    }
+  }, [showPermissionsStep, step])
 
   const { data: channelsData } = useSWR('/api/messaging/channels?scope=all', (url: string) =>
     fetch(url).then((r) => r.json())
@@ -208,6 +354,7 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     setCanRespondSurveys(Boolean(user.canRespondSurveys))
     setIsDepartmentRobaLead(Boolean(user.isDepartmentRobaLead))
     setIsTransportLead(Boolean(user.isTransportLead))
+    setPassword('')
     if (user.role?.toLowerCase() === 'treballador') {
       setAvailable(user.available ?? true)
       setIsDriver(user.driver?.isDriver ?? false)
@@ -221,15 +368,76 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
     }
   }, [canBeTransportLead, isTransportLead])
 
+  function validateStepOne(): boolean {
+    if (!name.trim()) {
+      alert('El nom és obligatori')
+      return false
+    }
+    if ((isNewUser || isPendingApproval) && !password.trim()) {
+      alert('La contrasenya és obligatòria')
+      return false
+    }
+    if (requiresCorporateEmail && !email.trim()) {
+      alert('Email corporatiu obligatori per aquest nivell')
+      return false
+    }
+    return true
+  }
+
+  function goToPermissionsStep() {
+    if (!validateStepOne()) return
+
+    void (async () => {
+      if (templateUserId) {
+        const ok = await applySelectedTemplate()
+        if (!ok) {
+          setPermissionOverrides(buildDefaultPermissionDenies())
+          setTemplateSourceName('')
+        }
+      } else {
+        setPermissionOverrides(buildDefaultPermissionDenies())
+        setTemplateSourceName('')
+      }
+      setStep(2)
+    })()
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
     if (user?.personId) {
+      if (!validateStepOne()) return
+
       try {
+        const approveBody: Record<string, unknown> = {
+          password,
+          name,
+          role,
+          isAdmin,
+          department,
+          commercialName,
+          phone,
+          email,
+          opsChannelsConfigurable,
+          opsEventsConfigurable,
+          opsProjectsConfigurable,
+          canRespondSurveys,
+          isDepartmentRobaLead,
+          isTransportLead,
+        }
+        if (isWorker) {
+          approveBody.available = available
+          approveBody.isDriver = isDriver
+          approveBody.workerRank = workerRank
+        }
+        if (showPermissionsStep) {
+          approveBody.accessAssignment = { overrides: permissionOverrides }
+        }
+
         const res = await fetch(`/api/user-requests/${user.personId}/approve`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password }),
+          body: JSON.stringify(approveBody),
         })
         const data = (await res.json()) as ApproveUserRequestResponse
         if (!res.ok) {
@@ -268,10 +476,16 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
         isDepartmentRobaLead,
         isTransportLead,
       }
-      if (password.trim()) payload.password = password.trim()
+      if (password.trim()) {
+        payload.password = password.trim()
+      } else {
+        delete payload.password
+      }
       await onSubmit(payload)
       return
     }
+
+    if (!validateStepOne()) return
 
     const payload: NewUserPayload = {
       name,
@@ -294,20 +508,154 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
       payload.isDriver = isDriver
       payload.workerRank = workerRank
     }
+    if (showPermissionsStep) {
+      payload.accessAssignment = { overrides: permissionOverrides }
+    }
     await onSubmit(payload)
+  }
+
+  const dialogTitle = user?.id
+    ? 'Editar Usuari'
+    : isPendingApproval
+      ? step === 2
+        ? 'Aprovar sol·licitud · Permisos'
+        : 'Aprovar sol·licitud'
+      : step === 2
+        ? 'Nou Usuari · Permisos'
+        : 'Nou Usuari'
+
+  const createSubmitLabel = isPendingApproval ? 'Aprovar i crear usuari' : 'Crear Usuari'
+
+  function renderConfigTemplatePicker(options?: {
+    showApplyButton?: boolean
+    permissionsOnly?: boolean
+    applyLabel?: string
+  }) {
+    if (!canUseConfigTemplate) return null
+
+    return (
+      <div className="space-y-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 p-3">
+        <div>
+          <Label className="text-sm">Copiar configuració de (opcional)</Label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Copia permisos UI i opcions operatives (canals ops, enquestes, etc.). No copia nom,
+            email, contrasenya ni rol.
+          </p>
+        </div>
+        <select
+          className="w-full rounded-md border bg-white p-2 text-sm"
+          value={templateUserId}
+          onChange={(e) => {
+            setTemplateUserId(e.target.value)
+            if (!e.target.value) setTemplateSourceName('')
+          }}
+          disabled={templateLoading}
+        >
+          <option value="">Cap — configurar manualment</option>
+          {templateUserOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {formatTemplateUserLabel(option)}
+            </option>
+          ))}
+        </select>
+        {templateSourceName ? (
+          <p className="text-xs text-emerald-700">
+            Plantilla aplicada des de{' '}
+            <span className="font-medium">{templateSourceName}</span>.
+          </p>
+        ) : null}
+        {options?.showApplyButton && templateUserId ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={templateLoading}
+            onClick={() =>
+              void applySelectedTemplate({ permissionsOnly: options.permissionsOnly })
+            }
+          >
+            {templateLoading
+              ? 'Carregant…'
+              : options.applyLabel || 'Aplicar plantilla ara'}
+          </Button>
+        ) : null}
+      </div>
+    )
   }
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent
+        className={cn(
+          step === 2 ? 'sm:max-w-5xl max-h-[90vh] overflow-y-auto' : 'sm:max-w-xl'
+        )}
+      >
         <DialogHeader>
-          <DialogTitle>{user?.id ? 'Editar Usuari' : 'Nou Usuari'}</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
+          {showPermissionsStep ? (
+            <p className="text-sm text-muted-foreground">
+              Pas {step} de 2 · {step === 1 ? 'Dades bàsiques' : 'Permisos d’accés'}
+            </p>
+          ) : null}
         </DialogHeader>
 
         {loading ? (
           <p className="text-center text-gray-500">Carregant dades...</p>
+        ) : step === 2 && showPermissionsStep ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {renderConfigTemplatePicker({
+              showApplyButton: true,
+              permissionsOnly: true,
+              applyLabel: 'Actualitzar permisos des de plantilla',
+            })}
+
+            <div className="rounded-xl border p-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{name.trim()}</span>
+              {' · '}
+              {role}
+              {' · '}
+              {department}
+            </div>
+
+            <UserPermissionsEditor
+              accessUser={previewAccessUser}
+              overrides={permissionOverrides}
+              onOverridesChange={setPermissionOverrides}
+              compact
+              intro={
+                templateSourceName
+                  ? `Permisos copiats de ${templateSourceName}. Revisa i ajusta abans de crear l’usuari.`
+                  : isPendingApproval
+                    ? 'Configura els permisos abans d’aprovar la sol·licitud. Per defecte segons el nivell i departament del pas anterior.'
+                    : 'Configura els permisos abans de crear l’usuari. Per defecte segons el nivell i departament del pas anterior.'
+              }
+            />
+
+            <div className="mt-6 flex items-center justify-between gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl border-2 border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
+                onClick={() => setStep(1)}
+              >
+                Enrere
+              </Button>
+
+              <Button
+                type="submit"
+                className="rounded-xl bg-indigo-400 px-6 py-2 font-semibold text-white shadow-md hover:bg-indigo-500"
+              >
+                {createSubmitLabel}
+              </Button>
+            </div>
+          </form>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
+            {renderConfigTemplatePicker({
+              showApplyButton: true,
+              applyLabel: 'Aplicar plantilla ara',
+            })}
+
             <div>
               <Label>Nom complet</Label>
               <input
@@ -326,8 +674,18 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required={!user?.id}
-                placeholder={user?.id ? 'Deixa buit per no canviar-la' : ''}
+                placeholder={
+                  user?.id
+                    ? 'Deixa buit per mantenir la contrasenya actual'
+                    : ''
+                }
               />
+              {user?.id ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  Deixa buit per mantenir la contrasenya actual. Si n&apos;escrius una de nova,
+                  es mostrarà a la taula d&apos;usuaris.
+                </p>
+              ) : null}
             </div>
 
             <div>
@@ -614,15 +972,30 @@ export function UserFormModal({ user, onSubmit, onClose, onAfterAction }: Props)
                 Cancella
               </Button>
 
-              <Button
-                type="submit"
-                className={cn(
-                  'rounded-xl px-6 py-2 font-semibold text-white shadow-md',
-                  user?.id ? 'bg-emerald-400 hover:bg-emerald-500' : 'bg-indigo-400 hover:bg-indigo-500'
-                )}
-              >
-                {user?.id ? 'Desar Canvis' : 'Crear Usuari'}
-              </Button>
+              {showPermissionsStep ? (
+                <Button
+                  type="button"
+                  className="rounded-xl bg-indigo-400 px-6 py-2 font-semibold text-white shadow-md hover:bg-indigo-500"
+                  onClick={goToPermissionsStep}
+                  disabled={templateLoading}
+                >
+                  {templateLoading ? 'Carregant plantilla…' : 'Següent · Permisos'}
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  className={cn(
+                    'rounded-xl px-6 py-2 font-semibold text-white shadow-md',
+                    user?.id
+                      ? 'bg-emerald-400 hover:bg-emerald-500'
+                      : isPendingApproval
+                        ? 'bg-indigo-400 hover:bg-indigo-500'
+                        : 'bg-indigo-400 hover:bg-indigo-500'
+                  )}
+                >
+                  {user?.id ? 'Desar Canvis' : isPendingApproval ? 'Aprovar i crear usuari' : 'Crear Usuari'}
+                </Button>
+              )}
             </div>
           </form>
         )}

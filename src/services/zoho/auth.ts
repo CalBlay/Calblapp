@@ -1,5 +1,5 @@
 // src/services/zoho/auth.ts
-// ✅ Versió estable (Vercel/Node) amb cache de token i log de resposta
+// Stable Zoho auth helpers with in-memory access-token caching.
 const {
   ZOHO_CLIENT_ID,
   ZOHO_CLIENT_SECRET,
@@ -14,7 +14,7 @@ export async function getZohoAccessToken(): Promise<string> {
   if (cachedToken && tokenExpiry && Date.now() < tokenExpiry) return cachedToken
 
   if (!ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET || !ZOHO_REFRESH_TOKEN) {
-    throw new Error('❌ Variables d’entorn ZOHO incompletes')
+    throw new Error('Missing Zoho environment variables')
   }
 
   const res = await fetch('https://accounts.zoho.eu/oauth/v2/token', {
@@ -31,19 +31,22 @@ export async function getZohoAccessToken(): Promise<string> {
 
   if (!res.ok) {
     const text = await res.text()
-    console.error('[ZohoAuth] ❌', text)
+    console.error('[ZohoAuth] token refresh failed', text)
     throw new Error(`Error ZohoAuth ${res.status}`)
   }
 
   const data = (await res.json()) as { access_token: string; expires_in?: number }
   cachedToken = data.access_token
   tokenExpiry = Date.now() + ((data.expires_in || 3600) - 60) * 1000
-  console.log('🔐 Nou token Zoho obtingut i emmagatzemat en memòria.')
+  console.log('[ZohoAuth] Refreshed access token.')
   return cachedToken
 }
 
-export async function zohoFetch<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
-  if (!ZOHO_API_BASE) throw new Error('❌ Falta ZOHO_API_BASE')
+export async function zohoFetch<T = unknown>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  if (!ZOHO_API_BASE) throw new Error('Missing ZOHO_API_BASE')
   const token = await getZohoAccessToken()
   const url = `${ZOHO_API_BASE}${path}`
 
@@ -59,13 +62,9 @@ export async function zohoFetch<T = unknown>(path: string, options: RequestInit 
 
   const json: unknown = await res.json().catch(() => ({}))
   if (!res.ok) {
-    console.error('[ZohoFetch] ❌', json)
+    console.error('[ZohoFetch] request failed', { path, status: res.status, body: json })
     throw new Error(`Error Zoho ${res.status}`)
   }
 
-  // 🧐 Trace útil (primer registre només)
-  const body = json as { data?: unknown[] }
-  const sample = Array.isArray(body.data) ? body.data[0] : undefined
-  if (sample !== undefined) console.log('🔎 Zoho sample:', JSON.stringify(sample, null, 2))
   return json as T
 }

@@ -3,11 +3,27 @@ export const dynamic = 'force-dynamic'
 
 import { after, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/server/authOptions'
 import { firestoreAdmin as db, storageAdmin } from '@/lib/firebaseAdmin'
 import { canAccessProjects, sessionToAccessUser } from '@/lib/projectAccess'
-import { deriveProjectPhase } from '@/app/menu/projects/components/project-shared'
-import { archiveProjectRoomOpsChannel } from '@/lib/projectRoomOps'
+import {
+  userHasGlobalProjectListAccess,
+  userParticipatesInProject,
+} from '@/lib/projectParticipation'
+import {
+  applyDependencyLocksToBlocks,
+  canChangeTaskStatus,
+  deriveBlockStatus,
+  deriveProjectPhase,
+  getTaskDependencyMeta,
+  normalizeTaskWorkflowStatus,
+} from '@/app/menu/projects/components/project-shared'
+import {
+  archiveProjectRoomOpsChannel,
+  syncProjectRoomsWithChangedParticipants,
+  type ProjectBlockLike,
+  type ProjectRoomLike,
+} from '@/lib/projectRoomOps'
 import type { KickoffData, ProjectBlock } from '@/app/menu/projects/components/project-shared'
 import {
   createBlockDeadlineCalendarEvent,
@@ -15,7 +31,9 @@ import {
   sendBlockAssignmentEmail,
   sendTaskAssignmentEmail,
 } from '@/services/graph/calendar'
-import Ably from 'ably'
+import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
+import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
 
 type SessionUser = {
   id: string
@@ -171,7 +189,7 @@ async function notifyProjectOwner(params: {
   projectName: string
   baseUrl: string
 }) {
-  const { userId, projectId, projectName, baseUrl } = params
+  const { userId, projectId, projectName } = params
   const title = "T'han assignat un projecte"
   const body = `Ara ets responsable del projecte: ${projectName || 'Projecte'}`
   const now = Date.now()
@@ -185,11 +203,11 @@ async function notifyProjectOwner(params: {
     projectId,
     projectName,
   })
+  await incrementUserUnreadCount(userId, 'project_assignment', 1)
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (apiKey) {
+  if (hasAblyApiKey()) {
     try {
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await rest.channels.get(`user:${userId}:notifications`).publish('created', {
         type: 'project_assignment',
         projectId,
@@ -200,20 +218,11 @@ async function notifyProjectOwner(params: {
     }
   }
 
-  try {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        title,
-        body,
-        url: `/menu/projects/${projectId}`,
-      }),
-    })
-  } catch (err) {
-    console.error('[projects] push error', err)
-  }
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: `/menu/projects/${projectId}`,
+  })
 }
 
 async function notifyBlockOwnerAssignment(params: {
@@ -237,7 +246,6 @@ async function notifyBlockOwnerAssignment(params: {
     blockId,
     blockName,
     deadline,
-    baseUrl,
     senderEmail,
   } = params
   const title = "T'han assignat un bloc"
@@ -255,11 +263,11 @@ async function notifyBlockOwnerAssignment(params: {
     projectName,
     blockName,
   })
+  await incrementUserUnreadCount(userId, 'project_block_assignment', 1)
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (apiKey) {
+  if (hasAblyApiKey()) {
     try {
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await rest.channels.get(`user:${userId}:notifications`).publish('created', {
         type: 'project_block_assignment',
         projectId,
@@ -271,20 +279,11 @@ async function notifyBlockOwnerAssignment(params: {
     }
   }
 
-  try {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        title,
-        body,
-        url: `/menu/projects/${projectId}?tab=blocks`,
-      }),
-    })
-  } catch (err) {
-    console.error('[projects] block assignment push error', err)
-  }
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: `/menu/projects/${projectId}?tab=blocks`,
+  })
 
   if (!userEmail) return
 
@@ -342,7 +341,6 @@ async function notifyTaskOwnerAssignment(params: {
     taskId,
     taskName,
     deadline,
-    baseUrl,
     senderEmail,
   } = params
   const title = "T'han assignat una tasca"
@@ -362,11 +360,11 @@ async function notifyTaskOwnerAssignment(params: {
     blockName,
     taskName,
   })
+  await incrementUserUnreadCount(userId, 'project_task_assignment', 1)
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (apiKey) {
+  if (hasAblyApiKey()) {
     try {
-      const rest = new Ably.Rest({ key: apiKey })
+      const rest = getAblyRest()
       await rest.channels.get(`user:${userId}:notifications`).publish('created', {
         type: 'project_task_assignment',
         projectId,
@@ -379,20 +377,11 @@ async function notifyTaskOwnerAssignment(params: {
     }
   }
 
-  try {
-    await fetch(`${baseUrl}/api/push/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        title,
-        body,
-        url: `/menu/projects/${projectId}?tab=tasks`,
-      }),
-    })
-  } catch (err) {
-    console.error('[projects] task assignment push error', err)
-  }
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: `/menu/projects/${projectId}?tab=tasks`,
+  })
 
   if (!userEmail) return
 
@@ -427,6 +416,59 @@ async function notifyTaskOwnerAssignment(params: {
   }
 }
 
+async function notifyTaskDependencyUnlocked(params: {
+  userId: string
+  projectId: string
+  blockId: string
+  taskId: string
+  projectName: string
+  blockName: string
+  taskName: string
+  dependencyTaskName: string
+}) {
+  const { userId, projectId, blockId, taskId, projectName, blockName, taskName, dependencyTaskName } = params
+  const title = 'Ja pots començar una tasca'
+  const body = `La dependència "${dependencyTaskName || 'tasca prèvia'}" ja està feta. Ja pots començar "${taskName || 'la teva tasca'}".`
+  const now = Date.now()
+
+  await db.collection('users').doc(userId).collection('notifications').add({
+    title,
+    body,
+    createdAt: now,
+    read: false,
+    type: 'project_task_dependency_unlocked',
+    projectId,
+    blockId,
+    taskId,
+    projectName,
+    blockName,
+    taskName,
+    dependencyTaskName,
+  })
+  await incrementUserUnreadCount(userId, 'project_task_dependency_unlocked', 1)
+
+  if (hasAblyApiKey()) {
+    try {
+      const rest = getAblyRest()
+      await rest.channels.get(`user:${userId}:notifications`).publish('created', {
+        type: 'project_task_dependency_unlocked',
+        projectId,
+        blockId,
+        taskId,
+        createdAt: now,
+      })
+    } catch (err) {
+      console.error('[projects] task dependency unlocked Ably publish error', err)
+    }
+  }
+
+  await sendPushToUsers([userId], {
+    title,
+    body,
+    url: `/menu/projects/${projectId}?tab=tasks`,
+  })
+}
+
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdmin()
   if ('error' in auth) return auth.error
@@ -438,7 +480,21 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ id: snap.id, ...(snap.data() as Record<string, unknown>) })
+    const data = snap.data() as Record<string, unknown>
+    const accessUser = {
+      id: auth.user.id,
+      name: auth.user.name,
+      role: auth.user.role,
+      department: auth.user.department,
+    }
+    if (
+      !userHasGlobalProjectListAccess(accessUser) &&
+      !userParticipatesInProject(accessUser, data)
+    ) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    return NextResponse.json({ id: snap.id, ...data })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })
@@ -509,15 +565,17 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
       })
     })
 
-    const userNotificationsRefs = (
-      await Promise.all(
-        (
-          await db.collection('users').get()
-        ).docs.map((userDoc) =>
-          userDoc.ref.collection('notifications').where('projectId', '==', id).get()
-        )
-      )
-    ).flatMap((snap) => snap.docs.map((doc) => doc.ref))
+    let userNotificationsRefs: Array<FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>> = []
+    try {
+      userNotificationsRefs = (
+        await db.collectionGroup('notifications').where('projectId', '==', id).get()
+      ).docs.map((doc) => doc.ref)
+    } catch (err) {
+      console.warn('[projects] notifications cleanup skipped while deleting project', {
+        projectId: id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
 
     await deleteDocsInChunks([
       ...messageReadRefs,
@@ -683,6 +741,48 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       blocks: (Array.isArray(payload.blocks) ? payload.blocks : currentData.blocks || []) as ProjectBlock[],
     })
 
+    const nextBlocksForValidation = (
+      Array.isArray(payload.blocks) ? payload.blocks : currentData.blocks || []
+    ) as ProjectBlock[]
+
+    if (Array.isArray(payload.blocks)) {
+      payload.blocks = applyDependencyLocksToBlocks(nextBlocksForValidation).map((block) => ({
+        ...block,
+        status: deriveBlockStatus(block),
+      }))
+    }
+
+    const lockedBlocksForValidation = (
+      Array.isArray(payload.blocks) ? payload.blocks : nextBlocksForValidation
+    ) as ProjectBlock[]
+    const currentTasksById = new Map(
+      (currentBlocks as ProjectBlock[]).flatMap((block) =>
+        (block.tasks || []).map((task) => [String(task.id || '').trim(), task] as const)
+      )
+    )
+
+    for (const block of lockedBlocksForValidation) {
+      for (const task of Array.isArray(block.tasks) ? block.tasks : []) {
+        const taskId = String(task?.id || '').trim()
+        if (!taskId) continue
+        const previousTask = currentTasksById.get(taskId)
+        const previousStatus = normalizeTaskWorkflowStatus(previousTask?.status)
+        const nextStatus = normalizeTaskWorkflowStatus(task?.status)
+
+        if (previousStatus !== nextStatus && !canChangeTaskStatus(task, nextStatus, lockedBlocksForValidation)) {
+          const dependency = getTaskDependencyMeta(lockedBlocksForValidation, task)
+          const taskName = String(task?.title || 'Tasca').trim()
+          const dependencyName = String(dependency?.dependencyTask.title || 'la tasca prèvia').trim()
+          return NextResponse.json(
+            {
+              error: `La tasca "${taskName}" no es pot moure fins que "${dependencyName}" estigui feta.`,
+            },
+            { status: 400 }
+          )
+        }
+      }
+    }
+
     const nextRooms = Array.isArray(payload.rooms)
       ? (payload.rooms as Record<string, unknown>[])
       : currentRooms
@@ -691,10 +791,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       : currentBlocks
     const nextRoomIds = new Set(nextRooms.map((room) => String(room.id || '')).filter(Boolean))
     const currentRoomIds = new Set(currentRooms.map((room) => String(room.id || '')).filter(Boolean))
-    const removedManualRooms = currentRooms.filter((room) => {
+    const removedRooms = currentRooms.filter((room) => {
       const roomId = String(room.id || '')
       if (!roomId || nextRoomIds.has(roomId)) return false
-      return String(room.kind || '') === 'manual'
+      const kind = String(room.kind || '')
+      return kind === 'manual' || kind === 'block'
     })
     const addedRooms = nextRooms.filter((room) => {
       const roomId = String(room.id || '')
@@ -796,9 +897,53 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         })
       })
 
+      const taskDependencyUnlockedNotifications = nextBlocks.flatMap((block) => {
+        const previousBlock = currentBlocksById.get(String(block.id || '').trim())
+        const previousTasksById = new Map(
+          (Array.isArray(previousBlock?.tasks) ? previousBlock.tasks : [])
+            .map((task) => [String(task?.id || '').trim(), task] as const)
+            .filter(([taskId]) => Boolean(taskId))
+        )
+
+        return (Array.isArray(block.tasks) ? block.tasks : []).flatMap((task) => {
+          const taskId = String(task?.id || '').trim()
+          if (!taskId) return []
+
+          const previousTask = previousTasksById.get(taskId)
+          const previousStatus = normalizeTaskWorkflowStatus(previousTask?.status)
+          const nextStatus = normalizeTaskWorkflowStatus(String(task?.status || ''))
+
+          if (previousStatus === 'done' || nextStatus !== 'done') return []
+
+          return nextBlocks.flatMap((dependentBlock) =>
+            (Array.isArray(dependentBlock.tasks) ? dependentBlock.tasks : []).map(async (dependentTask) => {
+              if (String(dependentTask?.dependsOn || '').trim() !== taskId) return null
+              if (normalizeTaskWorkflowStatus(String(dependentTask?.status || '')) === 'done') return null
+
+              const dependentOwner = String(dependentTask?.owner || '').trim()
+              if (!dependentOwner) return null
+
+              const assignedUser = await userResolver.findByName(dependentOwner)
+              if (!assignedUser?.id) return null
+
+              return notifyTaskDependencyUnlocked({
+                userId: assignedUser.id,
+                projectId: id,
+                blockId: String(dependentBlock.id || '').trim(),
+                taskId: String(dependentTask?.id || '').trim(),
+                projectName,
+                blockName: String(dependentBlock.name || '').trim() || 'Bloc',
+                taskName: String(dependentTask?.title || '').trim() || 'Tasca',
+                dependencyTaskName: String(task?.title || '').trim() || 'Tasca',
+              })
+            })
+          )
+        })
+      })
+
       await Promise.allSettled([
-        ...(removedManualRooms.length > 0
-          ? removedManualRooms.map((room) =>
+        ...(removedRooms.length > 0
+          ? removedRooms.map((room) =>
               archiveProjectRoomOpsChannel({
                 projectId: id,
                 roomId: String(room.id || ''),
@@ -833,6 +978,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           : []),
         ...blockAssignmentNotifications,
         ...taskAssignmentNotifications,
+        ...taskDependencyUnlockedNotifications,
+        syncProjectRoomsWithChangedParticipants({
+          projectId: id,
+          project: {
+            id,
+            name: projectName,
+            owner: String(payload.owner || currentData.owner || ''),
+            rooms: nextRooms as ProjectRoomLike[],
+            blocks: nextBlocks as ProjectBlockLike[],
+          },
+          currentRooms: currentRooms as ProjectRoomLike[],
+          nextRooms: nextRooms as ProjectRoomLike[],
+        }),
       ])
     })
 

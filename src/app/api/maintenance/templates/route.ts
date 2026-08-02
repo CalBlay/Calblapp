@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { resolveMaintenanceTemplateName } from '@/lib/maintenanceTemplateDisplay'
+import {
+  buildMaintenanceTemplateSitePayload,
+  normalizeMaintenanceTemplateSite,
+} from '@/lib/maintenanceTemplateSite'
 import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
 import {
   ROLES_MAINTENANCE_TEMPLATES_READ,
@@ -17,6 +21,21 @@ type TemplateDocument = TemplatePayload & {
   createdByName?: string
   updatedById?: string
   updatedByName?: string
+}
+
+function normalizeTemplateDocument(docId: string, data: TemplateDocument) {
+  const sections = normalizeSections(data.sections)
+  const site = normalizeMaintenanceTemplateSite(data)
+
+  return {
+    id: docId,
+    ...data,
+    center: site.center,
+    location: site.location,
+    zone: site.zone,
+    name: resolveMaintenanceTemplateName(data as Record<string, unknown>, docId, sections),
+    sections,
+  }
 }
 
 const normalizeSections = (sections: unknown): TemplateSection[] =>
@@ -48,16 +67,7 @@ export async function GET() {
   try {
     const snap = await db.collection('maintenancePreventiusTemplates').get()
     const templates = snap.docs
-      .map((doc) => {
-        const data = doc.data() as TemplateDocument
-        const sections = normalizeSections(data.sections)
-        return {
-          id: doc.id,
-          ...data,
-          name: resolveMaintenanceTemplateName(data as Record<string, unknown>, doc.id, sections),
-          sections,
-        }
-      })
+      .map((doc) => normalizeTemplateDocument(doc.id, doc.data() as TemplateDocument))
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
     return NextResponse.json({ templates })
   } catch (err: unknown) {
@@ -69,9 +79,11 @@ export async function GET() {
 type TemplateSection = { location: string; items: { label: string }[] }
 type TemplatePayload = {
   name: string
-  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'
+  periodicity?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'semestral' | 'yearly'
   lastDone?: string | null
+  center?: string
   location?: string
+  zone?: string
   primaryOperator?: string
   backupOperator?: string
   active?: boolean
@@ -94,11 +106,12 @@ export async function POST(req: Request) {
 
     const now = Date.now()
     const sections = normalizeSections(body.sections)
+    const site = buildMaintenanceTemplateSitePayload(body)
     const doc = await db.collection('maintenancePreventiusTemplates').add({
       name,
       periodicity: body.periodicity || null,
       lastDone: body.lastDone || null,
-      location: (body.location || '').trim(),
+      ...site,
       primaryOperator: (body.primaryOperator || '').trim(),
       backupOperator: (body.backupOperator || '').trim(),
       active: body.active !== false,

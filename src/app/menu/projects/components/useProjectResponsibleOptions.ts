@@ -81,7 +81,7 @@ export function useProjectResponsibleOptions({
 
     const filtered = responsibles.filter(
       (user) =>
-        user.role === 'cap' &&
+        (user.role === 'cap' || user.role === 'direccio') &&
         normalizedDepartments.includes(normalizeDepartment(user.department || ''))
     )
 

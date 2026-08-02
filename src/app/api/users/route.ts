@@ -4,6 +4,11 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
 import { normalizeRole } from '@/lib/roles'
+import { requireAuth, requireRoles } from '@/lib/server/apiAuth'
+import { saveUserAccessAssignment } from '@/lib/server/userAccessAssignment'
+import { preparePasswordForStorage } from '@/lib/server/passwords'
+import { serializeAdminUserResponse } from '@/lib/server/userApiSerialization'
+import type { UserAccessAssignmentInput } from '@/lib/permissions/types'
 
 // ──────────────────────────────────────────────────────────────
 // Helpers
@@ -71,6 +76,7 @@ interface UserPayload {
   opsProjectsConfigurable?: boolean
   opsChannelsConfigurable?: string[]
   canRespondSurveys?: boolean
+  isDepartmentRobaLead?: boolean
   isTransportLead?: boolean
   available?: boolean
   isDriver?: boolean
@@ -88,26 +94,44 @@ type PersonnelDoc = {
 // ──────────────────────────────────────────────────────────────
 export async function GET(req: Request) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const { searchParams } = new URL(req.url)
     const view = searchParams.get('view')
+    const isRestrictedView = view === 'project-options' || view === 'commercial-options'
+
+    if (!isRestrictedView) {
+      const denied = requireRoles(auth, ['admin'])
+      if (denied) return denied.res
+    }
+
     const snap = await db.collection('users').get()
     const users = snap.docs.map((d) => {
       const data = d.data() as Record<string, unknown>
+      const role = canonicalRoleLabel(String(data.role || ''), Boolean(data.isAdmin))
+      const department = canonicalDepartmentLabel(String(data.department || ''))
+
       if (view === 'project-options') {
         return {
           id: d.id,
           name: String(data.name || ''),
-          role: canonicalRoleLabel(String(data.role || ''), Boolean(data.isAdmin)),
+          role,
           email: String(data.email || ''),
-          department: canonicalDepartmentLabel(String(data.department || '')),
+          department,
         }
       }
-      return {
-        id: d.id,
-        ...data,
-        role: canonicalRoleLabel(String(data.role || ''), Boolean(data.isAdmin)),
-        department: canonicalDepartmentLabel(String(data.department || '')),
+
+      if (view === 'commercial-options') {
+        return {
+          id: d.id,
+          name: String(data.name || ''),
+          role,
+          department,
+        }
       }
+
+      return serializeAdminUserResponse(d.id, data, { role, department })
     })
     return NextResponse.json(users)
   } catch (error: unknown) {
@@ -122,6 +146,11 @@ export async function GET(req: Request) {
 // ──────────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+    const denied = requireRoles(auth, ['admin'])
+    if (denied) return denied.res
+
     const body = (await req.json()) as {
       id?: string
       name?: string
@@ -141,6 +170,8 @@ export async function POST(req: Request) {
       available?: boolean
       isDriver?: boolean
       workerRank?: string
+      isDepartmentRobaLead?: boolean
+      accessAssignment?: UserAccessAssignmentInput
     }
 
     const {
@@ -162,6 +193,8 @@ export async function POST(req: Request) {
       available,
       isDriver,
       workerRank,
+      isDepartmentRobaLead = false,
+      accessAssignment,
     } = body
 
     if (requiresCorporateEmail(role, isAdmin) && !email.trim()) {
@@ -171,11 +204,16 @@ export async function POST(req: Request) {
       )
     }
 
+    const passwordTrimmed = password.toString().trim()
+    if (!id && !passwordTrimmed) {
+      return NextResponse.json({ error: 'Contrasenya obligatòria per a usuaris nous' }, { status: 400 })
+    }
+
     // 🔹 Construir payload base
     let userPayload: UserPayload = {
       name: name.trim(),
       nameFold: normLower(name),
-      password: password.toString(),
+      password: '',
       role: role.trim(),
       isAdmin: Boolean(isAdmin || normalizeRole(role) === 'admin'),
       department: department.trim(),
@@ -191,6 +229,7 @@ export async function POST(req: Request) {
         ? opsChannelsConfigurable.map(String).filter(Boolean)
         : [],
       canRespondSurveys: Boolean(canRespondSurveys),
+      isDepartmentRobaLead: Boolean(isDepartmentRobaLead),
       isTransportLead:
         isCapDepartament(role) && normLower(department) === 'logistica'
           ? Boolean(isTransportLead)
@@ -201,6 +240,12 @@ export async function POST(req: Request) {
         isTreballador(role) || isCapDepartament(role) ? (workerRank || 'equip') : undefined,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+    }
+
+    if (passwordTrimmed) {
+      userPayload.password = (await preparePasswordForStorage(passwordTrimmed)) || ''
+    } else {
+      delete (userPayload as Partial<UserPayload>).password
     }
 
     // ✅ Eliminar valors undefined del payload
@@ -248,8 +293,20 @@ export async function POST(req: Request) {
       else await personRef.set(person, { merge: true })
     }
 
-    // 🔹 Retornar resultat
-    return NextResponse.json({ id: userId, ...userPayload }, { status: 201 })
+    if (accessAssignment && !id) {
+      await saveUserAccessAssignment({
+        userId,
+        role: userPayload.role,
+        department: userPayload.department,
+        overrides: accessAssignment.overrides ?? [],
+        updatedBy: auth.user.id,
+      })
+    }
+
+    // 🔹 Retornar resultat (mai exposar password)
+    return NextResponse.json(serializeAdminUserResponse(userId, userPayload as unknown as Record<string, unknown>), {
+      status: 201,
+    })
   } catch (error: unknown) {
     console.error('🛑 POST /api/users failed:', error)
     const message = error instanceof Error ? error.message : String(error)

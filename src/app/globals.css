@@ -8,6 +8,19 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* Tipografia global: +1px per escala respecte Tailwind per defecte */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.375rem;
+  --text-base: 1.0625rem;
+  --text-base--line-height: 1.625rem;
+  --text-lg: 1.1875rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.3125rem;
+  --text-xl--line-height: 1.875rem;
+  --text-2xl: 1.5625rem;
+  --text-2xl--line-height: 2rem;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -146,9 +159,9 @@ body {
 
 @layer components {
   .cmd-app {
-    --cmd-surface: #f6f8fc;
+    --cmd-surface: #f3f0fa;
     --cmd-panel: #ffffff;
-    --cmd-border: #d9e3f2;
+    --cmd-border: #ddd6f5;
     --cmd-text: #1e2a44;
     --cmd-muted: #6e7b91;
     --cmd-service: #e8f1ff;

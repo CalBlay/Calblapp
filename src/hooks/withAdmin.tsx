@@ -77,13 +77,7 @@ export function withRobaPersonalAccess<P extends object>(Component: React.Compon
     const isDeptRobaLead = Boolean(
       (session?.user as { isDepartmentRobaLead?: boolean } | undefined)?.isDepartmentRobaLead
     )
-    const robaLinked = Boolean(
-      String(
-        (session?.user as { robaLinkedPersonnelId?: string | null } | undefined)
-          ?.robaLinkedPersonnelId || ''
-      ).trim()
-    )
-    const legacyOk = roleNorm === 'admin' || deptNorm === RRHH || isDeptRobaLead || robaLinked
+    const legacyOk = roleNorm === 'admin' || deptNorm === RRHH || isDeptRobaLead
     const { uiMap, ready: permsReady } = useUiPermissions()
     const ok = permsReady ? uiMap['/menu/roba-personal'] === true : legacyOk
 

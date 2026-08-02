@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
-import Ably from 'ably'
+import { authOptions } from '@/lib/server/authOptions'
+import { normalizeRole } from '@/lib/roles'
+import { type capabilityOp } from 'ably'
+import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -13,8 +15,7 @@ export async function POST() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const apiKey = process.env.ABLY_API_KEY
-  if (!apiKey) {
+  if (!hasAblyApiKey()) {
     return NextResponse.json(
       { error: 'Missing ABLY_API_KEY' },
       { status: 500 }
@@ -22,13 +23,22 @@ export async function POST() {
   }
 
   const clientId = String(session.user.id)
+  const role = normalizeRole(session.user.role)
 
-  const rest = new Ably.Rest({ key: apiKey })
+  const capability: Record<string, capabilityOp[]> = {
+    [`user:${clientId}:notifications`]: ['subscribe', 'history'],
+    [`user:${clientId}:inbox`]: ['subscribe', 'history'],
+    [`user:${clientId}:direct`]: ['subscribe', 'history'],
+    'chat:*': ['subscribe', 'publish', 'presence'],
+  }
+  if (role === 'admin') {
+    capability['admin:user-requests'] = ['subscribe', 'history']
+  }
+
+  const rest = getAblyRest()
   const tokenRequest = await rest.auth.createTokenRequest({
     clientId,
-    capability: {
-      '*': ['publish', 'subscribe', 'history', 'presence'],
-    },
+    capability,
   })
 
   return NextResponse.json(tokenRequest)

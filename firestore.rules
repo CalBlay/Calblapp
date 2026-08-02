@@ -10,6 +10,10 @@ service cloud.firestore {
      * Aquest fitxer denega tot accés des del SDK client; no afecta l'Admin SDK
      * de la vostra API Next.js. Tot i així, no desplegueu aquestes regles a
      * producció sense substituir-les per les regles correctes.
+     *
+     * AUDIT (2026): alguns components (`firebaseClient`) escriuen des del navegador
+     * (allergens, logística). Reviseu les regles de PRODUCCIÓ al Console: si són
+     * permissives, cal migrar escriptures a API autenticades.
      */
     match /{document=**} {
       allow read, write: if false;

@@ -14,18 +14,26 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import type { Deal } from '@/hooks/useCalendarData'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Mail } from 'lucide-react'
 import SearchFincaInput from '@/components/shared/SearchFincaInput'
 import SearchServeiInput from '@/components/shared/SearchServeiInput'
 import AttachFileButton from '@/components/calendar/AttachFileButton'
+import CalendarSendDocumentsDialog from '@/components/calendar/CalendarSendDocumentsDialog'
+import { displayCalendarFileName } from '@/lib/calendar/calendarFiles'
 import { useUiPermissions } from '@/hooks/useUiPermissions'
 import { PERM } from '@/lib/permissionKeys'
+import { CALENDAR_PERM } from '@/lib/calendar/calendarPermissions'
 
 interface Props {
   deal: Deal
-  trigger: React.ReactNode
+  trigger?: React.ReactNode
   onSaved?: () => void
   readonly?: boolean
+  embedded?: boolean
+  onEmbeddedClose?: () => void
+  onRequestPanel?: (deal: Deal) => void
+  onBack?: () => void
+  backLabel?: string
 }
 
 type ComercialCandidate = {
@@ -78,6 +86,21 @@ const normalizeDept = (value?: string | null) => {
   return base
 }
 
+function bindTriggerClick(
+  trigger: React.ReactNode,
+  onTrigger: (e: React.MouseEvent) => void
+) {
+  if (!React.isValidElement(trigger)) return trigger
+  const child = trigger as React.ReactElement<{ onClick?: (e: React.MouseEvent) => void }>
+  const prevOnClick = child.props.onClick
+  return React.cloneElement(child, {
+    onClick: (e: React.MouseEvent) => {
+      prevOnClick?.(e)
+      onTrigger(e)
+    },
+  })
+}
+
 const normalizeDeptForLnBucket = (value?: string | null) => {
   const base = normalizeDept(value)
   if (!base) return ''
@@ -94,13 +117,42 @@ const normalizeDeptForLnBucket = (value?: string | null) => {
  * - Llista enllaços guardats i permet obrir-los / eliminar-los
  * - Manté l’edició de camps bàsics si l’esdeveniment és Confirmat o manual
  */
-export default function CalendarModal({ deal, trigger, onSaved, readonly }: Props) {
-  console.log('🧩 Dades rebudes al modal:', deal)
-
+export default function CalendarModal({
+  deal,
+  trigger,
+  onSaved,
+  readonly,
+  embedded = false,
+  onEmbeddedClose,
+  onRequestPanel,
+  onBack,
+  backLabel = 'Tornar',
+}: Props) {
   const dealRecord = deal as CalendarDealRecord
   const { data: session } = useSession()
   const { uiEdit, uiActions, ready: permsReady } = useUiPermissions()
   const [open, setOpen] = useState(false)
+  const [preferPanel, setPreferPanel] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      Boolean(onRequestPanel) &&
+      window.innerWidth >= 1024
+  )
+
+  useEffect(() => {
+    if (!onRequestPanel) {
+      setPreferPanel(false)
+      return
+    }
+    const update = () => setPreferPanel(window.innerWidth >= 1024)
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [onRequestPanel])
+
+  useEffect(() => {
+    if (preferPanel && open) setOpen(false)
+  }, [preferPanel, open])
   const [comercialPool, setComercialPool] = useState<ComercialCandidate[]>([])
   const [comercialLoading, setComercialLoading] = useState(false)
   const [codeDirty, setCodeDirty] = useState(false)
@@ -144,6 +196,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
   const [files, setFiles] = useState<
     Array<{ key: string; url: string; name?: string; source?: string }>
   >([])
+  const [sendDocumentsOpen, setSendDocumentsOpen] = useState(false)
   const [multiDay, setMultiDay] = useState(false)
 
   // Només editable si és Confirmat o manual (respectant readonly si ve informat)
@@ -220,12 +273,36 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     return aliases.includes(eventCommercial)
   }, [editData.Comercial, isComercialRole, sessionCommercialName, sessionName])
   const canEditCode =
-    !readonly && (isZohoVerd || isManual) && (isAdmin || isProduccio || isOwnCommercialEvent)
+    !readonly &&
+    (isZohoVerd || isManual) &&
+    canUpdate
   const canEditComercialIntern =
     !readonly && (isZohoVerd || isManual) && (isAdmin || isCapProduccio)
   const canManageDocuments = !readonly && canAttach && (canEdit || isOwnCommercialEvent)
+  const canSendEmail = useMemo(() => {
+    if (!permsReady) return canManageDocuments
+    return uiActions[CALENDAR_PERM.sendDocuments] === true
+  }, [permsReady, uiActions, canManageDocuments])
+  const canManageMailGroups = useMemo(() => {
+    if (!permsReady) return false
+    return uiActions[CALENDAR_PERM.manageMailGroups] === true
+  }, [permsReady, uiActions])
+  const canSendDocuments = canSendEmail && files.length > 0
   const canSave = (canEdit || canEditCode || canEditComercialIntern) && canUpdate
   const canDeleteEvent = canEdit && canDeleteManual && !isProductionOperationalWorker
+
+  const emailRecipientCandidates = useMemo(() => {
+    const items = [
+      { key: 'comercial', role: 'Comercial', name: String(editData.Comercial || '').trim() },
+      {
+        key: 'comercial-intern',
+        role: 'Comercial intern',
+        name: String(editData.ComercialIntern || '').trim(),
+      },
+      { key: 'responsable', role: 'Responsable', name: String(editData.Responsable || '').trim() },
+    ]
+    return items.filter((item) => item.name)
+  }, [editData.Comercial, editData.ComercialIntern, editData.Responsable])
 
   const allowedDepartments = useMemo(() => {
     const bucket = normalizeDeptForLnBucket(editData.LN)
@@ -251,15 +328,17 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     return exists ? filteredComercialOptions : [current, ...filteredComercialOptions]
   }, [filteredComercialOptions, editData.Comercial])
 
+  const isActive = embedded || open
+
   useEffect(() => {
-    if (!open) return
+    if (!isActive) return
     if (comercialPool.length > 0) return
 
     let active = true
     const load = async () => {
       try {
         setComercialLoading(true)
-        const res = await fetch('/api/users')
+        const res = await fetch('/api/users?view=commercial-options')
         const data = await res.json()
         if (!Array.isArray(data)) return
 
@@ -298,7 +377,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     return () => {
       active = false
     }
-  }, [open, comercialPool.length])
+  }, [isActive, comercialPool.length])
 
   // Col·lecció: sempre guardem a stage_verd (segons decisió)
   const COLLECTION = 'stage_verd' as const
@@ -546,7 +625,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
       )
       if (!res.ok) throw new Error('Error eliminant')
       alert('🗑️ Esdeveniment eliminat correctament')
-      setOpen(false)
+      handleClose()
       document.dispatchEvent(new CustomEvent('calendar:reload'))
       onSaved?.()
     } catch (err) {
@@ -563,44 +642,28 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
     alert('🔁 Canvis restaurats')
   }
 
-  return (
-    <Dialog modal={false} open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        asChild
-        onClick={(e) => {
-          e.stopPropagation()
-          setOpen(true)
-        }}
-      >
-        {trigger}
-      </DialogTrigger>
+  const handleClose = () => {
+    if (embedded) onEmbeddedClose?.()
+    else setOpen(false)
+  }
 
-      <DialogContent
-        className="
-          w-full
-          max-w-lg
+  const handleTriggerClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const usePanel =
+      Boolean(onRequestPanel) &&
+      typeof window !== 'undefined' &&
+      window.innerWidth >= 1024
+    if (usePanel && onRequestPanel) {
+      onRequestPanel(deal)
+      return
+    }
+    setOpen(true)
+  }
 
-          /* 📱 Mòbil: modal fullscreen vertical */
-          h-[92dvh]
-          max-h-[92dvh]
-          overflow-y-auto
-          rounded-none
-          pt-10
+  const title = editData.NomEvent || 'Esdeveniment'
 
-          /* 🖥 Desktop: modal centrat */
-          sm:rounded-lg
-          sm:h-auto
-          sm:max-h-[85vh]
-          sm:pt-6
-        "
-        onClick={(e) => e.stopPropagation()}
-      >
-        <DialogHeader>
-          <DialogTitle className="text-base font-semibold">
-            {editData.NomEvent || 'Esdeveniment'}
-          </DialogTitle>
-        </DialogHeader>
-
+  const body = (
         <div className="space-y-3 text-sm text-gray-700">
         
 
@@ -888,8 +951,10 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
                   docId={deal.id}
                   existingKeys={files.map((f) => f.key)}
                   onAdded={(att) => {
-                    // afegeix utilitzant la clau retornada pel boto
-                    setFiles((prev) => [...prev, { key: att.key, url: att.url }])
+                    setFiles((prev) => [
+                      ...prev,
+                      { key: att.key, url: att.url, name: att.name },
+                    ])
                   }}
                 />
               </div>
@@ -904,7 +969,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
               </p>
             ) : (
               <ul className="space-y-1">
-                {files.map(({ key, url }) => (
+                {files.map(({ key, url, name }) => (
                   <li
                     key={`${key}-${url}`}
                     className="flex items-center justify-between text-sm bg-white px-2 py-1 rounded-md shadow-sm hover:bg-gray-100"
@@ -916,8 +981,7 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
                       className="text-blue-600 hover:underline flex-1 break-all flex items-center gap-1"
                     >
                       <ExternalLink className="w-4 h-4 shrink-0" />
-                      {files.find((f) => f.key === key)?.name ||
-                        decodeURIComponent(url.split('/').pop() || url)}
+                      {displayCalendarFileName({ key, url, name })}
                     </a>
 
                     {canManageDocuments &&
@@ -936,10 +1000,23 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
               </ul>
             )}
           </div>
-        </div>
 
-        {/* Botons d’acció */}
-        <DialogFooter className="mt-4 flex flex-col gap-2">
+          {canSendDocuments && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setSendDocumentsOpen(true)}
+            >
+              <Mail className="mr-2 h-4 w-4" />
+              Enviar documents per correu
+            </Button>
+          )}
+        </div>
+  )
+
+  const footer = (
+        <div className="flex flex-col gap-2">
           {canSave && (
             <>
               <Button onClick={handleSave} className="w-full">
@@ -963,18 +1040,97 @@ export default function CalendarModal({ deal, trigger, onSaved, readonly }: Prop
           )}
 
           {!canSave && (
-            <Button variant="outline" className="w-full" onClick={() => setOpen(false)}>
+            <Button variant="outline" className="w-full" onClick={handleClose}>
               Tancar
             </Button>
           )}
+        </div>
+  )
+
+  const sendDocumentsDialog = (
+    <CalendarSendDocumentsDialog
+      open={sendDocumentsOpen}
+      onOpenChange={setSendDocumentsOpen}
+      eventId={deal.id}
+      collection={COLLECTION}
+      eventTitle={editData.NomEvent}
+      eventCode={editData.code}
+      files={files}
+      recipientCandidates={emailRecipientCandidates}
+      eventLN={editData.LN}
+      canManageMailGroups={canManageMailGroups}
+    />
+  )
+
+  if (embedded) {
+    return (
+      <>
+        {sendDocumentsDialog}
+      <div className="flex h-full min-h-0 w-full flex-col bg-white">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3">
+          <div className="min-w-0">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="mb-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+              >
+                ← {backLabel}
+              </button>
+            )}
+            <h2 className="truncate text-base font-semibold">{title}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="shrink-0 rounded-full p-1.5 text-gray-500 hover:bg-gray-100"
+            aria-label="Tancar detall"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">{body}</div>
+        <div className="shrink-0 border-t px-4 py-3">{footer}</div>
+      </div>
+      </>
+    )
+  }
+
+  if (preferPanel && onRequestPanel && trigger) {
+    return bindTriggerClick(trigger, handleTriggerClick)
+  }
+
+  return (
+    <>
+      {sendDocumentsDialog}
+
+      <Dialog modal={false} open={open} onOpenChange={setOpen}>
+      {trigger ? (
+        <DialogTrigger asChild>
+          {bindTriggerClick(trigger, handleTriggerClick)}
+        </DialogTrigger>
+      ) : null}
+
+      <DialogContent
+        className="flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-auto sm:max-h-[85vh] sm:w-full sm:max-w-lg sm:rounded-lg sm:border sm:p-6 sm:pt-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DialogHeader className="shrink-0 border-b px-4 py-3 sm:border-b-0 sm:px-0 sm:py-0">
+          <DialogTitle className="text-base font-semibold">{title}</DialogTitle>
+        </DialogHeader>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 sm:px-0 sm:py-0">
+          {body}
+        </div>
+
+        <DialogFooter className="shrink-0 border-t px-4 py-3 sm:border-t-0 sm:px-0 sm:py-0">
+          {footer}
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   )
 }
-
-
-
 
 
 

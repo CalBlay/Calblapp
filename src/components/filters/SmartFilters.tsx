@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, CalendarDays } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '../ui/calendar' // 🔹 Ruta relativa (no '@/') segons la teva config actual
 import {
@@ -33,6 +33,8 @@ import {
   SelectItem,
   SelectValue
 } from '@/components/ui/select'
+import { corporateFilterChipClass, corporateFilterFieldClass } from '@/lib/corporate-filters'
+import { cn } from '@/lib/utils'
 
 /* ==================== Tipus ==================== */
 type Mode = 'week' | 'month' | 'year' | 'day' | 'range'
@@ -102,6 +104,25 @@ const unaccent = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '
 const normDept = (s?: string) => unaccent((s || '').toLowerCase().trim())
 const normStr = (s?: string) => unaccent(String(s ?? '').toLowerCase().trim())
 
+const inferModeFromRange = (startStr: string, endStr: string, fallback: Mode): Mode => {
+  const start = parseISO(startStr)
+  const end = parseISO(endStr)
+
+  if (!isValid(start) || !isValid(end)) return fallback
+  if (startStr === endStr) return 'day'
+
+  if (toIso(startOfYear(start)) === startStr && toIso(endOfYear(start)) === endStr) return 'year'
+  if (toIso(startOfMonth(start)) === startStr && toIso(endOfMonth(start)) === endStr) return 'month'
+  if (
+    toIso(startOfWeek(start, { weekStartsOn: 1 })) === startStr &&
+    toIso(endOfWeek(start, { weekStartsOn: 1 })) === endStr
+  ) {
+    return 'week'
+  }
+
+  return 'range'
+}
+
 const DEPT_LABELS: Record<string, string> = {
   logistica: 'Logística',
   serveis: 'Serveis',
@@ -152,61 +173,41 @@ export default function SmartFilters({
   const allowWorker = showWorker && (isCap || isAdminOrDireccio)
 
   /* ---------- State ---------- */
-  const [mode, setMode] = useState<Mode>(modeDefault)
-  const [anchor, setAnchor] = useState<Date>(new Date())
-  const [dayStr, setDayStr] = useState<string>(toIso(new Date()))
-  const [rangeStartStr, setRangeStartStr] = useState<string>('')
-  const [rangeEndStr, setRangeEndStr] = useState<string>('')
-// 🔹 Inicialitza automàticament el mode i les dates si venen donades per props
-const didInitRef = useRef(false)
+  const [mode, setMode] = useState<Mode>(() =>
+    initialStart && initialEnd
+      ? inferModeFromRange(initialStart, initialEnd, modeDefault)
+      : modeDefault
+  )
+  const [anchor, setAnchor] = useState<Date>(() => {
+    if (initialStart) {
+      const parsed = parseISO(initialStart)
+      if (isValid(parsed)) return parsed
+    }
+    return new Date()
+  })
+  const [dayStr, setDayStr] = useState<string>(() =>
+    initialStart && isValid(parseISO(initialStart)) ? initialStart : toIso(new Date())
+  )
+  const [rangeStartStr, setRangeStartStr] = useState<string>(() => initialStart || '')
+  const [rangeEndStr, setRangeEndStr] = useState<string>(() => initialEnd || '')
+// 🔹 Sincronitza mode i dates quan venen controlades des de fora
+const lastExternalSyncRef = useRef<string>('')
 useEffect(() => {
-  if (didInitRef.current) return
-  if (initialStart && initialEnd) {
-    const parsedStart = parseISO(initialStart)
+  if (!initialStart || !initialEnd) return
 
-    if (modeDefault === 'week') {
-      setMode('week')
-      setAnchor(parsedStart)
-      setDayStr(initialStart)
-      setRangeStartStr(initialStart)
-      setRangeEndStr(initialEnd)
-      didInitRef.current = true
-      return
-    }
+  const syncKey = `${modeDefault}|${initialStart}|${initialEnd}`
+  if (lastExternalSyncRef.current === syncKey) return
+  lastExternalSyncRef.current = syncKey
 
-    if (modeDefault === 'month') {
-      setMode('month')
-      setAnchor(parsedStart)
-      setDayStr(initialStart)
-      setRangeStartStr(initialStart)
-      setRangeEndStr(initialEnd)
-      didInitRef.current = true
-      return
-    }
+  const parsedStart = parseISO(initialStart)
+  if (!isValid(parsedStart)) return
 
-    if (modeDefault === 'year') {
-      setMode('year')
-      setAnchor(parsedStart)
-      setDayStr(initialStart)
-      setRangeStartStr(initialStart)
-      setRangeEndStr(initialEnd)
-      didInitRef.current = true
-      return
-    }
+  setAnchor(parsedStart)
+  setDayStr(initialStart)
+  setRangeStartStr(initialStart)
+  setRangeEndStr(initialEnd)
 
-    if (initialStart === initialEnd) {
-      setMode('day')
-      setDayStr(initialStart)
-      setAnchor(parsedStart)
-      didInitRef.current = true
-      return
-    }
-
-    setMode('range')
-    setRangeStartStr(initialStart)
-    setRangeEndStr(initialEnd)
-    didInitRef.current = true
-  }
+  setMode(inferModeFromRange(initialStart, initialEnd, modeDefault))
 }, [initialStart, initialEnd, modeDefault])
 
 
@@ -302,6 +303,13 @@ useEffect(() => {
     [monthStart]
   )
   const yearLabel = useMemo(() => format(yearStart, 'yyyy', { locale: es }), [yearStart])
+  const yearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear()
+    const anchorYear = anchor.getFullYear()
+    const minYear = Math.min(currentYear, anchorYear) - 5
+    const maxYear = Math.max(currentYear, anchorYear) + 5
+    return Array.from({ length: maxYear - minYear + 1 }, (_, index) => String(minYear + index))
+  }, [anchor])
   const headerLabel = useMemo(() => {
     if (mode === 'week') return weekLabel
     if (mode === 'month') return monthLabel
@@ -440,11 +448,11 @@ if (key !== lastPayloadRef.current) {
   }, [resetSignal, modeDefault])
 
   const containerClass = compact
-    ? 'inline-flex flex-row flex-wrap items-center gap-2'
+    ? 'flex w-full min-w-0 items-center gap-2'
     : 'flex flex-col md:flex-row md:flex-wrap gap-2 w-full'
 
   const dateBarClass = compact
-    ? 'flex items-center gap-2 flex-shrink-0 whitespace-nowrap'
+    ? 'flex min-w-0 flex-1 items-center gap-2 overflow-hidden'
     : 'flex items-center gap-2 flex-shrink-0 py-1.5 px-1.5 whitespace-nowrap'
 
   /* ==================== RENDER ==================== */
@@ -457,25 +465,31 @@ if (key !== lastPayloadRef.current) {
 
 {/* 🔹 Navegació compacta amb fletxes (mostra en Setmana i Dia, amaga en Rang) */}
 {mode !== 'range' && (
-  <div className="flex items-center gap-1 shrink-0">
+  <div className={cn('flex items-center gap-1 shrink-0', compact && 'rounded-2xl border border-slate-200 bg-slate-50/80 p-1')}>
     <Button
       size="icon"
       variant="ghost"
       onClick={prev}
-      className="h-7 w-7 text-gray-600"
+      className={cn('text-gray-600', compact ? 'h-8 w-8 rounded-xl' : 'h-7 w-7')}
     >
       ◀
     </Button>
 
     {mode === 'week' && (
-      <span className="text-[13px] font-medium whitespace-nowrap px-0.5">
+      <span className={cn('px-0.5 text-sm font-semibold text-slate-800', compact ? 'max-w-[132px] truncate' : 'whitespace-nowrap')}>
         {weekLabel.replace(/ 20\d{2}/g, '')}
       </span>
     )}
 
     {mode === 'month' && (
-      <span className="text-[13px] font-medium whitespace-nowrap px-0.5">
+      <span className={cn('px-0.5 text-sm font-semibold text-slate-800', compact ? 'max-w-[132px] truncate' : 'whitespace-nowrap')}>
         {monthLabel}
+      </span>
+    )}
+
+    {mode === 'year' && (
+      <span className={cn('px-0.5 text-sm font-semibold text-slate-800', compact ? 'max-w-[132px] truncate' : 'whitespace-nowrap')}>
+        {yearLabel}
       </span>
     )}
 
@@ -483,7 +497,7 @@ if (key !== lastPayloadRef.current) {
       size="icon"
       variant="ghost"
       onClick={next}
-      className="h-7 w-7 text-gray-600"
+      className={cn('text-gray-600', compact ? 'h-8 w-8 rounded-xl' : 'h-7 w-7')}
     >
       ▶
     </Button>
@@ -492,7 +506,7 @@ if (key !== lastPayloadRef.current) {
 
 
   {/* 🗓️ Zona del label i inputs */}
-  <div className="flex items-center gap-2 shrink-0">
+  <div className={cn('flex items-center gap-2 shrink-0', compact && 'min-w-0')}>
    
 {mode === 'day' && (
   <Popover open={openDay} onOpenChange={setOpenDay}>
@@ -500,7 +514,7 @@ if (key !== lastPayloadRef.current) {
       <Button
         variant="outline"
         size="sm"
-        className="h-9 text-sm whitespace-nowrap"
+        className={cn(corporateFilterChipClass, compact ? 'max-w-[148px] truncate rounded-2xl border-slate-200 bg-white px-4' : 'whitespace-nowrap')}
         onClick={() => setOpenDay(true)}
       >
         {format(parseISO(dayStr), 'd MMM yyyy', { locale: es })}
@@ -545,13 +559,13 @@ if (key !== lastPayloadRef.current) {
   </Popover>
 )}
 
-    {mode === 'range' && (
+{mode === 'range' && (
   <Popover open={openRange} onOpenChange={setOpenRange}>
     <PopoverTrigger asChild>
       <Button
         variant="outline"
         size="sm"
-        className="h-9 text-sm whitespace-nowrap"
+        className={cn(corporateFilterChipClass, compact ? 'max-w-[168px] truncate rounded-2xl border-slate-200 bg-white px-4' : 'whitespace-nowrap')}
         onClick={() => setOpenRange(true)}
       >
         {rangeStartStr && rangeEndStr
@@ -606,6 +620,28 @@ if (key !== lastPayloadRef.current) {
   </Popover>
 )}
 
+{mode === 'year' && (
+  <Select
+    value={yearLabel}
+    onValueChange={(value) => {
+      const nextYear = Number(value)
+      if (!Number.isFinite(nextYear)) return
+      setAnchor(new Date(nextYear, anchor.getMonth(), anchor.getDate()))
+    }}
+  >
+    <SelectTrigger className={cn(corporateFilterChipClass, compact ? 'min-w-[92px] rounded-2xl border-slate-200 bg-white whitespace-nowrap' : 'min-w-[92px] whitespace-nowrap')}>
+      <SelectValue placeholder="Any" />
+    </SelectTrigger>
+    <SelectContent>
+      {yearOptions.map((option) => (
+        <SelectItem key={option} value={option}>
+          {option}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+)}
+
   </div>
 
   {/* 🔘 Botó únic amb Popover horitzontal per seleccionar Setmana / Dia / Rang */}
@@ -615,10 +651,25 @@ if (key !== lastPayloadRef.current) {
     <Button
       variant="outline"
       size="sm"
-      className="h-9 px-4 rounded-lg border bg-white text-gray-900 flex items-center gap-1"
+      className={cn(
+        corporateFilterChipClass,
+        compact
+          ? 'h-11 w-11 min-w-0 justify-center rounded-2xl border-slate-200 bg-white px-0'
+          : 'flex items-center gap-1 px-4'
+      )}
+      aria-label={`Mode de dates: ${mode === 'week' ? 'Setmana' : mode === 'month' ? 'Mes' : mode === 'year' ? 'Any' : mode === 'day' ? 'Dia' : 'Rang'}`}
     >
-      {mode === 'week' ? 'Setmana' : mode === 'month' ? 'Mes' : mode === 'year' ? 'Any' : mode === 'day' ? 'Dia' : 'Rang'}
-      <span className="text-gray-500 text-xs">▼</span>
+      {compact ? (
+        <span className="flex items-center gap-1.5 text-slate-600">
+          <CalendarDays className="h-4 w-4" />
+          <span className="text-[10px]">▼</span>
+        </span>
+      ) : (
+        <>
+          {mode === 'week' ? 'Setmana' : mode === 'month' ? 'Mes' : mode === 'year' ? 'Any' : mode === 'day' ? 'Dia' : 'Rang'}
+          <span className="text-gray-500 text-xs">▼</span>
+        </>
+      )}
     </Button>
   </PopoverTrigger>
 
@@ -634,20 +685,36 @@ if (key !== lastPayloadRef.current) {
         variant={mode === opt ? 'secondary' : 'ghost'}
         className="px-3"
         onClick={() => {
+          const currentVisibleStart =
+            mode === 'day'
+              ? dayStr
+              : mode === 'range'
+                ? rangeStartStr
+                : mode === 'month'
+                  ? toIso(monthStart)
+                  : mode === 'year'
+                    ? toIso(yearStart)
+                    : toIso(weekStart)
+
           setMode(opt)
           // 🔹 Reiniciem estats segons el mode
           if (opt === 'week' || opt === 'month' || opt === 'year') {
-            setAnchor(new Date())
-            setDayStr(toIso(new Date()))
+            const nextAnchor = parseISO(currentVisibleStart)
+            setAnchor(isValid(nextAnchor) ? nextAnchor : new Date())
+            setDayStr(currentVisibleStart || toIso(new Date()))
             setRangeStartStr('')
             setRangeEndStr('')
           }
           if (opt === 'day') {
+            setDayStr(currentVisibleStart || toIso(new Date()))
+            const nextAnchor = parseISO(currentVisibleStart || toIso(new Date()))
+            if (isValid(nextAnchor)) setAnchor(nextAnchor)
             setRangeStartStr('')
             setRangeEndStr('')
           }
           if (opt === 'range') {
-            setDayStr(toIso(new Date()))
+            setRangeStartStr(currentVisibleStart || toIso(new Date()))
+            setRangeEndStr(currentVisibleStart || toIso(new Date()))
           }
         }}
       >
@@ -665,7 +732,7 @@ if (key !== lastPayloadRef.current) {
 <div className={showAdvanced ? "flex flex-wrap gap-2" : "hidden sm:flex sm:flex-wrap sm:gap-2"}>
   {allowWorker && (
     <Select value={roleType} onValueChange={(v) => setRoleType(v as RoleType)}>
-      <SelectTrigger className="w-[180px] border bg-white text-gray-900">
+      <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[180px]')}>
         <SelectValue placeholder="Rol">
           {renderLabels.roleType || 'Rol'}
         </SelectValue>
@@ -681,7 +748,7 @@ if (key !== lastPayloadRef.current) {
 
         {showStatus && (
           <Select value={status} onValueChange={(v) => setStatus(v as 'all' | 'confirmed' | 'draft')}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[150px]')}>
               <SelectValue placeholder="Estat" />
             </SelectTrigger>
             <SelectContent>
@@ -694,7 +761,7 @@ if (key !== lastPayloadRef.current) {
 
         {allowDepartment && departmentOptions.length > 0 && (
           <Select value={dept || 'tots'} onValueChange={(v) => setDept(v === 'tots' ? '' : v)}>
-            <SelectTrigger className="w-[180px] border bg-white text-gray-900">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[180px]')}>
               <SelectValue placeholder="Departament">{renderLabels.department || 'Departament'}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -710,7 +777,7 @@ if (key !== lastPayloadRef.current) {
 
         {showCommercial && commercialOptions && commercialOptions.length > 0 && (
           <Select value={commercial || '__all__'} onValueChange={(v) => setCommercial(v === '__all__' ? '' : v)}>
-            <SelectTrigger className="w-[180px] border bg-white text-gray-900">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[180px]')}>
               <SelectValue placeholder="Comercial" />
             </SelectTrigger>
             <SelectContent>
@@ -738,7 +805,7 @@ if (key !== lastPayloadRef.current) {
               setWorkerName(sel?.name || v)
             }}
           >
-            <SelectTrigger className="w-[180px] border bg-white text-gray-900">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[180px]')}>
               <SelectValue placeholder="Treballador">
                 {workerId || workerName
                   ? filteredWorkerOptions.find((w) => w.id === workerId || w.name === workerName)?.name
@@ -758,7 +825,7 @@ if (key !== lastPayloadRef.current) {
 
         {showLocation && locationOptions.length > 0 && (
           <Select value={location || ''} onValueChange={(v) => setLocation(v)}>
-            <SelectTrigger className="w-[180px] border bg-white text-gray-900">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[180px]')}>
               <SelectValue placeholder="Ubicació">{renderLabels.location || 'Ubicació'}</SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -773,7 +840,7 @@ if (key !== lastPayloadRef.current) {
 
         {showImportance && (
           <Select value={importance} onValueChange={(v) => setImportance(v)}>
-            <SelectTrigger className="w-[150px] border bg-white text-gray-900">
+            <SelectTrigger className={cn(corporateFilterFieldClass, 'w-[150px]')}>
               <SelectValue
                 placeholder={
                   <span className="flex items-center gap-1">

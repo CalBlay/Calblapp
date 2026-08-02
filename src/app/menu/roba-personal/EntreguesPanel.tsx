@@ -24,10 +24,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Loader2, Search, Trash2 } from 'lucide-react'
+import { Loader2, Trash2 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import SmartFilters, { type SmartFiltersChange } from '@/components/filters/SmartFilters'
 import FilterButton from '@/components/ui/filter-button'
+import {
+  CorporateFilterField,
+  CorporateFilterSearch,
+  CorporateFilterSelect,
+  CorporateFiltersShell,
+} from '@/components/layout/corporate-filters'
 import ResetFilterButton from '@/components/ui/ResetFilterButton'
 import { useFilters } from '@/context/FiltersContext'
 import { DEPARTMENTS } from '@/data/departments'
@@ -168,11 +174,11 @@ export function EntreguesPanel({
 
   const entFiltersSlidePanel = useMemo(
     () => (
-      <div className="p-4 flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-sm text-gray-600">Departament (treballador)</label>
-          <select
-            className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-900"
+      <div className="flex flex-col gap-4 p-4">
+        <CorporateFilterField label="Departament (treballador)">
+          <CorporateFilterSelect
+            className="w-full"
+            minWidthClassName="min-w-0"
             value={entListFilterDept}
             onChange={(e) => setEntListFilterDept(e.target.value)}
           >
@@ -182,12 +188,12 @@ export function EntreguesPanel({
                 {d}
               </option>
             ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-sm text-gray-600">Estat recepcio</label>
-          <select
-            className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-900"
+          </CorporateFilterSelect>
+        </CorporateFilterField>
+        <CorporateFilterField label="Estat recepcio">
+          <CorporateFilterSelect
+            className="w-full"
+            minWidthClassName="min-w-0"
             value={entListFilterReception}
             onChange={(e) => setEntListFilterReception(e.target.value)}
           >
@@ -195,8 +201,8 @@ export function EntreguesPanel({
             <option value="pending">Pendent confirmacio treballador</option>
             <option value="dispute">Incidencia / correccio</option>
             <option value="done">Recepcio tancada</option>
-          </select>
-        </div>
+          </CorporateFilterSelect>
+        </CorporateFilterField>
         <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
           <ResetFilterButton
             onClick={() => {
@@ -1300,7 +1306,7 @@ export function EntreguesPanel({
         <h2 className="font-semibold text-base">
           {isRobaLinkedWorkerUi && isRobaWorkerSelf ? "Històric d'entregues" : 'Entregues'}
         </h2>
-        <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+        <CorporateFiltersShell showHeader={false} variant="toolbar" className="mb-3 border-0 shadow-none">
           <SmartFilters
             modeDefault="week"
             modeOptions={['week', 'day', 'range']}
@@ -1316,19 +1322,13 @@ export function EntreguesPanel({
             initialStart={entListRangeStart}
             initialEnd={entListRangeEnd}
           />
-          <div className="relative flex min-w-[12rem] flex-1 basis-[14rem] max-w-md">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden
-            />
-            <Input
-              className="h-10 rounded-xl border-gray-300 bg-white pl-9 dark:bg-background"
-              placeholder="Cercar nom, correu, departament, treballador, producte..."
-              value={entListSearch}
-              onChange={(e) => setEntListSearch(e.target.value)}
-              aria-label="Cercar entregues"
-            />
-          </div>
+          <CorporateFilterSearch
+            className="min-w-[12rem] max-w-md flex-1 basis-[14rem]"
+            placeholder="Cercar nom, correu, departament, treballador, producte..."
+            value={entListSearch}
+            onChange={(e) => setEntListSearch(e.target.value)}
+            aria-label="Cercar entregues"
+          />
           <FilterButton
             onClick={() => {
               setContent(entFiltersSlidePanel)
@@ -1354,7 +1354,7 @@ export function EntreguesPanel({
               )}
             </Button>
           ) : null}
-        </div>
+        </CorporateFiltersShell>
 
         {entFilteredRows.length === 0 ? (
           <p className="text-center text-muted-foreground py-10 text-sm">

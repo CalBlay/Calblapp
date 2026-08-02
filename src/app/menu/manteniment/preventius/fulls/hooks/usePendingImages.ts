@@ -2,10 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { compressRasterImageForUpload, DEFAULT_MAX_IMAGE_UPLOAD_BYTES } from '@/lib/file-optimization'
+import {
+  isTicketDocumentMime,
+  isTicketDocumentName,
+  isTicketImageMime,
+  isTicketVideoMime,
+  MAX_UPLOAD_DOCUMENT_BYTES,
+  MAX_UPLOAD_VIDEO_BYTES,
+} from '@/lib/media/ticketAttachments'
 
 export type PendingImage = {
   file: File
-  preview: string
+  preview: string | null
+  kind: 'image' | 'video' | 'file'
 }
 
 export function usePendingImages(maxImages: number) {
@@ -19,12 +28,16 @@ export function usePendingImages(maxImages: number) {
 
   useEffect(() => {
     return () => {
-      imagesRef.current.forEach((item) => URL.revokeObjectURL(item.preview))
+      imagesRef.current.forEach((item) => {
+        if (item.preview) URL.revokeObjectURL(item.preview)
+      })
     }
   }, [])
 
   const clearImages = useCallback(() => {
-    imagesRef.current.forEach((item) => URL.revokeObjectURL(item.preview))
+    imagesRef.current.forEach((item) => {
+      if (item.preview) URL.revokeObjectURL(item.preview)
+    })
     setImages([])
     setImageError(null)
   }, [])
@@ -43,19 +56,40 @@ export function usePendingImages(maxImages: number) {
       try {
         const compressed = await Promise.all(
           selected.slice(0, remaining).map(async (file) => {
-            if (!file.type.startsWith('image/')) throw new Error('Nomes es permeten imatges.')
-            const optimized = await compressRasterImageForUpload(file, DEFAULT_MAX_IMAGE_UPLOAD_BYTES)
-            return { file: optimized, preview: URL.createObjectURL(optimized) }
+            const isImage = isTicketImageMime(file.type)
+            const isVideo = isTicketVideoMime(file.type)
+            const isDocument = isTicketDocumentMime(file.type) || isTicketDocumentName(file.name)
+
+            if (isImage) {
+              const optimized = await compressRasterImageForUpload(file, DEFAULT_MAX_IMAGE_UPLOAD_BYTES)
+              return { file: optimized, preview: URL.createObjectURL(optimized), kind: 'image' as const }
+            }
+
+            if (isVideo) {
+              if (file.size > MAX_UPLOAD_VIDEO_BYTES) {
+                throw new Error('El video supera el limit permes.')
+              }
+              return { file, preview: null, kind: 'video' as const }
+            }
+
+            if (isDocument) {
+              if (file.size > MAX_UPLOAD_DOCUMENT_BYTES) {
+                throw new Error('El fitxer supera el limit permes.')
+              }
+              return { file, preview: null, kind: 'file' as const }
+            }
+
+            throw new Error('Nomes es permeten fotos, videos o fitxers comuns.')
           })
         )
         setImages((current) => [...current, ...compressed].slice(0, maxImages))
         setImageError(
           selected.length > remaining
-            ? `Nomes s'han afegit les primeres ${maxImages} fotos.`
+            ? `Nomes s'han afegit els primers ${maxImages} adjunts.`
             : null
         )
       } catch (err) {
-        setImageError(err instanceof Error ? err.message : 'Error preparant les imatges')
+        setImageError(err instanceof Error ? err.message : 'Error preparant els adjunts')
       }
     },
     [images.length, maxImages]
@@ -64,7 +98,7 @@ export function usePendingImages(maxImages: number) {
   const removeImage = useCallback((index: number) => {
     setImages((current) => {
       const target = current[index]
-      if (target) URL.revokeObjectURL(target.preview)
+      if (target?.preview) URL.revokeObjectURL(target.preview)
       return current.filter((_, i) => i !== index)
     })
   }, [])
@@ -88,7 +122,7 @@ export function usePendingImages(maxImages: number) {
 
   return {
     images,
-    previews: images.map((item) => item.preview),
+    previews: images.map((item) => item.preview).filter((value): value is string => Boolean(value)),
     imageCount: images.length,
     imageError,
     setImageError,

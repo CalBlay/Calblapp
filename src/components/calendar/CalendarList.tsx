@@ -2,7 +2,7 @@
 'use client'
 
 import React, { useMemo } from 'react'
-import { motion } from 'framer-motion'
+import { MotionDiv } from '@/lib/lazyMotion'
 import type { Deal } from '@/hooks/useCalendarData'
 import CalendarModal from './CalendarModal'
 
@@ -47,7 +47,7 @@ export default function CalendarList({ deals, loading }: CalendarListProps) {
 
           <div className="divide-y">
             {events.map((ev) => (
-              <motion.div
+              <MotionDiv
                 key={ev.id}
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -80,7 +80,7 @@ export default function CalendarList({ deals, loading }: CalendarListProps) {
                     </div>
                   }
                 />
-              </motion.div>
+              </MotionDiv>
             ))}
           </div>
         </div>

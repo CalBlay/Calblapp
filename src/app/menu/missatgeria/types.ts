@@ -8,11 +8,14 @@ export type Channel = {
   projectName?: string | null
   roomId?: string | null
   roomName?: string | null
-  roomKind?: 'block' | 'manual' | null
+  roomKind?: 'block' | 'manual' | 'general' | null
   eventCode?: string | null
   eventTitle?: string | null
   eventStart?: string | null
   eventEnd?: string | null
+  eventId?: string | null
+  warehouseId?: string | null
+  batchId?: string | null
   visibleUntil?: number | null
   status?: string | null
   responsibleUserId?: string | null

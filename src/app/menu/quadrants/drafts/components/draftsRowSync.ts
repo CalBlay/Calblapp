@@ -6,6 +6,39 @@ type AvailableLists = {
   treballadors: Array<{ id: string; name: string; alias?: string }>
 }
 
+const findDraftResponsibleForRow = (
+  row: Row,
+  draft: DraftInput
+): {
+  id?: string
+  name?: string
+} | undefined => {
+  const responsibles = Array.isArray((draft as { responsables?: Array<{ id?: string; name?: string; groupId?: string }> }).responsables)
+    ? (draft as { responsables?: Array<{ id?: string; name?: string; groupId?: string }> }).responsables || []
+    : []
+  const rowId = String(row.id || '').trim()
+  const rowName = normKey(row.name)
+  const rowGroupId = String(row.groupId || '').trim()
+
+  if (rowId) {
+    const byId = responsibles.find((person) => String(person?.id || '').trim() === rowId)
+    if (byId) return byId
+  }
+
+  if (rowName) {
+    const byName = responsibles.find((person) => {
+      const personName = normKey(person?.name)
+      const personGroupId = String(person?.groupId || '').trim()
+      if (!personName || personName !== rowName) return false
+      if (rowGroupId && personGroupId) return personGroupId === rowGroupId
+      return true
+    })
+    if (byName) return byName
+  }
+
+  return undefined
+}
+
 const normKey = (s?: string) =>
   String(s ?? '')
     .trim()
@@ -123,6 +156,7 @@ export function syncRowsWithDraftAndRoster(
     }
 
     if (row.role === 'responsable') {
+      const explicitResponsible = findDraftResponsibleForRow(row, draft)
       const respId = String(
         (draft as { responsableId?: string; responsable?: { id?: string } }).responsableId ||
           (draft as { responsable?: { id?: string } }).responsable?.id ||
@@ -134,8 +168,10 @@ export function syncRowsWithDraftAndRoster(
           (draft as { responsable?: { name?: string } }).responsable?.name ||
           ''
       ).trim()
-      const sameResp = respId && respId === id
-      const bestName = (sameResp ? draftName || rosterName : rosterName || '') || row.name
+      const explicitName = String(explicitResponsible?.name || '').trim()
+      const explicitId = String(explicitResponsible?.id || '').trim()
+      const sameResp = (explicitId && explicitId === id) || (respId && respId === id)
+      const bestName = (sameResp ? explicitName || draftName || rosterName : explicitName || rosterName || '') || row.name
       if (bestName && normKey(bestName) !== normKey(row.name)) {
         return { ...row, name: bestName }
       }

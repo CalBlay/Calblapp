@@ -4,6 +4,7 @@
  */
 import {
   applyManualCreatedAtPreserve,
+  clientNamesMatch,
   docCreatedAtIso,
   manualReserveCreatedAtIso,
   manualReserveMatchesZohoDeal,
@@ -13,6 +14,7 @@ import {
   normalizeUbicacioKey,
   resolveManualReserveReplacements,
   stripInvalidManualMerge,
+  zohoDealClientNameForMatch,
   type ManualReserveDoc,
   type ZohoDealMatchInput,
 } from '../src/services/spaces/manualReserveZohoMatch'
@@ -60,6 +62,18 @@ assert(
   normalizeClientNameKey('AFFINITY PETCARE, S.A.') === 'affinity petcare',
   'client suffix normalize'
 )
+assert(
+  clientNamesMatch('AFFINITY PETCARE', 'AFFINITY PETCARE, S.A.'),
+  'client suffix may be present on only one side'
+)
+assert(
+  clientNamesMatch('ACME S.L.', 'ACME SL'),
+  'same legal suffix matches'
+)
+assert(
+  !clientNamesMatch('ACME S.L.', 'ACME S.A.'),
+  'different legal suffixes do not match'
+)
 assert(manualReserveMatchesZohoDeal(manual, deal), '4-criteria match')
 assert(
   manualReserveMatchesZohoDeal(
@@ -76,6 +90,31 @@ assert(
     }
   ),
   'normalizes accents, legal suffixes and datetime days'
+)
+
+assert(
+  zohoDealClientNameForMatch('CLUB JOVENTUT BADALONA / 01/07/26 / 500') ===
+    'CLUB JOVENTUT BADALONA',
+  'extracts client segment from Zoho Deal_Name'
+)
+assert(
+  manualReserveMatchesZohoDeal(
+    {
+      ...manual,
+      NomClient: 'CLUB JOVENTUT BADALONA',
+      Comercial: 'Laia Montserrat',
+      Ubicacio: "Pavello Olímpic Arena Badalona",
+      DataInici: '2026-07-01',
+    },
+    {
+      ...deal,
+      NomEvent: 'CLUB JOVENTUT BADALONA / 01/07/26 / 500',
+      Comercial: 'Laia Montserrat',
+      Ubicacio: "Pavello Olímpic Arena Badalona",
+      DataInici: '2026-07-01',
+    }
+  ),
+  'manual client matches Zoho Deal_Name with date and pax suffix'
 )
 
 assert(
@@ -114,6 +153,20 @@ assert(
     Ubicacio: 'Other Finca',
   }),
   'different ubicacio'
+)
+
+assert(
+  !manualReserveMatchesZohoDeal(
+    {
+      ...manual,
+      NomClient: 'ACME S.L.',
+    },
+    {
+      ...deal,
+      NomEvent: 'ACME S.A.',
+    }
+  ),
+  'same base client with different legal suffix does not match'
 )
 
 const result = resolveManualReserveReplacements(
@@ -278,6 +331,23 @@ const storedClientMismatch = stripInvalidManualMerge(
 assert(
   !storedClientMismatch?.mergedFromManualId,
   'clears merge when stored client differs from deal NomEvent'
+)
+
+const storedClientSuffixMismatch = stripInvalidManualMerge(
+  {
+    mergedFromManualId: 'spaces_manual_acme_sl',
+    mergedFromManualNomClient: 'ACME S.L.',
+    createdAt: '2026-05-29T11:48:22.796Z',
+  },
+  {
+    ...deal,
+    NomEvent: 'ACME S.A.',
+  },
+  []
+)
+assert(
+  !storedClientSuffixMismatch?.mergedFromManualId,
+  'clears merge when stored client and deal have conflicting legal suffixes'
 )
 
 const freshMerge = applyManualCreatedAtPreserve(
