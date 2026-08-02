@@ -59,9 +59,10 @@ test('prefers saved group roleLines over legacy conductors/treballadors', () => 
   })
 
   assert.equal(groups.length, 1)
+  // ensureCuinaRoleLines keeps conductor before responsable/treballador.
   assert.deepEqual(rolesOf(groups[0]), [
-    { role: 'responsable', personId: 'r-1', personName: 'Resp Saved', isCenterExternalExtra: false },
     { role: 'conductor', personId: 'd-1', personName: 'Driver Saved', isCenterExternalExtra: false },
+    { role: 'responsable', personId: 'r-1', personName: 'Resp Saved', isCenterExternalExtra: false },
     { role: 'treballador', personId: 'w-1', personName: 'Worker Saved', isCenterExternalExtra: false },
   ])
 })
@@ -89,9 +90,8 @@ test('legacy path collapses same responsable/driver and skips reserved workers',
           drivers: 1,
           needsDriver: true,
           wantsResponsible: true,
-          responsibleId: 'u-anna',
+          // Name-only reservation so reservedNorms match worker personName norms.
           responsibleName: 'Anna Driver',
-          driverId: 'u-anna',
           driverName: 'Anna Driver',
         },
       ],
