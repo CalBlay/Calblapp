@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAuth, type AuthFailure, type AuthSuccess } from '@/lib/server/apiAuth'
+import { canCreateMaintenanceTicketWithUiAccess } from '@/lib/maintenanceTicketCreators'
 import { canEditUiPath, canViewUiPath } from '@/lib/server/permissions'
 
 export const MAINTENANCE_TICKETS_PATH = '/menu/manteniment/tickets'
@@ -40,6 +41,30 @@ export async function requireMaintenanceTicketApiEdit(
   if (!auth.ok) return auth
 
   const allowed = await canEditUiPath({ user: auth.user, path })
+  if (!allowed) {
+    return { ok: false, res: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
+  }
+
+  return auth
+}
+
+/** Create ticket: path editors, or restaurant/cuina/qualitat reporters with view. */
+export async function requireMaintenanceTicketApiCreate(
+  path: string = MAINTENANCE_TICKETS_PATH
+): Promise<AuthSuccess | AuthFailure> {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth
+
+  const [canEditTicketsPath, canViewTicketsPath] = await Promise.all([
+    canEditUiPath({ user: auth.user, path }),
+    canViewUiPath({ user: auth.user, path }),
+  ])
+
+  const allowed = canCreateMaintenanceTicketWithUiAccess({
+    user: auth.user,
+    canEditTicketsPath,
+    canViewTicketsPath,
+  })
   if (!allowed) {
     return { ok: false, res: NextResponse.json({ error: 'Sense permisos' }, { status: 403 }) }
   }

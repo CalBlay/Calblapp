@@ -6,9 +6,11 @@ import {
   applyManualCreatedAtPreserve,
   clientNamesMatch,
   docCreatedAtIso,
+  manualReserveCreatedAtIso,
   manualReserveMatchesZohoDeal,
   normalizeClientNameKey,
   normalizeCommercialKey,
+  normalizeEventDay,
   normalizeUbicacioKey,
   resolveManualReserveReplacements,
   stripInvalidManualMerge,
@@ -19,6 +21,12 @@ import {
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message)
+}
+
+function assertEqual<T>(actual: T, expected: T, message: string) {
+  if (actual !== expected) {
+    throw new Error(`${message}: expected ${String(expected)}, got ${String(actual)}`)
+  }
 }
 
 const manual: ManualReserveDoc = {
@@ -40,6 +48,12 @@ const deal: ZohoDealMatchInput = {
 }
 
 assert(normalizeCommercialKey('Anna Puig') === 'anna puig', 'commercial normalize')
+assertEqual(normalizeCommercialKey('Ànna Puig'), 'anna puig', 'commercial unaccent')
+assertEqual(
+  normalizeEventDay('2026-06-15T20:30:00+02:00'),
+  '2026-06-15',
+  'event datetime normalize'
+)
 assert(
   normalizeUbicacioKey('Can Cal Blay (CEU0001)') === 'can cal blay',
   'ubicacio normalize'
@@ -61,6 +75,22 @@ assert(
   'different legal suffixes do not match'
 )
 assert(manualReserveMatchesZohoDeal(manual, deal), '4-criteria match')
+assert(
+  manualReserveMatchesZohoDeal(
+    {
+      ...manual,
+      Comercial: 'Ànna Puig',
+      NomClient: 'Client Test, S.L.',
+      DataInici: '2026-06-15T19:00:00+02:00',
+    },
+    {
+      ...deal,
+      NomEvent: 'Client Test SL',
+      DataInici: '2026-06-15 09:30:00',
+    }
+  ),
+  'normalizes accents, legal suffixes and datetime days'
+)
 
 assert(
   zohoDealClientNameForMatch('CLUB JOVENTUT BADALONA / 01/07/26 / 500') ===
@@ -110,6 +140,20 @@ assert(
   }),
   'different client'
 )
+assert(
+  !manualReserveMatchesZohoDeal(
+    { ...manual, Comercial: '—' },
+    deal
+  ),
+  'placeholder commercial does not match'
+)
+assert(
+  !manualReserveMatchesZohoDeal(manual, {
+    ...deal,
+    Ubicacio: 'Other Finca',
+  }),
+  'different ubicacio'
+)
 
 assert(
   !manualReserveMatchesZohoDeal(
@@ -134,6 +178,65 @@ assert(result.byZohoId.get('z1')?.mergedFromManualId === 'spaces_manual_1000', '
 assert(
   result.byZohoId.get('z1')?.createdAt === '2026-05-01T10:00:00.000Z',
   'preserves manual createdAt ISO with time'
+)
+
+const oneToOneResult = resolveManualReserveReplacements(
+  [manual],
+  [
+    { ...deal, idZoho: 'z2' },
+    { ...deal, idZoho: 'z1' },
+  ]
+)
+assertEqual(oneToOneResult.replacedCount, 1, 'manual consumed only once')
+assert(oneToOneResult.byZohoId.has('z1'), 'lowest Zoho id gets single matching manual')
+assert(!oneToOneResult.byZohoId.has('z2'), 'second matching deal is not assigned used manual')
+
+const eligibilityResult = resolveManualReserveReplacements(
+  [
+    {
+      ...manual,
+      id: 'spaces_manual_0500',
+      createdAt: '2026-04-01T00:00:00.000Z',
+      replacedByZoho: true,
+    },
+    {
+      ...manual,
+      id: 'external_manual_0600',
+      createdAt: '2026-04-02T00:00:00.000Z',
+      origen: 'zoho',
+    },
+    {
+      ...manual,
+      id: 'spaces_manual_0700',
+      createdAt: '2026-04-03T00:00:00.000Z',
+    },
+  ],
+  [deal]
+)
+assertEqual(eligibilityResult.replacedCount, 1, 'only eligible manuals are considered')
+assertEqual(
+  eligibilityResult.byZohoId.get('z1')?.mergedFromManualId,
+  'spaces_manual_0700',
+  'skips already replaced and non-manual origins'
+)
+
+const tiedManualResult = resolveManualReserveReplacements(
+  [
+    { ...manual, id: 'spaces_manual_b', createdAt: '2026-05-01T10:00:00.000Z' },
+    { ...manual, id: 'spaces_manual_a', createdAt: '2026-05-01T10:00:00.000Z' },
+  ],
+  [deal]
+)
+assertEqual(
+  tiedManualResult.byZohoId.get('z1')?.mergedFromManualId,
+  'spaces_manual_a',
+  'manual tie-breaker is deterministic by id'
+)
+
+assertEqual(
+  manualReserveCreatedAtIso({ id: 'spaces_manual_1714550400000' }),
+  '2024-05-01T08:00:00.000Z',
+  'legacy manual id provides createdAt fallback'
 )
 
 const sharedDay = '2026-06-01'
@@ -191,11 +294,30 @@ const staleMerge = stripInvalidManualMerge(
   {
     mergedFromManualId: 'spaces_manual_1780055302796',
     createdAt: '2026-05-29T11:48:22.796Z',
+    keep: 'value',
   },
   marbetDeal,
   [affinityManual]
 )
 assert(!staleMerge?.mergedFromManualId, 'clears wrong merge when affinity manual still exists')
+assertEqual(staleMerge?.keep, 'value', 'stale merge cleanup preserves unrelated fields')
+
+const validMerge = stripInvalidManualMerge(
+  {
+    mergedFromManualId: 'spaces_manual_1780055302796',
+    mergedFromManualNomClient: 'AFFINITY PETCARE',
+    createdAt: '2026-05-29T11:48:22.796Z',
+    keep: 'value',
+  },
+  affinityDeal,
+  [affinityManual]
+)
+assertEqual(
+  validMerge?.mergedFromManualId,
+  'spaces_manual_1780055302796',
+  'valid merge metadata remains'
+)
+assertEqual(validMerge?.keep, 'value', 'valid merge preserves unrelated fields')
 
 const storedClientMismatch = stripInvalidManualMerge(
   {
@@ -242,6 +364,16 @@ assert(
   freshMerge.mergedFromManualId === 'spaces_manual_1000',
   'applyManualCreatedAtPreserve sets mergedFromManualId'
 )
+assertEqual(
+  freshMerge.manualReserveCreatedAt,
+  '2026-05-01T10:00:00.000Z',
+  'first merge also stores manualReserveCreatedAt'
+)
+assertEqual(
+  freshMerge.mergedFromManualNomClient,
+  'Client Test',
+  'first merge stores manual client name for stale-merge detection'
+)
 
 const mergedId = 'spaces_manual_1714550400000'
 const subsequentSync = applyManualCreatedAtPreserve(
@@ -276,6 +408,26 @@ assert(
 assert(
   !wrongExistingCreatedAt.createdAt?.toString().includes('Timestamp'),
   'createdAt is ISO not Timestamp.toString()'
+)
+
+const existingUnmerged = applyManualCreatedAtPreserve(
+  { DataPeticio: '2026-05-20' },
+  'z-no-replacement',
+  new Map(),
+  {
+    createdAt: '2026-01-01T00:00:00.000Z',
+    manualReserveCreatedAt: '2026-01-02T00:00:00.000Z',
+  }
+)
+assertEqual(
+  existingUnmerged.createdAt,
+  '2026-01-01T00:00:00.000Z',
+  'unmerged existing doc keeps createdAt'
+)
+assertEqual(
+  existingUnmerged.manualReserveCreatedAt,
+  '2026-01-02T00:00:00.000Z',
+  'unmerged existing doc keeps manualReserveCreatedAt metadata'
 )
 
 const legacyFallback = applyManualCreatedAtPreserve(
