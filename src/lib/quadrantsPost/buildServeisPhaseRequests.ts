@@ -1,4 +1,5 @@
 import { type DriverCrewPremise } from '@/services/premises'
+import { resolveServeisGroupPhaseLabel } from '@/lib/quadrantsPost/resolveServeisGroupPhaseLabel'
 import { norm, normalizeJamoneroAssignment } from '@/lib/quadrantsPost/utils'
 import type {
   JamoneroAssignmentNormalized,
@@ -99,9 +100,10 @@ export async function buildServeisPhaseRequests(
       if (candidateIndex === currentIndex) return false
       const candidateDate = candidate?.serviceDate || (body.startDate as string)
       if (serviceDate && candidateDate !== serviceDate) return false
-      const candidateLabel =
-        (candidate?.dateLabel || '').toString().trim() ||
-        (candidateDate === eventDate ? 'Event' : 'Muntatge')
+      const candidateLabel = resolveServeisGroupPhaseLabel(
+        { ...candidate, serviceDate: candidateDate },
+        eventDate as string | undefined
+      )
       if (norm(candidateLabel) !== 'event') return false
       return Boolean(driverId) && String(candidate?.driverId || '').trim() === String(driverId || '').trim()
     })
@@ -109,9 +111,10 @@ export async function buildServeisPhaseRequests(
   const existingEventGroupsCount = groups.filter((candidate) => {
     const candidateDate = candidate?.serviceDate || (body.startDate as string)
     if (candidateDate !== eventDate) return false
-    const candidateLabel =
-      (candidate?.dateLabel || '').toString().trim() ||
-      (candidateDate === eventDate ? 'Event' : 'Muntatge')
+    const candidateLabel = resolveServeisGroupPhaseLabel(
+      { ...candidate, serviceDate: candidateDate },
+      eventDate as string | undefined
+    )
     return norm(candidateLabel) === 'event'
   }).length
   const canAutoCreateExtraEventGroup =
@@ -119,9 +122,10 @@ export async function buildServeisPhaseRequests(
 
   groups.forEach((g, groupIndex: number) => {
     const serviceDate = g.serviceDate || (body.startDate as string)
-    const label =
-      (g.dateLabel || '').toString().trim() ||
-      (serviceDate === eventDate ? 'Event' : 'Muntatge')
+    const label = resolveServeisGroupPhaseLabel(
+      { ...g, serviceDate },
+      eventDate as string | undefined
+    )
     const wantsResp =
       typeof g.wantsResponsible === 'boolean'
         ? g.wantsResponsible

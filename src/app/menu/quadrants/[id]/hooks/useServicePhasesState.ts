@@ -72,6 +72,7 @@ export type UseServicePhasesStateResult = {
     id: string
     serviceDate: string
     dateLabel: string | null
+    phaseKey: ServicePhaseKey
     meetingPoint: string
     startTime: string
     endTime: string
@@ -407,10 +408,14 @@ export function useServicePhasesState({
           endTime: line.endTime || group.endTime,
         }))
 
+        const phaseOption = servicePhaseOptions.find((phase) => phase.key === group.phaseKey)
         return {
           id: group.id,
           serviceDate: group.serviceDate,
-          dateLabel: group.dateLabel || null,
+          // Prefer explicit dateLabel; otherwise send the UI phase label so the
+          // server does not collapse same-day Muntatge into Event via date heuristic.
+          dateLabel: group.dateLabel || phaseOption?.label || null,
+          phaseKey: group.phaseKey,
           meetingPoint: group.meetingPoint,
           startTime: group.startTime,
           endTime: group.endTime,
