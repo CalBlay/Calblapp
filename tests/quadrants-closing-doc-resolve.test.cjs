@@ -4,6 +4,7 @@ const { test } = require('node:test')
 const {
   selectClosingQuadrantDocs,
   applyClosingUpdatesToQuadrantData,
+  normalizeClosingEventId,
 } = require('../src/lib/quadrantsClosing')
 
 test('selectClosingQuadrantDocs prefers phase docs matched by eventId field over legacy doc(eventId)', () => {
@@ -102,4 +103,43 @@ test('closing would miss phase docs if it only looked up collection.doc(eventId)
     directDoc: null,
   })
   assert.equal(legacyOnlyLookup.length, 0)
+})
+
+test('applyClosingUpdatesToQuadrantData matches accented names and records closedByDept', () => {
+  const { payload, matchedPeople } = applyClosingUpdatesToQuadrantData({
+    data: {
+      eventId: 'deal-123',
+      responsable: { name: 'José María' },
+      conductors: [{ name: 'Marc' }],
+    },
+    updates: [
+      {
+        name: 'Jose Maria',
+        endTimeReal: '20:00',
+        notes: 'ok',
+        noShow: false,
+        leftEarly: true,
+      },
+    ],
+    department: 'Cuina',
+    closeDept: true,
+    nowIso: '2026-07-26T12:00:00.000Z',
+    userId: 'user-1',
+  })
+
+  assert.equal(matchedPeople, 1)
+  assert.equal(payload.responsable.endTimeReal, '20:00')
+  assert.equal(payload.responsable.leftEarly, true)
+  assert.equal(payload.responsable.sortidaNotes, 'ok')
+  assert.equal(payload.closedByDept.cuina, '2026-07-26T12:00:00.000Z')
+  assert.equal(payload.conductors[0].endTimeReal, undefined)
+})
+
+test('normalizeClosingEventId strips compound quadrant document suffixes', () => {
+  const { normalizeClosingEventId } = require('../src/lib/quadrantsClosing')
+  assert.equal(
+    normalizeClosingEventId('deal-123__event__2026-07-20__event'),
+    'deal-123'
+  )
+  assert.equal(normalizeClosingEventId('  deal-123  '), 'deal-123')
 })
