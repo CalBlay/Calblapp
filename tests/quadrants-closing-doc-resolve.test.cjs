@@ -136,7 +136,6 @@ test('applyClosingUpdatesToQuadrantData matches accented names and records close
 })
 
 test('normalizeClosingEventId strips compound quadrant document suffixes', () => {
-  const { normalizeClosingEventId } = require('../src/lib/quadrantsClosing')
   assert.equal(
     normalizeClosingEventId('deal-123__event__2026-07-20__event'),
     'deal-123'

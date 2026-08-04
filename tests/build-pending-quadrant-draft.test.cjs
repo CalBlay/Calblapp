@@ -90,7 +90,12 @@ test('buildPendingQuadrantDocId builds compound phase/day ids and sanitizes grou
   )
   assert.equal(
     buildPendingQuadrantDocId(
-      phase({ phaseKey: 'Muntatge', phaseDate: '' }),
+      phase({
+        phaseKey: 'Muntatge',
+        phaseDate: '',
+        start: '',
+        end: '',
+      }),
       'g@roup!'
     ),
     'E123__muntatge__nodate__group'
