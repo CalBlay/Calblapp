@@ -1,5 +1,20 @@
 const assert = require('node:assert/strict')
+const Module = require('node:module')
 const { test } = require('node:test')
+
+const originalLoad = Module._load
+Module._load = function loadWithStubs(request, parent, isMain) {
+  if (request === 'server-only') {
+    return {}
+  }
+  if (
+    request === '@/lib/firebaseAdmin' ||
+    /[\\/]src[\\/]lib[\\/]firebaseAdmin\.(ts|js|cjs|mjs)$/.test(request)
+  ) {
+    return { firestoreAdmin: {} }
+  }
+  return originalLoad.call(this, request, parent, isMain)
+}
 
 const {
   resolveServeisGroupPhaseLabel,

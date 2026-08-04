@@ -1,11 +1,17 @@
-import { norm } from '@/lib/quadrantsPost/utils'
-
 export type ServeisPhaseLabelSource = {
   dateLabel?: string | null
   phaseKey?: string | null
   phaseType?: string | null
   serviceDate?: string | null
 }
+
+/** Local normalize to keep this helper free of firebaseAdmin / server-only imports. */
+const phaseKeyNorm = (value?: string | null) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 
 /**
  * Resolve the Serveis phase display label used for Firestore doc ids
@@ -24,7 +30,7 @@ export function resolveServeisGroupPhaseLabel(
 
   const fromPhase = String(group?.phaseKey || group?.phaseType || '').trim()
   if (fromPhase) {
-    const key = norm(fromPhase)
+    const key = phaseKeyNorm(fromPhase)
     if (key === 'event') return 'Event'
     if (key === 'muntatge') return 'Muntatge'
     return fromPhase.charAt(0).toUpperCase() + fromPhase.slice(1)
