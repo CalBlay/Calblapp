@@ -20,6 +20,7 @@ import {
   notifyTicketResolvedForCreator,
   onMaintenanceTicketUpdated,
 } from '@/lib/maintenanceNotifications'
+import { canActorMutateMaintenanceTicket } from '@/lib/maintenanceTicketPatchAuth'
 import {
   canCreatorValidateMaintenanceTicket,
   maintenanceTicketRequiresCreatorValidation,
@@ -332,6 +333,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const user = auth.user as SessionUser
   const canManageTickets = await canManageAllMaintenanceTickets(user)
+  const canManageInbox = await canManageMaintenanceTicketInbox(user)
   const canValidate = await canValidateMaintenanceTickets(user)
   const canReopen = await canReopenMaintenanceTickets(user)
   const role = auth.role
@@ -348,7 +350,28 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const current = snap.data() as MaintenanceTicketRecord
     const previousWorkflowStage = normalizeTicketWorkflowStage(current.workflowStage)
 
-    if (role === 'treballador' && !canManageTickets) {
+    const validationApprovalEarly =
+      body.validationApproval === 'creator' || body.validationApproval === 'cap'
+        ? body.validationApproval
+        : null
+
+    // Creator validation is a dedicated early path below; all other mutations
+    // require manage/inbox OR being the assigned worker (treballador).
+    // View-only actors (e.g. Qualitat Cuina Central) must not mutate.
+    if (
+      validationApprovalEarly !== 'creator' &&
+      !canActorMutateMaintenanceTicket({
+        role,
+        userId: user.id,
+        assignedToIds: current.assignedToIds,
+        canManageTickets,
+        canManageInbox,
+      })
+    ) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    if (role === 'treballador' && !canManageTickets && !canManageInbox) {
       const assignedIds: string[] = Array.isArray(current.assignedToIds)
         ? current.assignedToIds
         : []
@@ -728,7 +751,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    if (role === 'treballador' && !canManageTickets && nextStatus) {
+    if (role === 'treballador' && !canManageTickets && !canManageInbox && nextStatus) {
       if (current.externalized && nextStatus === 'fet') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
@@ -746,7 +769,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     if (nextStatus) {
-      if (role === 'treballador' && !canManageTickets) {
+      if (role === 'treballador' && !canManageTickets && !canManageInbox) {
         const journeyError = validateJourneyStatusPayload({
           currentStatus: currentStatus as JourneyStatus,
           nextStatus: nextStatus as JourneyStatus,
@@ -786,7 +809,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         }
       )
 
-      if (role === 'treballador' && !canManageTickets && nextStatus === 'no_fet') {
+      if (role === 'treballador' && !canManageTickets && !canManageInbox && nextStatus === 'no_fet') {
         autoReturnToPlanner = true
         const autoReassignNote = String(body.statusNote || '').trim()
         const historyWithReassign = Array.isArray(updates.statusHistory)
@@ -830,7 +853,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         })
       }
 
-      if (role === 'treballador' && !canManageTickets) {
+      if (role === 'treballador' && !canManageTickets && !canManageInbox) {
         const workLogs = Array.isArray(current.workLogs)
           ? (current.workLogs as MaintenanceWorkLogEntry[])
           : []
@@ -866,7 +889,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           )
         }
         updates.completionAttachments = merged
-      } else if (nextStatus === 'fet' && role === 'treballador' && !canManageTickets) {
+      } else if (nextStatus === 'fet' && role === 'treballador' && !canManageTickets && !canManageInbox) {
         return NextResponse.json(
           { error: "Cal adjuntar com a minim una foto o fitxer nou de l'operari per marcar Fet." },
           { status: 400 }
