@@ -56,14 +56,15 @@ function incidentShortLabel(meta: IncidentMetaForActions | undefined) {
 
 export function buildIncidentActionsDashboardStats(
   actions: BatchActionRow[],
-  incidents: IncidentMetaForActions[]
+  incidents: IncidentMetaForActions[],
+  options?: { now?: Date }
 ) {
   const metaById = new Map<string, IncidentMetaForActions>()
   incidents.forEach((i) => {
     if (i.id) metaById.set(i.id, i)
   })
 
-  const today = startOfDay(new Date())
+  const today = startOfDay(options?.now ?? new Date())
 
   const byStatus: Record<IncidentActionStatus, number> = {
     open: 0,
