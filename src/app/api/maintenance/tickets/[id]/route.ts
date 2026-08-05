@@ -881,6 +881,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           nextStatus === 'fet' &&
           role === 'treballador' &&
           !canManageTickets &&
+          !canManageInbox &&
           newAttachments.length < 1
         ) {
           return NextResponse.json(
