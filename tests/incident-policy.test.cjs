@@ -124,7 +124,8 @@ test('canDeleteIncident denies production workers and allows creator/admin/cap-p
 })
 
 test('normalizeIncidentStatus and normalizeIncidentActionStatus map aliases', () => {
-  assert.equal(normalizeIncidentStatus('En curs'), 'en_curs')
+  assert.equal(normalizeIncidentStatus('en_curs'), 'en_curs')
+  assert.equal(normalizeIncidentStatus('EnCurs'), 'en_curs')
   assert.equal(normalizeIncidentStatus('resolta'), 'resolt')
   assert.equal(normalizeIncidentStatus('tancada'), 'tancat')
   assert.equal(normalizeIncidentStatus('unknown'), 'obert')
