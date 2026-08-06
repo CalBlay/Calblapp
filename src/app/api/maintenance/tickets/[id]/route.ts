@@ -42,6 +42,7 @@ import {
 } from '@/lib/maintenanceJourneyStatus'
 import {
   applyWorkLogUpdate,
+  closeOpenWorkLogsForDirectResolution,
   type MaintenanceWorkLogEntry,
 } from '@/lib/maintenanceWorkLogs'
 import {
@@ -902,7 +903,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       updates.workflowStage === 'resolved_admin' ||
       updates.workflowStage === 'resolved_planner'
     ) {
-      updates.resolvedAt = Date.now()
+      const resolvedAt = Date.now()
+      updates.resolvedAt = resolvedAt
       updates.resolvedById = user.id
       updates.resolvedByName = user.name || ''
       updates.status = 'fet'
@@ -925,9 +927,22 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       ) {
         updates.completionAttachments = buildMergedCompletionAttachments().merged
       }
+      // Direct Resoldre never goes through the treballador journey that
+      // calls applyWorkLogUpdate, so open en_curs segments would stay
+      // endTime:null and computeWorkLogMinutes would drop those minutes.
+      const existingWorkLogs = Array.isArray(updates.workLogs)
+        ? (updates.workLogs as MaintenanceWorkLogEntry[])
+        : Array.isArray(current.workLogs)
+          ? (current.workLogs as MaintenanceWorkLogEntry[])
+          : []
+      updates.workLogs = closeOpenWorkLogsForDirectResolution(existingWorkLogs, {
+        at: resolvedAt,
+        endTime: body.statusEndTime ?? null,
+        note: body.statusNote ?? body.resolutionNote ?? null,
+      })
       updates.statusHistory = admin.firestore.FieldValue.arrayUnion({
         status: 'fet',
-        at: Date.now(),
+        at: resolvedAt,
         byId: user.id,
         byName: user.name || '',
         startTime: body.statusStartTime ?? null,

@@ -66,6 +66,76 @@ export function workLogsInvolveOperator(
   return logs.some((item) => String(item.byId || '').trim() === id)
 }
 
+/** HH:MM in Europe/Madrid — used when planners resolve without a client end time. */
+export function formatMadridClockTime(at: number): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Madrid',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(at))
+  const hour = parts.find((part) => part.type === 'hour')?.value || '00'
+  const minute = parts.find((part) => part.type === 'minute')?.value || '00'
+  return `${hour}:${minute}`
+}
+
+/**
+ * Close every open workLog segment (endTime empty).
+ * Used when a planner/admin forces Fet via Resoldre — workers own the
+ * byId-scoped applyWorkLogUpdate path, so admin resolves otherwise leave
+ * open segments forever and computeWorkLogMinutes drops those minutes.
+ */
+export function closeOpenWorkLogs(
+  logs: MaintenanceWorkLogEntry[],
+  params: {
+    at: number
+    endTime: string
+    closedByStatus?: string | null
+    note?: string | null
+  }
+): MaintenanceWorkLogEntry[] {
+  const endTime = String(params.endTime || '').trim()
+  if (!endTime) return logs.map((entry) => ({ ...entry }))
+
+  const note = String(params.note || '').trim() || null
+  const closedByStatus = String(params.closedByStatus || '').trim() || null
+
+  return logs.map((entry) => {
+    const start = String(entry.startTime || '').trim()
+    const end = String(entry.endTime || '').trim()
+    if (!start || end) return { ...entry }
+    return {
+      ...entry,
+      endTime,
+      closedByStatus: closedByStatus ?? entry.closedByStatus ?? null,
+      note: note ?? entry.note ?? null,
+    }
+  })
+}
+
+/**
+ * When planner/admin resolve forces status to Fet, close any open workLogs
+ * so already-worked minutes are not permanently dropped.
+ */
+export function closeOpenWorkLogsForDirectResolution(
+  logs: MaintenanceWorkLogEntry[] | null | undefined,
+  params: {
+    at?: number
+    endTime?: string | null
+    note?: string | null
+  } = {}
+): MaintenanceWorkLogEntry[] {
+  const at = typeof params.at === 'number' && Number.isFinite(params.at) ? params.at : Date.now()
+  const endTime = String(params.endTime || '').trim() || formatMadridClockTime(at)
+  const current = Array.isArray(logs) ? logs : []
+  return closeOpenWorkLogs(current, {
+    at,
+    endTime,
+    closedByStatus: 'fet',
+    note: params.note ?? null,
+  })
+}
+
 export function applyWorkLogUpdate(
   logs: MaintenanceWorkLogEntry[],
   currentStatus: string,
