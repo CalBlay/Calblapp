@@ -80,8 +80,10 @@ export function sortPeopleWithCrewFirst<T extends { id: string; name: string }>(
   }
 
   return [...people].sort((a, b) => {
-    const orderDiff = getOrder(a) - getOrder(b)
-    if (orderDiff !== 0) return orderDiff
+    // Compare ranks directly: Infinity - Infinity is NaN and would skip locale sort.
+    const orderA = getOrder(a)
+    const orderB = getOrder(b)
+    if (orderA !== orderB) return orderA - orderB
     return a.name.localeCompare(b.name, 'ca')
   })
 }
