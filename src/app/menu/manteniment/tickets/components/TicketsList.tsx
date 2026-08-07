@@ -280,6 +280,7 @@ export default function TicketsList({
                   const eventLabel = String(ticket.sourceEventTitle || '').trim()
                   const creatorLabel = formatTicketReporterLabel(ticket)
                   const creatorDetail = formatTicketReporterDetail(ticket)
+                  const centerLabel = String(ticket.center || '').trim()
                   const locationLabel =
                     String(ticket.workLocation || ticket.location || '').trim() || 'Sense ubicacio'
                   const machineLabel = String(ticket.machine || '').trim() || 'Sense maquinaria'
@@ -341,6 +342,7 @@ export default function TicketsList({
 
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
                           {!externalReporterView ? <span>{creatorDetail}</span> : null}
+                          {centerLabel ? <span>Centre: {centerLabel}</span> : null}
                           <span>Ubicacio: {locationLabel}</span>
                           {!externalReporterView && eventLabel ? (
                             <span>Esdeveniment: {eventLabel}</span>
@@ -443,13 +445,19 @@ export default function TicketsList({
                           <div className="space-y-4">
                             <div className="space-y-2">
                               <div className={typography('eyebrow')}>Context</div>
-                              <div className="grid gap-2 sm:grid-cols-3">
+                              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
                                 <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
                                   <div className={typography('eyebrow')}>Creat</div>
                                   <div className="mt-1 text-sm text-slate-800">
                                     {creatorLabel} · {formatDateTime(ticket.createdAt)}
                                   </div>
                                 </div>
+                                {centerLabel ? (
+                                  <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
+                                    <div className={typography('eyebrow')}>Centre</div>
+                                    <div className="mt-1 text-sm text-slate-800">{centerLabel}</div>
+                                  </div>
+                                ) : null}
                                 <div className="rounded-xl bg-white/80 px-3 py-2 shadow-sm">
                                   <div className={typography('eyebrow')}>Ubicacio</div>
                                   <div className="mt-1 text-sm text-slate-800">{locationLabel}</div>

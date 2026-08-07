@@ -63,6 +63,7 @@ type SessionUser = {
 }
 
 type UpdatePayload = {
+  center?: string | null
   status?: 'nou' | 'assignat' | 'reassignat' | 'en_curs' | 'espera' | 'fet' | 'no_fet' | 'validat'
   workflowStage?:
     | 'tickets_inbox'
@@ -117,6 +118,7 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   ticketCode?: string
   incidentNumber?: string
   ticketType?: string
+  center?: string | null
   createdById?: string
   createdByName?: string
   assignedToIds?: string[]
@@ -541,6 +543,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       body.vehicleId !== undefined ||
       body.vehiclePlate !== undefined ||
       body.priority !== undefined ||
+      body.center !== undefined ||
       body.location !== undefined ||
       body.workLocation !== undefined ||
       body.machine !== undefined ||
@@ -582,6 +585,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       updates.intakeChannel = String(body.intakeChannel || '').trim() || null
     }
     if (nextPriority) updates.priority = nextPriority
+    if (body.center !== undefined) updates.center = String(body.center || '').trim() || null
     if (body.location !== undefined) updates.location = String(body.location).trim()
     if (body.workLocation !== undefined) updates.workLocation = String(body.workLocation || '').trim() || null
     if (body.machine !== undefined) updates.machine = String(body.machine).trim()

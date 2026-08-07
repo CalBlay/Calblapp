@@ -41,6 +41,7 @@ type TicketImagePayload = {
 }
 
 type TicketPayload = {
+  center?: string | null
   location?: string
   workLocation?: string | null
   zone?: string | null
@@ -77,6 +78,7 @@ type MaintenanceTicketRecord = Record<string, unknown> & {
   status?: string
   priority?: string
   ticketType?: string
+  center?: string | null
   location?: string | null
   source?: string | null
   intakeChannel?: string | null
@@ -463,6 +465,7 @@ export async function POST(req: Request) {
 
   try {
     const body = (await req.json()) as TicketPayload
+    const center = String(body.center || '').trim() || null
     const location = (body.location || '').trim()
     const workLocation = String(body.workLocation || '').trim() || null
     const zone = String(body.zone || '').trim() || null
@@ -531,6 +534,7 @@ export async function POST(req: Request) {
     const doc = await db.collection('maintenanceTickets').add({
       ticketCode,
       incidentNumber: incidentNumber || null,
+      center,
       location,
       workLocation,
       zone,

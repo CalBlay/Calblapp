@@ -31,6 +31,7 @@ export type Ticket = {
   id: string
   ticketCode?: string | null
   incidentNumber?: string | null
+  center?: string | null
   location: string
   workLocation?: string | null
   zone?: string | null

@@ -317,6 +317,7 @@ export function useMaintenanceTicketComposer({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          center: createCenter.trim(),
           location: createCenter.trim(),
           workLocation: createLocation.trim() || null,
           zone: createZone.trim() || null,

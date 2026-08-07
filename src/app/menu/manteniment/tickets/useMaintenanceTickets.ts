@@ -32,7 +32,7 @@ import {
   MAINTENANCE_TICKETS_REOPEN_PERM,
   MAINTENANCE_TICKETS_VALIDATE_PERM,
 } from '@/lib/maintenanceTicketsPermissions'
-import { matchesMaintenanceSiteFilters } from '@/lib/maintenanceLocationCatalog'
+import { matchesMaintenanceSiteFilters, resolveMaintenanceSite } from '@/lib/maintenanceLocationCatalog'
 
 type SessionUser = {
   id?: string
@@ -774,8 +774,23 @@ export function useMaintenanceTickets() {
     }
   }
 
+  const normalizedTickets = useMemo(
+    () =>
+      tickets.map((ticket) => {
+        const resolvedSite = resolveMaintenanceSite(
+          centers,
+          ticket.center,
+          ticket.workLocation,
+          ticket.location
+        )
+        const resolvedCenter = String(ticket.center || '').trim() || resolvedSite.center || ''
+        return resolvedCenter ? { ...ticket, center: resolvedCenter } : ticket
+      }),
+    [centers, tickets]
+  )
+
   const groupedTickets = useMemo(() => {
-    const inRange = tickets
+    const inRange = normalizedTickets
       .filter((ticket) =>
         matchesMaintenanceTicketDateFilter({
           mode: dateModeFilter,
@@ -932,7 +947,7 @@ export function useMaintenanceTickets() {
     locationFilter,
     ticketBucketFilter,
     ticketScopeFilter,
-    tickets,
+    normalizedTickets,
     zoneFilter,
   ])
 
@@ -947,7 +962,7 @@ export function useMaintenanceTickets() {
       })
 
     const countBucket = (bucket: ExternalReporterTicketBucket) =>
-      tickets.filter(
+      normalizedTickets.filter(
         (ticket) =>
           inRange(ticket) &&
           matchesMaintenanceSiteFilters(
@@ -969,7 +984,7 @@ export function useMaintenanceTickets() {
       fet: countBucket('fet'),
       externalitzat: countBucket('externalitzat'),
     }
-  }, [centerFilter, centers, dateModeFilter, filters.end, filters.start, locationFilter, tickets, zoneFilter])
+  }, [centerFilter, centers, dateModeFilter, filters.end, filters.start, locationFilter, normalizedTickets, zoneFilter])
 
   const ticketSummary = useMemo(() => {
     const inRange = (ticket: Ticket) =>
@@ -981,7 +996,7 @@ export function useMaintenanceTickets() {
         createdAt: ticket.createdAt,
       })
 
-    const scopedInternalTickets = tickets.filter(
+    const scopedInternalTickets = normalizedTickets.filter(
       (ticket) =>
         inRange(ticket) &&
         matchesMaintenanceSiteFilters(
@@ -1004,7 +1019,7 @@ export function useMaintenanceTickets() {
       inProgress: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'in_progress').length,
       waiting: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'waiting').length,
       pendingValidation: scopedInternalTickets.filter((ticket) => classifyInternalTicketBucket(ticket) === 'validation').length,
-      externalized: tickets.filter(
+      externalized: normalizedTickets.filter(
         (ticket) =>
           inRange(ticket) &&
           matchesMaintenanceSiteFilters(
@@ -1030,7 +1045,7 @@ export function useMaintenanceTickets() {
     filters.start,
     locationFilter,
     ticketScopeFilter,
-    tickets,
+    normalizedTickets,
     zoneFilter,
   ])
 
@@ -1041,7 +1056,7 @@ export function useMaintenanceTickets() {
       centres_propis: 0,
     }
 
-    tickets.forEach((ticket) => {
+    normalizedTickets.forEach((ticket) => {
       const inCurrentDateRange = matchesMaintenanceTicketDateFilter({
         mode: dateModeFilter,
         start: filters.start,
