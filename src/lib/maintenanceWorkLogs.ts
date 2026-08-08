@@ -123,17 +123,35 @@ export function closeOpenWorkLogsForDirectResolution(
     at?: number
     endTime?: string | null
     note?: string | null
+    closedByStatus?: string | null
   } = {}
 ): MaintenanceWorkLogEntry[] {
   const at = typeof params.at === 'number' && Number.isFinite(params.at) ? params.at : Date.now()
   const endTime = String(params.endTime || '').trim() || formatMadridClockTime(at)
+  const closedByStatus = String(params.closedByStatus || '').trim() || 'fet'
   const current = Array.isArray(logs) ? logs : []
   return closeOpenWorkLogs(current, {
     at,
     endTime,
-    closedByStatus: 'fet',
+    closedByStatus,
     note: params.note ?? null,
   })
+}
+
+/**
+ * Managers/caps on the Fulls journey can set en_curs → fet/espera/… without
+ * going through applyWorkLogUpdate (that helper is byId-scoped to the actor).
+ * Detect that gap so the route can close open segments before minutes are lost.
+ */
+export function shouldCloseOpenWorkLogsForNonWorkerStatusExit(params: {
+  currentStatus: string
+  nextStatus: string | null | undefined
+  workLogsAlreadyUpdated: boolean
+}): boolean {
+  if (params.workLogsAlreadyUpdated) return false
+  const current = String(params.currentStatus || '').trim()
+  const next = String(params.nextStatus || '').trim()
+  return current === 'en_curs' && Boolean(next) && next !== 'en_curs'
 }
 
 export function applyWorkLogUpdate(

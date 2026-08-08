@@ -7,6 +7,7 @@ const {
   closeOpenWorkLogsForDirectResolution,
   computeWorkLogMinutes,
   formatMadridClockTime,
+  shouldCloseOpenWorkLogsForNonWorkerStatusExit,
 } = require('../src/lib/maintenanceWorkLogs')
 
 test('open en_curs work logs are ignored until closed — planner reset would drop minutes', () => {
@@ -127,4 +128,72 @@ test('direct resolution falls back to Madrid clock when no endTime is sent', () 
   )
   assert.equal(closed[0].endTime, '12:30')
   assert.equal(computeWorkLogMinutes(closed), 210)
+})
+
+test('manager Fulls journey en_curs→fet must close worker open workLogs', () => {
+  // Concrete UI path: getAllowedNextStatuses(en_curs, 'cap') includes 'fet'.
+  // TicketJourneyStatusModal PATCHes status+statusEndTime as the manager, so
+  // applyWorkLogUpdate is skipped (role !== treballador / manage perms).
+  assert.equal(
+    shouldCloseOpenWorkLogsForNonWorkerStatusExit({
+      currentStatus: 'en_curs',
+      nextStatus: 'fet',
+      workLogsAlreadyUpdated: false,
+    }),
+    true
+  )
+  assert.equal(
+    shouldCloseOpenWorkLogsForNonWorkerStatusExit({
+      currentStatus: 'en_curs',
+      nextStatus: 'espera',
+      workLogsAlreadyUpdated: false,
+    }),
+    true
+  )
+  assert.equal(
+    shouldCloseOpenWorkLogsForNonWorkerStatusExit({
+      currentStatus: 'en_curs',
+      nextStatus: 'fet',
+      workLogsAlreadyUpdated: true,
+    }),
+    false
+  )
+  assert.equal(
+    shouldCloseOpenWorkLogsForNonWorkerStatusExit({
+      currentStatus: 'espera',
+      nextStatus: 'fet',
+      workLogsAlreadyUpdated: false,
+    }),
+    false
+  )
+
+  const openLogs = [
+    {
+      at: Date.parse('2026-08-08T07:00:00.000Z'),
+      startTime: '09:00',
+      endTime: null,
+      byId: 'worker-1',
+      byName: 'Worker',
+      sourceStatus: 'en_curs',
+    },
+  ]
+
+  const closedAsFet = closeOpenWorkLogsForDirectResolution(openLogs, {
+    at: Date.parse('2026-08-08T10:00:00.000Z'),
+    endTime: '12:00',
+    note: 'Tancat des de jornada (cap)',
+    closedByStatus: 'fet',
+  })
+  assert.equal(closedAsFet[0].endTime, '12:00')
+  assert.equal(closedAsFet[0].closedByStatus, 'fet')
+  assert.equal(computeWorkLogMinutes(closedAsFet), 180)
+
+  const closedAsEspera = closeOpenWorkLogsForDirectResolution(openLogs, {
+    at: Date.parse('2026-08-08T10:00:00.000Z'),
+    endTime: '11:30',
+    closedByStatus: 'espera',
+  })
+  assert.equal(closedAsEspera[0].endTime, '11:30')
+  assert.equal(closedAsEspera[0].closedByStatus, 'espera')
+  assert.equal(computeWorkLogMinutes(closedAsEspera), 150)
 })
