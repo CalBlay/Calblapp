@@ -43,6 +43,7 @@ import {
 import {
   applyWorkLogUpdate,
   closeOpenWorkLogsForDirectResolution,
+  shouldCloseOpenWorkLogsForNonWorkerStatusExit,
   type MaintenanceWorkLogEntry,
 } from '@/lib/maintenanceWorkLogs'
 import {
@@ -952,6 +953,27 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         startTime: body.statusStartTime ?? null,
         endTime: body.statusEndTime ?? null,
         note: body.statusNote ?? body.resolutionNote ?? '',
+      })
+    }
+
+    // Manager/cap Fulls journey (and similar non-worker status paths) skip
+    // applyWorkLogUpdate. Leaving en_curs without closing open segments
+    // permanently drops those minutes from computeWorkLogMinutes.
+    if (
+      shouldCloseOpenWorkLogsForNonWorkerStatusExit({
+        currentStatus,
+        nextStatus,
+        workLogsAlreadyUpdated: updates.workLogs !== undefined,
+      })
+    ) {
+      const existingWorkLogs = Array.isArray(current.workLogs)
+        ? (current.workLogs as MaintenanceWorkLogEntry[])
+        : []
+      updates.workLogs = closeOpenWorkLogsForDirectResolution(existingWorkLogs, {
+        at: Date.now(),
+        endTime: body.statusEndTime ?? null,
+        note: body.statusNote ?? null,
+        closedByStatus: nextStatus,
       })
     }
 
