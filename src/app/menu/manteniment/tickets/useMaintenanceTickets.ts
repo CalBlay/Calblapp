@@ -32,7 +32,10 @@ import {
   MAINTENANCE_TICKETS_REOPEN_PERM,
   MAINTENANCE_TICKETS_VALIDATE_PERM,
 } from '@/lib/maintenanceTicketsPermissions'
-import { matchesMaintenanceSiteFilters, resolveMaintenanceSite } from '@/lib/maintenanceLocationCatalog'
+import {
+  matchesMaintenanceSiteFilters,
+  resolveMaintenanceTicketCenter,
+} from '@/lib/maintenanceLocationCatalog'
 
 type SessionUser = {
   id?: string
@@ -777,13 +780,7 @@ export function useMaintenanceTickets() {
   const normalizedTickets = useMemo(
     () =>
       tickets.map((ticket) => {
-        const resolvedSite = resolveMaintenanceSite(
-          centers,
-          ticket.center,
-          ticket.workLocation,
-          ticket.location
-        )
-        const resolvedCenter = String(ticket.center || '').trim() || resolvedSite.center || ''
+        const resolvedCenter = resolveMaintenanceTicketCenter(centers, ticket)
         return resolvedCenter ? { ...ticket, center: resolvedCenter } : ticket
       }),
     [centers, tickets]

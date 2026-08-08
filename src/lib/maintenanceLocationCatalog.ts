@@ -182,6 +182,25 @@ export function resolveMaintenanceSite(
   return { center: '', location: '', zone: '' }
 }
 
+/**
+ * Prefer an explicit ticket.center; otherwise infer from workLocation/location
+ * via the center hierarchy (used when backfilling older tickets).
+ */
+export function resolveMaintenanceTicketCenter(
+  centers: MaintenanceCenterHierarchyRow[],
+  ticket: {
+    center?: string | null
+    workLocation?: string | null
+    location?: string | null
+  }
+): string {
+  const explicit = String(ticket.center || '').trim()
+  if (explicit) return explicit
+  return String(
+    resolveMaintenanceSite(centers, ticket.workLocation, ticket.location).center || ''
+  ).trim()
+}
+
 export function getMaintenanceCenterOptions(
   centers: MaintenanceCenterHierarchyRow[]
 ): string[] {
