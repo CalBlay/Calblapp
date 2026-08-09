@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import {
+  LOGISTICS_PREPARATION_SERVICES_COLLECTION,
+  STAGE_VERD_COLLECTION,
+  canDeleteLogisticsPreparationRow,
+  type LogisticsDeleteCollection,
+} from '@/lib/logistics/preparationDeleteGuard'
 import { normalizeRole } from '@/lib/roles'
 
 export const runtime = 'nodejs'
 
 const EDIT_ROLES = new Set(['admin', 'direccio', 'cap'])
-const COLLECTIONS = ['logistics_preparation_services', 'stage_verd'] as const
+const COLLECTIONS: LogisticsDeleteCollection[] = [
+  LOGISTICS_PREPARATION_SERVICES_COLLECTION,
+  STAGE_VERD_COLLECTION,
+]
 
 async function authContext(req: NextRequest) {
   const token = await getToken({ req })
@@ -34,17 +43,31 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
     }
 
     let ref: FirebaseFirestore.DocumentReference | null = null
-    for (const collectionName of COLLECTIONS) {
-      const candidate = db.collection(collectionName).doc(trimmedId)
+    let collectionName: LogisticsDeleteCollection | null = null
+    let data: Record<string, unknown> | null = null
+
+    for (const candidateCollection of COLLECTIONS) {
+      const candidate = db.collection(candidateCollection).doc(trimmedId)
       const snap = await candidate.get()
       if (snap.exists) {
         ref = candidate
+        collectionName = candidateCollection
+        data = (snap.data() as Record<string, unknown> | undefined) || null
         break
       }
     }
 
-    if (!ref) {
+    if (!ref || !collectionName) {
       return NextResponse.json({ ok: false, error: 'No existeix la fila' }, { status: 404 })
+    }
+
+    const guard = canDeleteLogisticsPreparationRow({
+      collectionName,
+      id: trimmedId,
+      data,
+    })
+    if (!guard.ok) {
+      return NextResponse.json({ ok: false, error: guard.error }, { status: 409 })
     }
 
     await ref.delete()
