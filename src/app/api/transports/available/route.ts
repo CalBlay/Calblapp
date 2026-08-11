@@ -11,6 +11,7 @@ import {
   getCommercialReservationEndDate,
 } from '@/lib/commercialReservations'
 import { normalizeTransportPlateKey, normalizeTransportType } from '@/lib/transportTypes'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 export const runtime = 'nodejs'
 
@@ -128,6 +129,9 @@ const resolveRange = (startDate?: string, startTime?: string, endDate?: string, 
 ========================= */
 export async function POST(req: Request) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const rawBody = await req.text()
     if (!rawBody.trim()) {
       return NextResponse.json({ error: 'Missing body' }, { status: 400 })

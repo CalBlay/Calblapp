@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server"
 import { firestoreAdmin } from "@/lib/firebaseAdmin"
 import { registerFinquesProduccioImagesInIndex } from "@/lib/media/storageMediaIndex"
+import { requireAuth } from "@/lib/server/apiAuth"
 
 export const runtime = "nodejs"
 
@@ -13,6 +14,9 @@ export async function PATCH(
   context: { params: { id: string } }
 ) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const id = context.params.id
     const incoming = await req.json()
 
