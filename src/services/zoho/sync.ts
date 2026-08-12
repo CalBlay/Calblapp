@@ -17,7 +17,11 @@ import {
   hasRestaurantKeyword,
 } from '@/services/zoho/sync-finca-matching'
 import { syncFinquesFromDeals } from '@/services/zoho/sync-finques'
-import { classifyStage, normalizeZohoDeals } from '@/services/zoho/sync-normalization'
+import {
+  classifyStage,
+  collectUntrackedZohoDealIds,
+  normalizeZohoDeals,
+} from '@/services/zoho/sync-normalization'
 import { syncServeisFromDeals } from '@/services/zoho/sync-serveis'
 import {
   cleanUndefined,
@@ -357,11 +361,14 @@ const MAX_BATCH_WRITES = 450
 const ZOHO_SYNC_STATE_COLLECTION = 'internal_sync_state'
 const ZOHO_SYNC_STATE_DOC_ID = 'zoho_deals'
 const ZOHO_SYNC_OVERLAP_MS = 15 * 60 * 1000
+/** Force a full stage cleanup at least daily so deleted Zoho deals do not linger forever. */
+const ZOHO_FORCE_FULL_SYNC_MS = 24 * 60 * 60 * 1000
 
 type StageSnapshotMap = Map<string, FirebaseFirestore.QueryDocumentSnapshot>
 
 type ZohoSyncState = {
   lastSuccessfulSyncAt?: string
+  lastSuccessfulFullSyncAt?: string
   lastAttemptedSyncAt?: string
   lastMode?: 'full' | 'incremental'
   updatedAt?: string
@@ -673,6 +680,37 @@ async function syncStageCollections({
     }
   }
 
+  // Cancelled / untracked stages are skipped by normalizeZohoDeals, so they never
+  // enter the move loop above. Drop leftover stage docs for those deals now.
+  for (const id of collectUntrackedZohoDealIds(zohoById.values())) {
+    const verdDoc = existingVerd.get(id)
+    if (verdDoc) {
+      const data = verdDoc.data() as { origen?: string }
+      if (data?.origen === 'zoho') {
+        moveBatch.delete(verdDoc.ref)
+        moveBatchCount += 1
+        console.log(`Eliminat de stage_verd (ja no es verd): ${id}`)
+        if (moveBatchCount >= MAX_BATCH_WRITES) {
+          await flushMoveBatch()
+        }
+      }
+    }
+
+    for (const [collectionName, docs] of [
+      ['stage_groc', existingGroc],
+      ['stage_taronja', existingTaronja],
+    ] as const) {
+      const existingDoc = docs.get(id)
+      if (!existingDoc) continue
+      moveBatch.delete(existingDoc.ref)
+      moveBatchCount += 1
+      console.log(`Eliminat de ${collectionName} (ja no es ${collectionName} a Zoho): ${id}`)
+      if (moveBatchCount >= MAX_BATCH_WRITES) {
+        await flushMoveBatch()
+      }
+    }
+  }
+
   await flushMoveBatch()
 }
 
@@ -707,8 +745,19 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
 
   const previousSyncState = await readZohoSyncState()
   const previousSyncMs = parseZohoModifiedTimeMs(previousSyncState.lastSuccessfulSyncAt)
-  const incrementalCutoffMs =
+  const lastFullSyncMs = parseZohoModifiedTimeMs(
+    previousSyncState.lastSuccessfulFullSyncAt
+  )
+  const candidateIncrementalCutoffMs =
     previousSyncMs !== null ? Math.max(0, previousSyncMs - ZOHO_SYNC_OVERLAP_MS) : null
+  const fullSyncDue =
+    lastFullSyncMs === null || syncStartedAt - lastFullSyncMs >= ZOHO_FORCE_FULL_SYNC_MS
+  // Full cleanup requires a full Zoho fetch. Never pair fullSync cleanup with an
+  // incremental page cutoff — that would delete every deal missing from the batch.
+  const incrementalCutoffMs =
+    candidateIncrementalCutoffMs !== null && !fullSyncDue
+      ? candidateIncrementalCutoffMs
+      : null
   const fullSync = incrementalCutoffMs === null
 
   await writeZohoSyncState({
@@ -994,6 +1043,7 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
     lastSuccessfulSyncAt: syncStartedAtIso,
     lastAttemptedSyncAt: syncStartedAtIso,
     lastMode: fullSync ? 'full' : 'incremental',
+    ...(fullSync ? { lastSuccessfulFullSyncAt: syncStartedAtIso } : {}),
   })
   return {
     totalCount: allDeals.length,
