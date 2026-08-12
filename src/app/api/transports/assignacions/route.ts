@@ -9,6 +9,7 @@ import {
   COMMERCIAL_RESERVATIONS_COLLECTION,
   getCommercialReservationEndDate,
 } from '@/lib/commercialReservations'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 export const runtime = 'nodejs'
 
@@ -129,6 +130,9 @@ type CommercialReservationRecord = Record<string, unknown> & {
 
 export async function GET(req: Request) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const { searchParams } = new URL(req.url)
     const start = searchParams.get('start')
     const end = searchParams.get('end')

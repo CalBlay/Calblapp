@@ -1,6 +1,7 @@
 // file: src/app/api/sharepoint/browse/route.ts
 import { NextResponse } from 'next/server'
 import { listChildren, createAnonymousViewLink } from '@/services/sharepoint/graph'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 export const runtime = 'nodejs'
 
@@ -10,6 +11,9 @@ export const runtime = 'nodejs'
 ────────────────────────────────────────────── */
 export async function GET(req: Request) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const { searchParams } = new URL(req.url)
     const path = searchParams.get('path') || '/'
 
@@ -29,6 +33,9 @@ export async function GET(req: Request) {
 ────────────────────────────────────────────── */
 export async function POST(req: Request) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const { itemId } = await req.json()
 
     if (!itemId) {

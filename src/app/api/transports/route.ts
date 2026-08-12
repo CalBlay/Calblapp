@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { processTransportReviewNotifications } from '@/lib/transportReviewNotifications'
+import { requireAuth } from '@/lib/server/apiAuth'
 
 type TransportDocument = {
   id?: string
@@ -45,6 +46,9 @@ const normalizeMonthlyMileage = (entries: MonthlyMileageEntry[] | undefined) =>
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const body = await req.json()
     const {
       plate,
@@ -117,6 +121,9 @@ export async function POST(req: Request) {
 
 export async function GET() {
   try {
+    const auth = await requireAuth()
+    if (!auth.ok) return auth.res
+
     const snap = await firestoreAdmin.collection('transports').get()
     const data = snap.docs.map((d) => ({
       id: d.id,
