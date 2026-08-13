@@ -12,6 +12,7 @@ const AUTH_REQUIRED_ROUTES = [
   'src/app/api/finques/[id]/route.ts',
   'src/app/api/fincas/[id]/route.ts',
   'src/app/api/transports/route.ts',
+  'src/app/api/transports/[id]/route.ts',
   'src/app/api/transports/available/route.ts',
   'src/app/api/transports/assignacions/route.ts',
 ]

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { firestoreAdmin } from '@/lib/firebaseAdmin'
 import { processTransportReviewNotifications } from '@/lib/transportReviewNotifications'
 import { requireAuth } from '@/lib/server/apiAuth'
+import { requireTransportsFleetEdit } from '@/lib/server/transportsApiAuth'
 
 type TransportDocument = {
   id?: string
@@ -48,6 +49,8 @@ export async function POST(req: Request) {
   try {
     const auth = await requireAuth()
     if (!auth.ok) return auth.res
+    const denied = await requireTransportsFleetEdit(auth)
+    if (denied) return denied
 
     const body = await req.json()
     const {
