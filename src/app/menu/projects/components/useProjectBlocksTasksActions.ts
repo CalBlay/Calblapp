@@ -147,7 +147,6 @@ export function useProjectBlocksTasksActions({
     if (!title && !description) return
     const taskTitle = (title || description).slice(0, 20).trim()
     const block = project.blocks.find((item) => item.id === blockId)
-    const maxTaskDeadline = block?.deadline || project.launchDate
     const blockDepartments =
       block?.departments && block.departments.length > 0
         ? block.departments
@@ -164,7 +163,7 @@ export function useProjectBlocksTasksActions({
       description,
       department: fallbackDepartment,
       owner: draft.owner,
-      deadline: clampProjectDeadline(draft.deadline, maxTaskDeadline),
+      deadline: clampProjectDeadline(draft.deadline, project.launchDate),
       dependsOn: String(draft.dependsOn || '').trim(),
       cost: draft.cost || '',
       sprintId: String(draft.sprintId || '').trim(),
@@ -214,7 +213,7 @@ export function useProjectBlocksTasksActions({
                         ...task,
                         [field]:
                           field === 'deadline'
-                            ? clampProjectDeadline(String(value || ''), block.deadline || current.launchDate)
+                            ? clampProjectDeadline(String(value || ''), current.launchDate)
                             : value,
                       }
                     : task

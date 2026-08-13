@@ -81,13 +81,16 @@ type SendBlockAssignmentEmailInput = {
   projectName: string
   blockName: string
   deadline?: string
+  url?: string
 }
 
 type CreateBlockDeadlineEventInput = {
   assigneeEmail: string
+  eventId?: string
   projectName: string
   blockName: string
   deadline: string
+  url?: string
 }
 
 type SendTaskAssignmentEmailInput = {
@@ -97,14 +100,17 @@ type SendTaskAssignmentEmailInput = {
   blockName: string
   taskName: string
   deadline?: string
+  url?: string
 }
 
 type CreateTaskDeadlineEventInput = {
   assigneeEmail: string
+  eventId?: string
   projectName: string
   blockName: string
   taskName: string
   deadline: string
+  url?: string
 }
 
 type CreateIncidentActionDeadlineEventInput = {
@@ -191,6 +197,45 @@ async function getAccessToken() {
   return typeof tokenData === 'string' ? tokenData : tokenData.access_token
 }
 
+function dateKeyInMadrid(value: Date) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+
+  return formatter.format(value)
+}
+
+function buildDailyDeadlineRecurrence(deadline: string) {
+  const todayKey = dateKeyInMadrid(new Date())
+  if (!deadline || deadline <= todayKey) return null
+
+  return {
+    pattern: {
+      type: 'daily',
+      interval: 1,
+    },
+    range: {
+      type: 'endDate',
+      startDate: todayKey,
+      endDate: deadline,
+      recurrenceTimeZone: 'Europe/Madrid',
+    },
+  }
+}
+
+function buildAssignmentLinkHtml(url?: string, label = 'Obrir directament') {
+  const href = String(url || '').trim()
+  if (!href) return ''
+
+  return [
+    `<p><a href="${escapeHtml(href)}">${escapeHtml(label)}</a></p>`,
+    `<p><strong>Enllac directe:</strong> <a href="${escapeHtml(href)}">${escapeHtml(href)}</a></p>`,
+  ].join('')
+}
+
 export async function createKickoffCalendarEvent(input: CreateKickoffEventInput) {
   const accessToken = await getAccessToken()
 
@@ -267,7 +312,7 @@ export async function sendKickoffNotificationEmail(input: SendKickoffNotificatio
       body: JSON.stringify({
         message: {
           subject: input.subject,
-          body: {
+        body: {
             contentType: 'HTML',
             content: buildKickoffEmailHtml({
               projectName: input.projectName,
@@ -275,7 +320,7 @@ export async function sendKickoffNotificationEmail(input: SendKickoffNotificatio
               endDateTime: input.endDateTime,
               notes: input.notes,
             }),
-          },
+        },
           toRecipients: recipients,
         },
         saveToSentItems: true,
@@ -372,10 +417,10 @@ export async function sendProjectMeetingNotificationEmail(
       body: JSON.stringify({
         message: {
           subject: input.subject,
-          body: {
+        body: {
             contentType: 'HTML',
             content: buildProjectMeetingEmailHtml(input),
-          },
+        },
           toRecipients: recipients,
           attachments,
         },
@@ -511,7 +556,9 @@ export async function sendBlockAssignmentEmail(input: SendBlockAssignmentEmailIn
           subject: `Assignacio de bloc · ${input.blockName || 'Bloc'} · ${input.projectName || 'Projecte'}`,
           body: {
             contentType: 'HTML',
-            content: buildBlockAssignmentEmailHtml(input),
+            content:
+              buildBlockAssignmentEmailHtml(input) +
+              buildAssignmentLinkHtml(input.url, 'Obrir bloc'),
           },
           toRecipients: [
             {
@@ -534,29 +581,46 @@ export async function sendBlockAssignmentEmail(input: SendBlockAssignmentEmailIn
   }
 }
 
-export async function createBlockDeadlineCalendarEvent(input: CreateBlockDeadlineEventInput) {
+export async function createBlockDeadlineCalendarEvent(
+  input: CreateBlockDeadlineEventInput
+): Promise<{ id: string; webLink: string }> {
   const deadline = String(input.deadline || '').trim()
   const assigneeEmail = String(input.assigneeEmail || '').trim()
-  if (!deadline || !assigneeEmail) return
+  if (!deadline || !assigneeEmail) return { id: '', webLink: '' }
 
   const accessToken = await getAccessToken()
-  const endDate = addOneDay(deadline)
+  const eventId = String(input.eventId || '').trim()
+  const recurrence = buildDailyDeadlineRecurrence(deadline)
+  const startDate = recurrence?.range.startDate || deadline
+  const endDate = addOneDay(startDate)
   const response = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
+    eventId
+      ? `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events/${encodeURIComponent(eventId)}`
+      : `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
     {
-      method: 'POST',
+      method: eventId ? 'PATCH' : 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         subject: `Entrega bloc · ${input.blockName || 'Bloc'} · ${input.projectName || 'Projecte'}`,
-        body: {
-          contentType: 'HTML',
-          content: buildBlockDeadlineEventHtml(input.projectName, input.blockName, deadline),
-        },
+          body: {
+            contentType: 'HTML',
+            content:
+              buildBlockDeadlineEventHtml(input.projectName, input.blockName, deadline, input.url) +
+              '<p>Aquest recordatori es mostra cada dia fins al venciment.</p>' +
+              buildAssignmentLinkHtml(input.url, 'Obrir bloc'),
+          },
+        ...(String(input.url || '').trim()
+          ? {
+              location: {
+                displayName: String(input.url || '').trim(),
+              },
+            }
+          : {}),
         start: {
-          dateTime: `${deadline}T00:00:00`,
+          dateTime: `${startDate}T00:00:00`,
           timeZone: 'Europe/Madrid',
         },
         end: {
@@ -565,6 +629,7 @@ export async function createBlockDeadlineCalendarEvent(input: CreateBlockDeadlin
         },
         isAllDay: true,
         isReminderOn: true,
+        ...(recurrence ? { recurrence } : {}),
       }),
       cache: 'no-store',
     }
@@ -572,7 +637,15 @@ export async function createBlockDeadlineCalendarEvent(input: CreateBlockDeadlin
 
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(`No s ha pogut crear l entrega al calendari: ${response.status} ${text}`)
+    throw new Error(
+      `No s ha pogut ${eventId ? 'actualitzar' : 'crear'} l entrega al calendari: ${response.status} ${text}`
+    )
+  }
+
+  const data = (await response.json()) as GraphEventResponse
+  return {
+    id: data.id || eventId || '',
+    webLink: data.webLink || '',
   }
 }
 
@@ -675,6 +748,7 @@ type CreateTransportReviewCalendarEventInput = {
   reviewDate: string
   reviewReason: 'annual' | 'km'
   notes?: string
+  url?: string
 }
 
 function buildTransportReviewEventHtml(input: CreateTransportReviewCalendarEventInput): string {
@@ -716,6 +790,13 @@ export async function createTransportReviewCalendarEvent(
           contentType: 'HTML',
           content: buildTransportReviewEventHtml(input),
         },
+        ...(String(input.url || '').trim()
+          ? {
+              location: {
+                displayName: String(input.url || '').trim(),
+              },
+            }
+          : {}),
         start: {
           dateTime: `${reviewDate}T00:00:00`,
           timeZone: 'Europe/Madrid',
@@ -832,7 +913,9 @@ export async function sendTaskAssignmentEmail(input: SendTaskAssignmentEmailInpu
           subject: `Assignacio de tasca · ${input.taskName || 'Tasca'} · ${input.projectName || 'Projecte'}`,
           body: {
             contentType: 'HTML',
-            content: buildTaskAssignmentEmailHtml(input),
+            content:
+              buildTaskAssignmentEmailHtml(input) +
+              buildAssignmentLinkHtml(input.url, 'Obrir tasca'),
           },
           toRecipients: [
             {
@@ -855,29 +938,52 @@ export async function sendTaskAssignmentEmail(input: SendTaskAssignmentEmailInpu
   }
 }
 
-export async function createTaskDeadlineCalendarEvent(input: CreateTaskDeadlineEventInput) {
+export async function createTaskDeadlineCalendarEvent(
+  input: CreateTaskDeadlineEventInput
+): Promise<{ id: string; webLink: string }> {
   const deadline = String(input.deadline || '').trim()
   const assigneeEmail = String(input.assigneeEmail || '').trim()
-  if (!deadline || !assigneeEmail) return
+  if (!deadline || !assigneeEmail) return { id: '', webLink: '' }
 
   const accessToken = await getAccessToken()
-  const endDate = addOneDay(deadline)
+  const eventId = String(input.eventId || '').trim()
+  const recurrence = buildDailyDeadlineRecurrence(deadline)
+  const startDate = recurrence?.range.startDate || deadline
+  const endDate = addOneDay(startDate)
   const response = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
+    eventId
+      ? `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events/${encodeURIComponent(eventId)}`
+      : `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(assigneeEmail)}/events`,
     {
-      method: 'POST',
+      method: eventId ? 'PATCH' : 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         subject: `Entrega tasca · ${input.taskName || 'Tasca'} · ${input.projectName || 'Projecte'}`,
-        body: {
-          contentType: 'HTML',
-          content: buildTaskDeadlineEventHtml(input.projectName, input.blockName, input.taskName, deadline),
-        },
+          body: {
+            contentType: 'HTML',
+            content:
+              buildTaskDeadlineEventHtml(
+                input.projectName,
+                input.blockName,
+                input.taskName,
+                deadline,
+                input.url
+              ) +
+              '<p>Aquest recordatori es mostra cada dia fins al venciment.</p>' +
+              buildAssignmentLinkHtml(input.url, 'Obrir tasca'),
+          },
+        ...(String(input.url || '').trim()
+          ? {
+              location: {
+                displayName: String(input.url || '').trim(),
+              },
+            }
+          : {}),
         start: {
-          dateTime: `${deadline}T00:00:00`,
+          dateTime: `${startDate}T00:00:00`,
           timeZone: 'Europe/Madrid',
         },
         end: {
@@ -886,6 +992,7 @@ export async function createTaskDeadlineCalendarEvent(input: CreateTaskDeadlineE
         },
         isAllDay: true,
         isReminderOn: true,
+        ...(recurrence ? { recurrence } : {}),
       }),
       cache: 'no-store',
     }
@@ -893,7 +1000,15 @@ export async function createTaskDeadlineCalendarEvent(input: CreateTaskDeadlineE
 
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(`No s ha pogut crear l entrega de tasca al calendari: ${response.status} ${text}`)
+    throw new Error(
+      `No s ha pogut ${eventId ? 'actualitzar' : 'crear'} l entrega de tasca al calendari: ${response.status} ${text}`
+    )
+  }
+
+  const data = (await response.json()) as GraphEventResponse
+  return {
+    id: data.id || eventId || '',
+    webLink: data.webLink || '',
   }
 }
 
@@ -1386,6 +1501,7 @@ function buildProjectMeetingEmailHtml(params: {
 
 function buildBlockAssignmentEmailHtml(params: SendBlockAssignmentEmailInput) {
   const deadlineLabel = params.deadline ? formatBarcelonaDate(params.deadline) : 'Sense data'
+  const cta = buildAssignmentLinkHtml(params.url, 'Obrir bloc')
 
   return `
     <p>Se t'ha assignat la responsabilitat del bloc <strong>${escapeHtml(params.blockName || 'Bloc')}</strong>.</p>
@@ -1395,8 +1511,14 @@ function buildBlockAssignmentEmailHtml(params: SendBlockAssignmentEmailInput) {
   `
 }
 
-function buildBlockDeadlineEventHtml(projectName: string, blockName: string, deadline: string) {
+function buildBlockDeadlineEventHtml(projectName: string, blockName: string, deadline: string, url?: string) {
+  const directUrl = String(url || '').trim()
+  const directUrlHtml = directUrl
+    ? `<p><strong>URL directa:</strong> ${escapeHtml(directUrl)}</p>`
+    : ''
+
   return `
+    ${directUrlHtml}
     <p>Entrega prevista del bloc <strong>${escapeHtml(blockName || 'Bloc')}</strong>.</p>
     <p><strong>Projecte:</strong> ${escapeHtml(projectName || 'Projecte')}</p>
     <p><strong>Data limit:</strong> ${escapeHtml(formatBarcelonaDate(deadline))}</p>
@@ -1415,8 +1537,20 @@ function buildTaskAssignmentEmailHtml(params: SendTaskAssignmentEmailInput) {
   `
 }
 
-function buildTaskDeadlineEventHtml(projectName: string, blockName: string, taskName: string, deadline: string) {
+function buildTaskDeadlineEventHtml(
+  projectName: string,
+  blockName: string,
+  taskName: string,
+  deadline: string,
+  url?: string
+) {
+  const directUrl = String(url || '').trim()
+  const directUrlHtml = directUrl
+    ? `<p><strong>URL directa:</strong> ${escapeHtml(directUrl)}</p>`
+    : ''
+
   return `
+    ${directUrlHtml}
     <p>Entrega prevista de la tasca <strong>${escapeHtml(taskName || 'Tasca')}</strong>.</p>
     <p><strong>Projecte:</strong> ${escapeHtml(projectName || 'Projecte')}</p>
     <p><strong>Bloc:</strong> ${escapeHtml(blockName || 'Bloc')}</p>

@@ -24,7 +24,6 @@ import { dotByDepartment } from '@/lib/colors'
 import { cn } from '@/lib/utils'
 import {
   formatProjectDate,
-  getPreLaunchDeadline,
   TASK_PRIORITY_OPTIONS,
   type ProjectBlock,
   type ProjectDocument,
@@ -107,13 +106,16 @@ export default function ProjectTaskCard({
   onSetField,
   fileInputRef,
 }: ProjectTaskCardProps) {
+  void projectBlocks
+
   const taskDaysLeft = taskDayDiffFromToday(task.deadline)
   const docCount = (task.documents || []).length
   const meetingCount = (task.meetings || []).length
   const taskMetaParts: string[] = []
   if (docCount > 0) taskMetaParts.push(`${docCount} doc${docCount === 1 ? '' : 's'}`)
-  if (meetingCount > 0) taskMetaParts.push(`${meetingCount} reuniÃ³${meetingCount === 1 ? '' : 's'}`)
+  if (meetingCount > 0) taskMetaParts.push(`${meetingCount} reunio${meetingCount === 1 ? '' : 's'}`)
   if (isObserver) taskMetaParts.push('Observador')
+
   const priorityLabel =
     TASK_PRIORITY_OPTIONS.find((option) => option.value === (task.priority || 'normal'))?.label ||
     'Normal'
@@ -133,17 +135,20 @@ export default function ProjectTaskCard({
         </Link>
       )
     }
+
     return <div className={titleClassName.replace('text-left ', '')}>{label}</div>
   }
 
   const renderBlockName = () => {
     if (!showBlockName) return null
+
     const content = (
       <>
         <MessagesSquare className="h-3 w-3 shrink-0" />
         <span className="truncate">{block.name}</span>
       </>
     )
+
     if (blockHref) {
       return (
         <Link
@@ -155,6 +160,7 @@ export default function ProjectTaskCard({
         </Link>
       )
     }
+
     return (
       <span className="inline-flex min-w-0 max-w-full items-center gap-1 text-xs font-medium text-slate-500">
         {content}
@@ -237,8 +243,8 @@ export default function ProjectTaskCard({
               variant="ghost"
               size="icon"
               className="h-7 w-7 rounded-full text-slate-500 hover:text-violet-700"
-              aria-label="Convocar reuniÃ³"
-              title="Convocar reuniÃ³"
+              aria-label="Convocar reunio"
+              title="Convocar reunio"
               onClick={(event) => {
                 event.stopPropagation()
                 onOpenMeeting()
@@ -287,7 +293,7 @@ export default function ProjectTaskCard({
         {showBlockName ? (
           <>
             <span className="hidden text-slate-300 sm:inline" aria-hidden="true">
-              Â·
+              ·
             </span>
             {renderBlockName()}
           </>
@@ -307,7 +313,7 @@ export default function ProjectTaskCard({
         <div className="rounded-xl bg-slate-50 px-2.5 py-2">
           <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             <CalendarDays className="h-3 w-3" />
-            Data lÃ­mit
+            Data limit
           </div>
           <div
             className={cn(
@@ -319,7 +325,6 @@ export default function ProjectTaskCard({
           </div>
         </div>
       </div>
-
 
       {taskMetaParts.length > 0 ? (
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
@@ -343,7 +348,7 @@ export default function ProjectTaskCard({
             {canManage ? (
               <Textarea
                 value={task.description || ''}
-                placeholder="Notes, context o referÃ¨ncies sobre la tasca"
+                placeholder="Notes, context o referencies sobre la tasca"
                 className="min-h-[88px] resize-y border-violet-100 bg-white text-sm font-semibold leading-relaxed text-slate-900 placeholder:font-normal placeholder:text-slate-400"
                 onChange={(event) => {
                   onSetField('description', event.target.value)
@@ -360,34 +365,15 @@ export default function ProjectTaskCard({
 
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              PlanificaciÃ³
+              Planificacio
             </div>
-            <div className={cn('grid gap-2', canManage ? 'sm:grid-cols-3' : 'sm:grid-cols-2')}>
-              <div className="min-w-0">
-                <Select
-                  value={task.priority || 'normal'}
-                  onValueChange={(value) => {
-                    onSetField('priority', value)
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Nivell" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TASK_PRIORITY_OPTIONS.slice(0, 3).map((option) => (
-                      <SelectItem key={`${task.id}-priority-${option.value}`} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className={cn('grid gap-2', canManage ? 'sm:grid-cols-2' : 'sm:grid-cols-1')}>
               <div className="min-w-0">
                 <Input
                   type="date"
                   value={task.deadline}
                   aria-label="Data limit"
-                  max={getPreLaunchDeadline(block.deadline) || maxDeadline || undefined}
+                  max={maxDeadline || undefined}
                   onChange={(event) => {
                     onSetField('deadline', event.target.value)
                   }}

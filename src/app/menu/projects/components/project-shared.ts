@@ -97,6 +97,9 @@ export type ProjectTask = {
   storyPoints?: string
   priority: string
   status: string
+  outlookEventId?: string
+  outlookEventWebLink?: string
+  outlookEventEmail?: string
   documents?: ProjectDocument[]
   meetings?: ProjectMeetingRecord[]
 }
@@ -113,6 +116,9 @@ export type ProjectBlock = {
   budget: string
   dependsOn: string
   status: string
+  outlookEventId?: string
+  outlookEventWebLink?: string
+  outlookEventEmail?: string
   tasks: ProjectTask[]
   meetings?: ProjectMeetingRecord[]
 }

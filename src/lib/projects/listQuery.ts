@@ -21,8 +21,10 @@ export type ProjectListRecord = {
     id?: string
     owner?: string
     department?: string
+    deadline?: string
+    status?: string
     departments?: string[]
-    tasks?: Array<{ owner?: string; department?: string }>
+    tasks?: Array<{ owner?: string; department?: string; status?: string }>
   }>
 }
 
@@ -35,6 +37,7 @@ export type ProjectListQuery = {
   owner?: string
   startDate?: string
   endDate?: string
+  lifecycle?: 'open' | 'closed' | 'all'
 }
 
 export type ProjectListFilterMeta = {
@@ -55,6 +58,47 @@ const formatDepartmentLabel = (value: string) =>
     .filter(Boolean)
     .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
     .join(' ')
+
+const CLOSED_BLOCK_STATUSES = new Set([
+  'done',
+  'closed',
+  'completed',
+  'finished',
+  'fet',
+  'feta',
+  'fets',
+  'tancat',
+  'tancada',
+  'tancats',
+  'acabat',
+  'acabada',
+  'acabats',
+])
+
+const normalizeBlockLifecycleStatus = (value?: string) => normalizeText(value || '')
+
+const deriveListBlockStatus = (
+  block: NonNullable<ProjectListRecord['blocks']>[number]
+) => {
+  const tasks = Array.isArray(block.tasks) ? block.tasks : []
+  if (tasks.length === 0) return String(block.status || '').trim() || 'pending'
+
+  const normalizedTaskStatuses = tasks.map((task) => normalizeBlockLifecycleStatus(task.status))
+  if (normalizedTaskStatuses.some((status) => status === 'blocked')) return 'blocked'
+  if (normalizedTaskStatuses.every((status) => CLOSED_BLOCK_STATUSES.has(status))) return 'done'
+  if (normalizedTaskStatuses.some((status) => status === 'in_progress' || CLOSED_BLOCK_STATUSES.has(status))) {
+    return 'in_progress'
+  }
+
+  return String(block.status || '').trim() || 'in_progress'
+}
+
+export const isProjectClosed = (project: ProjectListRecord) => {
+  const blocks = Array.isArray(project.blocks) ? project.blocks : []
+  if (blocks.length === 0) return false
+
+  return blocks.every((block) => CLOSED_BLOCK_STATUSES.has(normalizeBlockLifecycleStatus(deriveListBlockStatus(block))))
+}
 
 export const toProjectListRecord = (
   id: string,
@@ -81,6 +125,8 @@ export const toProjectListRecord = (
           id: String(source.id || '').trim() || undefined,
           owner: String(source.owner || '').trim() || undefined,
           department: String(source.department || '').trim() || undefined,
+          deadline: String(source.deadline || '').trim() || undefined,
+          status: String(source.status || '').trim() || undefined,
           departments: Array.isArray(source.departments)
             ? source.departments.map((item) => String(item || '').trim()).filter(Boolean)
             : [],
@@ -90,6 +136,7 @@ export const toProjectListRecord = (
                 return {
                   owner: String(taskSource.owner || '').trim() || undefined,
                   department: String(taskSource.department || '').trim() || undefined,
+                  status: String(taskSource.status || '').trim() || undefined,
                 }
               })
             : [],
@@ -119,6 +166,7 @@ export const filterProjectsByQuery = (
   const ownerFilter = normalizeText(query.owner || '')
   const startDate = String(query.startDate || '').trim()
   const endDate = String(query.endDate || '').trim()
+  const lifecycle = query.lifecycle === 'closed' || query.lifecycle === 'all' ? query.lifecycle : 'open'
 
   return projects.filter((project) => {
     const launchDate = String(project.launchDate || '').trim()
@@ -141,8 +189,12 @@ export const filterProjectsByQuery = (
       (Boolean(referenceDate) &&
         (!startDate || referenceDate >= startDate) &&
         (!endDate || referenceDate <= endDate))
+    const projectClosed = isProjectClosed(project)
+    const matchesLifecycle =
+      lifecycle === 'all' ||
+      (lifecycle === 'closed' ? projectClosed : !projectClosed)
 
-    return matchesQuery && matchesDepartment && matchesOwner && matchesDateRange
+    return matchesQuery && matchesDepartment && matchesOwner && matchesDateRange && matchesLifecycle
   })
 }
 
@@ -202,5 +254,11 @@ export const parseProjectListQuery = (searchParams: URLSearchParams): ProjectLis
     owner: searchParams.get('owner') || '',
     startDate: searchParams.get('startDate') || '',
     endDate: searchParams.get('endDate') || '',
+    lifecycle:
+      searchParams.get('lifecycle') === 'closed'
+        ? 'closed'
+        : searchParams.get('lifecycle') === 'all'
+          ? 'all'
+          : 'open',
   }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FileText,
   Save,
@@ -85,6 +85,7 @@ type Props = {
   onAttachTaskDocument: (blockId: string, taskId: string, file: File) => void
   onRemoveTaskDocument: (blockId: string, taskId: string, documentId: string) => void
   taskResponsibleOptions: (department?: string, blockId?: string) => ResponsibleOption[]
+  sessionUserName?: string
   maxDeadline?: string
   canCreateTasks?: boolean
   canSaveTasks?: boolean
@@ -146,6 +147,7 @@ export default function ProjectTasksTab({
   onAttachTaskDocument,
   onRemoveTaskDocument,
   taskResponsibleOptions,
+  sessionUserName = '',
   maxDeadline,
   canCreateTasks = false,
   canSaveTasks = false,
@@ -168,6 +170,7 @@ export default function ProjectTasksTab({
   const [levelFilter, setLevelFilter] = useState<string>('all')
   const [ownerFilter, setOwnerFilter] = useState<string>('all')
   const fileInputsRef = useRef<Record<string, HTMLInputElement | null>>({})
+  const normalizedSessionUserName = useMemo(() => String(sessionUserName || '').trim().toLowerCase(), [sessionUserName])
   const hasPendingTaskDraft =
     showTaskComposer &&
     Boolean(String(taskDraft.blockId || '').trim()) &&
@@ -180,6 +183,16 @@ export default function ProjectTasksTab({
         .filter(Boolean)
     )
   ).sort((left, right) => left.localeCompare(right))
+  const matchingOwnerOption = useMemo(
+    () =>
+      ownerOptions.find((owner) => owner.trim().toLowerCase() === normalizedSessionUserName) || '',
+    [normalizedSessionUserName, ownerOptions]
+  )
+
+  useEffect(() => {
+    if (!matchingOwnerOption) return
+    setOwnerFilter((current) => (current === 'all' ? matchingOwnerOption : current))
+  }, [matchingOwnerOption])
   const filteredTasks = allTasks.filter(({ block, task }) => {
     const matchesBlock = blockFilter.length === 0 || blockFilter.includes(block.id)
     const matchesLevel = levelFilter === 'all' || (task.priority || 'normal') === levelFilter
@@ -392,12 +405,9 @@ export default function ProjectTasksTab({
                 id: option.id,
                 name: option.name,
               }))}
-              maxDeadline={
-                getPreLaunchDeadline(projectBlocks.find((block) => block.id === taskDraft.blockId)?.deadline) ||
-                maxDeadline ||
-                undefined
-              }
+              maxDeadline={maxDeadline || undefined}
               showBlockSelector
+              showPriority={false}
               disabled={savingBlocks || !taskDraft.blockId || taskDraft.blockId === 'none'}
               onBlockChange={(value) => onSetTaskDraftField('blockId', value)}
               onDescriptionChange={(value) => {

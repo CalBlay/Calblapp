@@ -970,6 +970,7 @@ export default function ProjectBlocksTab({
                                     maxDeadline={maxDeadline}
                                     departmentResponsibleOptions={departmentResponsibleOptions}
                                     priorityVariant="pill"
+                                    showPriority={false}
                                     onDepartmentChange={(value) =>
                                       onSetTaskField(block.id, task.id, 'department', value)
                                     }
@@ -1013,7 +1014,8 @@ export default function ProjectBlocksTab({
                                   id: option.id,
                                   name: option.name,
                                 }))}
-                                maxDeadline={getPreLaunchDeadline(block.deadline) || maxDeadline || undefined}
+                                maxDeadline={maxDeadline || undefined}
+                                showPriority={false}
                                 onDescriptionChange={(value) => onSetTaskDraftField('description', value)}
                                 onDepartmentChange={(value) => onSetTaskDraftField('department', value)}
                                 onOwnerChange={(value) => onSetTaskDraftField('owner', value)}

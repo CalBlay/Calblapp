@@ -84,6 +84,9 @@ export function normalizeProjectResponse(data: ProjectApiResponse): ProjectData 
             budget: String(block.budget || ''),
             dependsOn: block.dependsOn || '',
             status: block.status || 'pending',
+            outlookEventId: block.outlookEventId || '',
+            outlookEventWebLink: block.outlookEventWebLink || '',
+            outlookEventEmail: block.outlookEventEmail || '',
             tasks: Array.isArray((block as { tasks?: ProjectData['blocks'][number]['tasks'] }).tasks)
               ? ((block as { tasks?: ProjectData['blocks'][number]['tasks'] }).tasks || []).map(
                   (task) => ({
@@ -99,6 +102,9 @@ export function normalizeProjectResponse(data: ProjectApiResponse): ProjectData 
                     cost: task.cost || '',
                     priority: task.priority || 'normal',
                     status: task.status || 'pending',
+                    outlookEventId: task.outlookEventId || '',
+                    outlookEventWebLink: task.outlookEventWebLink || '',
+                    outlookEventEmail: task.outlookEventEmail || '',
                     documents: Array.isArray(task.documents)
                       ? task.documents.map((item, index) => ({
                           id: item?.id || `task-doc-${index}-${Date.now()}`,

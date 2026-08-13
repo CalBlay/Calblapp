@@ -19,6 +19,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Props)
   const { id } = await params
   const query = await searchParams
   const initialTab = parseWorkspaceTab(query.tab)
+  const initialBlockTarget = query.blockId ? { blockId: String(query.blockId) } : undefined
   const initialTaskTarget =
     query.blockId && query.taskId
       ? { blockId: String(query.blockId), taskId: String(query.taskId) }
@@ -39,6 +40,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Props)
       initialProject={project}
       initialUsersCatalog={usersCatalog}
       initialTab={initialTab}
+      initialBlockTarget={initialTaskTarget ? undefined : initialBlockTarget}
       initialTaskTarget={initialTaskTarget}
     />
   )

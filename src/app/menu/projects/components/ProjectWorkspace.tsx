@@ -45,6 +45,7 @@ type Props = {
   initialProject: ProjectData
   initialUsersCatalog?: ResponsibleOption[]
   initialTab?: WorkspaceTab
+  initialBlockTarget?: { blockId: string }
   initialTaskTarget?: { blockId: string; taskId: string }
 }
 
@@ -92,6 +93,7 @@ export default function ProjectWorkspace({
   initialProject,
   initialUsersCatalog,
   initialTab,
+  initialBlockTarget,
   initialTaskTarget,
 }: Props) {
   const router = useRouter()
@@ -233,10 +235,12 @@ export default function ProjectWorkspace({
   )
 
   const appliedInitialNavigation = useRef(false)
+  const appliedInitialBlockTarget = useRef(false)
   const appliedInitialTaskTarget = useRef(false)
 
   useEffect(() => {
     appliedInitialNavigation.current = false
+    appliedInitialBlockTarget.current = false
     appliedInitialTaskTarget.current = false
   }, [projectId])
 
@@ -266,6 +270,38 @@ export default function ProjectWorkspace({
       applyTabChange(visibleTabs[0])
     }
   }, [applyTabChange, initialTab, preferredWorkspaceTab, projectId, sessionStatus, visibleTabs])
+
+  useEffect(() => {
+    if (sessionStatus === 'loading') return
+    if (appliedInitialBlockTarget.current) return
+    if (!initialBlockTarget) return
+    if (initialTaskTarget) {
+      appliedInitialBlockTarget.current = true
+      return
+    }
+    if (!visibleTabs.includes('blocks')) {
+      appliedInitialBlockTarget.current = true
+      return
+    }
+
+    if (activeTab !== 'blocks') {
+      applyTabChange('blocks')
+      return
+    }
+
+    appliedInitialBlockTarget.current = true
+    setEditingBlockId(initialBlockTarget.blockId)
+    setEditingTaskKey(null)
+    scrollToProjectTarget(`project-block-${initialBlockTarget.blockId}`)
+  }, [
+    activeTab,
+    applyTabChange,
+    initialBlockTarget,
+    initialTaskTarget,
+    scrollToProjectTarget,
+    sessionStatus,
+    visibleTabs,
+  ])
 
   useEffect(() => {
     if (sessionStatus === 'loading') return
@@ -607,6 +643,7 @@ export default function ProjectWorkspace({
             onAttachTaskDocument={attachTaskDocument}
             onRemoveTaskDocument={removeTaskDocument}
             taskResponsibleOptions={taskResponsibleOptions}
+            sessionUserName={sessionUserName}
             maxDeadline={maxDeadline}
             canCreateTasks={canCreateTasks}
             canSaveTasks={canSaveTasks}

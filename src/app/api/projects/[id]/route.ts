@@ -28,7 +28,9 @@ import type { KickoffData, ProjectBlock } from '@/app/menu/projects/components/p
 import {
   createBlockDeadlineCalendarEvent,
   createTaskDeadlineCalendarEvent,
+  deleteOutlookCalendarEvent,
   sendBlockAssignmentEmail,
+  sendOutlookTextMail,
   sendTaskAssignmentEmail,
 } from '@/services/graph/calendar'
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
@@ -68,6 +70,40 @@ const hasLaunchWindowExpired = (value?: string) => {
   const date = new Date(raw.length === 10 ? `${raw}T00:00:00` : raw)
   if (Number.isNaN(date.getTime())) return false
   return Date.now() >= date.getTime() + 24 * 60 * 60 * 1000
+}
+
+const trimText = (value: unknown) => String(value || '').trim()
+
+const equalText = (left: unknown, right: unknown) =>
+  normalizeComparableText(String(left || '')) === normalizeComparableText(String(right || ''))
+
+type OutlookRef = {
+  outlookEventId?: string
+  outlookEventWebLink?: string
+  outlookEventEmail?: string
+}
+
+type BlockRecord = Record<string, unknown> & {
+  tasks?: Array<Record<string, unknown>>
+}
+
+async function sendProjectOwnerUpdateEmail(params: {
+  senderEmail?: string
+  recipientEmail?: string
+  recipientName?: string
+  subject: string
+  lines: string[]
+}) {
+  const senderEmail = trimText(params.senderEmail)
+  const recipientEmail = trimText(params.recipientEmail)
+  if (!senderEmail || !recipientEmail) return
+
+  await sendOutlookTextMail({
+    organizerEmail: senderEmail,
+    toRecipients: [{ email: recipientEmail, name: trimText(params.recipientName) || recipientEmail }],
+    subject: params.subject,
+    bodyText: params.lines.filter(Boolean).join('\n\n'),
+  })
 }
 
 async function requireAdmin() {
@@ -236,6 +272,7 @@ async function notifyBlockOwnerAssignment(params: {
   deadline?: string
   baseUrl: string
   senderEmail?: string
+  eventId?: string
 }) {
   const {
     userId,
@@ -246,8 +283,11 @@ async function notifyBlockOwnerAssignment(params: {
     blockId,
     blockName,
     deadline,
+    baseUrl,
     senderEmail,
   } = params
+  const blockPath = `/menu/projects/${projectId}?tab=blocks&blockId=${encodeURIComponent(blockId)}`
+  const blockUrl = `${String(baseUrl || '').replace(/\/$/, '')}${blockPath}`
   const title = "T'han assignat un bloc"
   const body = `Ara ets responsable del bloc ${blockName || 'Bloc'} del projecte ${projectName || 'Projecte'}`
   const now = Date.now()
@@ -282,7 +322,7 @@ async function notifyBlockOwnerAssignment(params: {
   await sendPushToUsers([userId], {
     title,
     body,
-    url: `/menu/projects/${projectId}?tab=blocks`,
+    url: blockPath,
   })
 
   if (!userEmail) return
@@ -297,6 +337,7 @@ async function notifyBlockOwnerAssignment(params: {
       projectName,
       blockName,
       deadline,
+      url: blockUrl,
     })
   } catch (err) {
     console.error('[projects] block assignment email error', err)
@@ -305,15 +346,23 @@ async function notifyBlockOwnerAssignment(params: {
   if (!deadline) return
 
   try {
-    await createBlockDeadlineCalendarEvent({
+    const event = await createBlockDeadlineCalendarEvent({
       assigneeEmail: userEmail,
+      eventId: trimText(params.eventId),
       projectName,
       blockName,
       deadline,
+      url: blockUrl,
     })
+    return {
+      outlookEventId: event.id,
+      outlookEventWebLink: event.webLink,
+      outlookEventEmail: userEmail,
+    }
   } catch (err) {
     console.error('[projects] block assignment calendar error', err)
   }
+  return null
 }
 
 async function notifyTaskOwnerAssignment(params: {
@@ -329,6 +378,7 @@ async function notifyTaskOwnerAssignment(params: {
   deadline?: string
   baseUrl: string
   senderEmail?: string
+  eventId?: string
 }) {
   const {
     userId,
@@ -341,8 +391,11 @@ async function notifyTaskOwnerAssignment(params: {
     taskId,
     taskName,
     deadline,
+    baseUrl,
     senderEmail,
   } = params
+  const taskPath = `/menu/projects/${projectId}?tab=tasks&blockId=${encodeURIComponent(blockId)}&taskId=${encodeURIComponent(taskId)}`
+  const taskUrl = `${String(baseUrl || '').replace(/\/$/, '')}${taskPath}`
   const title = "T'han assignat una tasca"
   const body = `Ara ets responsable de la tasca ${taskName || 'Tasca'} del bloc ${blockName || 'Bloc'}`
   const now = Date.now()
@@ -380,7 +433,7 @@ async function notifyTaskOwnerAssignment(params: {
   await sendPushToUsers([userId], {
     title,
     body,
-    url: `/menu/projects/${projectId}?tab=tasks`,
+    url: taskPath,
   })
 
   if (!userEmail) return
@@ -396,6 +449,7 @@ async function notifyTaskOwnerAssignment(params: {
       blockName,
       taskName,
       deadline,
+      url: taskUrl,
     })
   } catch (err) {
     console.error('[projects] task assignment email error', err)
@@ -404,16 +458,24 @@ async function notifyTaskOwnerAssignment(params: {
   if (!deadline) return
 
   try {
-    await createTaskDeadlineCalendarEvent({
+    const event = await createTaskDeadlineCalendarEvent({
       assigneeEmail: userEmail,
+      eventId: trimText(params.eventId),
       projectName,
       blockName,
       taskName,
       deadline,
+      url: taskUrl,
     })
+    return {
+      outlookEventId: event.id,
+      outlookEventWebLink: event.webLink,
+      outlookEventEmail: userEmail,
+    }
   } catch (err) {
     console.error('[projects] task assignment calendar error', err)
   }
+  return null
 }
 
 async function notifyTaskDependencyUnlocked(params: {
@@ -829,61 +891,78 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     after(async () => {
       const actorUser = await userResolver.findById(auth.user.id)
       const senderEmail = String(actorUser?.email || '').trim()
+      const syncedBlocks: BlockRecord[] = nextBlocks.map((block) => ({
+        ...block,
+        tasks: Array.isArray(block.tasks) ? block.tasks.map((task) => ({ ...task })) : [],
+      }))
 
-      const blockAssignmentNotifications = nextBlocks.map(async (block) => {
-        const blockId = String(block.id || '').trim()
-        const blockName = String(block.name || '').trim()
-        const blockOwner = String(block.owner || '').trim()
-        const deadline = String(block.deadline || '').trim()
+      let shouldPersistOutlookRefs = false
+
+      const blockAssignmentNotifications = syncedBlocks.map(async (block) => {
+        const blockId = trimText(block.id)
+        const blockName = trimText(block.name) || 'Bloc'
+        const blockOwner = trimText(block.owner)
+        const deadline = trimText(block.deadline)
         const previousBlock = currentBlocksById.get(blockId)
-        const previousOwnerName = previousWasDraft ? '' : String(previousBlock?.owner || '').trim()
+        const previousOwnerName = previousWasDraft ? '' : trimText(previousBlock?.owner)
 
         if (!blockId || !blockOwner || blockOwner === previousOwnerName) return null
 
         const assignedUser = await userResolver.findByName(blockOwner)
         if (!assignedUser?.id) return null
 
-        return notifyBlockOwnerAssignment({
+        const eventRef = await notifyBlockOwnerAssignment({
           userId: assignedUser.id,
-          userName: String(assignedUser.name || blockOwner).trim(),
-          userEmail: String(assignedUser.email || '').trim(),
+          userName: trimText(assignedUser.name) || blockOwner,
+          userEmail: trimText(assignedUser.email),
           projectId: id,
           projectName,
           blockId,
-          blockName: blockName || 'Bloc',
+          blockName,
           deadline,
           baseUrl,
           senderEmail,
+          eventId:
+            equalText(block.outlookEventEmail, assignedUser.email) ? trimText(block.outlookEventId) : '',
         })
+
+        if (eventRef) {
+          block.outlookEventId = eventRef.outlookEventId
+          block.outlookEventWebLink = eventRef.outlookEventWebLink
+          block.outlookEventEmail = eventRef.outlookEventEmail
+          shouldPersistOutlookRefs = true
+        }
+
+        return null
       })
 
-      const taskAssignmentNotifications = nextBlocks.flatMap((block) => {
-        const blockId = String(block.id || '').trim()
-        const blockName = String(block.name || '').trim() || 'Bloc'
+      const taskAssignmentNotifications = syncedBlocks.flatMap((block) => {
+        const blockId = trimText(block.id)
+        const blockName = trimText(block.name) || 'Bloc'
         const previousBlock = currentBlocksById.get(blockId)
         const previousTasksById = new Map(
           (Array.isArray(previousBlock?.tasks) ? previousBlock.tasks : [])
-            .map((task) => [String(task?.id || ''), task] as const)
+            .map((task) => [trimText(task?.id), task] as const)
             .filter(([taskId]) => Boolean(taskId))
         )
 
         return (Array.isArray(block.tasks) ? block.tasks : []).map(async (task) => {
-          const taskId = String(task?.id || '').trim()
-          const taskName = String(task?.title || '').trim() || 'Tasca'
-          const taskOwner = String(task?.owner || '').trim()
-          const deadline = String(task?.deadline || '').trim()
+          const taskId = trimText(task?.id)
+          const taskName = trimText(task?.title) || 'Tasca'
+          const taskOwner = trimText(task?.owner)
+          const deadline = trimText(task?.deadline)
           const previousTask = previousTasksById.get(taskId)
-          const previousOwnerName = previousWasDraft ? '' : String(previousTask?.owner || '').trim()
+          const previousOwnerName = previousWasDraft ? '' : trimText(previousTask?.owner)
 
           if (!taskId || !taskOwner || taskOwner === previousOwnerName) return null
 
           const assignedUser = await userResolver.findByName(taskOwner)
           if (!assignedUser?.id) return null
 
-          return notifyTaskOwnerAssignment({
+          const eventRef = await notifyTaskOwnerAssignment({
             userId: assignedUser.id,
-            userName: String(assignedUser.name || taskOwner).trim(),
-            userEmail: String(assignedUser.email || '').trim(),
+            userName: trimText(assignedUser.name) || taskOwner,
+            userEmail: trimText(assignedUser.email),
             projectId: id,
             projectName,
             blockId,
@@ -893,7 +972,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             deadline,
             baseUrl,
             senderEmail,
+            eventId:
+              equalText(task.outlookEventEmail, assignedUser.email) ? trimText(task.outlookEventId) : '',
           })
+
+          if (eventRef) {
+            task.outlookEventId = eventRef.outlookEventId
+            task.outlookEventWebLink = eventRef.outlookEventWebLink
+            task.outlookEventEmail = eventRef.outlookEventEmail
+            shouldPersistOutlookRefs = true
+          }
+
+          return null
         })
       })
 
@@ -941,6 +1031,201 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         })
       })
 
+      const blockUpdateNotifications = syncedBlocks.map(async (block) => {
+        const blockId = trimText(block.id)
+        const blockName = trimText(block.name) || 'Bloc'
+        const blockOwner = trimText(block.owner)
+        const deadline = trimText(block.deadline)
+        const previousBlock = currentBlocksById.get(blockId)
+        const previousOwnerName = trimText(previousBlock?.owner)
+        const previousBlockName = trimText(previousBlock?.name) || 'Bloc'
+        const previousDeadline = trimText(previousBlock?.deadline)
+
+        if (!blockId || !blockOwner || !previousBlock || !equalText(blockOwner, previousOwnerName)) return null
+
+        const deadlineChanged = deadline !== previousDeadline
+        const nameChanged = !equalText(blockName, previousBlockName)
+        if (!deadlineChanged && !nameChanged) return null
+
+        const assignedUser = await userResolver.findByName(blockOwner)
+        const recipientEmail = trimText(assignedUser?.email)
+        const recipientId = trimText(assignedUser?.id)
+        const blockPath = `/menu/projects/${id}?tab=blocks&blockId=${encodeURIComponent(blockId)}`
+        const blockUrl = `${String(baseUrl || '').replace(/\/$/, '')}${blockPath}`
+
+        if (recipientId) {
+          const title = "S'ha actualitzat un bloc teu"
+          const body = `S'han actualitzat dades del bloc ${blockName}.`
+          const now = Date.now()
+          await db.collection('users').doc(recipientId).collection('notifications').add({
+            title,
+            body,
+            createdAt: now,
+            read: false,
+            type: 'project_block_update',
+            projectId: id,
+            blockId,
+            projectName,
+            blockName,
+          })
+          await incrementUserUnreadCount(recipientId, 'project_block_update', 1)
+          await sendPushToUsers([recipientId], { title, body, url: blockPath })
+        }
+
+        if (recipientEmail && senderEmail) {
+          await sendProjectOwnerUpdateEmail({
+            senderEmail,
+            recipientEmail,
+            recipientName: trimText(assignedUser?.name) || blockOwner,
+            subject: `Actualitzacio de bloc - ${blockName} - ${projectName}`,
+            lines: [
+              `S'ha actualitzat el bloc ${blockName}.`,
+              `Projecte: ${projectName}`,
+              deadlineChanged ? `Nova data limit: ${deadline || 'Sense data'}` : '',
+              nameChanged ? `Nom actual: ${blockName}` : '',
+              `Obrir bloc: ${blockUrl}`,
+            ],
+          })
+        }
+
+        const currentBlockEventId = trimText(block.outlookEventId)
+        const canReuseBlockEvent = equalText(block.outlookEventEmail, recipientEmail) && currentBlockEventId
+
+        if (recipientEmail) {
+          if (!deadline && canReuseBlockEvent) {
+            await deleteOutlookCalendarEvent(recipientEmail, currentBlockEventId)
+            block.outlookEventId = ''
+            block.outlookEventWebLink = ''
+            block.outlookEventEmail = ''
+            shouldPersistOutlookRefs = true
+            return null
+          }
+
+          if (deadline) {
+            const event = await createBlockDeadlineCalendarEvent({
+              assigneeEmail: recipientEmail,
+              eventId: canReuseBlockEvent ? currentBlockEventId : '',
+              projectName,
+              blockName,
+              deadline,
+              url: blockUrl,
+            })
+            block.outlookEventId = event.id
+            block.outlookEventWebLink = event.webLink
+            block.outlookEventEmail = recipientEmail
+            shouldPersistOutlookRefs = true
+          }
+        }
+
+        return null
+      })
+
+      const taskUpdateNotifications = syncedBlocks.flatMap((block) => {
+        const blockId = trimText(block.id)
+        const blockName = trimText(block.name) || 'Bloc'
+        const previousBlock = currentBlocksById.get(blockId)
+        const previousBlockName = trimText(previousBlock?.name) || 'Bloc'
+        const previousTasksById = new Map(
+          (Array.isArray(previousBlock?.tasks) ? previousBlock.tasks : [])
+            .map((task) => [trimText(task?.id), task] as const)
+            .filter(([taskId]) => Boolean(taskId))
+        )
+
+        return (Array.isArray(block.tasks) ? block.tasks : []).map(async (task) => {
+          const taskId = trimText(task?.id)
+          const taskName = trimText(task?.title) || 'Tasca'
+          const taskOwner = trimText(task?.owner)
+          const deadline = trimText(task?.deadline)
+          const previousTask = previousTasksById.get(taskId)
+          const previousOwnerName = trimText(previousTask?.owner)
+          const previousTaskName = trimText(previousTask?.title) || 'Tasca'
+          const previousDeadline = trimText(previousTask?.deadline)
+
+          if (!taskId || !taskOwner || !previousTask || !equalText(taskOwner, previousOwnerName)) return null
+
+          const deadlineChanged = deadline !== previousDeadline
+          const nameChanged = !equalText(taskName, previousTaskName)
+          const blockNameChanged = !equalText(blockName, previousBlockName)
+          if (!deadlineChanged && !nameChanged && !blockNameChanged) return null
+
+          const assignedUser = await userResolver.findByName(taskOwner)
+          const recipientEmail = trimText(assignedUser?.email)
+          const recipientId = trimText(assignedUser?.id)
+          const taskPath = `/menu/projects/${id}?tab=tasks&blockId=${encodeURIComponent(blockId)}&taskId=${encodeURIComponent(taskId)}`
+          const taskUrl = `${String(baseUrl || '').replace(/\/$/, '')}${taskPath}`
+
+          if (recipientId) {
+            const title = "S'ha actualitzat una tasca teva"
+            const body = `S'han actualitzat dades de la tasca ${taskName}.`
+            const now = Date.now()
+            await db.collection('users').doc(recipientId).collection('notifications').add({
+              title,
+              body,
+              createdAt: now,
+              read: false,
+              type: 'project_task_update',
+              projectId: id,
+              blockId,
+              taskId,
+              projectName,
+              blockName,
+              taskName,
+            })
+            await incrementUserUnreadCount(recipientId, 'project_task_update', 1)
+            await sendPushToUsers([recipientId], { title, body, url: taskPath })
+          }
+
+          if (recipientEmail && senderEmail) {
+            await sendProjectOwnerUpdateEmail({
+              senderEmail,
+              recipientEmail,
+              recipientName: trimText(assignedUser?.name) || taskOwner,
+              subject: `Actualitzacio de tasca - ${taskName} - ${projectName}`,
+              lines: [
+                `S'ha actualitzat la tasca ${taskName}.`,
+                `Projecte: ${projectName}`,
+                `Bloc: ${blockName}`,
+                deadlineChanged ? `Nova data limit: ${deadline || 'Sense data'}` : '',
+                nameChanged ? `Nom actual: ${taskName}` : '',
+                `Obrir tasca: ${taskUrl}`,
+              ],
+            })
+          }
+
+          const currentTaskEventId = trimText(task.outlookEventId)
+          const canReuseTaskEvent = equalText(task.outlookEventEmail, recipientEmail) && currentTaskEventId
+
+          if (recipientEmail) {
+            if (!deadline && canReuseTaskEvent) {
+              await deleteOutlookCalendarEvent(recipientEmail, currentTaskEventId)
+              task.outlookEventId = ''
+              task.outlookEventWebLink = ''
+              task.outlookEventEmail = ''
+              shouldPersistOutlookRefs = true
+              return null
+            }
+
+            if (deadline) {
+              const event = await createTaskDeadlineCalendarEvent({
+                assigneeEmail: recipientEmail,
+                eventId: canReuseTaskEvent ? currentTaskEventId : '',
+                projectName,
+                blockName,
+                taskName,
+                deadline,
+                url: taskUrl,
+              })
+              task.outlookEventId = event.id
+              task.outlookEventWebLink = event.webLink
+              task.outlookEventEmail = recipientEmail
+              shouldPersistOutlookRefs = true
+            }
+          }
+
+          return null
+        })
+      })
+
       await Promise.allSettled([
         ...(removedRooms.length > 0
           ? removedRooms.map((room) =>
@@ -978,6 +1263,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           : []),
         ...blockAssignmentNotifications,
         ...taskAssignmentNotifications,
+        ...blockUpdateNotifications,
+        ...taskUpdateNotifications,
         ...taskDependencyUnlockedNotifications,
         syncProjectRoomsWithChangedParticipants({
           projectId: id,
@@ -986,12 +1273,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             name: projectName,
             owner: String(payload.owner || currentData.owner || ''),
             rooms: nextRooms as ProjectRoomLike[],
-            blocks: nextBlocks as ProjectBlockLike[],
+            blocks: syncedBlocks as ProjectBlockLike[],
           },
           currentRooms: currentRooms as ProjectRoomLike[],
           nextRooms: nextRooms as ProjectRoomLike[],
         }),
       ])
+
+      if (shouldPersistOutlookRefs) {
+        await db.collection('projects').doc(id).set({ blocks: syncedBlocks }, { merge: true })
+      }
     })
 
     return NextResponse.json({ id, document })

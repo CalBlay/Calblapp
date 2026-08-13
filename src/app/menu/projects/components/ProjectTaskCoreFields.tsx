@@ -1,6 +1,6 @@
 'use client'
 
-import { getPreLaunchDeadline, getBlockDepartments, TASK_PRIORITY_OPTIONS, type ProjectBlock } from './project-shared'
+import { getBlockDepartments, TASK_PRIORITY_OPTIONS, type ProjectBlock } from './project-shared'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -23,6 +23,7 @@ type Props = {
   onDeadlineChange: (value: string) => void
   onPriorityChange: (value: string) => void
   priorityVariant?: 'default' | 'pill'
+  showPriority?: boolean
 }
 
 export default function ProjectTaskCoreFields({
@@ -35,6 +36,7 @@ export default function ProjectTaskCoreFields({
   onDeadlineChange,
   onPriorityChange,
   priorityVariant = 'default',
+  showPriority = true,
 }: Props) {
   const departments = getBlockDepartments(block)
   const ownerOptions = departmentResponsibleOptions(task.department || departments)
@@ -78,28 +80,30 @@ export default function ProjectTaskCoreFields({
       <Input
         type="date"
         value={task.deadline}
-        max={getPreLaunchDeadline(block.deadline) || maxDeadline || undefined}
+        max={maxDeadline || undefined}
         onChange={(event) => onDeadlineChange(event.target.value)}
       />
 
-      <Select value={task.priority || 'normal'} onValueChange={onPriorityChange}>
-        <SelectTrigger
-          className={
-            priorityVariant === 'pill'
-              ? 'rounded-full border-violet-200 bg-violet-50 px-3 font-medium text-violet-700 hover:bg-violet-100'
-              : undefined
-          }
-        >
-          <SelectValue placeholder="Nivell" />
-        </SelectTrigger>
-        <SelectContent>
-          {TASK_PRIORITY_OPTIONS.slice(0, 3).map((option) => (
-            <SelectItem key={`${task.id}-priority-${option.value}`} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {showPriority ? (
+        <Select value={task.priority || 'normal'} onValueChange={onPriorityChange}>
+          <SelectTrigger
+            className={
+              priorityVariant === 'pill'
+                ? 'rounded-full border-violet-200 bg-violet-50 px-3 font-medium text-violet-700 hover:bg-violet-100'
+                : undefined
+            }
+          >
+            <SelectValue placeholder="Nivell" />
+          </SelectTrigger>
+          <SelectContent>
+            {TASK_PRIORITY_OPTIONS.slice(0, 3).map((option) => (
+              <SelectItem key={`${task.id}-priority-${option.value}`} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
     </>
   )
 }

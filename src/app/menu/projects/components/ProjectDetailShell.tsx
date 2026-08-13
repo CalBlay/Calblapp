@@ -11,6 +11,7 @@ type Props = {
   initialProject: ProjectData
   initialUsersCatalog: ResponsibleOption[]
   initialTab?: WorkspaceTab
+  initialBlockTarget?: { blockId: string }
   initialTaskTarget?: { blockId: string; taskId: string }
 }
 
@@ -19,6 +20,7 @@ export default function ProjectDetailShell({
   initialProject,
   initialUsersCatalog,
   initialTab,
+  initialBlockTarget,
   initialTaskTarget,
 }: Props) {
   return (
@@ -29,6 +31,7 @@ export default function ProjectDetailShell({
           initialProject={initialProject}
           initialUsersCatalog={initialUsersCatalog}
           initialTab={initialTab}
+          initialBlockTarget={initialBlockTarget}
           initialTaskTarget={initialTaskTarget}
         />
       </div>

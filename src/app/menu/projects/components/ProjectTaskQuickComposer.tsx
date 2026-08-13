@@ -13,9 +13,9 @@ import {
 import { TASK_PRIORITY_OPTIONS } from './project-shared'
 
 const PROJECT_TASK_ROW_GRID_CLASS =
-  'grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center'
+  'grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto] md:items-center'
 const PROJECT_TASK_ROW_WITH_BLOCK_GRID_CLASS =
-  'grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center'
+  'grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto] md:items-center'
 
 type Props = {
   blockId?: string
@@ -32,6 +32,7 @@ type Props = {
   compact?: boolean
   disabled?: boolean
   showBlockSelector?: boolean
+  showPriority?: boolean
   onDescriptionChange: (value: string) => void
   onBlockChange?: (value: string) => void
   onDepartmentChange: (value: string) => void
@@ -56,6 +57,7 @@ export default function ProjectTaskQuickComposer({
   compact = false,
   disabled,
   showBlockSelector = false,
+  showPriority = true,
   onDescriptionChange,
   onBlockChange,
   onDepartmentChange,
@@ -131,18 +133,20 @@ export default function ProjectTaskQuickComposer({
             onChange={(event) => onDeadlineChange(event.target.value)}
             className="h-10"
           />
-          <Select value={priority || 'normal'} onValueChange={onPriorityChange}>
-            <SelectTrigger className="h-10 rounded-full border-violet-200 bg-violet-50 px-3 font-medium text-violet-700 hover:bg-violet-100">
-              <SelectValue placeholder="Nivell" />
-            </SelectTrigger>
-            <SelectContent>
-              {TASK_PRIORITY_OPTIONS.slice(0, 3).map((option) => (
-                <SelectItem key={`task-draft-priority-${option.value}`} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {showPriority ? (
+            <Select value={priority || 'normal'} onValueChange={onPriorityChange}>
+              <SelectTrigger className="h-10 rounded-full border-violet-200 bg-violet-50 px-3 font-medium text-violet-700 hover:bg-violet-100">
+                <SelectValue placeholder="Nivell" />
+              </SelectTrigger>
+              <SelectContent>
+                {TASK_PRIORITY_OPTIONS.slice(0, 3).map((option) => (
+                  <SelectItem key={`task-draft-priority-${option.value}`} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
@@ -215,18 +219,20 @@ export default function ProjectTaskQuickComposer({
             onChange={(event) => onDeadlineChange(event.target.value)}
             className="h-10 min-w-0"
           />
-          <Select value={priority || 'normal'} onValueChange={onPriorityChange}>
-            <SelectTrigger className="h-10 min-w-0 rounded-full border-violet-200 bg-violet-50 px-3 font-medium text-violet-700 hover:bg-violet-100">
-              <SelectValue placeholder="Nivell" />
-            </SelectTrigger>
-            <SelectContent>
-              {TASK_PRIORITY_OPTIONS.slice(0, 3).map((option) => (
-                <SelectItem key={`task-draft-priority-${option.value}`} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {showPriority ? (
+            <Select value={priority || 'normal'} onValueChange={onPriorityChange}>
+              <SelectTrigger className="h-10 min-w-0 rounded-full border-violet-200 bg-violet-50 px-3 font-medium text-violet-700 hover:bg-violet-100">
+                <SelectValue placeholder="Nivell" />
+              </SelectTrigger>
+              <SelectContent>
+                {TASK_PRIORITY_OPTIONS.slice(0, 3).map((option) => (
+                  <SelectItem key={`task-draft-priority-${option.value}`} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
           <Button
             type="button"
             variant="ghost"

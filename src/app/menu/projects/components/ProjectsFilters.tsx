@@ -18,6 +18,8 @@ type Props = {
   ownerOptions: string[]
   ownerFilter: string
   setOwnerFilter: (value: string) => void
+  lifecycleFilter: 'open' | 'closed' | 'all'
+  setLifecycleFilter: (value: 'open' | 'closed' | 'all') => void
   participationScope: 'mine' | 'all'
   setParticipationScope: (value: 'mine' | 'all') => void
   canViewAllProjects: boolean
@@ -36,6 +38,8 @@ export default function ProjectsFilters({
   ownerOptions,
   ownerFilter,
   setOwnerFilter,
+  lifecycleFilter,
+  setLifecycleFilter,
   participationScope,
   setParticipationScope,
   canViewAllProjects,
@@ -85,6 +89,17 @@ export default function ProjectsFilters({
               {owner}
             </option>
           ))}
+        </CorporateFilterSelect>
+      </CorporateFilterField>
+
+      <CorporateFilterField label="Estat">
+        <CorporateFilterSelect
+          value={lifecycleFilter}
+          onChange={(event) => setLifecycleFilter(event.target.value as 'open' | 'closed' | 'all')}
+        >
+          <option value="open">Oberts</option>
+          <option value="closed">Tancats</option>
+          <option value="all">Tots</option>
         </CorporateFilterSelect>
       </CorporateFilterField>
 

@@ -61,6 +61,7 @@ export default function ProjectsPage() {
   const [endDate, setEndDate] = useState('')
   const [departmentFilter, setDepartmentFilter] = useState(ALL_DEPARTMENTS_VALUE)
   const [ownerFilter, setOwnerFilter] = useState(ALL_OWNERS_VALUE)
+  const [lifecycleFilter, setLifecycleFilter] = useState<'open' | 'closed' | 'all'>('open')
   const [participationScope, setParticipationScope] = useState<'mine' | 'all'>('mine')
   const [projectsPage, setProjectsPage] = useState(0)
   const [deletingProjectId, setDeletingProjectId] = useState('')
@@ -82,6 +83,7 @@ export default function ProjectsPage() {
   }, [
     debouncedSearchQuery,
     departmentFilter,
+    lifecycleFilter,
     ownerFilter,
     participationScope,
     startDate,
@@ -109,6 +111,7 @@ export default function ProjectsPage() {
     if (debouncedSearchQuery.trim()) params.set('q', debouncedSearchQuery.trim())
     if (departmentFilter !== ALL_DEPARTMENTS_VALUE) params.set('department', departmentFilter)
     if (ownerFilter !== ALL_OWNERS_VALUE) params.set('owner', ownerFilter)
+    if (lifecycleFilter !== 'open') params.set('lifecycle', lifecycleFilter)
     if (startDate) params.set('startDate', startDate)
     if (endDate) params.set('endDate', endDate)
     return `/api/projects?${params.toString()}`
@@ -116,6 +119,7 @@ export default function ProjectsPage() {
     debouncedSearchQuery,
     departmentFilter,
     endDate,
+    lifecycleFilter,
     ownerFilter,
     participationScope,
     projectsPage,
@@ -227,8 +231,30 @@ export default function ProjectsPage() {
         : departmentOptions.find((option) => option.value === departmentFilter)?.label || departmentFilter
     const ownerLabel =
       ownerFilter === ALL_OWNERS_VALUE ? 'Tots els responsables' : ownerFilter
+    const lifecycleLabel =
+      lifecycleFilter === 'closed'
+        ? 'Nomes tancats'
+        : lifecycleFilter === 'all'
+          ? 'Oberts i tancats'
+          : 'Nomes oberts'
     return `${departmentLabel} · ${ownerLabel}`
   }, [departmentFilter, departmentOptions, ownerFilter])
+
+  const filterSummaryText = useMemo(() => {
+    const departmentLabel =
+      departmentFilter === ALL_DEPARTMENTS_VALUE
+        ? 'Tots els departaments'
+        : departmentOptions.find((option) => option.value === departmentFilter)?.label || departmentFilter
+    const ownerLabel =
+      ownerFilter === ALL_OWNERS_VALUE ? 'Tots els responsables' : ownerFilter
+    const lifecycleLabel =
+      lifecycleFilter === 'closed'
+        ? 'Nomes tancats'
+        : lifecycleFilter === 'all'
+          ? 'Oberts i tancats'
+          : 'Nomes oberts'
+    return `${departmentLabel} · ${ownerLabel} · ${lifecycleLabel}`
+  }, [departmentFilter, departmentOptions, lifecycleFilter, ownerFilter])
 
   const totalProjectPages = Math.max(1, Math.ceil(totalProjects / PROJECTS_PER_PAGE))
 
@@ -271,7 +297,7 @@ export default function ProjectsPage() {
           icon={<FolderKanban className="h-6 w-6 text-violet-600" />}
           title="Projectes"
           breadcrumbSubtitle={scopeLabel}
-          subtitle={filterSummary}
+          subtitle={filterSummaryText}
           actions={
             <>
               <ProjectNotificationsBell />
@@ -290,6 +316,8 @@ export default function ProjectsPage() {
             ownerOptions={ownerOptions}
             ownerFilter={ownerFilter}
             setOwnerFilter={setOwnerFilter}
+            lifecycleFilter={lifecycleFilter}
+            setLifecycleFilter={setLifecycleFilter}
             participationScope={participationScope}
             setParticipationScope={setParticipationScope}
             canViewAllProjects={canViewAllProjects}
