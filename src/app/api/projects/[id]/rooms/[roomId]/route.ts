@@ -84,6 +84,63 @@ async function sendProjectOwnerUpdateEmail(params: {
   })
 }
 
+async function notifyTaskOwnerRemoval(params: {
+  userId: string
+  userName?: string
+  userEmail?: string
+  senderEmail?: string
+  projectId: string
+  projectName: string
+  blockId: string
+  blockName: string
+  taskId: string
+  taskName: string
+  eventId?: string
+}) {
+  const taskPath = `/menu/projects/${params.projectId}?tab=tasks&blockId=${encodeURIComponent(params.blockId)}&taskId=${encodeURIComponent(params.taskId)}`
+  const title = "Ja no ets responsable d'una tasca"
+  const body = `La tasca ${params.taskName || 'Tasca'} ja no et te assignat/da com a responsable.`
+  const now = Date.now()
+
+  await db.collection('users').doc(params.userId).collection('notifications').add({
+    title,
+    body,
+    createdAt: now,
+    read: false,
+    type: 'project_task_unassignment',
+    projectId: params.projectId,
+    blockId: params.blockId,
+    taskId: params.taskId,
+    projectName: params.projectName,
+    blockName: params.blockName,
+    taskName: params.taskName,
+  })
+  await incrementUserUnreadCount(params.userId, 'project_task_unassignment', 1)
+  await sendPushToUsers([params.userId], { title, body, url: taskPath })
+
+  if (trimText(params.userEmail) && trimText(params.senderEmail)) {
+    await sendProjectOwnerUpdateEmail({
+      senderEmail: params.senderEmail,
+      recipientEmail: params.userEmail,
+      recipientName: params.userName,
+      subject: `Desassignacio de tasca - ${params.taskName || 'Tasca'} - ${params.projectName}`,
+      lines: [
+        `Ja no ets la persona responsable de la tasca ${params.taskName || 'Tasca'}.`,
+        `Projecte: ${params.projectName}`,
+        `Bloc: ${params.blockName}`,
+      ],
+    })
+  }
+
+  if (trimText(params.userEmail) && trimText(params.eventId)) {
+    try {
+      await deleteOutlookCalendarEvent(trimText(params.userEmail), trimText(params.eventId))
+    } catch (err) {
+      console.error('[project-room] task removal calendar error', err)
+    }
+  }
+}
+
 async function findUserByName(rawName: string) {
   const name = rawName.trim()
   if (!name) return null
@@ -520,6 +577,28 @@ export async function PATCH(
           const previousOwnerName = trimText(previousTask?.owner)
 
           if (!taskId || !taskOwner || taskOwner === previousOwnerName) return null
+
+          if (previousOwnerName) {
+            const previousOwnerUser = await findUserByName(previousOwnerName)
+            if (previousOwnerUser?.id) {
+              await notifyTaskOwnerRemoval({
+                userId: previousOwnerUser.id,
+                userName: trimText(previousOwnerUser.name) || previousOwnerName,
+                userEmail: trimText(previousOwnerUser.email),
+                senderEmail,
+                projectId: id,
+                projectName,
+                blockId,
+                blockName,
+                taskId,
+                taskName: trimText(previousTask?.title) || taskName,
+                eventId:
+                  equalText(previousTask?.outlookEventEmail, previousOwnerUser.email)
+                    ? trimText(previousTask?.outlookEventId)
+                    : '',
+              })
+            }
+          }
 
           const assignedUser = await findUserByName(taskOwner)
           if (!assignedUser?.id) return null
