@@ -20,7 +20,7 @@ export function shouldImportZohoAttachment(fileName?: string | null): boolean {
   return ZOHO_ATTACHMENT_ALLOWED_PREFIXES.some((prefix) => {
     if (!normalized.startsWith(prefix)) return false
     const next = normalized.charAt(prefix.length)
-    return next === ' ' || next === '_'
+    return !next || next === ' ' || next === '_' || next === '-' || /\d/.test(next)
   })
 }
 

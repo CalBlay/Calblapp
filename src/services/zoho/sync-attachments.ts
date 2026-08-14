@@ -34,6 +34,16 @@ async function getZohoFieldAttachmentValue(
   return res.data?.[0]?.[fieldApiName]
 }
 
+async function listZohoRecordAttachments(
+  moduleName: string,
+  recordId: string
+): Promise<ZohoAttachment[]> {
+  const res = await zohoFetch<{ data?: ZohoAttachment[] }>(
+    `/${moduleName}/${recordId}/Attachments`
+  )
+  return Array.isArray(res.data) ? res.data : []
+}
+
 function extractFileNameFromContentDisposition(headerValue: string | null): string {
   const value = String(headerValue || '').trim()
   if (!value) return ''
@@ -77,6 +87,15 @@ async function downloadZohoAttachment(
     `${base}/${moduleName}/${recordId}/actions/download_fields_attachment?fields_attachment_id=${encodeURIComponent(attachmentId)}`
   )
 
+  if (!res.ok) {
+    const legacyRes = await fetchBinary(
+      `${base}/${moduleName}/${recordId}/Attachments/${encodeURIComponent(attachmentId)}`
+    )
+    if (legacyRes.ok) {
+      res = legacyRes
+    }
+  }
+
   if (!res.ok && fallbackDownloadUrl) {
     const fallbackUrl = fallbackDownloadUrl.startsWith('http')
       ? fallbackDownloadUrl
@@ -112,20 +131,31 @@ async function resolveZohoDealAttachments(
   deal?: Pick<ZohoDeal, 'Fulla_d_enc_rrec' | 'Full_de_Tast'>
 ): Promise<ZohoAttachment[]> {
   const fieldValues: unknown[] = []
-  const hasDealPayload = Boolean(deal && typeof deal === 'object')
 
   for (const field of ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES) {
-    const fieldWasIncludedOnDeal =
-      hasDealPayload && Object.prototype.hasOwnProperty.call(deal, field)
-
     let value = deal?.[field]
-    if (!fieldWasIncludedOnDeal && mergeZohoFieldAttachments([value]).length === 0) {
+    // Alguns payloads de llistat de Zoho inclouen el camp de fitxer però sense ids útils.
+    // Si no podem extreure cap adjunt del valor rebut, rellegim el camp del registre.
+    if (mergeZohoFieldAttachments([value]).length === 0) {
       value = await getZohoFieldAttachmentValue(moduleName, dealId, field)
     }
     fieldValues.push(value)
   }
 
-  return mergeZohoFieldAttachments(fieldValues)
+  const merged = mergeZohoFieldAttachments(fieldValues)
+  const legacy = await listZohoRecordAttachments(moduleName, dealId).catch(() => [])
+
+  if (legacy.length === 0) return merged
+
+  const out = [...merged]
+  const seen = new Set(out.map((attachment) => String(attachment.id || '').trim()))
+  for (const attachment of legacy) {
+    const id = String(attachment.id || '').trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(attachment)
+  }
+  return out
 }
 
 export async function buildZohoAttachmentFields(

@@ -334,6 +334,7 @@ async function cleanupGrocTaronjaStageDocs(
 
 type SyncZohoDealsOptions = {
   includeAttachments?: boolean
+  forceFullSync?: boolean
 }
 
 const EMPTY_ATTACHMENT_SYNC_RESULT = {
@@ -465,6 +466,67 @@ async function buildStageDataToSave({
       manuals
     )
   )
+}
+
+async function refreshExistingZohoStageAttachments({
+  includeAttachments,
+  moduleName,
+  zohoById,
+  totals,
+  existingByCollection,
+  skipDealIds,
+}: {
+  includeAttachments: boolean
+  moduleName: string
+  zohoById: Map<string, ZohoDeal>
+  totals: AttachmentSyncTotals
+  existingByCollection: Record<string, StageSnapshotMap>
+  skipDealIds: ReadonlySet<string>
+}) {
+  if (!includeAttachments) return
+
+  let batch = firestore.batch()
+  let batchCount = 0
+
+  const flushBatch = async () => {
+    if (batchCount === 0) return
+    await batch.commit()
+    batch = firestore.batch()
+    batchCount = 0
+  }
+
+  for (const [collectionName, docs] of Object.entries(existingByCollection)) {
+    for (const doc of docs.values()) {
+      const existingDoc = doc.data()
+      if (existingDoc?.origen !== 'zoho') continue
+      if (skipDealIds.has(doc.id)) continue
+
+      const zohoDeal = zohoById.get(doc.id)
+      if (!zohoDeal) continue
+
+      const zohoAttachments = await buildZohoAttachmentFields(
+        moduleName,
+        doc.id,
+        zohoDeal,
+        existingDoc
+      )
+      addAttachmentStats(totals, zohoAttachments.stats)
+
+      if (Object.keys(zohoAttachments.fields).length === 0) continue
+      batch.set(
+        firestore.collection(collectionName).doc(doc.id),
+        zohoAttachments.fields,
+        { merge: true }
+      )
+      batchCount += 1
+
+      if (batchCount >= MAX_BATCH_WRITES) {
+        await flushBatch()
+      }
+    }
+  }
+
+  await flushBatch()
 }
 
 async function syncStageCollections({
@@ -674,6 +736,19 @@ async function syncStageCollections({
   }
 
   await flushMoveBatch()
+
+  await refreshExistingZohoStageAttachments({
+    includeAttachments,
+    moduleName,
+    zohoById,
+    totals,
+    existingByCollection: {
+      stage_verd: existingVerd,
+      stage_groc: existingGroc,
+      stage_taronja: existingTaronja,
+    },
+    skipDealIds: new Set(normalized.map((deal) => deal.idZoho)),
+  })
 }
 
 export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {}): Promise<{
@@ -706,7 +781,9 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
     : baseFields
 
   const previousSyncState = await readZohoSyncState()
-  const previousSyncMs = parseZohoModifiedTimeMs(previousSyncState.lastSuccessfulSyncAt)
+  const previousSyncMs = options.forceFullSync
+    ? null
+    : parseZohoModifiedTimeMs(previousSyncState.lastSuccessfulSyncAt)
   const incrementalCutoffMs =
     previousSyncMs !== null ? Math.max(0, previousSyncMs - ZOHO_SYNC_OVERLAP_MS) : null
   const fullSync = incrementalCutoffMs === null
@@ -1006,5 +1083,3 @@ export async function syncZohoDealsToFirestore(options: SyncZohoDealsOptions = {
     attachmentsDeletedFromStorage: attachmentTotals.attachmentsDeletedFromStorage,
   }
 }
-
-

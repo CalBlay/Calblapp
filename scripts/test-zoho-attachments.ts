@@ -23,7 +23,9 @@ assert(shouldImportZohoAttachment(' FE_fulla.pdf '), 'trimmed FE prefix with und
 assert(shouldImportZohoAttachment('FM encarrec.pdf'), 'FM prefix with space')
 assert(shouldImportZohoAttachment('FC 07022024_AURA.pptx'), 'FC prefix with space')
 assert(shouldImportZohoAttachment('fc_07022024.pptx'), 'FC prefix with underscore')
-assert(!shouldImportZohoAttachment('FT123.pdf'), 'FT must be followed by space or underscore')
+assert(shouldImportZohoAttachment('FT123.pdf'), 'FT prefix followed by digits')
+assert(shouldImportZohoAttachment('FG999.pdf'), 'FG prefix followed by digits')
+assert(shouldImportZohoAttachment('FT-123.pdf'), 'FT prefix followed by hyphen')
 assert(!shouldImportZohoAttachment('FM.encarrec.pdf'), 'FM must be followed by space or underscore')
 assert(!shouldImportZohoAttachment('contracte FT 123.pdf'), 'prefix must be at start')
 assert(!shouldImportZohoAttachment(''), 'empty name is ignored')
@@ -53,6 +55,11 @@ const merged = mergeZohoFieldAttachments([
   [{ attachment_Id: 'att-1', File_Name: 'FT111.pdf' }],
 ])
 assert(merged.length === 2, 'merges attachments from multiple Zoho file fields')
+const mergedWithLegacyShape = mergeZohoFieldAttachments([
+  [{ attachment_Id: 'att-1', File_Name: 'FT111.pdf' }],
+  [{ id: 'att-3', File_Name: 'FG333.pdf' }],
+])
+assert(mergedWithLegacyShape.length === 2, 'parses field and legacy attachment shapes')
 assert(
   ZOHO_DEAL_ATTACHMENT_FIELD_API_NAMES.join(',') ===
     'Fulla_d_enc_rrec,Full_de_Tast',

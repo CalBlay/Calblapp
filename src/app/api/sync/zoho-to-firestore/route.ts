@@ -39,7 +39,10 @@ export async function GET(req: Request) {
     })
     if (ok !== true) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    const result = await syncZohoDealsToFirestore({ includeAttachments })
+    const result = await syncZohoDealsToFirestore({
+      includeAttachments,
+      forceFullSync: true,
+    })
 
     return NextResponse.json({
       ok: true,
