@@ -22,6 +22,8 @@ import {
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
+import { collectOutlookRefPatches } from '@/lib/projects/outlookRefPatches'
+import { persistProjectOutlookRefPatches } from '@/lib/projects/persistOutlookRefPatches'
 import type { DocumentReference } from 'firebase-admin/firestore'
 
 type SessionUser = {
@@ -548,7 +550,6 @@ export async function PATCH(
     }
 
     let taskAssignmentNotifications: Promise<unknown>[] = []
-    let shouldPersistTaskRefs = false
     if (Array.isArray(payload.tasks) && String(rooms[roomIndex].blockId || '')) {
       const blocks = Array.isArray(data.blocks) ? [...(data.blocks as ProjectBlockLike[])] : []
       const blockIndex = blocks.findIndex(
@@ -624,7 +625,6 @@ export async function PATCH(
             task.outlookEventId = eventRef.outlookEventId
             task.outlookEventWebLink = eventRef.outlookEventWebLink
             task.outlookEventEmail = eventRef.outlookEventEmail
-            shouldPersistTaskRefs = true
           }
 
           return null
@@ -700,7 +700,6 @@ export async function PATCH(
                 task.outlookEventId = ''
                 task.outlookEventWebLink = ''
                 task.outlookEventEmail = ''
-                shouldPersistTaskRefs = true
                 return null
               }
 
@@ -717,7 +716,6 @@ export async function PATCH(
                 task.outlookEventId = event.id
                 task.outlookEventWebLink = event.webLink
                 task.outlookEventEmail = recipientEmail
-                shouldPersistTaskRefs = true
               }
             }
 
@@ -753,8 +751,11 @@ export async function PATCH(
     await projectRef.set(nextPayload, { merge: true })
     await Promise.allSettled(taskAssignmentNotifications)
 
-    if (shouldPersistTaskRefs && Array.isArray(nextPayload.blocks)) {
-      await projectRef.set({ blocks: nextPayload.blocks }, { merge: true })
+    if (Array.isArray(nextPayload.blocks)) {
+      await persistProjectOutlookRefPatches(
+        id,
+        collectOutlookRefPatches(data.blocks, nextPayload.blocks)
+      )
     }
 
     return NextResponse.json({ ok: true, room: syncResult.room, opsChannelId: syncResult.channelId })
