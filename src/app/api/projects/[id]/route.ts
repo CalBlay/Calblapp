@@ -36,6 +36,10 @@ import {
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
+import {
+  hasLaunchWindowExpired,
+  selectProjectRoomsToArchiveOnLaunch,
+} from '@/lib/projects/launchWindow'
 
 type SessionUser = {
   id: string
@@ -64,14 +68,6 @@ const normLower = (value?: string) =>
     .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .trim()
-const hasLaunchWindowExpired = (value?: string) => {
-  const raw = String(value || '').trim()
-  if (!raw) return false
-  const date = new Date(raw.length === 10 ? `${raw}T00:00:00` : raw)
-  if (Number.isNaN(date.getTime())) return false
-  return Date.now() >= date.getTime() + 24 * 60 * 60 * 1000
-}
-
 const trimText = (value: unknown) => String(value || '').trim()
 
 const equalText = (left: unknown, right: unknown) =>
@@ -939,12 +935,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     await db.collection('projects').doc(id).set(payload, { merge: true })
 
-    const archiveTargets =
-      nextLaunchExpired && !previousLaunchExpired
-        ? nextRooms
-        : nextLaunchExpired
-          ? addedRooms
-          : []
+    const archiveTargets = selectProjectRoomsToArchiveOnLaunch({
+      previousLaunchExpired,
+      nextLaunchExpired,
+      nextRooms,
+      addedRooms,
+    })
 
     const ownerUserForNotification =
       ownerUser || (!nextIsDraft && owner ? await userResolver.findByName(owner) : null)

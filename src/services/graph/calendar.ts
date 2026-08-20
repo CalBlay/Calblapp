@@ -1,5 +1,6 @@
 import { storageAdmin } from '@/lib/firebaseAdmin'
 import { getGraphToken } from '@/services/sharepoint/graph'
+import { buildDailyDeadlineRecurrence } from '@/lib/outlookDeadlineRecurrence'
 
 type KickoffAttendee = {
   email: string
@@ -195,35 +196,6 @@ type SendMaintenanceCompletedEmailInput = {
 async function getAccessToken() {
   const tokenData = await getGraphToken()
   return typeof tokenData === 'string' ? tokenData : tokenData.access_token
-}
-
-function dateKeyInMadrid(value: Date) {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Madrid',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-
-  return formatter.format(value)
-}
-
-function buildDailyDeadlineRecurrence(deadline: string) {
-  const todayKey = dateKeyInMadrid(new Date())
-  if (!deadline || deadline <= todayKey) return null
-
-  return {
-    pattern: {
-      type: 'daily',
-      interval: 1,
-    },
-    range: {
-      type: 'endDate',
-      startDate: todayKey,
-      endDate: deadline,
-      recurrenceTimeZone: 'Europe/Madrid',
-    },
-  }
 }
 
 function buildAssignmentLinkHtml(url?: string, label = 'Obrir directament') {
