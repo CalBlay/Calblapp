@@ -7,6 +7,10 @@ import {
   parseConductorSlotIndex,
   parsePendingAssignacionsRowId,
 } from '@/lib/transportAssignacionsRowSlot'
+import {
+  shouldStripPriorConductorDuplicates,
+  stripPriorConductorDuplicates,
+} from '@/lib/transportAssignacionsPriorIdentity'
 import { revalidateQuadrantsListCache } from '@/lib/quadrantsListCache'
 
 export const runtime = 'nodejs'
@@ -105,23 +109,6 @@ function findPriorConductorIndex(
   })
   if (hits.length === 0) return null
   return hits[0]
-}
-
-/** Mateixa persona “antiga” que `priorConductor` (per treure duplicats a conductors). */
-function matchesPriorIdentity(
-  row: { name?: string; plate?: string },
-  prior: { name?: string; plate?: string } | undefined,
-  plateNorm: (s?: string | null) => string
-): boolean {
-  if (!prior) return false
-  const pn = normName(prior.name)
-  const pp = plateNorm(prior.plate)
-  if (!pn && !pp) return false
-  const cn = normName(row.name)
-  const cp = plateNorm(row.plate)
-  if (pn && pp) return cn === pn && cp === pp
-  if (pn) return cn === pn
-  return cp === pp
 }
 
 function resolveConductorRowIdAfterSave(
@@ -361,9 +348,20 @@ export async function POST(req: NextRequest) {
       ? [...current.treballadors]
       : []
 
-    if (isExplicitEdit && replaced && priorConductor) {
-      nextConductors = nextConductors.filter(
-        (c) => !matchesPriorIdentity(c, priorConductor, normPlate)
+    if (
+      priorConductor &&
+      shouldStripPriorConductorDuplicates({
+        isExplicitEdit,
+        replaced,
+        priorConductor,
+        next: { name: data.name, plate: data.plate },
+        plateNorm: normPlate,
+      })
+    ) {
+      nextConductors = stripPriorConductorDuplicates(
+        nextConductors,
+        priorConductor,
+        normPlate
       )
       const pn = normName(priorConductor.name)
       if (pn) {
