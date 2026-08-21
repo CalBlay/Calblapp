@@ -1,4 +1,7 @@
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { roomParticipantsFingerprint } from '@/lib/projectRoomFingerprint'
+
+export { roomParticipantsFingerprint }
 
 export type ProjectRoomLike = Record<string, unknown> & {
   id?: string
@@ -204,14 +207,6 @@ export async function syncProjectRoomOpsChannel(params: {
     rooms,
     channelId,
   }
-}
-
-export function roomParticipantsFingerprint(room: ProjectRoomLike): string {
-  return [...(Array.isArray(room.participants) ? room.participants : [])]
-    .map((name) => String(name || '').trim())
-    .filter(Boolean)
-    .sort()
-    .join('|')
 }
 
 export async function syncProjectRoomsWithChangedParticipants(params: {
