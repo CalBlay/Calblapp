@@ -40,6 +40,7 @@ import ProjectTaskCard from '../../../components/ProjectTaskCard'
 
 import type { InviteUserOption } from '@/lib/messaging/userSearch'
 import { compressRasterImageForUpload } from '@/lib/file-optimization'
+import { fillRoomInitialDocumentUploadForm } from '@/lib/projects/roomInitialDocumentUpload'
 
 type ProjectResponse = ProjectData
 
@@ -476,27 +477,6 @@ export default function ProjectRoomDetailPage() {
     toast({ title: 'Participant afegit' })
   }
 
-  const buildProjectForm = (sourceProject: ProjectResponse) => {
-    const form = new FormData()
-    form.set('name', sourceProject.name || '')
-    form.set('sponsor', sourceProject.sponsor || '')
-    form.set('owner', sourceProject.owner || '')
-    form.set('context', sourceProject.context || '')
-    form.set('strategy', sourceProject.strategy || '')
-    form.set('risks', sourceProject.risks || '')
-    form.set('startDate', sourceProject.startDate || '')
-    form.set('launchDate', sourceProject.launchDate || '')
-    form.set('budget', sourceProject.budget || '')
-    form.set('phase', sourceProject.phase || 'planning')
-    form.set('status', '')
-    form.set('departments', JSON.stringify(sourceProject.departments || []))
-    form.set('blocks', JSON.stringify(sourceProject.blocks || []))
-    form.set('rooms', JSON.stringify(sourceProject.rooms || []))
-    form.set('documents', JSON.stringify(sourceProject.documents || []))
-    form.set('kickoff', JSON.stringify(sourceProject.kickoff || null))
-    return form
-  }
-
   const removeParticipant = async (name: string) => {
     if (!currentRoom) return
     const nextRoom = {
@@ -576,10 +556,11 @@ export default function ProjectRoomDetailPage() {
           return
         }
       }
-      const form = buildProjectForm(project)
-      form.set('file', fileToSend)
-      form.set('fileCategory', 'initial')
-      form.set('fileLabel', pendingDocument.name)
+      const form = fillRoomInitialDocumentUploadForm(
+        new FormData(),
+        fileToSend,
+        pendingDocument.name
+      )
 
       const res = await fetch(`/api/projects/${params.id}`, {
         method: 'PATCH',
