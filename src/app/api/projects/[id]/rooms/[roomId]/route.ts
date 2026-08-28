@@ -19,6 +19,7 @@ import {
   sendOutlookTextMail,
   sendTaskAssignmentEmail,
 } from '@/services/graph/calendar'
+import { collectRemovedBlockOutlookCalendarRefs } from '@/lib/projects/removedBlockOutlookCleanup'
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
@@ -722,6 +723,26 @@ export async function PATCH(
             }
 
             return null
+          })
+        )
+
+        const removedCalendarRefs = collectRemovedBlockOutlookCalendarRefs(
+          [previousBlock],
+          [{ ...previousBlock, tasks: nextTasks }]
+        )
+        taskAssignmentNotifications.push(
+          ...removedCalendarRefs.map(async (calendarRef) => {
+            try {
+              await deleteOutlookCalendarEvent(calendarRef.email, calendarRef.eventId)
+            } catch (err) {
+              console.error('[projects] removed room task calendar cleanup error', {
+                projectId: id,
+                roomId,
+                email: calendarRef.email,
+                eventId: calendarRef.eventId,
+                error: err instanceof Error ? err.message : String(err),
+              })
+            }
           })
         )
 
