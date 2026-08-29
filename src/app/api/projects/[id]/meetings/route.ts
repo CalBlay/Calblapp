@@ -14,8 +14,10 @@ import type {
   ProjectMeetingRecord,
   ProjectTask,
 } from '@/app/menu/projects/components/project-shared'
+import { appendProjectMeetingToBlocks } from '@/lib/projects/appendProjectMeeting'
 import {
   createProjectMeetingCalendarEvent,
+  deleteOutlookCalendarEvent,
   sendProjectMeetingNotificationEmail,
 } from '@/services/graph/calendar'
 
@@ -300,43 +302,64 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       emailNotificationError: emailWarning,
     }
 
-    const nextBlocks = blocks.map((currentBlock) => {
-      if (String(currentBlock.id || '').trim() !== blockId) return currentBlock
+    const projectRef = db.collection('projects').doc(id)
+    let persistedBlocks: ProjectBlock[] = []
 
-      if (scope === 'block') {
-        return {
-          ...currentBlock,
-          meetings: [...(Array.isArray(currentBlock.meetings) ? currentBlock.meetings : []), meeting],
+    try {
+      await db.runTransaction(async (tx) => {
+        const latestSnap = await tx.get(projectRef)
+        if (!latestSnap.exists) {
+          throw new Error('PROJECT_NOT_FOUND')
+        }
+
+        const latest = latestSnap.data() as { blocks?: ProjectBlock[] }
+        const appended = appendProjectMeetingToBlocks(latest.blocks, {
+          scope,
+          blockId,
+          taskId,
+          meeting,
+        })
+        if (!appended.ok) {
+          throw new Error(appended.reason === 'task_not_found' ? 'TASK_NOT_FOUND' : 'BLOCK_NOT_FOUND')
+        }
+
+        persistedBlocks = appended.blocks
+        tx.set(
+          projectRef,
+          {
+            blocks: persistedBlocks,
+            updatedAt: Date.now(),
+            updatedById: auth.user.id,
+            updatedByName: auth.user.name || '',
+          },
+          { merge: true }
+        )
+      })
+    } catch (persistErr) {
+      const persistMessage = persistErr instanceof Error ? persistErr.message : ''
+      if (event.id) {
+        try {
+          await deleteOutlookCalendarEvent(organizerEmail, event.id)
+        } catch (cleanupErr) {
+          console.error('[projects/meetings] calendar cleanup after persist failure', cleanupErr)
         }
       }
-
-      return {
-        ...currentBlock,
-        tasks: (Array.isArray(currentBlock.tasks) ? currentBlock.tasks : []).map((currentTask) =>
-          String(currentTask.id || '').trim() === taskId
-            ? {
-                ...currentTask,
-                meetings: [...(Array.isArray(currentTask.meetings) ? currentTask.meetings : []), meeting],
-              }
-            : currentTask
-        ),
+      if (persistMessage === 'PROJECT_NOT_FOUND') {
+        return NextResponse.json({ error: 'Projecte no trobat' }, { status: 404 })
       }
-    })
-
-    await db.collection('projects').doc(id).set(
-      {
-        blocks: nextBlocks,
-        updatedAt: Date.now(),
-        updatedById: auth.user.id,
-        updatedByName: auth.user.name || '',
-      },
-      { merge: true }
-    )
+      if (persistMessage === 'BLOCK_NOT_FOUND') {
+        return NextResponse.json({ error: 'Bloc no trobat' }, { status: 404 })
+      }
+      if (persistMessage === 'TASK_NOT_FOUND') {
+        return NextResponse.json({ error: 'Tasca no trobada' }, { status: 404 })
+      }
+      throw persistErr
+    }
 
     return NextResponse.json({
       success: true,
       meeting,
-      blocks: nextBlocks,
+      blocks: persistedBlocks,
       warning: emailWarning,
     })
   } catch (err: unknown) {

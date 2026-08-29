@@ -2,10 +2,12 @@
 
 import { useState, type Dispatch, type SetStateAction } from 'react'
 import { toast } from '@/components/ui/use-toast'
+import { appendProjectMeetingToBlocks } from '@/lib/projects/appendProjectMeeting'
 import {
   getBlockDepartments,
   type ProjectData,
   type ProjectMeetingAttendee,
+  type ProjectMeetingRecord,
 } from './project-shared'
 import type { ResponsibleOption } from './project-workspace-helpers'
 
@@ -158,18 +160,23 @@ export function useProjectMeetings({
       const response = (await res.json().catch(() => ({}))) as {
         error?: string
         warning?: string
-        blocks?: ProjectData['blocks']
-        meeting?: { scope?: 'block' | 'task' }
+        meeting?: ProjectMeetingRecord
       }
       if (!res.ok) {
         throw new Error(response.error || 'No s ha pogut enviar la convocatoria')
       }
 
-      if (Array.isArray(response.blocks)) {
-        setProject((current) => ({
-          ...current,
-          blocks: response.blocks || current.blocks,
-        }))
+      if (response.meeting) {
+        setProject((current) => {
+          const appended = appendProjectMeetingToBlocks(current.blocks, {
+            scope: payload.scope,
+            blockId: payload.blockId,
+            taskId: payload.taskId,
+            meeting: response.meeting as ProjectMeetingRecord,
+          })
+          if (!appended.ok) return current
+          return { ...current, blocks: appended.blocks }
+        })
       }
 
       setMeetingTarget(null)
