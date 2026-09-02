@@ -84,12 +84,6 @@ const trimText = (value: unknown) => String(value || '').trim()
 const equalText = (left: unknown, right: unknown) =>
   normalizeComparableText(String(left || '')) === normalizeComparableText(String(right || ''))
 
-type OutlookRef = {
-  outlookEventId?: string
-  outlookEventWebLink?: string
-  outlookEventEmail?: string
-}
-
 type BlockRecord = Record<string, unknown> & {
   tasks?: Array<Record<string, unknown>>
 }

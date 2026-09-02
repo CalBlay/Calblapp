@@ -73,16 +73,6 @@ function normalizeHeaderKey(value: string) {
     .trim()
 }
 
-function getRowValue(row: Record<string, unknown>, aliases: string[]) {
-  const entries = Object.entries(row)
-  for (const alias of aliases) {
-    const normalizedAlias = normalizeHeaderKey(alias)
-    const match = entries.find(([key]) => normalizeHeaderKey(key) === normalizedAlias)
-    if (match) return match[1]
-  }
-  return ''
-}
-
 function normalizeExcelDateValue(value: unknown) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10)

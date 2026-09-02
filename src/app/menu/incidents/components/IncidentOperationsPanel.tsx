@@ -453,7 +453,7 @@ export default function IncidentOperationsPanel({
     }
   }
 
-  const patchAction = async (actionId: string, body: Record<string, unknown>) => {
+  const patchAction = useCallback(async (actionId: string, body: Record<string, unknown>) => {
     setError('')
     const previousActions = actions
     const optimisticActions = previousActions
@@ -489,7 +489,7 @@ export default function IncidentOperationsPanel({
       onIncidentLocalPatch?.(incident.id, summarizeLocalActions(previousActions))
       setError(e instanceof Error ? e.message : 'Error actualitzant accio')
     }
-  }
+  }, [actions, incident.id, loadActions, onIncidentActionsLocalPatch, onIncidentLocalPatch])
 
   const beginEditAction = useCallback((action: IncidentActionRow) => {
     setEditingActionId(action.id)

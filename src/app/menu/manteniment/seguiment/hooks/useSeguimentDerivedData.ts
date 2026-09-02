@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { format } from 'date-fns'
 import type { MachineItem, Ticket } from '@/app/menu/manteniment/tickets/types'
 import type { MaintenanceStatus, Preventiu, SeguimentRow, TabKey } from '../types'
@@ -109,7 +109,7 @@ export function useSeguimentDerivedData({
 }: Params) {
   const normalizedSearch = search.trim().toLowerCase()
   const hasStatusFilter = statusFilter.length > 0
-  const matchesTicketBaseFilters = (ticket: Ticket) => {
+  const matchesTicketBaseFilters = useCallback((ticket: Ticket) => {
     if (workerFilter !== 'all' && !(ticket.assignedToNames || []).includes(workerFilter)) {
       return false
     }
@@ -146,9 +146,9 @@ export function useSeguimentDerivedData({
       return false
     }
     return applyDateMatch(getTicketLastMovementAt(ticket))
-  }
+  }, [applyDateMatch, centerFilter, centers, locationFilter, normalizedSearch, stalledOnly, workerFilter, zoneFilter])
 
-  const matchesPreventiuBaseFilters = (item: Preventiu) => {
+  const matchesPreventiuBaseFilters = useCallback((item: Preventiu) => {
     if (workerFilter !== 'all' && !item.workerNames.includes(workerFilter)) return false
     if (
       !matchesMaintenanceSiteFilters(
@@ -174,7 +174,7 @@ export function useSeguimentDerivedData({
       return false
     }
     return applyDateMatch(parseDateFromParts(item.plannedDate, item.plannedStart)?.getTime() || null)
-  }
+  }, [applyDateMatch, centerFilter, centers, locationFilter, normalizedSearch, stalledOnly, workerFilter, zoneFilter])
 
   const statusUniverseTicketRows = useMemo(
     () =>
@@ -185,7 +185,7 @@ export function useSeguimentDerivedData({
           const bTime = parseDate(getTicketLastMovementAt(b))?.getTime() || 0
           return bTime - aTime
         }),
-    [applyDateMatch, centerFilter, centers, locationFilter, normalizedSearch, stalledOnly, tickets, workerFilter, zoneFilter]
+    [matchesTicketBaseFilters, tickets]
   )
 
   const statusUniversePreventiuRows = useMemo(
@@ -197,7 +197,7 @@ export function useSeguimentDerivedData({
             (parseDate(b.updatedAt || b.createdAt)?.getTime() || 0) -
             (parseDate(a.updatedAt || a.createdAt)?.getTime() || 0)
         ),
-    [applyDateMatch, centerFilter, centers, locationFilter, normalizedSearch, preventius, stalledOnly, workerFilter, zoneFilter]
+    [matchesPreventiuBaseFilters, preventius]
   )
 
   const ticketRows = useMemo(

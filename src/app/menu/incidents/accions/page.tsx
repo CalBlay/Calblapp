@@ -116,9 +116,6 @@ export default function IncidentActionsMinePage() {
   const [overdueOnly, setOverdueOnly] = useState(false)
   const [actions, setActions] = useState<IncidentActionMineRow[]>([])
   const [scope, setScope] = useState<'mine' | 'all'>('mine')
-  const [pendingCount, setPendingCount] = useState(0)
-  const [overdueCount, setOverdueCount] = useState(0)
-  const [totalAssigned, setTotalAssigned] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -150,9 +147,6 @@ export default function IncidentActionsMinePage() {
 
       setActions(Array.isArray(data.actions) ? data.actions : [])
       setScope(data.scope === 'all' ? 'all' : 'mine')
-      setPendingCount(Number(data.pendingCount || 0))
-      setOverdueCount(Number(data.overdueCount || 0))
-      setTotalAssigned(Number(data.totalAssigned || 0))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error de carrega')
       setActions([])

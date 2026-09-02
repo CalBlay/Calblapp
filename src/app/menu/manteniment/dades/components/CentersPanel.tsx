@@ -13,7 +13,6 @@ import { cn } from '@/lib/utils'
 import { combineTravelParts, splitTravelMinutes } from '@/lib/maintenanceCenterTravel'
 import type { CenterLocationNode, CenterRow } from '../types'
 
-type TravelDraft = { hours: string; minutes: string }
 type EditableLocationNode = { name: string; zones: string[] }
 type CenterForm = {
   name: string
