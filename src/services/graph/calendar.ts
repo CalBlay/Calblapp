@@ -1,4 +1,8 @@
 import { storageAdmin } from '@/lib/firebaseAdmin'
+import {
+  deadlineCalendarRecurrenceBody,
+  deadlineCalendarStartDate,
+} from '@/lib/projects/dailyDeadlineRecurrence'
 import { getGraphToken } from '@/services/sharepoint/graph'
 
 type KickoffAttendee = {
@@ -206,24 +210,6 @@ function dateKeyInMadrid(value: Date) {
   })
 
   return formatter.format(value)
-}
-
-function buildDailyDeadlineRecurrence(deadline: string) {
-  const todayKey = dateKeyInMadrid(new Date())
-  if (!deadline || deadline <= todayKey) return null
-
-  return {
-    pattern: {
-      type: 'daily',
-      interval: 1,
-    },
-    range: {
-      type: 'endDate',
-      startDate: todayKey,
-      endDate: deadline,
-      recurrenceTimeZone: 'Europe/Madrid',
-    },
-  }
 }
 
 function buildAssignmentLinkHtml(url?: string, label = 'Obrir directament') {
@@ -590,8 +576,8 @@ export async function createBlockDeadlineCalendarEvent(
 
   const accessToken = await getAccessToken()
   const eventId = String(input.eventId || '').trim()
-  const recurrence = buildDailyDeadlineRecurrence(deadline)
-  const startDate = recurrence?.range.startDate || deadline
+  const todayKey = dateKeyInMadrid(new Date())
+  const startDate = deadlineCalendarStartDate(deadline, todayKey)
   const endDate = addOneDay(startDate)
   const response = await fetch(
     eventId
@@ -629,7 +615,7 @@ export async function createBlockDeadlineCalendarEvent(
         },
         isAllDay: true,
         isReminderOn: true,
-        ...(recurrence ? { recurrence } : {}),
+        ...deadlineCalendarRecurrenceBody(deadline, { eventId, todayKey }),
       }),
       cache: 'no-store',
     }
@@ -947,8 +933,8 @@ export async function createTaskDeadlineCalendarEvent(
 
   const accessToken = await getAccessToken()
   const eventId = String(input.eventId || '').trim()
-  const recurrence = buildDailyDeadlineRecurrence(deadline)
-  const startDate = recurrence?.range.startDate || deadline
+  const todayKey = dateKeyInMadrid(new Date())
+  const startDate = deadlineCalendarStartDate(deadline, todayKey)
   const endDate = addOneDay(startDate)
   const response = await fetch(
     eventId
@@ -992,7 +978,7 @@ export async function createTaskDeadlineCalendarEvent(
         },
         isAllDay: true,
         isReminderOn: true,
-        ...(recurrence ? { recurrence } : {}),
+        ...deadlineCalendarRecurrenceBody(deadline, { eventId, todayKey }),
       }),
       cache: 'no-store',
     }
