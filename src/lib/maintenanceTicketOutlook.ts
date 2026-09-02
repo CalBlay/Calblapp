@@ -130,16 +130,18 @@ export async function syncMaintenanceTicketOutlookCalendar(
   const existingEvents = { ...(input.existingEvents || {}) }
 
   if (input.clearPlanning) {
+    const remainingEvents: Record<string, MaintenanceTicketOutlookEventRef> = {}
     await Promise.all(
-      Object.values(existingEvents).map(async (entry) => {
+      Object.entries(existingEvents).map(async ([userId, entry]) => {
         try {
           await deleteOutlookCalendarEvent(entry.email, entry.eventId)
         } catch (err) {
           console.error('[maintenanceTicketOutlook] delete error', err)
+          remainingEvents[userId] = entry
         }
       })
     )
-    return {}
+    return remainingEvents
   }
 
   const plannedStart = toMillis(input.plannedStart)
@@ -188,7 +190,11 @@ export async function syncMaintenanceTicketOutlookCalendar(
 
   for (const userId of targetUserIds) {
     const contact = contacts.get(userId)
-    if (!contact) continue
+    const previous = existingEvents[userId]
+    if (!contact) {
+      if (previous) nextEvents[userId] = previous
+      continue
+    }
 
     const isCreator = creatorId === userId
     const role: MaintenanceTicketOutlookEventRef['role'] = isCreator ? 'creator' : 'assignee'
@@ -214,7 +220,6 @@ export async function syncMaintenanceTicketOutlookCalendar(
           endLabel,
         })
 
-    const previous = existingEvents[userId]
     try {
       const event = await upsertMaintenanceTicketCalendarEvent({
         assigneeEmail: contact.email,
@@ -224,7 +229,10 @@ export async function syncMaintenanceTicketOutlookCalendar(
         startDateTime,
         endDateTime,
       })
-      if (!event.id) continue
+      if (!event.id) {
+        if (previous) nextEvents[userId] = previous
+        continue
+      }
       nextEvents[userId] = {
         eventId: event.id,
         email: contact.email,
@@ -232,6 +240,7 @@ export async function syncMaintenanceTicketOutlookCalendar(
       }
     } catch (err) {
       console.error('[maintenanceTicketOutlook] upsert error', { userId, err })
+      if (previous) nextEvents[userId] = previous
     }
   }
 
@@ -242,6 +251,7 @@ export async function syncMaintenanceTicketOutlookCalendar(
         await deleteOutlookCalendarEvent(entry.email, entry.eventId)
       } catch (err) {
         console.error('[maintenanceTicketOutlook] cleanup delete error', { userId, err })
+        nextEvents[userId] = entry
       }
     })
   )
