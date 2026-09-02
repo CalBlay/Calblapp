@@ -36,6 +36,8 @@ import {
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
+import { collectOutlookRefPatches } from '@/lib/projects/outlookRefPatches'
+import { persistProjectOutlookRefPatches } from '@/lib/projects/persistOutlookRefPatches'
 
 type SessionUser = {
   id: string
@@ -965,8 +967,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         tasks: Array.isArray(block.tasks) ? block.tasks.map((task) => ({ ...task })) : [],
       }))
 
-      let shouldPersistOutlookRefs = false
-
       const blockAssignmentNotifications = syncedBlocks.map(async (block) => {
         const blockId = trimText(block.id)
         const blockName = trimText(block.name) || 'Bloc'
@@ -1019,7 +1019,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           block.outlookEventId = eventRef.outlookEventId
           block.outlookEventWebLink = eventRef.outlookEventWebLink
           block.outlookEventEmail = eventRef.outlookEventEmail
-          shouldPersistOutlookRefs = true
         }
 
         return null
@@ -1091,7 +1090,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             task.outlookEventId = eventRef.outlookEventId
             task.outlookEventWebLink = eventRef.outlookEventWebLink
             task.outlookEventEmail = eventRef.outlookEventEmail
-            shouldPersistOutlookRefs = true
           }
 
           return null
@@ -1208,7 +1206,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             block.outlookEventId = ''
             block.outlookEventWebLink = ''
             block.outlookEventEmail = ''
-            shouldPersistOutlookRefs = true
             return null
           }
 
@@ -1224,7 +1221,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             block.outlookEventId = event.id
             block.outlookEventWebLink = event.webLink
             block.outlookEventEmail = recipientEmail
-            shouldPersistOutlookRefs = true
           }
         }
 
@@ -1312,7 +1308,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
               task.outlookEventId = ''
               task.outlookEventWebLink = ''
               task.outlookEventEmail = ''
-              shouldPersistOutlookRefs = true
               return null
             }
 
@@ -1329,7 +1324,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
               task.outlookEventId = event.id
               task.outlookEventWebLink = event.webLink
               task.outlookEventEmail = recipientEmail
-              shouldPersistOutlookRefs = true
             }
           }
 
@@ -1391,9 +1385,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         }),
       ])
 
-      if (shouldPersistOutlookRefs) {
-        await db.collection('projects').doc(id).set({ blocks: syncedBlocks }, { merge: true })
-      }
+      await persistProjectOutlookRefPatches(
+        id,
+        collectOutlookRefPatches(currentBlocks, syncedBlocks)
+      )
     })
 
     return NextResponse.json({ id, document })
