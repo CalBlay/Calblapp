@@ -504,6 +504,8 @@ export async function GET(
         departments: Array.isArray(data.departments) ? (data.departments as string[]) : [],
         phase: String(data.phase || ''),
         status: String(data.status || ''),
+        // Privacy-scoped snapshot: never the full project. Callers must not
+        // PATCH /api/projects/[id] with these arrays (replace-merge wipe).
         blocks: linkedBlock ? [linkedBlock] : [],
         rooms: [room],
         document: data.document ?? null,
