@@ -33,6 +33,7 @@ import {
   sendOutlookTextMail,
   sendTaskAssignmentEmail,
 } from '@/services/graph/calendar'
+import { collectProjectOutlookCalendarRefs } from '@/lib/projects/outlookCalendarCleanup'
 import { incrementUserUnreadCount } from '@/lib/notifications/unreadCounts'
 import { getAblyRest, hasAblyApiKey } from '@/lib/server/ablyRest'
 import { sendPushToUsers } from '@/lib/notifications/sendUserPush.server'
@@ -656,6 +657,20 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
 
     if (!canDelete) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const calendarRefs = collectProjectOutlookCalendarRefs(data)
+    for (const calendarRef of calendarRefs) {
+      try {
+        await deleteOutlookCalendarEvent(calendarRef.email, calendarRef.eventId)
+      } catch (err) {
+        console.error('[projects] delete calendar cleanup error', {
+          projectId: id,
+          email: calendarRef.email,
+          eventId: calendarRef.eventId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
     }
 
     const bucket = storageAdmin.bucket()
