@@ -24,6 +24,11 @@ import {
   type ProjectBlockLike,
   type ProjectRoomLike,
 } from '@/lib/projectRoomOps'
+import {
+  collectProjectOutlookCalendarEvents,
+  collectRemovedProjectAssignmentTargets,
+  resolveProjectOwnerTransition,
+} from '@/lib/projects/ownerTransition'
 import type { KickoffData, ProjectBlock } from '@/app/menu/projects/components/project-shared'
 import {
   createBlockDeadlineCalendarEvent,
@@ -660,6 +665,12 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    await Promise.allSettled(
+      collectProjectOutlookCalendarEvents(data.blocks).map(({ email, eventId }) =>
+        deleteOutlookCalendarEvent(email, eventId)
+      )
+    )
+
     const bucket = storageAdmin.bucket()
     const channelsSnap = await db
       .collection('channels')
@@ -973,11 +984,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const blockOwner = trimText(block.owner)
         const deadline = trimText(block.deadline)
         const previousBlock = currentBlocksById.get(blockId)
-        const previousOwnerName = previousWasDraft ? '' : trimText(previousBlock?.owner)
+        const previousOwnerName = trimText(previousBlock?.owner)
+        const { shouldNotifyRemoval, shouldNotifyAssignment } = resolveProjectOwnerTransition({
+          previousOwnerName,
+          nextOwnerName: blockOwner,
+          treatAsNewAssignment: previousWasDraft,
+        })
 
-        if (!blockId || !blockOwner || blockOwner === previousOwnerName) return null
+        if (!blockId || (!shouldNotifyRemoval && !shouldNotifyAssignment)) return null
 
-        if (previousOwnerName) {
+        if (shouldNotifyRemoval) {
           const previousOwnerUser = await userResolver.findByName(previousOwnerName)
           if (previousOwnerUser?.id) {
             await notifyProjectOwnerRemoval({
@@ -996,6 +1012,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
             })
           }
         }
+
+        if (!shouldNotifyAssignment) return null
 
         const assignedUser = await userResolver.findByName(blockOwner)
         if (!assignedUser?.id) return null
@@ -1040,11 +1058,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           const taskOwner = trimText(task?.owner)
           const deadline = trimText(task?.deadline)
           const previousTask = previousTasksById.get(taskId)
-          const previousOwnerName = previousWasDraft ? '' : trimText(previousTask?.owner)
+          const previousOwnerName = trimText(previousTask?.owner)
+          const { shouldNotifyRemoval, shouldNotifyAssignment } = resolveProjectOwnerTransition({
+            previousOwnerName,
+            nextOwnerName: taskOwner,
+            treatAsNewAssignment: previousWasDraft,
+          })
 
-          if (!taskId || !taskOwner || taskOwner === previousOwnerName) return null
+          if (!taskId || (!shouldNotifyRemoval && !shouldNotifyAssignment)) return null
 
-          if (previousOwnerName) {
+          if (shouldNotifyRemoval) {
             const previousOwnerUser = await userResolver.findByName(previousOwnerName)
             if (previousOwnerUser?.id) {
               await notifyProjectOwnerRemoval({
@@ -1065,6 +1088,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
               })
             }
           }
+
+          if (!shouldNotifyAssignment) return null
 
           const assignedUser = await userResolver.findByName(taskOwner)
           if (!assignedUser?.id) return null
@@ -1093,6 +1118,30 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           }
 
           return null
+        })
+      })
+
+      const removedAssignmentNotifications = collectRemovedProjectAssignmentTargets({
+        previousBlocks: currentBlocks,
+        nextBlocks: syncedBlocks,
+      }).map(async (target) => {
+        const previousOwnerUser = await userResolver.findByName(target.previousOwnerName)
+        if (!previousOwnerUser?.id) return null
+
+        return notifyProjectOwnerRemoval({
+          userId: previousOwnerUser.id,
+          userName: trimText(previousOwnerUser.name) || target.previousOwnerName,
+          userEmail: trimText(previousOwnerUser.email),
+          senderEmail,
+          projectId: id,
+          projectName,
+          blockId: target.blockId,
+          blockName: target.blockName,
+          taskId: target.taskId,
+          taskName: target.taskName,
+          eventId: equalText(target.outlookEventEmail, previousOwnerUser.email)
+            ? target.outlookEventId
+            : '',
         })
       })
 
@@ -1368,6 +1417,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           : []),
         ...blockAssignmentNotifications,
         ...taskAssignmentNotifications,
+        ...removedAssignmentNotifications,
         ...blockUpdateNotifications,
         ...taskUpdateNotifications,
         ...taskDependencyUnlockedNotifications,

@@ -14,6 +14,10 @@ import {
   type ProjectRoomLike,
 } from '@/lib/projectRoomOps'
 import {
+  collectRemovedProjectAssignmentTargets,
+  resolveProjectOwnerTransition,
+} from '@/lib/projects/ownerTransition'
+import {
   createTaskDeadlineCalendarEvent,
   deleteOutlookCalendarEvent,
   sendOutlookTextMail,
@@ -576,10 +580,14 @@ export async function PATCH(
           const deadline = trimText(task?.deadline)
           const previousTask = previousTasksById.get(taskId)
           const previousOwnerName = trimText(previousTask?.owner)
+          const { shouldNotifyRemoval, shouldNotifyAssignment } = resolveProjectOwnerTransition({
+            previousOwnerName,
+            nextOwnerName: taskOwner,
+          })
 
-          if (!taskId || !taskOwner || taskOwner === previousOwnerName) return null
+          if (!taskId || (!shouldNotifyRemoval && !shouldNotifyAssignment)) return null
 
-          if (previousOwnerName) {
+          if (shouldNotifyRemoval) {
             const previousOwnerUser = await findUserByName(previousOwnerName)
             if (previousOwnerUser?.id) {
               await notifyTaskOwnerRemoval({
@@ -600,6 +608,8 @@ export async function PATCH(
               })
             }
           }
+
+          if (!shouldNotifyAssignment) return null
 
           const assignedUser = await findUserByName(taskOwner)
           if (!assignedUser?.id) return null
@@ -720,6 +730,32 @@ export async function PATCH(
             }
 
             return null
+          })
+        )
+
+        taskAssignmentNotifications.push(
+          ...collectRemovedProjectAssignmentTargets({
+            previousBlocks: [previousBlock],
+            nextBlocks: [{ ...previousBlock, id: blockId, tasks: nextTasks }],
+          }).map(async (target) => {
+            const previousOwnerUser = await findUserByName(target.previousOwnerName)
+            if (!previousOwnerUser?.id) return null
+
+            return notifyTaskOwnerRemoval({
+              userId: previousOwnerUser.id,
+              userName: trimText(previousOwnerUser.name) || target.previousOwnerName,
+              userEmail: trimText(previousOwnerUser.email),
+              senderEmail,
+              projectId: id,
+              projectName,
+              blockId: target.blockId,
+              blockName: target.blockName,
+              taskId: target.taskId,
+              taskName: target.taskName,
+              eventId: equalText(target.outlookEventEmail, previousOwnerUser.email)
+                ? target.outlookEventId
+                : '',
+            })
           })
         )
 
