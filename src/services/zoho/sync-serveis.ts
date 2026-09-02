@@ -1,5 +1,14 @@
 import { firestoreAdmin as firestore } from '@/lib/firebaseAdmin'
 import type { ZohoDeal } from '@/services/zoho/sync-types'
+import {
+  collectServeisNamesFromDeals,
+  planNewServeisCreates,
+} from '@/services/zoho/sync-serveis-names'
+
+export {
+  collectServeisNamesFromDeals,
+  planNewServeisCreates,
+} from '@/services/zoho/sync-serveis-names'
 
 type SyncServeisOptions = {
   deals: ZohoDeal[]
@@ -10,11 +19,7 @@ export async function syncServeisFromDeals({
   deals,
   slugify,
 }: SyncServeisOptions): Promise<number> {
-  const serveisRaw = new Set<string>()
-  for (const deal of deals) {
-    const nom = String(deal.Servicio_texto || deal.Men_texto || '').trim()
-    if (nom) serveisRaw.add(nom)
-  }
+  const serveisRaw = collectServeisNamesFromDeals(deals)
 
   const existSnap = await firestore.collection('serveis').get()
   const existing = new Set<string>()
@@ -23,18 +28,21 @@ export async function syncServeisFromDeals({
     existing.add(slugify(nom))
   })
 
+  const planned = planNewServeisCreates({
+    names: serveisRaw,
+    existingNorms: existing,
+    slugify,
+  })
+
   const batchServeis = firestore.batch()
   let created = 0
 
-  for (const nomRaw of Array.from(serveisRaw)) {
-    const norm = slugify(nomRaw)
-    if (!norm || existing.has(norm)) continue
-
-    const ref = firestore.collection('serveis').doc(norm)
+  for (const item of planned) {
+    const ref = firestore.collection('serveis').doc(item.norm)
     batchServeis.set(ref, {
-      nom: nomRaw,
-      codi: norm,
-      searchable: `${nomRaw} ${norm}`.toLowerCase(),
+      nom: item.nomRaw,
+      codi: item.norm,
+      searchable: item.searchable,
       updatedAt: new Date().toISOString(),
       origen: 'zoho',
     })
