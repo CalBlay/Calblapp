@@ -1,7 +1,7 @@
 // src/app/api/transports/assign/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getToken } from 'next-auth/jwt'
 import { firestoreAdmin as db } from '@/lib/firebaseAdmin'
+import { requireDisponibilitatEdit } from '@/lib/server/disponibilitatApiAuth'
 import {
   orderedDayRangeFromLocalDates,
   queryQuadrantCollectionDocsInDateRange,
@@ -58,12 +58,6 @@ type AssignmentRecord = Record<string, unknown> & {
   endTime?: string
   status?: string
   dayKeys?: string[]
-}
-
-type TokenLike = {
-  name?: string
-  email?: string
-  sub?: string
 }
 
 const quadrantCollections = [
@@ -226,9 +220,8 @@ function sanitizeInput(body: AssignmentInput) {
 
 export async function POST(req: NextRequest) {
   try {
-    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const authToken = token as TokenLike
+    const auth = await requireDisponibilitatEdit()
+    if (!auth.ok) return auth.res
 
     const body = (await req.json()) as AssignmentInput
     const cleaned = sanitizeInput(body)
@@ -271,7 +264,7 @@ export async function POST(req: NextRequest) {
       status: 'pending',
       createdAt: now,
       updatedAt: now,
-      createdBy: authToken.name || authToken.email || authToken.sub || 'system',
+      createdBy: auth.user.name || auth.user.email || auth.user.id || 'system',
     }
 
     const ref = await db.collection(COLLECTION).add(doc)
