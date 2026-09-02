@@ -5,6 +5,11 @@ import { requireAuth } from '@/lib/server/apiAuth'
 import { PERM } from '@/lib/permissionKeys'
 import type { AccessUser } from '@/lib/accessControl'
 import { isUiPermissionGranted } from '@/lib/server/permissions'
+import {
+  isAllowedCalendarManualAttachField,
+  isAllowedCalendarManualCollection,
+  pickCalendarManualPutFields,
+} from '@/lib/calendar/calendarManualCollection'
 
 function accessUserFromSession(user: {
   id: string
@@ -79,19 +84,28 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       )
     }
 
+    if (!isAllowedCalendarManualCollection(collection)) {
+      return NextResponse.json({ error: 'Col·lecció invàlida' }, { status: 400 })
+    }
+
+    const attachField = String(field || '').trim()
+    if (!isAllowedCalendarManualAttachField(attachField)) {
+      return NextResponse.json({ error: 'Camp de fitxer invàlid' }, { status: 400 })
+    }
+
     const payload: Record<string, unknown> = {
-      [field]: url,
+      [attachField]: url,
       updatedAt: new Date().toISOString(),
     }
     const fileName = String(name || '').trim()
     if (fileName) {
-      payload[`${field}Name`] = fileName
+      payload[`${attachField}Name`] = fileName
     }
 
     await db.collection(collection).doc(id).set(payload, { merge: true })
 
-    console.log(`✅ Fitxer ${field} desat correctament a ${collection}/${id}`)
-    return NextResponse.json({ ok: true, field, url })
+    console.log(`✅ Fitxer ${attachField} desat correctament a ${collection}/${id}`)
+    return NextResponse.json({ ok: true, field: attachField, url })
   } catch (err) {
     console.error('❌ Error POST fitxer manual:', err)
     return NextResponse.json({ error: 'Error desant fitxer' }, { status: 500 })
@@ -121,6 +135,13 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Falta la col·lecció' }, { status: 400 })
     }
 
+    if (!isAllowedCalendarManualCollection(collection)) {
+      console.error('❌ Col·lecció invàlida:', collection)
+      return NextResponse.json({ error: 'Col·lecció invàlida' }, { status: 400 })
+    }
+
+    const safeData = pickCalendarManualPutFields(data, MODAL_OVERRIDE_FIELDS)
+
     const docRef = db.collection(collection).doc(id)
     const now = new Date().toISOString()
     let codeMeta: Record<string, unknown> = {}
@@ -132,9 +153,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         : {}) as Record<string, true>),
     }
 
-    if (Object.prototype.hasOwnProperty.call(data, 'code')) {
+    if (Object.prototype.hasOwnProperty.call(safeData, 'code')) {
       const prevCode = String(snap.get('code') || '').trim()
-      const nextCode = String(data.code || '').trim()
+      const nextCode = String(safeData.code || '').trim()
       if (prevCode !== nextCode) {
         codeMeta = {
           codeSource: 'manual',
@@ -143,7 +164,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       }
     }
 
-    for (const [field, value] of Object.entries(data)) {
+    for (const [field, value] of Object.entries(safeData)) {
       if (!MODAL_OVERRIDE_FIELDS.has(field)) continue
       if (comparable(previous[field]) !== comparable(value)) {
         manualOverrides[field] = true
@@ -152,7 +173,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     await docRef.set(
       {
-        ...data,
+        ...safeData,
         ...codeMeta,
         manualOverrides,
         manualUpdatedAt: now,
@@ -186,7 +207,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     const url = new URL(req.url)
     const collection = url.searchParams.get('collection')
 
-    if (!collection || !collection.startsWith('stage_')) {
+    if (!collection || !isAllowedCalendarManualCollection(collection)) {
       console.error('❌ Col·lecció invàlida o buida:', collection)
       return NextResponse.json({ error: 'Col·lecció invàlida' }, { status: 400 })
     }
@@ -204,4 +225,3 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     )
   }
 }
-

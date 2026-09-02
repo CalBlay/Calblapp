@@ -11,6 +11,7 @@ import {
   parseSharePointItemId,
   resolveEmailByName,
 } from '@/lib/calendar/calendarEmail'
+import { isAllowedCalendarManualCollection } from '@/lib/calendar/calendarManualCollection'
 import { sendOutlookTextMail } from '@/services/graph/calendar'
 
 export const runtime = 'nodejs'
@@ -54,6 +55,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const filesInput = Array.isArray(body.files) ? body.files : []
 
     if (!id) return NextResponse.json({ error: 'Falta id' }, { status: 400 })
+    if (!isAllowedCalendarManualCollection(collection)) {
+      return NextResponse.json({ error: 'Col·lecció invàlida' }, { status: 400 })
+    }
     if (!subject) return NextResponse.json({ error: 'Falta assumpte' }, { status: 400 })
     if (filesInput.length === 0) {
       return NextResponse.json({ error: 'Cal seleccionar almenys un document' }, { status: 400 })
